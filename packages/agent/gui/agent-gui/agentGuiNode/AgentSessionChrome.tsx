@@ -1,5 +1,11 @@
 import { type JSX, type ReactNode } from "react";
-import { Button } from "@tutti-os/ui-system";
+import {
+  Button,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger
+} from "@tutti-os/ui-system";
 import { CastIcon } from "../../app/renderer/components/icons/CastIcon";
 import { cn } from "../../app/renderer/lib/utils";
 import { approvalOptionDisplayLabel } from "../../shared/agentConversation/approvalOptionPresentation";
@@ -18,6 +24,7 @@ interface AgentChromeNoticeProps {
 
 interface AgentSessionChromeProps {
   chrome: AgentGUISessionChrome;
+  approvalDisabledReason?: string | null;
   isRespondingApproval: boolean;
   onSubmitApprovalOption: (input: AgentInteractionResponseInput) => boolean;
   onAuthLogin?: () => void;
@@ -105,6 +112,7 @@ export function AgentChromeNotice({
 
 export function AgentSessionChrome({
   chrome,
+  approvalDisabledReason = null,
   isRespondingApproval,
   onSubmitApprovalOption,
   onAuthLogin,
@@ -172,29 +180,36 @@ export function AgentSessionChrome({
         <section className={cn(styles.chromeCard, styles.chromeCardAction)}>
           <div className={styles.chromeTitle}>{labels.approvalRequired}</div>
           <p className={styles.chromeMessage}>{chrome.approval.title}</p>
-          <div className={styles.chromeActions}>
-            {chrome.approval.options.map((option) => (
-              <button
-                key={option.id}
-                type="button"
-                disabled={isRespondingApproval}
-                onClick={() =>
-                  onSubmitApprovalOption({
-                    ...(chrome.approval?.agentSessionId
-                      ? { agentSessionId: chrome.approval.agentSessionId }
-                      : {}),
-                    optionId: option.id,
-                    requestId: chrome.approval?.requestId ?? "",
-                    ...(chrome.approval?.turnId
-                      ? { turnId: chrome.approval.turnId }
-                      : {})
-                  })
-                }
-              >
-                {approvalOptionDisplayLabel(option)}
-              </button>
-            ))}
-          </div>
+          <DisabledApprovalActions reason={approvalDisabledReason}>
+            <div className={styles.chromeActions}>
+              {chrome.approval.options.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  className={
+                    approvalDisabledReason?.trim()
+                      ? "pointer-events-none"
+                      : undefined
+                  }
+                  disabled={isRespondingApproval}
+                  onClick={() =>
+                    onSubmitApprovalOption({
+                      ...(chrome.approval?.agentSessionId
+                        ? { agentSessionId: chrome.approval.agentSessionId }
+                        : {}),
+                      optionId: option.id,
+                      requestId: chrome.approval?.requestId ?? "",
+                      ...(chrome.approval?.turnId
+                        ? { turnId: chrome.approval.turnId }
+                        : {})
+                    })
+                  }
+                >
+                  {approvalOptionDisplayLabel(option)}
+                </button>
+              ))}
+            </div>
+          </DisabledApprovalActions>
         </section>
       ) : null}
 
@@ -304,5 +319,48 @@ export function AgentSessionChrome({
         </section>
       ) : null}
     </div>
+  );
+}
+
+function DisabledApprovalActions({
+  children,
+  reason
+}: {
+  children: ReactNode;
+  reason?: string | null;
+}): JSX.Element {
+  const normalizedReason = reason?.trim() ?? "";
+  const actions = (
+    <div
+      aria-disabled={normalizedReason ? "true" : undefined}
+      aria-label={normalizedReason || undefined}
+      className={cn(
+        normalizedReason && "cursor-not-allowed rounded-md outline-none"
+      )}
+      data-agent-interaction-disabled={normalizedReason ? "true" : undefined}
+      role={normalizedReason ? "group" : undefined}
+      tabIndex={normalizedReason ? 0 : undefined}
+    >
+      {children}
+    </div>
+  );
+
+  if (!normalizedReason) {
+    return actions;
+  }
+
+  return (
+    <TooltipProvider delayDuration={120} skipDelayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>{actions}</TooltipTrigger>
+        <TooltipContent
+          side="top"
+          align="start"
+          className="max-w-[min(360px,calc(100vw-32px))] whitespace-normal text-left [overflow-wrap:anywhere]"
+        >
+          {normalizedReason}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }

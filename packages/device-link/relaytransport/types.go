@@ -2,6 +2,7 @@ package relaytransport
 
 import (
 	"context"
+	"errors"
 	"math/rand"
 	"net"
 	"net/http"
@@ -40,6 +41,41 @@ type OwnerSession struct {
 	PingPayload []byte
 }
 
+// OwnerActivation is the continuous product health contract for one connected
+// owner session. Readiness remains valid for the whole connection generation;
+// its cancellation cause is the product-neutral explanation for why the
+// generation must end. Deactivate stops and joins all product maintenance
+// started by Activate.
+type OwnerActivation struct {
+	Readiness  context.Context
+	Deactivate func()
+}
+
+// ErrOwnerWake identifies a host-directed wake request. A wake interrupts the
+// current generation or retry wait without changing demand or resetting
+// reconnect backoff.
+var ErrOwnerWake = errors.New("relay owner wake requested")
+
+// ErrOwnerActivationReadiness identifies an invalid lifecycle activation that
+// did not return the required continuous readiness context.
+var ErrOwnerActivationReadiness = errors.New("relay owner activation readiness is required")
+
+// OwnerReadinessError preserves a product readiness cause while keeping the
+// transport observer's error text free of product payloads. Callers can use
+// errors.Is or errors.As to inspect Cause.
+type OwnerReadinessError struct {
+	Cause error
+}
+
+func (*OwnerReadinessError) Error() string { return "relay owner readiness ended" }
+
+func (e *OwnerReadinessError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.Cause
+}
+
 // OwnerLifecycle owns product state for exactly one zero-to-one Host demand
 // lifecycle. A Host never reuses a lifecycle after its final Release.
 type OwnerLifecycle interface {
@@ -47,10 +83,13 @@ type OwnerLifecycle interface {
 	// session together with an error so Release can clean up product state that
 	// was committed before preparation failed.
 	Prepare(ctx context.Context) (OwnerSession, error)
-	// Activate is a readiness barrier after the WebSocket connects and before
-	// relay streams are accepted. The returned function stops maintenance and
-	// joins any goroutines started by Activate.
-	Activate(ctx context.Context, session OwnerSession) (deactivate func(), err error)
+	// Activate establishes the product conditions for this connection
+	// generation after the WebSocket connects and before relay streams are
+	// accepted. Readiness is a continuous condition, not just a one-time
+	// barrier: cancelling it ends the generation and carries the product cause
+	// to SessionEnded. Deactivate stops maintenance and joins all goroutines
+	// started by Activate.
+	Activate(ctx context.Context, session OwnerSession) (OwnerActivation, error)
 	// SessionEnded lets the product invalidate credentials or projections based
 	// on a completed connection attempt. It must not block.
 	SessionEnded(session OwnerSession, err error)
@@ -85,6 +124,17 @@ const (
 	OwnerPhaseRelease  OwnerPhase = "release"
 )
 
+// OwnerEndReason identifies a diagnostic reason for ending an owner attempt.
+// Empty remains the normal value for legacy failure-driven endings.
+type OwnerEndReason string
+
+const (
+	// OwnerEndReasonNetworkChanged means the attempt was fenced by a newer
+	// network generation. Product lifecycles receive the same reason through
+	// NetworkGenerationChangedError and decide whether credentials remain valid.
+	OwnerEndReasonNetworkChanged OwnerEndReason = "network_changed"
+)
+
 // OwnerOutcome identifies the result of one owner-tunnel phase. New outcomes
 // may be added compatibly; observers must ignore outcomes they do not recognize.
 type OwnerOutcome string
@@ -106,11 +156,34 @@ const (
 type OwnerEvent struct {
 	Phase      OwnerPhase
 	Outcome    OwnerOutcome
+	Generation uint64
+	EndReason  OwnerEndReason
 	SessionKey string
 	Retry      *OwnerRetryObservation
 	Liveness   *OwnerLivenessObservation
 	Error      error
 }
+
+// ErrNetworkGenerationChanged is the sentinel wrapped by
+// NetworkGenerationChangedError. It is transport cancellation, not a
+// credential invalidation signal.
+var ErrNetworkGenerationChanged = errors.New("relay owner network generation changed")
+
+// NetworkGenerationChangedError identifies an attempt canceled by a newer
+// network generation without exposing any network material.
+type NetworkGenerationChangedError struct {
+	PreviousGeneration uint64
+	Generation         uint64
+}
+
+func (e *NetworkGenerationChangedError) Error() string {
+	if e == nil {
+		return ErrNetworkGenerationChanged.Error()
+	}
+	return "relay owner network generation changed"
+}
+
+func (*NetworkGenerationChangedError) Unwrap() error { return ErrNetworkGenerationChanged }
 
 // OwnerRetryObservation describes one scheduled reconnect without product
 // identifiers or credentials.

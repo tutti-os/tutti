@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -59,6 +60,25 @@ func TestSettledTurnFreezesLastPersistedAssistantTextAsFinalMessageAnchor(t *tes
 	}
 	if payload != `{"finalAssistantMessageId":"assistant-a","finalAssistantMessageResolved":true}` {
 		t.Fatalf("completed command payload = %s", payload)
+	}
+}
+
+func TestSettledTurnPersistsStructuredErrorCodeWithoutMessage(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-error-code")
+	turn, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-error-code", TurnID: "turn-1",
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeFailed,
+		ErrorCode: "provider_max_tokens", OccurredAtUnixMS: 10,
+	})
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	if turn.ErrorCode != "provider_max_tokens" || turn.ErrorMessage != "" {
+		t.Fatalf("stored turn error = %q/%q", turn.ErrorCode, turn.ErrorMessage)
 	}
 }
 
@@ -185,6 +205,10 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	if len(settlements) != 1 {
 		t.Fatalf("settlements = %#v, want one", settlements)
 	}
+	if settlement := settlements[0]; settlement.Provider != "codex" ||
+		settlement.StartedAtUnixMS != 100 || settlement.SettledAtUnixMS <= settlement.StartedAtUnixMS {
+		t.Fatalf("settlement identity and timing = %#v, want provider codex and a valid duration", settlement)
+	}
 	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
 	if err != nil || !ok || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeInterrupted {
 		t.Fatalf("turn after restart settlement ok=%v error=%v turn=%#v", ok, err, turn)
@@ -209,6 +233,74 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	if message.MessageID != "system-stale-turn-turn-1" || message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
 		t.Fatalf("startup system message = %#v", message)
 	}
+}
+
+func TestSettleStaleTurnsReturnsCanonicalSettledTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-1")
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, Origin: TurnOriginUserPrompt, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_turns
+SET backfilled = 1
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND turn_id = 'turn-1'
+`); err != nil {
+		t.Fatalf("mark turn backfilled: %v", err)
+	}
+
+	settlements, err := store.SettleStaleTurns(ctx)
+	if err != nil {
+		t.Fatalf("SettleStaleTurns() error = %v", err)
+	}
+	if len(settlements) != 1 {
+		t.Fatalf("settlements = %#v, want one", settlements)
+	}
+	persisted, found, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
+	if err != nil || !found {
+		t.Fatalf("GetTurn() found=%v error=%v turn=%#v", found, err, persisted)
+	}
+	if !reflect.DeepEqual(settlements[0].Turn, persisted) {
+		t.Fatalf("settlement turn = %#v, want canonical persisted turn %#v", settlements[0].Turn, persisted)
+	}
+	if settlements[0].Turn.Origin != TurnOriginUserPrompt || !settlements[0].Turn.Backfilled {
+		t.Fatalf("settlement turn provenance = %#v, want user_prompt/backfilled", settlements[0].Turn)
+	}
+}
+
+func TestSettleStaleTurnsCarriesChildSessionIdentity(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "codex", OccurredAtUnixMS: 10,
+	}, "root-turn", 10)
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "child", Kind: SessionKindChild,
+		RootAgentSessionID: "root", RootTurnID: "root-turn",
+		ParentAgentSessionID: "root", ParentTurnID: "root-turn", ParentToolCallID: "call-1",
+		Provider: "claude-code", OccurredAtUnixMS: 20,
+	}, "child-turn", 20)
+
+	settlements, err := store.SettleStaleTurns(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, settlement := range settlements {
+		if settlement.AgentSessionID == "child" {
+			if !settlement.IsChildSession || settlement.Provider != "claude-code" ||
+				settlement.StartedAtUnixMS != 20 || settlement.SettledAtUnixMS <= 20 {
+				t.Fatalf("child settlement = %#v", settlement)
+			}
+			return
+		}
+	}
+	t.Fatalf("child settlement missing from %#v", settlements)
 }
 
 func TestSettleStaleTurnsPreservesTurnProtectedByDeferredRuntimeOperation(t *testing.T) {
@@ -361,6 +453,47 @@ func TestReportActivityStateRollsBackSessionOnLiveTurnConflict(t *testing.T) {
 	}
 	if _, ok, getErr := store.GetTurn(ctx, "ws-1", "session-1", "turn-new"); getErr != nil || ok {
 		t.Fatalf("conflicting turn persisted ok=%v error=%v", ok, getErr)
+	}
+}
+
+func TestReportActivityStateAppliesTerminalTurnWhenSessionSnapshotIsReplay(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	baseSession := SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Kind: SessionKindRoot,
+		Origin: "runtime", Provider: "codex", Status: "active", CurrentPhase: "working",
+		OccurredAtUnixMS: 100,
+	}
+	if result, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: baseSession,
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+			Phase: TurnPhaseRunning, OccurredAtUnixMS: 100,
+		},
+	}); err != nil || !result.TurnAccepted {
+		t.Fatalf("running report result=%#v error=%v", result, err)
+	}
+
+	// The runtime can emit a terminal turn transition in a batch whose session
+	// envelope is an exact replay. The session projection must not gate the
+	// child turn's durable terminal transition or leave active_turn_id stale.
+	if result, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: baseSession,
+		Turn: &TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+			Phase: TurnPhaseSettled, Outcome: TurnOutcomeCompleted, OccurredAtUnixMS: 101,
+		},
+	}); err != nil || !result.TurnAccepted {
+		t.Fatalf("terminal replay report result=%#v error=%v", result, err)
+	}
+	turn, found, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
+	if err != nil || !found || turn.Phase != TurnPhaseSettled {
+		t.Fatalf("terminal turn=%#v found=%v error=%v", turn, found, err)
+	}
+	session, found, err := store.GetSession(ctx, "ws-1", "session-1")
+	if err != nil || !found || session.ActiveTurnID != "" {
+		t.Fatalf("terminal session=%#v found=%v error=%v", session, found, err)
 	}
 }
 

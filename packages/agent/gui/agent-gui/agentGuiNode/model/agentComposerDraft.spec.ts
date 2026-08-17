@@ -150,6 +150,80 @@ describe("agentComposerDraft", () => {
     ]);
   });
 
+  it("materializes composer-file mentions out of the persisted display prompt", () => {
+    const mention = createAgentComposerFileMentionMarkdown({
+      id: "file-1",
+      name: "report.pdf",
+      status: "ready"
+    });
+    const draft = buildAgentComposerDraft({
+      prompt: `summarize ${mention}`,
+      files: [
+        {
+          id: "file-1",
+          name: "report.pdf",
+          path: "/runtime/report.pdf"
+        }
+      ]
+    });
+
+    expect(projectAgentComposerDraftSubmission({ draft, skills: [] })).toEqual({
+      content: [
+        {
+          type: "text",
+          text: "summarize [@report.pdf](/runtime/report.pdf)"
+        }
+      ]
+    });
+    expect(agentComposerDraftDisplayPrompt(draft)).toBeUndefined();
+  });
+
+  it("keeps non-file mention display prompts while materializing composer files", () => {
+    const fileMention = createAgentComposerFileMentionMarkdown({
+      id: "file-1",
+      name: "notes.md",
+      status: "ready"
+    });
+    const draft = buildAgentComposerDraft({
+      prompt: `/review-code ${fileMention}`,
+      files: [
+        {
+          id: "file-1",
+          name: "notes.md",
+          path: "/runtime/notes.md"
+        }
+      ]
+    });
+
+    expect(
+      projectAgentComposerDraftSubmission({
+        draft,
+        skills: [
+          {
+            name: "review-code",
+            trigger: "$review-code",
+            invocation: "promptItem",
+            sourceKind: "personal",
+            path: "/skills/review-code/SKILL.md"
+          }
+        ]
+      })
+    ).toEqual({
+      content: [
+        {
+          type: "text",
+          text: "$review-code [@notes.md](/runtime/notes.md)"
+        },
+        {
+          type: "skill",
+          name: "review-code",
+          path: "/skills/review-code/SKILL.md"
+        }
+      ],
+      displayPrompt: `/review-code [@notes.md](/runtime/notes.md)`
+    });
+  });
+
   it("does not submit or count a file registry entry without an editor mention", () => {
     const draft = buildAgentComposerDraft({
       prompt: "",

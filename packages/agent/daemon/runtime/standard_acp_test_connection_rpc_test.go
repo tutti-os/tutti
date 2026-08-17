@@ -23,7 +23,16 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if request.Params != nil {
 				c.lastInitializeParamsSnapshot = maps.Clone(request.Params)
 			}
+			initializeError := c.initializeError
 			c.mu.Unlock()
+			if initializeError != nil {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      message.ID,
+					"error":   initializeError,
+				})
+				continue
+			}
 			result := map[string]any{
 				"protocolVersion": acpProtocolVersion,
 				"agentInfo": map[string]any{
@@ -43,6 +52,16 @@ func (c *standardACPConnection) Send(data []byte) error {
 			}
 			if len(sessionCapabilities) > 0 {
 				result["sessionCapabilities"] = sessionCapabilities
+			}
+			agentCapabilities := map[string]any{}
+			if c.supportsAgentLoadSession {
+				agentCapabilities["loadSession"] = true
+			}
+			if c.supportsHTTPMCP {
+				agentCapabilities["mcpCapabilities"] = map[string]any{"http": true}
+			}
+			if len(agentCapabilities) > 0 {
+				result["agentCapabilities"] = agentCapabilities
 			}
 			if len(c.authMethods) > 0 {
 				result["authMethods"] = c.authMethods
@@ -194,7 +213,18 @@ func (c *standardACPConnection) Send(data []byte) error {
 				c.lastSetModeParamsSnapshot = maps.Clone(request.Params)
 			}
 			setModeError := c.setModeError
+			started := c.pauseSettingsRPCStarted
+			release := c.pauseSettingsRPCRelease
 			c.mu.Unlock()
+			if started != nil {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+			}
+			if release != nil {
+				<-release
+			}
 			if setModeError != nil {
 				c.sendJSON(map[string]any{
 					"jsonrpc": "2.0",
@@ -246,7 +276,18 @@ func (c *standardACPConnection) Send(data []byte) error {
 				c.setConfigOptionSnapshots = append(c.setConfigOptionSnapshots, maps.Clone(request.Params))
 			}
 			rejectModelValue := c.rejectModelValue
+			started := c.pauseSettingsRPCStarted
+			release := c.pauseSettingsRPCRelease
 			c.mu.Unlock()
+			if started != nil {
+				select {
+				case started <- struct{}{}:
+				default:
+				}
+			}
+			if release != nil {
+				<-release
+			}
 			if rejectModelValue != "" && request.Params != nil {
 				configID, _ := request.Params["configId"].(string)
 				value, _ := request.Params["value"].(string)
@@ -281,6 +322,48 @@ func (c *standardACPConnection) Send(data []byte) error {
 			c.promptCallCount++
 			promptCall := c.promptCallCount
 			c.mu.Unlock()
+			if c.promptKind != "" {
+				c.mu.Lock()
+				c.pendingPermissionCallID = append(json.RawMessage(nil), message.ID...)
+				c.mu.Unlock()
+			}
+			if c.promptKind == "cursor-ask-question" {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      "cursor-ask-1",
+					"method":  cursorACPMethodAskQuestion,
+					"params": map[string]any{
+						"toolCallId": "cursor-question-1",
+						"title":      "Need a choice",
+						"questions": []map[string]any{{
+							"id":     "renderer",
+							"prompt": "Which renderer should we use?",
+							"options": []map[string]any{
+								{"id": "modern", "label": "Modern"},
+								{"id": "legacy", "label": "Legacy"},
+							},
+						}},
+					},
+				})
+				return nil
+			}
+			if c.promptKind == "cursor-create-plan" {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      "cursor-plan-1",
+					"method":  cursorACPMethodCreatePlan,
+					"params": map[string]any{
+						"toolCallId": "cursor-plan-1",
+						"name":       "Renderer plan",
+						"overview":   "Use the shared renderer.",
+						"plan":       "1. Update the renderer.\n2. Run tests.",
+						"todos": []map[string]any{{
+							"id": "todo-1", "content": "Update the renderer", "status": "pending",
+						}},
+					},
+				})
+				return nil
+			}
 			if c.planLimitPromptError {
 				c.sendJSON(map[string]any{
 					"jsonrpc": "2.0",
@@ -383,6 +466,22 @@ func (c *standardACPConnection) Send(data []byte) error {
 			}
 			c.streamPromptResult(message.ID)
 		default:
+			if (c.promptPermission || c.promptKind != "") &&
+				(acpRequestID(message.ID) == "cursor-ask-1" || acpRequestID(message.ID) == "cursor-plan-1") {
+				var response struct {
+					Error  *acpError      `json:"error"`
+					Result map[string]any `json:"result"`
+				}
+				_ = json.Unmarshal([]byte(line), &response)
+				outcome := payloadObject(response.Result["outcome"])
+				c.mu.Lock()
+				c.selectedInteractiveResult = clonePayload(outcome)
+				c.selectedInteractiveError = response.Error
+				promptID := append(json.RawMessage(nil), c.pendingPermissionCallID...)
+				c.mu.Unlock()
+				c.streamPromptResult(promptID)
+				continue
+			}
 			if (c.promptPermission || c.promptKind != "") && acpRequestID(message.ID) == "permission-1" {
 				var response struct {
 					Error  *acpError `json:"error"`

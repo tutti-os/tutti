@@ -14,6 +14,9 @@ func TestResolveCLICommandUsesStateRootShim(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stateDir, "bin", "tutti-dev"), []byte("#!/bin/sh\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(stateDir, "bin", "tutti-connector-github"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	if got := resolveCLICommand(stateDir); got != "tutti-dev" {
 		t.Fatalf("resolveCLICommand() = %q, want tutti-dev", got)

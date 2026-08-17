@@ -27,7 +27,7 @@ test("managed provider reconciliation serializes providers for visible window ac
   await flushAsyncWork();
   lifecycle.setSnapshot({ focused: false, visibility: "hidden" });
   lifecycle.emit({ kind: "focused", occurredAt: 3_000 });
-  lifecycle.setSnapshot({ focused: false, visibility: "visible" });
+  lifecycle.setSnapshot({ focused: true, visibility: "visible" });
   lifecycle.emit({
     kind: "visibility_changed",
     occurredAt: 4_000,
@@ -45,6 +45,63 @@ test("managed provider reconciliation serializes providers for visible window ac
   );
 });
 
+test("managed provider reconciliation polls every fifteen minutes only while focused and visible", async () => {
+  const lifecycle = createLifecycleHarness();
+  const reconcileCalls: unknown[] = [];
+  const polls: Array<() => void> = [];
+  let cleared = false;
+  let now = Date.parse("2026-07-16T06:00:00Z");
+  const dispose = bindDesktopManagedAgentProviderVisibilityRefresh(
+    {
+      getSnapshot() {
+        return {
+          capturedAt: "2026-07-16T05:45:00Z",
+          defaultProvider: "cursor",
+          error: null,
+          isLoading: false,
+          pendingActions: [],
+          statuses: []
+        };
+      },
+      async reconcileStatuses(providers) {
+        reconcileCalls.push(providers);
+        return null;
+      }
+    },
+    lifecycle,
+    {
+      minIntervalMs: 0,
+      now: () => now,
+      setInterval(callback, delayMs) {
+        assert.equal(delayMs, 15 * 60 * 1_000);
+        polls.push(callback);
+        return 1;
+      },
+      clearInterval(timer) {
+        assert.equal(timer, 1);
+        cleared = true;
+      }
+    }
+  );
+
+  assert.equal(polls.length, 1);
+  polls[0]?.();
+  await flushAsyncWork();
+  assert.deepEqual(
+    reconcileCalls,
+    desktopManagedAgentProviders.map((provider) => [provider])
+  );
+
+  lifecycle.setSnapshot({ focused: false, visibility: "visible" });
+  now += 15 * 60 * 1_000;
+  polls[0]?.();
+  await flushAsyncWork();
+  assert.equal(reconcileCalls.length, desktopManagedAgentProviders.length);
+
+  dispose();
+  assert.equal(cleared, true);
+});
+
 test("managed provider reconciliation preserves a fresh application snapshot", async () => {
   const reconcileCalls: unknown[] = [];
   const lifecycle = createLifecycleHarness();
@@ -52,7 +109,7 @@ test("managed provider reconciliation preserves a fresh application snapshot", a
     {
       getSnapshot() {
         return {
-          capturedAt: "2026-07-16T05:45:00Z",
+          capturedAt: "2026-07-16T05:50:00Z",
           defaultProvider: "cursor",
           error: null,
           isLoading: false,

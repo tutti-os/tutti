@@ -5,7 +5,10 @@ import {
   sessionReconcileReducer
 } from "./sessionReconcile.reducer.ts";
 import { selectEngineAuthoritativeHistoryRequirement } from "./sessionReconcile.selectors.ts";
-import { createInitialAgentSessionEngineState } from "./rootReducer.ts";
+import {
+  createInitialAgentSessionEngineState,
+  rootEngineReducer
+} from "./rootReducer.ts";
 
 test("an uncached initial read establishes a baseline without forcing full history", () => {
   const requirement = selectEngineAuthoritativeHistoryRequirement(
@@ -55,6 +58,83 @@ test("cached messages without an applied revision require authoritative history"
   assert.equal(requirement.needsAuthoritativeMessages, true);
 });
 
+test("historical detail turns preserve history provenance", () => {
+  const turn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase: "settled" as const,
+    outcome: "completed" as const,
+    settledAtUnixMs: 2,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 2
+  };
+  const result = sessionReconcileReducer(createInitialSessionReconcileState(), {
+    childSessions: [],
+    session: {
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      cwd: "/workspace",
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      title: "Session",
+      workspaceId: "workspace-1"
+    },
+    turns: [turn],
+    type: "session/detailSnapshotReceived",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    result.followUpIntents?.find((intent) => intent.type === "turn/upserted"),
+    { live: false, turn, type: "turn/upserted" }
+  );
+});
+
+test("live detail marks only the latest live turn as attention-capable", () => {
+  const latestTurn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase: "settled" as const,
+    outcome: "completed" as const,
+    settledAtUnixMs: 2,
+    startedAtUnixMs: 1,
+    turnId: "turn-2",
+    updatedAtUnixMs: 2
+  };
+  const historicalTurn = { ...latestTurn, turnId: "turn-1" };
+  const result = sessionReconcileReducer(createInitialSessionReconcileState(), {
+    childSessions: [],
+    live: true,
+    session: {
+      activeTurnId: null,
+      agentSessionId: "session-1",
+      cwd: "/workspace",
+      latestTurn: latestTurn,
+      latestTurnInteractions: [],
+      pendingInteractions: [],
+      provider: "codex",
+      title: "Session",
+      workspaceId: "workspace-1"
+    },
+    turns: [historicalTurn, latestTurn],
+    type: "session/detailSnapshotReceived",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(
+    result.followUpIntents
+      ?.filter((intent) => intent.type === "turn/upserted")
+      .map((intent) => ({ live: intent.live, turnId: intent.turn.turnId })),
+    [
+      { live: true, turnId: "turn-2" },
+      { live: false, turnId: "turn-1" },
+      { live: false, turnId: "turn-2" }
+    ]
+  );
+});
+
 test("activity observation derives reconcile scope inside the engine", () => {
   const result = reduce(createInitialSessionReconcileState(), {
     type: "session/activityObserved",
@@ -76,6 +156,111 @@ test("activity observation derives reconcile scope inside the engine", () => {
       workspaceId: "workspace-1"
     }
   ]);
+});
+
+test("pending new sessions defer reconcile until their canonical session is committed", () => {
+  const pendingNewSessionIds = new Set(["session-1"]);
+  const pending = sessionReconcileReducer(
+    createInitialSessionReconcileState(),
+    {
+      type: "session/activityObserved",
+      agentSessionId: "session-1",
+      eventType: "session_reconcile_required",
+      hasCachedSession: false,
+      hasInlineMessages: false,
+      inlineApplied: false,
+      workspaceId: "workspace-1"
+    },
+    {
+      deletedSessionIds: {},
+      pendingNewSessionIds,
+      sessionsById: {},
+      workspaceReconcileCommandId: null
+    }
+  );
+
+  assert.deepEqual(pending.commands, []);
+  assert.equal(
+    pending.state.recordsBySessionId["session-1"]?.pendingState,
+    true
+  );
+
+  const committed = sessionReconcileReducer(
+    pending.state,
+    {
+      session: {
+        agentSessionId: "session-1",
+        workspaceId: "workspace-1"
+      } as never,
+      type: "session/upserted"
+    },
+    {
+      deletedSessionIds: {},
+      pendingNewSessionIds: new Set(),
+      sessionsById: { "session-1": {} as never },
+      workspaceReconcileCommandId: null
+    }
+  );
+
+  assert.equal(committed.commands[0]?.type, "session/reconcile");
+  assert.equal(
+    committed.commands[0]?.type === "session/reconcile"
+      ? committed.commands[0].agentSessionId
+      : null,
+    "session-1"
+  );
+});
+
+test("timed out activation admits a recovery reconcile for queued demand", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    agentTargetId: "target-1",
+    clientSubmitId: "submit-1",
+    expiresAtUnixMs: 120_000,
+    mode: "new",
+    requestedAtUnixMs: 1,
+    requestId: "activation-1",
+    type: "activation/requested",
+    workspaceId: "workspace-1"
+  }).state;
+
+  const observed = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    eventType: "session_reconcile_required",
+    hasCachedSession: false,
+    hasInlineMessages: false,
+    inlineApplied: false,
+    type: "session/activityObserved",
+    workspaceId: "workspace-1"
+  });
+  assert.deepEqual(observed.commands, []);
+  assert.equal(
+    observed.state.sessionReconcile.recordsBySessionId["session-1"]
+      ?.pendingState,
+    true
+  );
+
+  const timedOut = rootEngineReducer(observed.state, {
+    commandId: "activate:activation-1",
+    commandType: "session/activate",
+    correlationId: "activation-1",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  });
+  const recoveryIntent = timedOut.followUpIntents?.find(
+    (intent) => intent.type === "session/reconcileRequested"
+  );
+  assert.ok(recoveryIntent);
+
+  const recovery = rootEngineReducer(timedOut.state, recoveryIntent);
+  assert.equal(recovery.commands[0]?.type, "session/reconcile");
+  assert.equal(
+    recovery.commands[0]?.type === "session/reconcile"
+      ? recovery.commands[0].agentSessionId
+      : null,
+    "session-1"
+  );
 });
 
 test("streaming message gaps coalesce into one delayed reconcile and one trailing read", () => {

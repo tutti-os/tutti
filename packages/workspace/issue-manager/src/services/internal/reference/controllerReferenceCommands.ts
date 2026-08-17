@@ -60,6 +60,12 @@ export function canIssueManagerOpenReferences(
   return typeof fileAdapter?.openReference === "function";
 }
 
+export function canIssueManagerOpenContextRefs(
+  contextRefOpener: IssueManagerFeature["contextRefOpener"]
+): contextRefOpener is NonNullable<IssueManagerFeature["contextRefOpener"]> {
+  return typeof contextRefOpener?.openContextRef === "function";
+}
+
 export async function executeIssueManagerUploadReferences(input: {
   fileAdapter: NonNullable<IssueManagerFeature["fileAdapter"]> & {
     requestUpload: NonNullable<
@@ -144,6 +150,13 @@ export async function executeIssueManagerOpenReference(input: {
   reference: IssueManagerFileReference;
 }): Promise<void> {
   await input.fileAdapter.openReference(input.reference);
+}
+
+export async function executeIssueManagerOpenContextRef(input: {
+  contextRefOpener: NonNullable<IssueManagerFeature["contextRefOpener"]>;
+  reference: IssueManagerContextRef;
+}): Promise<void> {
+  await input.contextRefOpener.openContextRef(input.reference);
 }
 
 export async function executeIssueManagerRemoveContextRef(input: {

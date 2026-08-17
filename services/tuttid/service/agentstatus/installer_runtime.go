@@ -58,6 +58,10 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 		cliPath = s.managedClaudeCodeExecutable()
 	}
 	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
+	if isStandardACPStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {
+		cliPath = spec.AdapterCommand[0]
+		adapterPath = spec.AdapterCommand[0]
+	}
 	if isCodexStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {
 		if cliPath == "" {
 			cliPath = spec.AdapterCommand[0]
@@ -137,6 +141,15 @@ func findAdapterPackageJSON(adapterPath string, packageName string) string {
 	resolvedPath := strings.TrimSpace(adapterPath)
 	if resolved, err := filepath.EvalSymlinks(resolvedPath); err == nil {
 		resolvedPath = resolved
+	}
+	if runtime.GOOS == "windows" {
+		// Windows npm puts the .cmd/.ps1 shim beside the global
+		// node_modules tree. The shim itself is not inside the package, so
+		// ancestor walking cannot find package.json as it does for Unix symlinks.
+		candidate := filepath.Join(filepath.Dir(resolvedPath), "node_modules", packageName, "package.json")
+		if packageJSONHasName(candidate, packageName) {
+			return candidate
+		}
 	}
 	dir := filepath.Dir(resolvedPath)
 	for range 8 {

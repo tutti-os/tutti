@@ -418,6 +418,9 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		AgentGUIConversationRailCollapsedByProvider: agentGUIConversationRailCollapsedByProviderFromGenerated(
 			request.Body.Preferences.AgentGuiConversationRailCollapsedByProvider,
 		),
+		AgentSessionLaunchModesByWorkspace: agentSessionLaunchModesByWorkspaceFromGenerated(
+			request.Body.Preferences.AgentSessionLaunchModesByWorkspace,
+		),
 		AgentConversationDetailMode:           agentConversationDetailMode,
 		AgentDockLayout:                       agentDockLayout,
 		AppCatalogChannel:                     appCatalogChannel,
@@ -433,6 +436,7 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		WorkbenchShortcuts: preferencesbiz.DesktopWorkbenchShortcuts{
 			NewAgentConversation: optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewAgentConversation),
 			NewSameTypeWindow:    optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.NewSameTypeWindow),
+			CaptureScreenshot:    optionalStringValue(request.Body.Preferences.WorkbenchShortcuts.CaptureScreenshot),
 		},
 		Locale:                  locale,
 		MinimizeAnimation:       minimizeAnimation,
@@ -481,6 +485,23 @@ func agentGUIConversationRailCollapsedByProviderFromGenerated(
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "cursor", value.Cursor)
 	setAgentGUIConversationRailCollapsedFromGenerated(result, "openclaw", value.Openclaw)
 	return result
+}
+
+func agentSessionLaunchModesByWorkspaceFromGenerated(
+	value *tuttigenerated.DesktopAgentSessionLaunchModesByWorkspace,
+) *map[string]map[string]string {
+	if value == nil {
+		return nil
+	}
+	result := map[string]map[string]string{}
+	for workspaceID, byProject := range *value {
+		projects := map[string]string{}
+		for sectionKey, mode := range byProject {
+			projects[sectionKey] = string(mode)
+		}
+		result[workspaceID] = projects
+	}
+	return &result
 }
 
 func setAgentGUIConversationRailCollapsedFromGenerated(

@@ -20,6 +20,32 @@ func (api DaemonAPI) ResolveWorkspaceGitPatchSupport(ctx context.Context, reques
 	return tuttigenerated.ResolveWorkspaceGitPatchSupport200JSONResponse(workspaceGitPatchSupportResponse(result)), nil
 }
 
+func (api DaemonAPI) ResolveWorkspaceAgentSessionWorktreeSupport(ctx context.Context, request tuttigenerated.ResolveWorkspaceAgentSessionWorktreeSupportRequestObject) (tuttigenerated.ResolveWorkspaceAgentSessionWorktreeSupportResponseObject, error) {
+	if api.AgentSessionService == nil {
+		return tuttigenerated.ResolveWorkspaceAgentSessionWorktreeSupport503JSONResponse{
+			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),
+		}, nil
+	}
+	result, err := api.AgentSessionService.ResolveSessionWorktreeSupport(
+		ctx,
+		string(request.WorkspaceID),
+		request.Params.AgentTargetId,
+		request.Params.Cwd,
+	)
+	if err != nil {
+		return writeResolveWorkspaceAgentSessionWorktreeSupportError(err), nil
+	}
+	response := tuttigenerated.WorkspaceAgentSessionWorktreeSupportResponse{Supported: result.Supported}
+	if result.Root != "" {
+		response.Root = &result.Root
+	}
+	if result.ErrorCode != "" {
+		errorCode := tuttigenerated.WorkspaceAgentSessionWorktreeSupportErrorCode(result.ErrorCode)
+		response.ErrorCode = &errorCode
+	}
+	return tuttigenerated.ResolveWorkspaceAgentSessionWorktreeSupport200JSONResponse(response), nil
+}
+
 func (api DaemonAPI) ApplyWorkspaceGitPatch(ctx context.Context, request tuttigenerated.ApplyWorkspaceGitPatchRequestObject) (tuttigenerated.ApplyWorkspaceGitPatchResponseObject, error) {
 	if api.AgentSessionService == nil {
 		return tuttigenerated.ApplyWorkspaceGitPatch503JSONResponse{

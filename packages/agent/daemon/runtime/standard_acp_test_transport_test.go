@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"sync"
 )
@@ -14,20 +15,27 @@ type standardACPTransport struct {
 }
 
 type multiProcStandardACPTransport struct {
-	mu                  sync.Mutex
-	agentTitle          string
-	sessionID           string
-	supportsLoadSession bool
-	specs               []ProcessSpec
-	conns               []*standardACPConnection
+	mu                       sync.Mutex
+	agentTitle               string
+	sessionID                string
+	supportsLoadSession      bool
+	supportsAgentLoadSession bool
+	configOptions            []map[string]any
+	initializeError          *acpError
+	newSessionError          *acpError
+	loadSessionError         *acpError
+	closeFailures            int
+	specs                    []ProcessSpec
+	conns                    []*standardACPConnection
 }
 
 func newStandardACPTransport(agentTitle string, sessionID string) *standardACPTransport {
 	return &standardACPTransport{
 		conn: &standardACPConnection{
-			recv:       make(chan ProcessFrame, 32),
-			agentTitle: agentTitle,
-			sessionID:  sessionID,
+			recv:            make(chan ProcessFrame, 32),
+			agentTitle:      agentTitle,
+			sessionID:       sessionID,
+			supportsHTTPMCP: true,
 		},
 	}
 }
@@ -42,11 +50,22 @@ func (t *standardACPTransport) Start(_ context.Context, spec ProcessSpec) (Proce
 func (t *multiProcStandardACPTransport) Start(_ context.Context, spec ProcessSpec) (ProcessConnection, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	configOptions := make([]map[string]any, 0, len(t.configOptions))
+	for _, option := range t.configOptions {
+		configOptions = append(configOptions, clonePayloadDeep(option))
+	}
 	conn := &standardACPConnection{
-		recv:                make(chan ProcessFrame, 32),
-		agentTitle:          t.agentTitle,
-		sessionID:           t.sessionID,
-		supportsLoadSession: t.supportsLoadSession,
+		recv:                     make(chan ProcessFrame, 32),
+		agentTitle:               t.agentTitle,
+		sessionID:                t.sessionID,
+		supportsLoadSession:      t.supportsLoadSession,
+		supportsAgentLoadSession: t.supportsAgentLoadSession,
+		supportsHTTPMCP:          true,
+		configOptions:            configOptions,
+		initializeError:          t.initializeError,
+		newSessionError:          t.newSessionError,
+		loadSessionError:         t.loadSessionError,
+		closeFailures:            t.closeFailures,
 	}
 	t.specs = append(t.specs, spec)
 	t.conns = append(t.conns, conn)
@@ -83,6 +102,8 @@ type standardACPConnection struct {
 	pauseBeforePromptResult       chan struct{}
 	pauseBeforeToolCallCompletion chan struct{}
 	pauseBeforeAskUserToolUpdate  chan struct{}
+	pauseSettingsRPCStarted       chan struct{}
+	pauseSettingsRPCRelease       chan struct{}
 	pendingPermissionCallID       json.RawMessage
 	selectedPermissionOption      string
 	selectedInteractiveResult     map[string]any
@@ -96,6 +117,8 @@ type standardACPConnection struct {
 	closeSessionError             *acpError
 	rejectModelValue              string
 	supportsLoadSession           bool
+	supportsAgentLoadSession      bool
+	supportsHTTPMCP               bool
 	supportsCloseSession          bool
 	closeSessionExits             bool
 	isClosed                      bool
@@ -105,6 +128,9 @@ type standardACPConnection struct {
 	lastPromptParamsSnapshot      map[string]any
 	promptParamsSnapshots         []map[string]any
 	promptCallCount               int
+	// promptFinalContent attaches final assistant content blocks to the
+	// session/prompt result so tests can exercise final snapshot projection.
+	promptFinalContent []map[string]any
 	// retriableErrorPrompts makes the first N session/prompt calls emulate
 	// cursor-agent's transient-failure shape: an "Error: RetriableError: ..."
 	// text chunk followed by a normal end_turn result.
@@ -133,8 +159,11 @@ type standardACPConnection struct {
 	authMethods              []map[string]any
 	authenticateResult       map[string]any
 	authenticateError        *acpError
+	initializeError          *acpError
 	newSessionError          *acpError
 	requireAuthentication    bool
+	closeFailures            int
+	closeCalls               int
 }
 
 func (c *standardACPConnection) Recv() (ProcessFrame, error) {
@@ -147,6 +176,12 @@ func (c *standardACPConnection) Recv() (ProcessFrame, error) {
 
 func (c *standardACPConnection) Close() error {
 	c.mu.Lock()
+	c.closeCalls++
+	if c.closeFailures > 0 {
+		c.closeFailures--
+		c.mu.Unlock()
+		return errors.New("injected transport close failure")
+	}
 	c.isClosed = true
 	c.mu.Unlock()
 	c.closeRecv()

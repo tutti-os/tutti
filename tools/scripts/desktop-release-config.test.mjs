@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
+import { inflateSync } from "node:zlib";
 
 const desktopPackagePath = new URL(
   "../../apps/desktop/package.json",
@@ -35,6 +36,18 @@ const managedPosixShellLockPath = new URL(
   "../../config/tutti.managed-posix-shell.lock.json",
   import.meta.url
 );
+const mutagenVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-mutagen.mjs",
+  import.meta.url
+);
+const mutagenLockPath = new URL(
+  "../../config/tutti.mutagen.lock.json",
+  import.meta.url
+);
+const managedUVVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-managed-uv.mjs",
+  import.meta.url
+);
 const tuttidManagerPath = new URL(
   "../../apps/desktop/src/main/daemon/tuttidManager.ts",
   import.meta.url
@@ -63,6 +76,88 @@ const desktopStoreManifestPath = new URL(
   "../../apps/desktop/build/appxmanifest.xml",
   import.meta.url
 );
+const desktopStoreAssetDimensions = new Map([
+  ["StoreLogo.png", [50, 50]],
+  ["Square44x44Logo.png", [44, 44]],
+  ["Square150x150Logo.png", [150, 150]],
+  ["Wide310x150Logo.png", [310, 150]]
+]);
+
+function readPngDimensions(buffer) {
+  assert.equal(buffer.subarray(1, 4).toString("ascii"), "PNG");
+  assert.equal(buffer.subarray(12, 16).toString("ascii"), "IHDR");
+  return [buffer.readUInt32BE(16), buffer.readUInt32BE(20)];
+}
+
+function readPngAlphaRange(buffer) {
+  assert.equal(buffer.readUInt8(24), 8, "Store assets must use 8-bit PNG data");
+  assert.equal(buffer.readUInt8(25), 6, "Store assets must use RGBA PNG data");
+  assert.equal(
+    buffer.readUInt8(28),
+    0,
+    "Interlaced Store assets are unsupported"
+  );
+
+  const [width, height] = readPngDimensions(buffer);
+  const chunks = [];
+  let offset = 8;
+  while (offset < buffer.length) {
+    const chunkLength = buffer.readUInt32BE(offset);
+    const chunkType = buffer.subarray(offset + 4, offset + 8).toString("ascii");
+    if (chunkType === "IDAT") {
+      chunks.push(buffer.subarray(offset + 8, offset + 8 + chunkLength));
+    }
+    offset += chunkLength + 12;
+    if (chunkType === "IEND") break;
+  }
+
+  const decoded = inflateSync(Buffer.concat(chunks));
+  const bytesPerPixel = 4;
+  const rowLength = width * bytesPerPixel;
+  let decodedOffset = 0;
+  let previous = Buffer.alloc(rowLength);
+  let minAlpha = 255;
+  let maxAlpha = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    const filter = decoded[decodedOffset];
+    decodedOffset += 1;
+    const current = Buffer.alloc(rowLength);
+    for (let x = 0; x < rowLength; x += 1) {
+      const encoded = decoded[decodedOffset];
+      decodedOffset += 1;
+      const left = x >= bytesPerPixel ? current[x - bytesPerPixel] : 0;
+      const above = previous[x];
+      const upperLeft = x >= bytesPerPixel ? previous[x - bytesPerPixel] : 0;
+      let predictor = 0;
+      if (filter === 1) predictor = left;
+      else if (filter === 2) predictor = above;
+      else if (filter === 3) predictor = Math.floor((left + above) / 2);
+      else if (filter === 4) {
+        const estimate = left + above - upperLeft;
+        const leftDistance = Math.abs(estimate - left);
+        const aboveDistance = Math.abs(estimate - above);
+        const upperLeftDistance = Math.abs(estimate - upperLeft);
+        predictor =
+          leftDistance <= aboveDistance && leftDistance <= upperLeftDistance
+            ? left
+            : aboveDistance <= upperLeftDistance
+              ? above
+              : upperLeft;
+      } else {
+        assert.equal(filter, 0, `Unsupported PNG row filter ${filter}`);
+      }
+      current[x] = (encoded + predictor) & 0xff;
+    }
+    for (let x = 3; x < rowLength; x += bytesPerPixel) {
+      minAlpha = Math.min(minAlpha, current[x]);
+      maxAlpha = Math.max(maxAlpha, current[x]);
+    }
+    previous = current;
+  }
+
+  return [minAlpha, maxAlpha];
+}
 
 test("desktop package includes runtime outputs without repository source", async () => {
   const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
@@ -111,7 +206,7 @@ test("desktop release submits only stable builds to an isolated Store workflow",
     workflow,
     /vars\.TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED == 'true'/
   );
-  assert.match(workflow, /publication_mode == 'publish'/);
+  assert.doesNotMatch(workflow, /publication_mode|draft_only/);
   assert.match(workflow, /needs:\s*\[resolve, promote\]/);
   assert.match(
     workflow,
@@ -150,6 +245,18 @@ test("desktop release submits only stable builds to an isolated Store workflow",
   assert.match(storeWorkflow, /Store executable mismatch/);
   assert.match(storeWorkflow, /Store entry point mismatch/);
   assert.match(storeWorkflow, /Installed application display name mismatch/);
+  assert.match(
+    storeWorkflow,
+    /application tile background must be transparent/
+  );
+  assert.match(storeWorkflow, /application must appear in the Start menu/);
+  assert.match(storeWorkflow, /does not declare the Tutti desktop shortcut/);
+  assert.match(storeWorkflow, /Store desktop shortcut path mismatch/);
+  assert.match(storeWorkflow, /Store desktop shortcut icon mismatch/);
+  assert.match(storeWorkflow, /Store package did not use branded asset/);
+  for (const assetName of desktopStoreAssetDimensions.keys()) {
+    assert.match(storeWorkflow, new RegExp(assetName.replaceAll(".", "\\.")));
+  }
   assert.match(storeWorkflow, /@Name='tutti'/);
   assert.match(storeWorkflow, /@Name='runFullTrust'/);
   assert.match(storeWorkflow, /Get-FileHash .* -Algorithm SHA256/);
@@ -161,10 +268,16 @@ test("desktop Store packaging reuses the Windows payload and emits AppX only", a
   const storeManifest = await readFile(desktopStoreManifestPath, "utf8");
 
   assert.equal(
+    packageJson.description,
+    "Where people and agents build in tune."
+  );
+  assert.equal(
     packageJson.scripts["build:win:store"],
     "bash ../../tools/scripts/build-desktop-package.sh win-store"
   );
   assert.equal(packageJson.build.appx.electronUpdaterAware, false);
+  assert.equal(packageJson.build.appx.minVersion, "10.0.17763.0");
+  assert.equal(packageJson.build.appx.maxVersionTested, "10.0.26100.0");
   assert.equal(
     packageJson.build.appx.customManifestPath,
     "build/appxmanifest.xml"
@@ -175,6 +288,18 @@ test("desktop Store packaging reuses the Windows payload and emits AppX only", a
     /<Properties>[\s\S]*?<DisplayName>\$\{displayName\}<\/DisplayName>/
   );
   assert.match(storeManifest, /<uap:VisualElements[\s\S]*?DisplayName="Tutti"/);
+  assert.match(storeManifest, /BackgroundColor="transparent"/);
+  assert.match(storeManifest, /AppListEntry="default"/);
+  assert.match(
+    storeManifest,
+    /xmlns:desktop7="http:\/\/schemas\.microsoft\.com\/appx\/manifest\/desktop\/windows10\/7"/
+  );
+  assert.match(storeManifest, /IgnorableNamespaces="desktop7"/);
+  assert.match(
+    storeManifest,
+    /<desktop7:Extension Category="windows\.shortcut">[\s\S]*?File="\$\(Desktop\)\\Tutti\.lnk"[\s\S]*?Icon="app\\Tutti\.exe"/
+  );
+  assert.doesNotMatch(storeManifest, /\$\{extensions\}/);
   assert.deepEqual(packageJson.build.win.protocols, [
     {
       name: "Tutti login callback",
@@ -189,6 +314,27 @@ test("desktop Store packaging reuses the Windows payload and emits AppX only", a
     buildScript,
     /win-store\)\s*\n\s*run_timed_phase "electron_builder_win_store" run_electron_builder_win_store/
   );
+});
+
+test("desktop Store packaging provides branded assets for every manifest tile", async () => {
+  for (const [fileName, expectedDimensions] of desktopStoreAssetDimensions) {
+    const assetPath = new URL(
+      `../../apps/desktop/build/appx/${fileName}`,
+      import.meta.url
+    );
+    const asset = await readFile(assetPath);
+
+    assert.deepEqual(
+      readPngDimensions(asset),
+      expectedDimensions,
+      `${fileName} should use the dimensions expected by electron-builder`
+    );
+    assert.deepEqual(
+      readPngAlphaRange(asset),
+      [0, 255],
+      `${fileName} should preserve fully transparent and fully opaque pixels`
+    );
+  }
 });
 
 test("desktop release workflow publishes rc tags as prereleases and keeps stable tags as latest", async () => {
@@ -296,15 +442,16 @@ test("desktop release workflow keeps less common rc bumps behind explicit versio
   assert.doesNotMatch(workflow, /tag_name:\s*\n/);
 });
 
-test("desktop release workflow reserves unique tags instead of serializing whole runs", async () => {
+test("desktop release workflow defers stable tags but still reserves prerelease tags", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.doesNotMatch(workflow, /^concurrency:/m);
+  assert.match(workflow, /^concurrency:\s*$/m);
+  assert.match(workflow, /cancel-in-progress:\s+false/);
   assert.match(workflow, /apps\/desktop\/scripts\/reserve-release-tag\.mjs/);
-  assert.match(
-    workflow,
-    /args\+=\(--target "\${{\s*steps\.target\.outputs\.release_target\s*}}"\)/
-  );
+  assert.match(workflow, /release_candidate=true/);
+  assert.match(workflow, /release_channel.*stable/);
+  assert.match(workflow, /reserve_args=.*--strategy explicit_tag/);
+  assert.match(workflow, /release_candidate != 'true'/);
 });
 
 test("desktop release workflow passes tsh-aligned Feishu card context", async () => {
@@ -325,7 +472,7 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   );
   assert.match(
     workflow,
-    /outputs:\s*\n\s*release_url:\s*\${{\s*github\.server_url\s*}}\/\${{\s*github\.repository\s*}}\/releases\/tag\/\${{\s*needs\.resolve\.outputs\.release_tag\s*}}/
+    /release_url:\s*\${{\s*needs\.resolve\.outputs\.release_candidate\s*==\s*'true'[\s\S]*steps\.stage-candidate-release\.outputs\.release_url/
   );
   assert.match(
     workflow,
@@ -384,11 +531,11 @@ test("desktop release post-stage jobs tolerate skipped optional dependencies", a
     /promote:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   )?.[0];
   const notifyJob = workflow.match(
-    /notify-draft-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+    /notify-candidate-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   )?.[0];
 
   assert.ok(promoteJob, "promote job should exist");
-  assert.ok(notifyJob, "draft notify job should exist");
+  assert.ok(notifyJob, "candidate notify job should exist");
   assert.match(promoteJob, /if:\s+\${{\s*always\(\)\s*&&/);
   assert.match(promoteJob, /needs\.stage\.result\s*==\s*'success'/);
   assert.match(notifyJob, /if:\s+\${{\s*always\(\)\s*&&/);
@@ -398,16 +545,16 @@ test("desktop release post-stage jobs tolerate skipped optional dependencies", a
 test("desktop release workflow does not redownload release assets for Feishu", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const notifyJobMatch = workflow.match(
-    /notify-draft-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+    /notify-candidate-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
 
-  assert.ok(notifyJobMatch, "draft notify job should exist");
+  assert.ok(notifyJobMatch, "candidate notify job should exist");
 
   const notifyJob = notifyJobMatch[0];
   const checkoutIndex = notifyJob.indexOf("name: Checkout notification script");
   const setupNodeIndex = notifyJob.indexOf("name: Setup Node.js");
   const summaryIndex = notifyJob.indexOf("name: Download release summary");
-  const sendIndex = notifyJob.indexOf("name: Send draft release card");
+  const sendIndex = notifyJob.indexOf("name: Send candidate release card");
 
   assert.notEqual(checkoutIndex, -1, "notify job should checkout the script");
   assert.notEqual(setupNodeIndex, -1, "notify job should setup Node.js");
@@ -468,13 +615,10 @@ test("desktop release workflow only publishes root latest metadata for stable re
   const workflow = await readFile(workflowPath, "utf8");
   const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
 
+  assert.doesNotMatch(workflow, /publication_mode|draft_only/);
   assert.match(
     workflow,
-    /publication_mode:[\s\S]*?- publish\r?\n\s*- draft_only/
-  );
-  assert.match(
-    workflow,
-    /needs\.resolve\.outputs\.publication_mode\s*==\s*'publish'/
+    /needs\.stage\.result == 'success' && needs\.resolve\.outputs\.release_candidate != 'true'/
   );
   assert.doesNotMatch(workflow, /channels\/rc\/latest\.json/);
   assert.doesNotMatch(workflow, /aws s3 cp release-latest\.json/);
@@ -636,10 +780,7 @@ test("desktop release workflow keeps prereleases as drafts and reserves the publ
     workflow,
     /uses:\s+\.\/\.github\/workflows\/desktop-release-promote\.yml/
   );
-  assert.match(
-    workflow,
-    /needs\.resolve\.outputs\.publication_mode\s*==\s*'publish'/
-  );
+  assert.doesNotMatch(workflow, /publication_mode|draft_only/);
   assert.match(
     promoteWorkflow,
     /if:\s*\$\{\{\s*needs\.resolve\.outputs\.release_channel\s*==\s*'stable'\s*\}\}/
@@ -673,7 +814,7 @@ test("desktop promotion validates draft identity, checksums, and channel orderin
   assert.match(promoteWorkflow, /group:\s+desktop-release-promotion/);
   assert.match(
     promoteWorkflow,
-    /gh release view "\$\{release_tag\}"[\s\S]*assets,isDraft,isPrerelease,tagName,targetCommitish,url/
+    /\.tag_name == \\"\$\{release_tag\}\\" or \.tag_name == \\"\$\{release_candidate_tag\}\\"/
   );
   assert.match(
     promoteWorkflow,
@@ -683,6 +824,69 @@ test("desktop promotion validates draft identity, checksums, and channel orderin
   assert.match(promoteWorkflow, /name:\s+Prevent release channel rollback/);
   assert.match(promoteWorkflow, /Refusing to move/);
   assert.match(promoteWorkflow, /name:\s+Verify public release pointer/);
+});
+
+test("stable candidates require environment approval and bind the reviewed notes", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+
+  assert.match(workflow, /build-release-candidate-manifest\.mjs/);
+  assert.match(workflow, /release_candidate_tag="candidate-\$\{release_tag\}"/);
+  assert.match(workflow, /releases\/assets\/\$\{asset_id\}/);
+  assert.match(
+    workflow,
+    /candidates\/\$\{TUTTI_DESKTOP_RELEASE_CANDIDATE_ID\}/
+  );
+  assert.match(workflow, /PROMOTION_URL:/);
+  assert.match(promoteWorkflow, /environment:\s+desktop-stable-release/);
+  assert.match(promoteWorkflow, /extract-approved-release-summary\.mjs/);
+  assert.match(promoteWorkflow, /verify-release-candidate\.mjs/);
+  assert.match(
+    promoteWorkflow,
+    /RELEASE_TAG="\$\{release_tag\}" RELEASE_TARGET="\$\{draft_target_sha\}"/
+  );
+  assert.match(
+    promoteWorkflow,
+    /Release notes or candidate assets changed after approval/
+  );
+  assert.match(promoteWorkflow, /Create stable release tag after approval/);
+  assert.match(promoteWorkflow, /Protect immutable stable asset path/);
+  assert.match(promoteWorkflow, /\.promotion-candidate\.json/);
+});
+
+test("stable promotion can resume after the GitHub release becomes public", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+  const publishIndex = promoteWorkflow.indexOf(
+    "name: Publish stable GitHub release"
+  );
+  const verifyPointerIndex = promoteWorkflow.indexOf(
+    "name: Verify public release pointer"
+  );
+  const cleanupIndex = promoteWorkflow.indexOf(
+    "name: Remove internal candidate manifest from published release"
+  );
+
+  assert.match(
+    promoteWorkflow,
+    /\(\.draft \| not\) and \.tag_name == \\"\$\{release_tag\}\\" and \(\.prerelease \| not\)/
+  );
+  assert.match(
+    promoteWorkflow,
+    /release_already_published=true[\s\S]*release_already_published=\$\{release_already_published\}/
+  );
+  assert.match(
+    promoteWorkflow,
+    /Attach approved draft to the stable tag[\s\S]*release_already_published != 'true'/
+  );
+  assert.ok(publishIndex >= 0, "stable publish step should exist");
+  assert.ok(
+    verifyPointerIndex > publishIndex,
+    "public pointer verification should remain retryable after publication"
+  );
+  assert.ok(
+    cleanupIndex > verifyPointerIndex,
+    "candidate recovery metadata should be removed only after all fallible promotion checks"
+  );
 });
 
 test("desktop release workflow refreshes the stable alias without taking Latest", async () => {
@@ -774,11 +978,11 @@ test("desktop release workflow always builds Windows and stages unsigned assets"
     /stage:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
   const notifyJobMatch = workflow.match(
-    /notify-draft-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+    /notify-candidate-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
   );
 
   assert.ok(stageJobMatch, "stage job should exist");
-  assert.ok(notifyJobMatch, "draft notify job should exist");
+  assert.ok(notifyJobMatch, "candidate notify job should exist");
   assert.doesNotMatch(workflow, /include_windows/);
   assert.match(workflow, /\r?\n\s{2}build-windows:\r?\n/);
   assert.doesNotMatch(workflow, /\r?\n\s{2}build-linux:\r?\n/);
@@ -1095,10 +1299,17 @@ test("desktop packaging provides an application icon resource", async () => {
 });
 
 test("desktop windows packaging anchors electron-builder workspace detection to the repo root", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
   const buildScript = await readFile(buildScriptPath, "utf8");
 
   assert.match(buildScript, /npm_package_json="\$\{ROOT_DIR\}\/package\.json"/);
   assert.match(buildScript, /INIT_CWD="\$\{ROOT_DIR\}"/);
+  assert.equal(
+    packageJson.scripts["build:win:prepared"],
+    "bash ../../tools/scripts/build-desktop-package.sh win --prepared-builtin-apps"
+  );
+  assert.match(buildScript, /--prepared-builtin-apps/);
+  assert.match(buildScript, /BUILTIN_APPS_PREPARED/);
 });
 
 test("desktop Windows package and daemon agree on the managed POSIX shell resource", async () => {
@@ -1114,6 +1325,11 @@ test("desktop Windows package and daemon agree on the managed POSIX shell resour
       from: "build/managed-posix-shell",
       to: "bin/managed-posix-shell",
       filter: ["**/*"]
+    },
+    {
+      from: "build/mutagen",
+      to: "bin/mutagen",
+      filter: ["**/*"]
     }
   ]);
   assert.match(buildScript, /vendor-managed-posix-shell\.mjs/);
@@ -1127,4 +1343,57 @@ test("desktop Windows package and daemon agree on the managed POSIX shell resour
   assert.equal(lock.schemaVersion, "tutti.managed-posix-shell-lock.v1");
   assert.equal(lock.platforms["windows-amd64"].executable, "usr/bin/bash.exe");
   assert.doesNotMatch(alphaWorkflow, /\n\s+push:/);
+});
+
+test("desktop Windows package and daemon agree on the bundled Mutagen resource", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const alphaWorkflow = await readFile(windowsAlphaWorkflowPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+  const lock = JSON.parse(await readFile(mutagenLockPath, "utf8"));
+
+  await access(mutagenVendorScriptPath);
+  assert.deepEqual(packageJson.build.win.extraResources[1], {
+    from: "build/mutagen",
+    to: "bin/mutagen",
+    filter: ["**/*"]
+  });
+  assert.match(buildScript, /vendor-mutagen\.mjs/);
+  assert.match(alphaWorkflow, /bin\/mutagen/);
+  assert.match(alphaWorkflow, /mutagenMetadata\.executable/);
+  assert.match(tuttidManager, /"mutagen"/);
+  assert.match(tuttidManager, /TUTTI_MUTAGEN_BIN/);
+  assert.match(tuttidManager, /tutti\.mutagen\.v1/);
+  assert.equal(lock.schemaVersion, "tutti.mutagen-lock.v1");
+  assert.equal(lock.platforms["windows-amd64"].executable, "mutagen.exe");
+});
+
+test("desktop packages and daemon agree on the bundled uv archive root", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const defaults = JSON.parse(
+    await readFile(
+      new URL("../../config/tutti.defaults.json", import.meta.url),
+      "utf8"
+    )
+  );
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+
+  await access(managedUVVendorScriptPath);
+  assert.deepEqual(packageJson.build.extraResources.at(-1), {
+    from: "build/managed-uv",
+    to: "bin/managed-uv",
+    filter: ["**/*"]
+  });
+  assert.match(buildScript, /vendor-managed-uv\.mjs/);
+  assert.match(buildScript, /windows-amd64/);
+  assert.match(
+    buildScript,
+    /upstream macOS uv archives contain the uv and uvx executables/
+  );
+  assert.match(buildScript, /rm -rf "\$\{APP_DIR\}\/build\/managed-uv"/);
+  assert.match(buildScript, /mkdir -p "\$\{APP_DIR\}\/build\/managed-uv"/);
+  assert.match(tuttidManager, /TUTTI_BUNDLED_UV_ROOT/);
+  assert.equal(defaults.agentRuntimeTools.uv.version, "0.11.31");
+  assert.ok(defaults.agentRuntimeTools.uv.artifacts.length >= 5);
 });

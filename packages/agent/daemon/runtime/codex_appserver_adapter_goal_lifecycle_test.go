@@ -237,6 +237,45 @@ func TestCodexGoalContinuationNudgeDropsSupersededRevision(t *testing.T) {
 	}
 }
 
+func TestCodexGoalContinuationNudgeWaitsForProviderProgress(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	adapter.applyGoalUpdate(session.AgentSessionID, map[string]any{
+		"objective": "finish replay", "status": "active",
+	})
+	adapter.replaceGoalOperationIdentity(session.AgentSessionID, "goal-op-replay", 1, 0)
+	adapter.goalContinuationGraceWindow = time.Millisecond
+
+	waiting := make(chan struct{})
+	release := make(chan struct{})
+	transport.conn.providerProgressWait = func(ctx context.Context, _ time.Duration) error {
+		close(waiting)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-release:
+			return nil
+		}
+	}
+	adapter.scheduleGoalContinuationNudge(session)
+	select {
+	case <-waiting:
+	case <-time.After(time.Second):
+		t.Fatal("continuation nudge did not wait for provider progress")
+	}
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet); len(requests) != 0 {
+		t.Fatalf("continuation nudge ran while provider progress was parked: %#v", requests)
+	}
+
+	if !adapter.beginActiveTurn(session.AgentSessionID, &codexAppServerActiveTurn{turnID: "auto-turn"}) {
+		t.Fatal("failed to install provider auto-continuation turn")
+	}
+	close(release)
+	time.Sleep(20 * time.Millisecond)
+	if requests := appServerRequestParamsList(t, transport.conn, appServerMethodThreadGoalSet); len(requests) != 0 {
+		t.Fatalf("continuation nudge raced provider auto-continuation: %#v", requests)
+	}
+}
+
 func TestCodexGoalSetAdoptsTurnWhenGoalUpdatedOmitsTurnID(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
 	adapter.goalContinuationGraceWindow = time.Hour

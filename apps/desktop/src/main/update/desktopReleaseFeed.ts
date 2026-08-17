@@ -10,6 +10,7 @@ export const desktopReleaseFeedBaseUrl =
 export interface DesktopReleaseFeed {
   feedUrl: string;
   releasedAt: string;
+  releaseNotesUrl: string | null;
   tag: string;
   updaterChannel: "latest" | "rc";
   version: string;
@@ -29,6 +30,7 @@ interface DesktopReleaseLatestDocument {
   channel: string;
   prerelease: boolean;
   releasedAt: string;
+  releaseNotesUrl: string | null;
   schemaVersion: string;
   tag: string;
   version: string;
@@ -62,6 +64,7 @@ export function createDesktopReleaseFeedResolver(
     return {
       feedUrl: `${baseUrl}/${encodeURIComponent(document.tag)}`,
       releasedAt: document.releasedAt,
+      releaseNotesUrl: document.releaseNotesUrl,
       tag: document.tag,
       updaterChannel: channel === "rc" ? "rc" : "latest",
       version: document.version
@@ -110,6 +113,7 @@ function parseDesktopReleaseLatestDocument(
     channel: readRequiredString(parsed, "channel"),
     prerelease: readBoolean(parsed, "prerelease"),
     releasedAt: readRequiredString(parsed, "releasedAt"),
+    releaseNotesUrl: readOptionalHttpsUrl(parsed, "releaseNotesUrl"),
     schemaVersion: readRequiredString(parsed, "schemaVersion"),
     tag: readRequiredString(parsed, "tag"),
     version: readRequiredString(parsed, "version")
@@ -194,6 +198,24 @@ function readBoolean(value: Record<string, unknown>, key: string): boolean {
     throw new Error(`Desktop update pointer ${key} must be a boolean`);
   }
   return candidate;
+}
+
+function readOptionalHttpsUrl(
+  value: Record<string, unknown>,
+  key: string
+): string | null {
+  const candidate = value[key];
+  if (candidate === undefined || candidate === null) {
+    return null;
+  }
+  if (typeof candidate !== "string") {
+    throw new Error(`Desktop update pointer ${key} must be an HTTPS URL`);
+  }
+  const parsed = new URL(candidate.trim());
+  if (parsed.protocol !== "https:" || parsed.username || parsed.password) {
+    throw new Error(`Desktop update pointer ${key} must be an HTTPS URL`);
+  }
+  return parsed.href;
 }
 
 function releaseVersionFromTag(tag: string): string | null {

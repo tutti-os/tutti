@@ -120,6 +120,47 @@ describe("AgentInteractivePromptSurface", () => {
     });
   });
 
+  it("shows the disabled reason when an approval control is hovered", async () => {
+    const reason = "The shared Agent owner is offline";
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "approval",
+          id: "approval:request-disabled",
+          turnId: "turn-1",
+          requestId: "request-disabled",
+          callId: "request-disabled",
+          title: "Run command",
+          status: "waiting_approval",
+          toolName: "Bash",
+          input: { command: "printf offline" },
+          options: [
+            {
+              id: "allow_once",
+              label: "Allow once",
+              kind: "allow_once"
+            }
+          ],
+          output: null,
+          occurredAtUnixMs: 1
+        }}
+        isSubmitting={false}
+        isInteractionDisabled
+        interactionDisabledReason={reason}
+        onSubmit={vi.fn()}
+        labels={labels}
+      />
+    );
+
+    const disabledGroup = screen.getByRole("group", { name: reason });
+    expect(screen.getByRole("button", { name: "Yes, proceed" })).toBeDisabled();
+    expect(disabledGroup.firstElementChild).toHaveClass("pointer-events-none");
+
+    fireEvent.pointerMove(disabledGroup);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
+  });
+
   it("shows approval reasons and file-change paths below the title", () => {
     render(
       <AgentInteractivePromptSurface

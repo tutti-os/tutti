@@ -1,6 +1,10 @@
 import { memo, type ReactNode, type JSX, type Ref } from "react";
 import type { WorkspaceLinkAction } from "../../../contexts/workspace/presentation/renderer/actions/workspaceLinkActions";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../AgentMessageMarkdown";
+import {
+  AgentTargetPresentationProvider,
+  type AgentMessageMarkdownAgentTarget
+} from "../../AgentTargetPresentationContext";
 import type { AgentConversationVM } from "../contracts/agentConversationVM";
 import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
 import type { AgentConversationFollowEndMode } from "../agentConversationFollowEndController";
@@ -12,6 +16,7 @@ import {
   type AgentTranscriptVirtualScrollController
 } from "./AgentTranscriptView";
 import type { AgentTranscriptEditRetryControl } from "./useAgentTranscriptEditRetryProjection";
+import { AgentConversationClockProvider } from "./AgentConversationClock";
 import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import type { AgentGUIProviderSkillOption } from "../../../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 
@@ -33,6 +38,7 @@ export interface AgentConversationFlowProps {
   onAuthLogin?: (provider?: string | null) => void;
   onForkThroughTurn?: (turnId: string) => void;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
   showRawTimelineJson?: boolean;
   participantPresentation?: AgentConversationParticipantPresentation;
@@ -65,6 +71,7 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
   onAuthLogin,
   onForkThroughTurn,
   availableSkills,
+  agentTargets,
   workspaceAppIcons,
   showRawTimelineJson = false,
   participantPresentation,
@@ -111,5 +118,20 @@ export const AgentConversationFlow = memo(function AgentConversationFlow({
     );
   }
 
-  return <AgentTurnDisclosureProvider>{content}</AgentTurnDisclosureProvider>;
+  const disclosedContent = (
+    <AgentTurnDisclosureProvider>{content}</AgentTurnDisclosureProvider>
+  );
+  const presentedContent =
+    agentTargets === undefined ? (
+      disclosedContent
+    ) : (
+      <AgentTargetPresentationProvider agentTargets={agentTargets}>
+        {disclosedContent}
+      </AgentTargetPresentationProvider>
+    );
+  return (
+    <AgentConversationClockProvider isVisible={isVisible}>
+      {presentedContent}
+    </AgentConversationClockProvider>
+  );
 });

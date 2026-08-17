@@ -429,6 +429,7 @@ test("turn capability references never hydrate current Tutti state", () => {
         turnId: "turn-1",
         updatedAtUnixMs: 1
       },
+      live: true,
       type: "turn/upserted"
     },
     { "session-1": canonical }

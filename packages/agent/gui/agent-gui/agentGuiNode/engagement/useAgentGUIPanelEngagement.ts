@@ -36,6 +36,12 @@ export function useAgentGUIPanelEngagement(
       },
       focused(focusMethod) {
         controllerRef.current?.focused(focusMethod);
+      },
+      quickPromptPanelOpened() {
+        controllerRef.current?.quickPromptPanelOpened();
+      },
+      quickPromptUsed(promptType) {
+        controllerRef.current?.quickPromptUsed(promptType);
       }
     };
   }

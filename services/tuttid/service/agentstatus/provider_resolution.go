@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -189,6 +190,9 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 	case providerregistry.StaticSpecResolverKindCursor:
 		return s.resolveCursorProviderSpec(spec)
 	case providerregistry.StaticSpecResolverKindGeneric:
+		if isStandardACPStatusSpec(spec) {
+			return s.resolveGenericProviderSpec(spec)
+		}
 		return spec
 	case providerregistry.StaticSpecResolverKindManagedNode:
 	default:
@@ -206,6 +210,118 @@ func (s Service) resolveStaticProviderSpec(ctx context.Context, spec ProviderSpe
 	}
 	spec.AdapterEnv = append(s.managedRuntimeAdapterEnv(appRuntime), spec.AdapterEnv...)
 	return s.resolveCodexProviderSpec(ctx, spec)
+}
+
+// resolveGenericProviderSpec makes sessions, status, login and model catalog
+// calls consume one resolved executable. On Windows the isolated managed npm
+// package is authoritative when present; this avoids selecting a stale .cmd
+// shim that happens to appear earlier on PATH.
+func (s Service) resolveGenericProviderSpec(spec ProviderSpec) ProviderSpec {
+	if len(spec.AdapterCommand) == 0 {
+		return spec
+	}
+	adapterBinaryNames := cloneStrings(spec.AdapterBinaryNames)
+	if len(adapterBinaryNames) == 0 {
+		adapterBinaryNames = []string{spec.AdapterCommand[0]}
+	}
+	path := ""
+	if runtime.GOOS == "windows" && managedNPMProvidesAdapter(spec, adapterBinaryNames) {
+		path = s.resolveManagedNPMPackageBinary(spec)
+	}
+	if path == "" {
+		path = s.commandResolver().ResolveBinary(adapterBinaryNames, spec.AdapterEnv)
+	}
+	if strings.TrimSpace(path) == "" {
+		return spec
+	}
+	command := cloneStrings(spec.AdapterCommand)
+	command[0] = path
+	spec.AdapterCommand = command
+	return spec
+}
+
+func managedNPMProvidesAdapter(spec ProviderSpec, adapterBinaryNames []string) bool {
+	if spec.Install.ManagedNPM == nil {
+		return false
+	}
+	managedBinaryName := strings.TrimSpace(spec.Install.ManagedNPM.BinaryName)
+	for _, name := range adapterBinaryNames {
+		if strings.EqualFold(strings.TrimSpace(name), managedBinaryName) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s Service) resolveManagedNPMPackageBinary(spec ProviderSpec) string {
+	managed := spec.Install.ManagedNPM
+	if managed == nil || strings.TrimSpace(managed.PackageName) == "" || strings.TrimSpace(managed.BinaryName) == "" {
+		return ""
+	}
+	installBinDirs := []string{strings.TrimSpace(managed.InstallDir)}
+	if installBinDirs[0] == "" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			return ""
+		}
+		installBinDirs = runtimecmd.UserManagedNPMExecutableDirs(home)
+	}
+	for _, installBinDir := range installBinDirs {
+		prefix := runtimecmd.ResolveNPMGlobalLayout(installBinDir).PrefixDir
+		packageDir, ok := managedNPMGlobalPackageDir(prefix, managed.PackageName)
+		if !ok {
+			continue
+		}
+		path := installedNPMPackageBinaryPath(packageDir, managed.PackageName, managed.BinaryName)
+		if path != "" && s.executableFile(path) {
+			return path
+		}
+	}
+	return ""
+}
+
+func installedNPMPackageBinaryPath(packageDir, packageName, binaryName string) string {
+	manifestPath := filepath.Join(packageDir, "package.json")
+	if !regularNonSymlinkFile(manifestPath) {
+		return ""
+	}
+	content, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return ""
+	}
+	var manifest struct {
+		Name string          `json:"name"`
+		Bin  json.RawMessage `json:"bin"`
+	}
+	if json.Unmarshal(content, &manifest) != nil || strings.TrimSpace(manifest.Name) != strings.TrimSpace(packageName) {
+		return ""
+	}
+	var relative string
+	if json.Unmarshal(manifest.Bin, &relative) != nil {
+		var bins map[string]string
+		if json.Unmarshal(manifest.Bin, &bins) != nil {
+			return ""
+		}
+		relative = bins[strings.TrimSpace(binaryName)]
+	}
+	relative = strings.TrimSpace(relative)
+	if relative == "" || filepath.IsAbs(relative) {
+		return ""
+	}
+	path := filepath.Clean(filepath.Join(packageDir, filepath.FromSlash(relative)))
+	within, err := filepath.Rel(packageDir, path)
+	if err != nil || within == ".." || strings.HasPrefix(within, ".."+string(os.PathSeparator)) {
+		return ""
+	}
+	if !regularNonSymlinkFile(path) {
+		return ""
+	}
+	return path
+}
+
+func regularNonSymlinkFile(path string) bool {
+	info, err := os.Lstat(path)
+	return err == nil && info.Mode().IsRegular() && info.Mode()&os.ModeSymlink == 0
 }
 
 func (s Service) userNodeRuntimeAvailable(overrides []string) bool {

@@ -35,10 +35,8 @@ import type {
 } from "./AgentRichTextEditor.types";
 import {
   buildWorkspaceFileMentionDropContent,
-  classifyAgentRichTextTextPaste,
   createAgentRichTextCaretAnchorExtension,
   createAgentRichTextPlaceholderExtension,
-  insertAgentRichTextClipboardHtml,
   isAgentRichTextLargeTextPaste,
   isPromptVisualLineStart,
   readEditorDomSelectionRange,
@@ -51,6 +49,7 @@ import {
   writePlainTextToClipboard
 } from "./agentRichTextEditorSupport";
 export { isAgentRichTextLargeTextPaste } from "./agentRichTextEditorSupport";
+import { routeAgentRichTextTextPaste } from "./routeAgentRichTextTextPaste";
 import { useAgentRichTextEditorHandle } from "./useAgentRichTextEditorHandle";
 import { AgentRichTextEditorSurface } from "./AgentRichTextEditorSurface";
 import { handleAgentRichTextKeyDownCapture } from "./agentRichTextKeyboard";
@@ -103,7 +102,8 @@ export const AgentRichTextEditor = forwardRef<
     onPasteImages,
     onPasteLargeText,
     onPasteFiles,
-    onDropFiles
+    onDropFiles,
+    onResolvePastedPath
   },
   ref
 ): React.JSX.Element {
@@ -136,6 +136,7 @@ export const AgentRichTextEditor = forwardRef<
   const onPasteLargeTextRef = useRef(onPasteLargeText);
   const onPasteFilesRef = useRef(onPasteFiles);
   const onDropFilesRef = useRef(onDropFiles);
+  const onResolvePastedPathRef = useRef(onResolvePastedPath);
   const promptImagesSupportedRef = useRef(promptImagesSupported);
   const placeholderRef = useRef(placeholder);
   const removeMentionLabelRef = useRef(removeMentionLabel);
@@ -290,6 +291,7 @@ export const AgentRichTextEditor = forwardRef<
   onPasteLargeTextRef.current = onPasteLargeText;
   onPasteFilesRef.current = onPasteFiles;
   onDropFilesRef.current = onDropFiles;
+  onResolvePastedPathRef.current = onResolvePastedPath;
   promptImagesSupportedRef.current = promptImagesSupported;
   placeholderRef.current = placeholder;
   removeMentionLabelRef.current = removeMentionLabel;
@@ -433,48 +435,20 @@ export const AgentRichTextEditor = forwardRef<
           }
           const html = event.clipboardData?.getData("text/html") ?? "";
           const text = event.clipboardData?.getData("text/plain") ?? "";
-          const textPasteKind = classifyAgentRichTextTextPaste(
-            text,
+          const handled = routeAgentRichTextTextPaste({
+            availableCapabilities: availableCapabilitiesRef.current,
+            availableSkills: availableSkillsRef.current,
+            editorRef,
             html,
-            Boolean(onPasteLargeTextRef.current)
-          );
-          if (textPasteKind === "empty") {
-            return false;
-          }
-          if (textPasteKind === "large-text") {
+            mentionSuggestionSuppression,
+            onPasteLargeText: onPasteLargeTextRef.current,
+            resolvePastedPath: onResolvePastedPathRef.current,
+            text
+          });
+          if (handled) {
             event.preventDefault();
-            onPasteLargeTextRef.current?.(text);
-            return true;
           }
-          if (textPasteKind === "structured-mention") {
-            event.preventDefault();
-            const currentEditor = editorRef.current;
-            if (!currentEditor) {
-              return true;
-            }
-            if (insertAgentRichTextClipboardHtml(currentEditor, html)) {
-              mentionSuggestionSuppression.suppressTextInsertion(text);
-            }
-            return true;
-          }
-          event.preventDefault();
-          const currentEditor = editorRef.current;
-          if (!currentEditor) {
-            return true;
-          }
-          if (!currentEditor.isFocused) {
-            currentEditor.commands.setTextSelection(
-              currentEditor.state.doc.content.size
-            );
-          }
-          mentionSuggestionSuppression.suppressTextInsertion(text);
-          currentEditor.commands.insertContent(
-            plainTextToAgentRichTextInlineContent(text, {
-              capabilities: availableCapabilitiesRef.current,
-              skills: availableSkillsRef.current
-            })
-          );
-          return true;
+          return handled;
         },
         keydown: (_view, event) => {
           if (isAgentRichTextImeComposing(event)) {

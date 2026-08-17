@@ -1,15 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  agentGuiWorkbenchDockEntryId,
   agentGuiWorkbenchPrefillPromptActivationType,
-  agentGuiWorkbenchDockIdentityFromIdentifier,
   agentGuiWorkbenchProviderFromLaunchRequest,
   agentGuiWorkbenchUnifiedDockEntryId,
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
   createAgentGuiWorkbenchSessionLaunchRequest,
-  resolveAgentGuiWorkbenchLaunchDockEntryId
 } from "./launch.ts";
 
 describe("agent gui workbench launch contract", () => {
@@ -20,25 +17,6 @@ describe("agent gui workbench launch contract", () => {
     expect(first).toMatch(/^agent-gui:instance:/);
     expect(second).toMatch(/^agent-gui:instance:/);
     expect(first).not.toBe(second);
-  });
-
-  it("keeps deprecated dock identity helpers canonical", () => {
-    expect(agentGuiWorkbenchDockEntryId("codex")).toBe("agent-gui:unified");
-    expect(agentGuiWorkbenchDockEntryId("acp:gemini")).toBe(
-      "agent-gui:unified"
-    );
-    expect(
-      resolveAgentGuiWorkbenchLaunchDockEntryId({
-        provider: "acp:gemini",
-        requestedDockEntryId: "agent-gui:acp:gemini"
-      })
-    ).toBe("agent-gui:unified");
-    expect(
-      resolveAgentGuiWorkbenchLaunchDockEntryId({
-        provider: "codex",
-        requestedDockEntryId: null
-      })
-    ).toBe("agent-gui:unified");
   });
 
   it("requires launch providers in payloads", () => {
@@ -74,17 +52,6 @@ describe("agent gui workbench launch contract", () => {
     expect(descriptor.dockEntryId).toBe("agent-gui:unified");
     expect(descriptor.instanceId).toMatch(/^agent-gui:instance:/);
     expect(descriptor.provider).toBe("codex");
-  });
-
-  it("parses only the canonical aggregate dock identity", () => {
-    expect(agentGuiWorkbenchUnifiedDockEntryId()).toBe("agent-gui:unified");
-    expect(
-      agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:unified")
-    ).toEqual({ kind: "unifiedAggregate" });
-    expect(agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui")).toBeNull();
-    expect(
-      agentGuiWorkbenchDockIdentityFromIdentifier("agent-gui:claude-code")
-    ).toBeNull();
   });
 
   it("launches sessions into provider panels until current session state can reuse a node", () => {

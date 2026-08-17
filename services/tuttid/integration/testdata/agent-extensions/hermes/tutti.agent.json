@@ -1,0 +1,34 @@
+{
+  "schemaVersion": "tutti.agent.manifest.v2",
+  "agentKey": "hermes",
+  "version": "1.0.0",
+  "name": "Hermes Test Agent",
+  "description": "Deterministic integration-test agent extension",
+  "localizationInfo": {
+    "defaultLocale": "en",
+    "defaultFile": "locales/en.json"
+  },
+  "icon": {
+    "type": "asset",
+    "src": "assets/icon.svg"
+  },
+  "runtime": {
+    "kind": "standard-acp",
+    "install": {
+      "runner": "npm",
+      "args": [
+        "install",
+        "--prefix",
+        "${installRoot}",
+        "tutti-test-agent@1.0.0"
+      ]
+    },
+    "launch": {
+      "executable": "${installRoot}/node_modules/.bin/tutti-test-agent",
+      "args": ["--acp"]
+    }
+  },
+  "profiles": {
+    "discovery": "profiles/discovery.json"
+  }
+}

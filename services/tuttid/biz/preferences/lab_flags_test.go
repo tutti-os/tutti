@@ -5,8 +5,8 @@ import "testing"
 func TestLabFlagRegistryKeysAndDefaults(t *testing.T) {
 	keys := []string{
 		LabFlagAutomationRules,
-		LabFlagAgentSessionFork,
 		LabFlagCodexSaverMode,
+		LabFlagConnectors,
 		LabFlagPreviewAgents,
 	}
 	if len(labFlagDefaults) != len(keys) {
@@ -37,8 +37,8 @@ func TestIsLabFlagRejectsUnregisteredKeys(t *testing.T) {
 func TestIsLabFlagEnabledFailsClosed(t *testing.T) {
 	for _, key := range []string{
 		LabFlagAutomationRules,
-		LabFlagAgentSessionFork,
 		LabFlagCodexSaverMode,
+		LabFlagConnectors,
 		LabFlagPreviewAgents,
 	} {
 		if IsLabFlagEnabled(nil, key) {

@@ -10,6 +10,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
 func TestProviderStatusCacheReusesProviderAcrossRequestShapes(t *testing.T) {
@@ -42,6 +44,25 @@ func TestProviderStatusCacheReusesProviderAcrossRequestShapes(t *testing.T) {
 	}
 	if got := authCalls.Load(); got <= probesAfterFirst {
 		t.Fatalf("auth probes after force refresh = %d, want > %d", got, probesAfterFirst)
+	}
+}
+
+func TestProviderStatusCacheRefreshesRemoteAuthEvidenceEveryFifteenMinutes(t *testing.T) {
+	cachedAt := time.Unix(100, 0).UTC()
+	now := cachedAt.Add(14 * time.Minute)
+	service := Service{
+		Now:         func() time.Time { return now },
+		RunOutcomes: NewRunOutcomeStore(),
+	}
+	spec := ProviderSpec{RemoteAuthProbe: providerregistry.RemoteAuthProbeDescriptor{
+		Kind: providerregistry.RemoteAuthProbeKindHTTPBearer,
+	}}
+	if !service.cachedProviderStatusStillValid(spec, cachedAt, "") {
+		t.Fatal("remote auth cache expired before fifteen minutes")
+	}
+	now = cachedAt.Add(15 * time.Minute)
+	if service.cachedProviderStatusStillValid(spec, cachedAt, "") {
+		t.Fatal("remote auth cache remained valid at fifteen minutes")
 	}
 }
 
@@ -185,6 +206,43 @@ func TestProviderStatusCacheInvalidatesWhenCredentialsChange(t *testing.T) {
 	}
 	if got := authCalls.Load(); got != 2 {
 		t.Fatalf("auth probes after credential change = %d, want 2", got)
+	}
+}
+
+func TestProviderStatusCacheInvalidatesForNewRuntimeAuthEvidence(t *testing.T) {
+	var authCalls atomic.Int32
+	service := testService(func(string) (string, error) {
+		return "/usr/bin/true", nil
+	}, map[string]bool{"/home/test/.cursor/cli-config.json": true})
+	service.StatusCache = NewProviderStatusCache()
+	service.RunOutcomes = NewRunOutcomeStore()
+	service.Now = time.Now
+	service.FileModTime = func(string) (time.Time, bool) {
+		return time.Unix(100, 0), true
+	}
+	service.RunAuthStatusCommand = func(context.Context, ProviderSpec, string) (AuthInfo, bool) {
+		authCalls.Add(1)
+		return AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth"}, true
+	}
+
+	configured, err := service.List(context.Background(), ListInput{Providers: []string{"cursor"}})
+	if err != nil {
+		t.Fatalf("initial List() error = %v", err)
+	}
+	if got := onlyStatus(t, configured).Auth.Status; got != AuthConfigured {
+		t.Fatalf("initial auth = %q, want configured", got)
+	}
+	service.RunOutcomes.RecordSuccess("cursor")
+
+	authenticated, err := service.List(context.Background(), ListInput{Providers: []string{"cursor"}})
+	if err != nil {
+		t.Fatalf("List() after runtime success error = %v", err)
+	}
+	if got := onlyStatus(t, authenticated).Auth.Status; got != AuthAuthenticated {
+		t.Fatalf("auth after runtime success = %q, want authenticated", got)
+	}
+	if got := authCalls.Load(); got != 2 {
+		t.Fatalf("auth probes after runtime evidence = %d, want cache invalidated", got)
 	}
 }
 

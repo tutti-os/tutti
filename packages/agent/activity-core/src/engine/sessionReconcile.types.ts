@@ -84,6 +84,7 @@ export interface SessionDetailSnapshotReceivedIntent {
   live?: boolean;
   messages?: readonly AgentActivityDurableMessage[];
   session: AgentActivitySessionInput;
+  observedAtUnixMs?: number;
   sessionMessageWindows?: readonly (AgentActivitySessionMessageWindow & {
     agentSessionId: string;
   })[];

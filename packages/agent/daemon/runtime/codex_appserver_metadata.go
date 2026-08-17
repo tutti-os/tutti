@@ -337,13 +337,26 @@ func (a *CodexAppServerAdapter) refreshStartupMetadataAsync(
 		// The goal lives in codex's thread state; restore it after start or
 		// resume so the banner survives daemon restarts and adopted
 		// continuation turns find the goal status they gate on.
-		if appSession := a.getSession(agentSessionID); appSession != nil && appSession.client != nil {
-			if goal := a.fetchGoal(ctx, appSession.client, appSession.threadID, trace); len(goal) > 0 {
-				a.applyGoalUpdate(agentSessionID, goal)
-				a.emitStartupMetadataRefreshEvent(session, agentSessionID)
-			}
+		if a.refreshStartupGoal(ctx, agentSessionID, trace) {
+			a.emitStartupMetadataRefreshEvent(session, agentSessionID)
 		}
 	}()
+}
+
+func (a *CodexAppServerAdapter) refreshStartupGoal(
+	ctx context.Context,
+	agentSessionID string,
+	trace *codexAppServerStartupTrace,
+) bool {
+	appSession, goalStateVersion := a.goalStateFence(agentSessionID)
+	if appSession == nil || appSession.client == nil {
+		return false
+	}
+	goal := a.fetchGoal(ctx, appSession.client, appSession.threadID, trace)
+	if len(goal) == 0 {
+		return false
+	}
+	return a.applyGoalUpdateAtFence(agentSessionID, appSession, goalStateVersion, goal)
 }
 
 // retryStartupModels re-fetches the codex model/list until it returns a

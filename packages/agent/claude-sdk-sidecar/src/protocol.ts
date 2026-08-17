@@ -1,4 +1,4 @@
-export const CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION = 8 as const;
+export const CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION = 10 as const;
 
 export type ClaudeSDKSidecarRequestType =
   | "start"
@@ -61,6 +61,11 @@ export function parseClaudeSDKSidecarRequest(
   ) {
     throw new Error("sidecar request payload must be an object");
   }
+  if (request.type === "cancel") {
+    const payload = request.payload as Record<string, unknown> | undefined;
+    requirePositiveInteger(payload?.interruptTimeoutMs, "interruptTimeoutMs");
+    requirePositiveInteger(payload?.drainTimeoutMs, "drainTimeoutMs");
+  }
   return request as ClaudeSDKSidecarRequest;
 }
 
@@ -90,4 +95,10 @@ function isRequestType(value: unknown): value is ClaudeSDKSidecarRequestType {
     typeof value === "string" &&
     REQUEST_TYPES.has(value as ClaudeSDKSidecarRequestType)
   );
+}
+
+function requirePositiveInteger(value: unknown, field: string): void {
+  if (!Number.isSafeInteger(value) || Number(value) <= 0) {
+    throw new Error(`cancel ${field} must be a positive integer`);
+  }
 }

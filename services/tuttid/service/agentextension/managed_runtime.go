@@ -152,6 +152,7 @@ func (m *Manager) resolveInstalledManagedRuntime(
 		if err := verifyManagedRuntimeEntry(entry); err != nil {
 			return RuntimeBinding{}, fmt.Errorf("%w: %v", ErrManagedRuntimeIntegrity, err)
 		}
+		m.repairUserCommandPath(ctx)
 	}
 	for _, candidate := range profile.Candidates {
 		if err := active.verify(); err != nil || !managedRuntimeCandidateExecutableUnchanged(active, relativeExecutable, fingerprint) {
@@ -282,6 +283,14 @@ func (m *Manager) adoptCompatibleManagedRuntime(
 			return fmt.Errorf("%w: adoption candidate changed across rename", ErrManagedRuntimeIntegrity)
 		}
 		if publishesUserCommand(installation.Manifest) {
+			if err := m.ensureUserCommandPath(ctx); err != nil {
+				_ = workspace.rename(runtimeIdentity, name)
+				candidate.name = name
+				candidate.path = filepath.Join(workspace.agentPath, name)
+				_ = candidate.writeJSONAtomic("activation.json", originalActivation)
+				candidate.Close()
+				return err
+			}
 			if err := publishManagedRuntimeEntry(runtimeEntry); err != nil {
 				_ = workspace.rename(runtimeIdentity, name)
 				candidate.name = name

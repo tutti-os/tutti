@@ -7,6 +7,10 @@ import { projectPublicAgentSessionEngineState } from "./engineState.publicProjec
 import { createEngineEffectExecutor } from "./effectExecutor.ts";
 import { createEngineExpiryClock } from "./expiryClock.ts";
 import {
+  intentForEngineIdentity,
+  withEngineObservationTime
+} from "./engineIntent.normalization.ts";
+import {
   selectEngineActiveTurn,
   selectEngineInteractionResponse,
   selectEngineInteractionsForSession,
@@ -135,6 +139,7 @@ export function createAgentSessionEngine({
   });
 
   const effectExecutor = createEngineEffectExecutor({
+    clock,
     commandPort,
     onResult: (intent) => {
       dispatch(intent);
@@ -232,7 +237,10 @@ export function createAgentSessionEngine({
       });
       return;
     }
-    const scopedIntent = intentForEngineIdentity(intent, engineIdentity);
+    const scopedIntent = intentForEngineIdentity(
+      withEngineObservationTime(intent, clock),
+      engineIdentity
+    );
     if (!scopedIntent) {
       diagnosticSink?.({
         intentType: intent.type,
@@ -299,10 +307,13 @@ export function createAgentSessionEngine({
       provider,
       settings: input.settings
     });
-    const initialEntry =
-      publicSnapshot.composerOptions.entriesByTargetKey[targetKey];
+    const section = input.section;
+    const initialEntry = section
+      ? publicSnapshot.composerOptions.sectionEntriesByTargetKey[targetKey]?.[
+          section
+        ]
+      : publicSnapshot.composerOptions.entriesByTargetKey[targetKey];
     const joinedCommandId =
-      !input.force &&
       initialEntry?.status === "loading" &&
       initialEntry.loadingSignature === signature
         ? initialEntry.inFlightCommandId
@@ -336,7 +347,9 @@ export function createAgentSessionEngine({
       const observe = (): void => {
         if (settled || !awaitedCommandId) return;
         const composerOptions = publicSnapshot.composerOptions;
-        const entry = composerOptions.entriesByTargetKey[targetKey];
+        const entry = section
+          ? composerOptions.sectionEntriesByTargetKey[targetKey]?.[section]
+          : composerOptions.entriesByTargetKey[targetKey];
         if (entry?.inFlightCommandId === awaitedCommandId) {
           previousEntry = entry;
           return;
@@ -370,6 +383,10 @@ export function createAgentSessionEngine({
         cwd: input.cwd,
         force: input.force,
         provider,
+        ...(input.waitForFreshModelCatalog
+          ? { waitForFreshModelCatalog: true }
+          : {}),
+        ...(section !== undefined ? { section } : {}),
         settings: input.settings,
         targetKey,
         type: "composerOptions/loadRequested",
@@ -377,7 +394,9 @@ export function createAgentSessionEngine({
       });
 
       const composerOptions = publicSnapshot.composerOptions;
-      const entry = composerOptions.entriesByTargetKey[targetKey];
+      const entry = section
+        ? composerOptions.sectionEntriesByTargetKey[targetKey]?.[section]
+        : composerOptions.entriesByTargetKey[targetKey];
       if (entry?.status === "ready" && entry.settledSignature === signature) {
         resolveOnce(composerOptions.optionsByTargetKey[targetKey]);
         return;
@@ -385,7 +404,7 @@ export function createAgentSessionEngine({
       awaitedCommandId =
         entry?.inFlightCommandId === commandId
           ? commandId
-          : !input.force && entry?.loadingSignature === signature
+          : entry?.loadingSignature === signature
             ? (entry.inFlightCommandId ?? null)
             : null;
       previousEntry = entry;
@@ -765,27 +784,4 @@ export function createAgentSessionEngine({
 
 function composerOptionsAbortReason(signal?: AbortSignal): unknown {
   return signal?.reason ?? new Error("composer_options_load_aborted");
-}
-
-function intentForEngineIdentity(
-  intent: EngineIntent,
-  identity: AgentSessionEngineIdentity
-): EngineIntent | null {
-  if ("workspaceId" in intent && intent.workspaceId !== undefined) {
-    if (intent.workspaceId.trim() !== identity.workspaceId) {
-      return null;
-    }
-  }
-  if (intent.type === "session/upserted") {
-    return intent.session.workspaceId === identity.workspaceId ? intent : null;
-  }
-  if (intent.type === "session/snapshotReceived") {
-    const sessions = intent.sessions.filter(
-      (session) => session.workspaceId === identity.workspaceId
-    );
-    return sessions.length === intent.sessions.length
-      ? intent
-      : { ...intent, sessions };
-  }
-  return intent;
 }

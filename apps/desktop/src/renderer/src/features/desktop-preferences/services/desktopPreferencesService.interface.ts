@@ -4,6 +4,7 @@ import type {
   DesktopAgentComposerDefaultsPatch,
   DesktopAgentConversationDetailMode,
   DesktopAgentProvider,
+  DesktopAgentSessionLaunchMode,
   DesktopDefaultAgentProvider,
   DesktopAppCatalogChannel,
   DesktopBrowserUseConnectionMode,
@@ -84,6 +85,11 @@ export interface IDesktopPreferencesService {
   rememberAgentGuiConversationRailCollapsed(
     provider: DesktopAgentProvider,
     collapsed: boolean
+  ): Promise<void>;
+  rememberAgentSessionLaunchMode(
+    workspaceId: string,
+    projectSectionKey: string,
+    mode: DesktopAgentSessionLaunchMode
   ): Promise<void>;
 }
 

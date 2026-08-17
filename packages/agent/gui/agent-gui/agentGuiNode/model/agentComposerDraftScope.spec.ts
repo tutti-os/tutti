@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   AGENT_COMPOSER_HOME_DRAFT_SCOPE,
+  areAgentComposerProjectPathsEqual,
   normalizeAgentComposerDraftProjectPath,
   resolveAgentComposerDraftScopeKey
 } from "./agentComposerDraftScope";
@@ -35,6 +36,15 @@ describe("agentComposerDraftScope", () => {
     expect(normalizeAgentComposerDraftProjectPath("///")).toBe("/");
     expect(normalizeAgentComposerDraftProjectPath("C:\\")).toBe("C:/");
     expect(normalizeAgentComposerDraftProjectPath("C:\\\\\\")).toBe("C:/");
+  });
+
+  it("matches Windows project metadata despite slash style and casing", () => {
+    expect(
+      areAgentComposerProjectPathsEqual(
+        "C:\\Users\\Demo\\Repo",
+        "c:/users/demo/repo/"
+      )
+    ).toBe(true);
   });
 
   it("gives an existing session precedence over the shared home draft", () => {

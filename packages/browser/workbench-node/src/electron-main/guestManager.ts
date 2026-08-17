@@ -765,6 +765,7 @@ export function createBrowserGuestManager({
     },
     async registerGuest(input) {
       await prepareSession?.({
+        automationTarget: input.automationTarget,
         nodeId: input.nodeId,
         profileId: input.profileId,
         sessionMode: input.sessionMode,

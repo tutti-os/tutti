@@ -2,13 +2,58 @@ import { setTimeout as delay } from "node:timers/promises";
 
 const conversationItemPrefix = "agent-gui-conversation-item-";
 
-export async function evaluate(client, expression, awaitPromise = false) {
-  const response = await client.send("Runtime.evaluate", {
+/**
+ * Node-side hard timeout for CDP / renderer awaits.
+ * CDP's Runtime.evaluate `timeout` does not abort when the renderer event
+ * loop is blocked; racing in Node is the reliable backstop.
+ */
+export function withTimeout(promise, timeoutMs, message) {
+  const normalizedMs = Number(timeoutMs);
+  if (!Number.isFinite(normalizedMs) || normalizedMs <= 0) {
+    return promise;
+  }
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => {
+        reject(
+          new Error(
+            message ??
+              `operation timed out after ${Math.round(normalizedMs / 1000)}s`
+          )
+        );
+      }, normalizedMs);
+    })
+  ]).finally(() => {
+    if (timer != null) clearTimeout(timer);
+  });
+}
+
+export async function evaluate(
+  client,
+  expression,
+  awaitPromise = false,
+  timeoutMs = 0
+) {
+  const normalizedTimeoutMs = Math.max(0, Number(timeoutMs) || 0);
+  const payload = {
     expression,
     awaitPromise,
     returnByValue: true,
     userGesture: true
-  });
+  };
+  if (normalizedTimeoutMs > 0) {
+    payload.timeout = Math.max(1, Math.floor(normalizedTimeoutMs));
+  }
+  const response = await withTimeout(
+    client.send("Runtime.evaluate", payload),
+    normalizedTimeoutMs,
+    `Runtime.evaluate timed out after ${Math.max(
+      1,
+      Math.round(normalizedTimeoutMs / 1000)
+    )}s`
+  );
   if (response.exceptionDetails) {
     const description =
       response.exceptionDetails.exception?.description ??
@@ -70,7 +115,12 @@ export async function waitForEvaluation(
   let lastChangeAt = startedAt;
   let lastProgressAt = startedAt;
   while (Date.now() < deadline) {
-    latest = await evaluate(client, expression);
+    latest = await evaluate(
+      client,
+      expression,
+      false,
+      Math.max(1, deadline - Date.now())
+    );
     if (latest?.ready) return latest;
     const now = Date.now();
     const signature = JSON.stringify(latest);
@@ -283,7 +333,21 @@ export async function waitForStableAgentWorkbenchWindow(client, timeoutMs) {
   let stablePolls = 0;
   let latest = null;
   while (Date.now() < deadline) {
-    latest = await readAgentWorkbenchWindow(client);
+    latest = await evaluate(
+      client,
+      `(() => {
+      const shell = [...document.querySelectorAll('[data-workbench-window-id]')]
+        .find((element) => element.dataset.workbenchNodeTypeId === 'agent-gui');
+      return shell ? {
+        id: shell.dataset.workbenchWindowId ?? '',
+        displayMode: shell.dataset.displayMode ?? '',
+        minimizedMount: shell.dataset.minimizedMount ?? '',
+        title: shell.querySelector('[data-agent-gui-workbench-header]')?.textContent?.trim() ?? ''
+      } : null;
+    })()`,
+      false,
+      Math.max(1, deadline - Date.now())
+    );
     if (
       latest?.id &&
       latest.minimizedMount === "visible" &&
@@ -310,7 +374,9 @@ export async function waitForStableViewport(client, timeoutMs) {
   while (Date.now() < deadline) {
     latest = await evaluate(
       client,
-      "({ height: window.innerHeight, width: window.innerWidth })"
+      "({ height: window.innerHeight, width: window.innerWidth })",
+      false,
+      Math.max(1, deadline - Date.now())
     );
     const signature = `${latest.width}x${latest.height}`;
     if (signature === previous) {

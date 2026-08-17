@@ -216,6 +216,7 @@ function createSession(id: string, status: string): WorkspaceAgentSession {
     cwd: "/tmp/ws-1",
     endedAtUnixMs: null,
     goal: null,
+    goalSyncState: null,
     tuttiModeActivation: null,
     id,
     imported: false,

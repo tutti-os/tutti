@@ -11,7 +11,9 @@ export function upsertWorkspaceUserProject(
   project: WorkspaceUserProject
 ): WorkspaceUserProject[] {
   const existingIndex = projects.findIndex(
-    (item) => item.id === project.id || item.path === project.path
+    (item) =>
+      item.id === project.id ||
+      areWorkspaceUserProjectPathsEqual(item.path, project.path)
   );
   if (existingIndex < 0) {
     const insertionIndex =
@@ -100,6 +102,48 @@ export function basenameWorkspaceUserProjectPath(path: string): string {
   return segments[segments.length - 1] ?? "";
 }
 
+/**
+ * Normalizes a project path for identity comparisons at the UI boundary.
+ * Windows paths can arrive from different hosts with either slash style and
+ * different casing even though they refer to the same directory. POSIX paths
+ * remain case-sensitive, so case folding is limited to Windows-shaped paths.
+ */
+export function normalizeWorkspaceUserProjectPath(
+  path: string | null | undefined
+): string {
+  const slashed = path?.trim().replaceAll("\\", "/") ?? "";
+  if (!slashed) {
+    return "";
+  }
+  if (/^\/+$/u.test(slashed)) {
+    return "/";
+  }
+  if (/^[A-Za-z]:\/+$/u.test(slashed)) {
+    return `${slashed.slice(0, 2)}/`;
+  }
+  return slashed.replace(/\/+$/u, "");
+}
+
+export function areWorkspaceUserProjectPathsEqual(
+  left: string | null | undefined,
+  right: string | null | undefined
+): boolean {
+  return (
+    workspaceUserProjectPathIdentityKey(left) ===
+    workspaceUserProjectPathIdentityKey(right)
+  );
+}
+
+export function workspaceUserProjectPathIdentityKey(
+  path: string | null | undefined
+): string {
+  const normalized = normalizeWorkspaceUserProjectPath(path);
+  if (/^[A-Za-z]:\//u.test(normalized) || normalized.startsWith("//")) {
+    return normalized.toLowerCase();
+  }
+  return normalized;
+}
+
 export function getWorkspaceUserProjectErrorCode(
   error: unknown
 ): WorkspaceUserProjectCreationErrorCode | null {
@@ -136,7 +180,9 @@ export async function prepareWorkspaceUserProjectSelection(
     !input.projectLocked &&
     selectedPath &&
     !isSelectedPathNoProject &&
-    !projects.some((project) => project.path === selectedPath)
+    !projects.some((project) =>
+      areWorkspaceUserProjectPathsEqual(project.path, selectedPath)
+    )
   ) {
     await api.rememberDefaultSelection?.({ path: null });
     return {
@@ -159,7 +205,12 @@ export async function prepareWorkspaceUserProjectSelection(
 
   const defaultSelection = await api.getDefaultSelection?.();
   const defaultPath = defaultSelection?.path?.trim() ?? "";
-  if (defaultPath && projects.some((project) => project.path === defaultPath)) {
+  if (
+    defaultPath &&
+    projects.some((project) =>
+      areWorkspaceUserProjectPathsEqual(project.path, defaultPath)
+    )
+  ) {
     return {
       isSelectedPathMissing,
       projects,

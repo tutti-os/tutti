@@ -839,6 +839,50 @@ test("an invalid send-now request cannot cancel an unrelated active turn", () =>
   );
 });
 
+test("queued send-next uses guidance without canceling the active turn", () => {
+  let state = createInitialAgentSessionEngineState();
+  state = rootEngineReducer(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      runningSession(
+        capabilities({ activeTurnGuidance: true, interrupt: true })
+      )
+    ]
+  }).state;
+  state = rootEngineReducer(state, {
+    type: "queue/enqueued",
+    agentSessionId: "session-1",
+    prompt: {
+      content: [{ type: "text", text: "next" }],
+      createdAtUnixMs: 1,
+      id: "prompt-next"
+    },
+    workspaceId: "workspace-1"
+  }).state;
+
+  const result = rootEngineReducer(state, {
+    type: "queue/sendNowRequested",
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    cancelCommandId: "cancel-next",
+    promptId: "prompt-next",
+    timeoutMs: 30_000
+  });
+  const send = result.commands.find(
+    (command) => command.type === "queue/sendPrompt"
+  );
+  assert.equal(send?.type, "queue/sendPrompt");
+  assert.equal(send?.type === "queue/sendPrompt" && send.guidance, true);
+  assert.equal(
+    send?.type === "queue/sendPrompt" ? send.targetTurnId : null,
+    "turn-1"
+  );
+  assert.equal(
+    result.commands.some((command) => command.type === "turn/cancel"),
+    false
+  );
+});
+
 test("queue shares canonical submit availability when the active turn entity is absent", () => {
   let state = createInitialAgentSessionEngineState();
   state = rootEngineReducer(state, {
@@ -952,6 +996,7 @@ test("root drains once from post-lifecycle canonical turn state", () => {
     updatedAtUnixMs: 3
   };
   const settled = rootEngineReducer(queued.state, {
+    live: true,
     type: "turn/upserted",
     turn
   });
@@ -961,6 +1006,7 @@ test("root drains once from post-lifecycle canonical turn state", () => {
     1
   );
   const duplicate = rootEngineReducer(settled.state, {
+    live: true,
     type: "turn/upserted",
     turn
   });
@@ -1057,6 +1103,67 @@ test("authoritative interaction result drains from post-lifecycle canonical stat
     queueSend?.type === "queue/sendPrompt" ? queueSend.promptId : null,
     "prompt-1"
   );
+});
+
+test("stale interaction failure requests reconcile through the root reducer", () => {
+  let state = createInitialAgentSessionEngineState();
+  const waitingTurn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt" as const,
+    phase: "waiting" as const,
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const pendingInteraction = {
+    agentSessionId: "session-1",
+    createdAtUnixMs: 1,
+    input: {},
+    kind: "question" as const,
+    metadata: {},
+    requestId: "request-1",
+    status: "pending" as const,
+    turnId: "turn-1",
+    updatedAtUnixMs: 1
+  };
+  const session = {
+    ...runningSession(capabilities({})),
+    activeTurn: waitingTurn,
+    latestTurn: waitingTurn,
+    latestTurnInteractions: [pendingInteraction],
+    pendingInteractions: [pendingInteraction]
+  };
+  state = rootEngineReducer(state, {
+    sessions: [session],
+    type: "session/snapshotReceived"
+  }).state;
+  state = rootEngineReducer(state, {
+    agentSessionId: "session-1",
+    commandId: "respond-1",
+    optionId: "approve",
+    requestId: "request-1",
+    turnId: "turn-1",
+    type: "interaction/responseRequested",
+    workspaceId: "workspace-1"
+  }).state;
+
+  const stale = rootEngineReducer(state, {
+    commandId: "respond-1",
+    commandType: "interaction/respond",
+    correlationId: canonicalInteractionKey("session-1", "turn-1", "request-1"),
+    errorReason: "agent_interactive_request_stale",
+    outcome: "failed",
+    type: "engine/commandResult"
+  });
+  assert.deepEqual(stale.followUpIntents, [
+    {
+      agentSessionId: "session-1",
+      needsMessages: true,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
 });
 
 test("terminal latest turn drains at an unchanged session timestamp", () => {
@@ -1174,6 +1281,7 @@ test("successful queued send waits for its exact canonical turn before FIFO drai
     "turn-1"
   );
   const settled = rootEngineReducer(accepted.state, {
+    live: true,
     type: "turn/upserted",
     turn: {
       ...runningTurn,
@@ -1252,6 +1360,7 @@ test("timeout message confirmation waits for exact-turn lifecycle reconcile", ()
     "turn-1"
   );
   const reconciled = rootEngineReducer(confirmed.state, {
+    live: true,
     type: "turn/upserted",
     turn: {
       agentSessionId: "session-1",

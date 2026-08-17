@@ -54,7 +54,16 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 	}
 	initialGoalControl := initialGoalControlFromGenerated(request.Body.InitialGoalControl)
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
+	if diagnosticsErr := validateAgentSubmitDiagnostics(request.Body.SubmitDiagnostics); diagnosticsErr != nil {
+		return tuttigenerated.CreateWorkspaceAgentSession400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(diagnosticsErr),
+		}, nil
+	}
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
+	isolation := ""
+	if request.Body.Isolation != nil {
+		isolation = string(*request.Body.Isolation)
+	}
 	var recordingID string
 	if request.Body.RecordingId != nil {
 		if api.AgentSessionRecordingService == nil {
@@ -85,16 +94,19 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 		InitialTuttiModeActivation: initialTuttiModeActivation,
 		CapabilityRefs:             capabilityRefs,
 		Cwd:                        request.Body.Cwd,
+		Isolation:                  isolation,
 		InitialContent:             agentPromptContentFromGenerated(request.Body.InitialContent),
 		InitialDisplayPrompt:       stringPtrValue(request.Body.InitialDisplayPrompt),
 		Metadata:                   metadata,
 		Model:                      request.Body.Model,
+		ModelExplicit:              request.Body.ModelExplicit,
 		PermissionModeID:           request.Body.PermissionModeId,
 		PlanMode:                   request.Body.PlanMode,
 		BrowserUse:                 request.Body.BrowserUse,
 		CodexSaverMode:             request.Body.CodexSaverMode,
 		CodexSaverModeAllowed:      api.codexSaverModeEnabled(ctx),
 		ReasoningEffort:            request.Body.ReasoningEffort,
+		ReasoningEffortExplicit:    request.Body.ReasoningEffortExplicit,
 		RuntimeContext:             createSessionRuntimeContext(request.Body.NoProject),
 		RailPlacement:              railPlacementFromGenerated(request.Body.RailPlacement),
 		Speed:                      request.Body.Speed,
@@ -129,6 +141,7 @@ func (api DaemonAPI) CreateWorkspaceAgentSession(ctx context.Context, request tu
 			"displayPrompt":              request.Body.InitialDisplayPrompt,
 			"initialGoalControl":         request.Body.InitialGoalControl,
 			"initialTuttiModeActivation": request.Body.InitialTuttiModeActivation,
+			"isolation":                  request.Body.Isolation,
 			"model":                      request.Body.Model,
 			"noProject":                  request.Body.NoProject,
 			"permissionModeId":           request.Body.PermissionModeId,
@@ -160,6 +173,9 @@ func applyEffectiveCreateSessionLaunch(payload map[string]any, session agentserv
 	}
 	if cwd := strings.TrimSpace(session.Cwd); cwd != "" {
 		payload["cwd"] = cwd
+	}
+	if session.Isolation != nil && strings.TrimSpace(session.Isolation.Mode) != "" {
+		payload["isolation"] = strings.TrimSpace(session.Isolation.Mode)
 	}
 	if session.Settings == nil {
 		return
@@ -234,6 +250,11 @@ func (api DaemonAPI) SendWorkspaceAgentSessionInput(ctx context.Context, request
 		}, nil
 	}
 	clientSubmitID := strings.TrimSpace(request.Body.ClientSubmitId)
+	if diagnosticsErr := validateAgentSubmitDiagnostics(request.Body.SubmitDiagnostics); diagnosticsErr != nil {
+		return tuttigenerated.SendWorkspaceAgentSessionInput400JSONResponse{
+			InvalidRequestErrorJSONResponse: invalidRequestError(diagnosticsErr),
+		}, nil
+	}
 	metadata := agentSubmitMetadata(request.Body.SubmitDiagnostics)
 	guidance := request.Body.Guidance != nil && *request.Body.Guidance
 	targetTurnID := ""
@@ -386,5 +407,17 @@ func agentSubmitMetadata(diagnostics *tuttigenerated.AgentSubmitDiagnostics) map
 	if diagnostics.Source != nil {
 		metadata["source"] = strings.TrimSpace(*diagnostics.Source)
 	}
+	if diagnostics.UiMode != nil {
+		metadata["uiMode"] = strings.TrimSpace(string(*diagnostics.UiMode))
+	}
 	return metadata
+}
+
+func validateAgentSubmitDiagnostics(diagnostics *tuttigenerated.AgentSubmitDiagnostics) *apierrors.ProtocolError {
+	if diagnostics != nil && diagnostics.UiMode != nil && !diagnostics.UiMode.Valid() {
+		return apierrors.MalformedRequest(
+			apierrors.WithDeveloperMessage("submitDiagnostics.uiMode is invalid"),
+		)
+	}
+	return nil
 }

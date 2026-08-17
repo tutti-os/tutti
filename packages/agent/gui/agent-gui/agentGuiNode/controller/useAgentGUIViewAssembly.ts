@@ -186,6 +186,38 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     pendingApproval: detail.pendingApproval,
     serverInteractivePrompt: detail.serverInteractivePrompt
   });
+  const railConversations = useMemo(() => {
+    const prompt = session.pendingInteractivePrompt;
+    if (prompt?.kind !== "plan-implementation" || !input.activeConversationId) {
+      return visibleConversations;
+    }
+    let changed = false;
+    const next = visibleConversations.map((conversation) => {
+      if (
+        conversation.id !== input.activeConversationId ||
+        conversation.needsUserAction
+      ) {
+        return conversation;
+      }
+      changed = true;
+      return { ...conversation, needsUserAction: true };
+    });
+    return changed ? next : visibleConversations;
+  }, [
+    input.activeConversationId,
+    session.pendingInteractivePrompt,
+    visibleConversations
+  ]);
+  const railActiveConversation = useMemo(() => {
+    if (
+      !activeConversation ||
+      session.pendingInteractivePrompt?.kind !== "plan-implementation" ||
+      activeConversation.needsUserAction
+    ) {
+      return activeConversation;
+    }
+    return { ...activeConversation, needsUserAction: true };
+  }, [activeConversation, session.pendingInteractivePrompt]);
   const providerHome = useAgentGUIProviderHome(input);
   const controllerActions = useAgentGUIControllerActions({
     ...input.operationActions,
@@ -217,9 +249,9 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       providerRailMode: input.providerRailMode ?? "catalog",
       comingSoonProviders: input.normalizedComingSoonProviders,
       conversationFilter: input.conversationFilter,
-      conversations: visibleConversations,
+      conversations: railConversations,
       userProjects: input.userProjects,
-      activeConversation,
+      activeConversation: railActiveConversation,
       activeConversationId: input.activeConversationId,
       revealRequest: input.railRevealRequest,
       isLoadingConversations: input.isLoadingConversations,
@@ -247,6 +279,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       isSubmitting: input.isSubmitting,
       isInterrupting: detail.isInterrupting,
       isCancelPending: detail.isCancelPending,
+      hasPendingSubmitStopTarget: session.hasPendingSubmitStopTarget,
       promptImagesSupported: input.promptImagesSupported,
       compactSupported: input.compactSupported,
       goalPauseSupported: input.goalPauseSupported,
@@ -264,6 +297,8 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       drainingQueuedPromptId: detail.drainingQueuedPromptId
     },
     interaction: {
+      approvalDisabledReason: session.approvalDisabledReason,
+      interactivePromptDisabledReason: session.interactivePromptDisabledReason,
       isRespondingApproval: session.isRespondingApproval,
       isRespondingInteractivePrompt: session.isRespondingInteractivePrompt,
       pendingApproval: session.pendingApproval,

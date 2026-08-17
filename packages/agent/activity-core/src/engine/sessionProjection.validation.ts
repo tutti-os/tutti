@@ -113,6 +113,7 @@ function optionalSessionFieldsMatch(
     optionalForkLineage(value.forkedFrom) &&
     optionalUsage(value.usage) &&
     optionalGoal(value.goal) &&
+    optionalGoalSyncState(value.goalSyncState) &&
     optionalTuttiModeActivation(
       value.tuttiModeActivation,
       agentSessionId,
@@ -128,6 +129,20 @@ function optionalSessionFieldsMatch(
     optionalNullableNumber(value.pinnedAtUnixMs) &&
     optionalFiniteNumber(value.createdAtUnixMs) &&
     optionalFiniteNumber(value.updatedAtUnixMs)
+  );
+}
+
+function optionalGoalSyncState(value: unknown): boolean {
+  return Boolean(
+    value === undefined ||
+    value === null ||
+    (isRecord(value) &&
+      Number.isSafeInteger(value.revision) &&
+      (value.revision as number) >= 0 &&
+      isOneOf(value.syncStatus, GOAL_SYNC_STATUSES) &&
+      isNullableString(value.pendingOperationId) &&
+      (value.executionPending === undefined ||
+        typeof value.executionPending === "boolean"))
   );
 }
 
@@ -459,6 +474,14 @@ const GOAL_STATUSES = [
   "usageLimited",
   "budgetLimited",
   "complete"
+] as const;
+const GOAL_SYNC_STATUSES = [
+  "pending",
+  "applying",
+  "synced",
+  "diverged",
+  "unknown",
+  "failed"
 ] as const;
 const TUTTI_MODE_STATUSES = ["active", "inactive"] as const;
 const TUTTI_MODE_SOURCES = ["slash_command", "badge_remove"] as const;

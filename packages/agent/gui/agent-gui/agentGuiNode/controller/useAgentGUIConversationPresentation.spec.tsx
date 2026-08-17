@@ -9,6 +9,67 @@ type PresentationInput = Parameters<
 >[0];
 
 describe("useAgentGUIConversationPresentation", () => {
+  it("does not project a pending submit into Conversation working status", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    const pendingInput = {
+      ...input,
+      activeLatestPendingSubmitTurnId: "turn-pending",
+      hasUnconfirmedSubmit: true,
+      isCreatingConversation: true,
+      isSubmitting: true
+    };
+    const rendered = renderHook(
+      ({ value }: { value: PresentationInput }) =>
+        useAgentGUIConversationPresentation(value),
+      { initialProps: { value: pendingInput } }
+    );
+
+    expect(rendered.result.current.activeConversation?.status).toBe("ready");
+
+    rendered.rerender({
+      value: { ...pendingInput, conversations: [] }
+    });
+    expect(rendered.result.current.activeConversation?.status).toBe("ready");
+  });
+
+  it("projects canonical activity status into Conversation status", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    const rendered = renderHook(
+      ({ value }: { value: PresentationInput }) =>
+        useAgentGUIConversationPresentation(value),
+      {
+        initialProps: {
+          value: {
+            ...input,
+            activityDisplayStatuses: new Map([
+              [conversation.id, "working" as const]
+            ])
+          }
+        }
+      }
+    );
+
+    expect(rendered.result.current.activeConversation?.status).toBe("working");
+  });
+
+  it("lets canonical idle clear stale Conversation working status", () => {
+    const conversation = createConversation();
+    const input = createInput({ ...conversation, status: "working" });
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        activityDisplayStatuses: new Map([[conversation.id, "idle" as const]])
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.status).toBe("ready");
+    expect(rendered.result.current.visibleConversations[0]?.status).toBe(
+      "ready"
+    );
+  });
+
   it("does not project the provider name as a fallback conversation title", () => {
     const conversation = createConversation();
     const input = createInput(conversation);
@@ -26,6 +87,28 @@ describe("useAgentGUIConversationPresentation", () => {
         titleFallback: "untitled-conversation"
       })
     );
+  });
+
+  it("does not infer fallback conversation project identity from workspacePath", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        conversations: [],
+        userProjects: [
+          {
+            id: "workspace-project",
+            label: "Workspace",
+            path: "/workspace",
+            pinnedAtUnixMs: 0,
+            sectionKey: "project:/workspace"
+          }
+        ]
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.project).toBeNull();
   });
 
   it("reuses visible and active conversation references for render-equal input", () => {
@@ -227,6 +310,35 @@ describe("useAgentGUIConversationPresentation", () => {
         title: "Delegated task"
       })
     );
+  });
+
+  it("projects exact activity for a hidden transient conversation", () => {
+    const conversation = createConversation();
+    const hiddenTransient: AgentGUIConversationSummary = {
+      ...createConversation(),
+      hiddenFromRail: true,
+      id: "hidden-delegate-1",
+      status: "working",
+      title: "Delegated task"
+    };
+    const input = createInput(conversation);
+    const rendered = renderHook(() =>
+      useAgentGUIConversationPresentation({
+        ...input,
+        activeConversationId: hiddenTransient.id,
+        activityDisplayStatuses: new Map([
+          [hiddenTransient.id, "idle" as const]
+        ]),
+        transientConversation: hiddenTransient
+      })
+    );
+
+    expect(rendered.result.current.activeConversation?.status).toBe("ready");
+    expect(
+      rendered.result.current.visibleConversations.some(
+        (entry) => entry.id === hiddenTransient.id
+      )
+    ).toBe(false);
   });
 });
 

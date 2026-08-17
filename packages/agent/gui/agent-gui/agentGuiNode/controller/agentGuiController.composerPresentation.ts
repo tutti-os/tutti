@@ -52,6 +52,24 @@ export function composerTargetDataFromNodeData(
   };
 }
 
+/**
+ * Resolve the device-local model-history owner without guessing an active
+ * Session's identity. Home may use its stable target fallback, while an active
+ * Session without a canonical Agent Target fails closed.
+ */
+export function composerModelChoiceHistoryTargetId(input: {
+  activeConversationId: string | null;
+  target: Pick<AgentGUIComposerTargetData, "agentTargetId" | "targetId">;
+}): string | null {
+  const agentTargetId = normalizeOptionalText(input.target.agentTargetId);
+  if (agentTargetId) {
+    return agentTargetId;
+  }
+  return input.activeConversationId === null
+    ? normalizeOptionalText(input.target.targetId)
+    : null;
+}
+
 export function composerTargetDataForConversation(input: {
   activeConversationId: string | null;
   activeSessionTarget: AgentGUIActiveSessionTarget | null;
@@ -64,7 +82,9 @@ export function composerTargetDataForConversation(input: {
   }
   if (
     input.optimisticTarget?.agentSessionId === input.activeConversationId &&
-    !nodeDataMatchesComposerTarget(input.data, input.optimisticTarget.target)
+    (!input.activeSessionTarget ||
+      input.activeSessionTarget.agentSessionId !== input.activeConversationId ||
+      !nodeDataMatchesComposerTarget(input.data, input.optimisticTarget.target))
   ) {
     return input.optimisticTarget.target;
   }
@@ -235,6 +255,17 @@ export type ComposerNativeModelVerdict =
   | "rejected"
   | "unverifiable";
 
+export interface ComposerNativeModelOptionsTestimony {
+  models: readonly {
+    value: string;
+    requested?: boolean;
+  }[];
+  modelOptionsLoading?: boolean;
+  effectiveSettings?: {
+    model?: string | null;
+  } | null;
+}
+
 /**
  * Verdict of a bare model id against the provider-native options list. Only
  * settled catalog entries are testimony:
@@ -253,7 +284,7 @@ export type ComposerNativeModelVerdict =
  */
 export function verifyComposerModelAgainstNativeOptions(
   model: string,
-  options: AgentActivityComposerOptions | null
+  options: ComposerNativeModelOptionsTestimony | null
 ): ComposerNativeModelVerdict {
   if (options === null || options.modelOptionsLoading === true) {
     return "unverifiable";

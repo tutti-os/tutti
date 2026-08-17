@@ -709,12 +709,36 @@ func TestRootProviderTurnFailurePersistsVisibleErrorCode(t *testing.T) {
 	completed := report.StatePatches[0].RootProviderTurn
 	if completed == nil {
 		t.Fatal("root provider turn transition is nil")
+		return
 	}
 	if completed.ErrorMessage != errorMessage {
 		t.Fatalf("root provider turn error message = %q, want %q", completed.ErrorMessage, errorMessage)
 	}
 	if completed.ErrorCode != "insufficient_credits" {
 		t.Fatalf("root provider turn error code = %q, want insufficient_credits", completed.ErrorCode)
+	}
+}
+
+func TestRootProviderTurnFailurePersistsUnknownCodeWithoutDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	ctx, ok := activityEventContext(session, "root-provider-turn-failed", "root-turn-1")
+	if !ok {
+		t.Fatal("activityEventContext() returned !ok")
+	}
+	failed := activityshared.NewRootProviderTurnCompleted(ctx, "root-turn-1", "provider-turn-1", activityshared.TurnOutcomeFailed)
+
+	report := reportActivityInput(session, []activityshared.Event{failed})
+	if len(report.StatePatches) != 1 {
+		t.Fatalf("state patches = %#v, want one root provider failure", report.StatePatches)
+	}
+	completed := report.StatePatches[0].RootProviderTurn
+	if completed == nil {
+		t.Fatal("root provider turn transition is nil")
+	}
+	if completed.ErrorCode != "unknown" || completed.ErrorMessage != "" {
+		t.Fatalf("root provider turn error = %q/%q, want unknown/empty", completed.ErrorCode, completed.ErrorMessage)
 	}
 }
 
@@ -999,6 +1023,9 @@ func TestProjectActivityEventsToStreamEventsAddsVisibleTurnFailureMessage(t *tes
 	}
 	if item.Kind != "text" || item.Status != messageStreamStateFailed {
 		t.Fatalf("visible failure item = %#v", item)
+	}
+	if item.Semantics == nil || !item.Semantics.UserVisibleAssistantResponse {
+		t.Fatalf("visible failure semantics = %#v, want explicit user-visible assistant response", item.Semantics)
 	}
 	if item.Payload["kind"] != visibleErrorKind ||
 		item.Payload["phase"] != "turn" ||

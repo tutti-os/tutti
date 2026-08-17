@@ -34,6 +34,7 @@ func (*recordingAccountAnalyticsReporter) Close() error {
 func TestNewServiceReadsLocalAuthOverrides(t *testing.T) {
 	t.Setenv("TUTTI_ACCOUNT_BASE_URL", "http://127.0.0.1:1/api/account")
 	t.Setenv("TUTTI_AUTH_LOGIN_URL", "http://127.0.0.1:1/auth/login")
+	t.Setenv("TUTTI_PPE_LANE", "  ppe-connectors  ")
 	t.Setenv("TUTTI_ENV", "development")
 
 	service := NewService("")
@@ -45,6 +46,9 @@ func TestNewServiceReadsLocalAuthOverrides(t *testing.T) {
 	}
 	if service.AppCallbackURL != "tutti-dev://login/callback" {
 		t.Fatalf("AppCallbackURL = %q", service.AppCallbackURL)
+	}
+	if got := service.AccountHeaders.Get("x-zk-ppe-lane"); got != "ppe-connectors" {
+		t.Fatalf("ppe lane header = %q, want ppe-connectors", got)
 	}
 }
 

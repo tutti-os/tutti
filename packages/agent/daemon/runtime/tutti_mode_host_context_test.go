@@ -204,6 +204,8 @@ func TestRenderTuttiModeHostContextCarriesTypedActiveState(t *testing.T) {
 		"The JSON `state` field is authoritative",
 		"Determine and report Tutti Mode status only from that field",
 		"Provider collaboration mode and Tutti workflow existence are independent facts",
+		"Tutti Mode activation is controlled by the user",
+		"never try to change it with Tutti CLI or other tools",
 		"When the user requests a plan and the request is clear",
 		"Do not execute the user's request directly in this turn.",
 		"ask the user focused clarifying questions",
@@ -253,6 +255,8 @@ func TestRenderTuttiModeHostContextCarriesExplicitInactiveState(t *testing.T) {
 		"The JSON `state` field is authoritative",
 		"Determine and report Tutti Mode status only from that field",
 		"Provider collaboration mode and Tutti workflow existence are independent facts",
+		"Tutti Mode activation is controlled by the user",
+		"never try to change it with Tutti CLI or other tools",
 		"Tutti CLI capabilities remain available",
 	} {
 		if !strings.Contains(contextText, expected) {

@@ -16,6 +16,7 @@ func TestAgentSubmitMetadataProjectsAllDiagnosticsFields(t *testing.T) {
 	promptLength := 42
 	queued := false
 	source := "  agent-gui  "
+	uiMode := tuttigenerated.AgentSubmitDiagnosticsUiModeAgent
 
 	got := agentSubmitMetadata(&tuttigenerated.AgentSubmitDiagnostics{
 		SubmittedAtUnixMs: &submittedAtUnixMs,
@@ -24,6 +25,7 @@ func TestAgentSubmitMetadataProjectsAllDiagnosticsFields(t *testing.T) {
 		PromptLength:      &promptLength,
 		Queued:            &queued,
 		Source:            &source,
+		UiMode:            &uiMode,
 	})
 	want := map[string]any{
 		"blockCount":              2,
@@ -32,6 +34,7 @@ func TestAgentSubmitMetadataProjectsAllDiagnosticsFields(t *testing.T) {
 		"promptLength":            42,
 		"queued":                  false,
 		"source":                  "agent-gui",
+		"uiMode":                  "agent",
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("agentSubmitMetadata() = %#v, want %#v", got, want)
@@ -45,10 +48,14 @@ func TestApplyEffectiveCreateSessionLaunchPinsReplayInputs(t *testing.T) {
 		"model":            (*string)(nil),
 		"reasoningEffort":  (*string)(nil),
 		"permissionModeId": (*string)(nil),
+		"isolation":        (*string)(nil),
 	}
 
 	applyEffectiveCreateSessionLaunch(payload, agentservice.Session{
 		Cwd: "/workspace/recorded",
+		Isolation: &agentservice.SessionIsolation{
+			Mode: agentservice.WorktreeIsolationMode,
+		},
 		Settings: &agenthost.ComposerSettings{
 			BrowserUse:       &browserUse,
 			Model:            "gpt-5.6-terra",
@@ -62,6 +69,7 @@ func TestApplyEffectiveCreateSessionLaunchPinsReplayInputs(t *testing.T) {
 	assertions := map[string]any{
 		"browserUse":       &browserUse,
 		"cwd":              "/workspace/recorded",
+		"isolation":        agentservice.WorktreeIsolationMode,
 		"model":            "gpt-5.6-terra",
 		"permissionModeId": "auto",
 		"planMode":         false,
@@ -78,6 +86,21 @@ func TestApplyEffectiveCreateSessionLaunchPinsReplayInputs(t *testing.T) {
 func TestAgentSubmitMetadataWithoutDiagnosticsIsEmpty(t *testing.T) {
 	if got := agentSubmitMetadata(nil); got != nil {
 		t.Fatalf("agentSubmitMetadata() = %#v, want nil", got)
+	}
+}
+
+func TestValidateAgentSubmitDiagnosticsRejectsUnknownUiMode(t *testing.T) {
+	invalid := tuttigenerated.AgentSubmitDiagnosticsUiMode("unknown")
+	if err := validateAgentSubmitDiagnostics(&tuttigenerated.AgentSubmitDiagnostics{UiMode: &invalid}); err == nil {
+		t.Fatal("unknown uiMode accepted")
+	}
+	for _, mode := range []tuttigenerated.AgentSubmitDiagnosticsUiMode{
+		tuttigenerated.AgentSubmitDiagnosticsUiModeOs,
+		tuttigenerated.AgentSubmitDiagnosticsUiModeAgent,
+	} {
+		if err := validateAgentSubmitDiagnostics(&tuttigenerated.AgentSubmitDiagnostics{UiMode: &mode}); err != nil {
+			t.Fatalf("valid uiMode %q rejected: %v", mode, err)
+		}
 	}
 }
 

@@ -31,8 +31,11 @@ package agentruntime
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"strings"
 
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
@@ -51,6 +54,7 @@ const (
 )
 
 const cursorPluginDirEnv = "TUTTI_CURSOR_PLUGIN_DIR"
+const cursorPromptContextFileEnv = "TUTTI_CURSOR_PROMPT_CONTEXT_FILE"
 
 // cursorACPModeID maps Tutti permission tiers onto Cursor's ACP session
 // modes (switched via session/set_mode). Approval strictness within "agent"
@@ -104,6 +108,18 @@ func hasCursorPluginDirArg(command []string) bool {
 	return false
 }
 
+func cursorACPInitialPromptContext(session Session) (string, error) {
+	path := strings.TrimSpace(sessionEnvValue(session.Env, cursorPromptContextFileEnv))
+	if path == "" {
+		return "", nil
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return "", fmt.Errorf("read cursor initial prompt context: %w", err)
+	}
+	return strings.TrimSpace(string(content)), nil
+}
+
 func NewCursorAdapter(transport ProcessTransport) *standardACPAdapter {
 	return NewCursorAdapterWithHostMetadata(transport, LegacyHostMetadata())
 }
@@ -124,12 +140,30 @@ func newCursorAdapterFromProviderDescriptor(
 ) *standardACPAdapter {
 	adapter := newStandardACPAdapterFromProviderDescriptor(descriptor, transport, host, commandResolver)
 	adapter.config.commandWithSettings = cursorACPCommandWithPluginDir
+	adapter.config.initialPromptContext = cursorACPInitialPromptContext
 	adapter.config.automaticPermissionDecision = cursorAutoApprovePermissionDecision
 	adapter.config.autoContinueRetriableTurnError = true
 	adapter.config.messageDiagnostics = &standardACPMessageDiagnostics{
 		method:         cursorACPMethodTask,
 		observeMessage: logCursorACPTaskExtension,
 		observeUpdate:  logCursorACPTaskToolUpdate,
+	}
+	adapter.config.providerMessageHandler = func(
+		ctx context.Context,
+		client *acpClient,
+		session Session,
+		turnID string,
+		message acpMessage,
+		normalizer *acpTurnNormalizer,
+		emit EventSink,
+	) ([]activityshared.Event, bool, error) {
+		switch message.Method {
+		case cursorACPMethodAskQuestion, cursorACPMethodCreatePlan:
+			events, err := adapter.handleCursorInteractiveMessage(ctx, client, session, turnID, message, normalizer, emit)
+			return events, true, err
+		default:
+			return nil, false, nil
+		}
 	}
 	return adapter
 }

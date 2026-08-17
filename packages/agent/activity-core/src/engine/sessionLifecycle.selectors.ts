@@ -506,11 +506,6 @@ export function selectAllWorkspaceAgentConsumerSessions(
       activeTurn,
       displayStatus: displayStatusFromCanonicalState({
         activeTurn,
-        initialActivationTurnPending: initialActivationTurnIsPending(
-          state,
-          session.agentSessionId,
-          latestTurn
-        ),
         latestTurn,
         pendingInteractions,
         runtimeActivity:
@@ -538,11 +533,6 @@ export function selectWorkspaceAgentConsumerSession(
     activeTurn,
     displayStatus: displayStatusFromCanonicalState({
       activeTurn,
-      initialActivationTurnPending: initialActivationTurnIsPending(
-        state,
-        id,
-        latestTurn
-      ),
       latestTurn,
       pendingInteractions,
       runtimeActivity: state.sessionLifecycle.operationBySessionId[id] ?? null
@@ -567,7 +557,6 @@ export function selectWorkspaceAgentConsumerCounts(
 
 function displayStatusFromCanonicalState(state: {
   activeTurn: AgentActivityTurn | null;
-  initialActivationTurnPending: boolean;
   latestTurn: AgentActivityTurn | null;
   pendingInteractions: readonly AgentActivityInteraction[];
   runtimeActivity: SessionOperationState | null;
@@ -577,9 +566,7 @@ function displayStatusFromCanonicalState(state: {
     return state.activeTurn.phase === "waiting" ? "waiting" : "working";
   }
   if (runtimeActivityCanOverrideCanonicalTurn(state)) return "working";
-  if (!state.latestTurn) {
-    return state.initialActivationTurnPending ? "working" : "idle";
-  }
+  if (!state.latestTurn) return "idle";
   if (state.latestTurn.phase !== "settled") return "idle";
   switch (state.latestTurn.outcome) {
     case "failed":
@@ -607,20 +594,6 @@ function runtimeActivityCanOverrideCanonicalTurn(state: {
   return (
     state.runtimeActivity.runtimeActivityOccurredAtUnixMs >
     canonicalTerminalAtUnixMs
-  );
-}
-
-function initialActivationTurnIsPending(
-  state: AgentSessionEngineStateBase,
-  agentSessionId: string,
-  latestTurn: AgentActivityTurn | null
-): boolean {
-  if (latestTurn) return false;
-  const activation = selectLatestActivationForSession(state, agentSessionId);
-  return (
-    activation?.mode === "new" &&
-    activation.initialTurnExpected &&
-    isPendingActivationViable(activation)
   );
 }
 

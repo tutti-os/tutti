@@ -6,6 +6,7 @@ import (
 )
 
 type scriptedAppServerResponder interface {
+	Close() error
 	sendJSON(map[string]any)
 	sendJSONBatch(...map[string]any)
 	notify(string, map[string]any)

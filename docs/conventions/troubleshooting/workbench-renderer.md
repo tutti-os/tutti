@@ -2,6 +2,32 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Renderer Vite cannot resolve a workspace package subpath
+
+- Symptom:
+  The Electron development overlay reports
+  `[plugin:vite:import-analysis] Failed to resolve import` for a public
+  workspace package subpath, while Node can import that same subpath and its
+  package `exports` entry exists.
+- Quick checks:
+  Inspect `apps/desktop/electron.vite.config.ts` for a source alias on the
+  package root, then compare its explicit child aliases with the import that
+  failed. A string root alias also matches subpath prefixes, so Vite may rewrite
+  `@scope/package/feature` as `src/index.ts/feature` before package exports can
+  resolve it.
+- Root cause:
+  The public child entry is missing from a consumer alias map that already
+  redirects the package root to a source file.
+- Fix:
+  Add the public child entry to the Electron Vite alias map before the
+  package-root alias and add the matching source path to
+  `apps/desktop/tsconfig.json`. Keep the package's `exports` and
+  `publishConfig.exports` declarations aligned; do not bypass the public
+  subpath with a consumer-relative source import.
+- Validation:
+  Run the desktop renderer build, which exercises Vite import analysis for
+  every entry, including secondary windows such as screenshot capture.
+
 ### Tabbed standalone Browser remains blank with a cold lifecycle
 
 - Symptom:
@@ -32,6 +58,38 @@
   [eventScope.ts](../../../packages/browser/workbench-node/src/core/eventScope.ts)
   [standaloneAgentToolWorkbench.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/standaloneAgentToolWorkbench.ts)
   [browser-node-package.md](../../architecture/browser-node-package.md)
+
+### Final Browser tab close leaves the Workbench window open
+
+- Symptom:
+  A Browser Workbench node has one tab. Its tab close control is visible, but
+  clicking it leaves the Browser window open. The native Workbench close
+  control may still work.
+- Quick checks:
+  Inspect the callbacks passed to `BrowserNodeWorkbenchHeader`. Confirm that
+  the final-tab callback reaches `windowActions.close()` and is not implemented
+  as `BrowserNodeHostApi.close({ nodeId: surfaceNodeId })`. The Workbench node ID
+  is a parent surface ID; registered Browser guests use `:tab:*` child IDs.
+- Root cause:
+  Browser guest cleanup and Workbench surface closure are different lifecycle
+  boundaries. Closing a parent ID through the Browser host API emits a guest
+  close event but cannot remove the Workbench node. The native window control
+  can mask this mismatch because its own click handler separately closes the
+  Workbench window, while the final-tab control has no such fallback.
+- Fix:
+  Keep the native action and final-tab request separate. Bind the dedicated
+  final-tab request to `windowActions.close()` and let Browser tab-surface lease
+  release close the remaining child guests after unmount. Do not add a second
+  Workbench close call to the native control's capture path.
+- Validation:
+  Exercise the Browser Workbench close-request adapter and assert that its
+  final-tab request runs the Workbench close action exactly once. Keep the
+  package tab intent tests to prove that the dedicated Workbench request wins
+  while the ordinary standalone-host callback remains a supported fallback.
+- References:
+  [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
+  [Browser Workbench adapter](../../../packages/browser/workbench-node/src/workbench/index.ts)
+  [Browser Workbench adapter test](../../../packages/browser/workbench-node/src/workbench/browserNodeCloseRequests.test.ts)
 
 ### Inline custom-header menu is clipped to the Workbench title bar
 
@@ -66,6 +124,40 @@
   [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
   [workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
   [browser-node-package.md](../../architecture/browser-node-package.md)
+
+### Overflowing custom header widens the Workbench body
+
+- Symptom:
+  A resizable Workbench node remains visually inside its frame, but after a
+  custom header gains enough non-wrapping content, its body and embedded
+  webview retain a much wider layout viewport. Narrowing the node clips the
+  page instead of triggering its responsive layout.
+- Quick checks:
+  Compare the bounding widths of `.workbench-window`,
+  `.workbench-window__header--custom`, and `.workbench-window__body`, then
+  inspect the computed Grid columns. If the outer window keeps its saved width
+  while the implicit column, header, and body all resolve wider, trace the
+  header's min-content contribution rather than changing the webview width.
+- Root cause:
+  A Grid that defines only rows leaves its single implicit column sized as
+  `auto`. A custom header with `overflow: visible` retains a content-based
+  automatic minimum, so non-wrapping tabs or controls can enlarge that column.
+  The body shares the enlarged track, and a `width: 100%` webview then receives
+  the wrong layout viewport even though the outer window clips the result.
+- Fix:
+  Define the Workbench window's single column as `minmax(0, 1fr)`. Keep the
+  header's intentional visible overflow for inline overlays; the explicit
+  zero-minimum track prevents horizontal min-content from resizing the shared
+  body column. Adding `min-width: 0` only inside the custom header does not
+  change the Grid item's automatic minimum contribution.
+- Validation:
+  Open enough fixed-minimum-width tabs to overflow a Browser node, then resize
+  the node narrower and wider. Confirm the tab list scrolls, the header and
+  body widths remain equal to the Workbench frame, and the guest page responds
+  to each available width instead of being clipped at its previous viewport.
+- References:
+  [workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
+  [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
 
 ### Standalone Agent dev window stays black during cold startup
 
@@ -627,14 +719,23 @@
   revision.
 - Fix:
   Keep native capture as the foreground high-fidelity path. Background and
-  minimized popup nodes reuse only a successful memory or persistent image;
-  they do not request a fresh DOM snapshot. Keep an unavailable result local to
-  the mounted popup so reopening can retry after the node becomes foreground.
-  Show a static terminal placeholder instead of a loading skeleton when no
-  successful image exists.
+  minimized popup nodes first reuse a successful memory or persistent image.
+  Treat the bounded Dock PNG as one Node-level latest artifact shared by popup
+  and minimize capture: read shared memory first, then read the unrevisioned
+  persistent latest identity and exact revision in parallel. Prefer the shared
+  latest entry and promote an exact-revision fallback when used. If those
+  sources miss, serialize DOM-cloned snapshots for non-minimized background
+  nodes, yield the renderer task queue between clones, deduplicate them by
+  preview identity and revision, and write successful images to the one
+  shared-latest identity. Keep the full-resolution Genie animation texture
+  separate. Do not DOM-capture minimized nodes because their content may be
+  unhydrated. Keep an unavailable result local to the mounted popup so reopening
+  can retry after the node becomes foreground. Show a static terminal
+  placeholder instead of a loading skeleton when no successful image exists.
 - Validation:
-  Cover native-null plus persisted-cache success, assert that background DOM
-  capture is not called, and reopen the popup to prove that a prior unavailable
+  Cover native-null plus exact-cache promotion, shared memory and unrevisioned
+  persisted-cache reuse before DOM capture, single shared-latest writes after
+  memory or DOM success, and reopen the popup to prove that a prior unavailable
   result does not block a later successful capture.
 - References:
   [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)
@@ -1157,3 +1258,139 @@
   [snapshotLayout.ts](../../../packages/workbench/surface/src/core/snapshotLayout.ts)
   [session.ts](../../../packages/workbench/surface/src/host/session.ts)
   [reducer.ts](../../../packages/workbench/surface/src/core/reducer.ts)
+
+### Hidden workspace owner loads but its first IPC request times out
+
+- Symptom:
+  A launcher creates a hidden standalone workspace or Agent window and Electron
+  reports `did-finish-load`, but the first request to the renderer times out.
+  Repeated launcher shortcuts may appear inert while the temporary surface is
+  still waiting on that request.
+- Quick checks:
+  Compare the hidden window's load/ready timestamps with registration of the
+  React/preload request handler. A fixed timeout after `did-finish-load` with no
+  matching renderer response indicates that the request was sent before the
+  application handler existed, not that the daemon or Agent provider was slow.
+- Root cause:
+  Browser-window load readiness is a document boundary, while the request owner
+  is installed later by a React effect. IPC delivery is not replayed for a
+  listener registered after the message, so a one-shot request can be lost.
+- Fix:
+  Have the preload announce readiness only after installing the request
+  listener, clear readiness when it detaches, reloads, crashes, or is destroyed,
+  and make the main-process caller await that signal before sending. Do not use
+  sleeps or `did-finish-load` as a substitute for capability readiness.
+- Validation:
+  Assert that a pending main-process request remains blocked before the ready
+  signal, proceeds afterward, and returns to pending when the listener detaches
+  or the renderer reloads. Cover StrictMode's setup/cleanup replay so a listener
+  removed in the same turn never announces stale readiness.
+- References:
+  [workspaceAppRendererReadiness.ts](../../../apps/desktop/src/main/ipc/workspaceAppRendererReadiness.ts)
+  [workspaceAppExternal.ts](../../../apps/desktop/src/preload/api/workspaceAppExternal.ts)
+
+### Embedded Composer loses model controls or locks the whole draft while options load
+
+- Symptom:
+  A launch surface built from Quick Composer has no model or reasoning control,
+  or loading those options disables prompt editing, attachments, and project
+  selection together with send.
+- Quick checks:
+  Inspect the exact target/project composer-options response at the host
+  boundary. If it contains models and reasoning but Quick Composer receives
+  only a reduced image-capability flag, the adapter discarded presentation
+  authority. If the response is pending and `presentationEditorDisabled` is
+  true, loading was promoted into the whole-draft gate.
+- Root cause:
+  Quick Composer intentionally owns no option-loading lifecycle. A host that
+  drops `AgentActivityComposerOptions` must fabricate an empty settings VM, and
+  a host that maps its refresh flag to the top-level `disabled` prop also locks
+  unrelated canonical Composer controls.
+- Fix:
+  Pass authoritative options, controlled sparse draft settings, their change
+  callback, and the loading flag as one all-or-nothing Quick Composer
+  capability. Reuse the canonical Composer settings projection and menus, and
+  expose only fields the embedding activation adapter preserves. During
+  refresh, disable settings controls and submit only; reserve the whole-draft
+  disabled gate for an actual host-level lock.
+- Validation:
+  Cover visible model and reasoning values, settings patch delivery, editable
+  rich text and references during refresh, and disabled settings/send controls.
+- References:
+  [AgentGUIQuickComposer.tsx](../../../packages/agent/gui/AgentGUIQuickComposer.tsx)
+  [DesktopCaptureWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/capture/DesktopCaptureWindow.tsx)
+
+### Screenshot selection appears stuck and later opens duplicate floating Composers
+
+- Symptom:
+  The first valid screenshot region remains on the full-screen selector for
+  several seconds. Retrying the shortcut or selection eventually produces two
+  compact capture windows.
+- Quick checks:
+  Correlate `screenshot shortcut activated`, `screenshot selection requested`,
+  `screenshot composer presented`, and `screenshot composer metadata ready` by
+  `captureId`. One selection request followed by a long
+  `agent.composer_options.load` proves that pointer delivery succeeded and the
+  native transition was incorrectly coupled to metadata. Two different IDs
+  reaching presentation prove a cross-capture lifecycle race; repeated requests
+  for one ID are an input single-flight failure. If the Composer appears only
+  after Escape, verify that `composer presented` includes
+  `fullscreenExit: "event"`; logging presentation before that native event is a
+  false-positive lifecycle boundary.
+- Root cause:
+  The selector renderer waited for a selection IPC response, while Main waited
+  for workspace-owned Agent metadata before leaving native full-screen. A user
+  retry could create or revive another capture while the old asynchronous
+  continuation had no active-window identity fence. Input coalescing alone
+  cannot prevent that older continuation from presenting late. Independently,
+  macOS simple-fullscreen exit is asynchronous: setting it to false and then
+  immediately applying compact bounds leaves those bounds suppressed until the
+  native transition completes, which an Escape key can accidentally trigger.
+- Fix:
+  Enter a compact preparing stage on the first valid pointer-up and perform the
+  native full-screen-to-floating transition before awaiting metadata. Give each
+  capture a unique ID, coalesce selection within that capture, reuse a visible
+  active capture on repeated shortcuts, and require every asynchronous window
+  continuation to prove it still owns the active live capture. Destroying or
+  replacing a capture must invalidate that proof. On macOS, wait for the
+  `leave-full-screen` event before applying compact bounds; do not treat the
+  synchronous setter call or immediate fullscreen getter as completion.
+- Validation:
+  Defer composer metadata and assert that native presentation occurs first.
+  Supersede the capture both during the native transition and while metadata is
+  pending, and assert that neither path can continue. At runtime, one shortcut
+  and one selection should log one ID in the order `selection requested` →
+  `composer presented` → `composer metadata ready`, with presentation reporting
+  `fullscreenExit: "event"` on macOS.
+- References:
+  [captureSelectionTransition.ts](../../../apps/desktop/src/main/capture/captureSelectionTransition.ts)
+  [desktopCaptureService.ts](../../../apps/desktop/src/main/capture/desktopCaptureService.ts)
+  [desktopCaptureWindowController.ts](../../../apps/desktop/src/renderer/src/app/windows/capture/desktopCaptureWindowController.ts)
+
+### Frameless capture close action is inert and the next shortcut appears stuck
+
+- Symptom:
+  The floating capture Composer ignores its close button and Escape. A later
+  global shortcut may focus nothing or appear to do no work.
+- Quick checks:
+  Inspect Electron app-region ownership around the close control and record
+  keydown listeners in capture and bubble phases. Then inspect whether the main
+  process marked the active capture `closing` without receiving `closed`.
+- Root cause:
+  Native drag-region hit testing can consume a descendant action before React,
+  while portaled dropdowns can consume a bubble-phase Escape first. If
+  cancellation then uses a preventable close path, the main process can retain
+  a live window already marked as closing.
+- Fix:
+  Make the expanding title strip the drag region and keep close as a sibling
+  no-drag action. Observe Escape at the window capture phase. Destroy the
+  ephemeral capture BrowserWindow on cancellation, clear ownership from its
+  `closed` event, and replace any closing, destroyed, or hidden window on the
+  next shortcut.
+- Validation:
+  Verify close and Escape with model, Agent, project, and mention portals open,
+  then invoke the global shortcut again and confirm a new capture window owns
+  the request.
+- References:
+  [DesktopCaptureWindow.tsx](../../../apps/desktop/src/renderer/src/app/windows/capture/DesktopCaptureWindow.tsx)
+  [desktopCaptureService.ts](../../../apps/desktop/src/main/capture/desktopCaptureService.ts)

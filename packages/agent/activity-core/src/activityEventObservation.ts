@@ -7,7 +7,7 @@ import type { SessionActivityObservedIntent } from "./engine/sessionReconcile.ty
 
 type ObservableAgentActivityUpdatedEvent = Exclude<
   AgentActivityUpdatedEvent,
-  { eventType: "message_delta" | "session_deleted" }
+  { eventType: "message_delta" | "session_deleted" | "session_restored" }
 >;
 
 export interface InlineMessageVersionContinuity {

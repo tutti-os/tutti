@@ -55,11 +55,13 @@ const MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT = 20;
 const MESSAGE_CENTER_SUMMARY_PREFETCH_ITEM_LIMIT = 12;
 const MESSAGE_CENTER_VISIBLE_HISTORY_MS = 7 * 24 * 60 * 60 * 1000;
 export function WorkspaceAgentMessageCenterAction({
+  drawerTopInsetPx,
   launchNode,
   open,
   setOpen,
   workspace
 }: {
+  drawerTopInsetPx?: number;
   launchNode?: WorkbenchHostChromeRenderContext["launchNode"];
   open: boolean;
   setOpen: (nextOpen: boolean) => void;
@@ -435,6 +437,7 @@ export function WorkspaceAgentMessageCenterAction({
         open={open}
         model={model}
         highlightedItemId={highlightedMessageCenterItemId}
+        drawerTopInsetPx={drawerTopInsetPx}
         onClose={closeMessageCenter}
         onHighlightedItemSettled={handleHighlightedMessageCenterItemSettled}
         onLinkAction={handleLinkAction}

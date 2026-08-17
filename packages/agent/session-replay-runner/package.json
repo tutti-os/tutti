@@ -1,0 +1,66 @@
+{
+  "name": "@tutti-os/agent-session-replay-runner",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "description": "Product-neutral Agent Session Replay JS runner kernel.",
+  "exports": {
+    ".": "./src/index.mjs",
+    "./cassette": "./src/cassette.mjs",
+    "./cassette-policy": "./src/cassette-policy.mjs",
+    "./checkpoint-plan": "./src/checkpoint-plan.mjs",
+    "./evidence-helpers": "./src/evidence-helpers.mjs",
+    "./managed-log-prefixes": "./src/managed-log-prefixes.mjs",
+    "./managed-shutdown": "./src/managed-shutdown.mjs",
+    "./playback-controller": "./src/playback-controller.mjs",
+    "./playback-helpers": "./src/playback-helpers.mjs",
+    "./product-ports": "./src/product-ports.mjs",
+    "./recording": "./src/recording.mjs",
+    "./replay-stimuli": "./src/replay-stimuli.mjs",
+    "./serial-queue": "./src/serial-queue.mjs",
+    "./stimulus": "./src/stimulus.mjs",
+    "./turn-freshness": "./src/turn-freshness.mjs",
+    "./turn-identity-tracker": "./src/turn-identity-tracker.mjs",
+    "./wait-diagnostics": "./src/wait-diagnostics.mjs"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node ./scripts/build.mjs",
+    "test": "node --test \"./src/**/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/agent/session-replay-runner"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": "./dist/index.mjs",
+      "./activity-contract.json": "./dist/activity-contract.json",
+      "./cassette-policy.json": "./dist/cassette-policy.json",
+      "./cassette": "./dist/cassette.mjs",
+      "./cassette-policy": "./dist/cassette-policy.mjs",
+      "./checkpoint-plan": "./dist/checkpoint-plan.mjs",
+      "./evidence-helpers": "./dist/evidence-helpers.mjs",
+      "./managed-log-prefixes": "./dist/managed-log-prefixes.mjs",
+      "./managed-shutdown": "./dist/managed-shutdown.mjs",
+      "./playback-controller": "./dist/playback-controller.mjs",
+      "./playback-helpers": "./dist/playback-helpers.mjs",
+      "./product-ports": "./dist/product-ports.mjs",
+      "./recording": "./dist/recording.mjs",
+      "./replay-stimuli": "./dist/replay-stimuli.mjs",
+      "./serial-queue": "./dist/serial-queue.mjs",
+      "./stimulus": "./dist/stimulus.mjs",
+      "./turn-freshness": "./dist/turn-freshness.mjs",
+      "./turn-identity-tracker": "./dist/turn-identity-tracker.mjs",
+      "./wait-diagnostics": "./dist/wait-diagnostics.mjs"
+    }
+  }
+}

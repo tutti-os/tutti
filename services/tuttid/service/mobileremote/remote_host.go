@@ -12,13 +12,14 @@ import (
 
 	devicelink "github.com/tutti-os/tutti/packages/device-link"
 	authenticatedlink "github.com/tutti-os/tutti/packages/device-link/authenticated"
+	"github.com/tutti-os/tutti/packages/device-link/candidateexchange"
 	"github.com/tutti-os/tutti/packages/device-link/linkmanager"
 	mobileremotebiz "github.com/tutti-os/tutti/services/tuttid/biz/mobileremote"
 )
 
 const (
 	defaultRemotePollInterval  = 2 * time.Second
-	remoteCallerSettleFallback = 1 * time.Second
+	remoteCallerSettleFallback = 500 * time.Millisecond
 	deviceLinkProtocolVersion  = 2
 	mobileRemoteRelayDriver    = "mobile-remote"
 )
@@ -536,11 +537,11 @@ func (s *Service) serveRemoteAttempt(
 	pairingID string,
 	attempt DeviceLinkAttempt,
 ) {
-	handshakeCtx := ctx
-	cancelHandshake := func() {}
-	if deadline, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(attempt.ExpiresAt)); err == nil {
-		handshakeCtx, cancelHandshake = context.WithDeadline(ctx, deadline)
+	deadline, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(attempt.ExpiresAt))
+	if err != nil {
+		return
 	}
+	handshakeCtx, cancelHandshake := context.WithDeadline(ctx, deadline)
 	defer cancelHandshake()
 	s.remoteHost.mu.Lock()
 	manager := s.remoteHost.linkManager
@@ -566,7 +567,10 @@ func (s *Service) serveRemoteAttempt(
 			_ = participant.Close()
 		}
 	}()
-	description, err := participant.LocalDescription(handshakeCtx)
+	exchange, description, err := candidateexchange.Start(
+		participant,
+		candidateexchange.Config{},
+	)
 	if err != nil {
 		return
 	}
@@ -574,6 +578,10 @@ func (s *Service) serveRemoteAttempt(
 		identity.PrivateKey,
 		deviceLinkProof("update", pairingID, attempt.AttemptID, description.Fingerprint),
 	)
+	var callerWakeVersion uint64
+	if wake := s.remoteAttemptWake(); wake != nil {
+		callerWakeVersion = wake.Version(attempt.AttemptID)
+	}
 	participantStartedAt := time.Now()
 	updated, err := s.ControlPlane.UpdateDeviceLinkParticipant(
 		handshakeCtx, cookie, pairingID, attempt.AttemptID, identity.DeviceID,
@@ -587,7 +595,14 @@ func (s *Service) serveRemoteAttempt(
 			IdentitySignature: signature,
 		},
 	)
-	if err != nil || updated.State != "ready" {
+	if err == nil {
+		err = validateOwnerCandidatePublication(
+			updated,
+			attempt.AttemptID,
+			description,
+		)
+	}
+	if err != nil {
 		s.recordRemoteAttempt(RemoteAttemptEvent{
 			AttemptID: attempt.AttemptID, PairingID: pairingID,
 			Stage: "owner_participant", Outcome: "failed",
@@ -604,6 +619,19 @@ func (s *Service) serveRemoteAttempt(
 	if peer == nil {
 		return
 	}
+	stopCandidateExchange := s.runRemoteCandidateExchange(
+		handshakeCtx,
+		cookie,
+		identity,
+		pairingID,
+		attempt.AttemptID,
+		updated.CallerFingerprint,
+		*peer,
+		callerWakeVersion,
+		exchange,
+		cancelHandshake,
+	)
+	defer stopCandidateExchange()
 	connectStartedAt := time.Now()
 	link, err := participant.Connect(handshakeCtx, authenticatedlink.Description{
 		Fingerprint: updated.CallerFingerprint,

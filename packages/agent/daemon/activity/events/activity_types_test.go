@@ -143,7 +143,7 @@ func TestMessageEventRequiresStableEventIDAndRole(t *testing.T) {
 		Provider:          ProviderClaudeCode,
 		ProviderSessionID: "claude-session",
 		OccurredAtUnixMS:  1710000000456,
-	}, MessageRoleAssistant, "done")
+	}, MessageRoleAssistant, "done", true)
 
 	if event.EventID != "event-1" {
 		t.Fatalf("event id = %q", event.EventID)
@@ -156,6 +156,39 @@ func TestMessageEventRequiresStableEventIDAndRole(t *testing.T) {
 	}
 	if event.Payload.Content != "done" {
 		t.Fatalf("content = %q", event.Payload.Content)
+	}
+	if !event.Payload.Semantics.UserVisibleAssistantResponse {
+		t.Fatal("user-visible assistant response classification was not preserved")
+	}
+}
+
+func TestBestEffortErrorCodePrefersStructuredProviderCode(t *testing.T) {
+	t.Parallel()
+
+	payload := EventPayload{
+		Metadata: map[string]any{
+			"errorCode": " quota_or_rate_limit ",
+			"error":     map[string]any{"code": "nested_code"},
+		},
+		Error: map[string]any{"code": "fallback_code"},
+	}
+	if got := BestEffortErrorCode(payload); got != "quota_or_rate_limit" {
+		t.Fatalf("BestEffortErrorCode() = %q, want quota_or_rate_limit", got)
+	}
+}
+
+func TestBestEffortErrorCodeReadsNestedAndPayloadErrors(t *testing.T) {
+	t.Parallel()
+
+	for name, payload := range map[string]EventPayload{
+		"nested metadata": {Metadata: map[string]any{"error": map[string]any{"error_code": "auth_required"}}},
+		"payload error":   {Error: map[string]any{"code": "request_timed_out"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := BestEffortErrorCode(payload); got == "" {
+				t.Fatalf("BestEffortErrorCode(%s) is empty", name)
+			}
+		})
 	}
 }
 
@@ -172,11 +205,11 @@ func TestContextEventBuildersCreateMessagesAndCompactCalls(t *testing.T) {
 		OccurredAtUnixMS:  1710000000123,
 	}
 
-	message := NewContextMessage(ctx, MessageRoleAssistant, "done")
+	message := NewContextMessage(ctx, MessageRoleAssistant, "done", true)
 	if message.Type != EventMessageCreated || message.EventID != "event-1" {
 		t.Fatalf("message event = %#v", message)
 	}
-	if message.Payload.Role != MessageRoleAssistant || message.Payload.Content != "done" || message.Payload.TurnID != "turn-1" {
+	if message.Payload.Role != MessageRoleAssistant || message.Payload.Content != "done" || message.Payload.TurnID != "turn-1" || !message.Payload.Semantics.UserVisibleAssistantResponse {
 		t.Fatalf("message payload = %#v", message.Payload)
 	}
 

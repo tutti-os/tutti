@@ -58,6 +58,22 @@ func (s *SQLiteWorkspaceStore) GetSession(ctx context.Context, workspaceID, sess
 	return store.GetSession(ctx, workspaceID, sessionID)
 }
 
+// GetSessionAndTurn preserves the SQLite snapshot boundary through the
+// workspace-routing Host adapter. Shared Agent live projections must not fall
+// back to independent Session and Turn reads at a terminal transition.
+func (s *SQLiteWorkspaceStore) GetSessionAndTurn(
+	ctx context.Context,
+	workspaceID string,
+	sessionID string,
+	turnID string,
+) (storesqlite.Session, storesqlite.Turn, bool, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return storesqlite.Session{}, storesqlite.Turn{}, false, err
+	}
+	return store.GetSessionAndTurn(ctx, workspaceID, sessionID, turnID)
+}
+
 func (s *SQLiteWorkspaceStore) GetSessionForkSource(
 	ctx context.Context,
 	workspaceID, sourceSessionID string,
@@ -347,27 +363,28 @@ func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, inp
 	}
 	result, err := store.ReportActivityState(ctx, storesqlite.ActivityStateReport{
 		Session: storesqlite.SessionStateReport{
-			WorkspaceID:       workspaceID,
-			AgentSessionID:    sessionID,
-			Kind:              storesqlite.SessionKindRoot,
-			Origin:            canonicalRuntimeSessionOrigin,
-			UserID:            userID,
-			AgentTargetID:     strings.TrimSpace(session.AgentTargetID),
-			Provider:          strings.TrimSpace(session.Provider),
-			ProviderSessionID: strings.TrimSpace(session.ProviderSessionID),
-			Model:             composerSettingsModel(session.Settings),
-			Settings:          composerSettingsPayload(session.Settings),
-			Capabilities:      canonical.CloneCapabilitySnapshot(session.Capabilities),
-			RuntimeContext:    runtimeContext,
-			Cwd:               strings.TrimSpace(session.Cwd),
-			RailPlacement:     railPlacement,
-			Title:             strings.TrimSpace(session.Title),
-			Status:            runtimeLifecycleStatus(session.Status),
-			CurrentPhase:      runtimeLifecyclePhase(session.Status),
-			LastError:         strings.TrimSpace(session.LastError),
-			OccurredAtUnixMS:  occurredAt,
-			StartedAtUnixMS:   session.CreatedAtUnixMS,
-			CreatedAtUnixMS:   session.CreatedAtUnixMS,
+			WorkspaceID:                workspaceID,
+			AgentSessionID:             sessionID,
+			Kind:                       storesqlite.SessionKindRoot,
+			Origin:                     canonicalRuntimeSessionOrigin,
+			UserID:                     userID,
+			AgentTargetID:              strings.TrimSpace(session.AgentTargetID),
+			Provider:                   strings.TrimSpace(session.Provider),
+			ProviderSessionID:          strings.TrimSpace(session.ProviderSessionID),
+			Model:                      composerSettingsModel(session.Settings),
+			Settings:                   composerSettingsPayload(session.Settings),
+			Capabilities:               canonical.CloneCapabilitySnapshot(session.Capabilities),
+			RuntimeContext:             runtimeContext,
+			Cwd:                        strings.TrimSpace(session.Cwd),
+			RailPlacement:              railPlacement,
+			RailPlacementAuthoritative: input.RailPlacementAuthoritative,
+			Title:                      strings.TrimSpace(session.Title),
+			Status:                     runtimeLifecycleStatus(session.Status),
+			CurrentPhase:               runtimeLifecyclePhase(session.Status),
+			LastError:                  strings.TrimSpace(session.LastError),
+			OccurredAtUnixMS:           occurredAt,
+			StartedAtUnixMS:            session.CreatedAtUnixMS,
+			CreatedAtUnixMS:            session.CreatedAtUnixMS,
 		},
 	})
 	if err != nil {
@@ -392,6 +409,71 @@ func (s *SQLiteWorkspaceStore) InitializeRuntimeSession(ctx context.Context, inp
 		return storesqlite.Session{}, errors.New("initialized agent session was not persisted")
 	}
 	return persisted, nil
+}
+
+func (s *SQLiteWorkspaceStore) ResolveRuntimeSessionRailPlacement(
+	ctx context.Context,
+	input ResolveRuntimeSessionRailPlacementInput,
+) (*RailPlacement, error) {
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return nil, ErrInvalidArgument
+	}
+	requested, err := normalizeRailPlacement(input.RailPlacement)
+	if err != nil {
+		return nil, err
+	}
+	input.RailPlacement = requested
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	var explicit *storesqlite.RailSection
+	if input.RailPlacement != nil {
+		explicit = &storesqlite.RailSection{
+			Kind:        string(input.RailPlacement.Kind),
+			ProjectPath: input.RailPlacement.ProjectPath,
+			Key:         input.RailPlacement.SectionKey,
+		}
+	}
+	section, err := store.ResolveAgentSessionRailSection(ctx, storesqlite.ResolveAgentSessionRailSectionInput{
+		WorkspaceID:                    workspaceID,
+		AgentSessionID:                 agentSessionID,
+		Cwd:                            input.Cwd,
+		RuntimeContext:                 cloneStringAnyMap(input.RuntimeContext),
+		ExplicitPlacement:              explicit,
+		ExplicitPlacementAuthoritative: input.RailPlacementAuthoritative,
+	})
+	if err != nil {
+		if errors.Is(err, storesqlite.ErrRailSectionConflict) {
+			return nil, fmt.Errorf("%w: %v", ErrRailPlacementConflict, err)
+		}
+		return nil, err
+	}
+	resolved, err := normalizeRailPlacement(&RailPlacement{
+		Version:     RailPlacementVersion,
+		Kind:        RailPlacementKind(section.Kind),
+		ProjectPath: section.ProjectPath,
+		SectionKey:  section.Key,
+	})
+	if err != nil {
+		return nil, err
+	}
+	if input.RailPlacement != nil && !railPlacementsEqual(input.RailPlacement, resolved) {
+		return nil, ErrRailPlacementConflict
+	}
+	return resolved, nil
+}
+
+func railPlacementsEqual(left, right *RailPlacement) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return left.Version == right.Version && left.Kind == right.Kind &&
+		storesqlite.AreProjectPathsEqual(left.ProjectPath, right.ProjectPath) &&
+		storesqlite.NormalizeRailSectionKey(left.SectionKey) ==
+			storesqlite.NormalizeRailSectionKey(right.SectionKey)
 }
 
 func (s *SQLiteWorkspaceStore) UpdateSessionTitle(ctx context.Context, workspaceID, sessionID, title string) (storesqlite.Session, bool, error) {

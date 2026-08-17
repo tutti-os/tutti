@@ -32,6 +32,7 @@ import {
   type DesktopIssueManagerAgentSessionCreator
 } from "./internal/adapters/desktopIssueManagerAgentRunner.ts";
 import { createDesktopIssueManagerBackend } from "./internal/adapters/desktopIssueManagerBackend.ts";
+import { createDesktopIssueManagerContextRefOpener } from "./internal/adapters/desktopIssueManagerContextRefOpener.ts";
 import { createDesktopIssueManagerEventSource } from "./internal/adapters/desktopIssueManagerEventSource.ts";
 import { createDesktopIssueManagerFileAdapter } from "./internal/adapters/desktopIssueManagerFileAdapter.ts";
 import { createDesktopIssueManagerIdentityAdapter } from "./internal/adapters/desktopIssueManagerIdentityAdapter.ts";
@@ -46,6 +47,7 @@ export function createDesktopIssueManagerFeature(input: {
   modelPlanOptions?: IssueManagerModelPlanOptionsAdapter;
   agentSessionCreator?: DesktopIssueManagerAgentSessionCreator;
   hostFilesApi: DesktopHostFilesApi;
+  hostOs: NodeJS.Platform;
   i18n: I18nRuntime<string>;
   eventStreamClient?: TuttidEventStreamClient;
   launchAgentGui?: (
@@ -82,6 +84,7 @@ export function createDesktopIssueManagerFeature(input: {
       createWorkspaceFileReferenceSource({
         adapter: workspaceFileReferenceAdapter,
         label: translate("workspace.referenceSources.localSourceLabel"),
+        os: input.hostOs,
         order: 0
       }),
       createAppArtifactReferenceSource({
@@ -127,6 +130,12 @@ export function createDesktopIssueManagerFeature(input: {
         }
       : undefined,
     backend: createDesktopIssueManagerBackend(input.tuttidClient),
+    contextRefOpener: createDesktopIssueManagerContextRefOpener({
+      fileAdapter,
+      hostFilesApi: input.hostFilesApi,
+      tuttidClient: input.tuttidClient,
+      workspaceId: input.workspaceId
+    }),
     eventSource: input.eventStreamClient
       ? createDesktopIssueManagerEventSource(input.eventStreamClient)
       : undefined,

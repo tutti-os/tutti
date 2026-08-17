@@ -382,18 +382,35 @@ session-level child summaries.
 
 - Cause: a child terminal did not trigger root-gate evaluation, or a later
   provider continuation opened without publishing its root-provider lifecycle.
+  In the Codex adapter, a child can outlive the root Turn. If its terminal
+  notification arrives after that root active-Turn emitter is detached, the
+  session-level handler must not discard the reduced child event or attach it
+  to a newer root Turn's emitter. A newly started client must also refresh the
+  live root provider-thread identity before routing that notification; the
+  startup Session snapshot predates `thread/start` and may not contain it.
   If provider logs contain `turn/completed` and the controller emits an event,
   but the root turn's persisted root-provider columns are empty, check that the
   runtime reportable-event filter includes both root-provider lifecycle event
   types; stream publication alone does not update durable state.
 - Fix: child terminal, exact child-cancel completion, and root-provider terminal
-  transitions all run the same durable root settlement check. The final
+  transitions all run the same durable root settlement check. The Codex
+  session-level handler refreshes the live root provider-thread identity and
+  compares each child event's canonical `rootTurnId` with the active root
+  Turn. Matching events stay on that Turn's emitter; detached events go through
+  the root runtime's Session event sink with an adapter lifecycle snapshot. The
+  Controller applies the same commit-before-publish barrier to terminal events
+  from that sink, so a child terminal is durable before consumers observe it.
+  It does not replay unrelated unowned root events. The final
   transition atomically clears the root active-turn pointer, emits the root turn
   update, and reconciles the controller's root runtime view. Root-provider
   lifecycle events must reach `services/tuttid` through the state-report path.
 - Validate: cover concurrent and nested children, failed children, and a later
-  root continuation. Child failure may remain visible without forcing root
-  failure.
+  root continuation. Complete the root first and deliver a child terminal
+  through the actual session-level transport handler both with no active root
+  Turn and while a newer root Turn is active. Assert that the child terminal
+  bypasses the newer emitter, reaches the Session event sink, waits for the
+  durable report before stream publication, and remains unpublished when that
+  report fails. Child failure may remain visible without forcing root failure.
 
 ### Provider terminal report replays a settled root as running
 
@@ -524,10 +541,13 @@ session-level child summaries.
 - Cause: deletion targeted only the selected session row instead of expanding
   its immutable parent tree.
 - Fix: resolve the selected session and every nested child in the deletion
-  transaction; tombstone the full tree and remove its turns, interactions, and
-  submit claims together.
+  transaction and tombstone the full tree with one deletion generation. Keep
+  its Turns, Interactions, submit claims, history, and Messages intact for
+  restore; terminalize only active work. Remove those rows only during the
+  separate permanent-purge transaction.
 - Validate: cover both single-session and batch deletion with a nested child
-  tree, and assert every descendant is tombstoned.
+  tree, assert every descendant receives the same tombstone, restore the exact
+  tree atomically, and verify legacy incomplete tombstones fail closed.
 
 ### Interactive response or exact-turn cancel succeeds but durable state stays pending
 

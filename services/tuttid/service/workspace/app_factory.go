@@ -123,6 +123,7 @@ type FixAppFactoryJobInput struct {
 type AppFactoryAgentTargetComposerOptionsInput struct {
 	AgentTargetID string
 	Locale        string
+	Section       agentservice.ComposerOptionsSection
 	Settings      agentservice.ComposerSettings
 }
 
@@ -203,13 +204,15 @@ func (s *AppFactoryService) GetAgentTargetComposerOptions(ctx context.Context, w
 	if err := os.MkdirAll(cwd, 0o755); err != nil {
 		return agentservice.ComposerOptions{}, fmt.Errorf("create app factory composer draft dir: %w", err)
 	}
-	includeCapabilityCatalog := false
+	includeCapabilityCatalog := input.Section == agentservice.ComposerOptionsSectionCapabilities ||
+		input.Section == agentservice.ComposerOptionsSectionConnectors
 	return s.AgentSessionService.GetComposerOptions(ctx, agentservice.ComposerOptionsInput{
 		AgentTargetID:            resolvedTarget.ID,
 		Cwd:                      cwd,
 		IncludeCapabilityCatalog: &includeCapabilityCatalog,
 		Locale:                   strings.TrimSpace(input.Locale),
 		Provider:                 resolvedTarget.Provider,
+		Section:                  input.Section,
 		Settings:                 input.Settings,
 		WorkspaceID:              strings.TrimSpace(workspaceID),
 	})

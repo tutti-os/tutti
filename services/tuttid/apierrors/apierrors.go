@@ -89,6 +89,7 @@ const (
 	ReasonWorkspaceFileNotFound                          = "workspace_file_not_found"
 	ReasonWorkspaceFileServiceUnavailable                = "workspace_file_service_unavailable"
 	ReasonWorkspaceAgentSessionNotFound                  = "workspace_agent_session_not_found"
+	ReasonWorkspaceAgentSessionNotRestorable             = "workspace_agent_session_not_restorable"
 	ReasonWorkspaceAgentSessionTitleTooLong              = "workspace_agent_session_title_too_long"
 	ReasonWorkspaceAgentSessionUnavailable               = "workspace_agent_session_service_unavailable"
 	ReasonUnsupportedPermissionModeID                    = "unsupported_permission_mode_id"
@@ -96,6 +97,7 @@ const (
 	ReasonAgentProviderUnavailable                       = "agent_provider_unavailable"
 	ReasonAgentRuntimeOperationReconciling               = "agent_runtime_operation_reconciling"
 	ReasonAgentRuntimeOperationFailed                    = "agent_runtime_operation_failed"
+	ReasonAgentInteractiveRequestStale                   = "agent_interactive_request_stale"
 	ReasonAgentActiveTurnTargetRequired                  = "agent.active_turn_target_required"
 	ReasonAgentActiveTurnTargetMismatch                  = "agent.active_turn_target_mismatch"
 	ReasonWorkspaceAppNotFound                           = "workspace_app_not_found"
@@ -112,6 +114,7 @@ const (
 	ReasonWorkspaceIssueResourceExists                   = "workspace_issue_resource_exists"
 	ReasonWorkspaceIssueRunNotFound                      = "workspace_issue_run_not_found"
 	ReasonWorkspaceIssueRunExists                        = "workspace_issue_run_already_exists"
+	ReasonWorkspaceIssueRunLaunchPending                 = "workspace_issue_run_launch_pending"
 	ReasonWorkspaceIssueServiceUnavailable               = "workspace_issue_service_unavailable"
 	ReasonWorkspaceIssueTaskExists                       = "workspace_issue_task_already_exists"
 	ReasonWorkspaceIssueTaskNotFound                     = "workspace_issue_task_not_found"
@@ -298,6 +301,28 @@ func WorkspaceOperationFailed(options ...Option) *ProtocolError {
 	return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, ReasonWorkspaceOperationFailed, options...)
 }
 
+func AgentInteractiveRequestStale(options ...Option) *ProtocolError {
+	return New(StatusConflict, tuttigenerated.WorkspaceOperationFailed, ReasonAgentInteractiveRequestStale, options...)
+}
+
+// ClassifyAgentInteractiveResponse preserves the distinction between a stale
+// renderer response and an upstream/runtime failure. Identity mismatches are
+// durable runtime-operation failures, not proof that the interactive request
+// itself became stale, so they remain on the normal failure classification path.
+func ClassifyAgentInteractiveResponse(err error) *ProtocolError {
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, agentservice.ErrInteractionRequestNotFound),
+		errors.Is(err, agentservice.ErrInteractiveRequestNotLive),
+		errors.Is(err, agentservice.ErrInteractiveAlreadyAnswered):
+		return AgentInteractiveRequestStale(WithCause(err))
+	default:
+		return Classify(err)
+	}
+}
+
 func AgentProviderUnavailable(err *agentservice.ProviderUnavailableError) *ProtocolError {
 	reason := ReasonAgentProviderUnavailable
 	params := map[string]any{}
@@ -374,7 +399,9 @@ func Classify(err error) *ProtocolError {
 		if reason == "" {
 			reason = ReasonWorkspaceOperationFailed
 		}
-		return New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, reason, WithCause(err))
+		result := New(StatusWorkspaceOperationFailed, tuttigenerated.WorkspaceOperationFailed, reason, WithCause(err))
+		result.Retryable = reason == agentruntime.AppErrorProcessCleanupPending
+		return result
 	}
 	var providerUnavailableErr *agentservice.ProviderUnavailableError
 	if errors.As(err, &providerUnavailableErr) {
@@ -482,6 +509,8 @@ func Classify(err error) *ProtocolError {
 		return WorkspaceIssueResourceNotFound(ReasonWorkspaceIssueRunNotFound, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrRunAlreadyExists):
 		return WorkspaceIssueResourceExists(ReasonWorkspaceIssueRunExists, WithCause(err))
+	case errors.Is(err, workspaceservice.ErrIssueRunLaunchPending):
+		return WorkspaceIssueResourceExists(ReasonWorkspaceIssueRunLaunchPending, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrContextRefNotFound):
 		return WorkspaceIssueResourceNotFound(ReasonWorkspaceIssueContextRefNotFound, WithCause(err))
 	case errors.Is(err, workspaceissues.ErrContextRefAlreadyExists):

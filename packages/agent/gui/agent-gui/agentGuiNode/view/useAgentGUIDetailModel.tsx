@@ -221,6 +221,7 @@ export function useAgentGUIDetailModel(input: Input) {
   const activeConversationTurnBusy = viewModel.composer.gate.conversationBusy;
   const isComposerSending =
     activeConversationTurnBusy ||
+    viewModel.composer.gate.isAwaitingTurnStart === true ||
     (!hasActiveConversation &&
       viewModel.composer.gate.submission.status === "blocked" &&
       viewModel.composer.gate.submission.reason === "creating_conversation");
@@ -230,8 +231,6 @@ export function useAgentGUIDetailModel(input: Input) {
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
     : null;
-  const runtimeCommandsBlocked =
-    viewModel.composer.gate.runtime.status === "blocked";
   const stopControl = resolveAgentGUIStopControl({
     hasPendingApproval: viewModel.interaction.pendingApproval !== null,
     hasPendingInteractivePrompt:
@@ -240,10 +239,11 @@ export function useAgentGUIDetailModel(input: Input) {
     isCancelPending: viewModel.composer.isCancelPending,
     isConversationBusy: activeConversationTurnBusy,
     isCreatingConversation: viewModel.composer.isCreatingConversation,
+    hasPendingSubmitStopTarget:
+      viewModel.composer.hasPendingSubmitStopTarget === true,
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
-    isUnavailable: viewModel.readiness.activeLiveState === "failed",
-    runtimeCommandsBlocked
+    isUnavailable: viewModel.readiness.activeLiveState === "failed"
   });
   const showStopButton = stopControl.visible;
   const stopDisabled = stopControl.disabled;
@@ -385,6 +385,12 @@ export function useAgentGUIDetailModel(input: Input) {
       modelTooltipVersionLabel: labels.modelTooltipVersionLabel,
       defaultModel: labels.defaultModel,
       loadingOptions: labels.loadingOptions,
+      composerOptionsLoadFailed: labels.composerOptionsLoadFailed,
+      retry: labels.composerOptionsRetry ?? labels.retryActivation,
+      retryTooltip:
+        labels.composerOptionsRetryTooltip ??
+        labels.composerOptionsRetry ??
+        labels.retryActivation,
       inheritedUnavailable: labels.inheritedUnavailable,
       loadingConversation: labels.loadingConversation,
       reasoningLabel: labels.reasoningLabel,
@@ -548,7 +554,9 @@ export function useAgentGUIDetailModel(input: Input) {
       addContentConnectorConnect: labels.addContentConnectorConnect,
       addContentConnectorAuthorize: labels.addContentConnectorAuthorize,
       addContentConnectorEmpty: labels.addContentConnectorEmpty,
+      addContentConnectorLoading: labels.addContentConnectorLoading,
       addContentConnectorMore: labels.addContentConnectorMore,
+      addContentConnectorSelected: labels.addContentConnectorSelected,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       handoffConversation: labels.handoffConversation,
       handoffConversationTooltip: labels.handoffConversationTooltip,
@@ -558,6 +566,9 @@ export function useAgentGUIDetailModel(input: Input) {
       handoffTargetShared: labels.handoffTargetShared,
       providerSwitchLabel: labels.providerSwitchLabel,
       projectLocked: labels.projectLocked,
+      sessionLaunchModeLabel: labels.sessionLaunchModeLabel,
+      sessionLaunchModeLocal: labels.sessionLaunchModeLocal,
+      sessionLaunchModeWorktree: labels.sessionLaunchModeWorktree,
       projectMissingDescription: labels.projectMissingDescription,
       promptTipsPrefix: labels.promptTipsPrefix,
       reviewPicker: labels.reviewPicker,
@@ -566,6 +577,9 @@ export function useAgentGUIDetailModel(input: Input) {
     }),
     [
       interactivePromptLabels,
+      labels.composerOptionsLoadFailed,
+      labels.composerOptionsRetry,
+      labels.composerOptionsRetryTooltip,
       labels.defaultModel,
       labels.tuttiModePlanSendAccept,
       labels.tuttiModePlanSendRequestChanges,
@@ -577,7 +591,9 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.addContentConnectorConnect,
       labels.addContentConnectorAuthorize,
       labels.addContentConnectorEmpty,
+      labels.addContentConnectorLoading,
       labels.addContentConnectorMore,
+      labels.addContentConnectorSelected,
       labels.deleteQueuedPrompt,
       labels.editQueuedPrompt,
       labels.fileMentionEmpty,
@@ -631,6 +647,9 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.planUnavailable,
       labels.goalLabel,
       labels.projectLocked,
+      labels.sessionLaunchModeLabel,
+      labels.sessionLaunchModeLocal,
+      labels.sessionLaunchModeWorktree,
       labels.projectMissingDescription,
       labels.promptTipsPrefix,
       labels.reviewPicker,

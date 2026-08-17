@@ -55,10 +55,17 @@ type sessionSummaryResult struct {
 	ImageLocalPath imageLocalPathResolver
 	Page           agentservice.SessionMessagesPage
 	Session        agentservice.Session
+	WorkspaceID    string
 }
 
 type waitCommandResult struct {
-	Result agentservice.WaitResult
+	Result      agentservice.WaitResult
+	WorkspaceID string
+}
+
+type sessionListResult struct {
+	Sessions    []agentservice.Session
+	WorkspaceID string
 }
 
 type turnResourcesResult struct {
@@ -84,12 +91,13 @@ func (p Provider) newSessionsCommand(path []string, id string) cliservice.Comman
 			Table: &framework.TableOutputSpec{
 				Columns: sessionColumns,
 				Rows: func(result any) []map[string]any {
-					return sessionRows(result.([]agentservice.Session))
+					return sessionRows(result.(sessionListResult).Sessions)
 				},
 			},
 			JSONViews: map[framework.OutputView]func(any) map[string]any{
 				framework.ViewSummary: func(result any) map[string]any {
-					return map[string]any{"sessions": sessionSummaryValues(result.([]agentservice.Session))}
+					listed := result.(sessionListResult)
+					return map[string]any{"sessions": sessionSummaryValues(listed.WorkspaceID, listed.Sessions)}
 				},
 			},
 			ListCompact: true,
@@ -102,7 +110,11 @@ func (p Provider) runSessions(ctx context.Context, invoke framework.InvokeContex
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	return p.sessions.List(ctx, invoke.WorkspaceID)
+	sessions, err := p.sessions.List(ctx, invoke.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	return sessionListResult{Sessions: sessions, WorkspaceID: invoke.WorkspaceID}, nil
 }
 
 func (p Provider) newSessionSummaryCommand() cliservice.Command {
@@ -199,6 +211,7 @@ func (p Provider) runSessionSummary(ctx context.Context, invoke framework.Invoke
 		ImageLocalPath: p.imageLocalPathResolver(ctx, invoke.WorkspaceID),
 		Page:           page,
 		Session:        session,
+		WorkspaceID:    invoke.WorkspaceID,
 	}, nil
 }
 
@@ -225,7 +238,7 @@ func (p Provider) runWait(ctx context.Context, invoke framework.InvokeContext, i
 	if err != nil {
 		return nil, err
 	}
-	return waitCommandResult{Result: result}, nil
+	return waitCommandResult{Result: result, WorkspaceID: invoke.WorkspaceID}, nil
 }
 
 func (p Provider) runTurnResources(ctx context.Context, invoke framework.InvokeContext, input turnResourcesInput) (any, error) {
@@ -260,13 +273,15 @@ func (p Provider) imageLocalPathResolver(ctx context.Context, workspaceID string
 
 func sessionSummaryJSONValue(result any) map[string]any {
 	summary := result.(sessionSummaryResult)
-	return map[string]any{
+	value := map[string]any{
 		"agentSessionId": summary.Page.AgentSessionID,
-		"session":        sessionInspectValue(summary.Session),
+		"session":        sessionInspectValue(summary.WorkspaceID, summary.Session),
 		"messages":       messageCompactValues(summary.Page.Messages, summary.ImageLocalPath),
 		"latestVersion":  summary.Page.LatestVersion,
 		"hasMore":        summary.Page.HasMore,
 	}
+	addAgentSessionReference(value, summary.WorkspaceID, summary.Page.AgentSessionID)
+	return value
 }
 
 func turnResourcesJSONValue(result any) map[string]any {
@@ -285,12 +300,13 @@ func waitJSONValue(result any) map[string]any {
 	value := map[string]any{
 		"agentSessionId": waited.Result.Session.ID,
 		"turnId":         nil,
-		"session":        sessionSummaryValue(waited.Result.Session),
+		"session":        sessionSummaryValue(waited.WorkspaceID, waited.Result.Session),
 		"latestVersion":  waited.Result.LatestVersion,
 		"effectiveAfter": waited.Result.EffectiveAfter,
 		"timedOut":       waited.Result.TimedOut,
 		"reason":         string(waited.Result.Reason),
 	}
+	addAgentSessionReference(value, waited.WorkspaceID, waited.Result.Session.ID)
 	if turnID := strings.TrimSpace(waited.Result.TurnID); turnID != "" {
 		value["turnId"] = turnID
 	}

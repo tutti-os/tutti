@@ -6,6 +6,7 @@ export {
 } from "./internal/model/formatters.ts";
 export {
   buildWorkspaceFileBreadcrumbs,
+  formatWorkspaceFilePathForDisplay,
   filterVisibleWorkspaceEntries,
   isHiddenWorkspaceDirectoryEntry,
   normalizeWorkspaceFilePath,

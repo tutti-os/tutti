@@ -61,6 +61,33 @@ test("AppUpdateService tracks primary update actions", async () => {
   ]);
 });
 
+test("AppUpdateService opens the release notes exposed by the update state", async () => {
+  const opened: string[] = [];
+  const releaseNotesUrl =
+    "https://github.com/tutti-os/tutti/releases/tag/v1.3.0";
+  const service = new AppUpdateService(
+    createClient({
+      getState: async () =>
+        createState({ releaseNotesUrl, status: "available" })
+    }),
+    null,
+    undefined,
+    undefined,
+    {
+      hostFilesApi: {
+        async openExternal(url) {
+          opened.push(url);
+        }
+      }
+    }
+  );
+  await service.load();
+
+  await service.openReleaseNotes();
+
+  assert.deepEqual(opened, [releaseNotesUrl]);
+});
+
 test("AppUpdateService keeps install action pending after IPC succeeds", async () => {
   let installCalls = 0;
   const service = new AppUpdateService(

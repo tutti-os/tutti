@@ -71,15 +71,40 @@ rendered developer prefix. A provider content or marker change produces a new
 digest automatically. Invalid bundles, unsafe files, replacement failures, or
 RPC failures fail closed before a thread starts.
 
-Cursor preparation materializes one session-scoped skill plugin outside the
-workspace and supplies it to `cursor-agent acp` through `--plugin-dir`. Cursor
-Agent `2026.07.01-41b2de7` does not merge plugin-provided hooks into its ACP hook
+Cursor preparation materializes one session-scoped plugin outside the workspace
+and supplies it to `cursor-agent acp` through `--plugin-dir`. The plugin carries
+the resolved Skill bundle. Runtimeprep also renders the canonical Tutti policy
+and a catalog of the bundle's actual materialized paths from the same resolved
+capability profile; the Cursor adapter must not maintain a separate hard-coded
+Skill catalog. Re-preparing the same Session replaces current managed Skills and
+removes only stale Tutti-managed entries, so resume cannot accumulate suffixed
+duplicates or retain a capability that is no longer resolved. Because Cursor
+ACP does not project plugin Skills or Rules into
+the model context, the standard ACP adapter appends that prepared context to the
+first provider prompt only. It is provider-only content and is never projected
+as a user message; a newly connected or resumed provider Session receives it
+again. This makes Tutti capabilities available at session start without writing
+provider instructions or Skills into the workspace. Cursor Agent
+`2026.07.01-41b2de7` does not merge plugin-provided hooks into its ACP hook
 executor: only user, project, and team hook sources are loaded. Runtimeprep
 therefore must not advertise or materialize plugin hooks for ACP. A focused
 background-Task guard implementation remains dormant with unit coverage so it
 can be enabled if Cursor adds that capability; it is not a current runtime
 guarantee. Never write an equivalent hook into user or project Cursor config to
 work around the provider limitation.
+
+OpenCode preparation follows the same session-isolation rule as Codex without
+changing OpenCode's standard ACP transport. It creates a session-scoped
+`OPENCODE_CONFIG_DIR`, writes the canonical Tutti runtime policy to that
+directory's `AGENTS.md`, and materializes the resolved Tutti Skill bundle under
+its native `skills/` root. Re-preparing the Session reconciles that managed root
+to the current resolved bundle while preserving unmanaged entries. This happens
+for every Session, including Sessions
+without a model access plan, so mention-driven handoff, context, issue, and
+workspace-app behavior never depends on user-installed Skills. A bound model
+access plan continues to use the `OPENCODE_CONFIG` file in the same isolated
+directory; provider settings and permissions continue through their existing
+OpenCode config layers.
 
 Agent Extensions may declare a constrained `runtimePrep` overlay in the signed
 composer profile when a provider needs a per-session home or config merge. The
@@ -91,6 +116,16 @@ the home through one validated environment variable, materialize Tutti-managed
 skills into session-scoped roots derived from the extension's declared workspace
 skill roots, and merge those session roots into a supported YAML string-list key
 such as `skills.external_dirs`.
+
+Source-home resolution is also descriptor-driven. A declared source environment
+variable has highest priority. On Windows, a `sourceDefaultRel` whose top-level
+name starts with a dot first resolves under the native user cache root with the
+leading dot removed (for example `.vendor` becomes `%LOCALAPPDATA%\vendor`). If
+that native directory does not exist, runtimeprep falls back to the literal
+user-home-relative directory so migrated Unix-style locations keep working.
+Other platforms keep the literal user-home-relative default. The shared resolver
+remains provider-neutral and only copies files explicitly declared by the signed
+profile.
 
 For Hermes, the extension profile declares the `HERMES_HOME` overlay instead of
 Tutti core knowing `acp:hermes`. The resulting session keeps per-session state,

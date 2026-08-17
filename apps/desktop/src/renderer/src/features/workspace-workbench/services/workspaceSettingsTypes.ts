@@ -20,10 +20,77 @@ export type WorkspaceSettingsSectionID =
   | "agent"
   | "appearance"
   | "connection"
+  | "deletedConversations"
   | "developer"
   | "general"
   | "lab"
   | "model";
+
+export interface WorkspaceDeletedConversation {
+  readonly agentSessionId: string;
+  readonly deletedAtUnixMs: number;
+  readonly projectAvailable: boolean;
+  readonly projectLabel: string | null;
+  readonly projectPath: string | null;
+  readonly railSectionKey: string;
+  readonly restorable: boolean;
+  readonly title: string;
+  readonly unavailableReason:
+    | "incompleteSessionTree"
+    | "legacyDataUnavailable"
+    | null;
+  readonly updatedAtUnixMs: number;
+}
+
+export interface WorkspaceDeletedConversationProjectOption {
+  readonly projectAvailable: boolean;
+  readonly projectLabel: string;
+  readonly projectPath: string | null;
+  readonly railSectionKey: string;
+}
+
+export type WorkspaceDeletedConversationProjectFilter =
+  | { readonly kind: "all" }
+  | { readonly kind: "unscoped" }
+  | { readonly kind: "project"; readonly railSectionKey: string };
+
+export type WorkspaceDeletedConversationOperation = "deleting" | "restoring";
+
+export interface WorkspaceDeletedConversationsMutableState {
+  hasMore: boolean;
+  loadFailed: boolean;
+  loadMoreFailed: boolean;
+  loading: boolean;
+  loadingMore: boolean;
+  nextCursor: string | null;
+  operationBySessionID: Record<string, WorkspaceDeletedConversationOperation>;
+  projectFilter: WorkspaceDeletedConversationProjectFilter;
+  projectOptions: WorkspaceDeletedConversationProjectOption[];
+  purgingAll: boolean;
+  search: string;
+  sessions: WorkspaceDeletedConversation[];
+  totalCount: number;
+  workspaceTotalCount: number;
+}
+
+export interface WorkspaceDeletedConversationsSnapshotState {
+  readonly hasMore: boolean;
+  readonly loadFailed: boolean;
+  readonly loadMoreFailed: boolean;
+  readonly loading: boolean;
+  readonly loadingMore: boolean;
+  readonly nextCursor: string | null;
+  readonly operationBySessionID: Readonly<
+    Record<string, WorkspaceDeletedConversationOperation>
+  >;
+  readonly projectFilter: WorkspaceDeletedConversationProjectFilter;
+  readonly projectOptions: readonly WorkspaceDeletedConversationProjectOption[];
+  readonly purgingAll: boolean;
+  readonly search: string;
+  readonly sessions: readonly WorkspaceDeletedConversation[];
+  readonly totalCount: number;
+  readonly workspaceTotalCount: number;
+}
 
 export type WorkspaceSettingsGeneralFocusAnchor =
   | "browser-use"
@@ -432,13 +499,13 @@ export interface WorkspaceSettingsStoreState {
   agentFocusRequestID: number;
   agents: WorkspaceSettingsWorkspaceAgentsMutableState;
   automationRules: WorkspaceSettingsAutomationRulesMutableState;
+  deletedConversations: WorkspaceDeletedConversationsMutableState;
   developerPanelVisible: boolean;
   developerLogs: WorkspaceSettingsDeveloperLogsMutableState;
   generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
   generalFocusRequestID: number;
   modelPlans: WorkspaceSettingsModelPlansMutableState;
   open: boolean;
-  purgingDeletedConversations: boolean;
   workspaceID: string | null;
 }
 
@@ -449,12 +516,12 @@ export interface WorkspaceSettingsReadableStoreState {
   readonly agentFocusRequestID: number;
   readonly agents: WorkspaceSettingsWorkspaceAgentsSnapshotState;
   readonly automationRules: WorkspaceSettingsAutomationRulesSnapshotState;
+  readonly deletedConversations: WorkspaceDeletedConversationsSnapshotState;
   readonly developerPanelVisible: boolean;
   readonly developerLogs: WorkspaceSettingsDeveloperLogsSnapshotState;
   readonly generalFocusAnchor: WorkspaceSettingsGeneralFocusAnchor | null;
   readonly generalFocusRequestID: number;
   readonly modelPlans: WorkspaceSettingsModelPlansSnapshotState;
   readonly open: boolean;
-  readonly purgingDeletedConversations: boolean;
   readonly workspaceID: string | null;
 }

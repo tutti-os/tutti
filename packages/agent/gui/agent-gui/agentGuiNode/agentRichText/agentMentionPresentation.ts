@@ -1,12 +1,9 @@
 import type { AgentContextMentionItem } from "./agentFileMentionContracts";
 import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
-import { agentSessionTargetIdFromHref } from "./agentMentionMarkdown";
 
 export function resolveAgentSessionMentionIconUrl(input: {
   agentIconUrl?: string | null;
   agentProviderId?: string | null;
-  agentTargetId?: string | null;
-  href?: string | null;
 }): string | undefined {
   const explicitIconUrl = input.agentIconUrl?.trim() ?? "";
   if (explicitIconUrl) {
@@ -16,15 +13,7 @@ export function resolveAgentSessionMentionIconUrl(input: {
   if (agentProviderId) {
     return managedAgentRoundedIconUrl(agentProviderId);
   }
-  const agentTargetId =
-    input.agentTargetId?.trim() ||
-    agentSessionTargetIdFromHref(input.href?.trim() ?? "") ||
-    "";
-  if (!agentTargetId.startsWith("local:")) {
-    return undefined;
-  }
-  const provider = agentTargetId.slice("local:".length).trim();
-  return provider ? managedAgentRoundedIconUrl(provider) : undefined;
+  return undefined;
 }
 
 export function mentionVisual(item: AgentContextMentionItem): {

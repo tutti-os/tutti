@@ -25,7 +25,13 @@ interface WorkspaceAgentLiveLaneOptions {
   isAvailable(): boolean;
   navigation: WorkspaceNavigationService;
   onActivityChanged(): void;
-  onConnectionChanged(connected: boolean): void;
+  onConnectionChanged(
+    connected: boolean,
+    failure?: Extract<
+      AgentLiveDelivery,
+      { kind: "connection"; status: "disconnected" }
+    >
+  ): void;
   rail: WorkspaceConversationRailService;
   readCanonicalActivity(): AgentActivitySnapshot;
   workspaceId: string;
@@ -62,13 +68,22 @@ export class WorkspaceAgentLiveLane {
     this.retryTask = null;
     this.attachmentFence = null;
     const subscriptionGeneration = ++this.subscriptionGeneration;
-    this.subscription = this.options.deviceLink.subscribeAgentLive(
+    const subscription = this.options.deviceLink.subscribeAgentLive(
       this.options.workspaceId,
       (delivery) => {
         if (subscriptionGeneration !== this.subscriptionGeneration) return;
         this.handleDelivery(delivery);
       }
     );
+    if (
+      subscriptionGeneration !== this.subscriptionGeneration ||
+      !this.active ||
+      !this.options.isAvailable()
+    ) {
+      subscription.close();
+      return;
+    }
+    this.subscription = subscription;
   }
 
   stop(): void {
@@ -145,8 +160,10 @@ export class WorkspaceAgentLiveLane {
       this.coordinator.eventStreamConnectionChanged({
         status: "disconnected"
       });
-      this.setConnected(false, true);
-      this.scheduleRetry();
+      this.setConnected(false, true, delivery);
+      if (delivery.retryable) {
+        this.scheduleRetry();
+      }
       return;
     }
     if (delivery.kind === "session_deleted") {
@@ -156,6 +173,22 @@ export class WorkspaceAgentLiveLane {
           .project(this.options.readCanonicalActivity())
           .sessions.map((session) => session.agentSessionId)
       );
+      this.options.onActivityChanged();
+      this.scheduleRailReconcile();
+      return;
+    }
+    if (delivery.kind === "session_restored") {
+      this.coordinator.ingestEvent({
+        agentSessionId: delivery.agentSessionId,
+        data: {
+          agentSessionId: delivery.agentSessionId,
+          eventType: "session_restored",
+          restoredAtUnixMs: 0,
+          workspaceId: this.options.workspaceId
+        },
+        eventType: "session_restored",
+        workspaceId: this.options.workspaceId
+      });
       this.options.onActivityChanged();
       this.scheduleRailReconcile();
       return;
@@ -270,15 +303,22 @@ export class WorkspaceAgentLiveLane {
     );
   }
 
-  private setConnected(connected: boolean, observedFailure = false): void {
+  private setConnected(
+    connected: boolean,
+    observedFailure = false,
+    failure?: Extract<
+      AgentLiveDelivery,
+      { kind: "connection"; status: "disconnected" }
+    >
+  ): void {
     if (this.connected !== connected) {
       this.connected = connected;
       this.options.rail.setLiveConnected(connected);
-      this.options.onConnectionChanged(connected);
+      this.options.onConnectionChanged(connected, failure);
       return;
     }
     if (observedFailure) {
-      this.options.onConnectionChanged(false);
+      this.options.onConnectionChanged(false, failure);
     }
   }
 }

@@ -93,7 +93,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("workspace-apps.app.open", []string{"app", "open"}, []string{"app-id"}, nil),
 		command("references.task.list", []string{"reference", "list"}, []string{"source", "id"}, []string{"group-id"}),
 		command("agent-context.agent.list", []string{"agent", "list"}, nil, []string{"agent-id"}),
-		command("agent-context.agent.start", []string{"agent", "start"}, []string{"agent-id", "prompt"}, []string{"show", "image"}),
+		command("agent-context.agent.start", []string{"agent", "start"}, []string{"agent-id", "prompt"}, []string{"show", "image", "cwd"}),
 		command("agent-context.agent.send", []string{"agent", "send"}, []string{"session-id", "prompt"}, nil),
 		command("agent-context.agent.get", []string{"agent", "get"}, []string{"session-id"}, []string{"view", "turns", "turn-id"}),
 		command("agent-context.agent.sessions", []string{"agent", "sessions"}, nil, nil),
@@ -103,10 +103,6 @@ func testCommandCapabilities() []CommandCapability {
 		command("agent-context.agent.turn-resources", []string{"agent", "turn-resources"}, []string{"session-id", "turn-id"}, nil),
 		command("agent-context.agent.active-peers", []string{"agent", "active-peers"}, nil, nil),
 		command("connector.available", []string{"connector", "available"}, nil, nil),
-		command("connector.capabilities", []string{"connector", "capabilities"}, []string{"connector"}, nil),
-		command("connector.skills", []string{"connector", "skills"}, []string{"connector"}, nil),
-		command("connector.skill.read", []string{"connector", "skill", "read"}, []string{"connector", "skill"}, nil),
-		command("connector.invoke", []string{"connector", "invoke"}, []string{"connector", "capability"}, []string{"input-json"}),
 		command("browser.open", []string{"browser", "open"}, []string{"url"}, nil),
 		command("browser.navigate", []string{"browser", "navigate"}, []string{"url"}, nil),
 		command("browser.snapshot", []string{"browser", "snapshot"}, nil, nil),
@@ -128,7 +124,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("computer.move-cursor", []string{"computer", "move-cursor"}, []string{"x", "y"}, nil),
 		command("computer.tool.list", []string{"computer", "tool", "list"}, nil, nil),
 		command("computer.tool.describe", []string{"computer", "tool", "describe"}, []string{"name"}, nil),
-		command("computer.tool.call", []string{"computer", "tool", "call"}, []string{"name", "arguments-json"}, nil),
+		command("computer.tool.call", []string{"computer", "tool", "call"}, []string{"name"}, []string{"arguments-json"}),
 	}
 	for index := range commands {
 		if commands[index].ID == "agent-context.agent.wait" {

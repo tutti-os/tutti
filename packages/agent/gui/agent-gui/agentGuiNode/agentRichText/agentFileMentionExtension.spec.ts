@@ -18,7 +18,6 @@ import {
   resetAgentCustomMentionKindsForTests
 } from "../../../shared/agentCustomMentionKinds";
 import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
-import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import {
   agentComposerFileMentionReferences,
   createAgentComposerFileMentionMarkdown,
@@ -178,6 +177,29 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
+  it("normalizes Windows separators when deriving a file directory", () => {
+    const href = String.raw`C:\Users\agent\workspace\report.md`;
+    expect(parseMentionItemFromHref({ name: "report.md", href })).toMatchObject(
+      {
+        kind: "file",
+        path: href,
+        directoryPath: "C:/Users/agent/workspace"
+      }
+    );
+  });
+
+  it("recognizes a Windows trailing separator as a local folder", () => {
+    const href = "C:\\Users\\agent\\workspace\\generated\\";
+    expect(parseMentionItemFromHref({ name: "generated", href })).toMatchObject(
+      {
+        kind: "file",
+        path: href,
+        entryKind: "directory",
+        directoryPath: "C:/Users/agent/workspace"
+      }
+    );
+  });
+
   it("does not classify trailing-slash URLs as directory mentions", () => {
     expect(
       parseAgentMentionMarkdown("[@OpenAI](https://openai.com/)")
@@ -202,19 +224,15 @@ describe("parseAgentMentionMarkdown", () => {
         name: "Session"
       }
     });
-    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBe(
-      managedAgentRoundedIconUrl("claude-code")
-    );
+    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBeUndefined();
   });
 
-  it("derives the Cursor icon for a pasted local session mention", () => {
+  it("does not invent presentation metadata for a pasted session mention", () => {
     const parsed = parseAgentMentionMarkdown(
       "[@Cursor session](mention://agent-session/session-1?agentTargetId=local%3Acursor&workspaceId=workspace-1)"
     );
 
-    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBe(
-      managedAgentRoundedIconUrl("cursor")
-    );
+    expect(mentionItemToAttrs(parsed!.item).iconUrl).toBeUndefined();
   });
 
   it("parses registered custom mention kinds into custom items", () => {
@@ -554,6 +572,26 @@ describe("attrsToMentionItem", () => {
       agentProviderId: "claude-code",
       iconUrl: "tutti://agent/claude-code.svg"
     });
+  });
+
+  it("round-trips workspace issue icon presentation without serializing it", () => {
+    const item = {
+      kind: "workspace-issue" as const,
+      href: "mention://workspace-issue/issue-1?workspaceId=ws-1",
+      workspaceId: "ws-1",
+      targetId: "issue-1",
+      name: "Task Center",
+      title: "Task Center",
+      iconUrl: "https://icons.example/task-center.png"
+    };
+
+    expect(attrsToMentionItem(mentionItemToAttrs(item))).toMatchObject({
+      kind: "workspace-issue",
+      iconUrl: "https://icons.example/task-center.png"
+    });
+    expect(formatAgentMentionMarkdown(item)).toBe(
+      "[@Task Center](mention://workspace-issue/issue-1?workspaceId=ws-1)"
+    );
   });
 });
 

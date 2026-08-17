@@ -184,6 +184,7 @@
   display: grid;
   width: 100%;
   height: 100%;
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: var(--workbench-header-height) minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--workbench-window-border);

@@ -114,8 +114,13 @@ func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[
 	if appSession == nil {
 		return "", "", false
 	}
+	return applyCodexGoalUpdateLocked(appSession, agentSessionID, goal)
+}
+
+func applyCodexGoalUpdateLocked(appSession *codexAppServerSession, agentSessionID string, goal map[string]any) (oldStatus, newStatus string, statusChanged bool) {
 	oldStatus = strings.TrimSpace(asString(appSession.goal["status"]))
 	appSession.goal = clonePayload(goal)
+	appSession.goalStateVersion++
 	newStatus = strings.TrimSpace(asString(appSession.goal["status"]))
 	if newStatus != "active" {
 		appSession.goalContinuationClaim = nil
@@ -131,6 +136,39 @@ func (a *CodexAppServerAdapter) applyGoalUpdate(agentSessionID string, goal map[
 	return oldStatus, newStatus, oldStatus != newStatus
 }
 
+func (a *CodexAppServerAdapter) goalStateFence(agentSessionID string) (*codexAppServerSession, uint64) {
+	if a == nil {
+		return nil, 0
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return nil, 0
+	}
+	return appSession, appSession.goalStateVersion
+}
+
+func (a *CodexAppServerAdapter) applyGoalUpdateAtFence(
+	agentSessionID string,
+	expectedSession *codexAppServerSession,
+	expectedVersion uint64,
+	goal map[string]any,
+) bool {
+	goal = normalizedCodexGoal(goal)
+	if len(goal) == 0 || expectedSession == nil || a == nil {
+		return false
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession != expectedSession || appSession.goalStateVersion != expectedVersion {
+		return false
+	}
+	applyCodexGoalUpdateLocked(appSession, agentSessionID, goal)
+	return true
+}
+
 func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -138,6 +176,7 @@ func (a *CodexAppServerAdapter) applyGoalClear(agentSessionID string) {
 	if appSession == nil {
 		return
 	}
+	appSession.goalStateVersion++
 	if appSession.goal != nil {
 		slog.Info("agent session app-server goal cleared",
 			"event", "agent_session.app_server.goal.cleared",

@@ -32,6 +32,7 @@ import {
   useAgentTargetPresentations,
   type AgentMessageMarkdownAgentTarget
 } from "./AgentTargetPresentationContext";
+import { resolveAgentMentionTargetPresentation } from "./agentTargetPresentation";
 import {
   activateMarkdownLink,
   activateMarkdownLinkFromKey,
@@ -45,6 +46,7 @@ import {
 import {
   isClickableMarkdownHref,
   isLocalAbsolutePath,
+  isWindowsAbsolutePath,
   isMentionOnlyMarkdownContent,
   markdownUrlTransform,
   normalizeMentionMarkdownLinks,
@@ -52,6 +54,8 @@ import {
   normalizePlainIssueMentionTitleContent,
   normalizePlainSessionMentionTitle,
   parseMentionLink,
+  resolveMarkdownWorkspaceMediaPath,
+  resolveRenderableMarkdownMediaSrc,
   type ParsedMentionLink
 } from "./agentMessageMarkdownLinks";
 import { MarkdownLinkContext } from "./agentMessageMarkdownContext";
@@ -97,9 +101,35 @@ const MARKDOWN_SANITIZE_SCHEMA: RehypeSanitizeOptions = {
       "mention",
       ...STANDARD_MARKDOWN_LINK_PROTOCOLS,
       ...WINDOWS_DRIVE_HREF_PROTOCOLS
-    ]
+    ],
+    src: [...(defaultSchema.protocols?.src ?? []), "file"]
   }
 };
+
+interface MarkdownHastNode {
+  type?: string;
+  properties?: Record<string, unknown>;
+  children?: MarkdownHastNode[];
+}
+
+function normalizeWindowsMarkdownMediaPaths() {
+  return (tree: MarkdownHastNode): void => {
+    normalizeWindowsMarkdownMediaPathNode(tree);
+  };
+}
+
+function normalizeWindowsMarkdownMediaPathNode(node: MarkdownHastNode): void {
+  if (node.type === "element" && typeof node.properties?.src === "string") {
+    const src = node.properties.src;
+    const workspacePath = resolveMarkdownWorkspaceMediaPath(src);
+    if (workspacePath && isWindowsAbsolutePath(workspacePath)) {
+      node.properties.src = resolveRenderableMarkdownMediaSrc(src);
+    }
+  }
+  for (const child of node.children ?? []) {
+    normalizeWindowsMarkdownMediaPathNode(child);
+  }
+}
 
 export interface AgentMessageMarkdownWorkspaceLinkContext {
   workspaceRoot?: string | null;
@@ -333,7 +363,10 @@ export function AgentMessageMarkdown({
         ) : (
           <ReactMarkdown
             remarkPlugins={settledRemarkPlugins}
-            rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+            rehypePlugins={[
+              normalizeWindowsMarkdownMediaPaths,
+              [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]
+            ]}
             urlTransform={markdownUrlTransform}
             components={markdownComponents}
           >
@@ -388,7 +421,10 @@ const MemoizedMarkdownBlock = memo(function MemoizedMarkdownBlock({
   return (
     <ReactMarkdown
       remarkPlugins={[remarkGfm, remarkLiteralAutolinkBoundary]}
-      rehypePlugins={[[rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]]}
+      rehypePlugins={[
+        normalizeWindowsMarkdownMediaPaths,
+        [rehypeSanitize, MARKDOWN_SANITIZE_SCHEMA]
+      ]}
       urlTransform={markdownUrlTransform}
       components={components}
     >
@@ -426,6 +462,7 @@ function MarkdownLink({
     return (
       <MentionLink
         {...props}
+        agentTargets={agentTargets ?? EMPTY_AGENT_TARGETS}
         href={targetHref}
         mention={mention}
         onLinkClick={onLinkClick}
@@ -618,12 +655,14 @@ function WorkspaceFileMentionLink({
 }
 
 function MentionLink({
+  agentTargets,
   onClick: _onClick,
   onLinkClick,
   href,
   mention,
   ...props
 }: AnchorHTMLAttributes<HTMLAnchorElement> & {
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[];
   href: string;
   mention: ParsedMentionLink;
   onLinkClick?: (href: string) => void;
@@ -636,13 +675,33 @@ function MentionLink({
     scope: mention.scope
   });
   const resolved = snapshot.state === "ready" ? snapshot.resolved : undefined;
-  const label = resolved?.label?.trim() || mention.label;
   const presentation = resolved?.presentation;
-  const iconUrl =
+  const fallbackIconUrl =
     presentation?.iconUrl?.trim() ||
     presentation?.thumbnailUrl?.trim() ||
     presentation?.agentIconUrl?.trim() ||
     mention.iconUrl;
+  const fallbackLabel = resolved?.label?.trim() || mention.label;
+  const agentTargetPresentation =
+    mention.kind === "agent-target" || mention.kind === "session"
+      ? resolveAgentMentionTargetPresentation({
+          agentTargetId:
+            mention.kind === "agent-target"
+              ? mention.entityId
+              : mention.scope?.agentTargetId,
+          agentTargets,
+          fallbackIconUrl,
+          fallbackName: fallbackLabel,
+          fallbackProvider:
+            presentation?.agentProviderId?.trim() || mention.agentProviderId,
+          workspaceId: mention.scope?.workspaceId
+        })
+      : null;
+  const label =
+    mention.kind === "agent-target"
+      ? (agentTargetPresentation?.name ?? fallbackLabel)
+      : fallbackLabel;
+  const iconUrl = agentTargetPresentation?.iconUrl ?? fallbackIconUrl;
   const pillKind =
     mention.kind === "workspace-issue" || mention.referenceSource === "task"
       ? "issue"

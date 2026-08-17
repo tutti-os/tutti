@@ -462,6 +462,48 @@ func TestRemoteProtocolPreservesCanonicalSessionDeletion(t *testing.T) {
 	}
 }
 
+func TestRemoteProtocolPreservesCanonicalSessionRestore(t *testing.T) {
+	t.Parallel()
+	publisher, err := liveprotocol.NewPublisher(liveprotocol.PublisherConfig{
+		StreamID: "stream-1", BindingID: "binding-1", Epoch: 1,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, client := net.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		done <- publishAgentActivityEnvelope(
+			server,
+			publisher,
+			"workspace-1",
+			[]byte(`{
+				"workspaceId":"workspace-1",
+				"agentSessionId":"session-1",
+				"eventType":"session_restored",
+				"data":{
+					"workspaceId":"workspace-1",
+					"agentSessionId":"session-1",
+					"eventType":"session_restored",
+					"restoredAtUnixMs":10
+				}
+			}`),
+		)
+	}()
+	frame := readAgentLiveTestFrame(t, client)
+	if len(frame.Deliveries) != 1 ||
+		frame.Deliveries[0].Kind != liveprotocol.DeliveryKindDiscontinuity ||
+		frame.Deliveries[0].Discontinuity.Reason != "session_restored" ||
+		len(frame.Deliveries[0].Discontinuity.ReconcileKeys) != 1 ||
+		frame.Deliveries[0].Discontinuity.ReconcileKeys[0].AgentSessionID != "session-1" {
+		t.Fatalf("unexpected session restore frame: %+v", frame)
+	}
+	_ = client.Close()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRemoteProtocolRejectsMismatchedCanonicalSessionDeletion(t *testing.T) {
 	t.Parallel()
 	publisher, err := liveprotocol.NewPublisher(liveprotocol.PublisherConfig{

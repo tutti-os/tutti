@@ -3,6 +3,7 @@ import type {
   AgentActivitySnapshot,
   AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
+import { isWorkspaceAgentActivityOptimisticMessage } from "../../workspaceAgentMessageOverlay";
 import { buildWorkspaceAgentActivityListViewModel } from "../../workspaceAgentActivityListViewModel";
 import type { BuildWorkspaceAgentSessionDetailInput } from "../../workspaceAgentSessionDetailViewModel";
 import { buildCanonicalWorkspaceAgentDetailView } from "../../workspaceAgentTimelineCanonical";
@@ -480,6 +481,11 @@ function compareMessagesByDisplayOrder(
   left: AgentActivityMessage,
   right: AgentActivityMessage
 ): number {
+  const leftOptimistic = isWorkspaceAgentActivityOptimisticMessage(left);
+  const rightOptimistic = isWorkspaceAgentActivityOptimisticMessage(right);
+  if (leftOptimistic !== rightOptimistic) {
+    return leftOptimistic ? 1 : -1;
+  }
   // Durable sequence is assigned once when the message is first stored and is
   // not changed by later streaming snapshots. Timestamps are compatibility
   // fallbacks for messages produced by older runtimes.

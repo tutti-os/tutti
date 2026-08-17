@@ -162,6 +162,182 @@ func TestOwnerHostReconnectsAfterActivationFailure(t *testing.T) {
 	}
 }
 
+func TestOwnerHostReconnectsWhenReadinessEndsAndPreservesCause(t *testing.T) {
+	relay := newTestOwnerRelay(t)
+	defer relay.Close()
+	lifecycle := newTestOwnerLifecycle(testOwnerSession(relay.OwnerEndpoint(), "owner-readiness"))
+	readiness, cancelReadiness := context.WithCancelCause(context.Background())
+	lifecycle.readiness = readiness
+	lifecycle.readinessCancel = cancelReadiness
+	handlerStarted := make(chan struct{}, 1)
+	host := newTestOwnerHost(t, lifecycle, StreamHandlerFunc(func(ctx context.Context, _ net.Conn) error {
+		handlerStarted <- struct{}{}
+		<-ctx.Done()
+		return ctx.Err()
+	}), nil)
+
+	if err := host.Acquire(context.Background(), "owner"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = host.Release("owner") }()
+	first := relay.WaitSession(t)
+	readinessCause := errors.New("lease freshness ended")
+	lifecycle.CancelReadiness(readinessCause)
+	if stream, openErr := first.mux.OpenStream(); openErr == nil {
+		_ = stream.Close()
+	}
+	select {
+	case <-handlerStarted:
+		t.Fatal("stream handler started after readiness cancellation")
+	default:
+	}
+	second := relay.WaitSession(t)
+	if first == second {
+		t.Fatal("readiness cancellation did not establish a new Relay session")
+	}
+	select {
+	case <-handlerStarted:
+		t.Fatal("stream handler started for the canceled generation")
+	default:
+	}
+	if got := lifecycle.SessionErrors(); len(got) == 0 || !errors.Is(got[0], readinessCause) {
+		t.Fatalf("SessionEnded() errors = %v, want readiness cause", got)
+	}
+	if got := lifecycle.DeactivateCount(); got < 1 {
+		t.Fatalf("deactivate count = %d, want ended generation deactivation", got)
+	}
+}
+
+func TestOwnerHostDoesNotPublishReadyForAlreadyCanceledReadiness(t *testing.T) {
+	relay := newTestOwnerRelay(t)
+	defer relay.Close()
+	lifecycle := newTestOwnerLifecycle(testOwnerSession(relay.OwnerEndpoint(), "owner-canceled-readiness"))
+	readiness, cancelReadiness := context.WithCancelCause(context.Background())
+	readinessCause := errors.New("lease is stale")
+	cancelReadiness(readinessCause)
+	lifecycle.readiness = readiness
+	readyEvents := make(chan struct{}, 1)
+	endedEvents := make(chan struct{}, 1)
+	host := newTestOwnerHost(t, lifecycle, StreamHandlerFunc(func(context.Context, net.Conn) error {
+		return nil
+	}), func(cfg *OwnerHostConfig) {
+		cfg.Sleep = func(ctx context.Context, _ time.Duration) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		cfg.Observe = func(event OwnerEvent) {
+			if event.Phase == OwnerPhaseServe && event.Outcome == OwnerOutcomeReady {
+				readyEvents <- struct{}{}
+			}
+			if event.Phase == OwnerPhaseSession {
+				endedEvents <- struct{}{}
+			}
+		}
+	})
+
+	if err := host.Acquire(context.Background(), "owner"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-endedEvents:
+	case <-time.After(2 * time.Second):
+		t.Fatal("already-canceled readiness did not end the generation")
+	}
+	select {
+	case <-readyEvents:
+		t.Fatal("OwnerOutcomeReady was published for canceled readiness")
+	default:
+	}
+	ended := lifecycle.SessionErrors()
+	if len(ended) == 0 || !errors.Is(ended[0], readinessCause) {
+		t.Fatalf("SessionEnded() errors = %v, want readiness cause", ended)
+	}
+	if err := host.Release("owner"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOwnerHostWakeInterruptsReadySessionWithoutChangingDemand(t *testing.T) {
+	relay := newTestOwnerRelay(t)
+	defer relay.Close()
+	lifecycle := newTestOwnerLifecycle(testOwnerSession(relay.OwnerEndpoint(), "owner-wake"))
+	host := newTestOwnerHost(t, lifecycle, StreamHandlerFunc(func(ctx context.Context, _ net.Conn) error {
+		<-ctx.Done()
+		return ctx.Err()
+	}), nil)
+
+	if err := host.Acquire(context.Background(), "owner"); err != nil {
+		t.Fatal(err)
+	}
+	first := relay.WaitSession(t)
+	if got := host.RefCount(); got != 1 {
+		t.Fatalf("RefCount() before Wake = %d, want 1", got)
+	}
+	host.Wake()
+	host.Wake()
+	second := relay.WaitSession(t)
+	if first == second {
+		t.Fatal("Wake did not establish a new Relay session")
+	}
+	if got := host.RefCount(); got != 1 {
+		t.Fatalf("RefCount() after Wake = %d, want 1", got)
+	}
+	if err := host.Release("owner"); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case unexpected := <-relay.sessions:
+		unexpected.Close()
+		t.Fatal("Wake or release established an unexpected third session")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func TestOwnerHostWakeSkipsBackoffForConcurrentNonContextError(t *testing.T) {
+	relay := newTestOwnerRelay(t)
+	defer relay.Close()
+	lifecycle := newTestOwnerLifecycle(testOwnerSession(relay.OwnerEndpoint(), "owner-wake-error"))
+	activateGate := make(chan struct{})
+	lifecycle.activateGate = activateGate
+	lifecycle.ignoreActivateCancellation = true
+	lifecycle.activateErrors = []error{errors.New("activation operation failed")}
+	retries := make(chan struct{}, 1)
+	host := newTestOwnerHost(t, lifecycle, StreamHandlerFunc(func(context.Context, net.Conn) error {
+		return nil
+	}), func(cfg *OwnerHostConfig) {
+		cfg.Sleep = func(ctx context.Context, _ time.Duration) error {
+			<-ctx.Done()
+			return ctx.Err()
+		}
+		cfg.Observe = func(event OwnerEvent) {
+			if event.Phase == OwnerPhaseRetry {
+				retries <- struct{}{}
+			}
+		}
+	})
+
+	if err := host.Acquire(context.Background(), "owner"); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = host.Release("owner") }()
+	first := relay.WaitSession(t)
+	host.Wake()
+	close(activateGate)
+	second := relay.WaitSession(t)
+	if first == second {
+		t.Fatal("Wake did not advance past the concurrent activation error")
+	}
+	select {
+	case <-retries:
+		t.Fatal("Wake scheduled a retry after it had already interrupted the generation")
+	default:
+	}
+	ended := lifecycle.SessionErrors()
+	if len(ended) == 0 || ended[0] == nil || ended[0].Error() != "activation operation failed" {
+		t.Fatalf("SessionEnded() errors = %v, want original activation error", ended)
+	}
+}
+
 func TestOwnerHostReferenceCountsDemand(t *testing.T) {
 	lifecycle := newTestOwnerLifecycle(OwnerSession{Key: "owner-ref"})
 	lifecycle.prepareGate = make(chan struct{})
@@ -290,7 +466,7 @@ func TestOwnerHostReportsRetryComponentsAndCancelsWaitOnRelease(t *testing.T) {
 	defer server.Close()
 	endpoint := "ws" + server.URL[len("http"):]
 	lifecycle := newTestOwnerLifecycle(testOwnerSession(endpoint, "owner-retry"))
-	retries := make(chan OwnerEvent, 1)
+	retries := make(chan OwnerEvent, 2)
 	const seed = int64(11)
 	host := newTestOwnerHost(t, lifecycle, StreamHandlerFunc(func(context.Context, net.Conn) error { return nil }), func(cfg *OwnerHostConfig) {
 		cfg.Backoff = BackoffConfig{
@@ -329,6 +505,13 @@ func TestOwnerHostReportsRetryComponentsAndCancelsWaitOnRelease(t *testing.T) {
 	}
 	if retry.Retry.Delay != 2*time.Second+wantBackoff {
 		t.Fatalf("retry delay = %s, want %s", retry.Retry.Delay, 2*time.Second+wantBackoff)
+	}
+	host.Wake()
+	host.Wake()
+	select {
+	case <-retries:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Wake did not interrupt the retry wait")
 	}
 	if err := host.Release("owner"); err != nil {
 		t.Fatalf("Release() error = %v", err)
@@ -454,23 +637,26 @@ func newTestOwnerHost(t *testing.T, lifecycle OwnerLifecycle, handler StreamHand
 type testOwnerLifecycle struct {
 	session OwnerSession
 
-	mu                sync.Mutex
-	prepareCalls      int
-	activateCalls     int
-	deactivateCalls   int
-	releaseCalls      int
-	prepareErrors     []error
-	activateErrors    []error
-	sessionErrors     []error
-	releasedKeys      []string
-	prepareGate       <-chan struct{}
-	activateGate      <-chan struct{}
-	releaseGate       <-chan struct{}
-	sleepAfterPrepare chan struct{}
-	prepareSeen       chan struct{}
-	releaseStarted    chan struct{}
-	prepareOnce       sync.Once
-	releaseOnce       sync.Once
+	mu                         sync.Mutex
+	prepareCalls               int
+	activateCalls              int
+	deactivateCalls            int
+	releaseCalls               int
+	prepareErrors              []error
+	activateErrors             []error
+	ignoreActivateCancellation bool
+	sessionErrors              []error
+	releasedKeys               []string
+	readiness                  context.Context
+	readinessCancel            context.CancelCauseFunc
+	prepareGate                <-chan struct{}
+	activateGate               <-chan struct{}
+	releaseGate                <-chan struct{}
+	sleepAfterPrepare          chan struct{}
+	prepareSeen                chan struct{}
+	releaseStarted             chan struct{}
+	prepareOnce                sync.Once
+	releaseOnce                sync.Once
 }
 
 func newTestOwnerLifecycle(session OwnerSession) *testOwnerLifecycle {
@@ -501,7 +687,7 @@ func (l *testOwnerLifecycle) Prepare(ctx context.Context) (OwnerSession, error) 
 	return l.session, err
 }
 
-func (l *testOwnerLifecycle) Activate(ctx context.Context, _ OwnerSession) (func(), error) {
+func (l *testOwnerLifecycle) Activate(ctx context.Context, _ OwnerSession) (OwnerActivation, error) {
 	l.mu.Lock()
 	l.activateCalls++
 	var err error
@@ -511,26 +697,48 @@ func (l *testOwnerLifecycle) Activate(ctx context.Context, _ OwnerSession) (func
 	}
 	l.mu.Unlock()
 	if l.activateGate != nil {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-l.activateGate:
+		if l.ignoreActivateCancellation {
+			<-l.activateGate
+		} else {
+			select {
+			case <-ctx.Done():
+				return OwnerActivation{}, ctx.Err()
+			case <-l.activateGate:
+			}
 		}
 	}
 	if err != nil {
-		return nil, err
+		return OwnerActivation{}, err
 	}
-	return func() {
-		l.mu.Lock()
-		l.deactivateCalls++
-		l.mu.Unlock()
-	}, nil
+	readiness := l.readiness
+	if readiness != nil {
+		l.readiness = nil
+	}
+	if readiness == nil {
+		readiness = ctx
+	}
+	return OwnerActivation{
+		Readiness: readiness,
+		Deactivate: func() {
+			l.mu.Lock()
+			l.deactivateCalls++
+			l.mu.Unlock()
+		}}, nil
 }
 
 func (l *testOwnerLifecycle) SessionEnded(_ OwnerSession, err error) {
 	l.mu.Lock()
 	l.sessionErrors = append(l.sessionErrors, err)
 	l.mu.Unlock()
+}
+
+func (l *testOwnerLifecycle) CancelReadiness(err error) {
+	l.mu.Lock()
+	cancel := l.readinessCancel
+	l.mu.Unlock()
+	if cancel != nil {
+		cancel(err)
+	}
 }
 
 func (l *testOwnerLifecycle) Release(ctx context.Context, session OwnerSession) error {

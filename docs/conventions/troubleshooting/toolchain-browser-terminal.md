@@ -212,7 +212,7 @@ deadline exceeded`. The failing test can take several seconds even though its
   Search workflows for `pnpm/action-setup` and confirm no step still passes a
   `version` input. Push a new commit to rerun the PR checks.
 
-### Multi-entry tsup declaration build exhausts its worker heap
+### Multi-entry declaration build exhausts its worker heap or dominates release time
 
 - Symptom:
   A package build finishes its ESM phase, then fails during `DTS Build start`
@@ -225,17 +225,23 @@ deadline exceeded`. The failing test can take several seconds even though its
   and compare the package's declaration entry count; raising the parent Node
   heap does not prove the worker's declaration graph is bounded.
 - Root cause:
-  tsup sends every configured declaration entry through one worker. A package
-  with many overlapping public entrypoints can keep repeated TypeScript and
-  Rollup declaration graphs in that worker until it approaches the V8 heap
-  limit. Concurrent validation makes the near-limit build unreliable.
+  tsup asks its declaration worker to typecheck and roll up every configured
+  entry together. A package with many overlapping public entrypoints can keep
+  repeated TypeScript and Rollup declaration graphs until it approaches the V8
+  heap limit. Splitting entries across workers bounds each heap, but every
+  worker still repeats much of the same TypeScript analysis and can make the
+  declaration phase dominate release time.
 - Fix:
-  Keep the runtime bundle as one build, then partition declaration entrypoints
-  into complete, non-overlapping groups and build those groups concurrently in
-  separate workers. Keep the group manifest separate from tsup itself so a
-  normal unit test can prove every runtime entry appears exactly once. Do not
-  make a global `NODE_OPTIONS` increase the default fix; it preserves the
-  oversized declaration graph and moves the failure threshold.
+  Keep the runtime bundle as one build. Pre-emit unbundled declarations once
+  with the repository-pinned native TypeScript compiler and a declaration-only
+  tsconfig whose root files exactly match the runtime entries. Then let a
+  bounded set of tsup workers roll up the emitted declarations and remove the
+  intermediate tree. Keep workspace source path mappings out of the
+  declaration-only config so dependency sources do not leak into the package
+  emit. Test that the runtime entries, declaration roots, rollup groups, and
+  published type paths stay aligned. Do not make a global `NODE_OPTIONS`
+  increase the default fix; it preserves the oversized declaration graph and
+  moves the failure threshold.
 - Validation:
   Measure the isolated package build before and after, run the entry-coverage
   test, typecheck imports from both the root and a subpath declaration, run the

@@ -10,9 +10,58 @@ import (
 	"testing"
 	"time"
 
+	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
+
+type testConnectorRuntime struct {
+	hints      []runtimeprep.ConnectorRoutingHint
+	context    runtimeprep.ConnectorAgentContext
+	bind       func(string, string)
+	bindErr    error
+	bindCalls  int
+	revoked    []string
+	revokeAlls int
+}
+
+func (runtime *testConnectorRuntime) RoutingHints() []runtimeprep.ConnectorRoutingHint {
+	return runtime.hints
+}
+
+func (runtime *testConnectorRuntime) BindSession(workspaceID, sessionID string) (runtimeprep.ConnectorAgentContext, error) {
+	runtime.bindCalls++
+	if runtime.bind != nil {
+		runtime.bind(workspaceID, sessionID)
+	}
+	context := runtime.context
+	if len(context.RoutingHints) == 0 {
+		context.RoutingHints = runtime.hints
+	}
+	return context, runtime.bindErr
+}
+
+type testConnectorCapabilityResolver struct {
+	supported bool
+	err       error
+	calls     int
+}
+
+func (resolver *testConnectorCapabilityResolver) ConnectorHTTPMCPSupported(
+	_ context.Context,
+	_ ConnectorCapabilityInput,
+) (bool, error) {
+	resolver.calls++
+	return resolver.supported, resolver.err
+}
+
+func (runtime *testConnectorRuntime) RevokeSession(workspaceID, sessionID string) {
+	runtime.revoked = append(runtime.revoked, workspaceID+"/"+sessionID)
+}
+
+func (runtime *testConnectorRuntime) RevokeAll() {
+	runtime.revokeAlls++
+}
 
 func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	runtime := newFakeRuntime()
@@ -22,15 +71,25 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 		result: runtimeprep.PreparedRuntime{
 			Cwd: "/prepared/workdir",
 			Env: []string{"CODEX_HOME=/prepared/codex-home"},
+			MCPServers: []runtimeprep.MCPServerBinding{{Name: "connector", Type: "http", URL: "http://127.0.0.1:1234/mcp/connector",
+				Headers: map[string]string{"Authorization": "Bearer session-token"}}},
 		},
 		input: &prepareInput,
 	}
 	routingAliases := []string{"飞书", "Feishu"}
 	skillRoot := t.TempDir()
-	service.ConnectorRoutingHints = func() []runtimeprep.ConnectorRoutingHint {
-		return []runtimeprep.ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: routingAliases,
-			SkillRoot: skillRoot}}
+	service.ConnectorRuntime = &testConnectorRuntime{
+		hints: []runtimeprep.ConnectorRoutingHint{{ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: routingAliases,
+			SkillRoot: skillRoot}},
+		context: runtimeprep.ConnectorAgentContext{MCPServers: []runtimeprep.MCPServerBinding{{Name: "connector", Type: "http", URL: "http://127.0.0.1:1234/mcp/connector",
+			Headers: map[string]string{"Authorization": "Bearer session-token"}}}},
+		bind: func(workspaceID, sessionID string) {
+			if workspaceID != "ws-1" || sessionID != "11111111-1111-4111-8111-111111111111" {
+				t.Fatalf("connector MCP binding scope = %q %q", workspaceID, sessionID)
+			}
+		},
 	}
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: true}
 	cwd := "/user/workdir"
 
 	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
@@ -54,20 +113,147 @@ func TestServiceCreateUsesRuntimePreparerResult(t *testing.T) {
 	if start.Cwd != "/prepared/workdir" {
 		t.Fatalf("runtime cwd = %q, want prepared cwd", start.Cwd)
 	}
-	if len(start.Env) != 1 || start.Env[0] != "CODEX_HOME=/prepared/codex-home" {
-		t.Fatalf("runtime env = %#v, want prepared env", start.Env)
+	if got := envValue(start.Env, "CODEX_HOME"); got != "/prepared/codex-home" {
+		t.Fatalf("runtime CODEX_HOME = %q, env=%#v", got, start.Env)
+	}
+	if got := envValue(start.Env, agenthost.AgentCWDEnvironmentVariable); got != "/prepared/workdir" {
+		t.Fatalf("runtime caller cwd = %q, env=%#v", got, start.Env)
+	}
+	placement, parseErr := agenthost.ParseAgentRailPlacementEnvironment(
+		envValue(start.Env, agenthost.AgentRailPlacementEnvironmentVariable),
+	)
+	if parseErr != nil || placement.Kind != agenthost.RailPlacementKindConversations {
+		t.Fatalf("runtime rail placement = %#v error=%v, env=%#v", placement, parseErr, start.Env)
+	}
+	if len(start.MCPServers) != 1 || start.MCPServers[0].Name != "connector" || start.MCPServers[0].Headers["Authorization"] != "Bearer session-token" {
+		t.Fatalf("runtime MCP servers = %#v", start.MCPServers)
+	}
+	if prepareInput.Connector == nil || len(prepareInput.Connector.MCPServers) != 1 || prepareInput.Connector.MCPServers[0].Name != "connector" {
+		t.Fatalf("prepare Connector context = %#v", prepareInput.Connector)
 	}
 	if prepareInput.ConversationDetailMode != "general" {
 		t.Fatalf("prepare conversationDetailMode = %q, want general", prepareInput.ConversationDetailMode)
 	}
-	if len(prepareInput.ConnectorRoutingHints) != 1 || prepareInput.ConnectorRoutingHints[0].ConnectorKey != "lark-cli" ||
-		!slices.Equal(prepareInput.ConnectorRoutingHints[0].Aliases, routingAliases) ||
-		prepareInput.ConnectorRoutingHints[0].SkillRoot != skillRoot {
-		t.Fatalf("prepare connector routing hints = %#v", prepareInput.ConnectorRoutingHints)
+	if len(prepareInput.Connector.RoutingHints) != 1 || prepareInput.Connector.RoutingHints[0].ConnectorKey != "lark-cli" ||
+		!slices.Equal(prepareInput.Connector.RoutingHints[0].Aliases, routingAliases) ||
+		prepareInput.Connector.RoutingHints[0].SkillRoot != skillRoot {
+		t.Fatalf("prepare connector routing hints = %#v", prepareInput.Connector.RoutingHints)
 	}
-	prepareInput.ConnectorRoutingHints[0].Aliases[0] = "mutated"
+	prepareInput.Connector.RoutingHints[0].Aliases[0] = "mutated"
 	if got := service.activeConnectorRoutingHints()[0].Aliases[0]; got != "飞书" {
 		t.Fatalf("runtime preparation leaked mutable routing aliases: %q", got)
+	}
+}
+
+func TestPrepareRuntimeRevokesConnectorBindingWhenProviderPreparationFails(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	prepareErr := errors.New("prepare failed")
+	preparer := &sequenceRuntimePreparer{results: []runtimeprep.PreparedRuntime{{Cwd: t.TempDir()}}, errors: []error{nil, prepareErr, nil}}
+	service.RuntimePreparer = preparer
+	connector := &testConnectorRuntime{context: runtimeprep.ConnectorAgentContext{MCPServers: []runtimeprep.MCPServerBinding{{
+		Name: "connector", Type: "http", URL: "http://127.0.0.1:1234/mcp/connector",
+	}}}}
+	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: true}
+
+	_, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		Provider:       "codex",
+	}, nil)
+	if err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v, want ordinary runtime fallback", err)
+	}
+	if !slices.Equal(connector.revoked, []string{"ws-1/11111111-1111-4111-8111-111111111111"}) {
+		t.Fatalf("revoked bindings = %#v", connector.revoked)
+	}
+}
+
+type sequenceRuntimePreparer struct {
+	results []runtimeprep.PreparedRuntime
+	errors  []error
+	inputs  []runtimeprep.PrepareInput
+}
+
+func (preparer *sequenceRuntimePreparer) Prepare(_ context.Context, input runtimeprep.PrepareInput) (runtimeprep.PreparedRuntime, error) {
+	preparer.inputs = append(preparer.inputs, input)
+	index := len(preparer.inputs) - 1
+	var result runtimeprep.PreparedRuntime
+	if index < len(preparer.results) {
+		result = preparer.results[index]
+	}
+	if index < len(preparer.errors) {
+		return result, preparer.errors[index]
+	}
+	return result, nil
+}
+
+func (*sequenceRuntimePreparer) Cleanup(context.Context, runtimeprep.CleanupInput) error { return nil }
+
+func TestPrepareRuntimeSkipsConnectorWhenAgentDoesNotDeclareHTTPMCP(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	var prepareInput runtimeprep.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{result: runtimeprep.PreparedRuntime{Cwd: t.TempDir()}, input: &prepareInput}
+	connector := &testConnectorRuntime{}
+	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: false}
+
+	prepared, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111", Provider: "acp:future-agent",
+	}, nil)
+	if err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v", err)
+	}
+	if connector.bindCalls != 0 || prepareInput.Connector != nil || len(prepared.MCPServers) != 0 {
+		t.Fatalf("unsupported Agent received Connector: binds=%d input=%#v MCP=%#v", connector.bindCalls, prepareInput.Connector, prepared.MCPServers)
+	}
+}
+
+func TestPrepareRuntimeContinuesWithoutConnectorWhenProbeFails(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.RuntimePreparer = fakeRuntimePreparer{result: runtimeprep.PreparedRuntime{Cwd: t.TempDir()}}
+	connector := &testConnectorRuntime{}
+	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{err: errors.New("probe failed")}
+
+	if _, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111", Provider: "acp:future-agent",
+	}, nil); err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v", err)
+	}
+	if connector.bindCalls != 0 {
+		t.Fatalf("Connector BindSession calls = %d, want 0", connector.bindCalls)
+	}
+}
+
+func TestPrepareRuntimeContinuesWithoutConnectorWhenBindingFails(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.RuntimePreparer = fakeRuntimePreparer{result: runtimeprep.PreparedRuntime{Cwd: t.TempDir()}}
+	connector := &testConnectorRuntime{bindErr: errors.New("binding failed")}
+	service.ConnectorRuntime = connector
+	service.ConnectorCapabilities = &testConnectorCapabilityResolver{supported: true}
+
+	prepared, err := service.prepareRuntimeWithModelEndpoint(t.Context(), "ws-1", t.TempDir(), CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111", Provider: "acp:future-agent",
+	}, nil)
+	if err != nil {
+		t.Fatalf("prepareRuntimeWithModelEndpoint() error = %v", err)
+	}
+	if connector.bindCalls != 1 || len(prepared.MCPServers) != 0 {
+		t.Fatalf("binding fallback = calls %d MCP %#v", connector.bindCalls, prepared.MCPServers)
+	}
+}
+
+func TestCleanupSessionResourcesRevokesConnectorWithoutProviderPreparer(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.RuntimePreparer = nil
+	connector := &testConnectorRuntime{}
+	service.ConnectorRuntime = connector
+
+	if err := service.cleanupSessionResources(t.Context(), "ws-1", "session-1"); err != nil {
+		t.Fatalf("cleanupSessionResources() error = %v", err)
+	}
+	if !slices.Equal(connector.revoked, []string{"ws-1/session-1"}) {
+		t.Fatalf("revoked bindings = %#v", connector.revoked)
 	}
 }
 
@@ -199,6 +385,63 @@ func TestServiceCreateUsesProviderDefaultModelWhenModelOmitted(t *testing.T) {
 	}
 }
 
+func TestServiceCreateRecoversRetiredRememberedModelToProviderDefault(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
+		agenttargetbiz.IDLocalCodex: {Model: "gpt-5.4"},
+	}
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "codex",
+			Source:   "codex-cli",
+			Models: []AgentModelOption{
+				{ID: "gpt-5.6-sol", DisplayName: "GPT-5.6-Sol", IsDefault: true},
+				{ID: "gpt-5.5", DisplayName: "GPT-5.5"},
+			},
+		},
+	}
+
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "34343434-3434-4434-8434-343434343434",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		InitialContent: TextPromptContent("hello"),
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(runtime.startCalls) != 1 || runtime.startCalls[0].Model != "gpt-5.6-sol" {
+		t.Fatalf("runtime start calls = %#v, want provider default model", runtime.startCalls)
+	}
+	if session.Settings == nil || session.Settings.Model != "gpt-5.6-sol" {
+		t.Fatalf("session settings = %#v, want provider default model", session.Settings)
+	}
+}
+
+func TestServiceCreateRecoversTransportMarkedInheritedModelToProviderDefault(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.ModelCatalog = fakeModelCatalog{result: AgentModelCatalogResult{
+		Provider: "codex",
+		Models:   []AgentModelOption{{ID: "gpt-current", IsDefault: true}},
+	}}
+	inherited := false
+	session, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "35353535-3535-4535-8535-353535353535",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Provider:       "codex",
+		Model:          stringRef("gpt-retired"),
+		ModelExplicit:  &inherited,
+	})
+	if err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if session.Settings == nil || session.Settings.Model != "gpt-current" {
+		t.Fatalf("session settings = %#v, want provider default", session.Settings)
+	}
+}
+
 func TestServiceCreateClampsLegacyMaxToSelectedModelCapability(t *testing.T) {
 	runtime := newFakeRuntime()
 	service := newTestService(runtime)
@@ -235,6 +478,185 @@ func TestServiceCreateClampsLegacyMaxToSelectedModelCapability(t *testing.T) {
 	}
 	if session.Settings == nil || session.Settings.ReasoningEffort != "xhigh" {
 		t.Fatalf("session settings = %#v, want Spark reasoning xhigh", session.Settings)
+	}
+}
+
+func TestClampReasoningEffortForKnownProviderBehindAgentExtension(t *testing.T) {
+	service := newTestService(newFakeRuntime())
+	service.ModelCatalog = fakeModelCatalog{result: AgentModelCatalogResult{
+		Provider: "opencode",
+		Models: []AgentModelOption{{
+			ID:                         "openai/gpt-5.3-codex-spark",
+			DefaultReasoningEffort:     "xhigh",
+			ReasoningEffortsAdvertised: true,
+			SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+				{Value: "low"}, {Value: "medium"}, {Value: "high"}, {Value: "xhigh"},
+			},
+		}},
+	}}
+	selected := "none"
+	got := service.clampReasoningEffortPointerForLaunch(
+		context.Background(),
+		"opencode",
+		map[string]any{"kind": "agent_extension"},
+		"/workspace/project",
+		"openai/gpt-5.3-codex-spark",
+		&selected,
+	)
+	if got == nil || *got != "xhigh" {
+		t.Fatalf("reasoning effort = %#v, want xhigh", got)
+	}
+}
+
+func TestServiceCreateRejectsExplicitOpenCodeReasoningUnsupportedByTargetModel(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	catalogInputs := []AgentModelCatalogInput{}
+	service.ModelCatalog = fakeModelCatalog{
+		inputs: &catalogInputs,
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Source:   "opencode-cli",
+			Models: []AgentModelOption{{
+				ID:                         "openai/gpt-5.3-codex-spark",
+				IsDefault:                  true,
+				DefaultReasoningEffort:     "medium",
+				ReasoningEffortsAdvertised: true,
+				SupportedReasoningEfforts: []AgentModelReasoningEffortOption{
+					{Value: "low"},
+					{Value: "medium"},
+					{Value: "high"},
+					{Value: "xhigh"},
+				},
+			}},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "45454545-4545-4545-8545-454545454545",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		Model:           stringRef("openai/gpt-5.3-codex-spark"),
+		ReasoningEffort: stringRef("none"),
+		Cwd:             stringRef("/workspace/project"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %#v, want none", runtime.startCalls)
+	}
+	if len(catalogInputs) != 1 {
+		t.Fatalf("model catalog queries = %d, want one request-scoped lookup", len(catalogInputs))
+	}
+	for _, input := range catalogInputs {
+		if input.Cwd != "/workspace/project" {
+			t.Fatalf("catalog input = %#v, want workspace cwd", input)
+		}
+	}
+}
+
+func TestServiceCreateUsesAllocatedCwdForOpenCodeCatalogAndRuntime(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	allocated := t.TempDir()
+	service.SessionDirectoryAllocator = &recordingSessionDirectoryAllocator{path: allocated}
+	catalogInputs := []AgentModelCatalogInput{}
+	service.ModelCatalog = fakeModelCatalog{
+		inputs: &catalogInputs,
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Models: []AgentModelOption{{
+				ID:                         "openai/gpt-current",
+				IsDefault:                  true,
+				DefaultReasoningEffort:     "medium",
+				ReasoningEffortsAdvertised: true,
+				SupportedReasoningEfforts:  []AgentModelReasoningEffortOption{{Value: "medium"}},
+			}},
+		},
+	}
+
+	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "47474747-4747-4747-8747-474747474747",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		ReasoningEffort: stringRef("medium"),
+	}); err != nil {
+		t.Fatalf("Create returned error: %v", err)
+	}
+	if len(catalogInputs) != 1 || catalogInputs[0].Cwd != allocated {
+		t.Fatalf("catalog inputs = %#v, want allocated cwd %q", catalogInputs, allocated)
+	}
+	if len(runtime.startCalls) != 1 || runtime.startCalls[0].Cwd != allocated {
+		t.Fatalf("runtime starts = %#v, want allocated cwd %q", runtime.startCalls, allocated)
+	}
+}
+
+func TestServiceCreateReleasesAllocatedCwdWhenOpenCodeValidationFails(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	stateDir := t.TempDir()
+	now := func() time.Time { return time.Date(2026, 8, 14, 0, 0, 0, 0, time.UTC) }
+	allocator := LocalSessionDirectoryAllocator{StateDir: stateDir, Now: now}
+	service.SessionDirectoryAllocator = allocator
+	service.ModelCatalog = fakeModelCatalog{result: AgentModelCatalogResult{
+		Provider: "opencode",
+		Models: []AgentModelOption{{
+			ID:                         "openai/gpt-current",
+			IsDefault:                  true,
+			ReasoningEffortsAdvertised: true,
+			SupportedReasoningEfforts:  []AgentModelReasoningEffortOption{{Value: "medium"}},
+		}},
+	}}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "48484848-4848-4848-8848-484848484848",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		ReasoningEffort: stringRef("unsupported"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+	}
+	want := filepath.Join(stateDir, "agent", "sessions", "2026-08-14-001")
+	if _, statErr := os.Stat(want); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("rolled back directory stat error = %v, want not exist", statErr)
+	}
+	reused, allocErr := allocator.CreateSessionDirectory(context.Background())
+	if allocErr != nil {
+		t.Fatalf("CreateSessionDirectory after rollback error = %v", allocErr)
+	}
+	if reused != want {
+		t.Fatalf("reused path = %q, want %q", reused, want)
+	}
+}
+
+func TestServiceCreateRejectsExplicitOpenCodeReasoningWithoutAdvertisedMetadata(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	service.ModelCatalog = fakeModelCatalog{
+		result: AgentModelCatalogResult{
+			Provider: "opencode",
+			Source:   "opencode-cli",
+			Models: []AgentModelOption{{
+				ID:        "openai/gpt-5.3-codex-spark",
+				IsDefault: true,
+			}},
+		},
+	}
+
+	_, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID:  "46464646-4646-4646-8646-464646464646",
+		AgentTargetID:   agenttargetbiz.IDLocalOpenCode,
+		Provider:        "opencode",
+		Model:           stringRef("openai/gpt-5.3-codex-spark"),
+		ReasoningEffort: stringRef("none"),
+	})
+	if !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("Create error = %v, want ErrInvalidArgument", err)
+	}
+	if len(runtime.startCalls) != 0 {
+		t.Fatalf("runtime start calls = %#v, want none", runtime.startCalls)
 	}
 }
 

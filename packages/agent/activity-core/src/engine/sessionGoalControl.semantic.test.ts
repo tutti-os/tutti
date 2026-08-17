@@ -4,6 +4,7 @@ import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
 import type { AgentActivityGoalControlResult } from "../types.ts";
 import { createAgentSessionEngine } from "./createAgentSessionEngine.ts";
 import { createTestEngineCommandPort } from "./testEngineCommandPort.ts";
+import { selectEngineSession } from "./sessionLifecycle.selectors.ts";
 import {
   selectSessionGoalControlPresentation,
   selectSessionGoalControlSettlement
@@ -261,6 +262,7 @@ test("a Session without Goal state does not rebuild another Session Goal project
       turnId: "turn-1",
       updatedAtUnixMs: 2
     },
+    live: true,
     type: "turn/upserted"
   });
 
@@ -515,12 +517,38 @@ test("uncertain rejection stays retryable while pre-admission rejection fails", 
   );
 });
 
-test("new-session Goal projection stops being optimistic after canonical hydration", () => {
+test("new-session Goal projection yields to canonical hydration and later Goal control", async () => {
+  const replacementGoal = goal("replacement goal", "active");
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => 100 },
-    commandPort: createTestEngineCommandPort(
-      () => new Promise(() => undefined)
-    ),
+    commandPort: createTestEngineCommandPort((command) => {
+      if (command.type !== "goal/control") {
+        return new Promise(() => undefined);
+      }
+      return Promise.resolve({
+        goal: replacementGoal,
+        operationId: "replacement-operation",
+        session: {
+          ...session(replacementGoal, 3),
+          agentSessionId: "session-new",
+          goalSyncState: {
+            pendingOperationId: null,
+            revision: 2,
+            syncStatus: "synced"
+          }
+        },
+        state: {
+          desired: replacementGoal,
+          lastEvidence: { source: "test" },
+          observed: replacementGoal,
+          pendingOperationId: null,
+          revision: 2,
+          syncStatus: "synced",
+          tombstoned: false,
+          updatedAtUnixMs: 3
+        }
+      });
+    }),
     identity: { origin: "test", workspaceId: "workspace-1" },
     scheduler: { schedule: () => ({ cancel() {} }) }
   });
@@ -546,7 +574,12 @@ test("new-session Goal projection stops being optimistic after canonical hydrati
   engine.dispatch({
     session: {
       ...session(goal("ship it", "active"), 2),
-      agentSessionId: "session-new"
+      agentSessionId: "session-new",
+      goalSyncState: {
+        pendingOperationId: "goal-operation-1",
+        revision: 1,
+        syncStatus: "applying"
+      }
     },
     type: "session/upserted"
   });
@@ -558,6 +591,53 @@ test("new-session Goal projection stops being optimistic after canonical hydrati
       goal: goal("ship it", "active"),
       optimistic: false,
       status: "idle"
+    }
+  );
+  assert.deepEqual(
+    selectEngineSession(engine.getSnapshot(), "session-new")?.goalSyncState,
+    {
+      executionPending: false,
+      pendingOperationId: "goal-operation-1",
+      revision: 1,
+      syncStatus: "applying"
+    }
+  );
+
+  engine.dispatch({
+    session: {
+      ...session(goal("ship it", "active"), 2),
+      agentSessionId: "session-new"
+    },
+    type: "session/upserted"
+  });
+  assert.deepEqual(
+    selectEngineSession(engine.getSnapshot(), "session-new")?.goalSyncState,
+    {
+      executionPending: false,
+      pendingOperationId: "goal-operation-1",
+      revision: 1,
+      syncStatus: "applying"
+    }
+  );
+
+  assert.deepEqual(
+    engine.controlGoal({
+      action: "set",
+      agentSessionId: "session-new",
+      clientSubmitId: "replacement-submit",
+      objective: replacementGoal.objective
+    }),
+    { accepted: true, clientSubmitId: "replacement-submit" }
+  );
+  await flushMicrotasks();
+
+  assert.deepEqual(
+    selectSessionGoalControlPresentation(engine.getSnapshot(), "session-new"),
+    {
+      agentSessionId: "session-new",
+      goal: replacementGoal,
+      optimistic: false,
+      status: "succeeded"
     }
   );
 });

@@ -115,6 +115,13 @@ Every provider status carries a provider-neutral `update` object. Nullable
 up-to-date result. Remote discovery errors belong in update `reasonCode` and
 must not turn a valid local readiness snapshot into an HTTP failure.
 
+Provider auth status distinguishes credential presence from remote proof:
+`configured` means local credentials exist, `authenticated` means a
+provider-backed operation succeeded, `required` means authentication is known
+to be missing or rejected, and `unknown` means no settled evidence exists.
+Clients may use `availability.status` to decide launchability; they must not
+coerce `configured` to `authenticated` for display or analytics.
+
 `update` is an explicit action id, not an alias for `install`. The daemon may
 offer it only when both the provider descriptor and the resolved installation
 prove a supported managed source. See [Agent Provider CLI Updates](../architecture/agent-provider-cli-updates.md).
@@ -168,6 +175,12 @@ Rules:
 while response `effectiveSettings` is the only contract for resolved homepage
 composer defaults.
 
+The same endpoint accepts an optional `section`: `core` returns the model,
+reasoning, speed, permission, and effective-settings projection;
+`capabilities` returns skills, commands, and capability-catalog data; omitted
+or `full` preserves the combined response for compatibility. Sectioned
+responses are additive projections, not alternate sources of resolved settings.
+
 ## Desktop Agent Conversation Detail Mode
 
 `agentConversationDetailMode` is a global desktop preference, not a provider-specific
@@ -203,17 +216,43 @@ values. The renderer must publish the complete preference object through the
 existing authoritative preference event flow rather than storing this setting
 locally.
 
-`POST /v1/agent-maintenance/deleted-conversations/purge` is the explicit manual
-command. It accepts no path or workspace input and returns only aggregate row,
-message, and payload-byte counts. The command performs no filesystem deletion.
-The API reports an idle conflict as service unavailable and a maintenance
-failure as a workspace operation failure. The high-risk typed confirmation is
-a desktop interaction, not an HTTP request field; unattended automatic
-maintenance is daemon-owned and is not exposed as a second client scheduler.
-After a successful manual sweep, the daemon may make a strictly bounded
-best-effort compaction attempt for a small database with substantial free
-pages; this optional post-step is not run by automatic maintenance and is not
-part of the aggregate response contract.
+The Workspace deleted-conversation collection is
+`/v1/workspaces/{workspaceID}/deleted-agent-sessions`:
+
+- `GET` lists topmost deleted Session components: either a canonical root or a
+  child whose parent is not deleted. `searchQuery` searches titles only;
+  `projectPath` selects one exact original project, while
+  `projectScope=unscoped` selects Sessions without a project. Omitting both is
+  the all-project default. `cursor` and `limit` provide stable
+  `updatedAtUnixMs DESC, agentSessionId ASC` paging.
+- The list response includes filtered `totalCount`, unfiltered
+  `workspaceTotalCount`, and all original non-empty project paths as
+  `projectOptions`, including paths whose project registration is unavailable.
+  A row explicitly reports whether it is restorable and why a legacy tombstone
+  is unavailable.
+- `POST .../{agentSessionID}/restore` restores the exact complete component without
+  starting provider work. `DELETE .../{agentSessionID}` permanently removes one
+  topmost deleted component, and collection `DELETE` permanently removes every
+  topmost deleted component in that Workspace regardless of visible filters.
+
+Permanent-delete endpoints return only aggregate Session, Message, and payload
+byte counts. They use the daemon idle gate; restore does not. The API reports an
+idle conflict as service unavailable and a maintenance failure as a Workspace
+operation failure. Ordinary and typed high-risk confirmations are desktop
+interactions, not HTTP request fields. Canonical deletion, Tutti Mode cleanup,
+and the durable Session-scoped runtime/copied-attachment cleanup item commit
+together. Because the current runtime and copied-attachment roots are keyed
+only by Session ID, a pending item fences reuse of that ID across all
+Workspaces; filesystem cleanup failure does not change the successful HTTP
+result and is retried in a later idle window.
+
+`POST /v1/agent-maintenance/deleted-conversations/purge` remains the
+daemon-wide maintenance sweep without a Workspace path. Automatic retention is
+daemon-owned and is not exposed as a second client scheduler. After an explicit
+daemon-wide sweep, the daemon may make a strictly bounded best-effort
+compaction attempt for a small database with substantial free pages; this
+optional post-step is not run by automatic maintenance and is not part of the
+aggregate response contract.
 
 ## Desktop Lab Preferences
 

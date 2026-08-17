@@ -1,6 +1,5 @@
 import type {
   AgentQuickPrompt,
-  DesktopPreferencesStateResponse,
   TuttidClient
 } from "@tutti-os/client-tuttid-ts";
 import { MobileQuickPromptLibraryService } from "./mobileQuickPromptLibraryService";
@@ -15,30 +14,9 @@ const prompt: AgentQuickPrompt = {
 };
 
 describe("MobileQuickPromptLibraryService", () => {
-  test("keeps the library hidden without the desktop feature flag", async () => {
-    const listAgentQuickPrompts = jest.fn();
+  test("loads the canonical device prompt order", async () => {
     const service = new MobileQuickPromptLibraryService(
       createClient({
-        featureFlags: {},
-        listAgentQuickPrompts
-      })
-    );
-
-    await service.refresh();
-
-    expect(listAgentQuickPrompts).not.toHaveBeenCalled();
-    expect(service.getSnapshot()).toEqual({
-      enabled: false,
-      errorCode: null,
-      prompts: [],
-      status: "ready"
-    });
-  });
-
-  test("loads the canonical device prompt order when enabled", async () => {
-    const service = new MobileQuickPromptLibraryService(
-      createClient({
-        featureFlags: { "agent.quickPromptLibrary": true },
         listAgentQuickPrompts: jest
           .fn()
           .mockResolvedValue({ prompts: [prompt] })
@@ -55,18 +33,17 @@ describe("MobileQuickPromptLibraryService", () => {
     });
   });
 
-  test("fails closed when desktop preferences cannot be read", async () => {
+  test("reports a prompt-list request failure", async () => {
     const service = new MobileQuickPromptLibraryService({
-      getDesktopPreferences: jest
+      listAgentQuickPrompts: jest
         .fn()
-        .mockRejectedValue(new Error("unavailable")),
-      listAgentQuickPrompts: jest.fn()
+        .mockRejectedValue(new Error("unavailable"))
     } as unknown as TuttidClient);
 
     await service.refresh();
 
     expect(service.getSnapshot()).toEqual({
-      enabled: false,
+      enabled: true,
       errorCode: "request_failed",
       prompts: [],
       status: "error"
@@ -80,7 +57,6 @@ describe("MobileQuickPromptLibraryService", () => {
       .mockRejectedValueOnce(new Error("unavailable"));
     const service = new MobileQuickPromptLibraryService(
       createClient({
-        featureFlags: { "agent.quickPromptLibrary": true },
         listAgentQuickPrompts
       })
     );
@@ -111,7 +87,6 @@ describe("MobileQuickPromptLibraryService", () => {
       .mockResolvedValueOnce({ prompts: [] });
     const service = new MobileQuickPromptLibraryService(
       createClient({
-        featureFlags: { "agent.quickPromptLibrary": true },
         listAgentQuickPrompts
       })
     );
@@ -133,17 +108,9 @@ describe("MobileQuickPromptLibraryService", () => {
 });
 
 function createClient(input: {
-  featureFlags: Record<string, boolean>;
   listAgentQuickPrompts: jest.Mock;
 }): TuttidClient {
   return {
-    getDesktopPreferences: async () =>
-      ({
-        initialized: true,
-        preferences: {
-          featureFlags: input.featureFlags
-        }
-      }) as DesktopPreferencesStateResponse,
     listAgentQuickPrompts: input.listAgentQuickPrompts
   } as unknown as TuttidClient;
 }

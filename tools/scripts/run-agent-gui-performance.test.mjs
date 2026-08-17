@@ -18,6 +18,10 @@ import {
 import { summarizeProviderStatusFocusRefresh } from "./agent-provider-status-performance-scenario.mjs";
 import { buildAllProcessTimeProfileArgs } from "./all-process-time-profile.mjs";
 import { prepareConcurrentAgentStreamingWorkbenchSnapshot } from "./agent-gui-concurrent-streaming-performance-scenario.mjs";
+import {
+  assessWorkbenchDockPopupPreviewTrace,
+  prepareWorkbenchDockPopupPreviewSnapshot
+} from "./agent-gui-dock-preview-performance-scenario.mjs";
 import { isDesktopBundleFresh } from "./prepared-desktop-launch.mjs";
 import {
   applyScenarioAssessment,
@@ -239,6 +243,7 @@ test("performance scenario registry exposes renderer and window scenarios", () =
       "rail-scope-reveal",
       "composer-input",
       "composer-overflow-resize",
+      "workbench-dock-popup-preview",
       "workbench-fifty-window-stress",
       "workbench-window-drag",
       "workbench-window-lifecycle",
@@ -341,6 +346,64 @@ test("AgentGUI window stress snapshot creates exact unique mounted windows", () 
   assert.equal(
     snapshot.nodes.some((node) => node.id === "terminal:1"),
     true
+  );
+});
+
+test("Dock popup preview snapshot creates 50 stress-layout windows", () => {
+  const prepared = prepareWorkbenchDockPopupPreviewSnapshot({
+    activeNodeId: "agent-source",
+    nodeStack: ["terminal-1", "agent-source"],
+    nodes: [
+      {
+        id: "terminal-1",
+        data: { typeId: "terminal" },
+        frame: { x: 0, y: 0, width: 800, height: 600 }
+      },
+      {
+        id: "agent-source",
+        data: {
+          instanceId: "source",
+          typeId: "agent-gui"
+        },
+        frame: { x: 80, y: 40, width: 1000, height: 700 },
+        isMinimized: true,
+        title: "Agent"
+      }
+    ]
+  });
+  const agents = prepared.snapshot.nodes.filter(
+    (node) => node.data.typeId === "agent-gui"
+  );
+
+  assert.equal(agents.length, 50);
+  assert.deepEqual(
+    [agents[0].title, agents.at(-1).title],
+    ["Dock Preview 1", "Dock Preview 50"]
+  );
+  assert.equal(
+    agents.every((node) => node.isMinimized === false),
+    true
+  );
+  assert.equal(new Set(agents.map((node) => node.id)).size, 50);
+  assert.equal(prepared.snapshot.activeNodeId, agents.at(-1).id);
+  assert.deepEqual(
+    prepared.expectedNodeIDs,
+    agents.map((node) => node.id)
+  );
+});
+
+test("Dock popup preview trace rejects renderer tasks above 50 ms", () => {
+  assert.equal(
+    assessWorkbenchDockPopupPreviewTrace({
+      timing: { maxLongTaskMs: 50 }
+    }).assertions[0].passed,
+    true
+  );
+  assert.equal(
+    assessWorkbenchDockPopupPreviewTrace({
+      timing: { maxLongTaskMs: 51 }
+    }).assertions[0].passed,
+    false
   );
 });
 

@@ -72,6 +72,12 @@ Engine rules:
   Cancellation aborts a mutation host effect; once delivery may have started,
   the mutation remains delivery-unknown rather than becoming a confirmed
   failure.
+- The activation request identity is projected as `activationId` on the typed
+  host effect. Pending activation diagnostics keep command settlement separate
+  from the first Session snapshot observation, including bounded outcomes for a
+  missing Session, workspace mismatch, stale new-Session evidence, and a match.
+  This lets hosts report command and snapshot latency without treating repeated
+  snapshots or a late command result as a second lifecycle transition.
 - Reducers are pure and return new state plus command descriptions; the effect
   executor performs commands and feeds every settlement (success, failure,
   timeout) back into the loop as command-result intents.
@@ -178,12 +184,15 @@ current snapshot reference and does not notify subscribers.
 
 ## Composer Options Cache
 
-`engine.loadComposerOptions({ targetKey, provider, ... })` caches results in a
-single key space, `composerOptionsByTargetKey`. After non-empty boundary
-normalization, `targetKey` is an **opaque** cache key: the engine never parses
-or derives meaning from it. Callers pass the already-resolved directory target
-id; two distinct targets that share a `provider` therefore keep isolated caches
-(no provider-dimension fallback).
+`engine.loadComposerOptions({ targetKey, provider, section, ... })` caches
+results in a single target key space with independent `core` and
+`capabilities` entries. `core` owns model, reasoning, speed, permission, and
+effective settings; `capabilities` owns skills, commands, and capability
+catalog data. After non-empty boundary normalization, `targetKey` is an
+**opaque** cache key: the engine never parses or derives meaning from it.
+Callers pass the already-resolved directory target id; two distinct targets
+that share a `provider` therefore keep isolated caches (no provider-dimension
+fallback).
 
 The semantic Engine method owns request identity, signature-aware cache reuse,
 joining an identical in-flight request, supersession by a newer request, exact
@@ -276,17 +285,21 @@ accepts:
 - `interaction_update`: updates the canonical durable interaction projection
 - `session_reconcile_required`: asks the engine transport to reload the session
 - `session_deleted`: removes the session through the engine tombstone flow
+- `session_restored`: clears only that explicit deletion tombstone, then asks
+  the engine transport to hydrate authoritative Session detail
 
 Events with a different `workspaceId` are ignored. Unknown event types are
 ignored.
 
 The coordinator owns inline-message continuity, Engine observation intents,
-Session tombstones, discontinuity reconciliation, and reconnect hydration.
+Session tombstones, explicit restore admission, discontinuity reconciliation,
+and reconnect hydration.
 Desktop receives the full canonical event union. The paired-device live
 protocol carries only delta, Turn, Interaction, and audit variants; tuttid
 converts canonical message and reconcile-required events into scoped
-discontinuities. It preserves `session_deleted` as a typed deletion delivery so
-Mobile enters the same Engine tombstone flow as Desktop. Platform adapters
+discontinuities. It preserves `session_deleted` and `session_restored` as typed
+lifecycle deliveries so Mobile enters the same Engine tombstone/restore flow
+as Desktop. Platform adapters
 retain socket/DeviceLink lifecycle, diagnostics, Rail invalidation, and
 navigation.
 
@@ -337,6 +350,19 @@ for external hosts that use them for goal setup or idempotency. A typed
 new-Session Goal is part of activation: hosts forward `initialGoalControl` and
 empty initial content to their Create transport, and Agent Host creates the
 Session plus durable Goal operation without creating a Turn.
+Hosts that already observe that durable operation may attach the optional,
+read-only `goalSyncState` projection to the Session. The field carries only the
+revision, sync status, pending operation identity, and optional Host-owned
+`executionPending` proof. Omission means the host cannot prove progress;
+consumers must not reinterpret it as idle or successful.
+For loading continuity, `pending`, `applying`, and `unknown` require a non-empty
+pending operation identity. A `synced` mutation keeps the initial-Goal bridge
+only when `executionPending` is explicitly true. The Host clears that proof on
+the first canonical Turn with exact Goal provenance or when the Goal becomes
+terminal, diverged, failed, or otherwise non-executing. Missing proof fails
+closed, including for mixed-version hosts.
+Engine Session merging preserves known state across compatible projections that
+omit the optional field, while an explicit `null` clears it.
 Existing-Session Goal Control is a separate Engine operation. The caller
 proposes a stable client-submit identity; admission returns the effective
 identity actually used by the Engine. The Engine owns command identity,

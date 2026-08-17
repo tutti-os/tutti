@@ -21,6 +21,7 @@ describe("useAgentGUIViewModel render budgets", () => {
     const initial = createViewModel();
     const connectingGate: AgentGUINodeViewModel["composer"]["gate"] = {
       conversationBusy: false,
+      isAwaitingTurnStart: false,
       runtime: {
         status: "blocked",
         reason: "target_connection",
@@ -31,6 +32,7 @@ describe("useAgentGUIViewModel render budgets", () => {
     };
     const readyGate: AgentGUINodeViewModel["composer"]["gate"] = {
       conversationBusy: false,
+      isAwaitingTurnStart: false,
       runtime: {
         status: "ready",
         reason: null,
@@ -160,11 +162,13 @@ function createViewModel(): AgentGUINodeViewModel {
       isSubmitting: false,
       isInterrupting: false,
       isCancelPending: false,
+      hasPendingSubmitStopTarget: false,
       promptImagesSupported: false,
       compactSupported: false,
       goalPauseSupported: false,
       gate: {
         conversationBusy: false,
+        isAwaitingTurnStart: false,
         runtime: {
           status: "ready",
           reason: null,

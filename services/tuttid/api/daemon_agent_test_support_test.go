@@ -41,6 +41,9 @@ type stubAgentSessionService struct {
 	listGitBranchesFn                 func(context.Context, string, string) (agentservice.GitBranches, error)
 	listGitBranchesForPathFn          func(context.Context, string, string) (agentservice.GitBranches, error)
 	resolveGitPatchSupportForPathFn   func(context.Context, string, string) (agentservice.GitPatchSupport, error)
+	resolveWorktreeSupportFn          func(context.Context, string, string, string) (agentservice.SessionWorktreeSupport, error)
+	listManagedWorktreesFn            func(context.Context, string) ([]agentservice.ManagedWorktree, error)
+	deleteManagedWorktreeFn           func(context.Context, string, string) (bool, error)
 	applyGitPatchForPathFn            func(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	updatePinFn                       func(context.Context, string, string, bool) (agentservice.Session, error)
 	updateTitleFn                     func(context.Context, string, string, string) (agentservice.Session, error)
@@ -252,6 +255,27 @@ func (s stubAgentSessionService) ResolveGitPatchSupportForPath(ctx context.Conte
 		return s.resolveGitPatchSupportForPathFn(ctx, workspaceID, cwd)
 	}
 	return agentservice.GitPatchSupport{}, nil
+}
+
+func (s stubAgentSessionService) ResolveSessionWorktreeSupport(ctx context.Context, workspaceID string, agentTargetID string, cwd string) (agentservice.SessionWorktreeSupport, error) {
+	if s.resolveWorktreeSupportFn != nil {
+		return s.resolveWorktreeSupportFn(ctx, workspaceID, agentTargetID, cwd)
+	}
+	return agentservice.SessionWorktreeSupport{}, nil
+}
+
+func (s stubAgentSessionService) ListManagedWorktrees(ctx context.Context, workspaceID string) ([]agentservice.ManagedWorktree, error) {
+	if s.listManagedWorktreesFn == nil {
+		return []agentservice.ManagedWorktree{}, nil
+	}
+	return s.listManagedWorktreesFn(ctx, workspaceID)
+}
+
+func (s stubAgentSessionService) DeleteManagedWorktree(ctx context.Context, workspaceID string, worktreeID string) (bool, error) {
+	if s.deleteManagedWorktreeFn == nil {
+		return false, agentservice.ErrManagedWorktreeNotFound
+	}
+	return s.deleteManagedWorktreeFn(ctx, workspaceID, worktreeID)
 }
 
 func (s stubAgentSessionService) ApplyGitPatchForPath(ctx context.Context, workspaceID string, input agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error) {

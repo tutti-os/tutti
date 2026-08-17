@@ -25,6 +25,7 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
+	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	externalagentregistry "github.com/tutti-os/tutti/services/tuttid/service/externalagentregistry"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
@@ -413,6 +414,9 @@ func TestServiceListReportsReadyWhenInstalledAndAuthenticated(t *testing.T) {
 			AuthMethod:   "chatgpt",
 		}
 	}
+	service.RemoteAuthProbe = func(context.Context, ProviderSpec) (providerstatus.AuthEvidence, bool) {
+		return providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteSuccess}, true
+	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
@@ -461,6 +465,9 @@ func TestServiceListUsesCodexAppServerAccountCommand(t *testing.T) {
 		}
 		return AuthInfo{Status: AuthAuthenticated}, true
 	}
+	service.RemoteAuthProbe = func(context.Context, ProviderSpec) (providerstatus.AuthEvidence, bool) {
+		return providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteSuccess}, true
+	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 	if err != nil {
@@ -476,7 +483,7 @@ func TestServiceListUsesCodexAppServerAccountCommand(t *testing.T) {
 	}
 }
 
-func TestServiceListReportsCodexAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) {
+func TestServiceListReportsCodexAPIKeyAsConfiguredWithoutRemoteEvidence(t *testing.T) {
 	service := testService(func(name string) (string, error) {
 		return "/usr/local/bin/" + name, nil
 	}, map[string]bool{})
@@ -499,10 +506,44 @@ func TestServiceListReportsCodexAPIKeyAsAuthenticatedWithoutLogin(t *testing.T) 
 	if status.Availability.Status != AvailabilityReady {
 		t.Fatalf("availability = %q, want %q", status.Availability.Status, AvailabilityReady)
 	}
-	if status.Auth.Status != AuthAuthenticated ||
+	if status.Auth.Status != AuthConfigured ||
 		status.Auth.AuthMethod != "apiKey" ||
 		status.Auth.AccountLabel != "API Usage Billing" {
-		t.Fatalf("auth = %#v, want API billing authentication", status.Auth)
+		t.Fatalf("auth = %#v, want configured API billing credentials", status.Auth)
+	}
+}
+
+func TestServiceStatusReportsOpenCodeConfigAPIKeyAsConfiguredWithoutRemoteEvidence(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"), `{
+		"provider": {
+			"newapi": {"options": {"apiKey": "sk-test"}}
+		}
+	}`)
+
+	service := customConfigService(home)
+	service.LookPath = func(string) (string, error) {
+		return filepath.Join(home, "opencode"), nil
+	}
+	service.IsExecutableFile = func(string) bool { return true }
+	service.RunOutcomes = NewRunOutcomeStore()
+	specs, err := DefaultRegistry().Select([]string{agentprovider.OpenCode})
+	if err != nil {
+		t.Fatalf("Select(opencode) error = %v", err)
+	}
+	status := service.statusForSpec(
+		context.Background(),
+		specs[0],
+		time.Now(),
+		statusDetectionOptions{skipAdapterProbe: true},
+	)
+	if status.Availability.Status != AvailabilityReady {
+		t.Fatalf("availability = %q, want %q", status.Availability.Status, AvailabilityReady)
+	}
+	if status.Auth.Status != AuthConfigured ||
+		status.Auth.AuthMethod != "apiKey" ||
+		status.Auth.AccountLabel != "API Usage Billing" {
+		t.Fatalf("auth = %#v, want configured API billing credentials", status.Auth)
 	}
 }
 
@@ -1341,6 +1382,9 @@ func TestServiceListUsesRuntimeCommandResolverForKnownNodeGlobalBin(t *testing.T
 			return time.Date(2026, 6, 2, 8, 0, 0, 0, time.UTC)
 		},
 		CodexProtocolProbe: codexProtocolReadyFixture,
+		RemoteAuthProbe: func(context.Context, ProviderSpec) (providerstatus.AuthEvidence, bool) {
+			return providerstatus.AuthEvidence{}, false
+		},
 	}
 
 	snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
@@ -1461,7 +1505,7 @@ func TestServiceRunActionInstallsThenProbesProvider(t *testing.T) {
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
 		t.Fatalf("mkdir bin dir: %v", err)
 	}
-	adapterArchive, adapterSHA256 := releaseBinaryArchive(t, "codex-acp", "#!/bin/sh\nsleep 5\n")
+	adapterArchive, adapterSHA256 := releaseBinaryArchive(t, "codex-acp", "#!/bin/sh\nread -r line\nid=$(printf '%s' \"$line\" | sed -n 's/.*\"id\":\\([0-9]*\\).*/\\1/p')\nprintf '{\"jsonrpc\":\"2.0\",\"id\":%s,\"result\":{}}\\n' \"$id\"\n")
 	installerServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		switch request.URL.Path {
 		case "/install.sh":
@@ -2787,7 +2831,7 @@ func TestServiceListReportsClaudeAuthentication(t *testing.T) {
 			environ:      []string{"PATH=/usr/bin:/bin", "ANTHROPIC_API_KEY=sk-test"},
 			commandAuth:  AuthInfo{Status: AuthRequired},
 			availability: AvailabilityReady,
-			authStatus:   AuthAuthenticated,
+			authStatus:   AuthConfigured,
 			authMethod:   "apiKey",
 			accountLabel: "API Usage Billing",
 		},
@@ -2797,7 +2841,7 @@ func TestServiceListReportsClaudeAuthentication(t *testing.T) {
 			settings:     `{"env":{"ANTHROPIC_API_KEY":"sk-test"}}`,
 			commandAuth:  AuthInfo{Status: AuthRequired},
 			availability: AvailabilityReady,
-			authStatus:   AuthAuthenticated,
+			authStatus:   AuthConfigured,
 			authMethod:   "apiKey",
 			accountLabel: "API Usage Billing",
 		},
@@ -2807,7 +2851,7 @@ func TestServiceListReportsClaudeAuthentication(t *testing.T) {
 			settings:     `{"env":{"ANTHROPIC_AUTH_TOKEN":"sk-test","ANTHROPIC_BASE_URL":"https://api.moonshot.cn/anthropic"}}`,
 			commandAuth:  AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth_token", AccountLabel: "oauth_token"},
 			availability: AvailabilityReady,
-			authStatus:   AuthAuthenticated,
+			authStatus:   AuthConfigured,
 			authMethod:   "apiKey",
 			accountLabel: "API Usage Billing",
 		},
@@ -2817,7 +2861,7 @@ func TestServiceListReportsClaudeAuthentication(t *testing.T) {
 			settings:     `{"env":{"ANTHROPIC_BASE_URL":"https://gw.local"}}`,
 			commandAuth:  AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth", AccountLabel: "me@x.com"},
 			availability: AvailabilityReady,
-			authStatus:   AuthAuthenticated,
+			authStatus:   AuthConfigured,
 			authMethod:   "oauth",
 			accountLabel: "me@x.com",
 		},
@@ -2862,7 +2906,7 @@ func TestServiceListRetriesClaudeAuthStatusCommandWhenOutputIsUnrecognized(t *te
 		status,
 		harness.claudePath,
 		AvailabilityReady,
-		AuthAuthenticated,
+		AuthConfigured,
 		"",
 		"dev@example.com",
 	)
@@ -2887,7 +2931,7 @@ func TestServiceListFallsBackToClaudeAuthMarkerWhenAuthStatusCommandIsUnrecogniz
 		status,
 		harness.claudePath,
 		AvailabilityReady,
-		AuthAuthenticated,
+		AuthConfigured,
 		"",
 		"user_123",
 	)
@@ -2982,6 +3026,12 @@ func TestServiceSelectInstallDirFallsBackToPathDirWhenHomeUnavailable(t *testing
 			return "", errors.New("home unavailable")
 		},
 	}
+	if runtime.GOOS == "windows" {
+		if _, err := service.selectInstallDir(); err == nil {
+			t.Fatal("selectInstallDir() error = nil, want Windows canonical home directory error")
+		}
+		return
+	}
 
 	installDir, err := service.selectInstallDir()
 	if err != nil {
@@ -3054,6 +3104,9 @@ func probeTestService(home string) Service {
 		// real ACP initialize round-trip in fake shell scripts under parallel
 		// `go test` load and caused flaky acp_adapter_launch_failed failures.
 		ProbeTimeout: defaultProbeTimeout,
+		RemoteAuthProbe: func(context.Context, ProviderSpec) (providerstatus.AuthEvidence, bool) {
+			return providerstatus.AuthEvidence{}, false
+		},
 	}
 }
 

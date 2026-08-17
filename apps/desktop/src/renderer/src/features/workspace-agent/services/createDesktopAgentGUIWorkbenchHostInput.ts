@@ -10,12 +10,14 @@ import type {
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
+import { isRichTextFolderHref } from "@tutti-os/ui-rich-text/core";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
   DesktopRuntimeApi
 } from "@preload/types";
 import type { WorkspaceFileEntry } from "@tutti-os/workspace-file-manager/services";
+import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
 import type { IDesktopRichTextAtService } from "@renderer/features/rich-text-at";
 import type { IReporterService } from "@renderer/features/analytics";
 import type { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
@@ -186,6 +188,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
   const getLocationSections = () =>
     getCurrentDesktopWorkspaceFileLocationSections({
       homeDirectory: platformApi.homeDirectory,
+      os: platformApi.os,
       workspaceUserProjectService
     });
   const agentGeneratedFileMentionProvider =
@@ -210,8 +213,11 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           const sectionKey =
             workspaceUserProjectService
               ?.getSnapshot()
-              .projects.find(
-                (project) => project.path === searchInput.withinNodeId
+              .projects.find((project) =>
+                areWorkspaceUserProjectPathsEqual(
+                  project.path,
+                  searchInput.withinNodeId
+                )
               )
               ?.sectionKey?.trim() ?? "";
           const items = await agentGeneratedFileMentionProvider.query({
@@ -233,7 +239,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
             return [
               {
                 displayName: insert.label,
-                kind: insert.href.endsWith("/") ? "folder" : "file",
+                kind: isRichTextFolderHref(insert.href) ? "folder" : "file",
                 path: insert.href
               }
             ];
@@ -278,8 +284,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           "workspace-issue",
           "agent-session",
           "workspace-app",
-          "agent-target",
-          "workspace-model"
+          "agent-target"
         ],
         surface: "composer",
         target: "agent-gui",

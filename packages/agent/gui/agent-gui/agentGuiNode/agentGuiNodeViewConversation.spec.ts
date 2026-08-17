@@ -77,6 +77,38 @@ describe("ConversationMeta", () => {
     expect(screen.getByTestId("agent-gui-conversation-spinner")).toBeVisible();
   });
 
+  it("keeps the worktree mark to the left of the loading indicator", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const item = conversation("working-worktree", nowMs, {
+      status: "working",
+      isolation: {
+        mode: "worktree",
+        worktreePath: "/state/worktrees/session",
+        branch: "tutti/session",
+        baseCommit: "abc123"
+      }
+    });
+
+    const { container } = render(
+      createElement(ConversationMeta, {
+        item,
+        nowMs,
+        labels: relativeLabels
+      })
+    );
+
+    const meta = container.querySelector(
+      ".agent-gui-node__conversation-meta"
+    );
+    expect(meta?.firstElementChild).toHaveClass(
+      "agent-gui-node__conversation-worktree-glyph"
+    );
+    expect(meta?.lastElementChild).toHaveAttribute(
+      "data-testid",
+      "agent-gui-conversation-spinner"
+    );
+  });
+
   it("shows the ask indicator whenever a conversation needs user action", () => {
     const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
     const item = conversation("user-action-waiting", nowMs, {
@@ -137,6 +169,38 @@ describe("ConversationMeta", () => {
     expect(
       screen.getByTestId("agent-gui-conversation-meta-updated-newer-sort-older")
     ).toHaveTextContent("5 minutes");
+  });
+
+  it("shows the worktree mark alongside relative time outside hover state", () => {
+    const nowMs = new Date("2026-06-05T12:00:00Z").getTime();
+    const item = conversation("worktree", nowMs - 5 * 60 * 1000, {
+      isolation: {
+        mode: "worktree",
+        worktreePath: "/state/worktrees/session",
+        branch: "tutti/session",
+        baseCommit: "abc123"
+      }
+    });
+
+    const { container } = render(
+      createElement(ConversationMeta, {
+        item,
+        nowMs,
+        labels: relativeLabels
+      })
+    );
+
+    expect(screen.getByText("5 minutes")).toBeVisible();
+    expect(
+      container.querySelector(".agent-gui-node__conversation-worktree-glyph")
+    ).toBeInTheDocument();
+    const meta = screen.getByTestId("agent-gui-conversation-meta-worktree");
+    expect(meta.firstElementChild).toHaveClass(
+      "agent-gui-node__conversation-worktree-glyph"
+    );
+    expect(meta.lastElementChild).toHaveClass(
+      "agent-gui-node__conversation-time"
+    );
   });
 });
 

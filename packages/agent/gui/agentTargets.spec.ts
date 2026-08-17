@@ -38,6 +38,7 @@ describe("agent gui provider targets", () => {
     expect(createLocalAgentGUIAgentTarget("codex")).toEqual({
       targetId: "local:codex",
       agentTargetId: "local:codex",
+      ownership: "self",
       provider: "codex",
       ref: {
         kind: "local",

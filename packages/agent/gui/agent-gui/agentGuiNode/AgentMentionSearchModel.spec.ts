@@ -6,6 +6,52 @@ import {
 } from "./AgentMentionSearchModel";
 
 describe("providerItemToAgentMentionItem", () => {
+  it("normalizes Windows generated-file paths before deriving their directory", () => {
+    const path = "C:\\Users\\agent\\workspace\\generated\\report.md";
+    const item = providerItemToAgentMentionItem({
+      currentUserId: "user-1",
+      providerId: "agent-generated-file",
+      insertResult: {
+        kind: "mention",
+        mention: {
+          entityId: path,
+          label: "report.md",
+          scope: { workspaceId: "workspace-1" }
+        }
+      },
+      label: "report.md",
+      subtitle: path,
+      workspaceId: "workspace-1"
+    });
+
+    expect(item).toMatchObject({
+      kind: "file",
+      path,
+      name: "report.md",
+      directoryPath: "C:/Users/agent/workspace/generated"
+    });
+  });
+
+  it("recognizes native trailing separators as directory provider items", () => {
+    const path = "C:\\Users\\agent\\workspace\\generated\\";
+    const item = providerItemToAgentMentionItem({
+      currentUserId: "user-1",
+      providerId: "file",
+      insertResult: { kind: "markdown-link", href: path, label: "generated" },
+      label: "generated",
+      subtitle: path,
+      workspaceId: "workspace-1"
+    });
+
+    expect(item).toMatchObject({
+      kind: "file",
+      path,
+      name: "generated",
+      entryKind: "directory",
+      directoryPath: "C:/Users/agent/workspace"
+    });
+  });
+
   it("preserves workspace issue icon presentation", () => {
     expect(
       providerItemToAgentMentionItem({

@@ -5,6 +5,7 @@ export const enAgentGuiSessionActions = {
   copyAsMarkdown: "Copy as Markdown",
   copyAsReference: "Copy as reference",
   markSessionUnread: "Mark as unread",
+  retryConversations: "Retry",
   conversationCopyImage: "Image",
   conversationCopyMentionPrefix: "@",
   conversationCopyFile: "File",

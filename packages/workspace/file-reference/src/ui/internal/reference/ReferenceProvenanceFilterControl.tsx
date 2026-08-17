@@ -1,13 +1,8 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Button,
   Checkbox,
   ChevronDownIcon,
-  DropdownMenu,
-  DropdownMenuCheckboxItem,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuTrigger,
   SegmentBar
 } from "@tutti-os/ui-system";
 import type {
@@ -90,6 +85,43 @@ function ReferenceProvenanceOptionLabel({
   );
 }
 
+function ReferenceProvenanceFilterMenuItem({
+  checked,
+  children,
+  disabled = false,
+  onToggle
+}: {
+  checked: boolean | "indeterminate";
+  children: React.ReactNode;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  const handleToggle = () => {
+    if (!disabled) onToggle();
+  };
+
+  return (
+    <div
+      aria-checked={checked === "indeterminate" ? "mixed" : checked}
+      aria-disabled={disabled || undefined}
+      className="flex min-h-7 cursor-pointer items-center gap-2 rounded-md py-1 pr-2 text-left text-xs text-[var(--text-primary)] outline-none hover:bg-[var(--transparency-hover)] focus-visible:bg-[var(--transparency-hover)] data-[disabled=true]:cursor-not-allowed data-[disabled=true]:opacity-50"
+      data-disabled={disabled || undefined}
+      role="menuitemcheckbox"
+      tabIndex={disabled ? -1 : 0}
+      onClick={handleToggle}
+      onKeyDown={(event) => {
+        if (disabled || (event.key !== "Enter" && event.key !== " ")) {
+          return;
+        }
+        event.preventDefault();
+        handleToggle();
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function ReferenceProvenanceFilterControl({
   agentOptions,
   enabledDimensions,
@@ -101,9 +133,11 @@ export function ReferenceProvenanceFilterControl({
   onToggle,
   onToggleAll
 }: ReferenceProvenanceFilterControlProps) {
+  const [open, setOpen] = useState(false);
   const [dimension, setDimension] = useState<ReferenceProvenanceDimension>(
     enabledDimensions[0] ?? "agent"
   );
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const memberOptionsById = useMemo(
     () => new Map(memberOptions.map((option) => [option.id, option])),
     [memberOptions]
@@ -121,34 +155,66 @@ export function ReferenceProvenanceFilterControl({
   const allLabel =
     activeDimension === "agent" ? labels.allAgents : labels.allMembers;
 
+  useEffect(() => {
+    if (!open) return;
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        !(target instanceof Node) ||
+        !containerRef.current?.contains(target)
+      ) {
+        setOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [open]);
+
   if (enabledDimensions.length === 0) return null;
 
   return (
-    <div className="flex shrink-0 items-center">
-      <DropdownMenu modal={false}>
-        <DropdownMenuTrigger asChild>
-          <Button
-            aria-label={active ? labels.filteredSources : labels.allSources}
-            className="h-7 gap-1.5 border-0 px-2 text-xs hover:bg-transparent aria-expanded:bg-transparent"
-            size="sm"
-            type="button"
-            variant="ghost"
-          >
-            {active ? labels.filteredSources : labels.allSources}
-            <ChevronDownIcon
-              aria-hidden="true"
-              className="size-3 text-[var(--text-tertiary)] transition-transform in-data-[state=open]:rotate-180"
-            />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent
-          align="end"
-          className="nodrag w-60 overflow-hidden p-0"
-          style={
-            popoverElevation === "panel"
-              ? { zIndex: "var(--z-panel-popover)" }
-              : undefined
-          }
+    <div ref={containerRef} className="relative flex shrink-0 items-center">
+      <Button
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-label={active ? labels.filteredSources : labels.allSources}
+        className="h-7 gap-1.5 border-0 px-2 text-xs hover:bg-transparent aria-expanded:bg-transparent"
+        size="sm"
+        type="button"
+        variant="ghost"
+        onClick={() => setOpen((current) => !current)}
+        onPointerDown={(event) => event.preventDefault()}
+      >
+        {active ? labels.filteredSources : labels.allSources}
+        <ChevronDownIcon
+          aria-hidden="true"
+          className={`size-3 text-[var(--text-tertiary)] transition-transform${open ? " rotate-180" : ""}`}
+        />
+      </Button>
+      {open ? (
+        <div
+          aria-label={labels.allSources}
+          className="nodrag absolute top-[calc(100%+4px)] right-0 z-50 w-60 overflow-hidden rounded-[8px] border border-[var(--line-1)] bg-[var(--background-fronted)] p-0 shadow-soft"
+          role="menu"
+          style={{
+            zIndex:
+              popoverElevation === "panel"
+                ? "var(--z-panel-popover)"
+                : "var(--z-popover)"
+          }}
+          onPointerDown={(event) => event.preventDefault()}
         >
           {enabledDimensions.length > 1 ? (
             <div className="px-1 pt-1">
@@ -164,8 +230,8 @@ export function ReferenceProvenanceFilterControl({
               />
             </div>
           ) : null}
-          <DropdownMenuGroup className="max-h-72 gap-0.5 overflow-y-auto p-1">
-            <DropdownMenuCheckboxItem
+          <div className="max-h-72 overflow-y-auto p-1">
+            <ReferenceProvenanceFilterMenuItem
               checked={
                 allSelected
                   ? true
@@ -173,9 +239,7 @@ export function ReferenceProvenanceFilterControl({
                     ? "indeterminate"
                     : false
               }
-              className="min-h-7 rounded-md py-1 pr-2 text-xs [&_[data-slot='dropdown-menu-checkbox-item-indicator']]:hidden"
-              onCheckedChange={() => onToggleAll(activeDimension)}
-              onSelect={(event) => event.preventDefault()}
+              onToggle={() => onToggleAll(activeDimension)}
             >
               <span className="min-w-0 flex-1 truncate">{allLabel}</span>
               <Checkbox
@@ -190,15 +254,13 @@ export function ReferenceProvenanceFilterControl({
                 className="pointer-events-none size-4 data-[state=checked]:border-[var(--tutti-purple)] data-[state=checked]:bg-[var(--tutti-purple)] data-[state=indeterminate]:border-[var(--tutti-purple)] data-[state=indeterminate]:bg-[var(--tutti-purple)] [&_[data-slot='checkbox-indicator']>svg]:size-2.5"
                 tabIndex={-1}
               />
-            </DropdownMenuCheckboxItem>
+            </ReferenceProvenanceFilterMenuItem>
             {visibleOptions.map((option) => (
-              <DropdownMenuCheckboxItem
+              <ReferenceProvenanceFilterMenuItem
                 key={option.id}
                 checked={allSelected || selected.includes(option.id)}
-                className="min-h-7 rounded-md py-1 pr-2 text-xs [&_[data-slot='dropdown-menu-checkbox-item-indicator']]:hidden"
                 disabled={option.disabled}
-                onCheckedChange={() => onToggle(activeDimension, option.id)}
-                onSelect={(event) => event.preventDefault()}
+                onToggle={() => onToggle(activeDimension, option.id)}
               >
                 {option.iconUrl ? (
                   <img
@@ -216,13 +278,14 @@ export function ReferenceProvenanceFilterControl({
                   aria-hidden="true"
                   checked={allSelected || selected.includes(option.id)}
                   className="pointer-events-none size-4 data-[state=checked]:border-[var(--tutti-purple)] data-[state=checked]:bg-[var(--tutti-purple)] [&_[data-slot='checkbox-indicator']>svg]:size-2.5"
+                  disabled={option.disabled}
                   tabIndex={-1}
                 />
-              </DropdownMenuCheckboxItem>
+              </ReferenceProvenanceFilterMenuItem>
             ))}
-          </DropdownMenuGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

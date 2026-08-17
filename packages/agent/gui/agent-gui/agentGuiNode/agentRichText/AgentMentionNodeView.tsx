@@ -10,6 +10,11 @@ import {
   type ReactNode
 } from "react";
 import { NodeViewWrapper, type NodeViewProps } from "@tiptap/react";
+import {
+  useResolvedRichTextMention,
+  useRichTextMentionService
+} from "@tutti-os/ui-rich-text/editor";
+import type { RichTextMentionIdentity } from "@tutti-os/ui-rich-text/types";
 import { MentionPill } from "@tutti-os/ui-system/components";
 import { Spinner } from "@tutti-os/ui-system";
 import { CloseIcon } from "@tutti-os/ui-system/icons";
@@ -18,11 +23,21 @@ import {
   resolveAgentMentionFileThumbnailUrl,
   resolveAgentMentionFileVisualKind
 } from "../../shared/mentionFilePresentation";
-import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
 import { getAgentCustomMentionKind } from "../../../shared/agentCustomMentionKinds";
+import { managedAgentRoundedIconUrl } from "../../../shared/managedAgentIcons";
+import { useAgentTargetPresentations } from "../../../shared/AgentTargetPresentationContext";
+import {
+  resolveAgentMentionTargetPresentation,
+  type AgentMessageMarkdownAgentTarget
+} from "../../../shared/agentTargetPresentation";
+import {
+  parseResolvableAgentMentionIdentity,
+  resolveAgentMentionNodePresentation,
+  type AgentMentionResolvedPresentation
+} from "./agentMentionNodeResolution";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
-import { resolveAgentSessionMentionIconUrl } from "./agentMentionPresentation";
 import { agentExternalPromptFileErrorI18nKey } from "../model/agentExternalPromptFiles";
+import { dirnameFromPath } from "./agentMentionMarkdown";
 
 type AgentMentionNodeViewKind =
   | "file"
@@ -117,36 +132,33 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
   return "file";
 }
 
-function dirnameFromPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length <= 1) {
-    return path.startsWith("/") ? "/" : "";
-  }
-  return `/${parts.slice(0, -1).join("/")}`;
-}
-
 function mentionViewModel(
   attrs: Record<string, unknown>,
-  t: (key: string) => string
+  t: (key: string) => string,
+  agentTargets: readonly AgentMessageMarkdownAgentTarget[],
+  resolvedPresentation?: AgentMentionResolvedPresentation
 ): AgentMentionNodeViewModel {
   const kind = normalizeKind(attrString(attrs, "kind"));
   const name = attrString(attrs, "name");
+  const displayName = resolvedPresentation?.label ?? name;
   const href = attrString(attrs, "href");
 
   if (kind === "session") {
     const label = attrString(attrs, "title").trim() || name.trim();
     const agentTargetId = attrString(attrs, "agentTargetId").trim();
+    const presentation = resolveAgentMentionTargetPresentation({
+      agentTargetId,
+      agentTargets,
+      fallbackIconUrl: attrString(attrs, "iconUrl"),
+      workspaceId: attrString(attrs, "workspaceId")
+    });
     return {
       ariaLabel:
         `${t("agentHost.agentGui.mentionKindSession")} ${label}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
-      iconUrl: resolveAgentSessionMentionIconUrl({
-        agentIconUrl: attrString(attrs, "iconUrl"),
-        agentTargetId,
-        href
-      }),
+      iconUrl: presentation.iconUrl,
       kind,
       label
     };
@@ -154,36 +166,48 @@ function mentionViewModel(
 
   if (kind === "workspace-issue") {
     return {
-      ariaLabel: `${t("agentHost.agentGui.mentionKindIssue")} ${name}`.trim(),
+      ariaLabel:
+        `${t("agentHost.agentGui.mentionKindIssue")} ${displayName}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
+      iconUrl:
+        resolvedPresentation?.iconUrl ??
+        (resolvedPresentation
+          ? undefined
+          : attrString(attrs, "iconUrl").trim() || undefined),
       kind,
-      label: name
+      label: displayName
     };
   }
 
   if (kind === "workspace-app") {
     return {
-      ariaLabel: `${t("agentHost.agentGui.mentionKindApp")} ${name}`.trim(),
+      ariaLabel:
+        `${t("agentHost.agentGui.mentionKindApp")} ${displayName}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
-      iconUrl: attrString(attrs, "iconUrl").trim() || undefined,
+      iconUrl:
+        resolvedPresentation?.iconUrl ??
+        (resolvedPresentation
+          ? undefined
+          : attrString(attrs, "iconUrl").trim() || undefined),
       kind,
-      label: name
+      label: displayName
     };
   }
 
   if (kind === "workspace-reference") {
     return {
-      ariaLabel: `${t("agentHost.agentGui.mentionKindApp")} ${name}`.trim(),
+      ariaLabel:
+        `${t("agentHost.agentGui.mentionKindApp")} ${displayName}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
       iconUrl: attrString(attrs, "iconUrl").trim() || undefined,
       kind,
-      label: name,
+      label: displayName,
       fileCount: parseFileCountAttr(attrs.fileCount)
     };
   }
@@ -191,40 +215,52 @@ function mentionViewModel(
   if (kind === "workspace-app-factory") {
     return {
       ariaLabel:
-        `${t("agentHost.agentGui.mentionKindAppFactory")} ${name}`.trim(),
+        `${t("agentHost.agentGui.mentionKindAppFactory")} ${displayName}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
       kind,
-      label: name
+      label: displayName
     };
   }
 
   if (kind === "agent-target") {
-    const agentProviderId = attrString(attrs, "agentProviderId").trim();
+    const agentProviderId =
+      resolvedPresentation?.agentProviderId ??
+      (resolvedPresentation ? "" : attrString(attrs, "agentProviderId").trim());
+    const presentation = resolveAgentMentionTargetPresentation({
+      agentTargetId: attrString(attrs, "targetId"),
+      agentTargets,
+      fallbackIconUrl:
+        resolvedPresentation?.iconUrl ||
+        (!resolvedPresentation && attrString(attrs, "iconUrl").trim()) ||
+        managedAgentRoundedIconUrl(agentProviderId || undefined),
+      fallbackName: displayName,
+      fallbackProvider: agentProviderId,
+      workspaceId: attrString(attrs, "workspaceId")
+    });
     return {
-      ariaLabel: `${t("agentHost.agentGui.mentionKindAgent")} ${name}`.trim(),
+      ariaLabel:
+        `${t("agentHost.agentGui.mentionKindAgent")} ${presentation.name ?? displayName}`.trim(),
       directoryPath: "",
       entryKind: "",
       href,
-      iconUrl:
-        attrString(attrs, "iconUrl").trim() ||
-        managedAgentRoundedIconUrl(agentProviderId),
+      iconUrl: presentation.iconUrl,
       kind,
-      label: name
+      label: presentation.name ?? displayName
     };
   }
 
   if (kind === "custom") {
     return {
       ariaLabel:
-        `${t("agentHost.agentGui.mentionKindReference")} ${name}`.trim(),
+        `${t("agentHost.agentGui.mentionKindReference")} ${displayName}`.trim(),
       customKind: attrString(attrs, "customKind").trim(),
       directoryPath: "",
       entryKind: "",
       href,
       kind,
-      label: name,
+      label: displayName,
       summary: attrString(attrs, "preview").trim() || undefined
     };
   }
@@ -415,24 +451,71 @@ function AgentMentionLegacyFileView({
   );
 }
 
-function AgentMentionView({
-  attrs,
-  isEditable,
-  onRemove,
-  removeActionAriaLabel,
-  selected,
-  Wrapper
-}: {
+interface AgentMentionViewProps {
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   attrs: Record<string, unknown>;
   isEditable: boolean;
   onRemove?: MouseEventHandler<HTMLButtonElement>;
   removeActionAriaLabel?: string;
   selected: boolean;
   Wrapper: AgentMentionWrapper;
+}
+
+function AgentMentionView(props: AgentMentionViewProps): JSX.Element {
+  const identity = parseResolvableAgentMentionIdentity(
+    props.attrs,
+    normalizeKind(attrString(props.attrs, "kind"))
+  );
+  return identity ? (
+    <AgentMentionResolvedView {...props} identity={identity} />
+  ) : (
+    <AgentMentionPresentationView {...props} />
+  );
+}
+
+function AgentMentionResolvedView({
+  identity,
+  ...props
+}: AgentMentionViewProps & {
+  identity: RichTextMentionIdentity;
+}): JSX.Element {
+  const mentionService = useRichTextMentionService();
+  const snapshot = useResolvedRichTextMention(identity);
+  const resolvedPresentation = resolveAgentMentionNodePresentation({
+    attrs: props.attrs,
+    hasMentionService: mentionService !== null,
+    resolved: snapshot.state === "ready" ? snapshot.resolved : undefined,
+    state: snapshot.state
+  });
+  return (
+    <AgentMentionPresentationView
+      {...props}
+      resolvedPresentation={resolvedPresentation}
+    />
+  );
+}
+
+function AgentMentionPresentationView({
+  agentTargets,
+  attrs,
+  isEditable,
+  onRemove,
+  removeActionAriaLabel,
+  resolvedPresentation,
+  selected,
+  Wrapper
+}: AgentMentionViewProps & {
+  resolvedPresentation?: AgentMentionResolvedPresentation;
 }): JSX.Element {
   const { t } = useTranslation();
   const withTooltipProvider = useContext(AgentMentionTooltipProviderContext);
-  const mention = mentionViewModel(attrs, t);
+  const contextAgentTargets = useAgentTargetPresentations();
+  const mention = mentionViewModel(
+    attrs,
+    t,
+    agentTargets ?? contextAgentTargets,
+    resolvedPresentation
+  );
 
   if (mention.kind === "file") {
     return (
@@ -600,12 +683,15 @@ function AgentMentionView({
 }
 
 export function AgentMentionReadonlyView({
+  agentTargets,
   attrs
 }: {
+  agentTargets?: readonly AgentMessageMarkdownAgentTarget[];
   attrs: Record<string, unknown>;
 }): JSX.Element {
   return (
-    <AgentMentionView
+    <AgentMentionPresentationView
+      agentTargets={agentTargets}
       attrs={attrs}
       isEditable={false}
       selected={false}

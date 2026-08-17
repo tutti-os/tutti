@@ -1,4 +1,8 @@
-import { resolveWorkspaceUserProjectDisplayLabel } from "@tutti-os/workspace-user-project/core";
+import {
+  normalizeWorkspaceUserProjectPath,
+  resolveWorkspaceUserProjectDisplayLabel,
+  workspaceUserProjectPathIdentityKey
+} from "@tutti-os/workspace-user-project/core";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
 
 const AGENT_GUI_CONVERSATION_PROJECT_SUMMARY_CACHE_LIMIT = 512;
@@ -30,112 +34,101 @@ export type AgentGUIConversationUserProject = Pick<
   | "pinnedAtUnixMs"
 >;
 
-export type AgentGUIConversationNoProjectPathResolver = (input: {
-  path: string;
-}) => boolean;
-
-export interface AgentGUIConversationProjectResolutionOptions {
-  isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
-}
-
 export interface AgentGUIConversationProjectResolver {
-  resolve: (
-    cwd: string | null | undefined
+  resolveSectionKey: (
+    railSectionKey: string | null | undefined
   ) => AgentGUIConversationProjectSummary | null;
 }
 
 export function createAgentGUIConversationProjectResolver(
-  userProjects: readonly AgentGUIConversationUserProject[] = [],
-  options: AgentGUIConversationProjectResolutionOptions = {}
+  userProjects: readonly AgentGUIConversationUserProject[] = []
 ): AgentGUIConversationProjectResolver {
-  const projectByNormalizedPath =
+  const projectBySectionKey =
     buildAgentGUIConversationProjectIndex(userProjects);
-  const resolvedByNormalizedCwd = new Map<
-    string,
-    AgentGUIConversationProjectSummary | null
-  >();
   return {
-    resolve: (cwd) => {
-      const normalizedCwd = normalizeAgentGUIProjectPath(cwd);
-      if (!normalizedCwd) {
+    resolveSectionKey: (railSectionKey) => {
+      const sectionKey = normalizeAgentGUIProjectSectionKey(railSectionKey);
+      if (!sectionKey || sectionKey === "conversations") {
         return null;
       }
-      const cached = resolvedByNormalizedCwd.get(normalizedCwd);
-      if (cached !== undefined) {
-        return cached;
-      }
-      const resolved = resolveAgentGUIConversationProjectFromIndex(
-        normalizedCwd,
-        projectByNormalizedPath,
-        options
-      );
-      resolvedByNormalizedCwd.set(normalizedCwd, resolved);
-      return resolved;
+      const project = projectBySectionKey.get(sectionKey);
+      return project
+        ? agentGUIConversationProjectSummaryFromProject(project)
+        : null;
     }
   };
 }
 
-export function resolveAgentGUIConversationProject(
-  cwd: string | null | undefined,
-  userProjects: readonly AgentGUIConversationUserProject[] = [],
-  options: AgentGUIConversationProjectResolutionOptions = {}
+export function resolveAgentGUIConversationProjectBySectionKey(
+  railSectionKey: string | null | undefined,
+  userProjects: readonly AgentGUIConversationUserProject[] = []
 ): AgentGUIConversationProjectSummary | null {
   return createAgentGUIConversationProjectResolver(
-    userProjects,
-    options
-  ).resolve(cwd);
+    userProjects
+  ).resolveSectionKey(railSectionKey);
+}
+
+export function resolveAgentGUISelectedUserProject(
+  selectedPath: string | null | undefined,
+  userProjects: readonly AgentGUIConversationUserProject[] = []
+): AgentGUIConversationProjectSummary | null {
+  const normalizedSelectedPath =
+    workspaceUserProjectPathIdentityKey(selectedPath);
+  if (!normalizedSelectedPath) {
+    return null;
+  }
+  const projectByNormalizedPath =
+    buildAgentGUISelectedProjectPathIndex(userProjects);
+  const project = lookupAgentGUISelectedProject(
+    normalizedSelectedPath,
+    projectByNormalizedPath
+  );
+  return project
+    ? agentGUIConversationProjectSummaryFromProject(project)
+    : null;
 }
 
 function buildAgentGUIConversationProjectIndex(
   userProjects: readonly AgentGUIConversationUserProject[]
 ): ReadonlyMap<string, AgentGUIConversationUserProject> {
-  const projectByNormalizedPath = new Map<
+  const projectBySectionKey = new Map<
     string,
     AgentGUIConversationUserProject
   >();
   for (const project of userProjects) {
-    const projectPath = normalizeAgentGUIProjectPath(project.path);
-    if (!projectPath || projectByNormalizedPath.has(projectPath)) {
+    const sectionKey = normalizeAgentGUIProjectSectionKey(project.sectionKey);
+    if (
+      !sectionKey ||
+      sectionKey === "conversations" ||
+      projectBySectionKey.has(sectionKey)
+    ) {
       continue;
     }
-    projectByNormalizedPath.set(projectPath, project);
+    projectBySectionKey.set(sectionKey, project);
   }
-  return projectByNormalizedPath;
+  return projectBySectionKey;
 }
 
-function resolveAgentGUIConversationProjectFromIndex(
-  normalizedCwd: string,
-  projectByNormalizedPath: ReadonlyMap<string, AgentGUIConversationUserProject>,
-  options: AgentGUIConversationProjectResolutionOptions
-): AgentGUIConversationProjectSummary | null {
-  const exactProject = projectByNormalizedPath.get(normalizedCwd);
-  if (exactProject) {
-    return agentGUIConversationProjectSummaryFromProject(exactProject);
-  }
-  if (options.isNoProjectPath?.({ path: normalizedCwd })) {
-    return null;
-  }
-  const matchedProject = lookupAgentGUIConversationProject(
-    normalizedCwd,
-    projectByNormalizedPath
-  );
-  if (!matchedProject) {
-    return null;
-  }
-  return agentGUIConversationProjectSummaryFromProject(matchedProject);
+function normalizeAgentGUIProjectSectionKey(
+  sectionKey: string | null | undefined
+): string {
+  return sectionKey?.trim() ?? "";
 }
 
 function agentGUIConversationProjectSummaryFromProject(
   matchedProject: AgentGUIConversationUserProject
 ): AgentGUIConversationProjectSummary {
+  const sectionKey = normalizeAgentGUIProjectSectionKey(
+    matchedProject.sectionKey
+  );
   const summary: AgentGUIConversationProjectSummary = {
     id: matchedProject.id,
     path: matchedProject.path,
     label: resolveWorkspaceUserProjectDisplayLabel(matchedProject),
     pinnedAtUnixMs: matchedProject.pinnedAtUnixMs
   };
-  if (matchedProject.sectionKey !== undefined) {
-    summary.sectionKey = matchedProject.sectionKey;
+  if (sectionKey) {
+    summary.sectionKey = sectionKey;
   }
   if (matchedProject.createdAtUnixMs !== undefined) {
     summary.createdAtUnixMs = matchedProject.createdAtUnixMs;
@@ -149,11 +142,28 @@ function agentGUIConversationProjectSummaryFromProject(
   return cachedAgentGUIConversationProjectSummary(summary);
 }
 
-function lookupAgentGUIConversationProject(
-  normalizedCwd: string,
+function buildAgentGUISelectedProjectPathIndex(
+  userProjects: readonly AgentGUIConversationUserProject[]
+): ReadonlyMap<string, AgentGUIConversationUserProject> {
+  const projectByNormalizedPath = new Map<
+    string,
+    AgentGUIConversationUserProject
+  >();
+  for (const project of userProjects) {
+    const projectPath = workspaceUserProjectPathIdentityKey(project.path);
+    if (!projectPath || projectByNormalizedPath.has(projectPath)) {
+      continue;
+    }
+    projectByNormalizedPath.set(projectPath, project);
+  }
+  return projectByNormalizedPath;
+}
+
+function lookupAgentGUISelectedProject(
+  normalizedSelectedPath: string,
   projectByNormalizedPath: ReadonlyMap<string, AgentGUIConversationUserProject>
 ): AgentGUIConversationUserProject | null {
-  let currentPath = normalizedCwd;
+  let currentPath = normalizedSelectedPath;
   while (currentPath) {
     const project = projectByNormalizedPath.get(currentPath);
     if (project) {
@@ -165,7 +175,7 @@ function lookupAgentGUIConversationProject(
     }
     currentPath = currentPath.slice(0, slashIndex);
   }
-  if (normalizedCwd === "/") {
+  if (normalizedSelectedPath === "/") {
     return projectByNormalizedPath.get("/") ?? null;
   }
   return null;
@@ -174,11 +184,7 @@ function lookupAgentGUIConversationProject(
 export function normalizeAgentGUIProjectPath(
   path: string | null | undefined
 ): string {
-  const normalized = path?.trim().replaceAll("\\", "/") ?? "";
-  if (!normalized) {
-    return "";
-  }
-  return normalized.replace(/\/+$/, "") || "/";
+  return normalizeWorkspaceUserProjectPath(path);
 }
 
 function cachedAgentGUIConversationProjectSummary(

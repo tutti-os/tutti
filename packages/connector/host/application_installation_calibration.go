@@ -7,17 +7,20 @@ import (
 	"strings"
 )
 
-const InstallationFailureCodeProbeAbsent = "connector_installation_probe_absent"
+const (
+	InstallationFailureCodePhysicallyAbsent  = "connector_installation_absent"
+	InstallationFailureCodePhysicallyInvalid = "connector_installation_invalid"
+)
 
-// CalibrateInstalledConnectorsForScope compares durable installation truth
-// with explicit probes from releases that the user previously installed. A
-// probe is never executed for a catalog-only connector. Indeterminate checks
-// preserve SQLite state and are returned for diagnostics.
+// CalibrateInstalledConnectorsForScope compares the repository projection
+// with the physical installation manager. Inspection is release- and
+// receipt-based: Connector-owned commands are never executed. Indeterminate
+// observations preserve the current projection.
 func (application *Application) CalibrateInstalledConnectorsForScope(
 	ctx context.Context,
 	scope OperationScope,
 ) error {
-	if application == nil || application.config.InstallationChecker == nil {
+	if application == nil || application.config.ReleaseInstallations == nil {
 		return nil
 	}
 	snapshot, err := application.config.Repository.Snapshot(ctx)
@@ -34,31 +37,23 @@ func (application *Application) CalibrateInstalledConnectorsForScope(
 			calibrationErrors = append(calibrationErrors, fmt.Errorf("calibrate connector %s: %w", connector.Key, evidenceErr))
 			continue
 		}
-		if !releaseHasInstallationProbe(release) {
-			continue
-		}
-		installedConnector := connector
-		installedConnector.Release = release
-		operationID := "calibrate/" + application.config.BootEpoch + "/" + connector.Key
-		operation := Operation{OperationID: operationID, ConnectorKey: connector.Key, Scope: scope}
-		binding, bindingErr := application.resolveRuntimeBinding(ctx, operation, installedConnector, release, RuntimeBindingPurposeInstallationProbe)
-		if bindingErr != nil {
-			calibrationErrors = append(calibrationErrors, fmt.Errorf("calibrate connector %s binding: %w", connector.Key, bindingErr))
-			continue
-		}
-		clear(binding.CredentialBrokerGrant)
-		generation := HostGeneration{BootEpoch: application.config.BootEpoch, Generation: nextGeneration(connector.Revision)}
-		observation, checkErr := application.config.InstallationChecker.CheckInstallation(ctx, InstallationCheckRequest{
-			OperationID: operationID, Scope: scope, ConnectionID: binding.ConnectionID,
-			Connector: installedConnector, Generation: generation,
+		operationID := "inspect/" + application.config.BootEpoch + "/" + connector.Key
+		observation, inspectErr := application.config.ReleaseInstallations.InspectReleaseInstallation(ctx, InspectReleaseInstallationRequest{
+			OperationID: operationID,
+			Scope:       scope,
+			Generation:  HostGeneration{BootEpoch: application.config.BootEpoch, Generation: nextGeneration(connector.Revision)},
+			Release:     release,
 		})
-		if checkErr != nil {
-			calibrationErrors = append(calibrationErrors, fmt.Errorf("calibrate connector %s installation: %w", connector.Key, checkErr))
+		if inspectErr != nil {
+			calibrationErrors = append(calibrationErrors, fmt.Errorf("calibrate connector %s installation: %w", connector.Key, inspectErr))
 			continue
 		}
 		if observation.ConnectorKey != connector.Key || observation.ReleaseDigest != release.ReleaseDigest ||
-			(observation.State != InstallationObservationPresent && observation.State != InstallationObservationAbsent) {
-			calibrationErrors = append(calibrationErrors, fmt.Errorf("calibrate connector %s: installation checker returned a mismatched observation", connector.Key))
+			!validReleaseInstallationObservation(observation.State) {
+			calibrationErrors = append(calibrationErrors, fmt.Errorf("calibrate connector %s: installation manager returned a mismatched observation", connector.Key))
+			continue
+		}
+		if observation.State == ReleaseInstallationIndeterminate {
 			continue
 		}
 		if err := application.applyInstallationObservation(ctx, connector.Key, operationID, release.ReleaseDigest, observation.State); err != nil {
@@ -74,19 +69,23 @@ func installationCalibrationCandidate(connector Connector) bool {
 	}
 	return connector.Installation.State == InstallationStateInstalled ||
 		(connector.Installation.State == InstallationStateFailed &&
-			connector.Installation.FailureCode == InstallationFailureCodeProbeAbsent)
+			(connector.Installation.FailureCode == InstallationFailureCodePhysicallyAbsent ||
+				connector.Installation.FailureCode == InstallationFailureCodePhysicallyInvalid))
 }
 
-func releaseHasInstallationProbe(release Release) bool {
-	managed := release.Manifest.Implementation.ManagedStdio
-	return managed != nil && ((managed.MCP != nil && managed.MCP.InstallationProbe != nil) ||
-		(managed.CLI != nil && managed.CLI.InstallationProbe != nil))
+func validReleaseInstallationObservation(state ReleaseInstallationObservationState) bool {
+	switch state {
+	case ReleaseInstallationPresent, ReleaseInstallationAbsent, ReleaseInstallationInvalid, ReleaseInstallationIndeterminate:
+		return true
+	default:
+		return false
+	}
 }
 
 func (application *Application) applyInstallationObservation(
 	ctx context.Context,
 	connectorKey, operationID, releaseDigest string,
-	state InstallationObservationState,
+	state ReleaseInstallationObservationState,
 ) error {
 	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
 		connector, err := tx.Connector(connectorKey)
@@ -98,16 +97,23 @@ func (application *Application) applyInstallationObservation(
 		}
 		next := connector.Installation
 		switch state {
-		case InstallationObservationPresent:
+		case ReleaseInstallationPresent:
 			if next.State == InstallationStateInstalled {
 				return nil
 			}
 			next.State, next.FailureCode = InstallationStateInstalled, ""
-		case InstallationObservationAbsent:
-			if next.State == InstallationStateFailed && next.FailureCode == InstallationFailureCodeProbeAbsent {
+		case ReleaseInstallationAbsent:
+			if next.State == InstallationStateFailed && next.FailureCode == InstallationFailureCodePhysicallyAbsent {
 				return nil
 			}
-			next.State, next.FailureCode = InstallationStateFailed, InstallationFailureCodeProbeAbsent
+			next.State, next.FailureCode = InstallationStateFailed, InstallationFailureCodePhysicallyAbsent
+		case ReleaseInstallationInvalid:
+			if next.State == InstallationStateFailed && next.FailureCode == InstallationFailureCodePhysicallyInvalid {
+				return nil
+			}
+			next.State, next.FailureCode = InstallationStateFailed, InstallationFailureCodePhysicallyInvalid
+		case ReleaseInstallationIndeterminate:
+			return nil
 		default:
 			return errors.New("installation observation state is invalid")
 		}

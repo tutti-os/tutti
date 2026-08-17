@@ -47,6 +47,7 @@ const (
 	appServerMethodFileChangeApproval  = "item/fileChange/requestApproval"
 	appServerMethodPermissionsApproval = "item/permissions/requestApproval"
 	appServerMethodRequestUserInput    = "item/tool/requestUserInput"
+	appServerMethodMCPElicitation      = "mcpServer/elicitation/request"
 	appServerMethodExecApprovalV1      = "execCommandApproval"
 	appServerMethodPatchApprovalV1     = "applyPatchApproval"
 
@@ -150,6 +151,7 @@ type CodexAppServerAdapter struct {
 	commandResolver            ProviderCommandResolver
 	mu                         sync.Mutex
 	sessions                   map[string]*codexAppServerSession
+	retiredSessions            map[string][]*codexAppServerSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
@@ -206,9 +208,14 @@ type codexAppServerSessionLock struct {
 }
 
 type codexAppServerSession struct {
-	client     *codexAppServerClient
-	threadID   string
-	serverInfo map[string]any
+	client *codexAppServerClient
+	// releaseFailed preserves ownership after a physical Close error while
+	// making the client unavailable to Exec. A successful replacement moves
+	// this handle to retiredSessions until bounded cleanup confirms closure.
+	releasing     bool
+	releaseFailed bool
+	threadID      string
+	serverInfo    map[string]any
 	// resumeRuntimeContext preserves the historical adapter projection only
 	// when replay attaches at an already-initialized connection checkpoint.
 	resumeRuntimeContext map[string]any
@@ -259,7 +266,10 @@ type codexAppServerSession struct {
 	provenanceDegraded bool
 	// goalMutationMu is the provider-side half of the Host goal mutation lane. It serializes
 	// direct control, reconcile and delayed continuation nudges for this thread.
-	goalMutationMu         sync.Mutex
+	goalMutationMu sync.Mutex
+	// goalStateVersion fences asynchronous reads that started before a newer
+	// local Goal observation or control result. Guarded by the adapter mutex.
+	goalStateVersion       uint64
 	models                 []map[string]any
 	startupModelsReady     bool
 	startupRateLimitsReady bool
@@ -471,6 +481,7 @@ func newAppServerAdapter(
 		config:              config,
 		commandResolver:     commandResolver,
 		sessions:            make(map[string]*codexAppServerSession),
+		retiredSessions:     make(map[string][]*codexAppServerSession),
 		lifecycleLocks:      make(map[string]*codexAppServerSessionLock),
 		cancelGraceWindow:   defaultCodexAppServerCancelGraceWindow,
 		turnStartAckTimeout: defaultCodexAppServerTurnStartAckTimeout,
@@ -528,6 +539,13 @@ func clientInfoParamsForVersion(host HostMetadata, name string, version string) 
 
 func (a *CodexAppServerAdapter) Provider() string {
 	return a.config.provider
+}
+
+func (*CodexAppServerAdapter) ConnectorCapabilities(
+	context.Context,
+	Session,
+) (ConnectorCapabilities, error) {
+	return ConnectorCapabilities{HTTPMCP: true}, nil
 }
 
 func (*CodexAppServerAdapter) sessionCWD(session Session) string {

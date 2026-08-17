@@ -17,7 +17,12 @@ func TestConfiguredServiceReturnsPrecomposedApplicationHost(t *testing.T) {
 		serviceHostRuntime:     serviceHostRuntime{service: storeService},
 		serviceHostGoalRuntime: serviceHostGoalRuntime{service: storeService},
 	}
-	config := ServiceConfig{}
+	deletedSessions := &deletedSessionAdapterStoreStub{}
+	connector := &testConnectorRuntime{}
+	config := ServiceConfig{
+		Runtime:  ServiceRuntimeConfig{Connector: connector},
+		Sessions: ServiceSessionConfig{DeletedSessions: deletedSessions},
+	}
 	components := NewServiceComponents(runtime, config, canonical)
 	host := NewApplicationHostWithPorts(
 		components.HostSupportPorts(),
@@ -28,6 +33,30 @@ func TestConfiguredServiceReturnsPrecomposedApplicationHost(t *testing.T) {
 	)
 	if host == nil {
 		t.Fatal("NewApplicationHostWithPorts() = nil")
+	}
+	if _, err := host.ListDeletedSessions(context.Background(), agenthost.ListDeletedSessionsInput{
+		WorkspaceID: "workspace-deleted-sessions",
+	}); err != nil {
+		t.Fatalf("ListDeletedSessions() error = %v", err)
+	}
+	if deletedSessions.listInput.WorkspaceID != "workspace-deleted-sessions" {
+		t.Fatalf("ListDeletedSessions() input = %#v, want injected adapter store", deletedSessions.listInput)
+	}
+	if _, err := host.RestoreDeletedSession(context.Background(), agenthost.RestoreDeletedSessionInput{
+		WorkspaceID: "workspace-deleted-sessions", AgentSessionID: "session-restore",
+	}); err != nil {
+		t.Fatalf("RestoreDeletedSession() error = %v", err)
+	}
+	if deletedSessions.restoreInput.AgentSessionID != "session-restore" {
+		t.Fatalf("RestoreDeletedSession() input = %#v, want injected adapter store", deletedSessions.restoreInput)
+	}
+	if _, err := host.PurgeDeletedSessionTrees(context.Background(), agenthost.PurgeDeletedSessionTreesInput{
+		WorkspaceID: "workspace-deleted-sessions", RootSessionIDs: []string{"session-purge"},
+	}); err != nil {
+		t.Fatalf("PurgeDeletedSessionTrees() error = %v", err)
+	}
+	if len(deletedSessions.purgeInput.RootSessionIDs) != 1 || deletedSessions.purgeInput.RootSessionIDs[0] != "session-purge" {
+		t.Fatalf("PurgeDeletedSessionTrees() input = %#v, want injected adapter store", deletedSessions.purgeInput)
 	}
 	config.Host = ServiceHostConfig{
 		ApplicationHost: host,
@@ -42,6 +71,9 @@ func TestConfiguredServiceReturnsPrecomposedApplicationHost(t *testing.T) {
 		service.sessionSettingsState != components.sessionSettings ||
 		service.worktreeIsolationLock != components.worktreeIsolationLock {
 		t.Fatal("configured Service did not retain the precomposed narrow components")
+	}
+	if service.ConnectorRuntime != connector || components.runtimePreparation.connectorRuntime != connector {
+		t.Fatal("configured Service and Host preparation did not retain the stable Connector runtime")
 	}
 }
 

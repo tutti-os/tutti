@@ -172,6 +172,7 @@ test("controllerCommands remove issue and task refs with canonical payloads", as
   await executeIssueManagerRemoveContextRef({
     backend: backend as unknown as IssueManagerFeature["backend"],
     ref: {
+      accessKind: "workspace_path",
       contextRefId: "issue:/workspace/docs/spec.md",
       displayName: "spec.md",
       issueId: "issue-1",
@@ -185,6 +186,7 @@ test("controllerCommands remove issue and task refs with canonical payloads", as
   await executeIssueManagerRemoveContextRef({
     backend: backend as unknown as IssueManagerFeature["backend"],
     ref: {
+      accessKind: "workspace_path",
       contextRefId: "task-9:/workspace/docs/design.md",
       displayName: "design.md",
       issueId: "issue-1",

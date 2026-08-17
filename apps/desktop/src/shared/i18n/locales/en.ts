@@ -15,11 +15,23 @@ export const en = {
     loading: "Loading",
     neverOpened: "Never opened",
     ok: "OK",
+    retry: "Try again",
     selectFolder: "Select folder",
     unknownError: "Unknown error",
     unreachable: "unreachable",
     workspace: "workspace",
     zipArchive: "ZIP Archive"
+  },
+  capture: {
+    error: "Could not start the Agent. Try again.",
+    loading: "Preparing screenshot…",
+    screenPreviewAlt: "Screen ready for area selection",
+    selectHint: "Drag to select an area · Esc to cancel",
+    taskPrompt:
+      "Before starting, create a Qute Task to track this request. Then immediately carry out the request, using the Task as the ongoing work record and keeping its status and notes updated. Do not stop after creating the Task.",
+    taskPromptAction: "Create Task and track",
+    taskPromptHint: "Agent works now and keeps the Task updated",
+    title: "Tutti"
   },
   dashboard: {
     chooseWorkspaceTitle: "Choose a workspace",
@@ -45,8 +57,7 @@ export const en = {
     syncingStatus: "syncing",
     uiSystemNote:
       "The new UI system now owns tokens, icons, and shared primitives in one place.",
-    welcomeDescription:
-      "A local-first intelligent productivity platform that brings control and focus to your workflow.",
+    welcomeDescription: "Where people and agents build in tune.",
     welcomeTitle: "Welcome to Tutti",
     featureLocalTitle: "Local data storage",
     featureLocalDescription: "Privacy and safety stay under your control",
@@ -67,6 +78,7 @@ export const en = {
     errorTitle: "Unable to check for updates",
     restartAction: "Restart & install",
     retryAction: "Retry",
+    releaseNotesAction: "What's new",
     storeManaged: "Updates are managed by Microsoft Store."
   },
   desktop: {
@@ -262,6 +274,7 @@ export const en = {
       settings: "Settings",
       free: "Free",
       signIn: "Sign in",
+      signInFailed: "Unable to start sign-in",
       signOut: "Sign out",
       copyUserId: "Copy user ID",
       copyUserIdSuccess: "User ID copied",
@@ -887,6 +900,10 @@ export const en = {
           zhCN: "Simplified Chinese"
         },
         localeSaveFailed: "We couldn't switch the app language right now.",
+        captureShortcutDefaultPlaceholder: "Default: Cmd/Ctrl+Shift+S",
+        captureShortcutDescription:
+          "Global shortcut that starts a screen capture. Include Cmd, Ctrl, or Alt; clear to restore the default.",
+        captureShortcutLabel: "Screenshot shortcut",
         preventSleepDescription: "Controls whether the system can enter sleep",
         preventSleepLabel: "Sleep prevention",
         preventSleepOptions: {
@@ -901,6 +918,58 @@ export const en = {
         updatePolicySaveFailed: "We couldn't update the update mode right now.",
         versionLabel: "Desktop version"
       },
+      deletedConversations: {
+        allProjects: "All projects",
+        clearFilters: "Clear filters",
+        deleteAll: "Delete all",
+        deleteAllCompleted: "Permanently deleted {{count}} conversations.",
+        deleteAllConfirm: "Permanently delete all",
+        deleteAllConfirmationLabel: "Confirmation phrase",
+        deleteAllConfirmationPhrase: "permanently delete",
+        deleteAllDescription:
+          "This permanently deletes all {{count}} deleted conversations in this workspace, regardless of the current search or project filter. Type “{{phrase}}” to continue.",
+        deleteAllTitle: "Permanently delete all conversations?",
+        deleteAction: "Delete",
+        deleteCompleted: "Conversation permanently deleted.",
+        deleteDescription:
+          "“{{title}}” will be permanently deleted and cannot be restored.",
+        deleteTitle: "Permanently delete this conversation?",
+        deleting: "Deleting…",
+        deletingAll: "Deleting all…",
+        emptyDescription:
+          "Deleted conversations remain here until the automatic cleanup period ends.",
+        emptyTitle: "No deleted conversations",
+        legacyRestoreUnavailable:
+          "This older record does not contain the complete conversation data required for restore.",
+        incompleteRestoreUnavailable:
+          "This conversation does not contain the complete data required for restore.",
+        listLabel: "Deleted conversations",
+        loadFailedDescription:
+          "The deleted conversation list could not be loaded. Try again.",
+        loadFailedTitle: "Couldn't load deleted conversations",
+        loadingMore: "Loading more…",
+        noResultsDescription:
+          "Try another title or clear the current project filter.",
+        noResultsTitle: "No matching conversations",
+        permanentDelete: "Permanently delete",
+        permanentDeleteFailed:
+          "The conversations could not be permanently deleted. Finish active Agent work and try again.",
+        projectFilterLabel: "Filter by project",
+        removedProject: "{{project}} (removed)",
+        restore: "Restore conversation",
+        restoreCompleted: "Conversation restored.",
+        restoreFailed: "The conversation could not be restored. Try again.",
+        restoring: "Restoring…",
+        retentionDays: "{{count}} days",
+        retentionDescription:
+          "Deleted conversations are permanently removed after this period. This setting applies to every workspace on this device.",
+        retentionLabel: "Automatic cleanup",
+        searchLabel: "Search deleted conversations by title",
+        searchPlaceholder: "Search deleted conversations",
+        title: "Deleted conversations",
+        unscoped: "Chat (no project)",
+        untitled: "Untitled conversation"
+      },
       nav: {
         about: "About",
         apps: "Apps",
@@ -908,6 +977,7 @@ export const en = {
         appearance: "Appearance",
         agent: "Agent",
         connection: "Connection",
+        deletedConversations: "Trash",
         developer: "Developer",
         general: "General",
         lab: "Lab",
@@ -1261,9 +1331,6 @@ export const en = {
         agentSessionRecordingDescription:
           "Show the developer entry for recording and replaying sessions on Agent Home.",
         agentSessionRecordingLabel: "Agent session recording",
-        agentSessionForkDescription:
-          "Allow creating a new Agent conversation from a supported completed turn.",
-        agentSessionForkLabel: "Session Fork",
         codexSaverModeDescription:
           "Show a remembered Codex composer switch that delegates suitable subtasks to Luna Max.",
         codexSaverModeLabel: "Codex saver mode",
@@ -1274,11 +1341,6 @@ export const en = {
         referenceProvenanceFilterDescription:
           "Enable Agent source filtering in Agent conversation reference pickers.",
         referenceProvenanceFilterLabel: "Agent source filter",
-        quickPromptLibraryDescription:
-          "Show a personal quick-prompt library in the Agent composer.",
-        quickPromptLibraryLabel: "Quick-prompt library",
-        quickPromptLibrarySaveFailed:
-          "We couldn't update quick-prompt library availability.",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"
@@ -1300,6 +1362,9 @@ export const en = {
         conversationActivityViewDescription:
           "Shows the Activity View for conversations in the Agent sidebar.",
         conversationActivityViewLabel: "Conversation Activity View",
+        connectorsDescription:
+          "Shows Connectors in Agent settings and the Agent composer.",
+        connectorsLabel: "Connectors",
         clearShortcutLabel: "Clear {{label}}",
         newAgentConversationShortcutLabel: "New Agent conversation",
         newSameTypeWindowShortcutLabel: "New same-type window",
@@ -1411,13 +1476,14 @@ export const en = {
         manageStatusAuthRequired: "Sign-in required",
         manageStatusAvailable: "Available to connect",
         manageStatusChecking: "Checking",
+        manageStatusConfigured: "Credentials configured",
         manageStatusConnected: "Connected",
         manageStatusSelectionRequired: "Multiple installs — choose one",
+        manageStatusTemporarilyUnsupported: "Not supported yet",
         manageStatusUnknown: "Status unavailable",
-        manageStatusUnsupported: "Updating in background",
+        manageStatusUnsupported: "Unsupported",
         manageTitle: "Manage Agents",
-        manageUnsupportedTooltip:
-          "This agent is temporarily unavailable while local support updates.",
+        manageUnsupportedTooltip: "This local agent runtime is not supported.",
         refresh: "Re-check",
         unknown: "Unable to confirm local CLI status — refresh to re-check"
       },

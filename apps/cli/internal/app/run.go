@@ -15,6 +15,9 @@ import (
 )
 
 const prefixHelpGroupPreviewLimit = 5
+const dynamicStdinInputLimitBytes = 1024 * 1024
+
+var dynamicInputReader = func() io.Reader { return os.Stdin }
 
 type options struct {
 	json bool
@@ -151,6 +154,11 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 		prefix := strings.TrimSpace(commandName + " " + strings.Join(command.Path, " "))
 		return writeCLIError(stdout, stderr, opts.json, prefix, reasonInvalidInput, err, 2)
 	}
+	input, err = hydrateDynamicStdinInput(command, input)
+	if err != nil {
+		prefix := strings.TrimSpace(commandName + " " + strings.Join(command.Path, " "))
+		return writeCLIError(stdout, stderr, opts.json, prefix, reasonInvalidInput, err, 2)
+	}
 	outputMode := command.Output.DefaultMode
 	if opts.json {
 		outputMode = "json"
@@ -171,6 +179,33 @@ func runDynamic(ctx context.Context, commandName string, opts options, args []st
 		return writeDynamicJSON(stdout, stderr, *response.Output)
 	}
 	return writeCommandOutput(stdout, stderr, *response.Output)
+}
+
+func hydrateDynamicStdinInput(command daemon.Capability, input map[string]any) (map[string]any, error) {
+	value, _ := input["arguments-json"].(string)
+	if strings.TrimSpace(value) != "-" {
+		return input, nil
+	}
+	properties, _ := command.InputSchema["properties"].(map[string]any)
+	if properties["arguments-json"] == nil {
+		return nil, fmt.Errorf("--arguments-json - is not supported by this command")
+	}
+	content, err := io.ReadAll(io.LimitReader(dynamicInputReader(), dynamicStdinInputLimitBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read standard input: %w", err)
+	}
+	if len(content) > dynamicStdinInputLimitBytes {
+		return nil, fmt.Errorf("standard input exceeds %d bytes", dynamicStdinInputLimitBytes)
+	}
+	if strings.TrimSpace(string(content)) == "" {
+		return nil, fmt.Errorf("standard input must contain one JSON object")
+	}
+	next := make(map[string]any, len(input))
+	for key, value := range input {
+		next[key] = value
+	}
+	next["arguments-json"] = string(content)
+	return next, nil
 }
 
 func legacyAgentCompatibilityInvocation(args []string) bool {
@@ -211,6 +246,10 @@ func cliInvokeContextFromEnv() daemon.InvokeContext {
 		WorkspaceID:     strings.TrimSpace(os.Getenv("TUTTI_WORKSPACE_ID")),
 		ParentCommandID: strings.TrimSpace(os.Getenv("TUTTI_APP_CLI_PARENT_COMMAND_ID")),
 		AgentSessionID:  strings.TrimSpace(os.Getenv("TUTTI_AGENT_SESSION_ID")),
+		AgentCWD:        strings.TrimSpace(os.Getenv("TUTTI_AGENT_CWD")),
+		AgentRailPlacementJSON: strings.TrimSpace(
+			os.Getenv("TUTTI_AGENT_RAIL_PLACEMENT"),
+		),
 	}
 }
 

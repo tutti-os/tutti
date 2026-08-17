@@ -49,6 +49,7 @@ func NewPreparer(stateDir string) runtimeprep.TuttiAgentPreparer {
 	)
 	return runtimeprep.TuttiAgentPreparer{
 		BeforePrepare: bootstrapTuttiAgentUserAuthForPrepare,
+		AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: stateDir},
 		StableSkillBundleRoot: filepath.Join(
 			stableRoot,
 			"skill-bundles",
@@ -176,7 +177,11 @@ func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareI
 		if restoreErr := snapshot.Restore(); restoreErr != nil {
 			err = errors.Join(err, fmt.Errorf("restore previous tutti-agent auth: %w", restoreErr))
 		}
-		slog.Warn("tutti-agent auth reconcile failed", "error", err)
+		logArgs := []any{"error", err}
+		if stage := tuttiAgentAuthFailureStage(err); stage != "" {
+			logArgs = append(logArgs, "stage", stage)
+		}
+		slog.Warn("tutti-agent auth reconcile failed", logArgs...)
 		if tuttiAgentLLMTokenIssueRejectedWithCode(err, http.StatusUnauthorized) {
 			slog.Info("tutti-agent auth retained after token issue rejection",
 				"event", "tutti_agent.auth_bootstrap",
@@ -382,6 +387,14 @@ func tuttiAgentLLMTokenIssueRejectedWithCode(err error, code int) bool {
 	return errors.As(err, &rejected) && rejected.Code == code
 }
 
+func tuttiAgentAuthFailureStage(err error) string {
+	var stageErr tuttiagentauth.StageError
+	if !errors.As(err, &stageErr) {
+		return ""
+	}
+	return strings.TrimSpace(stageErr.Stage)
+}
+
 func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMTokenBundle, error) {
 	requestBody, err := json.Marshal(map[string]any{
 		"requested_app_id": tuttiAgentLLMAppID(),
@@ -406,6 +419,9 @@ func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMT
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
 		return tuttiAgentLLMTokenBundle{}, err
+	}
+	if response.StatusCode == http.StatusUnauthorized {
+		return tuttiAgentLLMTokenBundle{}, tuttiAgentLLMTokenIssueRejectedError{Code: http.StatusUnauthorized}
 	}
 	var payload struct {
 		Code   int    `json:"code"`
@@ -504,12 +520,47 @@ func runTuttiAgentTokenLogin(ctx context.Context, binaryPath string, bundle tutt
 	loginCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(loginCtx, binary, "login", "--with-tutti-llm-tokens")
+	if authPath, ok := userTuttiAgentAuthPath(); ok {
+		// The daemon may inherit TUTTI_AGENT_HOME/CODEX_HOME from a parent
+		// process or an earlier provider session.  The login command must write
+		// the same canonical user auth file inspected by the reconciler; leaving
+		// either override in place can make a successful login invisible to the
+		// verifier (or write the bundle into another session home).
+		cmd.Env = tuttiAgentLoginEnvironment(os.Environ(), authPath)
+	}
 	cmd.Stdin = bytes.NewReader(stdin)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("tutti-agent login failed: %w: %s", err, strings.TrimSpace(string(output)))
 	}
 	return nil
+}
+
+func tuttiAgentLoginEnvironment(base []string, authPath string) []string {
+	env := append([]string(nil), base...)
+	env = replaceEnvironmentValue(env, "TUTTI_AGENT_HOME", filepath.Dir(filepath.Clean(authPath)))
+	env = replaceEnvironmentValue(env, "CODEX_HOME", "")
+	return env
+}
+
+func replaceEnvironmentValue(env []string, key, value string) []string {
+	prefix := key + "="
+	result := make([]string, 0, len(env)+1)
+	replaced := false
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			if !replaced {
+				result = append(result, prefix+value)
+				replaced = true
+			}
+			continue
+		}
+		result = append(result, entry)
+	}
+	if !replaced {
+		result = append(result, prefix+value)
+	}
+	return result
 }
 
 func resolveTuttiAgentBinary() (string, error) {

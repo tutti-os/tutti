@@ -19,7 +19,7 @@ func TestResolverFindsKnownNodeGlobalBin(t *testing.T) {
 
 	resolver := Resolver{
 		Environ: func() []string {
-			return []string{"PATH=/usr/bin:/bin"}
+			return []string{"PATH=" + strings.Join([]string{filepath.FromSlash("/usr/bin"), filepath.FromSlash("/bin")}, string(os.PathListSeparator))}
 		},
 		HomeDir: func() (string, error) {
 			return home, nil
@@ -353,7 +353,11 @@ func TestResolverMergesMultiplePathOverrides(t *testing.T) {
 	}
 
 	pathValueForTest := func(paths ...string) string {
-		return strings.Join(paths, string(os.PathListSeparator))
+		converted := make([]string, 0, len(paths))
+		for _, path := range paths {
+			converted = append(converted, filepath.FromSlash(path))
+		}
+		return strings.Join(converted, string(os.PathListSeparator))
 	}
 	env := resolver.Env([]string{
 		"PATH=" + pathValueForTest("/state/bin", "/usr/bin", "/bin"),
@@ -373,10 +377,10 @@ func TestResolverMergesMultiplePathOverrides(t *testing.T) {
 	}
 	pathDirs := filepath.SplitList(pathValue)
 	if len(pathDirs) < 4 ||
-		pathDirs[0] != filepath.Clean("/managed/node/bin") ||
-		pathDirs[1] != filepath.Clean("/state/bin") ||
-		pathDirs[2] != filepath.Clean("/usr/bin") ||
-		pathDirs[3] != filepath.Clean("/bin") {
+		pathDirs[0] != filepath.FromSlash("/managed/node/bin") ||
+		pathDirs[1] != filepath.FromSlash("/state/bin") ||
+		pathDirs[2] != filepath.FromSlash("/usr/bin") ||
+		pathDirs[3] != filepath.FromSlash("/bin") {
 		t.Fatalf("PATH = %q, want override prefixes before inherited base path", pathValue)
 	}
 }

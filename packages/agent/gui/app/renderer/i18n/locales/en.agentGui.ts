@@ -9,9 +9,14 @@ import { enAgentGuiSlashPalette } from "./en.agentGuiSlashPalette.ts";
 import { enAgentGuiSessionActions } from "./en.agentGuiSessionActions.ts";
 import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
 import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
+import { enAgentGuiComposer } from "./en.agentGuiComposer.ts";
+import { enAgentGuiProjectLaunch } from "./en.agentGuiProjectLaunch.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
+  imageLoadFailed: "Image failed to load",
+  imageTemporarilyUnavailable: "Image temporarily unavailable",
+  retryImage: "Retry",
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
   followupPlaceholder: "Request follow-up changes from {{provider}}",
   installRequiredPlaceholder: "Connect {{provider}} to send messages",
@@ -100,8 +105,7 @@ export const enAgentGui = {
   modelLabel: "Model",
   modelSelectionLabel: "Model selection",
   defaultModel: "Default model",
-  loadingOptions: "Loading…",
-  inheritedUnavailable: "Inherited / unavailable",
+  ...enAgentGuiComposer,
   reasoningLabel: "Reasoning",
   reasoningDegreeLabel: "Reasoning level",
   reasoningOptionDefault: "Default",
@@ -437,6 +441,7 @@ export const enAgentGui = {
   startConversation: "Start session",
   selectConversation: "Select a session",
   loadingConversations: "Loading sessions...",
+  conversationsLoadFailed: "Could not load sessions",
   loadingConversation: "Loading session...",
   scrollToBottom: "Scroll to bottom",
   searchNoConversations: "No related sessions",
@@ -568,9 +573,6 @@ export const enAgentGui = {
   promptImagesUnsupported:
     "This agent does not support image input with the current model.",
   ...enAgentGuiRuntimeNotices,
-  contextCompactionInProgress: "Compacting context",
-  contextCompactionCompleted: "Context compacted.",
-  contextCompactionInterrupted: "Context compaction interrupted.",
   tuttiModeCheckpointWakeTaskSettled: "A task finished — review needed",
   tuttiModeCheckpointWakeTaskFailed: "A task failed — review needed",
   tuttiModeCheckpointWakeTaskCanceled: "A task was canceled — review needed",
@@ -592,7 +594,7 @@ export const enAgentGui = {
   turnSummaryViaTool: "via {{tool}}",
   turnSummaryBefore: "Before",
   turnSummaryAfter: "After",
-  turnSummaryEmpty: "Empty",
+  codeBlockEmptyContent: "(empty)",
   turnSummaryOpenFile: "Open",
   turnSummaryUndo: "Undo",
   turnSummaryReapply: "Reapply",
@@ -714,6 +716,12 @@ export const enAgentGui = {
   composerFileFolderUnsupported: "Folders cannot be attached here",
   composerFileTooLarge: "File is too large",
   composerFilePreparationFailed: "File preparation failed",
+  composerFileStillPreparing:
+    "This attachment is still being prepared. Open it after preparation finishes.",
+  composerFileOpenFailed:
+    "This attachment failed to prepare. Remove it and add the file again.",
+  composerFileOpenUnavailable:
+    "This attachment has no openable path yet. Remove it and add the file again.",
   mentionPalette: "Reference or Invoke",
   addReference: "Add reference",
   addContent: "Add files and more",
@@ -721,9 +729,7 @@ export const enAgentGui = {
   quickPrompts: enAgentGuiQuickPrompts,
   referenceWorkspaceFiles: "Reference workspace files",
   ...enAgentGuiReferencePicker,
-  projectLocked: "Project cannot be changed after the session starts",
-  projectMissingDescription:
-    "This conversation's working directory no longer exists",
+  ...enAgentGuiProjectLaunch,
   fileMentionEnterFolder: "Enter folder",
   fileMentionSwitchCategory: "Switch category",
   fileMentionNavigateHierarchy: "Enter/leave folder",

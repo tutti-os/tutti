@@ -215,6 +215,14 @@ contract supplies an empty MCP array and does not manage an agent's private MCP
 configuration; adding a non-empty product-level MCP input is a separate Host
 contract change.
 
+Standard ACP process recycling is capability-driven rather than extension-name
+driven. When the live `initialize` response advertises `session/load` or
+`session/resume`, the shared 30-minute idle reaper may close only that ACP
+transport and CLI process while retaining the Tutti session and provider
+session id. The next execution launches a new process and restores the provider
+session. The reaper does not send `session/close`, skips providers without a
+proven restore method, and treats pending interactive requests as busy.
+
 Extension composer controls stay runtime-owned after the model list is
 discovered. `tuttid` selects the newest context only within the exact workspace,
 normalized project, Agent Target, fixed installation, and request-settings
@@ -422,22 +430,25 @@ replacement rename converges on the verified old or verified new runtime
 without silently discarding the active runtime.
 
 By default, successful activation also publishes the manifest launch
-executable's basename at `~/.local/bin/<agent-command>`. The user entry is a
-Tutti-owned symlink to
-`~/.local/share/tutti/agent-runtimes/<agentKey>/bin/<agent-command>`; that
-stable per-Agent link points to the executable in the fixed runtime root and is
-atomically repointed on upgrade. A pre-existing regular file or foreign symlink
-at either entry is never overwritten. Feature disablement and daemon shutdown
-do not remove a published command, so it remains usable outside Tutti while the
-managed runtime files remain installed.
+executable's basename at `~/.local/bin/<agent-command>`. The user entry points
+to `~/.local/share/tutti/agent-runtimes/<agentKey>/bin/<agent-command>`; that
+stable per-Agent entry points to the executable in the fixed runtime root and
+is atomically repointed on upgrade. Unix uses Tutti-owned symlinks for both
+hops. Windows uses Tutti-owned `.cmd` launchers because ordinary desktop users
+do not have file-symlink privilege; the launcher preserves arguments and the
+child exit code. A pre-existing regular file, foreign symlink, or foreign
+Windows launcher at either entry is never overwritten. Feature disablement and
+daemon shutdown do not remove a published command, so it remains usable outside
+Tutti while the managed runtime files remain installed.
 
 The optional v2 `runtime.launch.publishUserCommand` field may be `false` for a
 runtime that should be private to AgentGUI. Absence preserves publication for
 every existing manifest. An opted-out runtime launches the verified fixed
 executable inside `installRoot` and neither creates nor verifies the two
-publication links. A pre-existing regular file or foreign symlink at the user
-command path is therefore ignored and cannot prevent managed activation; Tutti
-still never overwrites, removes, or repoints that entry.
+publication entries. A pre-existing regular file, foreign symlink, or foreign
+Windows launcher at the user command path is therefore ignored and cannot
+prevent managed activation; Tutti still never overwrites, removes, or repoints
+that entry.
 
 ### Declarative Launch Environment
 

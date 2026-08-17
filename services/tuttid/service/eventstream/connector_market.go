@@ -10,7 +10,8 @@ import (
 )
 
 type ConnectorMarketPublisher struct {
-	Service *Service
+	Service      *Service
+	CurrentScope func() market.OperationScope
 }
 
 func (publisher ConnectorMarketPublisher) PublishConnectorMarketChanged(
@@ -19,6 +20,20 @@ func (publisher ConnectorMarketPublisher) PublishConnectorMarketChanged(
 ) error {
 	if publisher.Service == nil {
 		return errors.New("connector market event service is unavailable")
+	}
+	if event.Visibility == market.OperationVisibilityAccount {
+		if publisher.CurrentScope == nil ||
+			publisher.CurrentScope().AccountID != event.OwnerAccountID {
+			return nil
+		}
+		event.OwnerAccountID = ""
+		event.Visibility = ""
+	} else {
+		// Legacy or machine-level invalidations may be broadcast, but never with
+		// an operation identifier or account owner attached.
+		event.OperationID = ""
+		event.OwnerAccountID = ""
+		event.Visibility = ""
 	}
 	payload, err := json.Marshal(event)
 	if err != nil {

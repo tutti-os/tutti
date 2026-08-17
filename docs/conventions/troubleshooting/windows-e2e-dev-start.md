@@ -26,10 +26,11 @@ corepack pnpm@10.11.0 dev:windows:e2e        # 后续复用已有状态
    `managed-posix-shell/runtime.json`；
 3. 从 runtime metadata 解析并注入
    `TUTTI_MANAGED_POSIX_SHELL`；
-4. 启动或复用 `http://127.0.0.1:5173` 的 renderer dev server；
-5. 从 `apps/desktop` 目录启动 Electron，并让桌面进程自己生成临时
+4. 强制设置 `TUTTI_ANALYTICS_DISABLED=1`，避免验收操作进入业务埋点；
+5. 启动或复用 `http://127.0.0.1:5173` 的 renderer dev server；
+6. 从 `apps/desktop` 目录启动 Electron，并让桌面进程自己生成临时
    `TUTTID_ACCESS_TOKEN`；
-6. 等待 `tutti-desktop.log` 出现 `desktop app ready` 后才返回成功。
+7. 等待 `tutti-desktop.log` 出现 `desktop app ready` 后才返回成功。
 
 默认 state 在仓库 `.tmp\tutti-windows-e2e-dev` 下。需要完全干净的验收时使用
 `-ResetState`；脚本只允许清理仓库 `.tmp` 下的 state，并且会先关闭同一
@@ -56,13 +57,13 @@ worktree/state 的开发进程，避免 app server 锁住旧的 `.exe`。
 
 ## 常见错误与处理
 
-| 现象 | 原因 | 处理 |
-| --- | --- | --- |
-| `TUTTID_ACCESS_TOKEN is required` | 直接启动 daemon，绕过 Electron 的桌面托管 | 使用本脚本，不要手工运行 `tuttid.exe` |
-| `managed POSIX shell is unavailable...` | 未注入仓库内置 Bash | 检查脚本输出的 `shell` 路径和 `runtime.json` |
-| `Access is denied` 替换 app server | 旧 state 的 app runtime 仍被进程占用 | 脚本会清理同一 state；必要时加 `-ResetState` |
-| `Cannot find module <repo-root>` | Electron 的 cwd 是仓库根，而不是 `apps/desktop` | 由脚本固定在 `apps/desktop` 启动 |
-| `ERR_PNPM_UNSUPPORTED_ENGINE` | 系统 pnpm 不是仓库要求版本 | 脚本固定使用 `corepack pnpm` |
+| 现象                                    | 原因                                            | 处理                                         |
+| --------------------------------------- | ----------------------------------------------- | -------------------------------------------- |
+| `TUTTID_ACCESS_TOKEN is required`       | 直接启动 daemon，绕过 Electron 的桌面托管       | 使用本脚本，不要手工运行 `tuttid.exe`        |
+| `managed POSIX shell is unavailable...` | 未注入仓库内置 Bash                             | 检查脚本输出的 `shell` 路径和 `runtime.json` |
+| `Access is denied` 替换 app server      | 旧 state 的 app runtime 仍被进程占用            | 脚本会清理同一 state；必要时加 `-ResetState` |
+| `Cannot find module <repo-root>`        | Electron 的 cwd 是仓库根，而不是 `apps/desktop` | 由脚本固定在 `apps/desktop` 启动             |
+| `ERR_PNPM_UNSUPPORTED_ENGINE`           | 系统 pnpm 不是仓库要求版本                      | 脚本固定使用 `corepack pnpm`                 |
 
 ## 验收前检查日志
 

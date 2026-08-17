@@ -449,6 +449,8 @@ func sessionStateUpdateFromPatch(patch WorkspaceAgentStatePatch) WorkspaceAgentS
 			ActiveTurnID:            cloneStringPointer(patch.Turn.ActiveTurnID),
 			Phase:                   strings.TrimSpace(patch.Turn.Phase),
 			Outcome:                 strings.TrimSpace(patch.Turn.Outcome),
+			ErrorCode:               strings.TrimSpace(patch.Turn.ErrorCode),
+			ErrorMessage:            strings.TrimSpace(patch.Turn.ErrorMessage),
 			Settling:                patch.Turn.Settling,
 			CompletedCommand:        cloneCompletedCommand(patch.Turn.CompletedCommand),
 			SubmitAvailability:      cloneSubmitAvailability(patch.Turn.SubmitAvailability),

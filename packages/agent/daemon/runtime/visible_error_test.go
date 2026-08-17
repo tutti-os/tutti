@@ -7,6 +7,35 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
+type testRuntimeTransportFailure struct {
+	code string
+}
+
+func (testRuntimeTransportFailure) Error() string { return "runtime transport failed" }
+
+func (e testRuntimeTransportFailure) RuntimeTransportFailureCode() string { return e.code }
+
+func TestACPFailureMetadataPreservesTrustedRuntimeTransportCode(t *testing.T) {
+	metadata := acpFailureMetadata(testRuntimeTransportFailure{code: "provider_process_exit_stream_eof"})
+	if metadata["errorCode"] != "provider_process_exit_stream_eof" {
+		t.Fatalf("errorCode = %#v, want provider_process_exit_stream_eof", metadata["errorCode"])
+	}
+}
+
+func TestVisibleFailureCodePreservesStructuredTransportReasons(t *testing.T) {
+	for detail, want := range map[string]string{
+		"egress request failed; error_code=egress_dns_failed":                                  "egress_dns_failed",
+		"provider process exit was not confirmed; error_code=provider_process_exit_stream_eof": "provider_process_exit_stream_eof",
+	} {
+		if got := visibleFailureCode(detail); got != want {
+			t.Fatalf("visibleFailureCode(%q) = %q, want %q", detail, got, want)
+		}
+		if !visibleFailureRetryable(want, detail) {
+			t.Fatalf("visibleFailureRetryable(%q) = false, want true", want)
+		}
+	}
+}
+
 func TestVisibleFailureCodeClassifiesDeadlineExceededAsRequestTimedOut(t *testing.T) {
 	if got := visibleFailureCode("context deadline exceeded"); got != "request_timed_out" {
 		t.Fatalf("visibleFailureCode() = %q, want request_timed_out", got)

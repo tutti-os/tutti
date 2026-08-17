@@ -2,6 +2,8 @@ package mobile
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -13,7 +15,217 @@ import (
 
 	"github.com/gorilla/websocket"
 	devicelink "github.com/tutti-os/tutti/packages/device-link"
+	"github.com/tutti-os/tutti/packages/device-link/authenticated"
+	"github.com/tutti-os/tutti/packages/device-link/candidateexchange"
 )
+
+func TestEncodeLocalDescriptionUsesEmptyCandidateArray(t *testing.T) {
+	t.Parallel()
+	raw, err := encodeLocalDescription(authenticated.Description{
+		Fingerprint: "fingerprint",
+		Ufrag:       "username",
+		Pwd:         "password",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var description struct {
+		Candidates []string `json:"candidates"`
+	}
+	if err := json.Unmarshal([]byte(raw), &description); err != nil {
+		t.Fatal(err)
+	}
+	if description.Candidates == nil || len(description.Candidates) != 0 {
+		t.Fatalf("encoded candidates = %#v, want non-nil empty array", description.Candidates)
+	}
+}
+
+func TestStopCandidateExchangeCancelsRefreshWithoutClosingLink(t *testing.T) {
+	t.Parallel()
+	link, err := NewLoopbackLink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer link.Close()
+	if _, err := link.StartLocalDescription(); err != nil {
+		t.Fatal(err)
+	}
+	pump, err := link.candidateActionPump()
+	if err != nil {
+		t.Fatal(err)
+	}
+	pump.NotifyRemoteChange()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	kinds := map[candidateexchange.ActionKind]bool{}
+	for range 2 {
+		action, err := pump.Next(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		kinds[action.Kind] = true
+	}
+	if !kinds[candidateexchange.ActionPublishLocal] || !kinds[candidateexchange.ActionRefreshRemote] {
+		t.Fatalf("candidate action kinds = %#v, want local and remote workers", kinds)
+	}
+	result := make(chan error, 1)
+	go func() {
+		_, nextErr := pump.Next(context.Background())
+		result <- nextErr
+	}()
+	link.StopCandidateExchange()
+	select {
+	case err := <-result:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("ActionPump.Next error = %v, want context cancellation", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("candidate refresh did not stop")
+	}
+	select {
+	case <-link.participant.Done():
+		t.Fatal("stopping candidate workers closed the participant")
+	default:
+	}
+}
+
+func TestLoopbackLinksConnectWhileDescriptionsTrickle(t *testing.T) {
+	t.Parallel()
+	caller, err := NewLoopbackLink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer caller.Close()
+	owner, err := NewLoopbackLink()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.Close()
+
+	callerInitial, err := caller.StartLocalDescription()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ownerInitial, err := owner.StartLocalDescription()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for label, raw := range map[string]string{"caller": callerInitial, "owner": ownerInitial} {
+		var description map[string]any
+		if err := json.Unmarshal([]byte(raw), &description); err != nil {
+			t.Fatalf("decode %s initial description: %v", label, err)
+		}
+		if description["ufrag"] == "" || description["pwd"] == "" || description["fingerprint"] == "" {
+			t.Fatalf("%s initial description lacks credentials: %s", label, raw)
+		}
+	}
+
+	rendezvous := &testCandidateRendezvous{
+		descriptions: map[*Link]authenticated.Description{},
+	}
+	rendezvous.storeJSON(t, caller, callerInitial)
+	rendezvous.storeJSON(t, owner, ownerInitial)
+	actionResult := make(chan error, 2)
+	go runCandidateActions(caller, owner, rendezvous, actionResult)
+	go runCandidateActions(owner, caller, rendezvous, actionResult)
+	ownerResult := make(chan error, 1)
+	go func() {
+		_, connectErr := owner.Connect(callerInitial, false, 20_000)
+		ownerResult <- connectErr
+	}()
+	if _, err := caller.Connect(ownerInitial, true, 20_000); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-ownerResult; err != nil {
+		t.Fatal(err)
+	}
+	caller.StopCandidateExchange()
+	owner.StopCandidateExchange()
+	for range 2 {
+		if err := <-actionResult; !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+	}
+}
+
+type testCandidateRendezvous struct {
+	mu           sync.Mutex
+	descriptions map[*Link]authenticated.Description
+}
+
+func (r *testCandidateRendezvous) storeJSON(t *testing.T, link *Link, raw string) {
+	t.Helper()
+	var description authenticated.Description
+	if err := json.Unmarshal([]byte(raw), &description); err != nil {
+		t.Fatal(err)
+	}
+	r.store(link, description)
+}
+
+func (r *testCandidateRendezvous) store(link *Link, description authenticated.Description) {
+	r.mu.Lock()
+	r.descriptions[link] = description
+	r.mu.Unlock()
+}
+
+func (r *testCandidateRendezvous) candidates(link *Link) []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]string{}, r.descriptions[link].Candidates...)
+}
+
+func runCandidateActions(
+	source *Link,
+	peer *Link,
+	rendezvous *testCandidateRendezvous,
+	result chan<- error,
+) {
+	for {
+		raw, err := source.NextCandidateExchangeAction(20_000)
+		if err != nil {
+			result <- err
+			return
+		}
+		var action candidateExchangeAction
+		if err := json.Unmarshal([]byte(raw), &action); err != nil {
+			result <- err
+			return
+		}
+		switch action.Kind {
+		case candidateexchange.ActionPublishLocal:
+			if action.Description == nil {
+				result <- errors.New("publish action has no description")
+				return
+			}
+			rendezvous.store(source, *action.Description)
+			if err := peer.NotifyRemoteCandidateChange(); err != nil {
+				result <- err
+				return
+			}
+			if _, err := source.ResolveCandidateExchangeAction(
+				int64(action.ActionID), true, false, "[]",
+			); err != nil {
+				result <- err
+				return
+			}
+		case candidateexchange.ActionRefreshRemote:
+			candidates, err := json.Marshal(rendezvous.candidates(peer))
+			if err != nil {
+				result <- err
+				return
+			}
+			if _, err := source.ResolveCandidateExchangeAction(
+				int64(action.ActionID), true, false, string(candidates),
+			); err != nil {
+				result <- err
+				return
+			}
+		default:
+			result <- errors.New("unsupported candidate action")
+			return
+		}
+	}
+}
 
 func TestStreamReadPreservesFinalBytesReturnedWithEOF(t *testing.T) {
 	t.Parallel()

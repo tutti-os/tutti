@@ -33,6 +33,31 @@ func TestActivityProjectionConsumesCanonicalViewInvalidation(t *testing.T) {
 	}
 }
 
+func TestActivityProjectionPublishesCanonicalSessionRestore(t *testing.T) {
+	publisher := &activityUpdatePublisherStub{}
+	projection := NewActivityProjection(&activityProjectionRepoStub{})
+	projection.SetPublisher(publisher)
+	delta := agenthost.CanonicalDelta(agentactivitybiz.TransactionDelta{
+		TransactionID: "transaction-restore",
+		Mutations: []agentactivitybiz.TransactionMutation{{
+			MutationID: "transaction-restore:1", WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+			EntityKind: agentactivitybiz.MutationEntitySession, EntityID: "session-1", Operation: "restore", Version: 42,
+		}},
+	})
+
+	if err := projection.ObserveCommitted(context.Background(), delta); err != nil {
+		t.Fatal(err)
+	}
+	if len(publisher.events) != 1 || publisher.events[0].eventType != "session_restored" ||
+		publisher.events[0].payload["workspaceId"] != "workspace-1" ||
+		publisher.events[0].payload["agentSessionId"] != "session-1" {
+		t.Fatalf("canonical restore events=%#v", publisher.events)
+	}
+	if restoredAt, ok := publisher.events[0].payload["restoredAtUnixMs"].(int64); !ok || restoredAt <= 0 {
+		t.Fatalf("canonical restore timestamp=%#v", publisher.events[0].payload["restoredAtUnixMs"])
+	}
+}
+
 func TestActivityProjectionPublishesRuntimeActivityObservation(t *testing.T) {
 	publisher := &activityUpdatePublisherStub{}
 	projection := NewActivityProjection(&activityProjectionRepoStub{})
@@ -122,6 +147,63 @@ func TestRuntimeActivityPayloadPassesEventstreamCatalog(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("runtime activity payload failed eventstream validation: %v", err)
+	}
+}
+
+func TestSessionRestoredPayloadPassesEventstreamCatalog(t *testing.T) {
+	service := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
+	publisher := eventstreamservice.AgentActivityPublisher{Service: service}
+	err := publisher.PublishAgentActivityUpdated(
+		context.Background(),
+		"workspace-1",
+		"session-1",
+		"session_restored",
+		map[string]any{
+			"workspaceId":      "workspace-1",
+			"agentSessionId":   "session-1",
+			"eventType":        "session_restored",
+			"restoredAtUnixMs": int64(42),
+		},
+	)
+	if err != nil {
+		t.Fatalf("session restored payload failed eventstream validation: %v", err)
+	}
+}
+
+func TestProjectedMessageSemanticsPassesEventstreamCatalog(t *testing.T) {
+	t.Parallel()
+
+	service := eventstreamservice.NewService(eventstreamservice.DefaultCatalog(), nil)
+	publisher := eventstreamservice.AgentActivityPublisher{Service: service}
+	payload := map[string]any{
+		"latestVersion": uint64(1),
+		"acceptedCount": 1,
+		"messages": activityMessagesEventPayload([]agentactivitybiz.Message{{
+			ID:               1,
+			AgentSessionID:   "session-1",
+			MessageID:        "message-1",
+			TurnID:           "turn-1",
+			Role:             "assistant",
+			Kind:             "text",
+			Version:          1,
+			OccurredAtUnixMS: 42,
+			Payload:          map[string]any{"text": "hello"},
+			Semantics: &agentactivitybiz.MessageSemantics{
+				UserVisibleAssistantResponse: true,
+				TurnSettling:                 true,
+				NoticeCommand:                "compact",
+				NoticeCommandStatus:          "running",
+			},
+		}}),
+	}
+	if err := publisher.PublishAgentActivityUpdated(
+		context.Background(),
+		"workspace-1",
+		"session-1",
+		"message_update",
+		payload,
+	); err != nil {
+		t.Fatalf("projected message semantics failed eventstream validation: %v", err)
 	}
 }
 

@@ -116,6 +116,66 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
+  test("projects a conversation project from its rail key instead of cwd or Rail membership", async () => {
+    const expectedProject = createUserProject();
+    const wrongProject = createUserProject({
+      id: "project-2",
+      label: "wrong",
+      path: "/workspace/wrong",
+      sectionKey: "project:wrong"
+    });
+    const session = {
+      ...createSession(),
+      cwd: "/workspace/wrong/.tutti/agent/worktrees/session-1",
+      railSectionKey: expectedProject.sectionKey
+    };
+    const service = createService(
+      createClient({
+        listMessages: emptyMessagePage,
+        listSections: async () => ({
+          pinned: { hasMore: false, sessions: [], totalCount: 0 },
+          sections: [
+            {
+              hasMore: false,
+              kind: "project",
+              sectionKey: wrongProject.sectionKey,
+              sessions: [session],
+              totalCount: 1,
+              userProject: wrongProject
+            },
+            {
+              hasMore: false,
+              kind: "project",
+              sectionKey: expectedProject.sectionKey,
+              sessions: [],
+              totalCount: 0,
+              userProject: expectedProject
+            }
+          ],
+          workspaceId: workspace.id
+        }),
+        projects: [expectedProject, wrongProject],
+        session: () => session
+      })
+    );
+
+    await service.start();
+    await flushAsyncWork();
+
+    expect(
+      service
+        .getSnapshot()
+        .activityConversations.find(
+          (conversation) => conversation.id === session.id
+        )?.project
+    ).toMatchObject({
+      id: expectedProject.id,
+      sectionKey: expectedProject.sectionKey
+    });
+
+    service.dispose();
+  });
+
   test("projects processing before the active Turn receives its first message", async () => {
     const activeSession = createSession();
     activeSession.activeTurnId = "turn-1";
@@ -1237,6 +1297,45 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
+  test("rehydrates a remotely restored session after clearing its live tombstone", async () => {
+    let liveListener: ((delivery: AgentLiveDelivery) => void) | null = null;
+    let session: WorkspaceAgentSession | null = createSession();
+    const client = createClient({
+      listMessages: emptyMessagePage,
+      session: () => session
+    });
+    const service = createService(client, {
+      deviceLink: createLiveDeviceLink((listener) => {
+        liveListener = listener;
+      })
+    });
+
+    await service.start();
+    await flushAsyncWork();
+    session = null;
+    liveListener!({
+      agentSessionId: "session-1",
+      kind: "session_deleted"
+    });
+    expect(service.getSnapshot().activity.sessions).toEqual([]);
+
+    session = createSession();
+    liveListener!({
+      agentSessionId: "session-1",
+      kind: "session_restored"
+    });
+    await flushAsyncWork();
+    await flushAsyncWork();
+
+    expect(
+      service
+        .getSnapshot()
+        .activity.sessions.map((candidate) => candidate.agentSessionId)
+    ).toEqual(["session-1"]);
+
+    service.dispose();
+  });
+
   test("ignores an obsolete live subscription after background resume", async () => {
     const liveListeners: Array<(delivery: AgentLiveDelivery) => void> = [];
     const service = createService(
@@ -1856,6 +1955,7 @@ function createClient(options: {
     latestVersion: number;
     messages: WorkspaceAgentSessionMessage[];
   }>;
+  listSections?: NonNullable<TuttidClient["listWorkspaceAgentSessionSections"]>;
   projects?: Awaited<ReturnType<TuttidClient["listUserProjects"]>>["projects"];
   send?(
     workspaceId: string,
@@ -1962,42 +2062,44 @@ function createClient(options: {
         workspaceId: workspace.id
       };
     },
-    listWorkspaceAgentSessionSections: async () => {
-      const sessions = railSessions();
-      if (sessions.length === 0) {
+    listWorkspaceAgentSessionSections:
+      options.listSections ??
+      (async () => {
+        const sessions = railSessions();
+        if (sessions.length === 0) {
+          return {
+            pinned: { hasMore: false, sessions: [], totalCount: 0 },
+            sections: [],
+            workspaceId: workspace.id
+          };
+        }
+        const pinnedSessions = sessions.filter(
+          (session) => session.pinnedAtUnixMs != null
+        );
+        const conversationSessions = sessions.filter(
+          (session) => session.pinnedAtUnixMs == null
+        );
         return {
-          pinned: { hasMore: false, sessions: [], totalCount: 0 },
-          sections: [],
+          pinned: {
+            hasMore: false,
+            sessions: pinnedSessions,
+            totalCount: pinnedSessions.length
+          },
+          sections:
+            conversationSessions.length === 0
+              ? []
+              : [
+                  {
+                    hasMore: false,
+                    kind: "conversations" as const,
+                    sectionKey: "conversations",
+                    sessions: conversationSessions,
+                    totalCount: conversationSessions.length
+                  }
+                ],
           workspaceId: workspace.id
         };
-      }
-      const pinnedSessions = sessions.filter(
-        (session) => session.pinnedAtUnixMs != null
-      );
-      const conversationSessions = sessions.filter(
-        (session) => session.pinnedAtUnixMs == null
-      );
-      return {
-        pinned: {
-          hasMore: false,
-          sessions: pinnedSessions,
-          totalCount: pinnedSessions.length
-        },
-        sections:
-          conversationSessions.length === 0
-            ? []
-            : [
-                {
-                  hasMore: false,
-                  kind: "conversations" as const,
-                  sectionKey: "conversations",
-                  sessions: conversationSessions,
-                  totalCount: conversationSessions.length
-                }
-              ],
-        workspaceId: workspace.id
-      };
-    },
+      }),
     sendWorkspaceAgentSessionInput: options.send,
     submitWorkspaceAgentInteractive: options.interactive,
     updateWorkspaceAgentSessionPin: options.pin,
@@ -2074,6 +2176,7 @@ function createSession(): WorkspaceAgentSession {
     endedAtUnixMs: null,
     forkedFrom: null,
     goal: null,
+    goalSyncState: null,
     id: "session-1",
     imported: false,
     kind: "root",

@@ -1,10 +1,20 @@
 export type AttentionCompletionKind = "completed" | "failed";
+export type AttentionObservationProvenance = "historical" | "live";
+export type AttentionReadStateProvenance = "durable" | "historical" | "live";
 
 export interface AttentionReadRecord {
   completionKey: string;
+  /** Compatibility projection: every stored attention record is unread. */
   isUnread: boolean;
   kind: AttentionCompletionKind;
   markedUnreadByUser: boolean;
+  /** Whether this completion has live/manual rather than historical provenance. */
+  observationProvenance: AttentionObservationProvenance;
+  /**
+   * Compatibility projection. Historical reads no longer create records, so
+   * this field no longer participates in read/unread decisions.
+   */
+  readStateProvenance?: AttentionReadStateProvenance;
 }
 
 export interface AttentionReadPartition {
@@ -14,11 +24,12 @@ export interface AttentionReadPartition {
   writeDirty: boolean;
   writeInFlightCommandId: string | null;
   writeRevision: number;
-  // Durable read state, keyed by completion key (`turn:<session>:<turn>:<kind>`)
-  // rather than bare session id, so a new turn on an already-read session is a
-  // distinct entry and re-lights the lamp. Kept bounded to the latest completion
-  // per session. The `*Ids` naming is retained only because it is the serialized
-  // persistence field name; the values are completion keys, not session ids.
+  // Durable unread state, keyed by completion key
+  // (`turn:<session>:<turn>:<kind>`) rather than bare session id. Only live
+  // completions and user unread requests create entries; read removes the
+  // entry. The legacy `readIds` fields remain in the serialized schema for
+  // backward compatibility, but are ignored on hydration and cleared on the
+  // next successful write.
   hydrated: {
     completedReadIds: readonly string[];
     completedUnreadIds: readonly string[];

@@ -412,6 +412,55 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     ).toEqual(["assistant:I will start the agents.", "tool:Agent"]);
   });
 
+  it("keeps an optimistic prompt after durable messages with later timestamps", () => {
+    const durableAssistant = message({
+      messageId: "assistant-a",
+      occurredAtUnixMs: 300,
+      payload: { text: "Assistant A" },
+      role: "assistant",
+      sequence: 2,
+      turnId: "turn-a",
+      version: 2
+    });
+    const optimisticImagePrompt = message({
+      messageId: "client-submit:user:submit-b",
+      occurredAtUnixMs: 200,
+      payload: {
+        __agentGuiOptimisticPrompt: true,
+        clientSubmitId: "submit-b",
+        content: [
+          {
+            type: "image",
+            data: "aW1hZ2UtYQ==",
+            mimeType: "image/png",
+            name: "image-a.png"
+          }
+        ],
+        text: "[Image]"
+      },
+      role: "user",
+      startedAtUnixMs: 200,
+      turnId: "pending:submit-b",
+      version: 0
+    });
+    const mergedMessages = mergeWorkspaceAgentActivityDurableAndOverlayMessages(
+      {
+        durableMessages: [durableAssistant],
+        localMessages: [optimisticImagePrompt]
+      }
+    );
+
+    expect(mergedMessages.map((item) => item.messageId)).toEqual([
+      "assistant-a",
+      "client-submit:user:submit-b"
+    ]);
+    expect(
+      projectWorkspaceAgentMessagesToTimelineItems(mergedMessages).map(
+        (item) => item.eventId
+      )
+    ).toEqual(["assistant-a", "client-submit:user:submit-b"]);
+  });
+
   it("projects text, reasoning, errors, and unknown kinds conservatively", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
@@ -1044,7 +1093,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(toolRows[0]?.calls[0]?.toolName).toBe("Agent");
   });
 
-  it("projects Codex warning notices without appending them to assistant text", () => {
+  it("drops source-less skills warnings but preserves explicit non-runtime matches", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
       session: session(),
@@ -1070,7 +1119,26 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
             severity: "warning",
             title: "Codex warning",
             detail:
-              "Skill descriptions were shortened to fit the 2% skills context budget.",
+              "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter.",
+            text: "Codex warning",
+            content: "Codex warning",
+            contentMode: "snapshot"
+          }
+        }),
+        message({
+          messageId: "notice-2",
+          id: 3,
+          version: 3,
+          role: "assistant",
+          kind: "text",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "warning",
+            severity: "warning",
+            title: "Codex warning",
+            source: "user",
+            detail:
+              "Skill descriptions were shortened to fit the skills context budget.",
             text: "Codex warning",
             content: "Codex warning",
             contentMode: "snapshot"
@@ -1078,8 +1146,8 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "assistant-1",
-          id: 3,
-          version: 3,
+          id: 4,
+          version: 4,
           role: "assistant",
           kind: "text",
           payload: {
@@ -1103,14 +1171,59 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       noticeKind: "warning",
       severity: "warning",
       title: "Codex warning",
+      source: "user",
       detail:
-        "Skill descriptions were shortened to fit the 2% skills context budget.",
+        "Skill descriptions were shortened to fit the skills context budget.",
       retryable: null
     });
-    expect(assistantRows[0]?.messages[0]?.body).toBe("Codex warning");
+    expect(assistantRows[1]?.messages[0]?.systemNotice).toBeNull();
     expect(assistantRows[1]?.messages[0]?.body).toBe(
       "你好。有什么需要我在这个 workspace 里处理?"
     );
+  });
+
+  it("keeps fallback metadata warnings when runtime metadata is absent", () => {
+    const metadataWarning =
+      "Model metadata for `minimax/minimax-m2.5` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.";
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "notice-1",
+          id: 1,
+          version: 1,
+          role: "assistant",
+          kind: "text",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "warning",
+            severity: "warning",
+            title: metadataWarning,
+            detail: metadataWarning,
+            text: "Codex warning",
+            content: "Codex warning",
+            contentMode: "snapshot"
+          }
+        })
+      ]
+    });
+
+    const warning = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "assistant"
+    );
+    expect(warning).toMatchObject({
+      kind: "message",
+      messages: [
+        {
+          systemNotice: expect.objectContaining({
+            noticeKind: "warning",
+            detail: metadataWarning
+          })
+        }
+      ]
+    });
   });
 
   it("renders an image-only optimistic prompt without synthetic text", () => {
@@ -1339,6 +1452,42 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       })
     );
     expect(compactMessage?.presentationKind).toBe("turn-boundary");
+  });
+
+  it("projects context overflow as a typed handoff-required notice", () => {
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "compact-handoff-required",
+          turnId: "turn-compact",
+          status: "failed",
+          semantics: {
+            noticeCommand: "compact",
+            noticeCommandStatus: "failed"
+          },
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "context_handoff_required",
+            severity: "error",
+            title: "Context compaction interrupted.",
+            detail: "Maximum context length exceeded."
+          }
+        })
+      ]
+    });
+
+    const projected = conversation.rows.flatMap((row) =>
+      row.kind === "message" ? row.messages : []
+    )[0];
+    expect(projected?.systemNotice).toEqual(
+      expect.objectContaining({
+        semanticKind: "context-handoff-required",
+        severity: "error"
+      })
+    );
   });
 
   it("prefers canonical message semantics over duplicated notice payload fields", () => {

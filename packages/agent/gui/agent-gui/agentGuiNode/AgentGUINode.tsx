@@ -63,6 +63,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     selectProjectDirectory,
     resolveExternalPromptEntries = null,
     prepareExternalPromptFiles = null,
+    resolvePastedPath = null,
     promptAssetLimit = null,
     projectDirectorySourceAggregator = null,
     referenceSourceAggregator = null,
@@ -100,6 +101,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     capabilityControlsReadOnly = false,
     agentTargets,
     agentTargetsLoading = false,
+    mentionAgentTargets,
     handoffAgentTargets,
     handoffAgentTargetsLoading = false,
     showHandoffTargetOwnershipLabels = false,
@@ -118,7 +120,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false,
     sessionInputHistoryEnabled = false,
-    sessionForkEnabled = false,
+    sessionWorktreeEnabled = false,
+    sessionLaunchModesByProjectSectionKey,
     codexSaverModeEntryEnabled = false
   } = hostCapabilities;
   const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
@@ -139,6 +142,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     onResize,
     onUpdateNode,
     onRememberComposerDefaults,
+    onSessionLaunchModePreferenceChange,
     isMuted = false,
     onMinimize,
     onToggleMaximize,
@@ -152,6 +156,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     composerFooterAccessory: renderComposerFooterAccessory,
     projectDirectoryPickerHeaderActions:
       renderProjectDirectoryPickerHeaderActions,
+    projectSelectOptions,
+    referencePickerSidebarActions: renderReferencePickerSidebarActions,
     providerRailEmpty: renderProviderRailEmpty,
     sidebarFooter: renderSidebarFooter
   } = renderSlots;
@@ -277,6 +283,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
   const { viewModel, actions } = useAgentGUINodeController({
     nodeId,
+    isSurfaceActive: isActive,
+    isSurfaceVisible: isVisible,
     workspaceId,
     currentUserId,
     workspacePath,
@@ -472,6 +480,7 @@ export const AgentGUINode = memo(function AgentGUINode({
           return (
             <AgentGUINodeView
               viewModel={viewModel}
+              mentionAgentTargets={mentionAgentTargets}
               renderAgentTargetInfo={renderAgentTargetInfo}
               renderSidebarFooter={renderSidebarFooter}
               renderProviderRailEmpty={renderProviderRailEmpty}
@@ -541,6 +550,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               resolveExternalPromptEntries={resolveExternalPromptEntries}
               prepareExternalPromptFiles={prepareExternalPromptFiles}
+              resolvePastedPath={resolvePastedPath}
               promptAssetLimit={promptAssetLimit}
               onConversationRailWidthChanged={
                 handleConversationRailWidthChanged
@@ -572,9 +582,19 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilters={referenceProvenanceFilters}
               sessionInputHistoryEnabled={sessionInputHistoryEnabled}
-              sessionForkEnabled={sessionForkEnabled}
+              sessionWorktreeEnabled={sessionWorktreeEnabled}
+              sessionLaunchModesByProjectSectionKey={
+                sessionLaunchModesByProjectSectionKey
+              }
+              onSessionLaunchModePreferenceChange={
+                onSessionLaunchModePreferenceChange
+              }
               renderProjectDirectoryPickerHeaderActions={
                 renderProjectDirectoryPickerHeaderActions
+              }
+              projectSelectOptions={projectSelectOptions}
+              renderReferencePickerSidebarActions={
+                renderReferencePickerSidebarActions
               }
               renderComposerFooterAccessory={renderComposerFooterAccessory}
             />

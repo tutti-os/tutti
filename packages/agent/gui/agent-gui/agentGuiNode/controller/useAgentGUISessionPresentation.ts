@@ -4,6 +4,7 @@ import {
   selectPlanTurnDismissed,
   type AgentActivityDisplayStatus,
   type AgentActivityMessage,
+  type AgentActivitySessionGoalSyncState,
   type AgentActivityTurn,
   type CanonicalAgentSession,
   type PendingActivationIntentRecord,
@@ -24,6 +25,7 @@ import type { AgentSessionState } from "../../../shared/agentSessionTypes";
 import type { AppErrorCode } from "../../../shared/contracts/dto";
 import type {
   AgentGUIObservationGapSource,
+  AgentGUIInteractionReadinessReason,
   AgentGUIInteractionReadinessSource,
   AgentGUITargetConnectionSource
 } from "../../../types";
@@ -132,6 +134,7 @@ interface UseAgentGUISessionPresentationInput {
   activeEngineActiveTurn: AgentActivityTurn | null;
   activeEngineAvailability: "available" | "blocked" | "missing";
   activeEngineHasPendingInteractions: boolean;
+  activeHasPendingSubmitStopTarget: boolean;
   activeEngineLatestTurn: AgentActivityTurn | null;
   activeEngineRuntimeAvailability: SessionRuntimeAvailability | null;
   activeEngineRuntimeActivity: "idle" | "running";
@@ -274,9 +277,24 @@ export function useAgentGUISessionPresentation(
     isPendingActivationViable(input.activePendingActivation) &&
     !input.activeEngineLatestTurn
   );
-  const activeHasPendingSubmittedTurn = Boolean(
+  const activeInitialGoalSetHasPendingOperation = Boolean(
+    input.activeConversationId &&
+    input.activePendingActivation?.mode === "new" &&
+    input.activePendingActivation.agentSessionId ===
+      input.activeConversationId &&
+    input.activePendingActivation.initialGoalControl?.action === "set" &&
+    isPendingActivationViable(input.activePendingActivation) &&
+    input.activeGoalControlPresentation.goal?.status === "active" &&
+    initialGoalHasPendingOperationEvidence({
+      goalIsOptimistic: input.activeGoalControlPresentation.optimistic,
+      syncState: input.activeEngineSession?.goalSyncState ?? null
+    }) &&
+    !input.activeEngineLatestTurn
+  );
+  const hasPendingTurnStartEvidence = Boolean(
     input.activeConversationId &&
     (activeActivationAwaitsInitialTurn ||
+      activeInitialGoalSetHasPendingOperation ||
       input.hasUnconfirmedSubmit ||
       input.isSubmitting ||
       (!input.activeEngineSession && input.activeLatestPendingSubmitTurnId))
@@ -296,14 +314,23 @@ export function useAgentGUISessionPresentation(
     input.activeEngineActiveTurn?.turnId,
     input.observationGapSource
   );
+  const hasCanonicalTerminalActivity =
+    input.activityDisplayStatus === "completed" ||
+    input.activityDisplayStatus === "failed" ||
+    input.activityDisplayStatus === "canceled";
+  const executing =
+    !hasCanonicalTerminalActivity &&
+    (agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
+      (input.activeEngineActiveTurn !== null &&
+        input.activeEngineActiveTurn.phase !== "settled") ||
+      (!input.activeEngineSession &&
+        input.activeEngineRuntimeActivity === "running"));
+  const isAwaitingTurnStart = hasPendingTurnStartEvidence && !executing;
   const activeConversationBusy =
-    activeHasPendingSubmittedTurn ||
-    input.activeEngineRuntimeActivity === "running" ||
-    (input.activeEngineSession
-      ? input.activeEngineAvailability === "blocked"
-      : agentActivityDisplayStatusBusy(input.activityDisplayStatus) ||
-        conversationBusyStatus(input.activeConversation?.status ?? null) ||
-        activeSubmitBlocked);
+    !hasCanonicalTerminalActivity &&
+    (executing ||
+      (!input.activeEngineSession &&
+        conversationBusyStatus(input.activeConversation?.status ?? null)));
   const activeSessionResumable =
     input.activeEngineSession?.resumable ??
     input.activeConversation?.resumable ??
@@ -544,6 +571,7 @@ export function useAgentGUISessionPresentation(
         isCollaboratorConversation,
         isCreatingConversation: input.isCreatingConversation,
         isInterrupting: input.isInterrupting,
+        isAwaitingTurnStart,
         isSubmitting: input.isSubmitting,
         pendingApproval: hasPendingApproval,
         pendingInteractivePrompt: hasPendingInteractivePrompt,
@@ -572,6 +600,7 @@ export function useAgentGUISessionPresentation(
       input.providerReadinessGate,
       input.selectedAgentTargetUnavailable,
       isCollaboratorConversation,
+      isAwaitingTurnStart,
       hasPendingApproval,
       sessionRuntimeBlockedReason,
       settingsUpdatePending,
@@ -610,7 +639,7 @@ export function useAgentGUISessionPresentation(
       input.activeEngineAvailability,
       input.activeEngineRuntimeActivity,
       activeConversationBusy ? "busy" : "ready",
-      activeHasPendingSubmittedTurn ? "pending-turn" : "no-pending-turn",
+      isAwaitingTurnStart ? "awaiting-turn-start" : "turn-start-observed",
       activeSubmitBlocked ? "submit-blocked" : "submit-open",
       pendingApproval?.requestId ?? "",
       promptRequestId(pendingInteractivePrompt) ?? "",
@@ -643,7 +672,7 @@ export function useAgentGUISessionPresentation(
       activeEngineAvailability: input.activeEngineAvailability,
       activeEngineLatestTurn: input.activeEngineLatestTurn,
       activeEngineRuntimeActivity: input.activeEngineRuntimeActivity,
-      activeHasPendingSubmittedTurn,
+      isAwaitingTurnStart,
       activeLiveState: input.activeLiveState,
       activeRuntimeSession: input.activeEngineSession,
       activeSessionState: input.activeSessionState,
@@ -661,7 +690,7 @@ export function useAgentGUISessionPresentation(
     });
   }, [
     activeConversationBusy,
-    activeHasPendingSubmittedTurn,
+    isAwaitingTurnStart,
     activeSubmitBlocked,
     canQueueWhileBusy,
     canSubmit,
@@ -687,13 +716,52 @@ export function useAgentGUISessionPresentation(
     pendingInteractivePrompt
   ]);
   return {
+    approvalDisabledReason: approvalReadiness.block
+      ? interactionReadinessReasonMessage(approvalReadiness.block.reason)
+      : null,
     activeConversationBusy,
     composerGate,
+    hasPendingSubmitStopTarget: input.activeHasPendingSubmitStopTarget,
     hasSentUserMessage,
+    interactivePromptDisabledReason: interactiveReadiness.block
+      ? interactionReadinessReasonMessage(interactiveReadiness.block.reason)
+      : null,
     isRespondingApproval,
     isRespondingInteractivePrompt,
+    isAwaitingTurnStart,
     pendingApproval,
     pendingInteractivePrompt,
     sessionChrome
   };
+}
+
+function initialGoalHasPendingOperationEvidence(input: {
+  goalIsOptimistic: boolean;
+  syncState: AgentActivitySessionGoalSyncState | null;
+}): boolean {
+  if (input.goalIsOptimistic) return true;
+  switch (input.syncState?.syncStatus) {
+    case "pending":
+    case "applying":
+    case "unknown":
+      return Boolean(input.syncState.pendingOperationId?.trim());
+    case "synced":
+      return input.syncState.executionPending === true;
+    default:
+      return false;
+  }
+}
+
+function interactionReadinessReasonMessage(
+  reason: AgentGUIInteractionReadinessReason
+): string {
+  switch (reason) {
+    case "owner_offline":
+      return translate("agentHost.agentGui.interactionOwnerOffline");
+    case "binding_revoked":
+      return translate("agentHost.agentGui.interactionBindingRevoked");
+    case "synchronizing":
+    default:
+      return translate("agentHost.agentGui.interactionSynchronizing");
+  }
 }

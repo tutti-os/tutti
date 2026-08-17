@@ -52,9 +52,9 @@ type Source string
 const (
 	SourceSlashCommand Source = "slash_command"
 	SourceBadgeRemove  Source = "badge_remove"
-	// SourceAgentCommand is an Agent self-service transition issued through the
-	// `tutti mode set` CLI capability. Unlike the human slash command and badge
-	// removal, it may originate either activation state.
+	// SourceAgentCommand is retained only to read activation revisions written
+	// by the removed Agent self-service command. New activation mutations must
+	// use one of the user-controlled sources above.
 	SourceAgentCommand Source = "agent_command"
 )
 
@@ -62,20 +62,21 @@ func IsSource(value Source) bool {
 	return value == SourceSlashCommand || value == SourceBadgeRemove || value == SourceAgentCommand
 }
 
-// IsStateSource reports whether the source may originate the given activation
-// state. Human sources remain single-direction (slash command activates, badge
-// removal deactivates), while the Agent command may drive both directions.
+// IsStateSource reports whether a persisted state/source pair is valid. The
+// legacy Agent source remains readable for both states so existing activation
+// revisions and turn snapshots continue to normalize after upgrades.
 func IsStateSource(state State, source Source) bool {
-	switch source {
-	case SourceAgentCommand:
+	if source == SourceAgentCommand {
 		return state == StateActive || state == StateInactive
-	case SourceSlashCommand:
-		return state == StateActive
-	case SourceBadgeRemove:
-		return state == StateInactive
-	default:
-		return false
 	}
+	return IsUserStateSource(state, source)
+}
+
+// IsUserStateSource reports whether a new user-controlled activation mutation
+// has the expected source for its direction.
+func IsUserStateSource(state State, source Source) bool {
+	return state == StateActive && source == SourceSlashCommand ||
+		state == StateInactive && source == SourceBadgeRemove
 }
 
 type Revision struct {

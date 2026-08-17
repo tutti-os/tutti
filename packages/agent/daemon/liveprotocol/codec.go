@@ -319,7 +319,9 @@ func validateDelivery(delivery Delivery) error {
 			delivery.AttachmentChanged.WorkspaceID,
 			delivery.AttachmentChanged.AgentSessionID,
 			delivery.AttachmentChanged.CanonicalTurnID,
+			delivery.AttachmentChanged.CanonicalTurnIDs,
 			delivery.AttachmentChanged.CallerTurnID,
+			delivery.AttachmentChanged.CurrentInteractionRootTurnID,
 			delivery.AttachmentChanged.AttachmentRevision,
 		) {
 			return ErrInvalidFrame
@@ -331,7 +333,9 @@ func validateDelivery(delivery Delivery) error {
 			delivery.AttachmentCaughtUp.WorkspaceID,
 			delivery.AttachmentCaughtUp.AgentSessionID,
 			delivery.AttachmentCaughtUp.CanonicalTurnID,
+			delivery.AttachmentCaughtUp.CanonicalTurnIDs,
 			delivery.AttachmentCaughtUp.CallerTurnID,
+			delivery.AttachmentCaughtUp.CurrentInteractionRootTurnID,
 			delivery.AttachmentCaughtUp.AttachmentRevision,
 		) {
 			return ErrInvalidFrame
@@ -371,7 +375,8 @@ func validateDelivery(delivery Delivery) error {
 }
 
 func validAttachmentControl(
-	bindingID, workspaceID, agentSessionID, canonicalTurnID, callerTurnID string,
+	bindingID, workspaceID, agentSessionID, canonicalTurnID string, canonicalTurnIDs []string, callerTurnID,
+	currentInteractionRootTurnID string,
 	revision uint64,
 ) bool {
 	if strings.TrimSpace(bindingID) == "" ||
@@ -382,12 +387,45 @@ func validAttachmentControl(
 	}
 	// Goal-only attachments are turnless; invocation attachments always carry
 	// both sides of the Turn identity mapping. A half-populated pair cannot be
-	// projected safely by a recipient.
-	return (strings.TrimSpace(canonicalTurnID) == "") ==
-		(strings.TrimSpace(callerTurnID) == "")
+	// projected safely by a recipient. The optional canonical set may still be
+	// populated for a turnless attachment after Host proves each Goal Turn.
+	canonicalTurnID = strings.TrimSpace(canonicalTurnID)
+	callerTurnID = strings.TrimSpace(callerTurnID)
+	currentInteractionRootTurnID = strings.TrimSpace(currentInteractionRootTurnID)
+	if (canonicalTurnID == "") != (callerTurnID == "") {
+		return false
+	}
+	if len(canonicalTurnIDs) == 0 {
+		// A singular anchor is the complete identity set. A turnless attachment
+		// with no set has not yet observed a Host-proven Goal Turn.
+		if canonicalTurnID == "" {
+			return currentInteractionRootTurnID == ""
+		}
+		return currentInteractionRootTurnID == canonicalTurnID
+	}
+	seen := make(map[string]struct{}, len(canonicalTurnIDs))
+	for _, candidate := range canonicalTurnIDs {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "" {
+			return false
+		}
+		if _, ok := seen[candidate]; ok {
+			return false
+		}
+		seen[candidate] = struct{}{}
+	}
+	if canonicalTurnID != "" {
+		_, anchored := seen[canonicalTurnID]
+		return anchored && currentInteractionRootTurnID == canonicalTurnID
+	}
+	_, current := seen[currentInteractionRootTurnID]
+	return currentInteractionRootTurnID != "" && current
 }
 
 func strictControlDecode(raw []byte, target any) error {
+	if err := validateRequiredControlFields(raw, target); err != nil {
+		return err
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
@@ -395,6 +433,30 @@ func strictControlDecode(raw []byte, target any) error {
 	}
 	if err := ensureJSONEOF(decoder); err != nil {
 		return fmt.Errorf("%w: trailing control data", ErrInvalidFrame)
+	}
+	return nil
+}
+
+func validateRequiredControlFields(raw []byte, target any) error {
+	var required []string
+	switch target.(type) {
+	case *AttachmentChanged, *AttachmentCaughtUp:
+		required = []string{"currentInteractionRootTurnId"}
+	default:
+		return nil
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidFrame, err)
+	}
+	for _, field := range required {
+		value, present := fields[field]
+		if !present {
+			return fmt.Errorf("%w: missing required control field %q", ErrInvalidFrame, field)
+		}
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return fmt.Errorf("%w: required control field %q cannot be null", ErrInvalidFrame, field)
+		}
 	}
 	return nil
 }

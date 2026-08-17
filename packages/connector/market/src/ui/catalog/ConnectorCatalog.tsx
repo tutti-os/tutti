@@ -73,6 +73,22 @@ export function ConnectorCatalog() {
               {i18n.t("loading")}
             </div>
           ) : null}
+          {section.error ? (
+            <div className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-lg border border-[var(--border-1)] text-[12px] text-[var(--text-tertiary)]">
+              <span>{i18n.t("sectionLoadError")}</span>
+              <Button
+                size="sm"
+                type="button"
+                variant="secondary"
+                disabled={section.loading}
+                onClick={() =>
+                  void market.loadMore(section.id).catch(() => undefined)
+                }
+              >
+                {i18n.t("actionRetry")}
+              </Button>
+            </div>
+          ) : null}
           {section.hasMore ? (
             <div className="mt-3 flex justify-center">
               <Button

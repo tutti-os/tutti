@@ -704,7 +704,13 @@ func (h *Host) sessionForkRuntimeSource(
 ) (ProviderRuntimeSession, error) {
 	if h != nil && h.runtime != nil {
 		if live, found := h.runtime.Session(session.WorkspaceID, session.ID); found {
-			return cloneSessionForkRuntimeSource(live), nil
+			cloned := cloneSessionForkRuntimeSource(live)
+			var err error
+			cloned.Env, err = runtimeEnvironmentForCanonicalSession(cloned.Env, cloned.Cwd, session)
+			if err != nil {
+				return ProviderRuntimeSession{}, err
+			}
+			return cloned, nil
 		}
 	}
 	settings := composerSettingsFromMap(session.Settings)
@@ -722,11 +728,16 @@ func (h *Host) sessionForkRuntimeSource(
 	if prepared.Settings != nil {
 		settings = *prepared.Settings
 	}
+	runtimeEnv, err := runtimeEnvironmentForCanonicalSession(prepared.Env, prepared.Cwd, session)
+	if err != nil {
+		return ProviderRuntimeSession{}, err
+	}
+	prepared.Env = runtimeEnv
 	return ProviderRuntimeSession{
 		ID: session.ID, WorkspaceID: session.WorkspaceID, UserID: session.UserID,
 		AgentTargetID: session.AgentTargetID, Provider: session.Provider,
 		ProviderSessionID: session.ProviderSessionID, Resumable: true,
-		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
+		Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...), MCPServers: cloneHostMCPServerBindings(prepared.MCPServers),
 		ProviderTargetRef: cloneMap(prepared.ProviderTargetRef), Settings: &settings,
 		RuntimeContext: cloneMap(firstMap(
 			prepared.RuntimeContext,
@@ -740,6 +751,7 @@ func (h *Host) sessionForkRuntimeSource(
 
 func cloneSessionForkRuntimeSource(source ProviderRuntimeSession) ProviderRuntimeSession {
 	source.Env = append([]string(nil), source.Env...)
+	source.MCPServers = cloneHostMCPServerBindings(source.MCPServers)
 	source.ProviderTargetRef = cloneMap(source.ProviderTargetRef)
 	source.RuntimeContext = cloneMap(source.RuntimeContext)
 	if source.Settings != nil {

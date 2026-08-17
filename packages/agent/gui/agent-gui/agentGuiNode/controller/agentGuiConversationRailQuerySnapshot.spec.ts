@@ -93,14 +93,114 @@ describe("createConversationRailQuerySnapshotSelector", () => {
     expect(afterVisibleUpdate[2]).toBe(first[2]);
     expect(afterVisibleUpdate[3]).toBe(first[3]);
 
+    const isolation = {
+      mode: "worktree" as const,
+      worktreePath: "/workspace/.worktrees/session-1",
+      branch: "tutti/session-1",
+      baseCommit: "base-commit"
+    };
+    engine.dispatch({
+      session: createSession("session-1", "Changed title", 2_000, isolation),
+      type: "session/upserted"
+    });
+    const afterIsolationProjection = selectConversations(
+      {
+        engineState: engine.getSnapshot(),
+        interactionLocked: false,
+        querySnapshot
+      },
+      afterVisibleUpdate
+    );
+
+    expect(afterIsolationProjection).not.toBe(afterVisibleUpdate);
+    expect(afterIsolationProjection[0]).toBe(afterVisibleUpdate[0]);
+    expect(afterIsolationProjection[1]).not.toBe(afterVisibleUpdate[1]);
+    expect(afterIsolationProjection[1]?.isolation).toEqual(isolation);
+    expect(afterIsolationProjection[2]).toBe(afterVisibleUpdate[2]);
+    expect(afterIsolationProjection[3]).toBe(afterVisibleUpdate[3]);
+
+    engine.dispose();
+  });
+
+  it("projects all running sessions for the exact target even before membership refresh", () => {
+    const engine = createTestAgentSessionEngine();
+    engine.dispatch({
+      sessions: [
+        createRunningSession("running-1", "local:codex"),
+        createRunningSession("running-2", "local:codex"),
+        createRunningSession("other-target", "local:opencode")
+      ],
+      type: "session/snapshotReceived"
+    });
+    const querySnapshot = createConversationRailQuerySnapshotSelector()(
+      {
+        agentTargetId: "local:codex",
+        queryState: {
+          pending: false,
+          reconcilingSessionIds: [],
+          resolvedScopeKey: "codex",
+          sectionPageStates: new Map(),
+          sections: []
+        },
+        runtimeRailFailed: false,
+        runtimeSectionsEnabled: true,
+        searchEnabled: false,
+        searchQuery: "",
+        searchRequestKey: null,
+        searchState: EMPTY_CONVERSATION_SEARCH_QUERY_STATE
+      },
+      undefined
+    );
+
+    const projected = createConversationRailConversationsSelector()({
+      engineState: engine.getSnapshot(),
+      interactionLocked: false,
+      querySnapshot
+    });
+
+    expect(projected.map(({ id }) => id)).toEqual(["running-1", "running-2"]);
     engine.dispose();
   });
 });
 
+function createRunningSession(agentSessionId: string, agentTargetId: string) {
+  return normalizeAgentActivitySession({
+    activeTurn: {
+      agentSessionId,
+      error: null,
+      origin: "user_prompt",
+      outcome: null,
+      phase: "running",
+      settledAtUnixMs: null,
+      startedAtUnixMs: 1,
+      turnId: `${agentSessionId}-turn`,
+      updatedAtUnixMs: 2
+    },
+    activeTurnId: `${agentSessionId}-turn`,
+    agentSessionId,
+    agentTargetId,
+    cwd: "/workspace",
+    kind: "root",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: agentTargetId.replace("local:", ""),
+    railSectionKey: "conversations",
+    title: agentSessionId,
+    updatedAtUnixMs: 2,
+    workspaceId: "test-workspace"
+  });
+}
+
 function createSession(
   agentSessionId: string,
   title: string,
-  updatedAtUnixMs: number
+  updatedAtUnixMs: number,
+  isolation?: {
+    mode: "worktree";
+    worktreePath: string;
+    branch: string;
+    baseCommit: string;
+  }
 ) {
   return normalizeAgentActivitySession({
     activeTurnId: null,
@@ -111,6 +211,7 @@ function createSession(
     pendingInteractions: [],
     provider: "codex",
     railSectionKey: "conversations",
+    ...(isolation ? { isolation } : {}),
     title,
     updatedAtUnixMs,
     workspaceId: "test-workspace"

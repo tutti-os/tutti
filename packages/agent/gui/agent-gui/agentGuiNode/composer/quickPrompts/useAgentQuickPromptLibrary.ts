@@ -6,6 +6,7 @@ import type {
 } from "../../../../host/agentHostApi";
 import { useEngineSelector } from "../../../../shared/engine/useEngineSelector";
 import type { AgentQuickPromptLabels } from "./agentQuickPromptLabels";
+import type { AgentGUIQuickPromptType } from "../../engagement/agentGUIEngagement.types";
 
 const unavailableSnapshot: AgentHostQuickPromptSnapshot = {
   enabled: false,
@@ -34,6 +35,7 @@ export interface AgentQuickPromptDraft {
 
 export interface AgentQuickPromptCreateOptions {
   insertIntoComposerAfterSave?: boolean;
+  usagePromptType?: AgentGUIQuickPromptType;
 }
 
 export interface AgentQuickPromptLibraryController {
@@ -84,8 +86,17 @@ export function useAgentQuickPromptLibrary(input: {
   labels: AgentQuickPromptLabels;
   onBeforeOpen: () => void;
   onInsertPrompt: (content: string) => boolean;
+  onQuickPromptPanelOpened?: () => void;
+  onQuickPromptUsed?: (promptType: AgentGUIQuickPromptType) => void;
 }): AgentQuickPromptLibraryController {
-  const { disabled, labels, onBeforeOpen, onInsertPrompt } = input;
+  const {
+    disabled,
+    labels,
+    onBeforeOpen,
+    onInsertPrompt,
+    onQuickPromptPanelOpened,
+    onQuickPromptUsed
+  } = input;
   const hostApi = useOptionalAgentHostApi();
   const quickPrompts = hostApi?.quickPrompts;
   const snapshot = useEngineSelector(
@@ -172,6 +183,7 @@ export function useAgentQuickPromptLibrary(input: {
       return;
     }
     onBeforeOpen();
+    onQuickPromptPanelOpened?.();
     setMutationError(null);
     setInsertionError(false);
     setReorderError(null);
@@ -184,6 +196,7 @@ export function useAgentQuickPromptLibrary(input: {
     capabilityAvailable,
     disabled,
     onBeforeOpen,
+    onQuickPromptPanelOpened,
     quickPrompts,
     snapshot.status
   ]);
@@ -317,6 +330,9 @@ export function useAgentQuickPromptLibrary(input: {
           inserted = false;
         }
         if (inserted) {
+          if (createOptions?.usagePromptType) {
+            onQuickPromptUsed?.(createOptions.usagePromptType);
+          }
           close();
           return true;
         }
@@ -336,6 +352,7 @@ export function useAgentQuickPromptLibrary(input: {
       close,
       isInteractionLocked,
       onInsertPrompt,
+      onQuickPromptUsed,
       quickPrompts,
       selectedPrompt
     ]
@@ -429,12 +446,20 @@ export function useAgentQuickPromptLibrary(input: {
         inserted = false;
       }
       if (inserted) {
+        onQuickPromptUsed?.("saved");
         close();
       } else {
         setInsertionError(true);
       }
     },
-    [capabilityAvailable, close, disabled, isInteractionLocked, onInsertPrompt]
+    [
+      capabilityAvailable,
+      close,
+      disabled,
+      isInteractionLocked,
+      onInsertPrompt,
+      onQuickPromptUsed
+    ]
   );
 
   const updateSearchQuery = useCallback(

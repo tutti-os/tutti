@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -119,62 +120,96 @@ func (a *ClaudeCodeSDKAdapter) beginClaudeSDKRootTurn(
 	adapterSession.rootProviderTurns = make(map[string]struct{})
 	if providerTurnID != "" {
 		adapterSession.rootProviderTurns[providerTurnID] = struct{}{}
-	} else {
-		// A new root turn must re-arm the acceptance gate Cancel waits on.
-		adapterSession.providerTurnAccepted = make(chan struct{})
+	} else if rootTurnID != "" {
+		if adapterSession.providerAcceptanceOutcomes == nil {
+			adapterSession.providerAcceptanceOutcomes = make(map[string]*claudeSDKProviderAcceptanceOutcome)
+		}
+		adapterSession.providerAcceptanceOutcomes[rootTurnID] = &claudeSDKProviderAcceptanceOutcome{
+			done: make(chan struct{}),
+		}
+		pruneClaudeSDKProviderAcceptanceOutcomesLocked(adapterSession, rootTurnID)
 	}
 	a.mu.Unlock()
 }
 
-func (a *ClaudeCodeSDKAdapter) signalClaudeSDKProviderTurnAccepted(
+func (a *ClaudeCodeSDKAdapter) completeClaudeSDKProviderAcceptance(
 	adapterSession *claudeSDKAdapterSession,
+	turnID string,
+	acceptanceErr error,
 ) {
 	if a == nil || adapterSession == nil {
 		return
 	}
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	ch := adapterSession.providerTurnAccepted
-	if ch == nil {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
 		return
 	}
+	a.mu.Lock()
+	outcome := adapterSession.providerAcceptanceOutcomes[turnID]
+	if outcome != nil {
+		outcome.once.Do(func() {
+			outcome.err = acceptanceErr
+			close(outcome.done)
+		})
+	}
+	a.mu.Unlock()
+}
+
+func (a *ClaudeCodeSDKAdapter) waitClaudeSDKProviderAcceptanceOutcome(
+	ctx context.Context,
+	adapterSession *claudeSDKAdapterSession,
+	turnID string,
+) error {
+	if a == nil || adapterSession == nil {
+		return errors.New("claude SDK provider acceptance outcome is unavailable")
+	}
+	turnID = strings.TrimSpace(turnID)
+	a.mu.Lock()
+	outcome := adapterSession.providerAcceptanceOutcomes[turnID]
+	a.mu.Unlock()
+	if outcome == nil {
+		return errors.New("claude SDK provider acceptance outcome is unavailable")
+	}
 	select {
-	case <-ch:
-	default:
-		close(ch)
+	case <-outcome.done:
+		return outcome.err
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 
-func (a *ClaudeCodeSDKAdapter) waitClaudeSDKProviderTurnAccepted(
-	ctx context.Context,
+func pruneClaudeSDKProviderAcceptanceOutcomesLocked(
 	adapterSession *claudeSDKAdapterSession,
-) error {
-	if a == nil || adapterSession == nil {
-		return nil
+	keepTurnID string,
+) {
+	if adapterSession == nil || len(adapterSession.providerAcceptanceOutcomes) <= 64 {
+		return
 	}
-	a.mu.Lock()
-	ch := adapterSession.providerTurnAccepted
-	if ch != nil {
+	for turnID, outcome := range adapterSession.providerAcceptanceOutcomes {
+		if turnID == keepTurnID || outcome == nil {
+			continue
+		}
 		select {
-		case <-ch:
-			a.mu.Unlock()
-			return nil
+		case <-outcome.done:
+			delete(adapterSession.providerAcceptanceOutcomes, turnID)
 		default:
 		}
-	} else if len(adapterSession.rootProviderTurns) > 0 {
-		// No gate armed (tests / already-bound identity): nothing to wait for.
-		a.mu.Unlock()
-		return nil
-	} else {
-		a.mu.Unlock()
-		return nil
+		if len(adapterSession.providerAcceptanceOutcomes) <= 64 {
+			return
+		}
 	}
-	a.mu.Unlock()
-	select {
-	case <-ch:
-		return nil
-	case <-ctx.Done():
-		return ctx.Err()
+	// A Session admits only one live root Turn. Any older incomplete outcome can
+	// no longer become a provider-active cancellation target once a newer root
+	// Turn begins, so keep the diagnostic cache bounded without touching the
+	// current Turn's latch.
+	for turnID := range adapterSession.providerAcceptanceOutcomes {
+		if turnID == keepTurnID {
+			continue
+		}
+		delete(adapterSession.providerAcceptanceOutcomes, turnID)
+		if len(adapterSession.providerAcceptanceOutcomes) <= 64 {
+			return
+		}
 	}
 }
 

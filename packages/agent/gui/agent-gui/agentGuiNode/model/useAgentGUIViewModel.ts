@@ -58,6 +58,7 @@ export function useAgentGUIViewModel(
       candidate.composer.drainingQueuedPromptId,
       candidate.composer.goalPauseSupported,
       candidate.composer.gate,
+      candidate.composer.hasPendingSubmitStopTarget,
       candidate.composer.handoffAgentTargets,
       candidate.composer.isCancelPending,
       candidate.composer.isCreatingConversation,
@@ -77,6 +78,8 @@ export function useAgentGUIViewModel(
     () => candidate.interaction,
     [
       candidate.interaction.inlineNotice,
+      candidate.interaction.approvalDisabledReason,
+      candidate.interaction.interactivePromptDisabledReason,
       candidate.interaction.isRespondingApproval,
       candidate.interaction.isRespondingInteractivePrompt,
       candidate.interaction.pendingApproval,

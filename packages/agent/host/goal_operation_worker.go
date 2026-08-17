@@ -210,7 +210,8 @@ func (h *Host) recoverGoalOperation(ctx context.Context, operation storesqlite.G
 		_, _, _, err = h.goals.AcknowledgeGoalControlOperation(ctx, storesqlite.GoalControlOperationAcknowledge{
 			WorkspaceID: leased.WorkspaceID, OperationID: leased.OperationID,
 			Evidence: clonePayload(result.Evidence), OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
-			RepairEpoch: leased.RepairEpoch,
+			RepairEpoch:      leased.RepairEpoch,
+			ExecutionPending: result.ExecutionPending,
 		})
 		return err
 	}
@@ -219,6 +220,7 @@ func (h *Host) recoverGoalOperation(ctx context.Context, operation storesqlite.G
 		Observed: clonePayload(result.Goal), Evidence: clonePayload(result.Evidence),
 		OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
 		RepairEpoch:      leased.RepairEpoch,
+		ExecutionPending: result.ExecutionPending,
 	})
 	return err
 }
@@ -319,7 +321,7 @@ func (h *Host) RecoverGoalOperations(ctx context.Context) error {
 			}
 			return nil
 		}
-		if err := h.StepGoalGenerationFenceWorker(recoveryCtx); err != nil {
+		if err := h.stepGoalGenerationFenceWorker(recoveryCtx, true); err != nil {
 			if recoveryCtx.Err() != nil && ctx.Err() == nil {
 				return nil
 			}

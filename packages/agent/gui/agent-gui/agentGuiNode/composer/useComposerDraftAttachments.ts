@@ -32,7 +32,6 @@ import type {
   AgentRichTextPastedImage
 } from "../agentRichText/AgentRichTextEditor";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
-import { parseMentionItemFromHref } from "../agentRichText/agentFileMentionExtension";
 import {
   agentExternalPromptFileErrorI18nKey,
   createAgentExternalPromptFilePreparation,
@@ -44,10 +43,8 @@ import {
   updateAgentComposerFileMentions
 } from "../agentRichText/agentMentionMarkdown";
 import { updateDraftPromptAndReconcileFiles } from "../model/agentComposerDraftFileReconciliation";
-import {
-  resolveWorkspaceLinkAction,
-  type WorkspaceLinkAction
-} from "../../../actions/workspaceLinkActions";
+import { type WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
+import { dispatchComposerDraftMarkdownLinkClick } from "./resolveComposerFileMentionLinkAction";
 import {
   AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX,
   agentComposerTextByteLength,
@@ -69,7 +66,7 @@ function useStableEventCallback<Args extends unknown[], Result>(
   callbackRef.current = callback;
   return useCallback((...args: Args) => callbackRef.current(...args), []);
 }
-interface UseComposerDraftAttachmentsInput {
+export interface UseComposerDraftAttachmentsInput {
   workspaceId: string;
   workspacePath?: string | null;
   draftContent: AgentComposerDraft;
@@ -141,6 +138,9 @@ export function useComposerDraftAttachments({
   );
   const showErrorToast = useStableEventCallback((message: string): void => {
     agentHostApi?.toast?.error(message);
+  });
+  const showInfoToast = useStableEventCallback((message: string): void => {
+    (agentHostApi?.toast?.info ?? agentHostApi?.toast?.error)?.(message);
   });
   const publishScopedDraft = useStableEventCallback(
     (sourceScopeKey: string, nextDraft: AgentComposerDraft): void => {
@@ -756,21 +756,29 @@ export function useComposerDraftAttachments({
 
   const handleLinkClick = useCallback(
     (href: string): void => {
-      const item = parseMentionItemFromHref({ name: "", href });
-      if (item?.kind === "workspace-reference") {
-        openReferencesForEntityRef.current?.(item);
-        return;
-      }
-      const action = resolveWorkspaceLinkAction({
+      dispatchComposerDraftMarkdownLinkClick({
         href,
+        activeFiles: draftFilesRef.current,
+        draftsByScope: draftByScopeKeyRef.current,
         workspaceRoot: workspacePath,
-        source: "agent-markdown"
+        onWorkspaceReference: (item) => {
+          if (item.kind === "workspace-reference") {
+            openReferencesForEntityRef.current?.(item);
+          }
+        },
+        onLinkAction,
+        showError: showErrorToast,
+        showInfo: showInfoToast
       });
-      if (action) {
-        onLinkAction?.(action);
-      }
     },
-    [onLinkAction, workspacePath]
+    [
+      draftByScopeKeyRef,
+      draftFilesRef,
+      onLinkAction,
+      showErrorToast,
+      showInfoToast,
+      workspacePath
+    ]
   );
 
   return {
@@ -784,6 +792,7 @@ export function useComposerDraftAttachments({
     handlePastedLargeText,
     handleWorkspaceReferencePicker,
     removeDraftImage,
-    removeDraftLargeText
+    removeDraftLargeText,
+    _updateScopedDraft: updateScopedDraft
   };
 }

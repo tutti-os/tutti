@@ -1216,6 +1216,7 @@ test("hung fork ACK times out, retries with the same identity, and stops after s
   });
   engine.dispatch({
     turn: context.turnsById[canonicalTurnKey("session-1", "turn-1")]!,
+    live: true,
     type: "turn/upserted"
   });
   engine.dispatch({
@@ -1737,6 +1738,7 @@ test("through-turn fork facade allocates a new identity after a confirmed failur
       turnId: "turn-1",
       updatedAtUnixMs: 2
     },
+    live: true,
     type: "turn/upserted"
   });
 
@@ -1843,6 +1845,7 @@ test("through-turn fork facade reuses an Engine-owned delivery-unknown identity"
       turnId: "turn-1",
       updatedAtUnixMs: 2
     },
+    live: true,
     type: "turn/upserted"
   });
 
@@ -1930,6 +1933,7 @@ test("through-turn fork facade reuses an Engine-owned in-flight identity", async
       turnId: "turn-1",
       updatedAtUnixMs: 2
     },
+    live: true,
     type: "turn/upserted"
   });
 
@@ -2014,6 +2018,7 @@ test("through-turn fork facade reuses the mutation key after committed recovery 
       turnId: "turn-1",
       updatedAtUnixMs: 2
     },
+    live: true,
     type: "turn/upserted"
   });
   const boundary = {

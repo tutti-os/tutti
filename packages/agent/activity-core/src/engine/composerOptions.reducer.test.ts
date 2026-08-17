@@ -142,6 +142,19 @@ test("force reloads even when a ready cache exists", () => {
   assert.equal(result.state.entriesByTargetKey["target-1"]?.status, "loading");
 });
 
+test("force joins an identical in-flight request", () => {
+  const state = composerOptionsReducer(
+    createInitialComposerOptionsState(),
+    loadRequest()
+  ).state;
+  const result = composerOptionsReducer(state, {
+    ...loadRequest(true),
+    commandId: "cmd-2"
+  });
+  assert.equal(result.commands.length, 0);
+  assert.equal(result.state, state);
+});
+
 test("validated settings success refreshes provider-declared target options", () => {
   let state = composerOptionsReducer(
     createInitialComposerOptionsState(),
@@ -176,9 +189,10 @@ test("validated settings success refreshes provider-declared target options", ()
   assert.deepEqual(refreshed.commands, [
     {
       commandId: "composer-options:after-settings:settings-1",
-      correlationId: "target-1",
+      correlationId: "target-1::core",
       cwd: "/workspace",
       provider: "codex",
+      section: "core",
       settings: {
         model: "model-2",
         permissionModeId: "acceptEdits",
@@ -236,9 +250,11 @@ test("a superseded load result is ignored", () => {
     createInitialComposerOptionsState(),
     loadRequest()
   ).state;
-  // a newer forced request supersedes cmd-1
+  // A newer forced request with a different semantic signature supersedes
+  // cmd-1. An identical forced request is intentionally joined instead.
   state = composerOptionsReducer(state, {
     ...loadRequest(true),
+    cwd: "/workspace/new",
     commandId: "cmd-2"
   }).state;
   const result = composerOptionsReducer(state, {

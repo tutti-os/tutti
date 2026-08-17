@@ -159,6 +159,44 @@ func TestNodePackageInstallerUsesOneManagedNodeAndSharedContentStore(t *testing.
 	}
 }
 
+func TestNodePackageInstallerRemoveCLIRejectsSymlinkParent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX symbolic-link removal coverage")
+	}
+	root := t.TempDir()
+	installer, err := NewNodePackageInstaller(NodePackageInstallerConfig{
+		RootDir: root, Runtimes: nodePackageRuntimeStub{}, Processes: &nodePackageProcessStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	victim := t.TempDir()
+	victimRelease := filepath.Join(victim, digest)
+	if err := os.MkdirAll(victimRelease, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(victimRelease, "keep")
+	if err := os.WriteFile(marker, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "packages"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(root, "packages", "lark")); err != nil {
+		t.Fatal(err)
+	}
+	err = installer.RemoveCLI(context.Background(), market.RemoveCLIRequest{
+		ConnectorKey: "lark", ReleaseDigest: digest,
+	})
+	if err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("RemoveCLI() error = %v, want symbolic-link rejection", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("RemoveCLI() followed a symlink parent: %v", err)
+	}
+}
+
 func TestNodeVersionSatisfiesComparatorRange(t *testing.T) {
 	if !nodeVersionSatisfies("22.22.3", ">=22.0.0 <23.0.0") {
 		t.Fatal("managed Node should satisfy connector range")

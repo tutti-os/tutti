@@ -37,3 +37,16 @@ func TestSectionKeyFromPathEmpty(t *testing.T) {
 		t.Fatalf("empty path section key = %q, want empty", got)
 	}
 }
+
+func TestLabelFromPathSupportsWindowsAndPOSIXSeparators(t *testing.T) {
+	tests := map[string]string{
+		"/workspace/tutti/":              "tutti",
+		`C:\Users\demo\Documents\tutti`:  "tutti",
+		`C:\Users\demo\Documents\tutti\`: "tutti",
+	}
+	for path, want := range tests {
+		if got := LabelFromPath(path); got != want {
+			t.Errorf("LabelFromPath(%q) = %q, want %q", path, got, want)
+		}
+	}
+}

@@ -14,8 +14,11 @@ import type {
   WorkspaceUserProjectValtioStore
 } from "@tutti-os/workspace-user-project/contracts";
 import {
+  areWorkspaceUserProjectPathsEqual,
   pinWorkspaceUserProjectOptimistically,
-  upsertWorkspaceUserProject
+  normalizeWorkspaceUserProjectPath,
+  upsertWorkspaceUserProject,
+  workspaceUserProjectPathIdentityKey
 } from "@tutti-os/workspace-user-project/core";
 import { createWorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { DesktopHostFilesApi, DesktopPlatformApi } from "@preload/types";
@@ -136,16 +139,17 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   }
 
   isNoProjectPath(path: string): boolean {
-    const normalizedPath = path.trim();
+    const normalizedPath = normalizeWorkspaceUserProjectPath(path);
+    const pathKey = projectPathKey(normalizedPath);
     if (
       !normalizedPath ||
       hasProjectPath(this.store.projects, normalizedPath) ||
-      this.workspaceState.explicitProjectPaths.has(normalizedPath)
+      this.workspaceState.explicitProjectPaths.has(pathKey)
     ) {
       return false;
     }
     return (
-      this.workspaceState.noProjectPaths.has(normalizedPath) ||
+      this.workspaceState.noProjectPaths.has(pathKey) ||
       isGeneratedNoProjectCwd({
         homeDirectory: this.dependencies.platformApi.homeDirectory,
         path: normalizedPath,
@@ -155,7 +159,7 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   }
 
   rememberNoProjectPath(path: string | null | undefined): void {
-    const normalizedPath = path?.trim() ?? "";
+    const normalizedPath = projectPathKey(path);
     if (normalizedPath) {
       this.workspaceState.noProjectPaths.add(normalizedPath);
     }
@@ -311,9 +315,10 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
       path
     });
     this.supersedeLoad();
-    this.workspaceState.explicitProjectPaths.add(project.path);
-    this.workspaceState.noProjectPaths.delete(project.path);
-    this.workspaceState.removedProjectPaths.delete(project.path);
+    const projectKey = projectPathKey(project.path);
+    this.workspaceState.explicitProjectPaths.add(projectKey);
+    this.workspaceState.noProjectPaths.delete(projectKey);
+    this.workspaceState.removedProjectPaths.delete(projectKey);
     this.store.projects = upsertWorkspaceUserProject(
       this.store.projects,
       project
@@ -327,7 +332,8 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
   }
 
   async removeProjectPath(path: string): Promise<void> {
-    const normalizedPath = path.trim();
+    const normalizedPath = normalizeWorkspaceUserProjectPath(path);
+    const pathKey = projectPathKey(normalizedPath);
     if (!normalizedPath) {
       return;
     }
@@ -337,12 +343,18 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
         path: normalizedPath
       });
       const previousProjectCount = this.store.projects.length;
-      this.workspaceState.explicitProjectPaths.delete(normalizedPath);
-      this.workspaceState.removedProjectPaths.add(normalizedPath);
+      this.workspaceState.explicitProjectPaths.delete(pathKey);
+      this.workspaceState.removedProjectPaths.add(pathKey);
       this.store.projects = this.store.projects.filter(
-        (project) => project.path !== normalizedPath
+        (project) =>
+          !areWorkspaceUserProjectPathsEqual(project.path, normalizedPath)
       );
-      if (this.workspaceState.defaultSelection?.path === normalizedPath) {
+      if (
+        areWorkspaceUserProjectPathsEqual(
+          this.workspaceState.defaultSelection?.path,
+          normalizedPath
+        )
+      ) {
         this.workspaceState.defaultSelection = { path: null };
       }
       this.store.error = null;
@@ -388,7 +400,10 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
         return;
       }
       this.store.projects = response.projects.filter(
-        (project) => !this.workspaceState.removedProjectPaths.has(project.path)
+        (project) =>
+          !this.workspaceState.removedProjectPaths.has(
+            projectPathKey(project.path)
+          )
       );
       this.store.initialized = true;
       this.store.error = null;
@@ -441,7 +456,9 @@ export class DesktopWorkspaceUserProjectService implements IWorkspaceUserProject
     projects: readonly WorkspaceUserProject[]
   ): void {
     for (const project of projects) {
-      this.workspaceState.removedProjectPaths.delete(project.path);
+      this.workspaceState.removedProjectPaths.delete(
+        projectPathKey(project.path)
+      );
     }
     this.supersedeLoad();
     this.store.projects = projects.map((project) => ({ ...project }));
@@ -563,7 +580,7 @@ function areProjectSnapshotsEqual(
       return (
         candidate !== undefined &&
         project.id === candidate.id &&
-        project.path === candidate.path &&
+        areWorkspaceUserProjectPathsEqual(project.path, candidate.path) &&
         project.label === candidate.label &&
         project.pinnedAtUnixMs === candidate.pinnedAtUnixMs &&
         project.sectionKey === candidate.sectionKey &&
@@ -579,7 +596,13 @@ function hasProjectPath(
   projects: readonly WorkspaceUserProject[],
   path: string
 ): boolean {
-  return projects.some((project) => project.path === path);
+  return projects.some((project) =>
+    areWorkspaceUserProjectPathsEqual(project.path, path)
+  );
+}
+
+function projectPathKey(path: string | null | undefined): string {
+  return workspaceUserProjectPathIdentityKey(path);
 }
 
 function workspaceUserProjectState(

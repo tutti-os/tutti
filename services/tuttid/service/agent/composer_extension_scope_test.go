@@ -512,12 +512,18 @@ func TestExtensionHiddenComposerDiscoveryCleansPreparedRuntimeAfterStartFailure(
 	}
 }
 
-func TestExtensionHiddenComposerDiscoveryCallerCancellationClosesSession(t *testing.T) {
+func TestExtensionHiddenComposerDiscoveryCallerCancellationLeavesSharedDiscoveryRunning(t *testing.T) {
 	runtime := newFakeRuntime()
 	started := make(chan struct{})
+	release := make(chan struct{})
 	closed := make(chan struct{})
 	runtime.startHook = func(_ RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
 		close(started)
+		<-release
+		session.RuntimeContext["configOptions"] = []any{map[string]any{
+			"id": "model", "currentValue": "example-pro",
+			"options": []any{map[string]any{"value": "example-pro", "name": "Example Pro"}},
+		}}
 		return session
 	}
 	runtime.closeHook = func(RuntimeCloseInput) { close(closed) }
@@ -535,13 +541,21 @@ func TestExtensionHiddenComposerDiscoveryCallerCancellationClosesSession(t *test
 	if err := <-result; !errors.Is(err, context.Canceled) {
 		t.Fatalf("discovery error = %v, want caller cancellation", err)
 	}
+	close(release)
 	select {
 	case <-closed:
 	case <-time.After(time.Second):
-		t.Fatal("timed out waiting for caller-canceled discovery cleanup")
+		t.Fatal("timed out waiting for shared discovery cleanup")
 	}
 	if len(runtime.closeCalls) != 1 || len(runtime.sessions) != 0 {
-		t.Fatalf("close=%d sessions=%d, want caller-canceled discovery closed", len(runtime.closeCalls), len(runtime.sessions))
+		t.Fatalf("close=%d sessions=%d, want completed shared discovery closed", len(runtime.closeCalls), len(runtime.sessions))
+	}
+	models, err := service.discoverLiveComposerModels(context.Background(), input, ComposerSettings{})
+	if err != nil || len(models) != 1 || models[0].Value != "example-pro" {
+		t.Fatalf("cached discovery result = %#v, error = %v", models, err)
+	}
+	if len(runtime.startCalls) != 1 {
+		t.Fatalf("start calls = %d, want cached result without another runtime", len(runtime.startCalls))
 	}
 }
 

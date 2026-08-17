@@ -111,8 +111,8 @@ func (s *Service) Set(ctx context.Context, input SetInput) (SetResult, error) {
 	if !activationbiz.IsState(input.State) || !activationbiz.IsSource(input.Source) {
 		return SetResult{}, fmt.Errorf("%w: status and source are required", ErrInvalidInput)
 	}
-	if !activationbiz.IsStateSource(input.State, input.Source) {
-		return SetResult{}, fmt.Errorf("%w: status and source do not describe one activation transition", ErrInvalidInput)
+	if !activationbiz.IsUserStateSource(input.State, input.Source) {
+		return SetResult{}, fmt.Errorf("%w: status and source do not describe a user-controlled activation transition", ErrInvalidInput)
 	}
 	effect := input.Effect
 	if effect == nil {

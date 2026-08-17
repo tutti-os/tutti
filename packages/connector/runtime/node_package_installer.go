@@ -41,13 +41,15 @@ type NodePackageInstallerConfig struct {
 // invocations. All connectors share one content-addressed store and one
 // Corepack cache while retaining a release-scoped node_modules link tree.
 type NodePackageInstaller struct {
-	rootDir     string
-	runtimes    ConnectorRuntimeResolver
-	processes   agentruntime.ProcessTransport
-	pnpmVersion string
-	timeout     time.Duration
-	environ     func() []string
-	mu          sync.Mutex
+	rootDir        string
+	runtimes       ConnectorRuntimeResolver
+	processes      agentruntime.ProcessTransport
+	pnpmVersion    string
+	timeout        time.Duration
+	environ        func() []string
+	mu             sync.Mutex
+	connectorLanes map[string]*sync.Mutex
+	installSlots   chan struct{}
 }
 
 var _ market.CLIInstallationManager = (*NodePackageInstaller)(nil)
@@ -76,7 +78,8 @@ func NewNodePackageInstaller(config NodePackageInstallerConfig) (*NodePackageIns
 		environ = os.Environ
 	}
 	return &NodePackageInstaller{rootDir: filepath.Clean(root), runtimes: config.Runtimes,
-		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout, environ: environ}, nil
+		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout, environ: environ,
+		connectorLanes: make(map[string]*sync.Mutex), installSlots: make(chan struct{}, 4)}, nil
 }
 
 func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request market.InstallCLIRequest) (market.CLIInstallationReceipt, error) {
@@ -93,8 +96,14 @@ func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request m
 	if strings.TrimSpace(request.OperationID) == "" {
 		return market.CLIInstallationReceipt{}, errors.New("connector CLI installation operation id is required")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.Release.ConnectorKey)
+	defer releaseLane()
+	select {
+	case installer.installSlots <- struct{}{}:
+		defer func() { <-installer.installSlots }()
+	case <-ctx.Done():
+		return market.CLIInstallationReceipt{}, ctx.Err()
+	}
 
 	resolved, node, err := installer.resolveNode(ctx, managed.Runtime)
 	if err != nil {
@@ -177,14 +186,23 @@ func (installer *NodePackageInstaller) ResolveCLI(ctx context.Context, release m
 	if err != nil {
 		return market.CLIInstallationReceipt{}, err
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(release.ConnectorKey)
+	defer releaseLane()
 	resolved, node, err := installer.resolveNode(ctx, managed.Runtime)
 	if err != nil {
 		return market.CLIInstallationReceipt{}, err
 	}
-	return installer.readAndVerifyReceipt(release, cli.Entrypoint, resolved, node,
-		installer.installRoot(release.ConnectorKey, release.ReleaseDigest))
+	root := installer.installRoot(release.ConnectorKey, release.ReleaseDigest)
+	if _, statErr := os.Stat(root); errors.Is(statErr, os.ErrNotExist) {
+		return market.CLIInstallationReceipt{}, market.ErrReleaseInstallationAbsent
+	} else if statErr != nil {
+		return market.CLIInstallationReceipt{}, fmt.Errorf("inspect connector CLI installation: %w", statErr)
+	}
+	receipt, err := installer.readAndVerifyReceipt(release, cli.Entrypoint, resolved, node, root)
+	if err != nil {
+		return market.CLIInstallationReceipt{}, fmt.Errorf("%w: %v", market.ErrReleaseInstallationInvalid, err)
+	}
+	return receipt, nil
 }
 
 func (installer *NodePackageInstaller) RemoveCLI(ctx context.Context, request market.RemoveCLIRequest) error {
@@ -194,16 +212,50 @@ func (installer *NodePackageInstaller) RemoveCLI(ctx context.Context, request ma
 	if installer == nil || !safeCLIPathSegment(request.ConnectorKey) || !isSHA256Hex(request.ReleaseDigest) {
 		return errors.New("connector CLI removal identity is invalid")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.ConnectorKey)
+	defer releaseLane()
 	target := installer.installRoot(request.ConnectorKey, request.ReleaseDigest)
 	if !pathWithin(installer.rootDir, target) {
 		return errors.New("connector CLI removal path escapes package root")
 	}
-	if err := os.RemoveAll(target); err != nil {
+	if err := removeAllWithinRoot(installer.rootDir, target); err != nil {
 		return fmt.Errorf("remove connector CLI installation: %w", err)
 	}
 	return nil
+}
+
+func (installer *NodePackageInstaller) RemoveConnector(
+	ctx context.Context,
+	request market.RemoveConnectorInstallationRequest,
+) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if installer == nil || !safeCLIPathSegment(request.ConnectorKey) {
+		return errors.New("connector CLI removal identity is invalid")
+	}
+	releaseLane := installer.lockConnector(request.ConnectorKey)
+	defer releaseLane()
+	target := filepath.Join(installer.rootDir, "packages", request.ConnectorKey)
+	if !pathWithin(installer.rootDir, target) {
+		return errors.New("connector CLI removal path escapes package root")
+	}
+	if err := removeAllWithinRoot(installer.rootDir, target); err != nil {
+		return fmt.Errorf("remove Connector CLI installations: %w", err)
+	}
+	return nil
+}
+
+func (installer *NodePackageInstaller) lockConnector(connectorKey string) func() {
+	installer.mu.Lock()
+	lane := installer.connectorLanes[connectorKey]
+	if lane == nil {
+		lane = &sync.Mutex{}
+		installer.connectorLanes[connectorKey] = lane
+	}
+	installer.mu.Unlock()
+	lane.Lock()
+	return lane.Unlock
 }
 
 type connectorNodeSharedPaths struct{ store, corepack, npmCache, pnpmHome string }
@@ -540,6 +592,39 @@ func pathWithin(root, target string) bool {
 	root = filepath.Clean(root)
 	target = filepath.Clean(target)
 	return target != root && strings.HasPrefix(target, root+string(filepath.Separator))
+}
+
+func removeAllWithinRoot(root, target string) error {
+	root = filepath.Clean(root)
+	target = filepath.Clean(target)
+	if !pathWithin(root, target) {
+		return errors.New("removal path escapes configured root")
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil {
+		return err
+	}
+	current := root
+	parts := strings.Split(relative, string(filepath.Separator))
+	for index, part := range append([]string{""}, parts...) {
+		if index > 0 {
+			current = filepath.Join(current, part)
+		}
+		info, statErr := os.Lstat(current)
+		if errors.Is(statErr, os.ErrNotExist) {
+			return nil
+		}
+		if statErr != nil {
+			return statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("removal path contains a symbolic link")
+		}
+		if index < len(parts) && !info.IsDir() {
+			return errors.New("removal path parent is not a directory")
+		}
+	}
+	return os.RemoveAll(target)
 }
 
 func safeCLIPathSegment(value string) bool {

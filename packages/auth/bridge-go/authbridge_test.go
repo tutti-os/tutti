@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -420,11 +421,20 @@ func TestBridgeResultOpenAppURLSchemeWhitelist(t *testing.T) {
 }
 
 func TestGetUserInfoAndLogout(t *testing.T) {
-	account := newAccountServer(t)
+	account := newAccountServerWithHeaders(t, http.Header{"x-zk-ppe-lane": {"ppe-connectors"}})
 	defer account.Close()
 
-	client := newTestClient(t, account.URL)
-	err := client.writeAuthJSON(sessionFromUser("desktop-session-1", UserInfo{UserID: "old"}))
+	client, err := NewClient(Config{
+		AccountBaseURL: account.URL,
+		AccountHeaders: http.Header{"x-zk-ppe-lane": {"ppe-connectors"}},
+		AppCallbackURL: "tutti://login/callback",
+		AuthJSONPath:   filepath.Join(t.TempDir(), "account", "auth.json"),
+		AuthLoginURL:   "https://tutti.sh/auth/login",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client.writeAuthJSON(sessionFromUser("desktop-session-1", UserInfo{UserID: "old"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -458,8 +468,17 @@ func newTestClient(t *testing.T, accountBaseURL string) *Client {
 }
 
 func newAccountServer(t *testing.T) *httptest.Server {
+	return newAccountServerWithHeaders(t, nil)
+}
+
+func newAccountServerWithHeaders(t *testing.T, expectedHeaders http.Header) *httptest.Server {
 	t.Helper()
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for name, values := range expectedHeaders {
+			if got, want := r.Header.Values(name), values; !slices.Equal(got, want) {
+				t.Errorf("%s headers = %q, want %q", name, got, want)
+			}
+		}
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
 		case "/auth/v1/redeem_desktop_transfer_code":

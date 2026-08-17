@@ -13,5 +13,6 @@ var (
 	ErrPathEscapesRoot       = errors.New("workspace file path escapes root")
 	ErrResolverNotConfigured = errors.New("workspace resolver is not configured")
 	ErrRootDeleteForbidden   = errors.New("workspace root cannot be deleted")
+	ErrSearchUnavailable     = errors.New("workspace file search is unavailable")
 	ErrWorkspaceNotFound     = errors.New("workspace not found")
 )

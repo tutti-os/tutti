@@ -282,6 +282,11 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		rawContextSource = contextWindow
 	}
 	rawUsed, _ := firstInt64Value(rawContextSource, "usedTokens", "used_tokens", "used", "totalTokens", "total_tokens", "total")
+	sdkMaxTokens, _ := firstInt64Value(rawContextSource, "sdkMaxTokens", "sdk_max_tokens")
+	rawMaxTokens, _ := firstInt64Value(rawContextSource, "rawMaxTokens", "raw_max_tokens")
+	autoCompactThresholdTokens, _ := firstInt64Value(rawContextSource, "autoCompactThresholdTokens", "auto_compact_threshold_tokens")
+	_, autoCompactKnown := rawContextSource["compactsAutomatically"]
+	compactsAutomatically := payloadBoolValue(rawContextSource, "compactsAutomatically")
 	rawTotal := claudeSDKContextWindowTokens(payload, contextModel)
 	if rawTotal <= 0 {
 		rawTotal = claudeSDKContextWindowTokens(usageSource, contextModel)
@@ -290,6 +295,7 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 	rawOutput, _ := firstInt64Value(usageSource, "output_tokens", "outputTokens")
 	rawCacheRead, _ := firstInt64Value(usageSource, "cache_read_input_tokens", "cacheReadInputTokens")
 	rawCacheCreate, _ := firstInt64Value(usageSource, "cache_creation_input_tokens", "cacheCreationInputTokens")
+	rawReportedTotal := claudeSDKReportedUsageTokens(usageSource)
 	normalizedUsed, _ := firstInt64Value(normalizedContext, "usedTokens", "used_tokens")
 	normalizedTotal, _ := firstInt64Value(normalizedContext, "totalTokens", "total_tokens")
 	slog.Info("agent session Claude SDK usage update",
@@ -305,10 +311,16 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		"usage_keys", sortedPayloadKeys(usageSource),
 		"raw_used_tokens", rawUsed,
 		"raw_total_tokens", rawTotal,
+		"sdk_max_tokens", sdkMaxTokens,
+		"raw_max_tokens", rawMaxTokens,
+		"auto_compact_threshold_tokens", autoCompactThresholdTokens,
+		"auto_compact_known", autoCompactKnown,
+		"compacts_automatically", compactsAutomatically,
 		"raw_input_tokens", rawInput,
 		"raw_output_tokens", rawOutput,
 		"raw_cache_read_input_tokens", rawCacheRead,
 		"raw_cache_creation_input_tokens", rawCacheCreate,
+		"raw_reported_total_tokens", rawReportedTotal,
 		"normalized_used_tokens", normalizedUsed,
 		"normalized_total_tokens", normalizedTotal,
 		"previous_context_known", previous.contextKnown,
@@ -509,6 +521,25 @@ func claudeSDKUsageTokens(usage map[string]any) int64 {
 				}
 			}
 		}
+	}
+	if total, ok := firstInt64Value(usage, "total_tokens", "totalTokens", "total"); ok && total > 0 {
+		return total
+	}
+	input, _ := firstInt64Value(usage, "input_tokens", "inputTokens")
+	output, _ := firstInt64Value(usage, "output_tokens", "outputTokens")
+	cacheRead, _ := firstInt64Value(usage, "cache_read_input_tokens", "cacheReadInputTokens")
+	cacheCreate, _ := firstInt64Value(usage, "cache_creation_input_tokens", "cacheCreationInputTokens")
+	return input + output + cacheRead + cacheCreate
+}
+
+// claudeSDKReportedUsageTokens preserves the provider-reported aggregate for
+// diagnostics. claudeSDKUsageTokens intentionally prefers the latest
+// iteration because that value represents the current context window; it is
+// not the same as the cumulative input/cache usage that can consume a plan or
+// account quota.
+func claudeSDKReportedUsageTokens(usage map[string]any) int64 {
+	if len(usage) == 0 {
+		return 0
 	}
 	if total, ok := firstInt64Value(usage, "total_tokens", "totalTokens", "total"); ok && total > 0 {
 		return total

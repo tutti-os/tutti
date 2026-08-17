@@ -88,6 +88,34 @@ describe("AgentSessionChrome", () => {
     expect(onAuthLogin).toHaveBeenCalledTimes(1);
   });
 
+  it("explains why approval actions are disabled on hover", async () => {
+    const reason = "The shared Agent owner is offline";
+    render(
+      <AgentSessionChrome
+        approvalDisabledReason={reason}
+        chrome={chromeState()}
+        isRespondingApproval
+        onSubmitApprovalOption={vi.fn()}
+        onRetryActivation={vi.fn()}
+        onContinueInNewConversation={vi.fn()}
+        labels={{
+          approvalRequired: "Approval required",
+          authRequired: "Authentication required",
+          activatingSession: "Connecting session...",
+          retryActivation: "Retry",
+          continueInNewConversation: "Continue in new session"
+        }}
+      />
+    );
+
+    const disabledGroup = screen.getByRole("group", { name: reason });
+    expect(screen.getByRole("button", { name: "Yes, proceed" })).toBeDisabled();
+
+    fireEvent.pointerMove(disabledGroup);
+
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(reason);
+  });
+
   it("offers login without manual retry for authentication failures", () => {
     const onAuthLogin = vi.fn();
     const onRetryActivation = vi.fn();

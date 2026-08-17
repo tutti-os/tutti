@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentGUIBuildEntries,
+  agentGUIDtsBuildEntries,
   agentGUIDtsEntryGroups
 } from "./build/agentGuiBuildEntries";
 
@@ -19,14 +20,47 @@ const packageRootSource = readFileSync(
   resolve(process.cwd(), "index.ts"),
   "utf8"
 );
+const declarationTsconfig = JSON.parse(
+  readFileSync(resolve(process.cwd(), "tsconfig.dts.json"), "utf8")
+) as { files: string[] };
 
-describe("Agent GUI declaration build groups", () => {
-  it("cover every runtime entry exactly once", () => {
-    const declarationEntries = agentGUIDtsEntryGroups.flat();
-    const runtimeEntries = Object.keys(agentGUIBuildEntries).sort();
+describe("Agent GUI declaration build", () => {
+  it("pre-emits every runtime entry exactly once", () => {
+    const declarationSources = declarationTsconfig.files;
+    const runtimeSources = Object.values(agentGUIBuildEntries).sort();
 
-    expect(new Set(declarationEntries).size).toBe(declarationEntries.length);
-    expect([...declarationEntries].sort()).toEqual(runtimeEntries);
+    expect(new Set(declarationSources).size).toBe(declarationSources.length);
+    expect([...declarationSources].sort()).toEqual(runtimeSources);
+    expect(Object.keys(agentGUIDtsBuildEntries).sort()).toEqual(
+      Object.keys(agentGUIBuildEntries).sort()
+    );
+  });
+
+  it("rolls up every pre-emitted declaration exactly once", () => {
+    const groupedEntries = agentGUIDtsEntryGroups.flat();
+
+    expect(new Set(groupedEntries).size).toBe(groupedEntries.length);
+    expect([...groupedEntries].sort()).toEqual(
+      Object.keys(agentGUIDtsBuildEntries).sort()
+    );
+  });
+
+  it("publishes every declaration build entry", () => {
+    const publishedDeclarationEntries = Object.values(
+      packageManifest.publishConfig.exports
+    )
+      .flatMap((value) => {
+        if (!value || typeof value !== "object" || !("types" in value)) {
+          return [];
+        }
+        return [String(value.types)];
+      })
+      .map((path) => path.replace(/^\.\/dist\//, "").replace(/\.d\.ts$/, ""))
+      .sort();
+
+    expect(publishedDeclarationEntries).toEqual(
+      Object.keys(agentGUIBuildEntries).sort()
+    );
   });
 
   it("builds and publishes the workspace settings panel contract", () => {

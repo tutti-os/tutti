@@ -84,9 +84,11 @@ test("workspace agent prompt session service creates a new session with initial 
   });
 
   const activation = capturedActivation as Record<string, unknown>;
+  const { activationId, ...activationWithoutId } = activation;
   assert.match(String(activation.clientSubmitId), /^prompt-session:/);
+  assert.equal(activationId, activation.clientSubmitId);
   assert.deepEqual(
-    { ...activation, clientSubmitId: "generated" },
+    { ...activationWithoutId, clientSubmitId: "generated" },
     {
       agentSessionId: "session-1",
       agentTargetId: "local:codex",

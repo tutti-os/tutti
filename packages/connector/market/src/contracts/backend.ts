@@ -15,6 +15,7 @@ export interface ConnectorMarketBackend {
   getSnapshot(): Promise<ConnectorMarketSnapshot>;
   listCategories(): Promise<ConnectorMarketCategory[]>;
   listCatalogPage(input: {
+    installation?: "not_installed";
     sectionId: string;
     pageSize: number;
     pageToken?: string;
@@ -33,6 +34,7 @@ export interface ConnectorMarketBackend {
   beginAuthorization(
     input: ConnectorAuthorizationInput
   ): Promise<ConnectorAuthorizationResult>;
+  cancelAuthorization(input: { connectorKey: string }): Promise<void>;
   disconnectAuthorization(
     input: ConnectorMutationInput
   ): Promise<ConnectorMutationResult>;

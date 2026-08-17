@@ -9,6 +9,21 @@ export function findDesktopLoginCallbackUrl(
   return values.find((value) => value.startsWith(loginCallbackUrl)) ?? null;
 }
 
+export function isDesktopAppOpenUrl(rawUrl: string, scheme: string): boolean {
+  try {
+    const url = new URL(rawUrl);
+    return (
+      url.protocol === `${scheme}:` &&
+      url.hostname === "open" &&
+      (url.pathname === "" || url.pathname === "/") &&
+      url.username === "" &&
+      url.password === ""
+    );
+  } catch {
+    return false;
+  }
+}
+
 export async function completeDesktopLoginCallbackUrl(
   rawUrl: string
 ): Promise<boolean> {

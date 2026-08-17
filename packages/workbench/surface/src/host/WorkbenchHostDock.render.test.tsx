@@ -307,7 +307,73 @@ describe("WorkbenchHostDock", () => {
     }
   });
 
-  it("reuses a persisted preview without capturing background DOM", async () => {
+  it("shows the node title when a popup item has no resolved title", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        disconnect() {}
+        observe() {}
+        unobserve() {}
+      }
+    );
+    const node = createNode();
+    const { host } = createDockProps([node]);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const previousActEnvironment = (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = true;
+
+    try {
+      await act(async () => {
+        root.render(
+          <WorkbenchHostDockPopup
+            anchorRect={{ height: 40, left: 20, top: 100, width: 40 }}
+            closeWindowLabel={() => "Close"}
+            items={[
+              {
+                host,
+                isFocused: false,
+                isMinimized: false,
+                node,
+                preview: null,
+                previewRevision: null,
+                subtitle: null,
+                title: null
+              }
+            ]}
+            label="Agent"
+            newWindowLabel="New"
+            onClose={() => undefined}
+            onCloseNode={() => undefined}
+            onCreateNew={() => undefined}
+            onSelectNode={() => undefined}
+            showCreateNew={false}
+          />
+        );
+      });
+
+      expect(
+        document.body.querySelector(".desktop-dock-popup__title-marquee")
+          ?.textContent
+      ).toBe("Agent");
+    } finally {
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+      (
+        globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+      ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("uses persisted previews before serialized background DOM fallbacks", async () => {
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -324,15 +390,65 @@ describe("WorkbenchHostDock", () => {
       ...createNode(),
       id: "agent-gui:unavailable-preview"
     };
-    const { host } = createDockProps([node, unavailableNode]);
-    const capturePreview = vi.fn(async () => null);
+    const memoryPreviewNode = {
+      ...createNode(),
+      id: "agent-gui:memory-preview"
+    };
+    const sharedPersistedPreviewNode = {
+      ...createNode(),
+      id: "agent-gui:shared-persisted-preview"
+    };
+    const secondUnavailableNode = {
+      ...createNode(),
+      id: "agent-gui:second-unavailable-preview"
+    };
+    const { host } = createDockProps([
+      node,
+      memoryPreviewNode,
+      sharedPersistedPreviewNode,
+      unavailableNode,
+      secondUnavailableNode
+    ]);
+    const capturePreview = vi.fn<
+      NonNullable<
+        React.ComponentProps<typeof WorkbenchHostDockPopup>["capturePreview"]
+      >
+    >(async () => null);
     const previewImageUrl = "data:image/png;base64,Q0FDSEU=";
+    const memoryPreviewImageUrl = "data:image/png;base64,TUVNT1JZ";
+    const sharedPersistedPreviewImageUrl = "data:image/png;base64,U0hBUkVE";
+    const domPreviewImageUrl = "data:image/png;base64,RE9N";
+    const secondDomPreviewImageUrl = "data:image/png;base64,RE9NLTI=";
+    const pendingDomPreview = deferred<string>();
     const captureDomPreview = vi
       .spyOn(genieAnimation, "captureWorkbenchNodePreviewImage")
-      .mockResolvedValue("data:image/png;base64,RE9N");
-    const readPersistedPreview = vi.fn(async (key: { nodeId: string }) =>
-      key.nodeId === node.id ? previewImageUrl : null
+      .mockImplementation((nodeId) =>
+        nodeId === unavailableNode.id
+          ? pendingDomPreview.promise
+          : Promise.resolve(secondDomPreviewImageUrl)
+      );
+    genieAnimation.writeCachedWorkbenchNodePreviewImage(
+      memoryPreviewNode.id,
+      memoryPreviewImageUrl
     );
+    const readPersistedPreview = vi.fn(
+      async (key: { nodeId: string; revision?: string | null }) => {
+        if (key.nodeId === node.id && key.revision === "revision-1") {
+          return previewImageUrl;
+        }
+        if (
+          key.nodeId === sharedPersistedPreviewNode.id &&
+          key.revision == null
+        ) {
+          return sharedPersistedPreviewImageUrl;
+        }
+        if (key.nodeId === sharedPersistedPreviewNode.id) {
+          return "data:image/png;base64,U1RBTEU=";
+        }
+        return null;
+      }
+    );
+    const writePersistedPreview = vi.fn();
     const container = document.createElement("div");
     document.body.append(container);
     const root = createRoot(container);
@@ -352,7 +468,7 @@ describe("WorkbenchHostDock", () => {
             closeWindowLabel={() => "Close"}
             dockPreviewCache={{
               read: readPersistedPreview,
-              write: vi.fn()
+              write: writePersistedPreview
             }}
             items={[
               {
@@ -369,11 +485,41 @@ describe("WorkbenchHostDock", () => {
                 host,
                 isFocused: false,
                 isMinimized: false,
+                node: memoryPreviewNode,
+                preview: null,
+                previewRevision: "revision-1",
+                subtitle: null,
+                title: "Memory Agent"
+              },
+              {
+                host,
+                isFocused: false,
+                isMinimized: false,
+                node: sharedPersistedPreviewNode,
+                preview: null,
+                previewRevision: "revision-1",
+                subtitle: null,
+                title: "Shared Persisted Agent"
+              },
+              {
+                host,
+                isFocused: false,
+                isMinimized: false,
                 node: unavailableNode,
                 preview: null,
                 previewRevision: "revision-1",
                 subtitle: null,
                 title: "Background Agent"
+              },
+              {
+                host,
+                isFocused: false,
+                isMinimized: false,
+                node: secondUnavailableNode,
+                preview: null,
+                previewRevision: "revision-1",
+                subtitle: null,
+                title: "Second Background Agent"
               }
             ]}
             label="Agent"
@@ -394,24 +540,67 @@ describe("WorkbenchHostDock", () => {
       });
 
       await vi.waitFor(() => {
-        expect(capturePreview).toHaveBeenCalledTimes(2);
-        expect(readPersistedPreview).toHaveBeenCalledTimes(2);
-        expect(captureDomPreview).not.toHaveBeenCalled();
+        expect(capturePreview).toHaveBeenCalledTimes(4);
+        expect(readPersistedPreview).toHaveBeenCalledTimes(6);
+        expect(captureDomPreview).toHaveBeenCalledOnce();
+        expect(captureDomPreview).toHaveBeenCalledWith(unavailableNode.id, {
+          bypassCache: true
+        });
+      });
+      expect(capturePreview.mock.calls.map(([item]) => item.node.id)).toEqual([
+        node.id,
+        memoryPreviewNode.id,
+        sharedPersistedPreviewNode.id,
+        unavailableNode.id
+      ]);
+
+      pendingDomPreview.resolve(domPreviewImageUrl);
+      await Promise.resolve();
+      expect(captureDomPreview).toHaveBeenCalledOnce();
+
+      await vi.waitFor(() => {
+        expect(capturePreview).toHaveBeenCalledTimes(5);
+        expect(readPersistedPreview).toHaveBeenCalledTimes(8);
+        expect(captureDomPreview).toHaveBeenCalledTimes(2);
+        expect(captureDomPreview).toHaveBeenLastCalledWith(
+          secondUnavailableNode.id,
+          { bypassCache: true }
+        );
+        expect(writePersistedPreview).toHaveBeenCalledTimes(4);
+        for (const [candidate, expectedPreview] of [
+          [node, previewImageUrl],
+          [memoryPreviewNode, memoryPreviewImageUrl],
+          [unavailableNode, domPreviewImageUrl],
+          [secondUnavailableNode, secondDomPreviewImageUrl]
+        ] as const) {
+          expect(writePersistedPreview).toHaveBeenCalledWith({
+            key: expect.objectContaining({
+              nodeId: candidate.id,
+              revision: undefined
+            }),
+            previewImageUrl: expectedPreview
+          });
+        }
         expect(
-          document.body.querySelector<HTMLImageElement>(
-            `[data-preview-kind="image"] img`
-          )?.src
-        ).toBe(previewImageUrl);
-        expect(
-          document.body.querySelector<HTMLElement>(
-            `[data-preview-state="fallback"]`
-          )?.textContent
-        ).toBe("");
+          Array.from(
+            document.body.querySelectorAll<HTMLImageElement>(
+              `[data-preview-kind="image"] img`
+            ),
+            (image) => image.src
+          )
+        ).toEqual([
+          previewImageUrl,
+          memoryPreviewImageUrl,
+          sharedPersistedPreviewImageUrl,
+          domPreviewImageUrl,
+          secondDomPreviewImageUrl
+        ]);
         expect(
           document.body.querySelector(`[data-preview-state="loading"]`)
         ).toBeNull();
       });
     } finally {
+      pendingDomPreview.resolve(domPreviewImageUrl);
       captureDomPreview.mockRestore();
       await act(async () => {
         root.unmount();

@@ -12,6 +12,7 @@ import {
 import type { ClaudeSDKSidecarEventEmitter } from "./protocol.ts";
 import type { ProviderTurnPhase } from "./providerTurnAcceptance.ts";
 import { stringValue } from "./runtimeValues.ts";
+import { SessionPermissionLedger } from "./sessionPermissionLedger.ts";
 import {
   approvalOptions,
   effectivePermissionMode,
@@ -74,6 +75,7 @@ export class InteractiveCoordinator {
     signal?: AbortSignal
   ) => Promise<void>;
   private readonly emit: ClaudeSDKSidecarEventEmitter;
+  private readonly sessionPermissions = new SessionPermissionLedger();
 
   constructor(options: {
     settings: SidecarSessionSettings;
@@ -171,6 +173,17 @@ export class InteractiveCoordinator {
       return { behavior: "allow", updatedInput: toolInput };
     }
 
+    const restoredPermissions = this.sessionPermissions.rehydrate(
+      callbackOptions.suggestions
+    );
+    if (restoredPermissions) {
+      return {
+        behavior: "allow",
+        updatedInput: toolInput,
+        updatedPermissions: restoredPermissions
+      };
+    }
+
     const submission = await this.request(
       "approval_requested",
       toolName,
@@ -180,6 +193,9 @@ export class InteractiveCoordinator {
     );
     this.emitResolved("approval_resolved", submission);
     if (isAllowOption(submission.optionId)) {
+      if (submission.optionId === "allow_always") {
+        this.sessionPermissions.remember(callbackOptions.suggestions);
+      }
       return {
         behavior: "allow",
         updatedInput: toolInput,

@@ -1,6 +1,7 @@
 package host
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -49,7 +50,6 @@ func TestValidateManifestShapeValidatesAgentRoutingAliases(t *testing.T) {
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
-
 	for name, aliases := range map[string][]string{
 		"empty":       {},
 		"duplicate":   {"Feishu", "feishu"},
@@ -67,6 +67,49 @@ func TestValidateManifestShapeValidatesAgentRoutingAliases(t *testing.T) {
 	}
 }
 
+func TestValidateManifestShapeAcceptsBindingOnlyRemoteMCPContract(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Tencent Docs", IconURL: testConnectorIconURL,
+		AuthorizationKind: "api_key", RequiredCapabilities: []string{"tools"},
+		Implementation: Implementation{
+			Kind: ImplementationKindRemoteStreamableHTTP,
+			RemoteStreamableHTTP: &RemoteStreamableHTTPImplementation{
+				ProtocolVersion: "2026-07-28", BindingRef: "tencent-docs.primary", ContractVersion: 1,
+				BindingContractHash: "sha256:" + strings.Repeat("a", 64),
+			},
+		},
+	}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.RemoteStreamableHTTP.BindingRef = "https://docs.qq.com/openapi/mcp"
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "bindingRef") {
+		t.Fatalf("endpoint-shaped bindingRef error = %v", err)
+	}
+}
+
+func TestValidateManifestShapeRequiresBoundedAuthorizationInteractionJSON(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Tencent Docs", IconURL: testConnectorIconURL,
+		AuthorizationKind: "api_key", AuthorizationInteraction: json.RawMessage(`{"protocol":"example"}`),
+		Implementation: Implementation{Kind: ImplementationKindBuiltin,
+			Builtin: &BuiltinImplementation{ProviderID: "tencent-docs", MCP: true}},
+	}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	manifest.AuthorizationInteraction = json.RawMessage(`{"protocol":`)
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "authorizationInteraction") {
+		t.Fatalf("invalid authorization interaction error = %v", err)
+	}
+
+	manifest.AuthorizationInteraction = json.RawMessage(`"` + strings.Repeat("a", 64<<10) + `"`)
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "authorizationInteraction") {
+		t.Fatalf("oversized authorization interaction error = %v", err)
+	}
+}
+
 func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "Example", IconURL: testConnectorIconURL, AuthorizationKind: "oauth2",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
@@ -80,6 +123,19 @@ func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationQRCode
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationEmbeddedPage
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = "inline"
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "presentation") {
+		t.Fatalf("unsupported credential broker presentation error = %v", err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = ""
 	manifest.Implementation.ManagedStdio.CredentialBroker.Entrypoint = "../broker.mjs"
 	if err := ValidateManifestShape(manifest); err == nil {
 		t.Fatal("unsafe credential broker entrypoint was accepted")
@@ -149,6 +205,40 @@ func TestRuntimeReleaseValidationDoesNotRequirePresentationIcon(t *testing.T) {
 	}
 }
 
+func TestReleaseValidationRestrictsLegacyEmbeddedPagePresentation(t *testing.T) {
+	release := testReleaseWithImplementation("wecom-cli", "0.1.4", ImplementationKindManagedStdio)
+	release.Manifest.AuthorizationKind = "oauth2"
+	release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=20.0.0 <21.0.0"
+	release.Manifest.Implementation.ManagedStdio.CLI = &ManagedCLIInterface{
+		Entrypoint: "wecom-cli",
+		TimeoutMS:  120_000,
+	}
+	release.Manifest.Implementation.ManagedStdio.CredentialBroker = &ManagedCredentialBroker{
+		Protocol:     CredentialBrokerProtocolV1,
+		Entrypoint:   "authorization/broker.mjs",
+		TimeoutMS:    300_000,
+		AllowedHosts: []string{"work.weixin.qq.com"},
+		Presentation: CredentialBrokerPresentationEmbeddedPage,
+	}
+
+	if err := ValidateReleaseShape(release); err != nil {
+		t.Fatalf("legacy wecom-cli 0.1.4 release was rejected: %v", err)
+	}
+
+	release.Version = "0.1.5"
+	release.ReleaseID = "wecom-cli@0.1.5"
+	if err := ValidateReleaseShape(release); err == nil || !strings.Contains(err.Error(), "embedded_page") {
+		t.Fatalf("new wecom-cli embedded_page release error = %v", err)
+	}
+
+	release.ConnectorKey = "example"
+	release.Version = "0.1.4"
+	release.ReleaseID = "example@0.1.4"
+	if err := ValidateReleaseShape(release); err == nil || !strings.Contains(err.Error(), "embedded_page") {
+		t.Fatalf("non-WeCom embedded_page release error = %v", err)
+	}
+}
+
 func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "Lark", IconURL: testConnectorIconURL, AuthorizationKind: "none",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
@@ -172,29 +262,60 @@ func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	}
 }
 
-func TestManagedInterfacesValidateBoundedInstallationProbes(t *testing.T) {
+func TestManagedCLIAllowsArtifactNativeLaunch(t *testing.T) {
+	manifest := Manifest{SchemaVersion: "1", DisplayName: "GitHub CLI", IconURL: testConnectorIconURL, AuthorizationKind: "oauth2",
+		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
+			Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-windows-amd64",
+				VersionRange: ">=22.0.0 <23.0.0"},
+			CLI: &ManagedCLIInterface{Entrypoint: "runtime/windows-amd64/gh.exe", Command: "gh", TimeoutMS: 120_000,
+				Launch: &CLIArtifactLaunch{Kind: CLIArtifactLaunchKindNative, SHA256: strings.Repeat("a", 64), SizeBytes: 1024}},
+			CredentialBroker: &ManagedCredentialBroker{Protocol: CredentialBrokerProtocolV1,
+				Entrypoint: "implementation/credential-broker.mjs", TimeoutMS: 300_000, AllowedHosts: []string{"github.com"}},
+		}}}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.ManagedStdio.CLI.Install = &CLIInstallation{Kind: "node_package"}
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "cannot declare install") {
+		t.Fatalf("artifact-native launch with install error = %v", err)
+	}
+}
+
+func TestManagedCLIRejectsUnsafePublicCommand(t *testing.T) {
+	manifest := Manifest{SchemaVersion: "1", DisplayName: "Lark CLI", IconURL: testConnectorIconURL,
+		AuthorizationKind: "none", Implementation: Implementation{Kind: ImplementationKindManagedStdio,
+			ManagedStdio: &ManagedStdioImplementation{
+				Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node20-linux-arm64", VersionRange: ">=20.0.0 <21.0.0"},
+				CLI:     &ManagedCLIInterface{Entrypoint: "bin/lark-cli", Command: "../../lark-cli", TimeoutMS: 30_000},
+			}},
+	}
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "managed CLI command") {
+		t.Fatalf("ValidateManifestShape() error = %v", err)
+	}
+}
+
+func TestManagedCLIValidatesBoundedReadinessProbe(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "Probe", IconURL: testConnectorIconURL, AuthorizationKind: "none",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
 			Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-darwin-arm64",
 				VersionRange: ">=22.0.0 <23.0.0"},
-			MCP: &ManagedMCPInterface{Entrypoint: "bin/server.mjs",
-				InstallationProbe: &InstallationProbe{Arguments: []string{"--version"}, TimeoutMS: 3_000}},
+			MCP: &ManagedMCPInterface{Entrypoint: "bin/server.mjs"},
 			CLI: &ManagedCLIInterface{Entrypoint: "bin/cli.mjs", TimeoutMS: 30_000,
-				InstallationProbe: &InstallationProbe{Arguments: []string{"doctor", "--quiet"}, TimeoutMS: 5_000},
-				Commands:          []CLICommand{{Name: "run", InputSchema: map[string]any{"type": "object"}, TimeoutMS: 30_000}}},
+				ReadinessProbe: &CLIReadinessProbe{Arguments: []string{"doctor", "--quiet"}, TimeoutMS: 5_000},
+				Commands:       []CLICommand{{Name: "run", InputSchema: map[string]any{"type": "object"}, TimeoutMS: 30_000}}},
 		}}}
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
 
-	manifest.Implementation.ManagedStdio.MCP.InstallationProbe.Arguments = nil
-	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "installationProbe") {
-		t.Fatalf("empty installation probe error = %v", err)
+	manifest.Implementation.ManagedStdio.CLI.ReadinessProbe.Arguments = nil
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "readinessProbe") {
+		t.Fatalf("empty readiness probe error = %v", err)
 	}
-	manifest.Implementation.ManagedStdio.MCP.InstallationProbe.Arguments = []string{"--version"}
-	manifest.Implementation.ManagedStdio.CLI.InstallationProbe.TimeoutMS = 30_001
-	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "installationProbe") {
-		t.Fatalf("unbounded installation probe error = %v", err)
+	manifest.Implementation.ManagedStdio.CLI.ReadinessProbe.Arguments = []string{"--version"}
+	manifest.Implementation.ManagedStdio.CLI.ReadinessProbe.TimeoutMS = 30_001
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "readinessProbe") {
+		t.Fatalf("unbounded readiness probe error = %v", err)
 	}
 }
 

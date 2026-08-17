@@ -88,7 +88,7 @@ test("materializes cassette-scoped command IDs for correlation-only stop intents
   driver.observeCommand({
     agentSessionId: "session-1",
     commandId: "replay:cassette-default:stop-event-1",
-    turnId: "turn-1",
+    turnId: "replayed-turn-1",
     type: "turn/cancel",
     workspaceId: "workspace-1"
   });
@@ -98,7 +98,7 @@ test("materializes cassette-scoped command IDs for correlation-only stop intents
       agentSessionId: "session-1",
       correlationId: "stop-1",
       kind: "effect",
-      payload: { outcome: "succeeded", turnId: "turn-1" },
+      payload: { outcome: "succeeded", turnId: "recorded-turn-1" },
       type: "turn/cancel"
     })
   );
@@ -110,6 +110,38 @@ test("materializes cassette-scoped command IDs for correlation-only stop intents
     })
   );
   await verification;
+  driver.dispose();
+});
+
+test("requires matching turn IDs for an uncorrelated cancel", async () => {
+  const driver = installDriver([], 5);
+  driver.observeCommand({
+    agentSessionId: "session-1",
+    commandId: "uncorrelated-cancel-1",
+    turnId: "replayed-turn-1",
+    type: "turn/cancel",
+    workspaceId: "workspace-1"
+  });
+  driver.observeIntent(
+    commandResult({
+      commandId: "uncorrelated-cancel-1",
+      commandType: "turn/cancel",
+      outcome: "succeeded"
+    })
+  );
+
+  await assert.rejects(
+    driver.verifyCassetteEffect(
+      defaultCassetteID,
+      activityEvent({
+        agentSessionId: "session-1",
+        kind: "effect",
+        payload: { outcome: "succeeded", turnId: "recorded-turn-1" },
+        type: "turn/cancel"
+      })
+    ),
+    /timed out waiting for renderer effect turn\/cancel; commandId=<unmatched>/
+  );
   driver.dispose();
 });
 
@@ -604,6 +636,79 @@ test("claims a canonical child Session through its registered root", () => {
     assert.fail(`unexpected replay intent ${dispatched?.type ?? "missing"}`);
   }
   assert.equal(dispatched.agentSessionId, "child-1");
+  driver.dispose();
+});
+
+test("waits for a canonical child Session projection before claiming it", async () => {
+  type Snapshot = ReturnType<AgentSessionEngine["getSnapshot"]>;
+  const intents: EngineIntent[] = [];
+  let snapshot = {
+    sessionLifecycle: { sessionsById: {} }
+  } as unknown as Snapshot;
+  let listener: ((value: Snapshot) => void) | null = null;
+  const driver = installAgentSessionActivityReplayDriver({
+    engine: {
+      dispatch(intent) {
+        intents.push(intent);
+      },
+      getSnapshot() {
+        return snapshot;
+      },
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      subscribe(nextListener) {
+        listener = nextListener;
+        return () => {
+          listener = null;
+        };
+      }
+    }
+  });
+  driver.registerCassette({
+    agentSessionIds: ["root-1"],
+    cassetteId: defaultCassetteID
+  });
+  const event = activityEvent({
+    agentSessionId: "child-1",
+    correlationId: "child-submit-1",
+    kind: "intent",
+    payload: {
+      clientSubmitId: "child-submit-1",
+      content: [{ text: "continue", type: "text" }],
+      requestedAtUnixMs: 100
+    },
+    type: "submit/requested"
+  });
+
+  let ready = false;
+  const waiting = driver.waitUntilCassetteIntentReady!(
+    defaultCassetteID,
+    event
+  ).then(() => {
+    ready = true;
+  });
+  await Promise.resolve();
+  assert.equal(ready, false);
+
+  snapshot = {
+    sessionLifecycle: {
+      sessionsById: {
+        "child-1": {
+          agentSessionId: "child-1",
+          kind: "child",
+          rootAgentSessionId: "root-1",
+          workspaceId: "workspace-1"
+        }
+      }
+    }
+  } as unknown as Snapshot;
+  const notify = listener as ((value: Snapshot) => void) | null;
+  assert.ok(notify);
+  notify(snapshot);
+  await waiting;
+
+  driver.dispatchCassetteIntent(defaultCassetteID, event);
+  assert.equal(ready, true);
+  assert.equal(intents[0]?.type, "submit/requested");
   driver.dispose();
 });
 

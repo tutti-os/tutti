@@ -13,9 +13,9 @@ import (
 	"io"
 	"mime"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
-	"time"
 
 	market "github.com/tutti-os/tutti/packages/connector/host"
 )
@@ -135,11 +135,20 @@ func (importer *Importer) ResolvePrepared(
 	if receipt, ok := readExistingReceipt(target, market.PrepareArtifactRequest{Release: release}); ok {
 		return receipt, nil
 	}
-	return market.PreparedArtifactReceipt{}, errors.New("prepared connector artifact is unavailable or invalid")
+	if _, statErr := os.Stat(target); errors.Is(statErr, os.ErrNotExist) {
+		return market.PreparedArtifactReceipt{}, market.ErrReleaseInstallationAbsent
+	} else if statErr != nil {
+		return market.PreparedArtifactReceipt{}, fmt.Errorf("inspect prepared connector artifact: %w", statErr)
+	}
+	return market.PreparedArtifactReceipt{}, market.ErrReleaseInstallationInvalid
 }
 
 func (importer *Importer) Remove(ctx context.Context, request market.RemoveArtifactRequest) error {
 	return importer.mechanics.removePrepared(ctx, request)
+}
+
+func (importer *Importer) RemoveConnector(ctx context.Context, request market.RemoveConnectorInstallationRequest) error {
+	return importer.mechanics.removePreparedConnector(ctx, request.ConnectorKey)
 }
 
 // ResolvePrepared revalidates the installed receipt, packaged
@@ -161,15 +170,12 @@ func (preparer *Preparer) ResolvePrepared(ctx context.Context, release market.Re
 	if ok {
 		return receipt, nil
 	}
-	// Prepared trees are verified on every restore and remain fail-closed while
-	// in use. If the durable tree was changed between runs, rebuild it from the
-	// latest verified cached artifact instead of permanently fencing an otherwise
-	// installed connector. Prepare still verifies the archive, packaged manifest,
-	// and complete extracted inventory before atomically replacing the tree.
-	return preparer.prepare(ctx, market.PrepareArtifactRequest{
-		OperationID: fmt.Sprintf("restore-%d-%d", os.Getpid(), time.Now().UnixNano()),
-		Release:     release,
-	}, validateRuntimePrepareRequest, true)
+	if _, statErr := os.Stat(target); errors.Is(statErr, os.ErrNotExist) {
+		return market.PreparedArtifactReceipt{}, market.ErrReleaseInstallationAbsent
+	} else if statErr != nil {
+		return market.PreparedArtifactReceipt{}, fmt.Errorf("inspect prepared connector artifact: %w", statErr)
+	}
+	return market.PreparedArtifactReceipt{}, market.ErrReleaseInstallationInvalid
 }
 
 func NewPreparer(config Config) (*Preparer, error) {
@@ -192,25 +198,10 @@ func (preparer *Preparer) Prepare(
 	ctx context.Context,
 	request market.PrepareArtifactRequest,
 ) (market.PreparedArtifactReceipt, error) {
-	return preparer.prepare(ctx, request, validatePrepareRequest, false)
-}
-
-func (preparer *Preparer) prepare(
-	ctx context.Context,
-	request market.PrepareArtifactRequest,
-	validate func(market.PrepareArtifactRequest) error,
-	runtimeValidation bool,
-) (market.PreparedArtifactReceipt, error) {
-	if err := validate(request); err != nil {
+	if err := validatePrepareRequest(request); err != nil {
 		return market.PreparedArtifactReceipt{}, err
 	}
-	var cached CachedArtifact
-	var err error
-	if runtimeValidation {
-		cached, err = preparer.cache.prepareRuntimeCandidate(ctx, request)
-	} else {
-		cached, err = preparer.cache.PrepareCandidate(ctx, request)
-	}
+	cached, err := preparer.cache.PrepareCandidate(ctx, request)
 	if err != nil {
 		return market.PreparedArtifactReceipt{}, err
 	}
@@ -307,6 +298,30 @@ func (preparer *Preparer) Remove(ctx context.Context, request market.RemoveArtif
 	return preparer.cache.RemoveConnector(ctx, request.ConnectorKey)
 }
 
+func (preparer *Preparer) RemoveConnector(ctx context.Context, request market.RemoveConnectorInstallationRequest) error {
+	if err := preparer.removePreparedConnector(ctx, request.ConnectorKey); err != nil {
+		return err
+	}
+	return preparer.cache.RemoveConnector(ctx, request.ConnectorKey)
+}
+
+func (preparer *Preparer) removePreparedConnector(ctx context.Context, connectorKey string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !safeSegment(connectorKey) {
+		return errors.New("connector artifact removal identity is invalid")
+	}
+	target := filepath.Join(preparer.rootDir, "prepared", connectorKey)
+	if err := ensureWithin(preparer.rootDir, target); err != nil {
+		return err
+	}
+	if err := removeAllWithin(preparer.rootDir, target); err != nil {
+		return fmt.Errorf("remove Connector prepared artifacts: %w", err)
+	}
+	return nil
+}
+
 func (preparer *Preparer) removePrepared(ctx context.Context, request market.RemoveArtifactRequest) error {
 	if err := ctx.Err(); err != nil {
 		return err
@@ -318,7 +333,7 @@ func (preparer *Preparer) removePrepared(ctx context.Context, request market.Rem
 	if err := ensureWithin(preparer.rootDir, target); err != nil {
 		return err
 	}
-	if err := os.RemoveAll(target); err != nil {
+	if err := removeAllWithin(preparer.rootDir, target); err != nil {
 		return fmt.Errorf("remove connector prepared artifact: %w", err)
 	}
 	return nil
@@ -346,10 +361,19 @@ func (preparer *Preparer) extractZIP(archivePath, destination string) error {
 		return fmt.Errorf("connector artifact contains more than %d entries", preparer.limits.MaxFiles)
 	}
 	var expanded int64
+	seenEntries := make(map[string]struct{}, len(reader.File))
 	for _, entry := range reader.File {
 		if entry.Mode()&os.ModeSymlink != 0 || (!entry.FileInfo().IsDir() && !entry.Mode().IsRegular()) {
 			return fmt.Errorf("connector artifact entry %q is not a regular file or directory", entry.Name)
 		}
+		entryKey, err := safeArchiveEntryKey(entry.Name)
+		if err != nil {
+			return err
+		}
+		if _, duplicate := seenEntries[entryKey]; duplicate {
+			return fmt.Errorf("connector artifact contains duplicate or case-colliding entry %q", entry.Name)
+		}
+		seenEntries[entryKey] = struct{}{}
 		target, err := safeArchiveTarget(destination, entry.Name)
 		if err != nil {
 			return err
@@ -393,6 +417,7 @@ func (preparer *Preparer) extractTarGzip(archivePath, destination string) error 
 	reader := tar.NewReader(gzipReader)
 	var expanded int64
 	entries := 0
+	seenEntries := make(map[string]struct{})
 	for {
 		header, err := reader.Next()
 		if errors.Is(err, io.EOF) {
@@ -405,6 +430,14 @@ func (preparer *Preparer) extractTarGzip(archivePath, destination string) error 
 		if entries > preparer.limits.MaxFiles {
 			return fmt.Errorf("connector artifact contains more than %d entries", preparer.limits.MaxFiles)
 		}
+		entryKey, err := safeArchiveEntryKey(header.Name)
+		if err != nil {
+			return err
+		}
+		if _, duplicate := seenEntries[entryKey]; duplicate {
+			return fmt.Errorf("connector artifact contains duplicate or case-colliding entry %q", header.Name)
+		}
+		seenEntries[entryKey] = struct{}{}
 		target, err := safeArchiveTarget(destination, header.Name)
 		if err != nil {
 			return err
@@ -467,13 +500,6 @@ func validatePrepareRequest(request market.PrepareArtifactRequest) error {
 	return market.ValidateReleaseShape(request.Release)
 }
 
-func validateRuntimePrepareRequest(request market.PrepareArtifactRequest) error {
-	if strings.TrimSpace(request.OperationID) == "" || !safeSegment(request.OperationID) {
-		return errors.New("connector artifact operation id is invalid")
-	}
-	return market.ValidateRuntimeReleaseShape(request.Release)
-}
-
 func validateLimits(limits Limits) error {
 	if limits.MaxDownloadBytes <= 0 || limits.MaxFiles <= 0 || limits.MaxFileBytes <= 0 ||
 		limits.MaxExpandedBytes <= 0 || limits.MaxCompressionRatio <= 0 {
@@ -499,10 +525,10 @@ func validateArtifactRoot(rootDir string, limits Limits) (string, Limits, error)
 }
 
 func safeArchiveTarget(root, name string) (string, error) {
-	if name == "" || filepath.IsAbs(name) || strings.ContainsRune(name, '\x00') {
-		return "", fmt.Errorf("connector artifact entry %q has an unsafe path", name)
+	if _, err := safeArchiveEntryKey(name); err != nil {
+		return "", err
 	}
-	clean := filepath.Clean(filepath.FromSlash(name))
+	clean := filepath.Clean(filepath.FromSlash(strings.TrimSuffix(name, "/")))
 	if clean == "." || clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
 		return "", fmt.Errorf("connector artifact entry %q escapes the extraction root", name)
 	}
@@ -513,12 +539,63 @@ func safeArchiveTarget(root, name string) (string, error) {
 	return target, nil
 }
 
+func safeArchiveEntryKey(name string) (string, error) {
+	canonical := strings.TrimSuffix(name, "/")
+	if canonical == "" || strings.HasPrefix(canonical, "/") || strings.ContainsAny(canonical, "\\:\x00") ||
+		path.Clean(canonical) != canonical {
+		return "", fmt.Errorf("connector artifact entry %q has an unsafe portable path", name)
+	}
+	for _, segment := range strings.Split(canonical, "/") {
+		trimmed := strings.TrimRight(segment, ". ")
+		base := strings.ToLower(strings.SplitN(trimmed, ".", 2)[0])
+		reserved := base == "con" || base == "prn" || base == "aux" || base == "nul" ||
+			(len(base) == 4 && (strings.HasPrefix(base, "com") || strings.HasPrefix(base, "lpt")) && base[3] >= '1' && base[3] <= '9')
+		if segment == "" || trimmed != segment || reserved {
+			return "", fmt.Errorf("connector artifact entry %q is not portable to Windows", name)
+		}
+	}
+	return strings.ToLower(canonical), nil
+}
+
 func ensureWithin(root, target string) error {
 	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(target))
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 		return errors.New("connector artifact path escapes configured root")
 	}
 	return nil
+}
+
+func removeAllWithin(root, target string) error {
+	root = filepath.Clean(root)
+	target = filepath.Clean(target)
+	if err := ensureWithin(root, target); err != nil {
+		return err
+	}
+	relative, err := filepath.Rel(root, target)
+	if err != nil || relative == "." {
+		return errors.New("connector artifact removal target is invalid")
+	}
+	current := root
+	parts := strings.Split(relative, string(filepath.Separator))
+	for index, part := range append([]string{""}, parts...) {
+		if index > 0 {
+			current = filepath.Join(current, part)
+		}
+		info, statErr := os.Lstat(current)
+		if errors.Is(statErr, os.ErrNotExist) {
+			return nil
+		}
+		if statErr != nil {
+			return statErr
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return errors.New("connector artifact removal path contains a symbolic link")
+		}
+		if index < len(parts) && !info.IsDir() {
+			return errors.New("connector artifact removal parent is not a directory")
+		}
+	}
+	return os.RemoveAll(target)
 }
 
 func writeArchiveFile(target string, body io.Reader, declared int64) error {

@@ -372,7 +372,8 @@ func (b *sqliteProjectionBuilder) buildMutation(ctx context.Context, descriptor 
 func turnSnapshot(stored storesqlite.Turn) *activityreplication.Turn {
 	return &activityreplication.Turn{
 		WorkspaceID: stored.WorkspaceID, AgentSessionID: stored.AgentSessionID, TurnID: stored.TurnID,
-		Phase: stored.Phase, Outcome: nullable(stored.Outcome), Error: structuredResult(stored.ErrorMessage, stored.ErrorCode),
+		IdentityAnchorTurnID: nullable(stored.IdentityAnchorTurnID),
+		Phase:                stored.Phase, Outcome: nullable(stored.Outcome), Error: structuredResult(stored.ErrorMessage, stored.ErrorCode),
 		FileChanges: rawObject(stored.FileChanges), CompletedCommand: structuredResult(stored.CompletedCommandKind, stored.CompletedCommandStatus),
 		Backfilled: stored.Backfilled, Origin: stored.Origin, SourceGoalOperationID: nullable(stored.SourceGoalOperationID),
 		SourceGoalRevision:    nullableInt64(stored.SourceGoalOperationID, stored.SourceGoalRevision),

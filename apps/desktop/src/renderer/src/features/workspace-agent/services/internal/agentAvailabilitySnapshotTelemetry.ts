@@ -135,8 +135,8 @@ export function buildAvailabilitySnapshotParams(
 ): AgentAvailabilitySnapshotParams {
   const cliInstalled = status.cli.installed;
   const authenticated = status.auth.status === "authenticated";
-  const isAvailable =
-    cliInstalled && authenticated && status.availability.status === "ready";
+  const credentialsConfigured = status.auth.status === "configured";
+  const isAvailable = cliInstalled && status.availability.status === "ready";
   return {
     authenticated,
     cliInstalled,
@@ -146,6 +146,7 @@ export function buildAvailabilitySnapshotParams(
     unavailableReason: unavailableReason({
       authenticated,
       cliInstalled,
+      credentialsConfigured,
       isAvailable
     })
   };
@@ -154,6 +155,7 @@ export function buildAvailabilitySnapshotParams(
 function unavailableReason(input: {
   authenticated: boolean;
   cliInstalled: boolean;
+  credentialsConfigured: boolean;
   isAvailable: boolean;
 }): AgentUnavailableReason {
   if (input.isAvailable) {
@@ -162,7 +164,7 @@ function unavailableReason(input: {
   if (!input.cliInstalled) {
     return "cli_not_installed";
   }
-  if (!input.authenticated) {
+  if (!input.authenticated && !input.credentialsConfigured) {
     return "not_authenticated";
   }
   return "provider_error";

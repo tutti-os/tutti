@@ -29,6 +29,16 @@ func TestQUICEndpointCloseClosesOwnedUDPSocket(t *testing.T) {
 	}
 }
 
+func TestDefaultQUICLiveness(t *testing.T) {
+	config := defaultQUICConfig()
+	if config.KeepAlivePeriod != 5*time.Second {
+		t.Fatalf("KeepAlivePeriod = %s, want 5s", config.KeepAlivePeriod)
+	}
+	if config.MaxIdleTimeout != 15*time.Second {
+		t.Fatalf("MaxIdleTimeout = %s, want 15s", config.MaxIdleTimeout)
+	}
+}
+
 func TestGlobalIPv6FromAddr(t *testing.T) {
 	tests := []struct {
 		name string

@@ -8,9 +8,12 @@ export function normalizeWorkspaceFilePath(
   rootPath?: string | null
 ): string {
   const root = normalizeWorkspaceFileAbsolutePath(rootPath);
-  const raw = String(value ?? "")
-    .trim()
-    .replaceAll("\\", "/");
+  const raw = normalizeGitBashDrivePath(
+    String(value ?? "")
+      .trim()
+      .replaceAll("\\", "/"),
+    root
+  );
   if (!raw) {
     return root;
   }
@@ -20,6 +23,30 @@ export function normalizeWorkspaceFilePath(
   }
 
   return normalizeWorkspaceFileAbsolutePath(raw);
+}
+
+export function formatWorkspaceFilePathForDisplay(
+  value?: string | null,
+  platform?: string | null
+): string {
+  const raw = String(value ?? "").trim();
+  if (!raw || platform !== "win32") {
+    return raw;
+  }
+
+  const normalizedInput = raw.replaceAll("\\", "/");
+  const gitBashDrive = /^\/([A-Za-z])(?=\/|$)/.exec(normalizedInput)?.[1];
+  const logicalInput = gitBashDrive
+    ? `/${gitBashDrive.toUpperCase()}:${normalizedInput.slice(2)}`
+    : normalizedInput;
+  const normalized = normalizeWorkspaceFilePath(logicalInput);
+  const drive = readWindowsDrive(normalized);
+  if (!drive) {
+    return raw;
+  }
+
+  const body = stripWindowsDrivePrefix(normalized, drive);
+  return `${drive}\\${body.replaceAll("/", "\\")}`;
 }
 
 function normalizeWorkspaceFileAbsolutePath(value?: string | null): string {
@@ -57,6 +84,15 @@ function normalizeWorkspaceFileAbsolutePath(value?: string | null): string {
     return `/${drive}/${result.join("/")}`;
   }
   return `/${result.join("/")}`;
+}
+
+function normalizeGitBashDrivePath(value: string, root: string): string {
+  const drive = readWindowsDrive(root);
+  const match = /^\/([A-Za-z])(?=\/|$)/.exec(value);
+  if (!drive || !match || `${match[1]}:`.toUpperCase() !== drive) {
+    return value;
+  }
+  return `/${drive}${value.slice(2)}`;
 }
 
 export function workspaceFileName(path: string): string {
@@ -184,7 +220,7 @@ function isWorkspaceFileAbsolutePath(path: string): boolean {
 }
 
 function readWindowsDrive(path: string): string {
-  return /^\/?([A-Za-z]:)(?=\/|$)/.exec(path)?.[1] ?? "";
+  return /^\/?([A-Za-z]:)(?=\/|$)/.exec(path)?.[1]?.toUpperCase() ?? "";
 }
 
 function stripWindowsDrivePrefix(path: string, drive: string): string {

@@ -226,10 +226,10 @@
       ]
     },
     "turnUpdate": {
-      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/6"
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/7"
     },
     "interactionUpdate": {
-      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/7"
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/8"
     },
     "interactionSnapshot": {
       "type": "object",
@@ -247,6 +247,7 @@
             "agentSessionId",
             "eventType",
             "occurredAtUnixMs",
+            "rootTurnId",
             "interactions"
           ],
           "properties": {
@@ -254,10 +255,11 @@
             "agentSessionId": { "type": "string", "minLength": 1 },
             "eventType": { "const": "interaction_snapshot" },
             "occurredAtUnixMs": { "type": "integer", "minimum": 0 },
+            "rootTurnId": { "type": "string", "minLength": 1 },
             "interactions": {
               "type": "array",
               "items": {
-                "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/7/properties/data/properties/interaction"
+                "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/8/properties/data/properties/interaction"
               }
             }
           }
@@ -265,7 +267,7 @@
       }
     },
     "sessionAudit": {
-      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/5"
+      "$ref": "../../../../events/protocol/definitions/agent/activity.updated.event.json#/payloadSchema/oneOf/6"
     }
   }
 }

@@ -12,6 +12,7 @@ import (
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
+	"github.com/tutti-os/tutti/packages/agent/daemon/runtime/codexproto"
 )
 
 type appServerCaptureConn struct {
@@ -680,6 +681,7 @@ func TestCodexAppServerAdapterRoutesChildFileChangeApprovalWithChildInput(t *tes
 	pending := adapter.getPendingRequest(child.agentSessionID, child.turnID, "child-approval-1")
 	if pending == nil {
 		t.Fatal("approval was not registered on canonical child")
+		return
 	}
 	changes, ok := pending.input["changes"].([]any)
 	if !ok || len(changes) != 1 || asString(payloadObject(changes[0])["path"]) != "/workspace/permission-probe.txt" {
@@ -964,7 +966,7 @@ func TestCodexAppServerControlCardNeverClaimsChildOwnership(t *testing.T) {
 	}
 }
 
-func TestCodexAppServerUnhandledServerRequestCardOnlyForUnknownMethods(t *testing.T) {
+func TestCodexAppServerUnsupportedServerRequestCardsFollowDisposition(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
@@ -975,6 +977,8 @@ func TestCodexAppServerUnhandledServerRequestCardOnlyForUnknownMethods(t *testin
 		// Schema-known background request the daemon deliberately declines:
 		// respond -32601 silently, no transcript failure card.
 		{name: "known background request stays silent", method: "account/chatgptAuthTokens/refresh", wantCard: false},
+		{name: "known attestation request stays silent", method: "attestation/generate", wantCard: false},
+		{name: "known foreground request renders failure card", method: "item/tool/call", wantCard: true},
 		{name: "unknown request renders failure card", method: "definitely/notInSchema", wantCard: true},
 	}
 
@@ -1018,6 +1022,261 @@ func TestCodexAppServerUnhandledServerRequestCardOnlyForUnknownMethods(t *testin
 			}
 			if len(emitted) != 1 || emitted[0].Type != activityshared.EventCallFailed {
 				t.Fatalf("emitted = %#v, want one call.failed card", emitted)
+			}
+		})
+	}
+}
+
+func TestCodexAppServerClassifiesEveryGeneratedServerRequest(t *testing.T) {
+	t.Parallel()
+
+	for _, method := range codexproto.ServerRequestMethods() {
+		if disposition := appServerServerRequestDispositionForMethod(method); disposition == appServerServerRequestUnknown {
+			t.Errorf("generated server request %q has no explicit adapter disposition", method)
+		}
+	}
+}
+
+func TestCodexAppServerMessageOnlyMCPElicitationRoundTripsApproval(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name         string
+		optionID     string
+		meta         map[string]any
+		wantAction   string
+		wantPersist  string
+		wantOptionID []string
+	}{
+		{
+			name:         "allow once",
+			optionID:     "approve",
+			meta:         map[string]any{"codex_approval_kind": "mcp_tool_call", "persist": []any{"session", "always"}},
+			wantAction:   "accept",
+			wantOptionID: []string{"approve", "approve_for_session", "approve_always", "cancel"},
+		},
+		{
+			name:         "allow for session",
+			optionID:     "approve_for_session",
+			meta:         map[string]any{"codex_approval_kind": "mcp_tool_call", "persist": []any{"session", "always"}},
+			wantAction:   "accept",
+			wantPersist:  "session",
+			wantOptionID: []string{"approve", "approve_for_session", "approve_always", "cancel"},
+		},
+		{
+			name:         "always allow",
+			optionID:     "approve_always",
+			meta:         map[string]any{"codex_approval_kind": "mcp_tool_call", "persist": []any{"session", "always"}},
+			wantAction:   "accept",
+			wantPersist:  "always",
+			wantOptionID: []string{"approve", "approve_for_session", "approve_always", "cancel"},
+		},
+		{
+			name:         "cancel tool call",
+			optionID:     "cancel",
+			meta:         map[string]any{"codex_approval_kind": "mcp_tool_call", "persist": []any{"session", "always"}},
+			wantAction:   "cancel",
+			wantOptionID: []string{"approve", "approve_for_session", "approve_always", "cancel"},
+		},
+		{
+			name:         "decline ordinary request",
+			optionID:     "deny",
+			wantAction:   "decline",
+			wantOptionID: []string{"approve", "deny", "cancel"},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			conn := newAppServerCaptureConn()
+			client := newCodexAppServerClient(conn)
+			defer func() { _ = client.Close() }()
+			adapter := NewCodexAppServerAdapter(nil)
+			session := Session{
+				AgentSessionID:    "agent-session-1",
+				Provider:          ProviderCodex,
+				ProviderSessionID: "thread-1",
+				CWD:               "/workspace",
+			}
+			adapter.storeSession(session.AgentSessionID, &codexAppServerSession{
+				threadID:        session.ProviderSessionID,
+				pendingRequests: make(map[string]*pendingInteractiveRequest),
+			})
+
+			var emitted []activityshared.Event
+			_, err := adapter.handleAppServerMessage(
+				context.Background(),
+				client,
+				session,
+				"turn-1",
+				acpMessage{
+					ID:     json.RawMessage(`"elicitation-1"`),
+					Method: "mcpServer/elicitation/request",
+					Params: mustJSONRawMessage(t, map[string]any{
+						"threadId":   "thread-1",
+						"turnId":     "provider-turn-1",
+						"serverName": "node_repl",
+						"mode":       "form",
+						"message":    "Allow node_repl to control the visible Browser?",
+						"requestedSchema": map[string]any{
+							"type":       "object",
+							"properties": map[string]any{},
+						},
+						"_meta": tc.meta,
+					}),
+				},
+				newACPTurnNormalizer(),
+				func(events []activityshared.Event) { emitted = append(emitted, events...) },
+				nil,
+			)
+			if err != nil {
+				t.Fatalf("handleAppServerMessage: %v", err)
+			}
+
+			pending := adapter.getPendingRequest(session.AgentSessionID, "turn-1", "elicitation-1")
+			if pending == nil || pending.kind != "approval" || asString(pending.input["reason"]) != "Allow node_repl to control the visible Browser?" {
+				t.Fatalf("pending elicitation = %#v, want visible approval", pending)
+			}
+			optionIDs := make([]string, 0, len(pending.options))
+			for _, option := range pending.options {
+				optionIDs = append(optionIDs, asString(option["optionId"]))
+			}
+			if !reflect.DeepEqual(optionIDs, tc.wantOptionID) {
+				t.Fatalf("option ids = %#v, want %#v", optionIDs, tc.wantOptionID)
+			}
+			for _, option := range pending.options {
+				if asString(option["optionId"]) == "cancel" &&
+					(asString(option["name"]) != "Cancel" || asString(option["kind"]) != "reject_once") {
+					t.Fatalf("cancel option = %#v, want neutral one-shot cancellation presentation", option)
+				}
+			}
+			if requested := eventsOfType(emitted, activityshared.EventInteractionRequested); len(requested) != 1 {
+				t.Fatalf("interaction.requested events = %#v, want one", requested)
+			}
+
+			result, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+				TurnID:    "turn-1",
+				RequestID: "elicitation-1",
+				OptionID:  tc.optionID,
+			})
+			if err != nil || !result.Accepted || result.OptionID != tc.optionID {
+				t.Fatalf("SubmitInteractive = %#v, %v", result, err)
+			}
+
+			responses := conn.responses(t)
+			if len(responses) != 1 || responses[0].Error != nil {
+				t.Fatalf("responses = %#v, want one success", responses)
+			}
+			var response map[string]any
+			if err := json.Unmarshal(responses[0].Result, &response); err != nil {
+				t.Fatalf("unmarshal elicitation response: %v", err)
+			}
+			if asString(response["action"]) != tc.wantAction {
+				t.Fatalf("response = %#v, want action %q", response, tc.wantAction)
+			}
+			meta := payloadObject(response["_meta"])
+			if asString(meta["persist"]) != tc.wantPersist {
+				t.Fatalf("response meta = %#v, want persist %q", meta, tc.wantPersist)
+			}
+			if _, exists := response["content"]; exists {
+				t.Fatalf("message-only response = %#v, want no content", response)
+			}
+		})
+	}
+}
+
+func TestCodexAppServerRejectsMCPElicitationItCannotRepresent(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name   string
+		params map[string]any
+	}{
+		{
+			name: "form fields",
+			params: map[string]any{
+				"mode":    "form",
+				"message": "Choose a value",
+				"requestedSchema": map[string]any{
+					"type": "object",
+					"properties": map[string]any{
+						"value": map[string]any{"type": "string"},
+					},
+				},
+			},
+		},
+		{
+			name: "URL mode",
+			params: map[string]any{
+				"mode":          "url",
+				"message":       "Open authorization page",
+				"url":           "https://example.com/authorize",
+				"elicitationId": "url-1",
+			},
+		},
+		{
+			name: "tool suggestion",
+			params: map[string]any{
+				"mode":    "form",
+				"message": "Install a suggested tool",
+				"requestedSchema": map[string]any{
+					"type":       "object",
+					"properties": map[string]any{},
+				},
+				"_meta": map[string]any{"codex_approval_kind": "tool_suggestion"},
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			conn := newAppServerCaptureConn()
+			client := newCodexAppServerClient(conn)
+			defer func() { _ = client.Close() }()
+			adapter := NewCodexAppServerAdapter(nil)
+			session := Session{
+				AgentSessionID:    "agent-session-1",
+				Provider:          ProviderCodex,
+				ProviderSessionID: "thread-1",
+			}
+			adapter.storeSession(session.AgentSessionID, &codexAppServerSession{
+				threadID:        session.ProviderSessionID,
+				pendingRequests: make(map[string]*pendingInteractiveRequest),
+			})
+			params := clonePayload(tc.params)
+			params["threadId"] = "thread-1"
+			params["turnId"] = "provider-turn-1"
+			params["serverName"] = "node_repl"
+
+			_, err := adapter.handleAppServerMessage(
+				context.Background(),
+				client,
+				session,
+				"turn-1",
+				acpMessage{
+					ID:     json.RawMessage(`"elicitation-unsupported"`),
+					Method: "mcpServer/elicitation/request",
+					Params: mustJSONRawMessage(t, params),
+				},
+				newACPTurnNormalizer(),
+				func([]activityshared.Event) {},
+				nil,
+			)
+			if err == nil {
+				t.Fatal("unrepresentable elicitation was accepted")
+			}
+			if pending := adapter.getPendingRequest(session.AgentSessionID, "turn-1", "elicitation-unsupported"); pending != nil {
+				t.Fatalf("unrepresentable elicitation registered pending state: %#v", pending)
+			}
+			responses := conn.responses(t)
+			if len(responses) != 1 || responses[0].Error == nil || responses[0].Error.Code != -32602 {
+				t.Fatalf("responses = %#v, want one -32602", responses)
 			}
 		})
 	}

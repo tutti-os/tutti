@@ -21,7 +21,15 @@ const (
 	GoalProviderPhaseAccepted   = "accepted"
 	GoalProviderPhaseApplied    = "applied"
 	GoalProviderPhaseUnknown    = "unknown"
+
+	GoalControlCompletionModeProvider  GoalControlCompletionMode = "provider"
+	GoalControlCompletionModeLocalStop GoalControlCompletionMode = "local_stop"
 )
+
+// GoalControlCompletionMode distinguishes provider-confirmed completion from
+// restart recovery that only finalizes the durable local stop. The zero value
+// preserves the provider-confirmed behavior for existing callers.
+type GoalControlCompletionMode string
 
 var (
 	ErrGoalOperationConflict       = errors.New("goal control operation identity conflicts with existing state")
@@ -44,11 +52,15 @@ type SessionGoalState struct {
 	Tombstoned          bool
 	SyncStatus          string
 	PendingOperationID  string
-	LastEvidence        map[string]any
-	LastError           string
-	ObservedAtUnixMS    int64
-	CreatedAtUnixMS     int64
-	UpdatedAtUnixMS     int64
+	// ExecutionPending is Host-owned proof that the accepted Goal command is
+	// expected to begin autonomous execution but no exact Goal Turn has been
+	// persisted yet. It is cleared by the first provenance-matched Turn.
+	ExecutionPending bool
+	LastEvidence     map[string]any
+	LastError        string
+	ObservedAtUnixMS int64
+	CreatedAtUnixMS  int64
+	UpdatedAtUnixMS  int64
 }
 
 type GoalControlOperation struct {
@@ -113,10 +125,12 @@ type ProviderGoalAdoption struct {
 type GoalControlOperationComplete struct {
 	OperationID      string
 	WorkspaceID      string
+	Mode             GoalControlCompletionMode
 	Observed         map[string]any
 	Evidence         map[string]any
 	LastError        string
 	Succeeded        bool
+	ExecutionPending bool
 	OccurredAtUnixMS int64
 	RepairEpoch      int64
 }
@@ -127,6 +141,7 @@ type GoalControlOperationAcknowledge struct {
 	Evidence         map[string]any
 	OccurredAtUnixMS int64
 	RepairEpoch      int64
+	ExecutionPending bool
 }
 
 type GoalObservationReconcile struct {

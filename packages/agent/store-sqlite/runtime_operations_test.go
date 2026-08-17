@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -26,6 +27,46 @@ func TestRuntimeOperationPrepareIsSubjectIdempotentAndCrashRecoverable(t *testin
 	claimable, err := store.ListClaimableRuntimeOperations(context.Background(), ListClaimableRuntimeOperationsInput{WorkspaceID: "ws-1", NowUnixMS: 20})
 	if err != nil || len(claimable) != 1 || claimable[0].Status != RuntimeOperationStatusPrepared {
 		t.Fatalf("claimable after crash = %#v err=%v", claimable, err)
+	}
+}
+
+func TestInteractiveRuntimeOperationCheckpointOnlyAddsFollowUpIntent(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedRuntimeInteractiveSubject(t, store, "session-follow-up", "turn-follow-up", "request-follow-up")
+	op, _, _, err := store.PrepareInteractiveRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+		OperationID: "operation-follow-up", WorkspaceID: "ws-1", AgentSessionID: "session-follow-up",
+		Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-follow-up", RequestID: "request-follow-up",
+		Payload: map[string]any{"action": "", "optionId": "deny", "payload": map[string]any(nil)}, OccurredAtMS: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := store.ClaimRuntimeOperationLease(context.Background(), ClaimRuntimeOperationLeaseInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-follow-up", NowUnixMS: 20, LeaseExpiresAtMS: 100,
+	}); err != nil || !claimed {
+		t.Fatalf("claim operation = claimed=%v error=%v", claimed, err)
+	}
+
+	checkpointed, changed, err := store.CheckpointRuntimeOperation(context.Background(), CheckpointRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-follow-up", NowUnixMS: 30,
+		Payload: map[string]any{
+			"action": "", "optionId": "deny", "payload": map[string]any(nil),
+			"followUpPrompt":         "Please split the work into smaller steps.",
+			"followUpClientSubmitId": "interactive-deny:operation-follow-up",
+			"followUpDisposition":    InteractionStatusAnswered,
+		},
+	})
+	if err != nil || !changed || checkpointed.Payload["followUpPrompt"] == nil {
+		t.Fatalf("checkpoint = %#v changed=%v error=%v", checkpointed, changed, err)
+	}
+	if got := checkpointed.Payload["followUpDisposition"]; got != InteractionStatusAnswered {
+		t.Fatalf("checkpointed follow-up disposition = %#v, want answered", got)
+	}
+	if _, _, err := store.CheckpointRuntimeOperation(context.Background(), CheckpointRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-follow-up", NowUnixMS: 31,
+		Payload: map[string]any{"action": "approve", "optionId": "deny", "payload": map[string]any(nil)},
+	}); !errors.Is(err, ErrRuntimeOperationSubjectState) {
+		t.Fatalf("identity-changing checkpoint error = %v", err)
 	}
 }
 
@@ -344,6 +385,10 @@ func TestCompleteCancelRuntimeOperationSettlesExactTurnAndSupersedesPending(t *t
 	if err != nil || !changed || completion.Operation.Result != RuntimeOperationResultCanceled {
 		t.Fatalf("cancel completion=%#v changed=%v err=%v", completion, changed, err)
 	}
+	settledTargets, ok := completion.Event.Payload["settledTargets"].([]any)
+	if !ok || len(settledTargets) != 0 {
+		t.Fatalf("settled targets=%#v, want none for an already-settled turn", settledTargets)
+	}
 	turn, found, err := store.GetTurn(context.Background(), "ws-1", "session-1", "turn-1")
 	if err != nil || !found || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeCanceled || turn.ErrorMessage != "" {
 		t.Fatalf("turn=%#v found=%v err=%v", turn, found, err)
@@ -385,15 +430,20 @@ func TestCompleteCancelRuntimeOperationSettlesRootAndUnconfirmedChildAtomically(
 		t.Fatalf("prepare aggregate cancel created=%v err=%v", created, err)
 	}
 	claimRuntimeOperation(t, store, "cancel-tree", "worker-a")
-	if _, changed, err := store.CompleteCancelRuntimeOperation(context.Background(), CompleteCancelRuntimeOperationInput{
+	completion, changed, err := store.CompleteCancelRuntimeOperation(context.Background(), CompleteCancelRuntimeOperationInput{
 		WorkspaceID: "ws-1", OperationID: "cancel-tree", LeaseOwner: "worker-a",
 		TargetOutcomes: []CancelRuntimeOperationTargetOutcome{
 			{AgentSessionID: "child", TurnID: "child-turn", Outcome: TurnOutcomeInterrupted},
 			{AgentSessionID: "root", TurnID: "root-turn", Outcome: TurnOutcomeCanceled},
 		},
 		NowUnixMS: 30,
-	}); err != nil || !changed {
+	})
+	if err != nil || !changed {
 		t.Fatalf("complete aggregate cancel changed=%v err=%v", changed, err)
+	}
+	settledTargets, ok := completion.Event.Payload["settledTargets"].([]any)
+	if !ok || len(settledTargets) != 2 {
+		t.Fatalf("settled targets=%#v, want both targets settled by this transaction", settledTargets)
 	}
 	for sessionID, expected := range map[string]struct {
 		turnID  string

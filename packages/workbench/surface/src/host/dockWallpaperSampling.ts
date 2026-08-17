@@ -7,7 +7,7 @@ export interface DockWallpaperImageSample {
   width: number;
 }
 
-interface DockWallpaperRenderedImageRect {
+export interface DockWallpaperRenderedImageRect {
   height: number;
   left: number;
   top: number;
@@ -108,4 +108,85 @@ export function sampleDockWallpaperLuminanceAtElement({
   }
 
   return samples > 0 ? luminanceSum / samples : null;
+}
+
+export function parseDockWallpaperCssUrl(
+  backgroundImage: string
+): string | null {
+  const match = /^url\((['"]?)(.*)\1\)$/u.exec(backgroundImage.trim());
+  return match?.[2] ? match[2] : null;
+}
+
+export function resolveDockWallpaperRenderedImageRect({
+  containerHeight,
+  containerWidth,
+  imageHeight,
+  imageWidth,
+  positionX,
+  positionY,
+  size
+}: {
+  containerHeight: number;
+  containerWidth: number;
+  imageHeight: number;
+  imageWidth: number;
+  positionX: string;
+  positionY: string;
+  size: string;
+}): DockWallpaperRenderedImageRect {
+  const imageAspect = imageWidth / imageHeight;
+  const containerAspect = containerWidth / containerHeight;
+  let width = containerWidth;
+  let height = containerHeight;
+
+  if (size === "cover") {
+    if (containerAspect > imageAspect) {
+      height = containerWidth / imageAspect;
+    } else {
+      width = containerHeight * imageAspect;
+    }
+  } else if (size === "contain") {
+    if (containerAspect > imageAspect) {
+      width = containerHeight * imageAspect;
+    } else {
+      height = containerWidth / imageAspect;
+    }
+  } else if (size !== "100% 100%") {
+    width = imageWidth;
+    height = imageHeight;
+  }
+
+  return {
+    height,
+    left: resolveDockWallpaperPositionOffset(positionX, containerWidth - width),
+    top: resolveDockWallpaperPositionOffset(
+      positionY,
+      containerHeight - height
+    ),
+    width
+  };
+}
+
+export function resolveDockWallpaperPositionOffset(
+  value: string,
+  availableSpace: number
+): number {
+  const trimmed = value.trim();
+  if (trimmed.endsWith("%")) {
+    const percentage = Number.parseFloat(trimmed);
+    return Number.isFinite(percentage)
+      ? (availableSpace * percentage) / 100
+      : availableSpace / 2;
+  }
+  if (trimmed.endsWith("px")) {
+    const px = Number.parseFloat(trimmed);
+    return Number.isFinite(px) ? px : availableSpace / 2;
+  }
+  if (trimmed === "left" || trimmed === "top") {
+    return 0;
+  }
+  if (trimmed === "right" || trimmed === "bottom") {
+    return availableSpace;
+  }
+  return availableSpace / 2;
 }

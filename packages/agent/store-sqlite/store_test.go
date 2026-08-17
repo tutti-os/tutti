@@ -806,7 +806,7 @@ func TestStoreClearSessionsDeletesGoalSagaWithForeignKeysDisabledAndSessionIDReu
 	}
 }
 
-func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabled(t *testing.T) {
+func TestStoreSessionDeleteVariantsPreserveAndTerminalizeSagaWithForeignKeysDisabled(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name   string
@@ -851,9 +851,22 @@ func TestStoreSessionDeleteVariantsExplicitlyDeleteGoalSagaWithForeignKeysDisabl
 			}
 			for _, table := range []string{"workspace_agent_runtime_operation_events", "workspace_agent_runtime_operations", "workspace_agent_goal_generation_fences", "workspace_agent_goal_control_operations", "workspace_agent_session_goals"} {
 				var count int
-				if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-delete-goal").Scan(&count); err != nil || count != 0 {
-					t.Fatalf("%s count=%d error=%v", table, count, err)
+				if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id = ?`, "ws-delete-goal").Scan(&count); err != nil || count == 0 {
+					t.Fatalf("%s count=%d error=%v, want preserved rows", table, count, err)
 				}
+			}
+			var runtimePending, goalPending, fencePending int
+			if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspace_agent_runtime_operations WHERE workspace_id=? AND status IN ('prepared','leased')`, "ws-delete-goal").Scan(&runtimePending); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspace_agent_goal_control_operations WHERE workspace_id=? AND status IN ('prepared','dispatched')`, "ws-delete-goal").Scan(&goalPending); err != nil {
+				t.Fatal(err)
+			}
+			if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM workspace_agent_goal_generation_fences WHERE workspace_id=? AND status IN ('pending','processing')`, "ws-delete-goal").Scan(&fencePending); err != nil {
+				t.Fatal(err)
+			}
+			if runtimePending != 0 || goalPending != 0 || fencePending != 0 {
+				t.Fatalf("executable saga state remains: runtime=%d goal=%d fence=%d", runtimePending, goalPending, fencePending)
 			}
 		})
 	}

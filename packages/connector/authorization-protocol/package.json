@@ -1,0 +1,48 @@
+{
+  "name": "@tutti-os/connector-authorization-protocol",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./v1": "./src/v1/index.ts"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "tsx --test \"./src/**/*.test.ts\"",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "valibot": "^1.1.0"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "tsx": "^4.22.3",
+    "typescript": "^5.8.3"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/connector/authorization-protocol"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./v1": {
+        "types": "./dist/v1/index.d.ts",
+        "import": "./dist/v1/index.js"
+      }
+    },
+    "types": "./dist/index.d.ts"
+  }
+}

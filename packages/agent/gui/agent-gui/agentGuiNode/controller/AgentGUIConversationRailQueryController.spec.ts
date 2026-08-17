@@ -624,6 +624,9 @@ describe("AgentGUIConversationRailQueryController", () => {
     await vi.waitFor(() =>
       expect(listSessionSections).toHaveBeenCalledTimes(1)
     );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
     detachFirst();
 
     const detachSecond = controller.attach();
@@ -716,7 +719,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
-  it("keeps the committed snapshot when targeted membership refresh fails", async () => {
+  it("keeps existing rows interactive when a targeted membership refresh is rejected", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({
       activeTurnId: null,
@@ -732,10 +735,14 @@ describe("AgentGUIConversationRailQueryController", () => {
       workspaceId: "test-workspace"
     });
     const listPinnedSessionsPage = vi.fn(async () => {
-      throw new Error("pinned page failed");
+      throw Object.assign(new Error("pinned page rejected"), {
+        statusCode: 403
+      });
     });
     const listSessionSectionPage = vi.fn(async () => {
-      throw new Error("section page failed");
+      throw Object.assign(new Error("section page rejected"), {
+        statusCode: 403
+      });
     });
     const controller = new AgentGUIConversationRailQueryController({
       engine,
@@ -779,11 +786,13 @@ describe("AgentGUIConversationRailQueryController", () => {
     await vi.waitFor(() =>
       expect(controller.getSnapshot().runtimeRailFailed).toBe(true)
     );
-    expect(controller.isInteractionLocked()).toBe(true);
-    expect(presentation.getSnapshot()[0]?.pinnedAtUnixMs).toBeNull();
+    expect(controller.isInteractionLocked()).toBe(false);
+    expect(presentation.getSnapshot()[0]?.pinnedAtUnixMs).toBe(10);
     expect(
       controller.getSnapshot().runtimeRailMemberships?.[0]?.sessionIds
     ).toEqual(["session-1"]);
+    expect(listPinnedSessionsPage).toHaveBeenCalledTimes(1);
+    expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
 
     presentation.dispose();
     detach();
@@ -885,7 +894,11 @@ describe("AgentGUIConversationRailQueryController", () => {
       NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
     >(async (input) => {
       requestCount += 1;
-      if (requestCount === 2) throw new Error("transient failure");
+      if (requestCount === 2) {
+        throw Object.assign(new Error("request rejected"), {
+          statusCode: 403
+        });
+      }
       return {
         workspaceId: input.workspaceId,
         sections: [
@@ -953,6 +966,93 @@ describe("AgentGUIConversationRailQueryController", () => {
     ]);
 
     detachSecond();
+    engine.dispose();
+  });
+
+  it("retries a failed section page load when More is requested again", async () => {
+    const engine = createTestAgentSessionEngine();
+    const firstSession = createTestSession("session-1", "conversations");
+    const secondSession = createTestSession("session-2", "conversations");
+    let pageRequestCount = 0;
+    const listSessionSectionPage = vi.fn<
+      NonNullable<ConversationRailQueryRuntime["listSessionSectionPage"]>
+    >(async (input) => {
+      pageRequestCount += 1;
+      if (pageRequestCount === 1) throw new Error("transient page failure");
+      return {
+        hasMore: false,
+        kind: "conversations",
+        sectionKey: input.sectionKey,
+        sessions: [secondSession],
+        totalCount: 2
+      };
+    });
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => null,
+      runtime: {
+        listSessionSectionPage,
+        listSessionSections: async (input) => ({
+          sections: [
+            {
+              hasMore: true,
+              kind: "conversations",
+              nextCursor: "cursor-2",
+              sectionKey: "conversations",
+              sessions: [firstSession],
+              totalCount: 2
+            }
+          ],
+          workspaceId: input.workspaceId
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      userProjects: []
+    });
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+
+    controller.loadMoreSectionConversations({ id: "conversations" });
+    await vi.waitFor(() =>
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(1)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailFailed).toBe(true)
+    );
+    expect(
+      controller.getSnapshot().sectionPageStates.get("conversations")
+    ).toEqual({
+      hasMore: true,
+      isLoading: false,
+      nextCursor: "cursor-2",
+      totalCount: 2
+    });
+
+    controller.loadMoreSectionConversations({ id: "conversations" });
+    await vi.waitFor(() =>
+      expect(listSessionSectionPage).toHaveBeenCalledTimes(2)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailFailed).toBe(false)
+    );
+    expect(
+      controller.getSnapshot().sectionPageStates.get("conversations")
+    ).toEqual({
+      hasMore: false,
+      isLoading: false,
+      nextCursor: null,
+      totalCount: 2
+    });
+    expect(
+      selectEngineSession(engine.getSnapshot(), secondSession.agentSessionId)
+    ).not.toBeNull();
+
+    detach();
     engine.dispose();
   });
 
@@ -1279,6 +1379,9 @@ describe("AgentGUIConversationRailQueryController", () => {
     const detach = controller.attach();
     await vi.waitFor(() =>
       expect(listSessionSections).toHaveBeenCalledTimes(1)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
     );
 
     controller.configure(scope("local:claude-code"));

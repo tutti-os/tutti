@@ -35,7 +35,10 @@ The product daemon exposes:
 
 The daemon owns the 3-second startup timeout, 10-second foreground timeout,
 30-minute foreground interval, request single-flight, and fail-open result.
-Electron owns only lifecycle signals and presentation.
+Resolved policy checks and invalid responses enter the foreground throttle
+window. Failed-open transport and timeout checks remain immediately eligible so
+a restored network can recover admission. Electron owns lifecycle signals,
+foreground recovery retries, and presentation.
 
 ## Development scenarios
 

@@ -412,6 +412,15 @@ export function createDesktopAgentHostApi({
       },
       resolveGitPatchSupport: async (payload: { cwd: string }) =>
         tuttidClient.resolveWorkspaceGitPatchSupport(workspaceId, payload.cwd),
+      resolveSessionWorktreeSupport: async (payload: {
+        agentTargetId: string;
+        cwd: string;
+      }) =>
+        tuttidClient.resolveWorkspaceAgentSessionWorktreeSupport(
+          workspaceId,
+          payload.agentTargetId,
+          payload.cwd
+        ),
       copyPath: async (payload: { path: string }) => {
         await navigator.clipboard.writeText(payload.path);
       },

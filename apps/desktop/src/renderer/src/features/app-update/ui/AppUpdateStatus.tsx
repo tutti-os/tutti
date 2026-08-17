@@ -59,30 +59,42 @@ export function AppUpdateStatus({
       </div>
 
       {view.action && view.actionKey ? (
-        <Button
-          disabled={view.busy}
-          onClick={() => {
-            void service.runPrimaryAction();
-          }}
-          size={compact ? "xs" : "sm"}
-          variant="secondary"
-          className={cn(
-            "text-[var(--workbench-chrome-foreground)] hover:text-[var(--workbench-chrome-foreground)] disabled:opacity-60",
-            compact
-              ? "h-7 rounded-[4px] px-2 text-[13px] font-semibold"
-              : "h-7 rounded-[4px] px-2.5 text-[13px] font-semibold max-[700px]:px-2"
-          )}
-        >
-          {state.isActing ? (
-            <LoadingIcon
-              className={cn(
-                "animate-spin",
-                compact ? "size-3" : "size-4 max-[700px]:size-3.5"
-              )}
-            />
+        <>
+          {state.updateState?.releaseNotesUrl ? (
+            <Button
+              onClick={() => void service.openReleaseNotes()}
+              size={compact ? "xs" : "sm"}
+              type="button"
+              variant="ghost"
+            >
+              {t("updates.releaseNotesAction")}
+            </Button>
           ) : null}
-          <span>{t(view.actionKey)}</span>
-        </Button>
+          <Button
+            disabled={view.busy}
+            onClick={() => {
+              void service.runPrimaryAction();
+            }}
+            size={compact ? "xs" : "sm"}
+            variant="secondary"
+            className={cn(
+              "text-[var(--workbench-chrome-foreground)] hover:text-[var(--workbench-chrome-foreground)] disabled:opacity-60",
+              compact
+                ? "h-7 rounded-[4px] px-2 text-[13px] font-semibold"
+                : "h-7 rounded-[4px] px-2.5 text-[13px] font-semibold max-[700px]:px-2"
+            )}
+          >
+            {state.isActing ? (
+              <LoadingIcon
+                className={cn(
+                  "animate-spin",
+                  compact ? "size-3" : "size-4 max-[700px]:size-3.5"
+                )}
+              />
+            ) : null}
+            <span>{t(view.actionKey)}</span>
+          </Button>
+        </>
       ) : null}
     </div>
   );

@@ -248,6 +248,32 @@ func TestControllerGoalControl(t *testing.T) {
 	transport.server.completePendingTurn()
 }
 
+// A startup goal/get may finish after a newer direct control. Its stale
+// snapshot must not resurrect a goal that the provider already cleared.
+func TestCodexStartupGoalRefreshCannotOverwriteNewerClear(t *testing.T) {
+	t.Parallel()
+
+	adapter, transport, session := startedAppServerAdapter(t)
+	transport.server.mu.Lock()
+	transport.server.goal = map[string]any{
+		"threadId": "codex-thread-1",
+		"status":   "paused",
+	}
+	transport.server.goalGetAfterSnapshot = func() {
+		adapter.applyGoalClear(session.AgentSessionID)
+		transport.server.mu.Lock()
+		transport.server.goal = nil
+		transport.server.goalGetAfterSnapshot = nil
+		transport.server.mu.Unlock()
+	}
+	transport.server.mu.Unlock()
+
+	adapter.refreshStartupGoal(context.Background(), session.AgentSessionID, nil)
+	if goal := adapter.sessionGoal(session.AgentSessionID); len(goal) != 0 {
+		t.Fatalf("stale startup refresh resurrected cleared goal: %#v", goal)
+	}
+}
+
 func TestCodexAdoptedGoalTurnCarriesDurableGoalIdentity(t *testing.T) {
 	t.Parallel()
 

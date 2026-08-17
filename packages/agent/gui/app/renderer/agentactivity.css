@@ -140,6 +140,24 @@
   -webkit-app-region: no-drag;
 }
 
+/*
+ * The image preview is portaled to document.body, so it cannot inherit the
+ * workbench header's scoped Windows titlebar inset. Reuse the same native
+ * caption-button geometry for the portal controls; otherwise the close and
+ * zoom buttons sit underneath the minimize/maximize/close buttons.
+ */
+body[data-tutti-titlebar-overlay="true"] {
+  --tutti-titlebar-controls-inset: calc(
+    100vw - env(titlebar-area-width, calc(100vw - 138px)) + 10px
+  );
+}
+
+body[data-tutti-titlebar-overlay="true"]
+  .tsh-zoom-dialog__toolbar-actions {
+  right: calc(20px + var(--tutti-titlebar-controls-inset));
+  inset-inline-end: calc(20px + var(--tutti-titlebar-controls-inset));
+}
+
 .tsh-zoom-dialog__image {
   display: block;
   max-width: calc(100vw - 48px);
@@ -168,9 +186,20 @@
   -webkit-app-region: no-drag;
 }
 
+body[data-tutti-titlebar-overlay="true"]
+  .tsh-zoom-dialog__zoom-controls {
+  right: calc(168px + var(--tutti-titlebar-controls-inset));
+}
+
 .tsh-zoom-dialog:not([data-tsh-image-actions="true"])
   .tsh-zoom-dialog__zoom-controls {
   right: 72px;
+}
+
+body[data-tutti-titlebar-overlay="true"]
+  .tsh-zoom-dialog:not([data-tsh-image-actions="true"])
+  .tsh-zoom-dialog__zoom-controls {
+  right: calc(72px + var(--tutti-titlebar-controls-inset));
 }
 
 .tsh-image-context-menu {
@@ -4217,12 +4246,37 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__user-image-thumbnail {
+  position: relative;
   box-sizing: border-box;
+  height: 80px;
   max-height: 80px;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line-2);
   border-radius: 8px;
+}
+
+.agent-gui-conversation__user-image-thumbnail > .tsh-zoomable-image {
+  width: 100%;
+  height: 100%;
+}
+
+.agent-gui-conversation__user-image-thumbnail > .tsh-zoomable-image > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.agent-gui-conversation__user-image-thumbnail[data-image-state="loading"]
+  > .tsh-zoomable-image {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-gui-conversation__user-image-thumbnail[data-image-state="loading"]
+  > .tsh-zoomable-image
+  > .tsh-zoomable-image__trigger {
+  visibility: hidden;
 }
 
 .agent-gui-conversation__assistant-message-flow {
@@ -7027,6 +7081,7 @@ button.agent-gui-node__conversation-section-toggle:hover
   align-items: center;
   justify-content: flex-end;
   min-width: 28px;
+  gap: 4px;
 }
 
 .agent-gui-node__conversation-meta[data-kind="loading"],
@@ -7036,6 +7091,11 @@ button.agent-gui-node__conversation-section-toggle:hover
   width: 28px;
   min-width: 28px;
   justify-content: center;
+}
+
+.agent-gui-node__conversation-meta[data-worktree="true"] {
+  width: auto;
+  min-width: max-content;
 }
 
 .agent-gui-node__conversation-meta[data-kind="time"] {
@@ -7330,6 +7390,14 @@ button.agent-gui-node__conversation-section-toggle:hover
   width: 14px;
   height: 14px;
   transform-origin: center;
+}
+
+.agent-gui-node__conversation-worktree-glyph {
+  display: block;
+  flex: none;
+  width: 15px;
+  height: 15px;
+  color: var(--text-tertiary);
 }
 
 .agent-gui-node__conversation-meta[data-kind="loading"] {
@@ -7953,6 +8021,28 @@ button.agent-gui-node__conversation-section-toggle:hover
   text-align: center;
 }
 
+.agent-gui-node__conversation-rail-load-error {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 16px 14px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+}
+
+.agent-gui-node__conversation-rail-load-error-icon {
+  width: 20px;
+  height: 20px;
+  color: var(--text-secondary);
+}
+
 .agent-gui-node__unavailable-chat-empty {
   display: flex;
   flex-direction: column;
@@ -8287,6 +8377,114 @@ button.agent-gui-node__conversation-section-toggle:hover
      dock, and a transparent footer would show message rows behind the
      toolbar controls. */
   background: var(--agent-gui-session-flow-background);
+}
+
+/* Compact host surfaces are not conversation timelines. Keep attachments and
+   growing text in normal flow so they cannot overhang unrelated host chrome. */
+.agent-gui-node__composer[data-layout="embedded"] {
+  position: relative;
+  bottom: auto;
+  z-index: 1;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+}
+
+.agent-gui-node__composer[data-layout="embedded"]
+  .agent-gui-node__composer-input-shell {
+  gap: 8px;
+}
+
+.agent-gui-node__shell[data-quick-composer-input-surface="borderless"]
+  .agent-gui-node__composer-input-shell,
+.agent-gui-node__shell[data-quick-composer-input-surface="borderless"]
+  .agent-gui-node__composer-input-shell:hover,
+.agent-gui-node__shell[data-quick-composer-input-surface="borderless"]
+  .agent-gui-node__composer-input-shell:focus-within {
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.agent-gui-node__composer[data-layout="embedded"]
+  .agent-gui-node__composer-prompt-input-area {
+  display: grid;
+  min-width: 0;
+}
+
+.agent-gui-node__composer[data-layout="embedded"]
+  .agent-gui-node__composer-prompt-input-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  min-width: 0;
+}
+
+.agent-gui-node__composer[data-layout="embedded"]
+  .agent-gui-node__composer-textarea {
+  min-height: 46px;
+  max-height: 96px;
+  overflow-y: auto;
+}
+
+/* Full-height launch surfaces explicitly assign the available block size.
+   Keep that contract opt-in so compact embedded composers continue sizing to
+   their content. */
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"] {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"]
+  .agent-gui-node__composer-input-group {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"]
+  .agent-gui-node__composer-input-shell {
+  grid-template-rows: minmax(0, 1fr) auto;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"]
+  .agent-gui-node__composer-prompt-input-area {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"]
+  .agent-gui-node__composer-prompt-input-line {
+  align-items: stretch;
+  height: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"]
+  .agent-gui-node__rich-text-editor-surface,
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"]
+  .agent-gui-node__rich-text-editor-content {
+  height: 100%;
+  min-height: 0;
+}
+
+.agent-gui-node__composer[data-layout="embedded"][data-fill-available-height="true"]
+  .agent-gui-node__composer-textarea {
+  height: 100%;
+  min-height: 0;
+  max-height: none;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -9327,9 +9525,32 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
   padding: 2px 8px;
 }
 
-.agent-gui-node__composer-project-row .agent-gui-node__composer-menu-trigger {
+.agent-gui-node__composer-project-controls {
+  display: grid;
+  grid-template-columns: fit-content(240px);
   flex: 0 1 auto;
-  max-width: min(42%, 180px);
+  min-width: 0;
+  max-width: 100%;
+  align-items: center;
+  gap: 0;
+}
+
+.agent-gui-node__composer-project-controls:has(
+  [data-testid="agent-gui-session-launch-mode"]
+) {
+  grid-template-columns: fit-content(240px) max-content;
+}
+
+.agent-gui-node__composer-project-trigger {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 240px;
+}
+
+.agent-gui-node__composer-project-controls
+  [data-testid="agent-gui-session-launch-mode"] {
+  flex: 0 0 auto;
+  max-width: none;
 }
 
 .agent-gui-node__composer-provider-select {

@@ -166,8 +166,9 @@ func (a *CodexAppServerAdapter) ApplyGoal(
 	observation := a.sessionGoal(session.AgentSessionID)
 	return GoalAdapterResult{
 		Events: events, Observation: observation,
-		Evidence:      map[string]any{"source": "codex_goal_rpc", "confidence": "authoritative", "repairEpoch": input.RepairEpoch},
-		ProviderPhase: "applied",
+		Evidence:         map[string]any{"source": "codex_goal_rpc", "confidence": "authoritative", "repairEpoch": input.RepairEpoch},
+		ProviderPhase:    "applied",
+		ExecutionPending: action == GoalControlSet,
 	}, nil
 }
 
@@ -688,12 +689,8 @@ func (a *CodexAppServerAdapter) scheduleGoalContinuationNudge(session Session) {
 		grace = defaultCodexAppServerGoalContinuationGraceWindow
 	}
 	go func() {
-		timer := time.NewTimer(grace)
-		defer timer.Stop()
-		select {
-		case <-client.Done():
+		if err := client.waitForProviderProgress(context.Background(), grace); err != nil {
 			return
-		case <-timer.C:
 		}
 		appSession.goalMutationMu.Lock()
 		defer appSession.goalMutationMu.Unlock()

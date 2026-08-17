@@ -1,6 +1,7 @@
 import type { NativeStackScreenProps } from "@react-navigation/native-stack";
 import { Alert } from "react-native";
 import { useServiceSnapshot } from "../bindings/useServiceSnapshot";
+import { presentMobileSoftwareUpdate } from "../components/presentMobileSoftwareUpdate";
 import { t } from "../i18n";
 import {
   mobileThemePreferenceService,
@@ -9,7 +10,6 @@ import {
 import { mobileSecurity } from "../native/mobileNative";
 import type { MobileRootStackParamList } from "../navigation/mobileNavigation";
 import type { MobileApplicationService } from "../services/mobileApplicationService";
-import { isMobileUpdateInstallPermissionRequired } from "../services/mobileUpdateService";
 import { SettingsScreenView } from "./SettingsScreenView";
 
 type Props = NativeStackScreenProps<MobileRootStackParamList, "Settings"> & {
@@ -41,51 +41,12 @@ export function SettingsScreen({ application, navigation }: Props) {
     });
   };
 
-  const checkForSoftwareUpdate = (): void => {
-    void mobileUpdateService
-      .checkForUpdates()
-      .then((nextSnapshot) => {
-        if (nextSnapshot.status === "unsupported") {
-          Alert.alert(t("softwareUpdate"), t("updatesUnavailable"));
-          return;
-        }
-        if (nextSnapshot.status === "upToDate") {
-          Alert.alert(t("softwareUpdate"), t("upToDate"));
-          return;
-        }
-        if (nextSnapshot.status !== "available" || !nextSnapshot.release) {
-          return;
-        }
-
-        Alert.alert(
-          t("updateAvailable"),
-          t("updateAvailableDescription", {
-            version: nextSnapshot.release.versionName
-          }),
-          [
-            { style: "cancel", text: t("cancel") },
-            {
-              onPress: () => {
-                void mobileUpdateService.installUpdate().catch((error) => {
-                  if (!isMobileUpdateInstallPermissionRequired(error)) {
-                    Alert.alert(t("updateInstallFailed"));
-                  }
-                });
-              },
-              text: t("downloadAndInstall")
-            }
-          ]
-        );
-      })
-      .catch(() => {
-        Alert.alert(t("updateCheckFailed"));
-      });
-  };
-
   return (
     <SettingsScreenView
       onBack={() => navigation.goBack()}
-      onSoftwareUpdatePress={checkForSoftwareUpdate}
+      onSoftwareUpdatePress={() =>
+        presentMobileSoftwareUpdate(mobileUpdateService)
+      }
       onSignOut={confirmSignOut}
       onThemePreferenceChange={changeThemePreference}
       session={snapshot.session}

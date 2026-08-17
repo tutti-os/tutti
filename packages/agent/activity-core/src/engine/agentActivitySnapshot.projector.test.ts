@@ -122,6 +122,7 @@ function session(): AgentActivitySession {
     forkedFrom: null,
     createdAtUnixMs: 1,
     cwd: "/workspace",
+    isolation: null,
     endedAtUnixMs: null,
     goal: null,
     imported: false,

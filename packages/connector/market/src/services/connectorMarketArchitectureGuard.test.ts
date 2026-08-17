@@ -37,6 +37,20 @@ test("connector market UI does not construct services or import host transports"
   );
 });
 
+test("connector authorization starts only from the explicit dialog action", () => {
+  const dialogsSource = readFileSync(
+    join(sourceDirectory, "ui", "dialogs", "ConnectorMarketDialogs.tsx"),
+    "utf8"
+  );
+
+  assert.doesNotMatch(dialogsSource, /autoStartedAuthorization/);
+  assert.doesNotMatch(dialogsSource, /brokeredAuthorizationConnectorKey/);
+  assert.match(
+    dialogsSource,
+    /onAuthorize=\{\(secret\)\s*=>\s*authorizeConnector\(dialog\.connectorKey, secret\)/
+  );
+});
+
 function sourceFiles(directory: string): string[] {
   const files: string[] = [];
   for (const entry of readdirSync(directory)) {

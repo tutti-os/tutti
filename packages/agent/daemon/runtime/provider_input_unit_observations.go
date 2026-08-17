@@ -87,6 +87,13 @@ func (t *providerInputUnitTracker) stamp(
 		return events
 	}
 	for index := range events {
+		// Message handlers may stamp a reduction before handing it to the
+		// active-turn emitter. Keep the boundary idempotent so the same event
+		// is never assigned two observation indexes while traversing both
+		// paths.
+		if events[index].ProviderInputUnit != nil {
+			continue
+		}
 		current.nextEventIndex++
 		events[index].ProviderInputUnit = &activityshared.ProviderInputUnitContext{
 			RecordingID:  current.unit.RecordingID,

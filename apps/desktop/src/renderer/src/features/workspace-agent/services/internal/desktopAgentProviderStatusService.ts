@@ -48,7 +48,7 @@ import {
 export type { DiagnosticsConsentStore } from "./desktopAgentProviderStatusDiagnostics.ts";
 
 export interface DesktopAgentProviderStatusServiceDependencies {
-  accountLogin?: { startLogin(): Promise<void> };
+  accountLogin?: { startLogin(): Promise<unknown> };
   loginStatusPollDurationMs?: number;
   loginStatusPollIntervalMs?: number;
   loginStatusPollScheduler?: AgentProviderStatusPollScheduler;

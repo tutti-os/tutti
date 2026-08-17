@@ -103,5 +103,23 @@ func claudeSDKLifecycleLogArgs(payload map[string]any) []any {
 			args = append(args, field.logKey, payloadInt64(payload, field.payloadKey))
 		}
 	}
+	if usage := payloadMap(payload, "usage"); len(usage) > 0 {
+		for _, field := range []struct {
+			logKey     string
+			payloadKey string
+		}{
+			{logKey: "usage_total_tokens", payloadKey: "total_tokens"},
+			{logKey: "usage_input_tokens", payloadKey: "input_tokens"},
+			{logKey: "usage_output_tokens", payloadKey: "output_tokens"},
+			{logKey: "usage_cache_read_input_tokens", payloadKey: "cache_read_input_tokens"},
+			{logKey: "usage_cache_creation_input_tokens", payloadKey: "cache_creation_input_tokens"},
+			{logKey: "usage_tool_uses", payloadKey: "tool_uses"},
+			{logKey: "usage_duration_ms", payloadKey: "duration_ms"},
+		} {
+			if _, ok := usage[field.payloadKey]; ok {
+				args = append(args, field.logKey, payloadInt64(usage, field.payloadKey))
+			}
+		}
+	}
 	return args
 }

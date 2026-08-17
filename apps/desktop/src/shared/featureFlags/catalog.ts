@@ -7,10 +7,10 @@ import {
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const BROWSER_CHROME_COOKIE_IMPORT_FLAG = "browser.chromeCookieImport";
 export const LAB_AUTOMATION_RULES_FLAG = "lab.automationRules";
+export const LAB_CONNECTORS_FLAG = "lab.connectors";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
 export const LAB_CONVERSATION_ACTIVITY_VIEW_FLAG =
   "lab.conversationActivityView";
-export const LAB_AGENT_SESSION_FORK_FLAG = "lab.agentSessionFork";
 export const LAB_CODEX_SAVER_MODE_FLAG = "lab.codexSaverMode";
 // Keep the durable key for existing profiles while naming the product concept
 // after Tutti's integration maturity rather than the upstream Agent maturity.
@@ -19,7 +19,6 @@ export const WORKSPACE_STANDALONE_AGENT_MODE_FLAG =
   "workspace.standaloneAgentMode";
 export const AGENT_REFERENCE_PROVENANCE_FILTER_FLAG =
   "agent.referenceProvenanceFilter";
-export const AGENT_QUICK_PROMPT_LIBRARY_FLAG = "agent.quickPromptLibrary";
 export const AGENT_SESSION_RECORDING_FLAG = "agent.sessionRecording";
 export const MOBILE_REMOTE_ACCESS_SETTINGS_FLAG = "mobile.remoteAccessSettings";
 export const AGENT_EXTENSION_GEMINI_FLAG = "agent.extension.gemini";
@@ -141,11 +140,6 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "developer"
   },
   {
-    key: AGENT_QUICK_PROMPT_LIBRARY_FLAG,
-    default: false,
-    group: "developer"
-  },
-  {
     key: AGENT_SESSION_RECORDING_FLAG,
     default: false,
     group: "developer"
@@ -164,6 +158,13 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     descriptionKey: "workspace.settings.lab.automationRulesDescription"
   },
   {
+    key: LAB_CONNECTORS_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspace.settings.lab.connectorsLabel",
+    descriptionKey: "workspace.settings.lab.connectorsDescription"
+  },
+  {
     key: LAB_WORKBENCH_SHORTCUTS_FLAG,
     default: false,
     group: "lab",
@@ -176,13 +177,6 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "lab",
     labelKey: "workspace.settings.lab.conversationActivityViewLabel",
     descriptionKey: "workspace.settings.lab.conversationActivityViewDescription"
-  },
-  {
-    key: LAB_AGENT_SESSION_FORK_FLAG,
-    default: false,
-    group: "developer",
-    labelKey: "workspace.settings.developer.agentSessionForkLabel",
-    descriptionKey: "workspace.settings.developer.agentSessionForkDescription"
   },
   {
     key: LAB_CODEX_SAVER_MODE_FLAG,
@@ -208,6 +202,11 @@ export function isFeatureEnabled(
   flags: DesktopFeatureFlags,
   key: string
 ): boolean {
+  // Keep the durable key for old profiles, but do not expose or activate the
+  // retired mobile remote access capability.
+  if (key === MOBILE_REMOTE_ACCESS_SETTINGS_FLAG) {
+    return false;
+  }
   if (Object.prototype.hasOwnProperty.call(flags, key)) {
     return flags[key] === true;
   }

@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIAgentTarget } from "../../../types";
 import {
   agentTargetPresentationKey,
-  projectAgentTargetPresentations
+  mergeAgentTargetsForMentionPresentations,
+  projectAgentTargetPresentations,
+  projectMentionAgentTargetPresentations,
+  resolveMentionAgentTargetsForPresentations
 } from "./agentGuiTargetPresentation";
 
 const TARGET: AgentGUIAgentTarget = {
@@ -76,5 +79,93 @@ describe("Agent GUI target presentation projection", () => {
         }
       ])
     );
+  });
+
+  it("merges handoff-only shared targets into mention presentation lookup", () => {
+    const local: AgentGUIAgentTarget = {
+      ...TARGET,
+      agentTargetId: "local:codex",
+      label: "Codex",
+      provider: "codex",
+      targetId: "local:codex"
+    };
+    const shared: AgentGUIAgentTarget = {
+      ...TARGET,
+      agentTargetId: "shared-agent:jun-codex",
+      iconUrl: "data:image/png;base64,shared-codex",
+      label: "Codex",
+      ownerLabel: "Jun Sun",
+      ownership: "shared",
+      provider: "codex",
+      targetId: "shared-agent:jun-codex"
+    };
+
+    expect(
+      mergeAgentTargetsForMentionPresentations([local], [local, shared])
+    ).toEqual([local, shared]);
+    expect(
+      projectAgentTargetPresentations({
+        agentTargets: mergeAgentTargetsForMentionPresentations(
+          [local],
+          [shared]
+        ),
+        ownerSeparator: " 的 ",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject([
+      { agentTargetId: "local:codex", iconUrl: local.iconUrl },
+      {
+        agentTargetId: "shared-agent:jun-codex",
+        iconUrl: "data:image/png;base64,shared-codex",
+        name: "Jun Sun 的 Codex"
+      }
+    ]);
+  });
+
+  it("uses a complete identity catalog instead of action projections", () => {
+    const local: AgentGUIAgentTarget = {
+      ...TARGET,
+      agentTargetId: "local:codex",
+      label: "Codex",
+      provider: "codex",
+      targetId: "local:codex"
+    };
+    const offlineShared: AgentGUIAgentTarget = {
+      ...TARGET,
+      agentTargetId: "shared-agent:rv4no-codex",
+      disabled: true,
+      iconUrl: "data:image/png;base64,shared-codex",
+      label: "Codex",
+      ownerLabel: "rv4no",
+      ownership: "shared",
+      provider: "codex",
+      targetId: "shared-agent:rv4no-codex"
+    };
+
+    expect(
+      resolveMentionAgentTargetsForPresentations({
+        handoffTargets: [local],
+        mentionTargets: [offlineShared],
+        railTargets: [local]
+      })
+    ).toEqual([offlineShared]);
+    expect(
+      projectMentionAgentTargetPresentations({
+        handoffTargets: [local],
+        mentionTargets: [offlineShared],
+        ownerSeparator: "'s ",
+        railTargets: [local],
+        workspaceId: "workspace-1"
+      })
+    ).toEqual([
+      {
+        agentTargetId: "shared-agent:rv4no-codex",
+        iconUrl: "data:image/png;base64,shared-codex",
+        maskIconUrl: TARGET.maskIconUrl,
+        name: "rv4no's Codex",
+        provider: "codex",
+        workspaceId: "workspace-1"
+      }
+    ]);
   });
 });

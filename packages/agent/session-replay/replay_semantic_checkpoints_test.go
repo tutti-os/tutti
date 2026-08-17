@@ -322,6 +322,32 @@ func TestProjectBindingMatchesCanonicalCWDAndRailPlacement(t *testing.T) {
 	}
 }
 
+func TestProjectBindingMatchesSharedWorkspaceRemappedCWD(t *testing.T) {
+	expected := agenthost.HistoricalSession{
+		AgentTargetID:   "local:codex",
+		Provider:        "codex",
+		Cwd:             "/workspace/agent-session-replay",
+		RailSectionKind: storesqlite.RailSectionKindProject,
+		RailProjectPath: "/workspace/agent-session-replay",
+		RailSectionKey:  "project:/workspace/agent-session-replay",
+	}
+	actual := storesqlite.Session{
+		AgentTargetID:   expected.AgentTargetID,
+		Provider:        expected.Provider,
+		Cwd:             "/workspace/24238bb8-983c-4b0e-a516-e9719ab7ea5c/agent-session-replay",
+		RailSectionKind: expected.RailSectionKind,
+		RailProjectPath: expected.RailProjectPath,
+		RailSectionKey:  expected.RailSectionKey,
+	}
+	if !projectBindingMatches(actual, expected) {
+		t.Fatal("shared confined cwd remapping should match recorded project binding")
+	}
+	actual.Cwd = "/workspace/other-room/other-project"
+	if projectBindingMatches(actual, expected) {
+		t.Fatal("unrelated remapped cwd must not match")
+	}
+}
+
 func TestProjectBindingMatchesNormalizesRailSectionKeySymlinks(t *testing.T) {
 	rawDir := t.TempDir()
 	canonicalDir := storesqlite.NormalizeProjectPath(rawDir)

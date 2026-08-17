@@ -120,6 +120,7 @@ function createLocationReferenceSource(input: {
       paginated: false,
       navigable: false,
       filterable: true,
+      filtersUseSearch: true,
       ...(input.searchByProvenance
         ? { provenanceDimensions: ["agent"] as const }
         : {})

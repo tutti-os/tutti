@@ -29,6 +29,10 @@ type ApplicationHostCanonicalPorts interface {
 // It is complete before Host construction and intentionally has no Service
 // field, so Host cannot become a reverse container for the tuttid facade.
 type HostSupportPorts struct {
+	// DeletedSessions wraps the canonical lifecycle store so tuttid-owned
+	// sidecars survive restore, participate in the same purge transaction, and
+	// publish restored canonical commits through the product projection.
+	DeletedSessions        agenthost.DeletedSessionStore
 	SessionPurge           agenthost.SessionPurgeStore
 	SessionDeletionGuard   agenthost.SessionDeletionGuard
 	SessionForkContext     agenthost.SessionForkContextPolicy
@@ -46,7 +50,6 @@ type HostSupportPorts struct {
 	OperationEvents        agenthost.RuntimeOperationEventPublisher
 	OperationOwner         string
 	StaleTurnSettler       agenthost.StaleTurnSettler
-	WorktreeGC             agenthost.WorktreeGarbageCollector
 	GoalStore              agenthost.GoalStateStore
 	GoalFences             agenthost.GoalGenerationFenceStore
 	GoalInbox              agenthost.GoalReconcileInboxStore
@@ -80,11 +83,10 @@ func NewServiceComponents(
 	sessionSettings := &serviceSessionSettingsState{}
 	worktreeIsolationLock := &sync.RWMutex{}
 	support := HostSupportPorts{
+		DeletedSessions:      config.Sessions.DeletedSessions,
 		SessionPurge:         config.Sessions.PurgeStore,
 		SessionDeletionGuard: config.Sessions.DeletionGuard,
-		SessionForkContext: serviceHostSessionForkContextPolicy{
-			runtimePreparer: config.Runtime.Preparer,
-		},
+		SessionForkContext:   serviceHostSessionForkContextPolicy{},
 		SessionForkState: serviceHostSessionForkProviderStateBinder{
 			runtimePreparer: config.Runtime.Preparer,
 		},
@@ -107,17 +109,8 @@ func NewServiceComponents(
 		OperationEvents: serviceHostRuntimeOperationEventPublisher{
 			publisher: config.Observers.RuntimeOperationEventPublisher,
 		},
-		OperationOwner:   config.Runtime.RuntimeOperationOwner,
-		StaleTurnSettler: config.Runtime.StaleTurnSettler,
-		WorktreeGC: serviceHostWorktreeGC{
-			mu:                     worktreeIsolationLock,
-			stateDir:               config.Resources.WorktreeStateDir,
-			workspaceIDs:           config.Resources.WorkspaceIDs,
-			sessionReader:          config.Sessions.Reader,
-			runtime:                runtime,
-			agentTargetStore:       config.Composer.AgentTargetStore,
-			workspaceAgentResolver: config.Composer.WorkspaceAgentResolver,
-		},
+		OperationOwner:       config.Runtime.RuntimeOperationOwner,
+		StaleTurnSettler:     config.Runtime.StaleTurnSettler,
 		GoalStore:            config.Runtime.GoalStateStore,
 		GoalFences:           config.Runtime.GoalGenerationFenceStore,
 		GoalInbox:            config.Runtime.GoalReconcileInboxStore,
@@ -153,6 +146,11 @@ func NewApplicationHostWithPorts(
 	if canonical == nil || runtime == nil || support.RuntimePreparation == nil {
 		return nil
 	}
+	if support.DeletedSessions == nil {
+		if _, ok := any(canonical).(agenthost.DeletedSessionStore); !ok {
+			return nil
+		}
+	}
 	return composeApplicationHost(
 		support,
 		canonical,
@@ -182,11 +180,16 @@ func composeApplicationHost(
 	sessionForkRuntime, _ := runtime.(agenthost.SessionForkRuntime)
 	turnSubmissions, _ := canonical.(agenthost.TurnSubmissionStore)
 	effectiveHistory, _ := canonical.(agenthost.EffectiveHistoryStore)
+	deletedSessions := support.DeletedSessions
+	if deletedSessions == nil {
+		deletedSessions, _ = canonical.(agenthost.DeletedSessionStore)
+	}
 	historyRuntime, _ := runtime.(agenthost.RuntimeHistoryController)
 	return agenthost.New(agenthost.Config{
 		CanonicalStore: canonical, SessionManagement: sessionManagement,
 		SessionBatchManagement: sessionBatchManagement, SessionPurge: support.SessionPurge,
-		SessionForks: sessionForks, SessionForkRecovery: sessionForkRecovery,
+		DeletedSessions: deletedSessions,
+		SessionForks:    sessionForks, SessionForkRecovery: sessionForkRecovery,
 		HistoricalState:        historicalState,
 		SessionForkRuntime:     sessionForkRuntime,
 		SessionForkContext:     support.SessionForkContext,
@@ -205,8 +208,7 @@ func composeApplicationHost(
 		CommitObserver:    support.CommitObserver,
 		RuntimeOperations: support.RuntimeOperations, OperationEvents: support.OperationEvents,
 		OperationOwner: support.OperationOwner, StaleTurnSettler: support.StaleTurnSettler,
-		WorktreeGC: support.WorktreeGC,
-		GoalStore:  support.GoalStore, GoalFences: support.GoalFences,
+		GoalStore: support.GoalStore, GoalFences: support.GoalFences,
 		GoalRuntime: goalRuntime, GoalInbox: support.GoalInbox,
 		GoalOwner: support.GoalOwner, GoalClock: support.GoalClock,
 		GoalAttemptTimeout: support.GoalAttemptTimeout, GoalRecoveryBudget: support.GoalRecoveryBudget,

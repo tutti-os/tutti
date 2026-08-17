@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { AgentGUIConversationSummary } from "./agentGuiConversationModel";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import {
+  conversationRailActiveOverlayCountsTowardTotal,
   conversationRailSectionActiveConversationId,
   conversationRailSectionHeaderVisibility,
   insertConversationRailSectionOverlay,
@@ -379,6 +380,87 @@ describe("projectConversationRailMemberships", () => {
 
     expect(projected[0]?.items.map((item) => item.id)).toEqual(["exact"]);
   });
+
+  it("reorders loaded ordinary rows from current turn sort times", () => {
+    const previouslyRecent = {
+      ...conversation("previously-recent"),
+      sortTimeUnixMs: 100
+    };
+    const continuedHistorical = {
+      ...conversation("continued-historical"),
+      sortTimeUnixMs: 200
+    };
+
+    const projected = projectConversationRailMemberships({
+      conversations: [previouslyRecent, continuedHistorical],
+      labels: railLabels,
+      sections: membership([previouslyRecent, continuedHistorical])
+    });
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "continued-historical",
+      "previously-recent"
+    ]);
+  });
+
+  it("keeps ordinary row order stable when only streaming freshness changes", () => {
+    const first = {
+      ...conversation("first"),
+      sortTimeUnixMs: 200,
+      updatedAtUnixMs: 1
+    };
+    const second = {
+      ...conversation("second"),
+      sortTimeUnixMs: 100,
+      updatedAtUnixMs: 2
+    };
+    const sections = membership([first, second]);
+
+    const projected = projectConversationRailMemberships({
+      conversations: [
+        { ...first, updatedAtUnixMs: 3 },
+        { ...second, updatedAtUnixMs: 4 }
+      ],
+      labels: railLabels,
+      sections
+    });
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "first",
+      "second"
+    ]);
+  });
+
+  it("preserves daemon-owned pinned membership order", () => {
+    const first = {
+      ...conversation("pinned-first", 10),
+      railSectionKey: "conversations",
+      sortTimeUnixMs: 100
+    };
+    const second = {
+      ...conversation("pinned-second", 20),
+      railSectionKey: "conversations",
+      sortTimeUnixMs: 200
+    };
+
+    const projected = projectConversationRailMemberships({
+      conversations: [first, second],
+      labels: railLabels,
+      sections: [
+        {
+          id: "pinned",
+          kind: "pinned",
+          project: null,
+          sessionIds: [first.id, second.id]
+        }
+      ]
+    });
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "pinned-first",
+      "pinned-second"
+    ]);
+  });
 });
 
 describe("projectConversationRailSectionsWithTransientConversations", () => {
@@ -386,6 +468,45 @@ describe("projectConversationRailSectionsWithTransientConversations", () => {
     sectionConversations: "Conversations",
     sectionPinned: "Pinned"
   };
+
+  it("keeps every running canonical session visible while its page is stale", () => {
+    const canonical = section([conversation("older")]);
+    const project = canonical[0]?.project ?? null;
+    const first = {
+      ...conversation("running-1"),
+      project,
+      status: "working" as const,
+      sortTimeUnixMs: 30,
+      updatedAtUnixMs: 30
+    };
+    const second = {
+      ...conversation("running-2"),
+      project,
+      status: "waiting" as const,
+      sortTimeUnixMs: 20,
+      updatedAtUnixMs: 20
+    };
+
+    const projected = projectConversationRailSectionsWithTransientConversations(
+      {
+        conversations: [first, second],
+        labels,
+        reconcilingSessionIds: [],
+        sections: canonical
+      }
+    );
+
+    expect(projected[0]?.items.map((item) => item.id)).toEqual([
+      "running-1",
+      "running-2",
+      "older"
+    ]);
+    expect(projected[0]?.items.map((item) => item.projectionSource)).toEqual([
+      "runtime_overlay",
+      "runtime_overlay",
+      undefined
+    ]);
+  });
 
   it("keeps pending rows out of project sections until exact membership arrives", () => {
     const canonical = section([conversation("canonical")]);
@@ -1022,5 +1143,29 @@ describe("resolveConversationRailActiveConversation", () => {
         conversations: [conversation("other")]
       })
     ).toBe(controllerActive);
+  });
+});
+
+describe("conversationRailActiveOverlayCountsTowardTotal", () => {
+  it("does not count an active canonical entity when its section row is a runtime overlay", () => {
+    const active = conversation("active");
+
+    expect(
+      conversationRailActiveOverlayCountsTowardTotal({
+        activeConversation: active,
+        matchesFilter: true,
+        sectionItems: [{ ...active, projectionSource: "runtime_overlay" }]
+      })
+    ).toBe(false);
+  });
+
+  it("counts an active matching entity that is absent from the section", () => {
+    expect(
+      conversationRailActiveOverlayCountsTowardTotal({
+        activeConversation: conversation("active"),
+        matchesFilter: true,
+        sectionItems: [conversation("older")]
+      })
+    ).toBe(true);
   });
 });

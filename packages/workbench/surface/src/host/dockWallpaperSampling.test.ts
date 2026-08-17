@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   getDockWallpaperImageSample,
+  parseDockWallpaperCssUrl,
+  resolveDockWallpaperPositionOffset,
+  resolveDockWallpaperRenderedImageRect,
   sampleDockWallpaperLuminanceAtElement
 } from "./dockWallpaperSampling.ts";
 
@@ -70,6 +73,72 @@ test("samples cached RGBA bytes without additional canvas readbacks", () => {
 
   assert.ok(luminance !== null);
   assert.ok(luminance > 100 && luminance < 155);
+});
+
+test("parses quoted and unquoted wallpaper URLs", () => {
+  assert.equal(
+    parseDockWallpaperCssUrl('url("wallpaper.png")'),
+    "wallpaper.png"
+  );
+  assert.equal(parseDockWallpaperCssUrl("url(wallpaper.png)"), "wallpaper.png");
+  assert.equal(parseDockWallpaperCssUrl("none"), null);
+  assert.equal(parseDockWallpaperCssUrl("url()"), null);
+});
+
+test("maps cover and contain images into the wallpaper container", () => {
+  assert.deepEqual(
+    resolveDockWallpaperRenderedImageRect({
+      containerHeight: 100,
+      containerWidth: 200,
+      imageHeight: 100,
+      imageWidth: 100,
+      positionX: "50%",
+      positionY: "50%",
+      size: "cover"
+    }),
+    { height: 200, left: 0, top: -50, width: 200 }
+  );
+  assert.deepEqual(
+    resolveDockWallpaperRenderedImageRect({
+      containerHeight: 100,
+      containerWidth: 200,
+      imageHeight: 100,
+      imageWidth: 100,
+      positionX: "right",
+      positionY: "bottom",
+      size: "contain"
+    }),
+    { height: 100, left: 100, top: 0, width: 100 }
+  );
+});
+
+test("supports stretched, native, percentage, and pixel wallpaper geometry", () => {
+  assert.deepEqual(
+    resolveDockWallpaperRenderedImageRect({
+      containerHeight: 100,
+      containerWidth: 200,
+      imageHeight: 40,
+      imageWidth: 80,
+      positionX: "25%",
+      positionY: "12px",
+      size: "100% 100%"
+    }),
+    { height: 100, left: 0, top: 12, width: 200 }
+  );
+  assert.deepEqual(
+    resolveDockWallpaperRenderedImageRect({
+      containerHeight: 100,
+      containerWidth: 200,
+      imageHeight: 40,
+      imageWidth: 80,
+      positionX: "25%",
+      positionY: "12px",
+      size: "auto"
+    }),
+    { height: 40, left: 30, top: 12, width: 80 }
+  );
+  assert.equal(resolveDockWallpaperPositionOffset("invalid", 80), 40);
+  assert.equal(resolveDockWallpaperPositionOffset("not-a-number%", 80), 40);
 });
 
 function rect({

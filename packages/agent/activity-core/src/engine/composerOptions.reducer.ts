@@ -5,15 +5,16 @@ import type {
 } from "../types.ts";
 import type { ScopedSessionResultValidation } from "./commandResult.validation.ts";
 import type {
+  ComposerOptionsEntry,
+  ComposerOptionsLoadRequestedIntent,
+  ComposerOptionsSection,
+  ComposerOptionsState
+} from "./composerOptions.types.ts";
+import type {
   EngineCommand,
   EngineIntent,
   EngineReducerResult
 } from "./types.ts";
-import type {
-  ComposerOptionsEntry,
-  ComposerOptionsLoadRequestedIntent,
-  ComposerOptionsState
-} from "./composerOptions.types.ts";
 import {
   areComposerOptionsEqual,
   cloneAgentActivityComposerOptions,
@@ -23,7 +24,12 @@ import {
 const NO_COMMANDS: readonly EngineCommand[] = [];
 
 export function createInitialComposerOptionsState(): ComposerOptionsState {
-  return { optionsByTargetKey: {}, entriesByTargetKey: {} };
+  return {
+    entriesByTargetKey: {},
+    optionsByTargetKey: {},
+    sectionEntriesByTargetKey: {},
+    sectionOptionsByTargetKey: {}
+  };
 }
 
 export function composerOptionsReducer(
@@ -37,7 +43,12 @@ export function composerOptionsReducer(
     case "composerOptions/loadRequested":
       return requestLoad(state, intent);
     case "composerOptions/invalidated":
-      return invalidate(state, intent.providers, intent.targetKeys);
+      return invalidate(
+        state,
+        intent.providers,
+        intent.targetKeys,
+        intent.sections
+      );
     case "engine/commandResult":
       if (intent.commandType === "composerOptions/load") {
         return settleLoad(state, intent);
@@ -74,6 +85,7 @@ function refreshAfterSettings(
     cwd: session.cwd,
     force: true,
     provider: session.provider,
+    section: "core",
     settings: composerSettingsFromSession(session),
     targetKey,
     type: "composerOptions/loadRequested",
@@ -109,20 +121,21 @@ function requestLoad(
   if (!targetKey || !provider || !workspaceId || !commandId) {
     return unchanged(state);
   }
+  const section = intent.section;
   const signature = composerOptionsRequestSignature({
     provider,
     cwd: intent.cwd,
     settings: intent.settings
   });
-  const current = state.entriesByTargetKey[targetKey];
-  if (!intent.force && current) {
+  const current = entryFor(state, targetKey, section);
+  if (current) {
     const cacheHit =
-      current.status === "ready" && current.settledSignature === signature;
+      !intent.force &&
+      current.status === "ready" &&
+      current.settledSignature === signature;
     const inFlightDuplicate =
       current.status === "loading" && current.loadingSignature === signature;
-    if (cacheHit || inFlightDuplicate) {
-      return unchanged(state);
-    }
+    if (cacheHit || inFlightDuplicate) return unchanged(state);
   }
   const entry: ComposerOptionsEntry = {
     status: "loading",
@@ -137,15 +150,19 @@ function requestLoad(
       {
         type: "composerOptions/load",
         commandId,
-        correlationId: targetKey,
+        correlationId: correlationKey(targetKey, section),
         targetKey,
         provider,
         workspaceId,
         ...(intent.cwd !== undefined ? { cwd: intent.cwd } : {}),
+        ...(intent.waitForFreshModelCatalog
+          ? { waitForFreshModelCatalog: true }
+          : {}),
+        ...(intent.section !== undefined ? { section: intent.section } : {}),
         ...(intent.settings !== undefined ? { settings: intent.settings } : {})
       }
     ],
-    state: replaceEntry(state, targetKey, entry)
+    state: replaceEntry(state, targetKey, section, entry)
   };
 }
 
@@ -153,90 +170,247 @@ function settleLoad(
   state: ComposerOptionsState,
   intent: Extract<EngineIntent, { type: "engine/commandResult" }>
 ): EngineReducerResult<ComposerOptionsState> {
-  const targetKey = intent.correlationId?.trim() ?? "";
-  const current = state.entriesByTargetKey[targetKey];
-  // A superseded load carries a stale commandId; ignore it so a late result
-  // never clobbers a newer request. Invalidation deliberately keeps the active
-  // command attached so its caller still receives a terminal result.
+  const { section, targetKey } = parseCorrelationKey(
+    intent.correlationId?.trim() ?? ""
+  );
+  const current = entryFor(state, targetKey, section);
   if (!current || current.inFlightCommandId !== intent.commandId) {
     return unchanged(state);
   }
+  const settledEntry = (
+    status: ComposerOptionsEntry["status"]
+  ): ComposerOptionsEntry => ({
+    ...current,
+    status,
+    ...(status === "ready"
+      ? { settledSignature: current.loadingSignature }
+      : {}),
+    loadingSignature: null,
+    inFlightCommandId: null
+  });
   if (intent.outcome !== "succeeded") {
     return changed(
-      replaceEntry(state, targetKey, {
-        ...current,
-        status: "error",
-        loadingSignature: null,
-        inFlightCommandId: null
-      })
+      replaceEntry(state, targetKey, section, settledEntry("error"))
     );
   }
   const options = composerOptionsFromValue(intent.value);
   if (!options) {
     return changed(
-      replaceEntry(state, targetKey, {
-        ...current,
-        status: "error",
-        loadingSignature: null,
-        inFlightCommandId: null
-      })
+      replaceEntry(state, targetKey, section, settledEntry("error"))
     );
   }
-  const settledEntry: ComposerOptionsEntry = {
-    ...current,
-    status: "ready",
-    settledSignature: current.loadingSignature,
-    loadingSignature: null,
-    inFlightCommandId: null
+  const nextEntry = settledEntry("ready");
+  if (!section) {
+    const existing = state.optionsByTargetKey[targetKey];
+    return changed({
+      ...state,
+      entriesByTargetKey: {
+        ...state.entriesByTargetKey,
+        [targetKey]: nextEntry
+      },
+      optionsByTargetKey:
+        existing && areComposerOptionsEqual(existing, options)
+          ? state.optionsByTargetKey
+          : {
+              ...state.optionsByTargetKey,
+              [targetKey]: cloneAgentActivityComposerOptions(options)
+            }
+    });
+  }
+  const previous = state.optionsByTargetKey[targetKey];
+  const merged = mergeSectionOptions(previous, options, section);
+  const sectionOptions = {
+    ...(state.sectionOptionsByTargetKey[targetKey] ?? {}),
+    [section]: cloneAgentActivityComposerOptions(options)
   };
-  const existing = state.optionsByTargetKey[targetKey];
-  const optionsUnchanged = Boolean(
-    existing && areComposerOptionsEqual(existing, options)
-  );
+  const sectionEntries = {
+    ...(state.sectionEntriesByTargetKey[targetKey] ?? {}),
+    [section]: nextEntry
+  };
   return changed({
-    entriesByTargetKey: {
-      ...state.entriesByTargetKey,
-      [targetKey]: settledEntry
+    ...state,
+    entriesByTargetKey:
+      section === "core"
+        ? { ...state.entriesByTargetKey, [targetKey]: nextEntry }
+        : state.entriesByTargetKey,
+    optionsByTargetKey: {
+      ...state.optionsByTargetKey,
+      [targetKey]: merged
     },
-    optionsByTargetKey: optionsUnchanged
-      ? state.optionsByTargetKey
-      : {
-          ...state.optionsByTargetKey,
-          [targetKey]: cloneAgentActivityComposerOptions(options)
-        }
+    sectionEntriesByTargetKey: {
+      ...state.sectionEntriesByTargetKey,
+      [targetKey]: sectionEntries
+    },
+    sectionOptionsByTargetKey: {
+      ...state.sectionOptionsByTargetKey,
+      [targetKey]: sectionOptions
+    }
+  });
+}
+
+function mergeSectionOptions(
+  existing: AgentActivityComposerOptions | undefined,
+  incoming: AgentActivityComposerOptions,
+  section: ComposerOptionsSection
+): AgentActivityComposerOptions {
+  if (!existing) return cloneAgentActivityComposerOptions(incoming);
+  if (section === "core") {
+    return cloneAgentActivityComposerOptions({
+      ...existing,
+      ...incoming,
+      skills: existing.skills,
+      capabilityCatalog: existing.capabilityCatalog,
+      commands: existing.commands,
+      loadedAtUnixMs: incoming.loadedAtUnixMs
+    });
+  }
+  if (section === "connectors") {
+    return cloneAgentActivityComposerOptions({
+      ...existing,
+      capabilityCatalog: [
+        ...(existing.capabilityCatalog ?? []).filter(
+          (capability) => capability.kind !== "connector"
+        ),
+        ...(incoming.capabilityCatalog ?? []).filter(
+          (capability) => capability.kind === "connector"
+        )
+      ],
+      loadedAtUnixMs: incoming.loadedAtUnixMs
+    });
+  }
+  return cloneAgentActivityComposerOptions({
+    ...existing,
+    capabilities: incoming.capabilities ?? existing.capabilities,
+    commands: incoming.commands,
+    skills: incoming.skills,
+    capabilityCatalog: incoming.capabilityCatalog,
+    slashCommandPolicy: incoming.slashCommandPolicy,
+    loadedAtUnixMs: incoming.loadedAtUnixMs
   });
 }
 
 function invalidate(
   state: ComposerOptionsState,
   providers: readonly string[] | undefined,
-  targetKeys: readonly string[] | undefined
+  targetKeys: readonly string[] | undefined,
+  sections: readonly ComposerOptionsSection[] | undefined
 ): EngineReducerResult<ComposerOptionsState> {
   const providerSet = providers?.length ? new Set(providers) : null;
   const targetKeySet = targetKeys?.length
     ? new Set(targetKeys.map((value) => value.trim()).filter(Boolean))
     : null;
-  let entriesByTargetKey: Record<string, ComposerOptionsEntry> | null = null;
+  const sectionSet = sections?.length ? new Set(sections) : null;
+  let next = state;
   for (const [targetKey, entry] of Object.entries(state.entriesByTargetKey)) {
-    const matches =
-      (providerSet === null && targetKeySet === null) ||
-      providerSet?.has(entry.provider) === true ||
-      targetKeySet?.has(targetKey) === true;
-    if (!matches) continue;
-    entriesByTargetKey ??= { ...state.entriesByTargetKey };
-    entriesByTargetKey[targetKey] = {
-      ...entry,
-      // Drop cache validity so a subsequent request refetches. Keep an active
-      // command attached: its caller still needs a terminal result, while the
-      // cleared loading signature prevents a post-invalidation dedupe.
-      settledSignature: null,
-      loadingSignature: null,
-      loadVersion: entry.loadVersion + 1
+    if (!matchesInvalidation(targetKey, entry, providerSet, targetKeySet))
+      continue;
+    next = replaceEntry(next, targetKey, undefined, invalidatedEntry(entry));
+  }
+  for (const [targetKey, entries] of Object.entries(
+    state.sectionEntriesByTargetKey
+  )) {
+    for (const [section, entry] of Object.entries(entries)) {
+      const typedSection = section as ComposerOptionsSection;
+      if (sectionSet !== null && !sectionSet.has(typedSection)) continue;
+      if (!matchesInvalidation(targetKey, entry, providerSet, targetKeySet))
+        continue;
+      next = replaceEntry(
+        next,
+        targetKey,
+        typedSection,
+        invalidatedEntry(entry)
+      );
+    }
+  }
+  return next === state ? unchanged(state) : changed(next);
+}
+
+function invalidatedEntry(entry: ComposerOptionsEntry): ComposerOptionsEntry {
+  return {
+    ...entry,
+    settledSignature: null,
+    loadingSignature: null,
+    loadVersion: entry.loadVersion + 1
+  };
+}
+
+function matchesInvalidation(
+  targetKey: string,
+  entry: ComposerOptionsEntry,
+  providers: Set<string> | null,
+  targetKeys: Set<string> | null
+): boolean {
+  return (
+    (providers === null && targetKeys === null) ||
+    providers?.has(entry.provider) === true ||
+    targetKeys?.has(targetKey) === true
+  );
+}
+
+function entryFor(
+  state: ComposerOptionsState,
+  targetKey: string,
+  section: ComposerOptionsSection | undefined
+): ComposerOptionsEntry | undefined {
+  return section
+    ? state.sectionEntriesByTargetKey[targetKey]?.[section]
+    : state.entriesByTargetKey[targetKey];
+}
+
+function replaceEntry(
+  state: ComposerOptionsState,
+  targetKey: string,
+  section: ComposerOptionsSection | undefined,
+  entry: ComposerOptionsEntry
+): ComposerOptionsState {
+  if (!section) {
+    return {
+      ...state,
+      entriesByTargetKey: { ...state.entriesByTargetKey, [targetKey]: entry }
     };
   }
-  return entriesByTargetKey
-    ? changed({ ...state, entriesByTargetKey })
-    : unchanged(state);
+  const sectionEntriesByTargetKey = {
+    ...state.sectionEntriesByTargetKey,
+    [targetKey]: {
+      ...(state.sectionEntriesByTargetKey[targetKey] ?? {}),
+      [section]: entry
+    }
+  };
+  return {
+    ...state,
+    ...(section === "core"
+      ? {
+          entriesByTargetKey: {
+            ...state.entriesByTargetKey,
+            [targetKey]: entry
+          }
+        }
+      : {}),
+    sectionEntriesByTargetKey
+  };
+}
+
+function correlationKey(
+  targetKey: string,
+  section: ComposerOptionsSection | undefined
+): string {
+  return section ? `${targetKey}::${section}` : targetKey;
+}
+
+function parseCorrelationKey(value: string): {
+  section: ComposerOptionsSection | undefined;
+  targetKey: string;
+} {
+  const separator = value.lastIndexOf("::");
+  const suffix = separator >= 0 ? value.slice(separator + 2) : "";
+  if (
+    suffix === "core" ||
+    suffix === "capabilities" ||
+    suffix === "connectors"
+  ) {
+    return { section: suffix, targetKey: value.slice(0, separator) };
+  }
+  return { section: undefined, targetKey: value };
 }
 
 function composerOptionsFromValue(
@@ -247,17 +421,6 @@ function composerOptionsFromValue(
   return typeof candidate["provider"] === "string"
     ? (value as AgentActivityComposerOptions)
     : null;
-}
-
-function replaceEntry(
-  state: ComposerOptionsState,
-  targetKey: string,
-  entry: ComposerOptionsEntry
-): ComposerOptionsState {
-  return {
-    ...state,
-    entriesByTargetKey: { ...state.entriesByTargetKey, [targetKey]: entry }
-  };
 }
 
 function changed(

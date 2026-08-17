@@ -2,15 +2,24 @@ import {
   Badge,
   Button,
   Card,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Spinner,
   StatusDot
 } from "@tutti-os/ui-system/components";
+import { MoreHorizontalIcon, UninstallIcon } from "@tutti-os/ui-system/icons";
 import { useState } from "react";
 import { useSnapshot } from "valtio";
 
 import type { ConnectorMarketI18nRuntime } from "../../i18n/connectorMarketI18n.ts";
 import type { ConnectorCardView } from "../../services/view/connectorMarketViewTypes.ts";
 import { useConnectorMarketServices } from "../ConnectorMarketServicesContext.tsx";
+import {
+  connectorCardActionStartsInstallation,
+  connectorCardBusyActionLabelKey
+} from "./connectorCardAction.ts";
 import { ConnectorIcon } from "./ConnectorIcon.tsx";
 
 export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
@@ -35,8 +44,16 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
         .finally(() => setDisconnecting(false));
       return;
     }
-    if (card.action === "install") {
-      uiState.openConnector(connectorKey);
+    if (connectorCardActionStartsInstallation(card.action)) {
+      void market.install(connectorKey).catch(() => {
+        onError?.(
+          i18n.t(
+            card.action === "update"
+              ? "connectorUpdateFailed"
+              : "connectorInstallFailed"
+          )
+        );
+      });
       return;
     }
     if (card.action !== "busy") {
@@ -68,11 +85,41 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
             </div>
           ) : null}
         </div>
+        {card.canUninstall ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                aria-label={i18n.t("actionMore")}
+                disabled={card.action === "busy"}
+                size="icon-xs"
+                title={i18n.t("actionMore")}
+                type="button"
+                variant="ghost"
+              >
+                <MoreHorizontalIcon />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="min-w-[160px]"
+              collisionPadding={12}
+              style={{ zIndex: "var(--z-panel-popover)" }}
+            >
+              <DropdownMenuItem
+                variant="destructive"
+                onSelect={() => uiState.requestUninstall(connectorKey)}
+              >
+                <UninstallIcon />
+                {i18n.t("actionUninstall")}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : null}
       </div>
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]">
           <StatusDot
-            pulse={card.status === "installing"}
+            pulse={["installing", "updating"].includes(card.status)}
             size="xs"
             tone={status.tone}
           />
@@ -95,7 +142,9 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
           }
           onClick={handleAction}
         >
-          {disconnecting ? <Spinner size={14} /> : null}
+          {card.action === "busy" || disconnecting ? (
+            <Spinner size={14} />
+          ) : null}
           {disconnecting ? i18n.t("actionDisconnecting") : actionLabel}
         </Button>
       </div>
@@ -107,7 +156,11 @@ function resolveActionLabel(
   card: Readonly<
     Pick<
       ConnectorCardView,
-      "action" | "authorizationState" | "installationState" | "operationStage"
+      | "action"
+      | "authorizationState"
+      | "installationState"
+      | "operationStage"
+      | "status"
     >
   >,
   t: ConnectorMarketI18nRuntime["t"]
@@ -125,16 +178,7 @@ function resolveActionLabel(
     case "unavailable":
       return t("actionManage");
     case "busy":
-      if (
-        card.installationState === "installed" &&
-        card.authorizationState === "disconnected" &&
-        ["accepted", "deactivating", "disconnecting"].includes(
-          card.operationStage ?? ""
-        )
-      ) {
-        return t("actionDisconnecting");
-      }
-      return t("actionInstalling");
+      return t(connectorCardBusyActionLabelKey(card));
   }
 }
 
@@ -145,6 +189,7 @@ function resolveStatus(
     | "installing"
     | "not_installed"
     | "unavailable"
+    | "updating"
     | "update_available",
   t: ConnectorMarketI18nRuntime["t"]
 ): {
@@ -158,6 +203,8 @@ function resolveStatus(
       return { label: t("statusAuthorizationRequired"), tone: "amber" };
     case "installing":
       return { label: t("actionInstalling"), tone: "blue" };
+    case "updating":
+      return { label: t("actionUpdating"), tone: "blue" };
     case "unavailable":
       return { label: t("statusUnavailable"), tone: "red" };
     case "not_installed":

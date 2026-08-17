@@ -9,11 +9,15 @@ import (
 )
 
 type preferencesStoreStub struct {
-	getResult        preferencesbiz.DesktopPreferences
-	patchAgentTarget string
-	patchInput       preferencesbiz.AgentComposerDefaultsPatch
-	patchResult      preferencesbiz.AgentComposerDefaults
-	putInput         preferencesbiz.DesktopPreferences
+	getResult                    preferencesbiz.DesktopPreferences
+	patchAgentTarget             string
+	patchInput                   preferencesbiz.AgentComposerDefaultsPatch
+	patchResult                  preferencesbiz.AgentComposerDefaults
+	patchLaunchWorkspaceID       string
+	patchLaunchProjectSectionKey string
+	patchLaunchMode              string
+	patchLaunchResult            preferencesbiz.DesktopPreferences
+	putInput                     preferencesbiz.DesktopPreferences
 }
 
 type preferencesPublisherStub struct {
@@ -34,6 +38,13 @@ func (s *preferencesStoreStub) PatchAgentComposerDefaultsForTarget(_ context.Con
 	s.patchAgentTarget = agentTargetID
 	s.patchInput = patch
 	return s.patchResult, nil
+}
+
+func (s *preferencesStoreStub) PatchAgentSessionLaunchMode(_ context.Context, workspaceID string, projectSectionKey string, mode string) (preferencesbiz.DesktopPreferences, error) {
+	s.patchLaunchWorkspaceID = workspaceID
+	s.patchLaunchProjectSectionKey = projectSectionKey
+	s.patchLaunchMode = mode
+	return s.patchLaunchResult, nil
 }
 
 type agentComposerDefaultsValidatorStub struct {
@@ -151,6 +162,75 @@ func TestServicePutNotifiesChangeObserversWithPreviousAndCurrentPreferences(t *t
 	}
 	if observed != 1 {
 		t.Fatalf("second observer calls = %d, want 1", observed)
+	}
+}
+
+func TestServicePutPreservesAgentSessionLaunchModesWhenFieldIsOmitted(t *testing.T) {
+	t.Parallel()
+
+	storedLaunchModes := map[string]map[string]string{
+		"workspace-a": {"project:/alpha": "worktree"},
+	}
+	store := &preferencesStoreStub{getResult: preferencesbiz.DesktopPreferences{
+		AgentSessionLaunchModesByWorkspace: storedLaunchModes,
+	}}
+	service := Service{Store: store}
+
+	if _, err := service.Put(context.Background(), PutInput{}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got := store.putInput.AgentSessionLaunchModesByWorkspace["workspace-a"]["project:/alpha"]; got != "worktree" {
+		t.Fatalf("stored Agent Session launch mode = %q, want worktree", got)
+	}
+}
+
+func TestServicePutPreservesAgentSessionLaunchModesWhenStaleFieldIsProvided(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{getResult: preferencesbiz.DesktopPreferences{
+		AgentSessionLaunchModesByWorkspace: map[string]map[string]string{
+			"workspace-a": {"project:/alpha": "worktree"},
+		},
+	}}
+	service := Service{Store: store}
+	stale := map[string]map[string]string{
+		"workspace-b": {"project:/beta": "local"},
+	}
+	if _, err := service.Put(context.Background(), PutInput{AgentSessionLaunchModesByWorkspace: &stale}); err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if got := store.putInput.AgentSessionLaunchModesByWorkspace; len(got) != 1 || got["workspace-a"]["project:/alpha"] != "worktree" {
+		t.Fatalf("launch modes = %#v, want authoritative stored map", got)
+	}
+}
+
+func TestServicePatchAgentSessionLaunchModeUsesDedicatedStoreAndPublishes(t *testing.T) {
+	t.Parallel()
+
+	result := preferencesbiz.DesktopPreferences{
+		AgentSessionLaunchModesByWorkspace: map[string]map[string]string{
+			"workspace-a": {"project:/alpha": "worktree"},
+		},
+	}
+	store := &preferencesStoreStub{patchLaunchResult: result}
+	publisher := &preferencesPublisherStub{}
+	service := Service{Store: store, Publisher: publisher}
+	got, err := service.PatchAgentSessionLaunchMode(context.Background(), PatchAgentSessionLaunchModeInput{
+		WorkspaceID:       " workspace-a ",
+		ProjectSectionKey: " project:/alpha ",
+		Mode:              " worktree ",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if store.patchLaunchWorkspaceID != "workspace-a" || store.patchLaunchProjectSectionKey != "project:/alpha" || store.patchLaunchMode != "worktree" {
+		t.Fatalf("patch input = %q/%q/%q", store.patchLaunchWorkspaceID, store.patchLaunchProjectSectionKey, store.patchLaunchMode)
+	}
+	if got.AgentSessionLaunchModesByWorkspace["workspace-a"]["project:/alpha"] != "worktree" {
+		t.Fatalf("patch result = %#v", got.AgentSessionLaunchModesByWorkspace)
+	}
+	if len(publisher.published) != 1 || publisher.published[0].AgentSessionLaunchModesByWorkspace["workspace-a"]["project:/alpha"] != "worktree" {
+		t.Fatalf("published preferences = %#v", publisher.published)
 	}
 }
 

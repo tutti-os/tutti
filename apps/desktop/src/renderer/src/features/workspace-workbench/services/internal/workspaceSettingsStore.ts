@@ -1,5 +1,6 @@
 import { proxy } from "valtio";
 import type {
+  WorkspaceDeletedConversationsMutableState,
   WorkspaceSettingsModelPlansMutableState,
   WorkspaceSettingsStoreState,
   WorkspaceSettingsWorkspaceAgentsMutableState,
@@ -58,6 +59,25 @@ export function createWorkspaceSettingsModelPlansState(): WorkspaceSettingsModel
   };
 }
 
+export function createWorkspaceDeletedConversationsState(): WorkspaceDeletedConversationsMutableState {
+  return {
+    hasMore: false,
+    loadFailed: false,
+    loadMoreFailed: false,
+    loading: false,
+    loadingMore: false,
+    nextCursor: null,
+    operationBySessionID: {},
+    projectFilter: { kind: "all" },
+    projectOptions: [],
+    purgingAll: false,
+    search: "",
+    sessions: [],
+    totalCount: 0,
+    workspaceTotalCount: 0
+  };
+}
+
 export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
   return proxy({
     activeSection: "general",
@@ -66,6 +86,7 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
     agentFocusRequestID: 0,
     agents: createWorkspaceSettingsAgentsState(),
     automationRules: createWorkspaceSettingsAutomationRulesState(),
+    deletedConversations: createWorkspaceDeletedConversationsState(),
     developerPanelVisible: readDeveloperPanelVisible(),
     developerLogs: {
       clearing: false,
@@ -78,7 +99,6 @@ export function createWorkspaceSettingsStore(): WorkspaceSettingsStoreState {
     generalFocusRequestID: 0,
     modelPlans: createWorkspaceSettingsModelPlansState(),
     open: false,
-    purgingDeletedConversations: false,
     workspaceID: null
   });
 }

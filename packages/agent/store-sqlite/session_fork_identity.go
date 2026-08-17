@@ -203,6 +203,16 @@ func remapSessionForkTurn(
 	}
 	turn.AgentSessionID = identityMap.TargetSessionID
 	turn.TurnID = targetTurnID
+	if sourceAnchorTurnID := strings.TrimSpace(turn.IdentityAnchorTurnID); sourceAnchorTurnID != "" {
+		targetAnchorTurnID, exists := identityMap.TurnIDs[sourceAnchorTurnID]
+		if !exists {
+			return Turn{}, fmt.Errorf(
+				"session fork turn identity anchor %q has no canonical mapping",
+				sourceAnchorTurnID,
+			)
+		}
+		turn.IdentityAnchorTurnID = targetAnchorTurnID
+	}
 	if sourceMessageID := strings.TrimSpace(turn.FinalAssistantMessageID); sourceMessageID != "" {
 		targetMessageID, exists := identityMap.MessageIDs[sourceMessageID]
 		if !exists {

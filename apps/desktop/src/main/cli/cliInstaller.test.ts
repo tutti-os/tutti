@@ -93,11 +93,42 @@ test("ensureDesktopCliShim writes windows command shim", async () => {
   });
 
   assert.equal(state.installed, true);
-  assert.equal(state.pathShimPath, null);
+  const pathShimPath = join(localBinDir, "tutti.cmd");
+  assert.equal(state.pathShimPath, pathShimPath);
   assert.equal(state.shimPath, join(stateRootDir, "bin", "tutti.cmd"));
   const content = await readFile(state.shimPath, "utf8");
   assert.match(content, /tutti\.exe/);
   assert.match(content, new RegExp(escapeRegExp(stateRootDir)));
+  const pathShimContent = await readFile(pathShimPath, "utf8");
+  assert.match(pathShimContent, /Tutti CLI shim/);
+  assert.match(pathShimContent, new RegExp(escapeRegExp(state.shimPath)));
+});
+
+test("ensureDesktopCliShim repairs an existing Windows Tutti PATH shim", async () => {
+  const stateRootDir = await mkdtemp(join(tmpdir(), "tutti-cli-state-"));
+  const homeDir = await mkdtemp(join(tmpdir(), "tutti-cli-home-"));
+  const localBinDir = join(homeDir, ".local", "bin");
+  const existingCommandPath = join(localBinDir, "tutti.cmd");
+  await mkdir(localBinDir, { recursive: true });
+  await writeFile(
+    existingCommandPath,
+    '@echo off\r\nrem Tutti CLI shim\r\n"C:\\stale\\tutti.exe" %*\r\n',
+    "utf8"
+  );
+
+  const state = await ensureDesktopCliShim({
+    homeDir,
+    isPackaged: true,
+    pathEnv: localBinDir + ";C:\\Windows\\System32",
+    platform: "win32",
+    resourcesPath: "C:\\Program Files\\Tutti\\resources",
+    stateRootDir
+  });
+
+  assert.equal(state.pathShimPath, existingCommandPath);
+  const content = await readFile(existingCommandPath, "utf8");
+  assert.doesNotMatch(content, /stale/);
+  assert.match(content, new RegExp(escapeRegExp(state.shimPath)));
 });
 
 test("ensureDesktopCliShim keeps an existing non-Tutti PATH command", async () => {

@@ -9,7 +9,10 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
-const defaultCapabilityCatalogCacheTTL = 30 * time.Second
+const (
+	defaultCapabilityCatalogCacheTTL      = 30 * time.Second
+	defaultCapabilityCatalogErrorCacheTTL = 5 * time.Second
+)
 
 type composerCapabilityCatalogCache struct {
 	mu      sync.Mutex
@@ -18,6 +21,7 @@ type composerCapabilityCatalogCache struct {
 
 type composerCapabilityCatalogCacheEntry struct {
 	cachedAt time.Time
+	errors   []string
 	options  []ComposerCapabilityOption
 }
 
@@ -27,21 +31,30 @@ func newComposerCapabilityCatalogCache() *composerCapabilityCatalogCache {
 	}
 }
 
-func (c *composerCapabilityCatalogCache) get(key string, now time.Time, ttl time.Duration) ([]ComposerCapabilityOption, bool) {
-	if c == nil || ttl <= 0 {
-		return nil, false
+func (c *composerCapabilityCatalogCache) get(
+	key string,
+	now time.Time,
+	successTTL time.Duration,
+	errorTTL time.Duration,
+) ([]ComposerCapabilityOption, []string, bool) {
+	if c == nil {
+		return nil, nil, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	entry, ok := c.entries[key]
 	if !ok {
-		return nil, false
+		return nil, nil, false
 	}
-	if now.Sub(entry.cachedAt) > ttl {
+	ttl := successTTL
+	if len(entry.errors) > 0 {
+		ttl = errorTTL
+	}
+	if ttl <= 0 || now.Sub(entry.cachedAt) > ttl {
 		delete(c.entries, key)
-		return nil, false
+		return nil, nil, false
 	}
-	return cloneComposerCapabilityOptions(entry.options), true
+	return cloneComposerCapabilityOptions(entry.options), append([]string(nil), entry.errors...), true
 }
 
 func (c *composerCapabilityCatalogCache) set(key string, now time.Time, options []ComposerCapabilityOption) {
@@ -56,6 +69,18 @@ func (c *composerCapabilityCatalogCache) set(key string, now time.Time, options 
 	}
 }
 
+func (c *composerCapabilityCatalogCache) setFailure(key string, now time.Time, errors []string) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.entries[key] = composerCapabilityCatalogCacheEntry{
+		cachedAt: now,
+		errors:   append([]string(nil), errors...),
+	}
+}
+
 func (s *Service) listComposerCapabilityOptions(
 	ctx context.Context,
 	provider string,
@@ -64,14 +89,41 @@ func (s *Service) listComposerCapabilityOptions(
 ) ([]ComposerCapabilityOption, []string) {
 	cacheKey := composerCapabilityCatalogCacheKey(provider, cwd, fallbackSkills)
 	now := time.Now().UTC()
-	if cached, ok := s.capabilityCatalogCache.get(cacheKey, now, s.capabilityCatalogCacheTTL()); ok {
-		return cached, nil
+	if cached, errors, ok := s.capabilityCatalogCache.get(
+		cacheKey,
+		now,
+		s.capabilityCatalogCacheTTL(),
+		defaultCapabilityCatalogErrorCacheTTL,
+	); ok {
+		return cached, errors
 	}
-	options, errors := s.composerCapabilityLister().ListComposerCapabilityOptions(ctx, provider, cwd, fallbackSkills)
-	if len(errors) == 0 {
-		s.capabilityCatalogCache.set(cacheKey, now, options)
+	loaded, _, _ := s.capabilityCatalogGroup.Do(cacheKey, func() (any, error) {
+		if cached, errors, ok := s.capabilityCatalogCache.get(
+			cacheKey,
+			time.Now().UTC(),
+			s.capabilityCatalogCacheTTL(),
+			defaultCapabilityCatalogErrorCacheTTL,
+		); ok {
+			return capabilityCatalogLoadResult{options: cached, errors: errors}, nil
+		}
+		options, errors := s.composerCapabilityLister().ListComposerCapabilityOptions(ctx, provider, cwd, fallbackSkills)
+		if len(errors) == 0 {
+			s.capabilityCatalogCache.set(cacheKey, time.Now().UTC(), options)
+		} else {
+			s.capabilityCatalogCache.setFailure(cacheKey, time.Now().UTC(), errors)
+		}
+		return capabilityCatalogLoadResult{options: options, errors: errors}, nil
+	})
+	result, ok := loaded.(capabilityCatalogLoadResult)
+	if !ok {
+		return nil, []string{"capability catalog load returned an invalid result"}
 	}
-	return cloneComposerCapabilityOptions(options), append([]string(nil), errors...)
+	return cloneComposerCapabilityOptions(result.options), append([]string(nil), result.errors...)
+}
+
+type capabilityCatalogLoadResult struct {
+	errors  []string
+	options []ComposerCapabilityOption
 }
 
 func (s *Service) capabilityCatalogCacheTTL() time.Duration {

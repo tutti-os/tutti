@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
@@ -12,35 +13,40 @@ import (
 func (s *Service) clampReasoningEffortForModel(
 	ctx context.Context,
 	provider string,
+	cwd string,
 	model string,
 	selected string,
 ) string {
 	var catalog AgentModelCatalog
 	if s != nil {
-		catalog = s.ModelCatalog
+		catalog = s.modelCatalogForContext(ctx)
 	}
-	return clampReasoningEffortForModelWithCatalog(ctx, catalog, provider, model, selected)
+	return clampReasoningEffortForModelWithCatalog(ctx, catalog, provider, cwd, model, selected)
 }
 
 func clampReasoningEffortForModelWithCatalog(
 	ctx context.Context,
 	catalog AgentModelCatalog,
 	provider string,
+	cwd string,
 	model string,
 	selected string,
 ) string {
 	selected = strings.TrimSpace(selected)
-	// Only Codex-derived providers currently treat model-advertised reasoning
-	// values as authoritative. OpenCode uses its model catalog for discovery but
-	// keeps the static reasoning vocabulary.
+	profile := composerProfileFor(provider)
 	if !composerProviderUsesModelReasoningCatalog(provider) {
 		return normalizeReasoningEffortForProvider(provider, selected)
 	}
 	if strings.TrimSpace(model) == "" && catalog != nil {
-		model = composerDefaultModel(ctx, provider, "", catalog)
+		model = composerDefaultModel(ctx, provider, cwd, catalog)
 	}
-	catalogOptions, ok := composerModelOptionsFromCatalog(ctx, catalog, provider, "", model)
+	catalogOptions, ok := composerModelOptionsFromCatalog(ctx, catalog, provider, cwd, model)
 	if !ok || !catalogOptions.Selection.ReasoningEffortsAdvertised {
+		if profile.ReasoningEffortOptions == providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+			// Strict catalogs intentionally have no provider-wide fallback. Do not
+			// forward an inherited value that the target model never advertised.
+			return ""
+		}
 		return normalizeReasoningEffortForProvider(provider, selected)
 	}
 	return resolveAdvertisedReasoningEffort(
@@ -54,13 +60,14 @@ func clampReasoningEffortForModelWithCatalog(
 func (s *Service) clampReasoningEffortPointerForModel(
 	ctx context.Context,
 	provider string,
+	cwd string,
 	model string,
 	selected *string,
 ) *string {
 	if selected == nil {
 		return nil
 	}
-	clamped := s.clampReasoningEffortForModel(ctx, provider, model, *selected)
+	clamped := s.clampReasoningEffortForModel(ctx, provider, cwd, model, *selected)
 	return &clamped
 }
 
@@ -68,17 +75,43 @@ func (s *Service) clampReasoningEffortPointerForLaunch(
 	ctx context.Context,
 	provider string,
 	providerTargetRef map[string]any,
+	cwd string,
 	model string,
 	selected *string,
 ) *string {
 	if selected == nil {
 		return nil
 	}
-	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" && agentprovider.Normalize(provider) == "" {
 		value := strings.TrimSpace(*selected)
 		return &value
 	}
-	return s.clampReasoningEffortPointerForModel(ctx, provider, model, selected)
+	return s.clampReasoningEffortPointerForModel(ctx, provider, cwd, model, selected)
+}
+
+func (s *Service) validateExplicitReasoningEffortForLaunch(
+	ctx context.Context,
+	provider string,
+	providerTargetRef map[string]any,
+	cwd string,
+	model string,
+	selected string,
+) error {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" ||
+		composerProfileFor(provider).ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		return nil
+	}
+	selected = strings.TrimSpace(selected)
+	options, ok := composerModelOptionsFromCatalog(ctx, s.modelCatalogForContext(ctx), provider, cwd, model)
+	if !ok || !options.Selection.ReasoningEffortsAdvertised {
+		return fmt.Errorf("%w: reasoning effort is not advertised for model %q", ErrInvalidArgument, strings.TrimSpace(model))
+	}
+	for _, option := range options.Selection.ReasoningEfforts {
+		if strings.TrimSpace(option.Value) == selected {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: reasoning effort %q is unsupported by model %q", ErrInvalidArgument, selected, strings.TrimSpace(model))
 }
 
 func (s *Service) clampPersistedSessionReasoningEffortForResume(
@@ -95,6 +128,7 @@ func (s *Service) clampPersistedSessionReasoningEffortForResume(
 	session.Settings.ReasoningEffort = s.clampReasoningEffortForModel(
 		ctx,
 		session.Provider,
+		session.Cwd,
 		session.Settings.Model,
 		session.Settings.ReasoningEffort,
 	)
@@ -161,6 +195,7 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 		clampedReasoningEffort := s.clampReasoningEffortForModel(
 			ctx,
 			provider,
+			observed.Canonical.Cwd,
 			selectedModel,
 			selectedReasoningEffort,
 		)

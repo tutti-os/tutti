@@ -473,7 +473,6 @@
   color: var(--rich-text-at-mention-text-secondary);
   opacity: 0;
   box-shadow: 0 4px 16px rgb(15 23 42 / 12%);
-  transform: translateY(-50%) scale(0.94);
   transition:
     opacity 160ms ease,
     transform 160ms ease,
@@ -499,7 +498,6 @@
   [data-slot="underline-tabs-scroll-right"][data-visible="true"] {
   pointer-events: auto;
   opacity: 1;
-  transform: translateY(-50%) scale(1);
 }
 
 .rich-text-at-mention-palette-header {

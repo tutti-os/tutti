@@ -3,7 +3,12 @@ export {
   ConnectorMarketService
 } from "./connectorMarketService.ts";
 export {
+  openConnectorMarketDialog,
+  type OpenConnectorMarketDialogResult
+} from "./openConnectorMarketDialog.ts";
+export {
   IConnectorMarketService,
+  type ConnectorInstallOutcome,
   type ConnectorMarketLoadState,
   type ConnectorMarketServiceDependencies,
   type ConnectorMarketStoreState

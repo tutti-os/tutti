@@ -45,9 +45,14 @@ type Manager struct {
 	Preferences       workspacedata.PreferencesStore
 	Client            *http.Client
 	RuntimeResolver   runtimecmd.Resolver
+	UserPathAdapter   UserPathAdapter
 	reconcileMu       sync.Mutex
 	versionCacheOnce  sync.Once
 	runtimeVersions   *runtimeVersionCache
+}
+
+type UserPathAdapter interface {
+	Ensure(context.Context, string) error
 }
 
 type Installation = agentextensionbiz.Installation
@@ -369,16 +374,20 @@ func (m *Manager) runtimeBinding(installation Installation, command []string, ve
 	}, nil
 }
 
-func (m *Manager) ResolveAgentTargetAvailability(ctx context.Context, target agenttargetbiz.Target) (string, string) {
+func (m *Manager) ResolveAgentTargetAvailability(ctx context.Context, target agenttargetbiz.Target) (string, string, string) {
 	launchRef, err := agenttargetbiz.RuntimeProviderTargetRef(target)
 	if err != nil || launchRef["kind"] != agenttargetbiz.LaunchRefTypeAgentExtension {
-		return "unknown", "invalid_extension_launch_ref"
+		return "unknown", "invalid_extension_launch_ref", ""
 	}
 	installationID, _ := launchRef["extensionInstallationId"].(string)
-	if _, err := m.ResolveRuntime(ctx, installationID); err != nil {
-		return "not_installed", "compatible_runtime_not_installed"
+	binding, err := m.ResolveRuntime(ctx, installationID)
+	if err != nil {
+		return "not_installed", "compatible_runtime_not_installed", ""
 	}
-	return "ready", ""
+	if len(binding.Command) == 0 {
+		return "not_installed", "compatible_runtime_not_installed", ""
+	}
+	return "ready", "", strings.TrimSpace(binding.Command[0])
 }
 
 func (m *Manager) reconcileSource(ctx context.Context, source tuttitypes.AgentExtensionSource) (Installation, error) {

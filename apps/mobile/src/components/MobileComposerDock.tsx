@@ -1,5 +1,6 @@
 import type { AgentActivitySessionSettings } from "@tutti-os/agent-activity-core";
 import {
+  NativeControlGlyph,
   NativeIconButton,
   NativeListRow,
   type NativeTheme,
@@ -193,25 +194,8 @@ export function MobileComposerDock({
           onSelectTarget={onSelectTarget}
         />
       ) : null}
-      <MobileComposerSettingsSheet
-        activationId={settingsActivationId}
-        disabled={!model.commandsAvailable}
-        menu={settingsMenu}
-        model={model}
-        onMenuChange={setSettingsMenu}
-        onUpdate={onUpdate}
-      />
-      <View style={styles.inputRow}>
-        <NativeIconButton
-          accessibilityLabel={t("moreActions")}
-          disabled={!model.commandsAvailable}
-          icon={<Text style={styles.plus}>＋</Text>}
-          onPress={openToolsMenu}
-          style={styles.addButton}
-          testID="mobile-composer-tools"
-          variant="secondary"
-        />
-        <View style={styles.inputPill}>
+      <View style={styles.composerShell}>
+        <View style={styles.inputRow}>
           <TextInput
             ref={inputRef}
             editable={!model.sending && model.commandsAvailable}
@@ -227,11 +211,44 @@ export function MobileComposerDock({
             style={styles.input}
             value={model.draft}
           />
+        </View>
+        <View style={styles.actionRow}>
+          <NativeIconButton
+            accessibilityLabel={t("moreActions")}
+            disabled={!model.commandsAvailable}
+            icon={
+              <NativeControlGlyph
+                color={theme.color.textSecondary}
+                size={20}
+                variant="add"
+              />
+            }
+            onPress={openToolsMenu}
+            style={styles.addButton}
+            testID="mobile-composer-tools"
+            variant="ghost"
+          />
+          <View style={styles.settingsRail}>
+            <MobileComposerSettingsSheet
+              activationId={settingsActivationId}
+              disabled={!model.commandsAvailable}
+              menu={settingsMenu}
+              model={model}
+              onMenuChange={setSettingsMenu}
+              onUpdate={onUpdate}
+            />
+          </View>
           {hasActiveTurn ? (
             <NativeIconButton
               accessibilityLabel={t("stop")}
               disabled={!model.commandsAvailable}
-              icon={<Text style={styles.actionIcon}>■</Text>}
+              icon={
+                <NativeControlGlyph
+                  color={theme.color.background}
+                  size={20}
+                  variant="stop"
+                />
+              }
               onPress={onStop}
               style={styles.actionButton}
             />
@@ -240,13 +257,23 @@ export function MobileComposerDock({
               accessibilityLabel={
                 model.ambiguousSubmission ? t("retry") : t("send")
               }
-              icon={<Text style={styles.sendIcon}>↑</Text>}
+              icon={
+                <NativeControlGlyph
+                  color={theme.color.background}
+                  size={20}
+                  variant="send"
+                />
+              }
               onPress={onSend}
               style={styles.actionButton}
             />
           ) : model.sending ? (
-            <ActivityIndicator color={theme.color.text} size="small" />
-          ) : null}
+            <View style={styles.actionSlot}>
+              <ActivityIndicator color={theme.color.text} size="small" />
+            </View>
+          ) : (
+            <View style={styles.actionSlot} />
+          )}
         </View>
       </View>
 
@@ -275,7 +302,14 @@ export function MobileComposerDock({
                       description={selectedModelLabel}
                       onPress={() => setToolsMenu("model")}
                       title={t("model")}
-                      trailing={<Text style={styles.chevron}>›</Text>}
+                      trailing={
+                        <NativeControlGlyph
+                          color={theme.color.muted}
+                          direction="right"
+                          size={16}
+                          variant="chevron"
+                        />
+                      }
                     />
                   ) : null}
                   {model.composerSettingsSupport.permission &&
@@ -284,7 +318,14 @@ export function MobileComposerDock({
                       description={selectedPermissionLabel}
                       onPress={() => setToolsMenu("permission")}
                       title={t("permissions")}
-                      trailing={<Text style={styles.chevron}>›</Text>}
+                      trailing={
+                        <NativeControlGlyph
+                          color={theme.color.muted}
+                          direction="right"
+                          size={16}
+                          variant="chevron"
+                        />
+                      }
                     />
                   ) : null}
                   {model.composerSettingsSupport.plan ? (
@@ -315,7 +356,14 @@ export function MobileComposerDock({
                       }
                       onPress={() => setToolsMenu("quickPrompts")}
                       title={t("quickPrompts")}
-                      trailing={<Text style={styles.chevron}>›</Text>}
+                      trailing={
+                        <NativeControlGlyph
+                          color={theme.color.muted}
+                          direction="right"
+                          size={16}
+                          variant="chevron"
+                        />
+                      }
                     />
                   ) : null}
                   {model.composerOptionsLoadStatus === "loading" ? (
@@ -345,7 +393,13 @@ export function MobileComposerDock({
                   <View style={styles.menuHeader}>
                     <NativeIconButton
                       accessibilityLabel={t("cancel")}
-                      icon={<Text style={styles.menuBackIcon}>←</Text>}
+                      icon={
+                        <NativeControlGlyph
+                          color={theme.color.text}
+                          size={20}
+                          variant="back"
+                        />
+                      }
                       onPress={() => setToolsMenu("tools")}
                       style={styles.menuBackButton}
                     />
@@ -479,40 +533,53 @@ function createStyles(theme: NativeTheme) {
     actionButton: {
       alignItems: "center",
       backgroundColor: theme.color.text,
-      borderRadius: 18,
-      height: 36,
+      borderRadius: theme.control.regular / 2,
+      height: theme.control.regular,
       justifyContent: "center",
-      width: 36
+      width: theme.control.regular
     },
-    actionIcon: {
-      color: theme.color.background,
-      fontSize: 11
+    actionRow: {
+      alignItems: "center",
+      borderTopColor: theme.color.border,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      flexDirection: "row",
+      minHeight: theme.control.regular,
+      paddingHorizontal: 4
+    },
+    actionSlot: {
+      alignItems: "center",
+      height: theme.control.regular,
+      justifyContent: "center",
+      width: theme.control.regular
     },
     backdrop: {
       flex: 1,
       justifyContent: "flex-end",
-      paddingBottom: 96
-    },
-    chevron: {
-      color: theme.color.muted,
-      fontSize: 20,
-      lineHeight: 22
+      paddingBottom: theme.control.regular * 2 + theme.space.medium
     },
     addButton: {
       alignItems: "center",
+      borderRadius: theme.control.regular / 2,
+      height: theme.control.regular,
+      justifyContent: "center",
+      width: theme.control.regular
+    },
+    composerShell: {
       backgroundColor: theme.color.panelRaised,
       borderColor: theme.color.border,
-      borderRadius: 20,
+      borderRadius: theme.radius.large,
       borderWidth: StyleSheet.hairlineWidth,
-      height: 40,
-      justifyContent: "center",
-      width: 40
+      overflow: "hidden",
+      width: "100%"
     },
     dock: {
+      alignSelf: "center",
       gap: theme.space.small,
+      maxWidth: 760 + theme.space.medium * 2,
       paddingBottom: theme.space.small,
       paddingHorizontal: theme.space.medium,
-      paddingTop: theme.space.small
+      paddingTop: theme.space.small,
+      width: "100%"
     },
     emptyMenu: {
       color: theme.color.muted,
@@ -532,40 +599,16 @@ function createStyles(theme: NativeTheme) {
       fontSize: 16,
       lineHeight: 22,
       maxHeight: 120,
-      minHeight: 40,
-      paddingLeft: 14,
-      paddingVertical: 9
-    },
-    inputPill: {
-      alignItems: "center",
-      backgroundColor: theme.color.panelRaised,
-      borderColor: theme.color.border,
-      borderRadius: 22,
-      borderWidth: StyleSheet.hairlineWidth,
-      flex: 1,
-      flexDirection: "row",
-      gap: theme.space.small,
-      minHeight: 44,
-      paddingRight: 4
+      minHeight: theme.control.regular,
+      paddingHorizontal: theme.space.medium,
+      paddingVertical: 12,
+      textAlignVertical: "top"
     },
     inputRow: {
-      alignItems: "flex-end",
-      flexDirection: "row",
-      gap: theme.space.small
+      alignItems: "stretch",
+      minHeight: theme.control.regular
     },
     loading: { marginVertical: theme.space.medium },
-    plus: {
-      color: theme.color.text,
-      fontSize: 24,
-      fontWeight: "300",
-      lineHeight: 26
-    },
-    sendIcon: {
-      color: theme.color.background,
-      fontSize: 18,
-      fontWeight: "700",
-      lineHeight: 20
-    },
     menu: {
       backgroundColor: theme.color.panelRaised,
       borderColor: theme.color.border,
@@ -582,18 +625,14 @@ function createStyles(theme: NativeTheme) {
     },
     modalRoot: { flex: 1 },
     menuBackButton: {
-      height: 40,
-      width: 40
-    },
-    menuBackIcon: {
-      color: theme.color.text,
-      fontSize: 20
+      height: theme.control.regular,
+      width: theme.control.regular
     },
     menuHeader: {
       alignItems: "center",
       flexDirection: "row",
       gap: theme.space.small,
-      minHeight: 50
+      minHeight: theme.control.regular
     },
     menuOptions: { flexShrink: 1 },
     menuTitle: {
@@ -613,8 +652,9 @@ function createStyles(theme: NativeTheme) {
       color: theme.color.text,
       fontSize: 16,
       marginBottom: theme.space.small,
-      minHeight: 44,
+      minHeight: theme.control.regular,
       paddingHorizontal: theme.space.medium
-    }
+    },
+    settingsRail: { flex: 1, minWidth: 0 }
   });
 }

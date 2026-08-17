@@ -24,8 +24,7 @@ export const TUTTI_EXTERNAL_AT_PROVIDER_IDS = {
   agentTarget: "agent-target",
   file: "file",
   workspaceApp: "workspace-app",
-  workspaceIssue: "workspace-issue",
-  workspaceModel: "workspace-model"
+  workspaceIssue: "workspace-issue"
 } as const;
 
 export type TuttiExternalAtProviderId =
@@ -37,7 +36,6 @@ export const tuttiExternalAtProviderIds = [
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceApp,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentTarget,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentSession,
-  TUTTI_EXTERNAL_AT_PROVIDER_IDS.workspaceModel,
   TUTTI_EXTERNAL_AT_PROVIDER_IDS.agentGeneratedFile
 ] as const satisfies readonly TuttiExternalAtProviderId[];
 
@@ -304,6 +302,12 @@ export interface TuttiExternalAgentActivityActivateSessionInput {
   cwd?: string | null;
   initialContent: AgentPromptContentBlock[];
   initialDisplayPrompt?: string | null;
+  /**
+   * Host-owned navigation request. When true, the workspace owner opens its
+   * Agent GUI on the activated session after activation succeeds. Missing
+   * preserves the existing activate-without-navigation behavior.
+   */
+  reveal?: boolean;
   settings?: AgentActivitySessionSettings;
   title?: string;
   visible?: boolean;
@@ -320,6 +324,21 @@ export interface TuttiExternalAgentActivitySendInput {
 export interface TuttiExternalAgentActivityCancelTurnInput {
   agentSessionId: string;
   turnId: string;
+}
+
+/**
+ * Explicit composer picks a launcher persists into the canonical per-target
+ * composer-defaults ledger. Absent fields stay untouched; null clears a field.
+ */
+export interface TuttiExternalAgentActivityRememberComposerDefaultsInput {
+  agentTargetId: string;
+  defaults: {
+    codexSaverMode?: boolean;
+    model?: string | null;
+    permissionModeId?: string | null;
+    reasoningEffort?: string | null;
+    speed?: string | null;
+  };
 }
 
 export type TuttiExternalAgentActivityActivateSessionResult =
@@ -407,6 +426,9 @@ export interface TuttiExternalBridge {
     ): Promise<TuttiExternalAgentActivityComposerOptions>;
     getSnapshot(): Promise<TuttiExternalAgentActivitySnapshot>;
     listTargets(): Promise<TuttiExternalAgentTargetCatalog>;
+    rememberComposerDefaults(
+      input: TuttiExternalAgentActivityRememberComposerDefaultsInput
+    ): Promise<void>;
     sendInput(
       input: TuttiExternalAgentActivitySendInput
     ): Promise<TuttiExternalAgentActivitySendResult>;
@@ -528,6 +550,13 @@ export type TuttiExternalRendererRequest =
   | {
       appId: string;
       operation: "agentActivity.listTargets";
+      requestId: string;
+      workspaceId: string;
+    }
+  | {
+      appId: string;
+      input: TuttiExternalAgentActivityRememberComposerDefaultsInput;
+      operation: "agentActivity.rememberComposerDefaults";
       requestId: string;
       workspaceId: string;
     }

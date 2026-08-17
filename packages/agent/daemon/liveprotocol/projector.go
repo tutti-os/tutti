@@ -48,6 +48,7 @@ func (p *RecipientProjector) Project(event Event) (Event, error) {
 }
 
 func projectEventData(event Event, context ProjectionContext) ([]byte, error) {
+	canonicalTurnIDs := context.canonicalTurnIDs()
 	var data any
 	switch event.EventType {
 	case EventTypeRuntimeActivityUpdate:
@@ -63,46 +64,67 @@ func projectEventData(event Event, context ProjectionContext) ([]byte, error) {
 		if err := json.Unmarshal(event.Data, &value); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
 		}
+		if !canonicalTurnIDAllowed(value.TurnID, canonicalTurnIDs) {
+			return nil, fmt.Errorf("%w: message delta Turn is not authorized", ErrInvalidLiveEvent)
+		}
 		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
 		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
-		value.TurnID = projectedString(value.TurnID, context.CanonicalTurnID, context.CallerTurnID)
+		value.TurnID = projectedCanonicalString(
+			value.TurnID, canonicalTurnIDs, context.CallerTurnID,
+		)
 		data = value
 	case EventTypeTurnUpdate:
 		var value TurnUpdateData
 		if err := json.Unmarshal(event.Data, &value); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
 		}
+		if !canonicalTurnIDAllowed(value.Turn.TurnID, canonicalTurnIDs) ||
+			(value.ActiveTurnID != nil && !canonicalTurnIDAllowed(*value.ActiveTurnID, canonicalTurnIDs)) {
+			return nil, fmt.Errorf("%w: turn update contains an unauthorized Turn", ErrInvalidLiveEvent)
+		}
 		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
 		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
-		value.ActiveTurnID = projectedStringPointer(value.ActiveTurnID, context.CanonicalTurnID, context.CallerTurnID)
+		value.ActiveTurnID = projectedCanonicalStringPointer(
+			value.ActiveTurnID, canonicalTurnIDs, context.CallerTurnID,
+		)
 		value.Turn.AgentSessionID = projectedString(value.Turn.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
-		value.Turn.TurnID = projectedString(value.Turn.TurnID, context.CanonicalTurnID, context.CallerTurnID)
+		value.Turn.TurnID = projectedCanonicalString(
+			value.Turn.TurnID, canonicalTurnIDs, context.CallerTurnID,
+		)
 		data = value
 	case EventTypeInteractionUpdate:
 		var value InteractionUpdateData
 		if err := json.Unmarshal(event.Data, &value); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
 		}
+		if !canonicalTurnIDAllowed(value.Interaction.TurnID, canonicalTurnIDs) {
+			return nil, fmt.Errorf("%w: interaction update contains an unauthorized Turn", ErrInvalidLiveEvent)
+		}
 		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
 		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
 		value.Interaction.AgentSessionID = projectedString(value.Interaction.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
-		value.Interaction.TurnID = projectedString(value.Interaction.TurnID, context.CanonicalTurnID, context.CallerTurnID)
-		// Turn-scoped provider requests may use the canonical turn identity
-		// itself. Only that exact identity is projected.
-		value.Interaction.RequestID = projectedString(value.Interaction.RequestID, context.CanonicalTurnID, context.CallerTurnID)
+		value.Interaction.TurnID = projectedCanonicalString(value.Interaction.TurnID, canonicalTurnIDs, context.CallerTurnID)
 		data = value
 	case EventTypeInteractionSnapshot:
 		var value InteractionSnapshotData
 		if err := json.Unmarshal(event.Data, &value); err != nil {
 			return nil, fmt.Errorf("%w: %v", ErrInvalidLiveEvent, err)
 		}
+		if !canonicalTurnIDAllowed(value.RootTurnID, canonicalTurnIDs) {
+			return nil, fmt.Errorf("%w: interaction snapshot root Turn is not authorized", ErrInvalidLiveEvent)
+		}
+		for _, interaction := range value.Interactions {
+			if !canonicalTurnIDAllowed(interaction.TurnID, canonicalTurnIDs) {
+				return nil, fmt.Errorf("%w: interaction snapshot contains an unauthorized Turn", ErrInvalidLiveEvent)
+			}
+		}
 		value.WorkspaceID = projectedString(value.WorkspaceID, context.OwnerWorkspaceID, context.RecipientWorkspaceID)
 		value.AgentSessionID = projectedString(value.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
+		value.RootTurnID = projectedCanonicalString(value.RootTurnID, canonicalTurnIDs, context.CallerTurnID)
 		for index := range value.Interactions {
 			interaction := &value.Interactions[index]
 			interaction.AgentSessionID = projectedString(interaction.AgentSessionID, context.OwnerAgentSessionID, context.RecipientAgentSessionID)
-			interaction.TurnID = projectedString(interaction.TurnID, context.CanonicalTurnID, context.CallerTurnID)
-			interaction.RequestID = projectedString(interaction.RequestID, context.CanonicalTurnID, context.CallerTurnID)
+			interaction.TurnID = projectedCanonicalString(interaction.TurnID, canonicalTurnIDs, context.CallerTurnID)
 		}
 		data = value
 	case EventTypeSessionAudit:
@@ -130,13 +152,48 @@ func projectedString(current, expected, replacement string) string {
 	return replacement
 }
 
-func projectedStringPointer(current *string, expected, replacement string) *string {
+func (context ProjectionContext) canonicalTurnIDs() []string {
+	if len(context.CanonicalTurnIDs) > 0 {
+		return context.CanonicalTurnIDs
+	}
+	if strings.TrimSpace(context.CanonicalTurnID) == "" {
+		return nil
+	}
+	return []string{context.CanonicalTurnID}
+}
+
+func projectedCanonicalString(current string, expected []string, replacement string) string {
+	if replacement == "" {
+		return current
+	}
+	for _, candidate := range expected {
+		if candidate != "" && current == candidate {
+			return replacement
+		}
+	}
+	return current
+}
+
+func projectedCanonicalStringPointer(current *string, expected []string, replacement string) *string {
 	if current == nil {
 		return nil
 	}
-	projected := projectedString(*current, expected, replacement)
+	projected := projectedCanonicalString(*current, expected, replacement)
 	if projected == *current {
 		return current
 	}
 	return &projected
+}
+
+func canonicalTurnIDAllowed(turnID string, expected []string) bool {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return false
+	}
+	for _, candidate := range expected {
+		if strings.TrimSpace(candidate) == turnID {
+			return true
+		}
+	}
+	return false
 }

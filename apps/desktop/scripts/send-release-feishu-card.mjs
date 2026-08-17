@@ -48,23 +48,23 @@ function resolveDisplayValue(value, fallback = "unknown") {
 
 function resolveReleaseKind(tag, publicationStatus = "published") {
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
-    return publicationStatus === "draft"
+    return publicationStatus === "candidate"
       ? "Draft release candidate prerelease"
       : "Release candidate prerelease";
   }
   if (/-beta\.(0|[1-9]\d*)$/i.test(tag)) {
-    return publicationStatus === "draft"
+    return publicationStatus === "candidate"
       ? "Draft beta prerelease"
       : "Beta prerelease";
   }
-  return publicationStatus === "draft"
-    ? "Draft stable candidate"
+  return publicationStatus === "candidate"
+    ? "Stable candidate"
     : "Stable latest release";
 }
 
 function resolveIntroText(tag, publicationStatus = "published") {
-  if (publicationStatus === "draft") {
-    return `**${tag}** 已构建并上传版本固定下载目录，GitHub Release 仍为 Draft，尚未更新公开下载通道。`;
+  if (publicationStatus === "candidate") {
+    return `**${tag}** 候选版本已构建完成，请体验安装包并确认更新说明；当前尚未向用户开放更新。`;
   }
   if (/-rc\.(0|[1-9]\d*)$/i.test(tag)) {
     return `**${tag}** 已构建并同步到 RC 预览通道，可从下方入口下载安装包。`;
@@ -176,7 +176,12 @@ function findPreferredAssetName(assetNames, pattern) {
   );
 }
 
-function findAssetUrl(release, pattern, releaseAssetBaseUrl = "") {
+function findAssetUrl(
+  release,
+  pattern,
+  releaseAssetBaseUrl = "",
+  releaseAssetPath = ""
+) {
   const assets = Array.isArray(release?.assets) ? release.assets : [];
   const assetName = findPreferredAssetName(
     assets.map((candidate) => candidate.name ?? ""),
@@ -188,14 +193,19 @@ function findAssetUrl(release, pattern, releaseAssetBaseUrl = "") {
   }
 
   if (releaseAssetBaseUrl) {
-    const releaseTag = release.tag_name ?? "";
-    if (!releaseTag) {
+    const assetPath = releaseAssetPath || release.tag_name || "";
+    if (!assetPath) {
       throw new Error(
         "Release tag name is missing from the GitHub release payload"
       );
     }
 
-    return `${normalizeBaseUrl(releaseAssetBaseUrl)}/${encodeURIComponent(releaseTag)}/${encodeURIComponent(asset.name)}`;
+    const normalizedAssetPath = assetPath
+      .split("/")
+      .filter(Boolean)
+      .map(encodeURIComponent)
+      .join("/");
+    return `${normalizeBaseUrl(releaseAssetBaseUrl)}/${normalizedAssetPath}/${encodeURIComponent(asset.name)}`;
   }
 
   return asset.browser_download_url;
@@ -213,7 +223,7 @@ function resolveMirroredAssetUrl(
   assetNames,
   pattern,
   releaseAssetBaseUrl,
-  tag
+  assetPath
 ) {
   if (!releaseAssetBaseUrl || assetNames.length === 0) {
     return "";
@@ -224,7 +234,12 @@ function resolveMirroredAssetUrl(
     return "";
   }
 
-  return `${normalizeBaseUrl(releaseAssetBaseUrl)}/${encodeURIComponent(tag)}/${encodeURIComponent(assetName)}`;
+  const normalizedAssetPath = assetPath
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
+  return `${normalizeBaseUrl(releaseAssetBaseUrl)}/${normalizedAssetPath}/${encodeURIComponent(assetName)}`;
 }
 
 async function loadReleaseSummary(summaryPath) {
@@ -247,19 +262,16 @@ function buildSummaryElements(summary) {
 
   const updateLines = [];
   for (const section of zh.sections.slice(0, 4)) {
-    const items = Array.isArray(section.items) ? section.items.slice(0, 3) : [];
+    const items = Array.isArray(section.items) ? section.items : [];
     for (const item of items) {
       updateLines.push(`- ${section.title}：${item}`);
+      if (updateLines.length === 6) break;
     }
+    if (updateLines.length === 6) break;
   }
-
-  const qaLines = Array.isArray(zh.qaFocus)
-    ? zh.qaFocus.slice(0, 3).map((item) => `- ${item}`)
-    : [];
   const content = [
     `**本次更新**\n${zh.headline}`,
-    updateLines.length > 0 ? updateLines.join("\n") : "",
-    qaLines.length > 0 ? `\n**QA 重点**\n${qaLines.join("\n")}` : ""
+    updateLines.length > 0 ? updateLines.join("\n") : ""
   ]
     .filter(Boolean)
     .join("\n");
@@ -278,24 +290,29 @@ function buildSummaryElements(summary) {
 
 function buildCardPayload({
   actor,
-  branch,
   macUrl,
   winUrl,
   publicationStatus = "published",
+  promotionUrl,
   releaseUrl,
   runUrl,
   summary,
-  tag,
-  target
+  tag
 }) {
-  const shortTarget = target ? target.slice(0, 7) : "unknown";
-  const deployBranch = resolveDisplayValue(branch);
   const deployActor = resolveDisplayValue(actor);
+  const candidate = publicationStatus === "candidate";
   const actions = [
-    { label: "下载 macOS", url: macUrl },
-    { label: "下载 Windows（未签名）", url: winUrl },
-    { label: "打开 Release 页面", url: releaseUrl },
-    { label: "查看流水线", url: runUrl }
+    { label: candidate ? "下载 macOS 体验版" : "下载 macOS", url: macUrl },
+    {
+      label: candidate ? "下载 Windows 体验版" : "下载 Windows（未签名）",
+      url: winUrl
+    },
+    {
+      label: candidate ? "编辑更新说明" : "查看完整更新日志",
+      url: releaseUrl
+    },
+    ...(candidate ? [{ label: "提交发布审核", url: promotionUrl }] : []),
+    { label: "查看技术详情", url: runUrl }
   ]
     .filter((action) => action.url)
     .map((action, index) => ({
@@ -333,17 +350,6 @@ function buildCardPayload({
             },
             {
               is_short: true,
-              text: { content: `**Commit**\n${shortTarget}`, tag: "lark_md" }
-            },
-            {
-              is_short: true,
-              text: {
-                content: `**部署分支**\n${deployBranch}`,
-                tag: "lark_md"
-              }
-            },
-            {
-              is_short: true,
               text: {
                 content: `**部署人**\n${deployActor}`,
                 tag: "lark_md"
@@ -362,12 +368,9 @@ function buildCardPayload({
         { actions, tag: "action" }
       ],
       header: {
-        template: publicationStatus === "draft" ? "orange" : "blue",
+        template: candidate ? "orange" : "blue",
         title: {
-          content:
-            publicationStatus === "draft"
-              ? "Tutti Draft 构建完成"
-              : "Tutti 发布完成",
+          content: candidate ? "Tutti 候选版本待确认" : "Tutti 发布完成",
           tag: "plain_text"
         }
       }
@@ -403,6 +406,7 @@ async function main() {
     readOption(args, "tag", "RELEASE_TAG"),
     "RELEASE_TAG"
   );
+  const lookupTag = readOption(args, "lookup-tag", "RELEASE_LOOKUP_TAG", tag);
   const target = readOption(args, "target", "RELEASE_TARGET");
   const branch = readOption(args, "branch", "RELEASE_BRANCH");
   const actor = readOption(args, "actor", "RELEASE_ACTOR");
@@ -412,8 +416,10 @@ async function main() {
     "RELEASE_PUBLICATION_STATUS",
     "published"
   );
-  if (publicationStatus !== "draft" && publicationStatus !== "published") {
-    throw new Error("RELEASE_PUBLICATION_STATUS must be draft or published");
+  if (publicationStatus !== "candidate" && publicationStatus !== "published") {
+    throw new Error(
+      "RELEASE_PUBLICATION_STATUS must be candidate or published"
+    );
   }
   const releaseUrl = readOption(
     args,
@@ -422,6 +428,7 @@ async function main() {
     `https://github.com/${repository}/releases/tag/${encodeURIComponent(tag)}`
   );
   const runUrl = readOption(args, "run-url", "RUN_URL");
+  const promotionUrl = readOption(args, "promotion-url", "PROMOTION_URL");
   const webhookUrl = readOption(args, "webhook-url", "FEISHU_WEBHOOK_URL");
   const releaseAssetDirectory = readOption(
     args,
@@ -445,23 +452,29 @@ async function main() {
       "TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX"
     )
   });
+  const releaseAssetPath = readOption(
+    args,
+    "release-asset-path",
+    "RELEASE_ASSET_PATH",
+    tag
+  );
   const mirroredAssetNames = await listAssetNames(releaseAssetDirectory);
   const mirroredMacUrl = resolveMirroredAssetUrl(
     mirroredAssetNames,
     /\.dmg$/i,
     releaseAssetBaseUrl,
-    tag
+    releaseAssetPath
   );
   const mirroredWinUrl = resolveMirroredAssetUrl(
     mirroredAssetNames,
     /-win-x64\.exe$/i,
     releaseAssetBaseUrl,
-    tag
+    releaseAssetPath
   );
   const release =
     mirroredMacUrl && mirroredWinUrl
       ? null
-      : await loadRelease(repository, tag, resolveGithubToken());
+      : await loadRelease(repository, lookupTag, resolveGithubToken());
   const summary = await loadReleaseSummary(
     readOption(args, "summary", "RELEASE_SUMMARY_PATH")
   );
@@ -469,11 +482,18 @@ async function main() {
     actor,
     branch,
     macUrl:
-      mirroredMacUrl || findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl),
+      mirroredMacUrl ||
+      findAssetUrl(release, /\.dmg$/i, releaseAssetBaseUrl, releaseAssetPath),
     winUrl:
       mirroredWinUrl ||
-      findAssetUrl(release, /-win-x64\.exe$/i, releaseAssetBaseUrl),
+      findAssetUrl(
+        release,
+        /-win-x64\.exe$/i,
+        releaseAssetBaseUrl,
+        releaseAssetPath
+      ),
     publicationStatus,
+    promotionUrl,
     releaseUrl,
     runUrl,
     summary,

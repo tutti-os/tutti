@@ -16,7 +16,6 @@ import type {
 import { WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN } from "../../../shared/workspaceAgentSessionOrigin";
 import type { AgentGUIConversationFilter } from "./agentGuiConversationFilter";
 import type {
-  AgentGUIConversationNoProjectPathResolver,
   AgentGUIConversationProjectResolver,
   AgentGUIConversationProjectSummary,
   AgentGUIConversationUserProject
@@ -25,9 +24,8 @@ import type {
 export const AGENT_GUI_RUNTIME_SESSION_ORIGIN =
   WORKSPACE_AGENT_ACTIVITY_RUNTIME_SESSION_ORIGIN;
 export {
-  resolveAgentGUIConversationProject,
-  type AgentGUIConversationNoProjectPathResolver,
-  type AgentGUIConversationProjectResolutionOptions,
+  resolveAgentGUIConversationProjectBySectionKey,
+  resolveAgentGUISelectedUserProject,
   type AgentGUIConversationProjectSummary,
   type AgentGUIConversationUserProject
 } from "./agentGuiConversationProjectResolver";
@@ -43,9 +41,9 @@ export interface AgentGUIConversationSummary {
   titleFallback?: AgentGUIConversationTitleFallback;
   status: AgentGUIConversationStatus;
   cwd: string;
+  isolation?: AgentActivitySession["isolation"];
   railSectionKey?: string;
   project?: AgentGUIConversationProjectSummary | null;
-  projectMode?: "none";
   pinnedAtUnixMs?: number | null;
   sortTimeUnixMs?: number;
   updatedAtUnixMs: number;
@@ -61,7 +59,7 @@ export interface AgentGUIConversationSummary {
   // presentation layer may use it for the ordinary Rail/detail overlay, but
   // it is excluded before Activity candidates are built.
   isTransient?: boolean;
-  projectionSource?: "pending_activation";
+  projectionSource?: "pending_activation" | "runtime_overlay";
   isImported?: boolean;
   activeTurn?: AgentActivitySession["activeTurn"];
 }
@@ -77,9 +75,9 @@ export type AgentGUIConversationProjectionSource = Pick<
   | "titleFallback"
   | "status"
   | "cwd"
+  | "isolation"
   | "railSectionKey"
   | "project"
-  | "projectMode"
   | "pinnedAtUnixMs"
   | "sortTimeUnixMs"
   | "updatedAtUnixMs"
@@ -153,7 +151,6 @@ export type AgentGUIInteractivePrompt =
 
 export interface BuildAgentGUIConversationsInput {
   conversationFilter?: AgentGUIConversationFilter;
-  isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
   snapshot: AgentActivitySnapshot;
   provider: AgentGUIProvider;
   sessionMessagesById?: Record<string, AgentActivityMessage[]>;

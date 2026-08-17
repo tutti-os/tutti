@@ -30,6 +30,24 @@ func newAgentRuntimeAdapter(controller *agentruntime.Controller) agentRuntimeAda
 	return agentRuntimeAdapter{controller: controller}
 }
 
+func (a agentRuntimeAdapter) ConnectorHTTPMCPSupported(
+	ctx context.Context,
+	input agentservice.ConnectorCapabilityInput,
+) (bool, error) {
+	capabilities, err := a.controller.ConnectorCapabilities(ctx, agentruntime.ConnectorCapabilityInput{
+		RoomID:            input.WorkspaceID,
+		AgentSessionID:    input.AgentSessionID,
+		AgentTargetID:     input.AgentTargetID,
+		Provider:          input.Provider,
+		CWD:               input.Cwd,
+		Env:               append([]string(nil), input.Env...),
+		ProviderTargetRef: cloneRuntimeContext(input.ProviderTargetRef),
+		PermissionModeID:  input.PermissionModeID,
+		Settings:          agentRuntimeSessionSettings(input.Settings),
+	})
+	return capabilities.HTTPMCP, err
+}
+
 func (a agentRuntimeAdapter) Cancel(ctx context.Context, input agentservice.RuntimeCancelInput) (agentservice.RuntimeCancelResult, error) {
 	targets := make([]agentruntime.CancelTarget, 0, len(input.Targets))
 	for _, target := range input.Targets {
@@ -131,6 +149,7 @@ func (a agentRuntimeAdapter) CanResume(input agentservice.RuntimeResumeInput) bo
 		Resumable:         input.Resumable,
 		CWD:               input.Cwd,
 		Env:               append([]string(nil), input.Env...),
+		MCPServers:        daemonMCPServerBindings(input.MCPServers),
 		Title:             input.Title,
 		Status:            input.Status,
 		Settings:          agentRuntimeSessionSettings(input.Settings),
@@ -152,6 +171,44 @@ func (a agentRuntimeAdapter) Close(ctx context.Context, input agentservice.Runti
 		return mapAgentRuntimeError(err)
 	}
 	return nil
+}
+
+func (a agentRuntimeAdapter) DisconnectRuntimeSession(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (bool, error) {
+	result, err := a.controller.DisconnectRuntimeSession(ctx, workspaceID, agentSessionID)
+	if err != nil {
+		return false, mapAgentRuntimeError(err)
+	}
+	return result.Disconnected, nil
+}
+
+func (a agentRuntimeAdapter) SnapshotWorkspaceRuntimeDisconnectTargets(workspaceID string) []agenthost.RuntimeDisconnectTarget {
+	targets := a.controller.SnapshotRuntimeDisconnectTargets(workspaceID)
+	result := make([]agenthost.RuntimeDisconnectTarget, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, agenthost.RuntimeDisconnectTarget{
+			WorkspaceID: target.RoomID, AgentSessionID: target.AgentSessionID,
+			ConnectionGeneration: target.ConnectionGeneration,
+		})
+	}
+	return result
+}
+
+func (a agentRuntimeAdapter) DisconnectRuntimeSessionTarget(
+	ctx context.Context,
+	target agenthost.RuntimeDisconnectTarget,
+) (bool, error) {
+	result, err := a.controller.DisconnectRuntimeSessionTarget(ctx, agentruntime.RuntimeDisconnectTarget{
+		RoomID: target.WorkspaceID, AgentSessionID: target.AgentSessionID,
+		ConnectionGeneration: target.ConnectionGeneration,
+	})
+	if err != nil {
+		return false, mapAgentRuntimeError(err)
+	}
+	return result.Disconnected, nil
 }
 
 func (a agentRuntimeAdapter) Exec(ctx context.Context, input agentservice.RuntimeExecInput) (agentservice.RuntimeExecResult, error) {
@@ -213,6 +270,15 @@ func serviceProviderDispatchFromRuntime(
 	}
 	projected := agenthost.RuntimeProviderDispatchResult{
 		Disposition: agenthost.RuntimeDispatchDisposition(dispatch.Disposition),
+	}
+	if diagnostics := dispatch.AcceptanceDiagnostics; diagnostics != nil {
+		projected.AcceptanceDiagnostics = &agenthost.RuntimeProviderAcceptanceDiagnostics{
+			Status:                   diagnostics.Status,
+			ProviderSessionIDPresent: diagnostics.ProviderSessionIDPresent,
+			ProviderTurnIDPresent:    diagnostics.ProviderTurnIDPresent,
+			ProviderTurnIDSource:     diagnostics.ProviderTurnIDSource,
+			FailureReason:            diagnostics.FailureReason,
+		}
 	}
 	if dispatch.Acceptance != nil {
 		projected.Acceptance = &agenthost.RuntimeProviderAcceptanceReceipt{
@@ -359,7 +425,8 @@ func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agents
 		Payload:            input.Payload,
 	})
 	mapped := agentservice.RuntimeSubmitInteractiveResult{
-		Disposition: agentservice.RuntimeInteractiveDisposition(result.Disposition),
+		Disposition:    agentservice.RuntimeInteractiveDisposition(result.Disposition),
+		FollowUpPrompt: result.FollowUpPrompt,
 	}
 	if err != nil {
 		return mapped, mapAgentRuntimeError(err)
@@ -399,6 +466,7 @@ func (a agentRuntimeAdapter) Resume(ctx context.Context, input agentservice.Runt
 		Resumable:         input.Resumable,
 		CWD:               input.Cwd,
 		Env:               append([]string(nil), input.Env...),
+		MCPServers:        daemonMCPServerBindings(input.MCPServers),
 		Title:             input.Title,
 		Status:            input.Status,
 		Settings:          agentRuntimeSessionSettings(input.Settings),
@@ -449,7 +517,7 @@ func (a agentRuntimeAdapter) Sessions(workspaceID string) []agentservice.Provide
 	return result
 }
 
-func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.ProviderRuntimeSession, error) {
+func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.RuntimeStartInput) (agentservice.RuntimeStartResult, error) {
 	result, err := a.controller.Start(ctx, agentruntime.StartInput{
 		RoomID:                  input.WorkspaceID,
 		AgentSessionID:          input.AgentSessionID,
@@ -457,6 +525,7 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 		Provider:                input.Provider,
 		CWD:                     input.Cwd,
 		Env:                     append([]string(nil), input.Env...),
+		MCPServers:              daemonMCPServerBindings(input.MCPServers),
 		Title:                   input.Title,
 		InitialTitleEstablished: input.InitialTitleEstablished,
 		ProviderTargetRef:       cloneRuntimeContext(input.ProviderTargetRef),
@@ -471,15 +540,31 @@ func (a agentRuntimeAdapter) Start(ctx context.Context, input agentservice.Runti
 			PermissionModeID:       input.PermissionModeID,
 			ConversationDetailMode: input.ConversationDetailMode,
 		},
-		Visible:     input.Visible,
-		Provisional: input.Provisional,
+		Visible:              input.Visible,
+		Provisional:          input.Provisional,
+		CanonicalInitPending: input.CanonicalInitPending,
 	})
 	if err != nil {
-		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
+		return agentservice.RuntimeStartResult{}, mapAgentRuntimeError(err)
 	}
 	session := a.runtimeSessionWithState(result.Session)
 	session.Provisional = input.Provisional
-	return session, nil
+	return agentservice.RuntimeStartResult{Session: session, Created: result.Created}, nil
+}
+
+func (a agentRuntimeAdapter) PublishSessionInitialization(
+	ctx context.Context,
+	input agentservice.RuntimeSessionInitializationPublishInput,
+) (agentservice.ProviderRuntimeSession, error) {
+	session, err := a.controller.PublishSessionInitialization(
+		ctx,
+		input.WorkspaceID,
+		input.AgentSessionID,
+	)
+	if err != nil {
+		return agentservice.ProviderRuntimeSession{}, mapAgentRuntimeError(err)
+	}
+	return a.runtimeSessionWithState(session), nil
 }
 
 func (a agentRuntimeAdapter) Subscribe(workspaceID string, agentSessionID string) (<-chan agentservice.RuntimeStreamEvent, func(), bool) {
@@ -511,6 +596,7 @@ func agentRuntimeSession(session agentruntime.Session) agentservice.ProviderRunt
 		Resumable:               session.Resumable,
 		Cwd:                     session.CWD,
 		Env:                     append([]string(nil), session.Env...),
+		MCPServers:              serviceMCPServerBindings(session.MCPServers),
 		Settings:                agentRuntimeComposerSettings(session.Settings),
 		Status:                  session.Status,
 		TurnLifecycle:           serviceTurnLifecyclePointerFromRuntime(session.TurnLifecycle),
@@ -523,6 +609,36 @@ func agentRuntimeSession(session agentruntime.Session) agentservice.ProviderRunt
 		CreatedAtUnixMS:         session.CreatedAtUnixMS,
 		UpdatedAtUnixMS:         session.UpdatedAtUnixMS,
 	}
+}
+
+func daemonMCPServerBindings(input []agenthost.MCPServerBinding) []agentruntime.MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]agentruntime.MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		result = append(result, agentruntime.MCPServerBinding{Name: binding.Name, Type: binding.Type, URL: binding.URL, Headers: headers})
+	}
+	return result
+}
+
+func serviceMCPServerBindings(input []agentruntime.MCPServerBinding) []agenthost.MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]agenthost.MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		result = append(result, agenthost.MCPServerBinding{Name: binding.Name, Type: binding.Type, URL: binding.URL, Headers: headers})
+	}
+	return result
 }
 
 func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Session) agentservice.ProviderRuntimeSession {

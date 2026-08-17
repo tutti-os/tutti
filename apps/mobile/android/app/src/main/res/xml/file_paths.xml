@@ -3,4 +3,7 @@
   <cache-path
     name="mobile_update_cache"
     path="updates/" />
+  <external-files-path
+    name="mobile_update_downloads"
+    path="Download/updates/" />
 </paths>

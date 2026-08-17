@@ -266,6 +266,10 @@ func (s *SetupService) executeUVInstallInPlace(
 			rollback()
 			return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
 		}
+		if err := manager.ensureUserCommandPath(ctx); err != nil {
+			rollback()
+			return fmt.Errorf("%w: publish user command directory: %w", ErrRuntimeActivateFailed, err)
+		}
 		if err := publishManagedRuntimeEntry(entry); err != nil {
 			rollback()
 			return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)

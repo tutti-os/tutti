@@ -6,9 +6,18 @@ import type { DesktopPreferencesClient } from "./adapters/desktopPreferencesClie
 import { createDesktopPreferencesStore } from "./desktopPreferencesStore.ts";
 import { AgentComposerDefaultsPatchCoordinator } from "./agentComposerDefaultsPatchCoordinator.ts";
 import {
+  applyDesktopPreferenceLocale,
+  applyDesktopPreferenceTheme,
+  applyDesktopPreferencesProjection,
+  createDesktopPreferencesMutation,
+  type DesktopPreferencesOverrides
+} from "./desktopPreferencesProjection.ts";
+import {
   desktopAgentGuiConversationRailCollapsedByProviderEqual,
+  desktopAgentSessionLaunchModesByWorkspaceEqual,
   defaultDesktopAgentCliUpdateCheckEnabled,
   defaultDesktopAgentProvider,
+  defaultDesktopAgentSessionLaunchModesByWorkspace,
   defaultDesktopAgentConversationDetailMode,
   defaultDesktopAppCatalogChannel,
   defaultDesktopBrowserUseConnectionMode,
@@ -26,23 +35,20 @@ import {
   defaultDesktopWorkbenchWindowSnapping,
   desktopFeatureFlagsEqual,
   mergeDesktopAgentGuiConversationRailCollapsedByProvider,
-  normalizeDesktopAgentComposerDefaultsByAgentTarget,
+  mergeDesktopAgentSessionLaunchMode,
   normalizeDesktopAgentCliUpdateCheckEnabled,
   normalizeDesktopAgentConversationDetailMode,
   normalizeDeletedAgentConversationRetentionDays,
   normalizeDesktopFeatureFlags,
   normalizeDesktopFileDefaultOpenersByExtension,
-  normalizeDesktopAgentGuiConversationRailCollapsedByProvider,
   normalizeDesktopWorkbenchShortcuts,
   normalizeDesktopWorkbenchWindowSnapping,
   desktopFileDefaultOpenersByExtensionEqual,
   desktopWorkbenchShortcutsEqual,
   desktopWorkbenchWindowSnappingEqual,
   type DesktopAgentComposerDefaultsPatch,
-  type DesktopAgentComposerDefaultsByAgentTarget,
-  type DesktopAgentComposerDefaultsByProvider,
-  type DesktopAgentGuiConversationRailCollapsedByProvider,
   type DesktopAgentProvider,
+  type DesktopAgentSessionLaunchMode,
   type DesktopDefaultAgentProvider,
   type DesktopAgentConversationDetailMode,
   type DesktopAppCatalogChannel,
@@ -92,6 +98,8 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
       agentComposerDefaultsByProvider: {},
       agentComposerDefaultsByAgentTarget: {},
       agentGuiConversationRailCollapsedByProvider: {},
+      agentSessionLaunchModesByWorkspace:
+        defaultDesktopAgentSessionLaunchModesByWorkspace,
       agentConversationDetailMode: defaultDesktopAgentConversationDetailMode,
       appCatalogChannel: defaultDesktopAppCatalogChannel,
       browserUseConnectionMode: defaultDesktopBrowserUseConnectionMode,
@@ -408,7 +416,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
 
     const previousLocale = this.store.locale;
     this.store.changingLocale = locale;
-    this.applyLocale(locale);
+    applyDesktopPreferenceLocale(
+      this.store,
+      locale,
+      this.dependencies.applyLocale
+    );
     try {
       const authoritativePreferences =
         await this.dependencies.client.updateDesktopPreferences({
@@ -416,7 +428,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         });
       return authoritativePreferences.locale;
     } catch (error) {
-      this.applyLocale(previousLocale);
+      applyDesktopPreferenceLocale(
+        this.store,
+        previousLocale,
+        this.dependencies.applyLocale
+      );
       throw error;
     } finally {
       if (this.store.changingLocale === locale) {
@@ -576,7 +592,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     const previousTheme = this.store.theme;
     const nextTheme = this.dependencies.resolveTheme(source);
     this.store.changingThemeSource = source;
-    this.applyTheme(nextTheme);
+    applyDesktopPreferenceTheme(
+      this.store,
+      nextTheme,
+      this.dependencies.applyTheme
+    );
     try {
       const authoritativePreferences =
         await this.dependencies.client.updateDesktopPreferences({
@@ -586,7 +606,11 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
         authoritativePreferences.themeSource
       );
     } catch (error) {
-      this.applyTheme(previousTheme);
+      applyDesktopPreferenceTheme(
+        this.store,
+        previousTheme,
+        this.dependencies.applyTheme
+      );
       throw error;
     } finally {
       if (this.store.changingThemeSource === source) {
@@ -751,6 +775,44 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
+  async rememberAgentSessionLaunchMode(
+    workspaceId: string,
+    projectSectionKey: string,
+    mode: DesktopAgentSessionLaunchMode
+  ): Promise<void> {
+    const previousModes = this.store.agentSessionLaunchModesByWorkspace;
+    const nextModes = mergeDesktopAgentSessionLaunchMode(
+      previousModes,
+      workspaceId,
+      projectSectionKey,
+      mode
+    );
+    if (
+      desktopAgentSessionLaunchModesByWorkspaceEqual(previousModes, nextModes)
+    ) {
+      return;
+    }
+
+    this.store.agentSessionLaunchModesByWorkspace = nextModes;
+    try {
+      await this.dependencies.client.patchAgentSessionLaunchMode({
+        workspaceId,
+        projectSectionKey,
+        mode
+      });
+    } catch (error) {
+      if (
+        desktopAgentSessionLaunchModesByWorkspaceEqual(
+          this.store.agentSessionLaunchModesByWorkspace,
+          nextModes
+        )
+      ) {
+        this.store.agentSessionLaunchModesByWorkspace = previousModes;
+      }
+      throw error;
+    }
+  }
+
   private async hydrateInitialPreferences(): Promise<void> {
     try {
       const preferences =
@@ -775,227 +837,21 @@ export class DesktopPreferencesService implements IDesktopPreferencesService {
     }
   }
 
-  private applyLocale(locale: DesktopLocale): void {
-    if (this.store.locale === locale) {
-      return;
-    }
-
-    this.dependencies.applyLocale(locale);
-    this.store.locale = locale;
+  private applyPreferences(
+    preferences: Parameters<
+      DesktopPreferencesClient["updateDesktopPreferences"]
+    >[0]["preferences"]
+  ): void {
+    applyDesktopPreferencesProjection({
+      applyLocale: this.dependencies.applyLocale,
+      applyTheme: this.dependencies.applyTheme,
+      preferences,
+      resolveTheme: this.dependencies.resolveTheme,
+      store: this.store
+    });
   }
 
-  private applyTheme(theme: DesktopThemeState): void {
-    if (
-      this.store.theme.appearance === theme.appearance &&
-      this.store.theme.source === theme.source
-    ) {
-      return;
-    }
-
-    this.dependencies.applyTheme(theme);
-    this.store.theme = theme;
-  }
-
-  private applyPreferences(preferences: {
-    agentCliUpdateCheckEnabled?: boolean;
-    agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
-    agentGuiConversationRailCollapsedByProvider?: DesktopAgentGuiConversationRailCollapsedByProvider;
-    agentConversationDetailMode?: DesktopAgentConversationDetailMode;
-    appCatalogChannel: DesktopAppCatalogChannel;
-    browserUseConnectionMode?: DesktopBrowserUseConnectionMode;
-    defaultAgentProvider: DesktopDefaultAgentProvider;
-    dockIconStyle: DesktopDockIconStyle;
-    dockPlacement: DesktopDockPlacement;
-    deletedAgentConversationRetentionDays?: DeletedAgentConversationRetentionDays;
-    featureFlags?: DesktopFeatureFlags;
-    fileDefaultOpenersByExtension?: DesktopFileDefaultOpenersByExtension;
-    locale: DesktopLocale;
-    minimizeAnimation?: DesktopMinimizeAnimation;
-    sleepPreventionMode: DesktopSleepPreventionMode;
-    showAppDeveloperSources?: boolean;
-    themeSource: DesktopThemeSource;
-    updateChannel: DesktopUpdateChannel;
-    updatePolicy: DesktopUpdatePolicy;
-    workbenchShortcuts?: DesktopWorkbenchShortcuts;
-    workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
-  }): void {
-    this.store.agentCliUpdateCheckEnabled =
-      normalizeDesktopAgentCliUpdateCheckEnabled(
-        preferences.agentCliUpdateCheckEnabled
-      );
-    this.store.agentComposerDefaultsByAgentTarget =
-      normalizeDesktopAgentComposerDefaultsByAgentTarget(
-        preferences.agentComposerDefaultsByAgentTarget
-      );
-    this.store.agentGuiConversationRailCollapsedByProvider =
-      normalizeDesktopAgentGuiConversationRailCollapsedByProvider(
-        preferences.agentGuiConversationRailCollapsedByProvider
-      );
-    this.store.agentConversationDetailMode =
-      normalizeDesktopAgentConversationDetailMode(
-        preferences.agentConversationDetailMode
-      );
-    this.store.appCatalogChannel =
-      preferences.appCatalogChannel ?? defaultDesktopAppCatalogChannel;
-    this.store.browserUseConnectionMode =
-      preferences.browserUseConnectionMode ??
-      defaultDesktopBrowserUseConnectionMode;
-    this.store.defaultAgentProvider = preferences.defaultAgentProvider;
-    this.store.dockIconStyle = preferences.dockIconStyle;
-    this.store.dockPlacement = preferences.dockPlacement;
-    this.store.deletedAgentConversationRetentionDays =
-      normalizeDeletedAgentConversationRetentionDays(
-        preferences.deletedAgentConversationRetentionDays
-      );
-    this.store.fileDefaultOpenersByExtension =
-      normalizeDesktopFileDefaultOpenersByExtension(
-        preferences.fileDefaultOpenersByExtension
-      );
-    const nextFeatureFlags = normalizeDesktopFeatureFlags(
-      preferences.featureFlags
-    );
-    if (!desktopFeatureFlagsEqual(this.store.featureFlags, nextFeatureFlags)) {
-      this.store.featureFlags = nextFeatureFlags;
-    }
-    this.applyLocale(preferences.locale);
-    this.store.minimizeAnimation =
-      preferences.minimizeAnimation ?? defaultDesktopMinimizeAnimation;
-    this.store.sleepPreventionMode = preferences.sleepPreventionMode;
-    this.store.showAppDeveloperSources =
-      preferences.showAppDeveloperSources ??
-      defaultDesktopShowAppDeveloperSources;
-    this.applyTheme(this.dependencies.resolveTheme(preferences.themeSource));
-    this.store.updateChannel = preferences.updateChannel;
-    this.store.updatePolicy = preferences.updatePolicy;
-    const nextWorkbenchShortcuts = normalizeDesktopWorkbenchShortcuts(
-      preferences.workbenchShortcuts
-    );
-    if (
-      !desktopWorkbenchShortcutsEqual(
-        this.store.workbenchShortcuts,
-        nextWorkbenchShortcuts
-      )
-    ) {
-      this.store.workbenchShortcuts = nextWorkbenchShortcuts;
-    }
-    this.store.workbenchWindowSnapping =
-      normalizeDesktopWorkbenchWindowSnapping(
-        preferences.workbenchWindowSnapping
-      );
-  }
-
-  private currentPreferences(
-    overrides: Partial<{
-      agentCliUpdateCheckEnabled: boolean;
-      agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
-      agentConversationDetailMode: DesktopAgentConversationDetailMode;
-      appCatalogChannel: DesktopAppCatalogChannel;
-      browserUseConnectionMode: DesktopBrowserUseConnectionMode;
-      defaultAgentProvider: DesktopDefaultAgentProvider;
-      dockIconStyle: DesktopDockIconStyle;
-      dockPlacement: DesktopDockPlacement;
-      deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
-      featureFlags: DesktopFeatureFlags;
-      fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
-      locale: DesktopLocale;
-      minimizeAnimation: DesktopMinimizeAnimation;
-      sleepPreventionMode: DesktopSleepPreventionMode;
-      showAppDeveloperSources: boolean;
-      themeSource: DesktopThemeSource;
-      updateChannel: DesktopUpdateChannel;
-      updatePolicy: DesktopUpdatePolicy;
-      workbenchShortcuts: DesktopWorkbenchShortcuts;
-      workbenchWindowSnapping: DesktopWorkbenchWindowSnapping;
-    }> = {}
-  ): {
-    agentCliUpdateCheckEnabled: boolean;
-    agentComposerDefaultsByProvider: DesktopAgentComposerDefaultsByProvider;
-    agentComposerDefaultsByAgentTarget?: DesktopAgentComposerDefaultsByAgentTarget;
-    agentGuiConversationRailCollapsedByProvider: DesktopAgentGuiConversationRailCollapsedByProvider;
-    agentConversationDetailMode: DesktopAgentConversationDetailMode;
-    agentDockLayout: "unified";
-    appCatalogChannel: DesktopAppCatalogChannel;
-    browserUseConnectionMode: DesktopBrowserUseConnectionMode;
-    defaultAgentProvider: DesktopDefaultAgentProvider;
-    dockIconStyle: DesktopDockIconStyle;
-    dockPlacement: DesktopDockPlacement;
-    deletedAgentConversationRetentionDays: DeletedAgentConversationRetentionDays;
-    featureFlags: DesktopFeatureFlags;
-    fileDefaultOpenersByExtension: DesktopFileDefaultOpenersByExtension;
-    locale: DesktopLocale;
-    minimizeAnimation: DesktopMinimizeAnimation;
-    sleepPreventionMode: DesktopSleepPreventionMode;
-    showAppDeveloperSources: boolean;
-    themeSource: DesktopThemeSource;
-    updateChannel: DesktopUpdateChannel;
-    updatePolicy: DesktopUpdatePolicy;
-    workbenchShortcuts: DesktopWorkbenchShortcuts;
-    workbenchWindowSnapping?: DesktopWorkbenchWindowSnapping;
-  } {
-    const hasWorkbenchWindowSnappingOverride =
-      "workbenchWindowSnapping" in overrides;
-    const workbenchWindowSnapping = normalizeDesktopWorkbenchWindowSnapping(
-      overrides.workbenchWindowSnapping ?? this.store.workbenchWindowSnapping
-    );
-    return {
-      agentCliUpdateCheckEnabled:
-        overrides.agentCliUpdateCheckEnabled ??
-        this.store.agentCliUpdateCheckEnabled,
-      // Keep the required wire-contract field, but stop round-tripping the
-      // frozen legacy provider-keyed defaults through renderer state.
-      agentComposerDefaultsByProvider: {},
-      agentGuiConversationRailCollapsedByProvider:
-        normalizeDesktopAgentGuiConversationRailCollapsedByProvider(
-          overrides.agentGuiConversationRailCollapsedByProvider ??
-            this.store.agentGuiConversationRailCollapsedByProvider
-        ),
-      agentConversationDetailMode: normalizeDesktopAgentConversationDetailMode(
-        overrides.agentConversationDetailMode ??
-          this.store.agentConversationDetailMode
-      ),
-      // The dual-dock (legacySplit) layout has been removed; the stored
-      // preference is pinned to the unified layout.
-      agentDockLayout: "unified",
-      appCatalogChannel:
-        overrides.appCatalogChannel ?? this.store.appCatalogChannel,
-      browserUseConnectionMode:
-        overrides.browserUseConnectionMode ??
-        this.store.browserUseConnectionMode,
-      defaultAgentProvider:
-        overrides.defaultAgentProvider ?? this.store.defaultAgentProvider,
-      dockIconStyle: overrides.dockIconStyle ?? this.store.dockIconStyle,
-      dockPlacement: overrides.dockPlacement ?? this.store.dockPlacement,
-      deletedAgentConversationRetentionDays:
-        overrides.deletedAgentConversationRetentionDays ??
-        this.store.deletedAgentConversationRetentionDays,
-      featureFlags: normalizeDesktopFeatureFlags(
-        overrides.featureFlags ?? this.store.featureFlags
-      ),
-      fileDefaultOpenersByExtension:
-        normalizeDesktopFileDefaultOpenersByExtension(
-          overrides.fileDefaultOpenersByExtension ??
-            this.store.fileDefaultOpenersByExtension
-        ),
-      locale: overrides.locale ?? this.store.locale,
-      minimizeAnimation:
-        overrides.minimizeAnimation ?? this.store.minimizeAnimation,
-      sleepPreventionMode:
-        overrides.sleepPreventionMode ?? this.store.sleepPreventionMode,
-      showAppDeveloperSources:
-        overrides.showAppDeveloperSources ?? this.store.showAppDeveloperSources,
-      themeSource: overrides.themeSource ?? this.store.theme.source,
-      updateChannel: overrides.updateChannel ?? this.store.updateChannel,
-      updatePolicy: overrides.updatePolicy ?? this.store.updatePolicy,
-      workbenchShortcuts: normalizeDesktopWorkbenchShortcuts(
-        overrides.workbenchShortcuts ?? this.store.workbenchShortcuts
-      ),
-      ...(hasWorkbenchWindowSnappingOverride ||
-      !desktopWorkbenchWindowSnappingEqual(
-        workbenchWindowSnapping,
-        defaultDesktopWorkbenchWindowSnapping
-      )
-        ? { workbenchWindowSnapping }
-        : {})
-    };
+  private currentPreferences(overrides: DesktopPreferencesOverrides = {}) {
+    return createDesktopPreferencesMutation(this.store, overrides);
   }
 }

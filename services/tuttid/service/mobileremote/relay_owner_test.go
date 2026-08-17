@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -15,6 +16,7 @@ import (
 	authbridge "github.com/tutti-os/tutti/packages/auth/bridge-go"
 	deviceauthority "github.com/tutti-os/tutti/packages/clients/device-authority-go"
 	devicelink "github.com/tutti-os/tutti/packages/device-link"
+	"github.com/tutti-os/tutti/packages/device-link/relaytransport"
 	mobileremotebiz "github.com/tutti-os/tutti/services/tuttid/biz/mobileremote"
 )
 
@@ -74,14 +76,17 @@ func TestRelayOwnerLifecyclePreparesAndActivatesBoundSession(t *testing.T) {
 	if controlPlane.ensureCalls != 1 || controlPlane.registerCalls != 1 || controlPlane.tokenCalls != 1 {
 		t.Fatalf("authority calls = ensure=%d register=%d token=%d, want one each", controlPlane.ensureCalls, controlPlane.registerCalls, controlPlane.tokenCalls)
 	}
-	deactivate, err := lifecycle.Activate(context.Background(), session)
+	activation, err := lifecycle.Activate(context.Background(), session)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if activation.Readiness == nil {
+		t.Fatal("Activate() returned nil readiness")
 	}
 	if controlPlane.renewCalls != 1 {
 		t.Fatalf("lease renew calls = %d, want activation renewal", controlPlane.renewCalls)
 	}
-	deactivate()
+	activation.Deactivate()
 }
 
 func TestRelayOwnerLifecycleReusesAuthorityAndTokenAcrossReconnects(t *testing.T) {
@@ -103,6 +108,138 @@ func TestRelayOwnerLifecycleReusesAuthorityAndTokenAcrossReconnects(t *testing.T
 	}
 	if controlPlane.ensureCalls != 1 || controlPlane.registerCalls != 1 || controlPlane.tokenCalls != 1 {
 		t.Fatalf("reconnect calls = ensure=%d register=%d token=%d, want one each", controlPlane.ensureCalls, controlPlane.registerCalls, controlPlane.tokenCalls)
+	}
+}
+
+func TestLeaseRenewWaitDoesNotTruncateOneSecondTTL(t *testing.T) {
+	now := time.Unix(0, 0)
+	got := leaseRenewWait(now, now.Add(time.Second), deviceauthority.LeasePolicy{TTLSeconds: 1})
+	if got != 500*time.Millisecond {
+		t.Fatalf("leaseRenewWait() = %s, want 500ms", got)
+	}
+}
+
+func TestRelayOwnerLeaseTransientFailureKeepsReadinessAndConnectionGeneration(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	controlPlane := newRelayOwnerTestAuthority(now)
+	controlPlane.authority.Lease = deviceauthority.LeasePolicy{TTLSeconds: 1, RenewIntervalSeconds: 1}
+	controlPlane.lease.ExpiresAt = now.Add(250 * time.Millisecond).Format(time.RFC3339Nano)
+	controlPlane.renewErrors = map[int]error{2: errors.New("temporary control-plane network failure")}
+	controlPlane.renewResults = map[int]deviceauthority.RenewDeviceAuthorityLeaseResult{
+		3: {
+			AuthorityID: "authority-1", State: "online",
+			ExpiresAt: time.Now().UTC().Add(time.Second).Format(time.RFC3339Nano),
+		},
+	}
+	service := &Service{
+		Account:         &relayOwnerTestAccount{session: &authbridge.Session{UserID: "user-1", Cookie: "cookie"}},
+		ControlPlane:    &relayOwnerTestControlPlane{},
+		DeviceAuthority: controlPlane,
+		RuntimeID:       "runtime-1",
+	}
+	lifecycle := (&relayOwnerLifecycleFactory{service: service}).NewOwnerLifecycle()
+	if _, err := lifecycle.Prepare(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	activation, err := lifecycle.Activate(context.Background(), relaytransport.OwnerSession{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer activation.Deactivate()
+	select {
+	case <-activation.Readiness.Done():
+		t.Fatalf("readiness ended after transient renewal failure: %v", context.Cause(activation.Readiness))
+	case <-time.After(350 * time.Millisecond):
+	}
+	if got := controlPlane.renewCount(); got < 3 {
+		t.Fatalf("renew calls = %d, want transient retry and recovery", got)
+	}
+	select {
+	case <-activation.Readiness.Done():
+		t.Fatalf("readiness ended after recovery: %v", context.Cause(activation.Readiness))
+	default:
+	}
+}
+
+func TestRelayOwnerLeaseExpiryEndsReadiness(t *testing.T) {
+	t.Parallel()
+	now := time.Now().UTC()
+	controlPlane := newRelayOwnerTestAuthority(now)
+	controlPlane.authority.Lease = deviceauthority.LeasePolicy{TTLSeconds: 1, RenewIntervalSeconds: 1}
+	controlPlane.lease.ExpiresAt = now.Add(180 * time.Millisecond).Format(time.RFC3339Nano)
+	controlPlane.renewErrors = map[int]error{
+		2: errors.New("temporary control-plane network failure"),
+		3: errors.New("temporary control-plane network failure"),
+	}
+	service := &Service{
+		Account:         &relayOwnerTestAccount{session: &authbridge.Session{UserID: "user-1", Cookie: "cookie"}},
+		ControlPlane:    &relayOwnerTestControlPlane{},
+		DeviceAuthority: controlPlane,
+		RuntimeID:       "runtime-1",
+	}
+	lifecycle := (&relayOwnerLifecycleFactory{service: service}).NewOwnerLifecycle()
+	if _, err := lifecycle.Prepare(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	activation, err := lifecycle.Activate(context.Background(), relaytransport.OwnerSession{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer activation.Deactivate()
+	select {
+	case <-activation.Readiness.Done():
+		if !errors.Is(context.Cause(activation.Readiness), errRelayLeaseExpired) {
+			t.Fatalf("readiness cause = %v, want lease expiry", context.Cause(activation.Readiness))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("readiness did not end after lease expiry")
+	}
+}
+
+func TestRelayOwnerLeaseUnauthorizedEndsReadinessAndInvalidatesToken(t *testing.T) {
+	now := time.Now().UTC()
+	controlPlane := newRelayOwnerTestAuthority(now)
+	controlPlane.authority.Lease = deviceauthority.LeasePolicy{TTLSeconds: 1, RenewIntervalSeconds: 1}
+	controlPlane.lease.ExpiresAt = now.Add(200 * time.Millisecond).Format(time.RFC3339Nano)
+	controlPlane.renewErrors = map[int]error{
+		2: &deviceauthority.HTTPError{StatusCode: http.StatusUnauthorized},
+	}
+	service := &Service{
+		Account:         &relayOwnerTestAccount{session: &authbridge.Session{UserID: "user-1", Cookie: "cookie"}},
+		ControlPlane:    &relayOwnerTestControlPlane{},
+		DeviceAuthority: controlPlane,
+		RuntimeID:       "runtime-1",
+	}
+	lifecycle := (&relayOwnerLifecycleFactory{service: service}).NewOwnerLifecycle().(*relayOwnerLifecycle)
+	if _, err := lifecycle.Prepare(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	activation, err := lifecycle.Activate(context.Background(), relaytransport.OwnerSession{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer activation.Deactivate()
+	select {
+	case <-activation.Readiness.Done():
+		var httpErr *deviceauthority.HTTPError
+		if !errors.As(context.Cause(activation.Readiness), &httpErr) || httpErr.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("readiness cause = %v, want unauthorized", context.Cause(activation.Readiness))
+		}
+	case <-time.After(time.Second):
+		t.Fatal("readiness did not end after unauthorized renewal")
+	}
+	lifecycle.mu.Lock()
+	tokenBefore := lifecycle.token.Value
+	lifecycle.mu.Unlock()
+	if tokenBefore != "" {
+		t.Fatalf("cached token after unauthorized renewal = %q, want invalidated", tokenBefore)
+	}
+	if _, err := lifecycle.Prepare(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if controlPlane.tokenCalls != 2 {
+		t.Fatalf("token calls after unauthorized renewal = %d, want re-sign", controlPlane.tokenCalls)
 	}
 }
 
@@ -306,6 +443,8 @@ type relayOwnerTestAuthority struct {
 	registerCalls int
 	tokenCalls    int
 	renewCalls    int
+	renewErrors   map[int]error
+	renewResults  map[int]deviceauthority.RenewDeviceAuthorityLeaseResult
 }
 
 func (c *relayOwnerTestAuthority) EnsureDeviceAuthority(context.Context, deviceauthority.EnsureDeviceAuthorityRequest) (deviceauthority.DeviceAuthorityResult, error) {
@@ -333,7 +472,19 @@ func (c *relayOwnerTestAuthority) RenewDeviceAuthorityLease(context.Context, dev
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.renewCalls++
+	if err := c.renewErrors[c.renewCalls]; err != nil {
+		return deviceauthority.RenewDeviceAuthorityLeaseResult{}, err
+	}
+	if lease, ok := c.renewResults[c.renewCalls]; ok {
+		return lease, nil
+	}
 	return c.lease, nil
+}
+
+func (c *relayOwnerTestAuthority) renewCount() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.renewCalls
 }
 
 type relayOwnerTestControlPlane struct{}

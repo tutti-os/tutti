@@ -614,13 +614,18 @@ func TestServiceDeleteSessionsBatchClosesAllRuntimesBeforePersistence(t *testing
 	service.AgentSessionResourceReleaser = &fakeAgentSessionResourceReleaser{err: errors.New("release browser resources")}
 
 	result, err := service.DeleteSessionsBatch(context.Background(), "ws-1", DeleteSessionsBatchInput{
-		SessionIDs: []string{" session-1 ", "session-2"},
+		SessionIDs:                 []string{" session-1 ", "session-2"},
+		RequiredRootRailSectionKey: " project:/workspace/app ",
+		ExcludePinnedRoots:         true,
 	})
 	if err != nil {
 		t.Fatalf("DeleteSessionsBatch() error = %v", err)
 	}
 	if len(runtime.closeCalls) != 2 || reader.batchDeleteCalls != 1 || !slices.Equal(reader.lastBatchDeleteInput.SessionIDs, []string{"session-1", "session-2"}) {
 		t.Fatalf("close calls=%#v batch input=%#v calls=%d", runtime.closeCalls, reader.lastBatchDeleteInput, reader.batchDeleteCalls)
+	}
+	if reader.lastBatchDeleteInput.RequiredRootRailSectionKey != "project:/workspace/app" || !reader.lastBatchDeleteInput.ExcludePinnedRoots {
+		t.Fatalf("conditional batch input = %#v", reader.lastBatchDeleteInput)
 	}
 	if result.RemovedSessions != 2 || !slices.Equal(result.CleanupFailedSessionIDs, []string{"session-1", "session-2"}) {
 		t.Fatalf("result = %#v", result)

@@ -7,6 +7,7 @@ import (
 
 type scriptedGoalState struct {
 	goal                            map[string]any
+	goalGetAfterSnapshot            func()
 	goalStartsTurn                  bool
 	goalNotificationsBeforeResponse bool
 	goalUpdatedOmitsTurnID          bool
@@ -144,7 +145,11 @@ func (s *fakeCodexAppServer) handleGoalReviewRPC(message scriptedAppServerMessag
 	case appServerMethodThreadGoalGet:
 		s.mu.Lock()
 		goal := clonePayload(s.goal)
+		afterSnapshot := s.goalGetAfterSnapshot
 		s.mu.Unlock()
+		if afterSnapshot != nil {
+			afterSnapshot()
+		}
 		s.sendJSON(map[string]any{
 			"id":     message.ID,
 			"result": map[string]any{"goal": goal},

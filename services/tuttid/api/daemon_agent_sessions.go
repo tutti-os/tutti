@@ -42,6 +42,7 @@ type AgentSessionService interface {
 	ListGitBranches(context.Context, string, string) (agentservice.GitBranches, error)
 	ListGitBranchesForPath(context.Context, string, string) (agentservice.GitBranches, error)
 	ResolveGitPatchSupportForPath(context.Context, string, string) (agentservice.GitPatchSupport, error)
+	ResolveSessionWorktreeSupport(context.Context, string, string, string) (agentservice.SessionWorktreeSupport, error)
 	ApplyGitPatchForPath(context.Context, string, agentservice.ApplyGitPatchInput) (agentservice.ApplyGitPatchResult, error)
 	Clear(context.Context, string) (agentservice.ClearSessionsResult, error)
 	Delete(context.Context, string, string) (agentservice.DeleteSessionResult, error)
@@ -84,9 +85,13 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 		Provider: string(request.Provider),
 	}
 	if request.Body != nil {
+		if request.Body.Section != nil {
+			input.Section = agentservice.ComposerOptionsSection(*request.Body.Section)
+		}
 		input.AgentTargetID = optionalStringValue(request.Body.AgentTargetId)
 		input.Cwd = optionalStringValue(request.Body.Cwd)
 		input.WorkspaceID = optionalStringValue(request.Body.WorkspaceId)
+		input.WaitForFreshModelCatalog = request.Body.WaitForFreshModelCatalog != nil && *request.Body.WaitForFreshModelCatalog
 	}
 	if request.Body != nil && request.Body.Settings != nil {
 		input.Settings = composerSettingsFromGenerated(*request.Body.Settings)
@@ -685,48 +690,6 @@ func generatedAgentGeneratedFiles(files []agentservice.GeneratedFile) []tuttigen
 	return result
 }
 
-func stringPtrValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}
-
-func agentPromptContentFromGenerated(content []tuttigenerated.AgentPromptContentBlock) []agentservice.PromptContentBlock {
-	result := make([]agentservice.PromptContentBlock, 0, len(content))
-	for _, block := range content {
-		item := agentservice.PromptContentBlock{
-			Type: string(block.Type),
-		}
-		if block.Text != nil {
-			item.Text = *block.Text
-		}
-		if block.MimeType != nil {
-			item.MimeType = string(*block.MimeType)
-		}
-		if block.Data != nil {
-			item.Data = *block.Data
-		}
-		if block.Url != nil {
-			item.URL = *block.Url
-		}
-		if block.AttachmentId != nil {
-			item.AttachmentID = *block.AttachmentId
-		}
-		if block.Name != nil {
-			item.Name = *block.Name
-		}
-		if block.Path != nil {
-			item.Path = *block.Path
-		}
-		if block.ConnectorKey != nil {
-			item.ConnectorKey = *block.ConnectorKey
-		}
-		result = append(result, item)
-	}
-	return result
-}
-
 func generatedAgentSession(session agentservice.Session) (tuttigenerated.WorkspaceAgentSession, error) {
 	var settings *tuttigenerated.AgentSessionComposerSettings
 	if session.Settings != nil {
@@ -784,6 +747,7 @@ func generatedAgentSession(session agentservice.Session) (tuttigenerated.Workspa
 			TargetTurnId:         strings.TrimSpace(session.ForkedFrom.TargetTurnID),
 		}
 	}
+	goalSyncState := generatedAgentSessionGoalSyncState(session.GoalSyncState)
 	return tuttigenerated.WorkspaceAgentSession{
 		ActiveTurn:             activeTurn,
 		ActiveTurnId:           optionalStringPointer(strings.TrimSpace(session.ActiveTurnID)),
@@ -794,8 +758,10 @@ func generatedAgentSession(session agentservice.Session) (tuttigenerated.Workspa
 		EndedAtUnixMs:          endedAtUnixMS,
 		ForkedFrom:             forkedFrom,
 		Goal:                   generatedAgentSessionGoal(session.Metadata.Goal),
+		GoalSyncState:          goalSyncState,
 		Id:                     session.ID,
 		Imported:               session.Metadata.Imported,
+		Isolation:              generatedAgentSessionIsolation(session.Isolation),
 		Kind:                   tuttigenerated.WorkspaceAgentSessionKind(session.Kind),
 		LatestTurn:             latestTurn,
 		LatestTurnInteractions: latestTurnInteractions,

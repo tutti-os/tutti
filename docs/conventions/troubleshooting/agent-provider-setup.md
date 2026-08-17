@@ -4,6 +4,41 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Hermes is ready but a new Windows session reports Agent failed to start
+
+- Symptom:
+  Hermes passes setup detection, but the new-conversation model picker is empty
+  and sending the first message reports `Agent failed to start`.
+- Quick checks:
+  In the daemon log, compare setup-probe configuration with the session-scoped
+  `HERMES_HOME`. The failing session typically reports no `.env` in its
+  `.tutti*/agent/runs/<session>/hermes` directory, followed by ACP `session/new`
+  returning `No LLM provider configured`. Check whether the working user config
+  is under `%LOCALAPPDATA%\hermes` while `%USERPROFILE%\.hermes` is absent.
+- Root cause:
+  The signed extension profile uses the portable default `.hermes`, but the
+  shared runtime preparer previously resolved it only relative to the Windows
+  user profile. Hermes itself uses the native Windows user cache location, so
+  discovery could see credentials while the isolated session home copied none.
+- Fix:
+  Keep an explicit `HERMES_HOME` as the highest-priority source. Otherwise,
+  preserve an existing `%USERPROFILE%\.hermes`; when it is absent, resolve the
+  resolve the portable leading-dot directory through the Windows user cache
+  root first, then fall back to a migrated `%USERPROFILE%\.hermes` only when the
+  native directory is absent. Copy only the files declared by the signed
+  runtime-preparation profile. Keep this behavior in the platform adapter rather
+  than branching on `acp:hermes`.
+- Validation:
+  With no user-level `HERMES_HOME`, place credentials in
+  `%LOCALAPPDATA%\hermes`, create a new session, and verify the model picker is
+  populated and the first message starts successfully. Confirm an explicit
+  source environment variable still takes precedence, and that a migrated
+  `%USERPROFILE%\.hermes` is used only when the native directory is absent.
+- References:
+  [agent-runtime-preparation.md](../../architecture/agent-runtime-preparation.md)
+  [windows-platform-support.md](../../architecture/windows-platform-support.md)
+  [extension_runtime.go](../../../packages/agent/runtimeprep/extension_runtime.go)
+
 ### Focusing a workspace repeatedly starts provider CLIs and raises CPU usage
 
 - Symptom:
@@ -78,6 +113,29 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [agent-extensions.md](../../architecture/agent-extensions.md)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
+
+### Workspace Apps repeatedly probe extension authentication
+
+- Symptom:
+  Several Workspace Apps opening together repeatedly start the same Extension
+  ACP process. A logged-in target can intermittently become unavailable when
+  duplicate setup probes exhaust the caller timeout.
+- Root cause:
+  Older Apps consume only the broad Agent catalog, while newer Apps refine an
+  exact target. If the broad catalog exposes installation readiness without
+  authentication, old Apps can also show an unconfigured extension as usable.
+- Fix:
+  Resolve installed extension authentication for broad and exact
+  `agent list` requests, run broad probes concurrently, coalesce them by
+  workspace and target in the daemon, and retain the result for a short bounded
+  interval. Preserve `auth_required` as the canonical reason code even when the
+  runtime supplies a more specific diagnostic reason. Explicit refresh bypasses
+  the short cache.
+- Validation:
+  Broad and exact-target requests within the cache window should share one setup
+  probe per target. A ready Kimi target reports `available`; an unconfigured
+  Hermes target reports `unavailable` with `auth_required` in both response
+  shapes. A refreshed broad request probes each installed extension once.
 
 ### An extension Agent is installed in the terminal but Tutti cannot detect it
 
@@ -693,20 +751,30 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   `cwd/AGENTS.md`, which dirtied tracked repositories.
 - Fix:
   Materialize Tutti Cursor skills as a session-scoped Cursor plugin with
-  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`; expose it through
-  `TUTTI_CURSOR_PLUGIN_DIR`, and start Cursor ACP as
+  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`. Generate the canonical
+  runtime policy and its materialized Skill catalog from the same resolved
+  capability profile instead of maintaining a Cursor-specific Skill catalog.
+  Reconcile the session-owned root on every prepare so resume replaces current
+  managed Skills and removes stale managed entries without touching unmanaged
+  directories.
+  Expose the plugin through `TUTTI_CURSOR_PLUGIN_DIR`, start Cursor ACP as
   `cursor-agent --plugin-dir <plugin-dir> acp`. Keep user/project
   `.cursor/skills` discoverable for composer options, but never write Tutti
   injected skills or Tutti runtime instructions into the workspace cwd for
-  Cursor sessions. Cursor Agent `2026.07.01-41b2de7` does not load plugin hooks
-  in ACP mode, so do not advertise the dormant background-Task guard in the
-  plugin manifest and do not claim that background Task is blocked. Do not
-  install the hook into user or project Cursor configuration as a workaround.
+  Cursor sessions. Cursor ACP does not project plugin Skills or Rules into the
+  model context, so append the prepared policy and dynamic catalog to the first
+  provider-only ACP prompt; never project it as user-visible content. Cursor
+  Agent `2026.07.01-41b2de7` does not load plugin hooks in ACP mode, so do not
+  advertise the dormant background-Task guard in the plugin manifest and do not
+  claim that background Task is blocked. Do not install the hook into user or
+  project Cursor configuration as a workaround.
 - Validation:
-  Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin
-  while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime
-  coverage that Cursor ACP includes `--plugin-dir`, and agent service coverage
-  that Cursor composer skill discovery includes plugin skills. Then run
+  Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin and
+  dynamic prompt context while leaving project `.cursor/skills` and `AGENTS.md`
+  untouched; add runtime coverage that Cursor ACP includes `--plugin-dir` and
+  injects the prepared context only on its first provider prompt, and agent
+  service coverage that Cursor composer skill discovery includes plugin skills.
+  Then run
   `cd packages/agent/runtimeprep && go test ./...`,
   `cd services/tuttid && go test ./service/agent`, and
   `go test ./packages/agent/daemon/runtime`.
@@ -917,24 +985,42 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   after the request, the canceled handler did not finish cleaning up its
   discovery subprocess.
 - Root cause:
-  Codex Composer Options needs both `model/list` and the app-server capability
-  catalog. Running those independent, individually bounded probes in series
-  can exceed the Desktop's aggregate request deadline. A second failure mode
-  occurs when timeout kills only the JavaScript launcher: its native child
-  inherits stdout, the response scanner never receives EOF, and deferred
-  `Wait` cannot run because it sits behind that scanner.
+  Codex Composer Options has two independent waits: `model/list` feeds the
+  model, reasoning, and speed controls, while app-server capability discovery
+  feeds skills and capability entries. A legacy combined response can still
+  wait for both, and repeated capability failures can otherwise start another
+  eight-second probe for every refresh.
 - Fix:
-  Start model-catalog loading before capability discovery so the two independent
-  app-server exchanges overlap. Run every short-lived Codex app-server in its
-  own process group, begin process reaping immediately, and make timeout cancel
-  the entire group. Keep the Desktop deadline unchanged so a genuinely stuck
-  daemon request still fails closed.
+  Desktop requests `section=core` for model controls. It requests
+  `section=capabilities` only when the user opens or uses a capability surface,
+  so the capability response and its eight-second provider timeout never block
+  the model controls. The legacy `section=full` response still starts both
+  catalogs concurrently. Capability loads use single-flight sharing plus a
+  short negative cache so identical callers do not stampede a broken app-server.
+  Run every short-lived Codex
+  app-server in its own process group, begin process reaping immediately, and
+  make timeout cancel the entire group. The daemon keeps one initialized Codex
+  app-server session warm per provider for up to two minutes, and refreshes the
+  five-minute model catalog in the background after expiry or an auth/config
+  invalidation. Identical atomic rewrites of Codex auth/config do not
+  invalidate the catalog because the watcher compares file content. Keep the
+  Desktop deadline unchanged so a genuinely stuck daemon request still fails
+  closed.
 - Validation:
   Block both catalog fixtures and assert both start before either is released.
   Use a fake app-server whose child retains stdout and assert model and
-  capability timeouts return promptly with no surviving child. Finally, time a
-  cold Composer Options request and confirm it completes within the Desktop
-  deadline.
+  capability timeouts return promptly with no surviving child. Assert concurrent
+  cold catalog callers share one fetch, stale options remain visible while the
+  background refresh runs, and repeated requests reuse one app-server process.
+  Finally, time a cold Composer Options request and confirm it completes within
+  the Desktop deadline. Useful logs are
+  `agent.model_catalog.fetch_start`, `stage_settled`, `fetch_settled`,
+  `request_settled`, `agent.composer_options.load`, and `process_idle_close`.
+  Composer telemetry reports section/stage, outcome, duration, and bounded
+  model identifiers without paths or settings. When an auth/config watcher
+  causes invalidation, `agent.model_catalog.invalidated` also includes the
+  exact changed file and change kind; use that field to distinguish Codex
+  auth/config churn from a provider-side fetch failure.
 - References:
   [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
   [codex_appserver_process.go](../../../services/tuttid/service/agent/codex_appserver_process.go)
@@ -965,7 +1051,9 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   boundary and replay the answer again in `turn/completed`, sometimes with
   whitespace polish; treating each report as a new segment creates duplicate
   bubbles. The model-metadata warning is runtime diagnostic noise rather than
-  an actionable user error.
+  an actionable user error. Persisted skill-context warnings may omit their
+  optional `source` metadata, and Codex has emitted both percentage and
+  non-percentage variants of that wording.
 - Fix:
   Treat Codex app-server `model/list` as the authoritative catalog regardless
   of `model_provider`. Preserve the full returned list and reasoning metadata;
@@ -974,7 +1062,10 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   for whitespace-equivalent item-finalization text and ignore turn-final text
   after an assistant segment has already completed. Filter the metadata
   fallback warning through the same AgentGUI diagnostic-notice projection used
-  for skills-context-budget warnings.
+  for skills-context-budget warnings. Match the optional percentage in the
+  skills warning as diagnostic context rather than as part of its identity;
+  accept a missing source only for that exact warning, preserve explicitly
+  non-runtime notices, and keep the metadata fallback warning runtime-only.
 - Validation:
   Run
   `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestApplyAssistantTurnFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,

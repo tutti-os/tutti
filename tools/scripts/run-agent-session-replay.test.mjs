@@ -45,8 +45,10 @@ import {
   assertReplayWorkspaceSucceeded,
   checkpointNeedsToolSettle,
   checkpointNeedsScreenshotSettle,
+  checkpointAllowsOptionalScreenshotSettle,
   captureCheckpointScreenshot,
   captureScreenshot,
+  hasOpenToolDetailText,
   normalizeScreenshotClip,
   parseArgs,
   resolveDesktopHeadless,
@@ -63,6 +65,7 @@ import {
   replayTurnIdentityPlan,
   replayWorkspaceTransportRegistrations,
   readReplayTotalDurationMs,
+  replayWorkspaceActivityClockOrigin,
   replayWorkspaceInitialTargetCheckpoint,
   managedReplayFailure,
   loadRecordScenario,
@@ -77,6 +80,15 @@ import {
 const replayCassetteAID = "277377ed-af34-454f-a8b9-1047b4064e74";
 const replayCassetteBID = "628c61c4-cbcb-4445-83f7-718bbbd414bd";
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
+test("open tool detail accepts short rendered fileChange content", () => {
+  assert.equal(hasOpenToolDetailText(["R15_TEST"]), true);
+});
+
+test("open tool detail rejects missing or empty content", () => {
+  assert.equal(hasOpenToolDetailText([]), false);
+  assert.equal(hasOpenToolDetailText([null, undefined, " \n\t "]), false);
+});
 
 function respondToCheckpointVerification(request, response) {
   const match = request.url?.match(
@@ -324,6 +336,27 @@ test("maybeSettleForScreenshot pins and clears settle agent session id", async (
       expression.includes("delete globalThis.__tuttiSettleAgentSessionId")
     )
   );
+});
+
+test("working checkpoint settle is scenario opt-in", async () => {
+  const client = {
+    async send() {
+      return { result: { value: true } };
+    }
+  };
+  let settles = 0;
+  const scenario = {
+    async settleForScreenshot() {
+      settles += 1;
+    }
+  };
+  const checkpoint = { kind: "turn.working", tags: ["turn.working"] };
+
+  await maybeSettleForScreenshot(scenario, client, 1_000, checkpoint);
+  scenario.settleForWorkingScreenshot = true;
+  await maybeSettleForScreenshot(scenario, client, 1_000, checkpoint);
+
+  assert.equal(settles, 1);
 });
 
 test("replayObservedTurnId prefers Protocol v2 turnId after settle", () => {
@@ -1393,6 +1426,28 @@ test("renderer activity driver resumes an exactly-once invocation after CDP coll
   assert.match(expressions[0], /intent-exactly-once/u);
 });
 
+test("renderer activity driver hard-times out when CDP evaluate never resolves", async () => {
+  const driver = createRendererActivityDriver(
+    {
+      async send() {
+        return new Promise(() => {
+          // Simulate a wedged renderer: CDP never settles.
+        });
+      }
+    },
+    50,
+    replayCassetteAID
+  );
+  await assert.rejects(
+    () =>
+      driver.verifyEffect({
+        type: "session/activate",
+        eventId: "effect-wedged"
+      }),
+    /renderer replay invocation timed out after 1s/u
+  );
+});
+
 test("rejects a direct session.send correlated with a renderer intent", () => {
   assert.throws(
     () =>
@@ -2455,6 +2510,27 @@ test("checkpoint settle targets completed tool and terminal turn checkpoints", (
     checkpointNeedsToolSettle({ kind: "turn.working", tags: ["turn.working"] }),
     false
   );
+  assert.equal(
+    checkpointAllowsOptionalScreenshotSettle({
+      kind: "submission.accepted",
+      tags: ["submission.accepted"]
+    }),
+    true
+  );
+  assert.equal(
+    checkpointAllowsOptionalScreenshotSettle({
+      kind: "plan.waiting",
+      tags: ["plan.waiting"]
+    }),
+    true
+  );
+  assert.equal(
+    checkpointAllowsOptionalScreenshotSettle({
+      kind: "turn.working",
+      tags: ["turn.working"]
+    }),
+    false
+  );
 });
 
 test("record scenarios require an id and file and reject raw prompt overrides", () => {
@@ -2654,6 +2730,20 @@ test("manual Replay Workspace starts at its first inspectable checkpoint", () =>
       },
       "automatic"
     ),
+    null
+  );
+});
+
+test("Replay Workspace shares the earliest recorded Activity clock origin", () => {
+  assert.equal(
+    replayWorkspaceActivityClockOrigin([
+      { action: { activityEvents: [{ occurredAtUnixMs: 2_000 }] } },
+      { action: { activityEvents: [{ occurredAtUnixMs: 1_000 }] } }
+    ]),
+    1_000
+  );
+  assert.equal(
+    replayWorkspaceActivityClockOrigin([{ action: { activityEvents: [] } }]),
     null
   );
 });
@@ -3012,6 +3102,25 @@ test("non-managed Replay Workspace propagates Cassette failures", () => {
       [{ cassetteId: replayCassetteBID, succeeded: false }],
       true
     )
+  );
+});
+
+test("non-managed Replay Workspace preserves the first Cassette root cause", () => {
+  const rootCause = new Error("first cassette failed");
+  assert.throws(
+    () =>
+      assertReplayWorkspaceSucceeded(
+        [
+          {
+            cassetteId: replayCassetteAID,
+            error: rootCause,
+            succeeded: false
+          },
+          { cassetteId: replayCassetteBID, succeeded: false }
+        ],
+        false
+      ),
+    (error) => error === rootCause
   );
 });
 

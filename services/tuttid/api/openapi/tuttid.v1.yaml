@@ -3745,6 +3745,164 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/deleted-agent-sessions:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceDeletedAgentSessions
+      tags:
+        - agent-session
+      summary: List topmost soft-deleted agent session components for one workspace
+      parameters:
+        - name: searchQuery
+          in: query
+          required: false
+          description: Case-insensitive search over the original session title only.
+          schema:
+            type: string
+        - name: railSectionKey
+          in: query
+          required: false
+          description: Select sessions by their exact persisted rail section key. Mutually exclusive with the deprecated project filters; omit every section filter to list all locations.
+          schema:
+            type: string
+            minLength: 1
+        - name: projectScope
+          in: query
+          required: false
+          deprecated: true
+          description: Deprecated explicit conversations-section selector. It is resolved to the fixed conversations rail section key and is mutually exclusive with railSectionKey and projectPath.
+          schema:
+            type: string
+            enum:
+              - unscoped
+        - name: projectPath
+          in: query
+          required: false
+          deprecated: true
+          description: Deprecated explicit project selector. The path is resolved to its canonical rail section key before querying and is mutually exclusive with railSectionKey and projectScope.
+          schema:
+            type: string
+            minLength: 1
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque cursor returned by the previous page.
+          schema:
+            type: string
+            minLength: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: Topmost soft-deleted agent session components in the workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceDeletedAgentSessionListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+    delete:
+      operationId: purgeWorkspaceDeletedAgentSessions
+      tags:
+        - agent-session
+      summary: Permanently purge all soft-deleted agent sessions in one workspace
+      responses:
+        "200":
+          description: Workspace soft-deleted agent sessions permanently purged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedAgentConversationPurgeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    delete:
+      operationId: purgeWorkspaceDeletedAgentSession
+      tags:
+        - agent-session
+      summary: Permanently purge one topmost soft-deleted agent session component
+      responses:
+        "200":
+          description: Soft-deleted agent session tree permanently purged
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeletedAgentConversationPurgeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}/restore:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: restoreWorkspaceDeletedAgentSession
+      tags:
+        - agent-session
+      summary: Restore one topmost soft-deleted agent session component
+      responses:
+        "200":
+          description: Soft-deleted agent session tree restored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RestoreWorkspaceDeletedAgentSessionResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "409":
+          description: The deleted session is unavailable for restoration
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-session-sections:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -4801,6 +4959,114 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-session-worktree-support:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: resolveWorkspaceAgentSessionWorktreeSupport
+      tags:
+        - agent-session
+      summary: Resolve whether a local Agent Session can launch in an isolated git worktree
+      parameters:
+        - in: query
+          name: agentTargetId
+          required: true
+          schema:
+            type: string
+            minLength: 1
+        - in: query
+          name: cwd
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Worktree launch support status for the working directory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSessionWorktreeSupportResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/managed-worktrees:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+    get:
+      operationId: listWorkspaceManagedWorktrees
+      tags:
+        - workspace
+      summary: List explicitly managed Git worktrees for a workspace
+      responses:
+        "200":
+          description: Managed worktrees
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceManagedWorktreeListResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - in: path
+        name: worktreeID
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    delete:
+      operationId: deleteWorkspaceManagedWorktree
+      tags:
+        - workspace
+      summary: Explicitly delete one clean managed Git worktree
+      responses:
+        "200":
+          description: Managed worktree deletion result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeleteWorkspaceManagedWorktreeResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "404":
+          description: Managed worktree was not found in this workspace
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Managed worktree is dirty, ahead of its base, or changed during deletion
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/git-patch:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -5352,6 +5618,8 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentInteractiveConflictError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -6809,6 +7077,19 @@ components:
                     failureKind: missing
                   retryable: false
                   developerMessage: codex configuration dependency model_instructions_file is unavailable
+    AgentInteractiveConflictError:
+      description: Interactive response no longer matches a pending canonical request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            staleInteractiveResponse:
+              value:
+                error:
+                  code: workspace_operation_failed
+                  reason: agent_interactive_request_stale
+                  developerMessage: interactive request is no longer live
     AgentTargetNotFoundError:
       description: Agent target was not found
       content:
@@ -7436,6 +7717,14 @@ components:
           type: string
           description: Caller agent session id hint. This is not an authorization boundary.
           nullable: true
+        agentCwd:
+          type: string
+          description: Host-injected caller Agent working directory inherited by nested Agent starts that omit an explicit cwd. This is not an authorization boundary.
+          nullable: true
+        agentRailPlacementJSON:
+          type: string
+          description: Host-injected versioned RailPlacement JSON inherited together with agentCwd. The Agent command provider validates this value before use.
+          nullable: true
     CliInvokeRequest:
       type: object
       additionalProperties: false
@@ -7768,6 +8057,128 @@ components:
           type: integer
           format: int64
           minimum: 0
+    WorkspaceDeletedAgentSessionUnavailableReason:
+      type: string
+      enum:
+        - legacyDataUnavailable
+        - incompleteSessionTree
+    WorkspaceDeletedAgentSession:
+      type: object
+      additionalProperties: false
+      required:
+        - agentSessionId
+        - title
+        - railSectionKey
+        - projectPath
+        - updatedAtUnixMs
+        - deletedAtUnixMs
+        - restorable
+        - unavailableReason
+      properties:
+        agentSessionId:
+          type: string
+          minLength: 1
+          description: Identity of the topmost Session in this deleted component. It may be a canonical root or a child whose parent is not deleted.
+        title:
+          type: string
+          description: Original canonical title. Empty titles remain empty.
+        railSectionKey:
+          type: string
+          minLength: 1
+          description: Immutable persisted rail section identity used for classification.
+        projectPath:
+          type: string
+          nullable: true
+          description: Persisted project path retained as presentation metadata. Classification is determined only by railSectionKey.
+        updatedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Last session update before deletion. This value is not the deletion time.
+        deletedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Tombstone time used by the retention policy.
+        restorable:
+          type: boolean
+        unavailableReason:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceDeletedAgentSessionUnavailableReason"
+          nullable: true
+          description: Null when the complete deleted Session component can be restored.
+    WorkspaceDeletedAgentSessionProjectOption:
+      type: object
+      additionalProperties: false
+      required:
+        - railSectionKey
+        - projectPath
+        - projectLabel
+        - projectAvailable
+      properties:
+        railSectionKey:
+          type: string
+          minLength: 1
+          description: Exact persisted rail section identity represented by this option.
+        projectPath:
+          type: string
+          nullable: true
+          description: Persisted project path retained as presentation metadata; it is not the option identity.
+        projectLabel:
+          type: string
+          minLength: 1
+        projectAvailable:
+          type: boolean
+          description: Whether the original project is still registered in the current project catalog.
+    WorkspaceDeletedAgentSessionListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sessions
+        - projectOptions
+        - hasMore
+        - totalCount
+        - workspaceTotalCount
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sessions:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceDeletedAgentSession"
+        projectOptions:
+          type: array
+          description: Distinct original tombstone projects for the workspace, independent of search, project filter, cursor, and limit.
+          items:
+            $ref: "#/components/schemas/WorkspaceDeletedAgentSessionProjectOption"
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          minLength: 1
+          description: Opaque cursor for the next older matching page.
+        totalCount:
+          type: integer
+          minimum: 0
+          description: Total matching topmost soft-deleted Session components before cursor pagination.
+        workspaceTotalCount:
+          type: integer
+          minimum: 0
+          description: Total topmost soft-deleted Session components in this workspace before search, project filtering, and cursor pagination.
+    RestoreWorkspaceDeletedAgentSessionResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - agentSessionId
+        - restored
+      properties:
+        agentSessionId:
+          type: string
+          minLength: 1
+        restored:
+          type: boolean
     DesktopPreferences:
       type: object
       additionalProperties: false
@@ -7803,6 +8214,9 @@ components:
           $ref: "#/components/schemas/DesktopAgentComposerDefaultsByAgentTarget"
         agentGuiConversationRailCollapsedByProvider:
           $ref: "#/components/schemas/DesktopAgentGuiConversationRailCollapsedByProvider"
+        agentSessionLaunchModesByWorkspace:
+          $ref: "#/components/schemas/DesktopAgentSessionLaunchModesByWorkspace"
+          description: Daemon-owned remembered Agent Session launch modes. Full desktop preference updates preserve this map; mutate one workspace/project entry through the dedicated event-stream patch intent.
         agentConversationDetailMode:
           $ref: "#/components/schemas/DesktopAgentConversationDetailMode"
         agentDockLayout:
@@ -7862,6 +8276,11 @@ components:
           nullable: true
           maxLength: 80
           description: Keyboard shortcut binding for opening a new window of the active workbench node type, or null when unbound.
+        captureScreenshot:
+          type: string
+          nullable: true
+          maxLength: 80
+          description: Keyboard shortcut binding for the global screenshot capture, or null/absent when the built-in CommandOrControl+Shift+S default applies. Unlike the other bindings, null does not mean unbound.
     DesktopWorkbenchWindowSnapping:
       type: object
       additionalProperties: false
@@ -7956,6 +8375,19 @@ components:
           type: boolean
         opencode:
           type: boolean
+    DesktopAgentSessionLaunchMode:
+      type: string
+      enum:
+        - local
+        - worktree
+    DesktopAgentSessionLaunchModesByProject:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/DesktopAgentSessionLaunchMode"
+    DesktopAgentSessionLaunchModesByWorkspace:
+      type: object
+      additionalProperties:
+        $ref: "#/components/schemas/DesktopAgentSessionLaunchModesByProject"
     DesktopFileDefaultOpener:
       type: string
       enum:
@@ -11274,6 +11706,26 @@ components:
       type: object
       additionalProperties: false
       properties:
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+            - connectors
+          default: full
+          description: >-
+            Selects the independently loadable composer section. Core contains
+            model, reasoning, speed, permission, and runtime settings;
+            capabilities contains skills and capability catalog data;
+            connectors contains only the local Connector Market projection.
+            Full is retained for callers that need the combined legacy response.
+        waitForFreshModelCatalog:
+          type: boolean
+          description: >-
+            Waits for an authoritative model catalog when the cached result is
+            stale. Use only for an explicit model-picker request; ordinary
+            composer loads should render the last successful catalog first.
         agentTargetId:
           type: string
           description:
@@ -11293,6 +11745,15 @@ components:
       type: object
       additionalProperties: false
       properties:
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+            - connectors
+          default: full
+          description: Independently loadable composer section.
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
@@ -11544,6 +12005,7 @@ components:
       type: string
       enum:
         - authenticated
+        - configured
         - required
         - unknown
     AgentProviderActionKind:
@@ -12531,6 +12993,7 @@ components:
         - forkedFrom
         - usage
         - goal
+        - goalSyncState
         - tuttiModeActivation
         - imported
       properties:
@@ -12591,6 +13054,11 @@ components:
         cwd:
           type: string
           nullable: true
+        isolation:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionIsolation"
+          nullable: true
+          description: Durable launch isolation metadata. Null for sessions launched in the selected checkout.
         railSectionKey:
           type: string
           minLength: 1
@@ -12674,6 +13142,14 @@ components:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoal"
           nullable: true
           description: Protocol v2. Explicit field extracted from runtimeContext.
+        goalSyncState:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionGoalSyncState"
+          nullable: true
+          description: >-
+            Narrow Host-owned evidence for the durable Goal operation. Null
+            means no Goal state exists for this Session; clients must not infer
+            pending execution from the visible Goal alone.
         tuttiModeActivation:
           allOf:
             - $ref: "#/components/schemas/TuttiModeActivation"
@@ -14131,6 +14607,37 @@ components:
           allOf:
             - $ref: "#/components/schemas/WorkspaceAgentSessionGoalState"
           nullable: true
+    WorkspaceAgentSessionGoalSyncState:
+      type: object
+      additionalProperties: false
+      required:
+        - revision
+        - syncStatus
+        - pendingOperationId
+        - executionPending
+      properties:
+        revision:
+          type: integer
+          format: int64
+          minimum: 0
+        syncStatus:
+          type: string
+          enum:
+            - pending
+            - applying
+            - synced
+            - diverged
+            - unknown
+            - failed
+        pendingOperationId:
+          type: string
+          nullable: true
+        executionPending:
+          type: boolean
+          description: >-
+            Host-owned proof that an accepted initial Goal is expected to
+            begin autonomous execution and has not produced its first exact
+            Goal Turn yet.
     WorkspaceAgentSessionGoalState:
       type: object
       additionalProperties: false
@@ -14262,15 +14769,28 @@ components:
         cwd:
           type: string
           nullable: true
+        isolation:
+          allOf:
+            - $ref: "#/components/schemas/WorkspaceAgentSessionIsolationMode"
+          nullable: true
+          description: Optional create-only isolation mode. Omit or set null to launch in the selected checkout.
         permissionModeId:
           type: string
           nullable: true
         model:
           type: string
           nullable: true
+        modelExplicit:
+          type: boolean
+          nullable: true
+          description: True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
         reasoningEffort:
           type: string
           nullable: true
+        reasoningEffortExplicit:
+          type: boolean
+          nullable: true
+          description: True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
         noProject:
           type: boolean
           nullable: true
@@ -14835,6 +15355,11 @@ components:
           type: boolean
         source:
           type: string
+        uiMode:
+          type: string
+          enum:
+            - os
+            - agent
     AgentPromptContentBlock:
       type: object
       additionalProperties: false
@@ -14960,6 +15485,102 @@ components:
           type: string
         errorCode:
           $ref: "#/components/schemas/WorkspaceGitPatchErrorCode"
+    WorkspaceAgentSessionIsolationMode:
+      type: string
+      enum:
+        - worktree
+    WorkspaceAgentSessionIsolation:
+      type: object
+      additionalProperties: false
+      required:
+        - mode
+        - worktreePath
+        - branch
+        - baseCommit
+      properties:
+        worktreeId:
+          type: string
+          minLength: 1
+          description: Independent managed worktree resource identity. Legacy sessions may omit it.
+        mode:
+          $ref: "#/components/schemas/WorkspaceAgentSessionIsolationMode"
+        worktreePath:
+          type: string
+          minLength: 1
+        branch:
+          type: string
+          minLength: 1
+        baseCommit:
+          type: string
+          minLength: 1
+    WorkspaceAgentSessionWorktreeSupportErrorCode:
+      type: string
+      enum:
+        - agent-target-unsupported
+        - git-unavailable
+        - not-git-repo
+        - unsupported-repo-layout
+    WorkspaceAgentSessionWorktreeSupportResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - supported
+      properties:
+        supported:
+          type: boolean
+        root:
+          type: string
+        errorCode:
+          $ref: "#/components/schemas/WorkspaceAgentSessionWorktreeSupportErrorCode"
+    WorkspaceManagedWorktree:
+      type: object
+      additionalProperties: false
+      required:
+        - worktreeId
+        - workspaceId
+        - repoRoot
+        - worktreePath
+        - branch
+        - baseCommit
+      properties:
+        worktreeId:
+          type: string
+          minLength: 1
+        workspaceId:
+          type: string
+          minLength: 1
+        repoRoot:
+          type: string
+          minLength: 1
+        worktreePath:
+          type: string
+          minLength: 1
+        branch:
+          type: string
+          minLength: 1
+        baseCommit:
+          type: string
+          minLength: 1
+        relativeCwd:
+          type: string
+    WorkspaceManagedWorktreeListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - worktrees
+      properties:
+        worktrees:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkspaceManagedWorktree"
+    DeleteWorkspaceManagedWorktreeResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - deleted
+      properties:
+        deleted:
+          type: boolean
     WorkspaceGitPatchExecOutput:
       type: object
       additionalProperties: false

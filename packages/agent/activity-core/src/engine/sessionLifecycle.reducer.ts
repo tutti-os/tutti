@@ -48,6 +48,8 @@ import {
 } from "./sessionLifecycle.cancel.ts";
 const NO_COMMANDS: readonly EngineCommand[] = [];
 const TURN_CANCEL_TIMEOUT_MS = 30_000;
+const STALE_INTERACTIVE_REQUEST_ERROR_REASON =
+  "agent_interactive_request_stale";
 
 export function createInitialSessionLifecycleState(): SessionLifecycleState {
   return {
@@ -151,6 +153,8 @@ export function sessionLifecycleReducer(
       return requestInteractionResponse(state, intent);
     case "session/removed":
       return removeSession(state, intent.agentSessionId);
+    case "session/restored":
+      return restoreSession(state, intent.agentSessionId);
     case "session/errorRecorded":
       return updateOperation(state, intent.agentSessionId, (operation) => ({
         ...operation,
@@ -428,14 +432,28 @@ function settleInteractionResponse(
   if (!entry) return unchanged(state);
   const [key, response] = entry;
   if (intent.outcome === "failed") {
-    return result(
-      replaceInteractionResponse(state, key, {
-        ...response,
-        errorCode: intent.errorCode ?? null,
-        errorMessage: intent.errorMessage?.trim() || null,
-        status: "failed"
-      })
-    );
+    const next = replaceInteractionResponse(state, key, {
+      ...response,
+      errorCode: intent.errorCode ?? null,
+      errorMessage: intent.errorMessage?.trim() || null,
+      status: "failed"
+    });
+    if (intent.errorReason?.trim() === STALE_INTERACTIVE_REQUEST_ERROR_REASON) {
+      return {
+        commands: NO_COMMANDS,
+        followUpIntents: [
+          {
+            agentSessionId: response.agentSessionId,
+            needsMessages: true,
+            needsState: true,
+            type: "session/reconcileRequested",
+            workspaceId: response.workspaceId
+          }
+        ],
+        state: next
+      };
+    }
+    return result(next);
   }
   return result(
     replaceInteractionResponse(state, key, {
@@ -687,6 +705,17 @@ function removeSession(
       interactionResponsesById
     }
   };
+}
+
+function restoreSession(
+  state: SessionLifecycleState,
+  rawId: string
+): EngineReducerResult<SessionLifecycleState> {
+  const id = rawId.trim();
+  if (!id || !state.deletedSessionIds[id]) return unchanged(state);
+  const deletedSessionIds = { ...state.deletedSessionIds };
+  delete deletedSessionIds[id];
+  return result({ ...state, deletedSessionIds });
 }
 
 function expireCancel(

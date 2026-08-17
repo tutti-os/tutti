@@ -5,9 +5,6 @@ import type {
   TuttidClient,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
-import { proxy } from "valtio";
-import { AGENT_QUICK_PROMPT_LIBRARY_FLAG } from "../../../../../../shared/featureFlags/catalog.ts";
-import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import { DesktopAgentQuickPromptService } from "./desktopAgentQuickPromptService.ts";
 
 const firstPrompt: AgentHostQuickPrompt = {
@@ -19,18 +16,11 @@ const firstPrompt: AgentHostQuickPrompt = {
   version: 1
 };
 
-test("quick prompts default disabled and enable without eager loading", async () => {
+test("quick prompts are enabled without eager loading", async () => {
   const harness = createHarness();
 
-  assert.equal(harness.service.getSnapshot().enabled, false);
-  await assert.rejects(
-    harness.service.ensureLoaded(),
-    /quick_prompts\.disabled/
-  );
+  assert.equal(harness.service.getSnapshot().enabled, true);
   assert.equal(harness.calls.list, 0);
-
-  harness.enable();
-  await waitFor(() => harness.service.getSnapshot().enabled);
   assert.equal(harness.service.getSnapshot().status, "idle");
   assert.equal(harness.calls.list, 0);
 
@@ -42,7 +32,7 @@ test("quick prompts default disabled and enable without eager loading", async ()
 });
 
 test("quick prompts CRUD publishes immutable committed snapshots", async () => {
-  const harness = createHarness({ enabled: true });
+  const harness = createHarness();
   await harness.service.ensureLoaded();
 
   const created = await harness.service.create({
@@ -93,7 +83,6 @@ test("quick prompt move publishes optimistic order then authoritative order", as
   };
   const moveResponse = deferred<{ prompts: AgentHostQuickPrompt[] }>();
   const harness = createHarness({
-    enabled: true,
     list: async () => ({ prompts: [firstPrompt, secondPrompt] }),
     move: () => moveResponse.promise
   });
@@ -126,7 +115,6 @@ test("quick prompt move publishes optimistic order then authoritative order", as
 test("failed quick prompt move rolls back and requests authoritative refresh", async () => {
   const secondPrompt = { ...firstPrompt, id: "prompt-2", title: "Second" };
   const harness = createHarness({
-    enabled: true,
     list: async () => ({ prompts: [firstPrompt, secondPrompt] }),
     move: async () => {
       throw new Error("move failed");
@@ -150,35 +138,8 @@ test("failed quick prompt move rolls back and requests authoritative refresh", a
   harness.service.dispose();
 });
 
-test("disabling quick prompts during a failed move stays fail closed", async () => {
-  const secondPrompt = { ...firstPrompt, id: "prompt-2", title: "Second" };
-  const moveResponse = deferred<{ prompts: AgentHostQuickPrompt[] }>();
-  const harness = createHarness({
-    enabled: true,
-    list: async () => ({ prompts: [firstPrompt, secondPrompt] }),
-    move: () => moveResponse.promise
-  });
-  await harness.service.ensureLoaded();
-
-  const moving = harness.service.move({
-    promptId: firstPrompt.id,
-    beforePromptId: null,
-    expectedVersion: firstPrompt.version
-  });
-  harness.disable();
-  await waitFor(() => !harness.service.getSnapshot().enabled);
-  moveResponse.reject(new Error("move failed"));
-
-  await assert.rejects(moving, /move failed/);
-  assert.equal(harness.service.getSnapshot().enabled, false);
-  assert.equal(harness.service.getSnapshot().error, null);
-  assert.equal(harness.service.getSnapshot().orderMutationPending, false);
-  assert.equal(harness.calls.list, 1);
-  harness.service.dispose();
-});
-
 test("quick prompt global events coalesce refresh and skip an applied mutation", async () => {
-  const harness = createHarness({ enabled: true });
+  const harness = createHarness();
   await harness.service.ensureLoaded();
 
   harness.emit({
@@ -219,7 +180,6 @@ test("quick prompt events received during a list request trigger a fresh follow-
     updatedAtUnixMs: 50
   };
   const harness = createHarness({
-    enabled: true,
     list: (call) => {
       if (call === 2) return secondList.promise;
       return Promise.resolve({
@@ -248,127 +208,13 @@ test("quick prompt events received during a list request trigger a fresh follow-
   harness.service.dispose();
 });
 
-test("re-enabling quick prompts keeps loading lazy and invalidates the old list", async () => {
-  let remotePrompts: AgentHostQuickPrompt[] = [firstPrompt];
-  const harness = createHarness({
-    enabled: true,
-    list: async () => ({ prompts: remotePrompts })
-  });
-  await harness.service.ensureLoaded();
-
-  harness.disable();
-  await waitFor(() => !harness.service.getSnapshot().enabled);
-  remotePrompts = [
-    {
-      ...firstPrompt,
-      id: "created-while-disabled",
-      title: "Created elsewhere",
-      updatedAtUnixMs: 60
-    }
-  ];
-  harness.emit({
-    changeKind: "created",
-    promptId: remotePrompts[0]!.id,
-    version: remotePrompts[0]!.version
-  });
-  harness.enable();
-  await waitFor(() => harness.service.getSnapshot().enabled);
-
-  assert.equal(harness.service.getSnapshot().status, "idle");
-  assert.equal(harness.calls.list, 1);
-  await harness.service.ensureLoaded();
-  assert.equal(harness.calls.list, 2);
-  assert.deepEqual(harness.service.getSnapshot().prompts, remotePrompts);
-  harness.service.dispose();
-});
-
-test("reopening after a fast disable and enable reruns an in-flight stale list", async () => {
-  const staleList = deferred<{ prompts: AgentHostQuickPrompt[] }>();
-  const remotePrompt = {
-    ...firstPrompt,
-    id: "fresh-after-reenable",
-    title: "Fresh",
-    updatedAtUnixMs: 70
-  };
-  const harness = createHarness({
-    enabled: true,
-    list: (call) =>
-      call === 1
-        ? staleList.promise
-        : Promise.resolve({ prompts: [remotePrompt] })
-  });
-  const originalLoad = harness.service.ensureLoaded();
-  await waitFor(() => harness.calls.list === 1);
-
-  harness.disable();
-  await waitFor(() => !harness.service.getSnapshot().enabled);
-  harness.enable();
-  await waitFor(() => harness.service.getSnapshot().enabled);
-  const reopenedLoad = harness.service.ensureLoaded();
-  staleList.resolve({ prompts: [firstPrompt] });
-  await Promise.all([originalLoad, reopenedLoad]);
-
-  assert.equal(harness.calls.list, 2);
-  assert.equal(harness.service.getSnapshot().status, "ready");
-  assert.deepEqual(harness.service.getSnapshot().prompts, [remotePrompt]);
-  harness.service.dispose();
-});
-
-test("disabling quick prompts is immediate, fail closed, and dispose releases subscriptions", async () => {
-  const harness = createHarness({ enabled: true });
-  let notifications = 0;
-  harness.service.subscribe(() => notifications++);
-  await harness.service.ensureLoaded();
-
-  harness.disable();
-  await waitFor(() => !harness.service.getSnapshot().enabled);
-  const callsBeforeDisabledOperations = { ...harness.calls };
-  await assert.rejects(
-    harness.service.create({ content: "No", title: "Disabled" }),
-    /quick_prompts\.disabled/
-  );
-  await assert.rejects(
-    harness.service.update({
-      content: "No",
-      expectedVersion: 1,
-      id: firstPrompt.id,
-      title: "Disabled"
-    }),
-    /quick_prompts\.disabled/
-  );
-  await assert.rejects(
-    harness.service.remove({ expectedVersion: 1, id: firstPrompt.id }),
-    /quick_prompts\.disabled/
-  );
-  assert.deepEqual(harness.calls, callsBeforeDisabledOperations);
-
-  const notificationsBeforeDispose = notifications;
-  harness.service.dispose();
-  harness.enable();
-  harness.emit({
-    changeKind: "updated",
-    promptId: firstPrompt.id,
-    version: 3
-  });
-  await Promise.resolve();
-  assert.equal(notifications, notificationsBeforeDispose);
-  assert.equal(harness.calls.list, callsBeforeDisabledOperations.list);
-});
-
 function createHarness(
   input: {
-    enabled?: boolean;
     list?: (call: number) => Promise<{ prompts: AgentHostQuickPrompt[] }>;
     move?: () => Promise<{ prompts: AgentHostQuickPrompt[] }>;
   } = {}
 ) {
   const calls = { create: 0, list: 0, move: 0, remove: 0, update: 0 };
-  const preferencesStore = proxy({
-    changingFeatureFlags: null as Record<string, boolean> | null,
-    featureFlags: input.enabled
-      ? { [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true }
-      : {}
-  });
   let eventListener:
     | ((event: {
         payload: {
@@ -434,33 +280,18 @@ function createHarness(
       return { prompts: [firstPrompt] };
     }
   } as unknown as TuttidClient;
-  const desktopPreferencesService = {
-    _serviceBrand: undefined,
-    store: preferencesStore
-  } as unknown as IDesktopPreferencesService;
   const service = new DesktopAgentQuickPromptService({
-    desktopPreferencesService,
     eventStreamClient,
     tuttidClient
   });
   return {
     calls,
-    disable() {
-      preferencesStore.featureFlags = {
-        [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: false
-      };
-    },
     emit(payload: {
       promptId: string;
       changeKind: "created" | "updated" | "deleted";
       version: number;
     }) {
       eventListener?.({ payload: { ...payload, occurredAtUnixMs: 100 } });
-    },
-    enable() {
-      preferencesStore.featureFlags = {
-        [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true
-      };
     },
     service
   };

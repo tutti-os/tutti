@@ -343,6 +343,19 @@ func TestValidateRuntimeContractAcceptsPinnedSignedBinaryArtifacts(t *testing.T)
 	}
 }
 
+func TestPublishesUserCommandDefaultsToEnabledAndHonorsOptOut(t *testing.T) {
+	manifest := testManifest()
+	manifest.Runtime.Launch.PublishUserCommand = nil
+	if !publishesUserCommand(manifest) {
+		t.Fatal("publishesUserCommand() = false, want platform-independent default publication")
+	}
+	publish := false
+	manifest.Runtime.Launch.PublishUserCommand = &publish
+	if publishesUserCommand(manifest) {
+		t.Fatal("publishesUserCommand() = true for explicit opt-out")
+	}
+}
+
 func TestBuildInstallPlanFailsClosedOnUnsupportedBinaryPlatform(t *testing.T) {
 	manifest := testManifest()
 	manifest.Runtime.Install.Runner = "binary"

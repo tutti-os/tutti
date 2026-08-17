@@ -16,8 +16,8 @@ type Resolver struct {
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
 	// ScutilProxy returns the raw output of `scutil --proxy` (and whether it is
-	// available). It is injectable for tests; the default reads the macOS system
-	// proxy and is a no-op on other platforms. See proxy.go.
+	// available). It is injectable for legacy macOS parser tests; production
+	// reads the platform system proxy through the build-tagged adapter.
 	ScutilProxy func() (string, bool)
 }
 
@@ -139,13 +139,8 @@ func (r Resolver) UserBinInstallDirs(overrides []string) []string {
 	}
 	home, err := r.homeDir()
 	if err == nil && strings.TrimSpace(home) != "" {
-		localBinDir := filepath.Join(home, ".local", "bin")
-		npmLayout := ResolveNPMGlobalLayout(localBinDir)
-		candidates = append(candidates, []string{
-			npmLayout.BinDir,
-			localBinDir,
-			filepath.Join(home, "bin"),
-		})
+		managedNPMDirs := UserManagedNPMExecutableDirs(home)
+		candidates = append(candidates, managedNPMDirs, []string{filepath.Join(home, "bin")})
 	}
 	return mergePathDirs(candidates...)
 }
@@ -183,13 +178,12 @@ func (r Resolver) fallbackExecutableDirs() []string {
 	homeDirs := []string{}
 	home, err := r.homeDir()
 	if err == nil && strings.TrimSpace(home) != "" {
-		localBinDir := filepath.Join(home, ".local", "bin")
-		npmLayout := ResolveNPMGlobalLayout(localBinDir)
 		homeDirs = []string{
 			filepath.Join(home, ".tutti", "bin"),
 			filepath.Join(home, ".opencode", "bin"),
-			npmLayout.BinDir,
-			localBinDir,
+		}
+		homeDirs = append(homeDirs, UserManagedNPMExecutableDirs(home)...)
+		homeDirs = append(homeDirs,
 			filepath.Join(home, "bin"),
 			filepath.Join(home, ".npm-global", "bin"),
 			filepath.Join(home, ".n", "bin"),
@@ -199,7 +193,7 @@ func (r Resolver) fallbackExecutableDirs() []string {
 			filepath.Join(home, ".mise", "shims"),
 			filepath.Join(home, ".bun", "bin"),
 			filepath.Join(home, "Library", "pnpm"),
-		}
+		)
 		homeDirs = append(homeDirs, nvmNodeBinDirs(home)...)
 		homeDirs = append(homeDirs, fnmNodeBinDirs(filepath.Join(home, ".fnm"))...)
 		// Cursor's native Windows installer places agent.ps1 and its versioned

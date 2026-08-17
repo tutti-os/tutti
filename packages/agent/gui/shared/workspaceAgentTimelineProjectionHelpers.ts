@@ -176,8 +176,16 @@ export function systemNoticeFromPayload(
     return null;
   }
   const source = stringRecordValue(payload, "source");
+  const noticeKind = stringRecordValue(payload, "noticeKind");
+  const semanticKind =
+    noticeKind === "context_handoff_required" &&
+    commandSemantics?.command === "compact" &&
+    commandSemantics.commandStatus === "failed"
+      ? "context-handoff-required"
+      : null;
   return {
-    noticeKind: stringRecordValue(payload, "noticeKind"),
+    noticeKind,
+    ...(semanticKind ? { semanticKind } : {}),
     severity: stringRecordValue(payload, "severity"),
     ...(source ? { source } : {}),
     ...(commandSemantics
@@ -234,19 +242,59 @@ export function shouldShowProcessingIndicator(
   session: BuildWorkspaceAgentSessionDetailInput["session"],
   turns: readonly WorkspaceAgentSessionDetailTurn[]
 ): boolean {
-  if (!sessionHasRunnableIndicatorState(session)) return false;
-  const lastTurn = turns.at(-1);
-  if (!lastTurn) return true;
-  const lastAgentItem = lastTurn.agentItems.at(-1);
+  const activeTurn = session.activeTurn;
+  const settledTurn =
+    activeTurn == null
+      ? null
+      : (turns.find((turn) => turn.id === activeTurn.turnId) ??
+        turns.at(-1) ??
+        null);
+
+  if (sessionHasRunnableIndicatorState(session)) {
+    if (!settledTurn) return true;
+    const lastAgentItem = settledTurn.agentItems.at(-1);
+    if (
+      lastAgentItem?.kind === "message" &&
+      isTerminalAgentMessageStatus(lastAgentItem.message.statusKind) &&
+      !hasActiveRunningTurn(session)
+    ) {
+      return false;
+    }
+    return !settledTurn.toolCalls.some(
+      (call) => call.statusKind === "working" || call.statusKind === "waiting"
+    );
+  }
+
+  // Settle-to-final observation gap: the engine can mark the active turn
+  // settled before authoritative terminal transcript rows are observable.
+  // Keep the processing placeholder until that turn has terminal content.
+  if (!activeTurn || activeTurn.phase !== "settled") {
+    return false;
+  }
+  if (!settledTurn) {
+    return true;
+  }
+  if (settledTurn.agentItems.length === 0) {
+    return true;
+  }
+  const lastAgentItem = settledTurn.agentItems.at(-1);
   if (
     lastAgentItem?.kind === "message" &&
-    isTerminalAgentMessageStatus(lastAgentItem.message.statusKind) &&
-    !hasActiveRunningTurn(session)
+    isTerminalAgentMessageStatus(lastAgentItem.message.statusKind)
   ) {
     return false;
   }
-  return !lastTurn.toolCalls.some(
-    (call) => call.statusKind === "working" || call.statusKind === "waiting"
+  if (
+    settledTurn.toolCalls.some(
+      (call) => call.statusKind === "working" || call.statusKind === "waiting"
+    )
+  ) {
+    return false;
+  }
+  return !settledTurn.agentItems.some(
+    (item) =>
+      item.kind === "message" &&
+      isTerminalAgentMessageStatus(item.message.statusKind)
   );
 }
 

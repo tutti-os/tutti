@@ -54,7 +54,8 @@ import { prepareDesktopCliTarget } from "./cli/cliInstaller.ts";
 import { ensureSingleInstance } from "./singleInstance";
 import {
   completeDesktopLoginCallbackUrl,
-  findDesktopLoginCallbackUrl
+  findDesktopLoginCallbackUrl,
+  isDesktopAppOpenUrl
 } from "./desktopLoginCallback";
 import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
@@ -124,11 +125,18 @@ export async function bootstrapDesktopApp(): Promise<void> {
     void completeDesktopLoginCallbackUrl(url).catch(() => undefined);
   };
   app.on("open-url", (event, url) => {
-    if (url.startsWith(loginCallbackUrl)) {
-      event.preventDefault();
-      handleLoginCallbackUrl(url);
-      focusPrimaryDesktopWindow();
+    const isLoginCallback = url.startsWith(loginCallbackUrl);
+    if (
+      !isLoginCallback &&
+      !isDesktopAppOpenUrl(url, protocolClientRegistration.scheme)
+    ) {
+      return;
     }
+    event.preventDefault();
+    if (isLoginCallback) {
+      handleLoginCallbackUrl(url);
+    }
+    focusPrimaryDesktopWindow();
   });
   const appName = app.getName();
   const userDataPath = resolveDesktopUserDataPath({
@@ -175,6 +183,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
 
   const currentDir = dirname(fileURLToPath(import.meta.url));
   const preloadPath = join(currentDir, "../preload/index.cjs");
+  const capturePreloadPath = join(currentDir, "../preload/capture.cjs");
   const minimumVersionPreloadPath = join(
     currentDir,
     "../preload/minimum-version.cjs"
@@ -350,6 +359,8 @@ export async function bootstrapDesktopApp(): Promise<void> {
     enableDevelopmentReloadShortcut: Boolean(rendererUrl) && !app.isPackaged,
     fallbackLocale: systemLocale,
     browserNodeGuestPreloadPath,
+    capturePreloadPath,
+    captureRendererFilePath: join(currentDir, "../renderer/capture.html"),
     startedDaemonRuntime: daemonRuntime,
     isPackaged: app.isPackaged,
     logger,
@@ -475,6 +486,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     tuttid: desktopAppServices.tuttid,
     disposables: [
       ...ipcDisposables,
+      desktopAppServices.capture,
       ...(featureAvailabilityIpc ? [featureAvailabilityIpc] : []),
       hostPreferencesEventStream,
       agentPowerSaveBlocker,

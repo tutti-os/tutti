@@ -166,6 +166,12 @@ type InteractionTransition struct {
 	Metadata  map[string]any
 }
 
+type MessageSemantics struct {
+	// UserVisibleAssistantResponse is a producer-owned classification. It is
+	// true only when this message may represent a user-facing assistant reply.
+	UserVisibleAssistantResponse bool
+}
+
 type EventPayload struct {
 	PresenceStatus          string
 	LifecycleStatus         string
@@ -179,6 +185,7 @@ type EventPayload struct {
 	CWD                     string
 	Role                    MessageRole
 	Content                 string
+	Semantics               MessageSemantics
 	CallID                  string
 	CallType                string
 	Name                    string
@@ -437,17 +444,19 @@ func cloneMap(value map[string]any) map[string]any {
 	return cloned
 }
 
-func NewMessageAppended(ctx EventContext, role MessageRole, content string) Event {
+func NewMessageAppended(ctx EventContext, role MessageRole, content string, userVisibleAssistantResponse bool) Event {
 	return eventFromContext(ctx, EventMessageAppended, EventPayload{
-		Role:    role,
-		Content: content,
+		Role:      role,
+		Content:   content,
+		Semantics: MessageSemantics{UserVisibleAssistantResponse: userVisibleAssistantResponse},
 	})
 }
 
-func NewContextMessage(ctx EventContext, role MessageRole, content string) Event {
+func NewContextMessage(ctx EventContext, role MessageRole, content string, userVisibleAssistantResponse bool) Event {
 	return eventFromContext(ctx, EventMessageCreated, EventPayload{
-		Role:    role,
-		Content: content,
+		Role:      role,
+		Content:   content,
+		Semantics: MessageSemantics{UserVisibleAssistantResponse: userVisibleAssistantResponse},
 	})
 }
 
@@ -570,6 +579,27 @@ func BestEffortErrorMessage(payload EventPayload) string {
 	return ""
 }
 
+// BestEffortErrorCode preserves a provider-owned structured error code when
+// the event carries one. It does not classify free-form text; runtime adapters
+// that own a stable classifier may apply that only after this exact value.
+func BestEffortErrorCode(payload EventPayload) string {
+	if payload.Metadata != nil {
+		if code := firstNonEmptyErrorString(
+			payload.Metadata["errorCode"],
+			payload.Metadata["error_code"],
+			payload.Metadata["code"],
+		); code != "" {
+			return code
+		}
+		if nested, ok := payload.Metadata["error"].(map[string]any); ok {
+			if code := errorCodeFromMap(nested); code != "" {
+				return code
+			}
+		}
+	}
+	return errorCodeFromMap(payload.Error)
+}
+
 func firstNonEmptyErrorString(values ...any) string {
 	for _, value := range values {
 		if text, ok := value.(string); ok {
@@ -603,4 +633,11 @@ func errorMessageFromMap(value map[string]any) string {
 		value["debugMessage"],
 		value["lastError"],
 	)
+}
+
+func errorCodeFromMap(value map[string]any) string {
+	if len(value) == 0 {
+		return ""
+	}
+	return firstNonEmptyErrorString(value["errorCode"], value["error_code"], value["code"])
 }

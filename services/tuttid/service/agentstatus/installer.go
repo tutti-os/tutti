@@ -163,6 +163,31 @@ func (s Service) installMissingProviderRuntime(
 		)
 		stillMissing := (installTarget == "cli" && strings.TrimSpace(current.CLIPath) == "") ||
 			(installTarget == "adapter" && strings.TrimSpace(current.AdapterPath) == "")
+		if !stillMissing && installTarget == "cli" && strings.TrimSpace(spec.MinVersion) != "" {
+			version := s.providerCLIVersion(ctx, spec, current.CLIPath, current.Env)
+			stillMissing = !providerCLIVersionMeetsMinimum(spec, version)
+			if stillMissing {
+				slog.Warn(
+					"agent provider install recheck found CLI version unavailable",
+					"provider", spec.Provider,
+					"target", installTarget,
+					"cliPath", current.CLIPath,
+					"cliVersion", version,
+				)
+			}
+		}
+		if !stillMissing && installTarget == "adapter" {
+			stillMissing = !adapterPackageRequirementSatisfied(spec.AdapterPackage, current.AdapterVersion)
+			if stillMissing {
+				slog.Warn(
+					"agent provider install recheck found adapter package unavailable",
+					"provider", spec.Provider,
+					"target", installTarget,
+					"adapterPath", current.AdapterPath,
+					"adapterVersion", current.AdapterVersion,
+				)
+			}
+		}
 		if stillMissing {
 			err := fmt.Errorf("provider %s is still unavailable after installer exited successfully", spec.Provider)
 			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
@@ -696,6 +721,20 @@ func purgeNPMInstallTree(prefixDir string) {
 
 func (s Service) selectInstallDir() (string, error) {
 	resolver := s.commandResolver()
+	if runtime.GOOS == "windows" {
+		home, err := s.homeDir()
+		if err != nil || strings.TrimSpace(home) == "" {
+			if err == nil {
+				err = errors.New("home directory is empty")
+			}
+			return "", fmt.Errorf("windows managed agent directory unavailable: %w", err)
+		}
+		dir := filepath.Join(home, ".local", "bin")
+		if err := ensureWritableInstallDir(dir); err != nil {
+			return "", fmt.Errorf("windows managed agent directory unavailable: %w", err)
+		}
+		return dir, nil
+	}
 	// Prefer a stable, user-global location (~/.local/bin, then ~/bin) so
 	// installed binaries survive toolchain/version-manager churn and never
 	// land in a volatile or app-scoped PATH entry (e.g. a node-version

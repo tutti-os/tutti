@@ -90,6 +90,7 @@ const issueManagerEn = {
   emptyState: "Create a task, add the goal and references, then let Agent run",
   labels: {
     agent: "Agent",
+    attachments: "Attachments",
     allStatus: "All",
     boardView: "Board",
     budgetAuto: "Auto compiled",
@@ -363,6 +364,7 @@ const issueManagerZhCN = {
   emptyState: "新建任务，补充需求描述和相关文件，即可让 Agent 执行",
   labels: {
     agent: "Agent",
+    attachments: "附件",
     allStatus: "全部",
     boardView: "看板",
     budgetAuto: "自动编译",

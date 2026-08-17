@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -21,7 +20,7 @@ import (
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	market "github.com/tutti-os/tutti/packages/connector/host"
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
-	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
+	"github.com/tutti-os/tutti/packages/connector/runtime/mcp"
 )
 
 const implementationHostTestReleaseDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
@@ -54,6 +53,8 @@ func (stub *mcpProcessStub) Start(context.Context, agentruntime.ProcessSpec) (ag
 type mcpConnectionStub struct {
 	frames    chan agentruntime.ProcessFrame
 	closeOnce sync.Once
+	mu        sync.Mutex
+	closed    bool
 }
 
 func newMCPConnectionStub() *mcpConnectionStub {
@@ -61,6 +62,11 @@ func newMCPConnectionStub() *mcpConnectionStub {
 }
 
 func (connection *mcpConnectionStub) Send(data []byte) error {
+	connection.mu.Lock()
+	defer connection.mu.Unlock()
+	if connection.closed {
+		return io.ErrClosedPipe
+	}
 	var request struct {
 		ID     int64          `json:"id"`
 		Method string         `json:"method"`
@@ -94,10 +100,20 @@ func (connection *mcpConnectionStub) Recv() (agentruntime.ProcessFrame, error) {
 	return frame, nil
 }
 func (connection *mcpConnectionStub) Close() error {
-	connection.closeOnce.Do(func() { close(connection.frames) })
+	connection.closeOnce.Do(func() {
+		connection.mu.Lock()
+		connection.closed = true
+		close(connection.frames)
+		connection.mu.Unlock()
+	})
 	return nil
 }
 func (connection *mcpConnectionStub) exit() {
+	connection.mu.Lock()
+	defer connection.mu.Unlock()
+	if connection.closed {
+		return
+	}
 	exitCode := 1
 	connection.frames <- agentruntime.ProcessFrame{ExitCode: &exitCode}
 }
@@ -118,45 +134,11 @@ func (stub *blockingStartProcessStub) Start(ctx context.Context, _ agentruntime.
 	return nil, ctx.Err()
 }
 
-type retryCloseProcessStub struct {
-	connection *retryCloseConnection
-	started    chan struct{}
+func testCLIHost(t *testing.T, processes agentruntime.ProcessTransport) (*ImplementationHost, *ConnectorRuntimeRegistry, market.Connector, market.HostGeneration) {
+	return testCLIHostWithSetup(t, processes, nil)
 }
 
-func (stub *retryCloseProcessStub) Start(context.Context, agentruntime.ProcessSpec) (agentruntime.ProcessConnection, error) {
-	select {
-	case <-stub.started:
-	default:
-		close(stub.started)
-	}
-	return stub.connection, nil
-}
-
-type retryCloseConnection struct {
-	mu         sync.Mutex
-	closeCalls int
-	closed     chan struct{}
-	closeOnce  sync.Once
-}
-
-func (*retryCloseConnection) Send([]byte) error { return nil }
-func (connection *retryCloseConnection) Recv() (agentruntime.ProcessFrame, error) {
-	<-connection.closed
-	return agentruntime.ProcessFrame{}, io.EOF
-}
-func (connection *retryCloseConnection) Close() error {
-	connection.mu.Lock()
-	connection.closeCalls++
-	call := connection.closeCalls
-	connection.mu.Unlock()
-	if call == 1 {
-		return errors.New("simulated kill acknowledgement failure")
-	}
-	connection.closeOnce.Do(func() { close(connection.closed) })
-	return nil
-}
-
-func testCLIHost(t *testing.T, processes agentruntime.ProcessTransport) (*ImplementationHost, *ConnectorCommandRegistry, market.Connector, market.HostGeneration) {
+func testCLIHostWithSetup(t *testing.T, processes agentruntime.ProcessTransport, setup func(string)) (*ImplementationHost, *ConnectorRuntimeRegistry, market.Connector, market.HostGeneration) {
 	t.Helper()
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "connector.js"), []byte("// connector"), 0o600); err != nil {
@@ -166,15 +148,18 @@ func testCLIHost(t *testing.T, processes agentruntime.ProcessTransport) (*Implem
 	if err := os.WriteFile(runtimePath, []byte("runtime"), 0o700); err != nil {
 		t.Fatal(err)
 	}
+	if setup != nil {
+		setup(root)
+	}
 	inventory, err := connectorruntime.ExecutionInventoryDigest(root)
 	if err != nil {
 		t.Fatal(err)
 	}
-	commands := NewConnectorCommandRegistry()
+	commands := NewConnectorRuntimeRegistry()
 	host, err := NewImplementationHost(ImplementationHostConfig{Artifacts: preparedResolverStub{receipt: market.PreparedArtifactReceipt{PreparedPath: root, InventoryDigest: inventory}},
 		Runtimes: connectorRuntimeStub{executable: connectorruntime.ConnectorExecutable{Path: runtimePath,
 			SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 7}},
-		Processes: processes, Commands: commands, StateRoot: t.TempDir(), MCPStartupTimeout: 20 * time.Millisecond})
+		Processes: processes, Registry: commands, StateRoot: t.TempDir(), MCPStartupTimeout: 20 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -243,18 +228,6 @@ func (stub *connectorConnectionStub) Recv() (agentruntime.ProcessFrame, error) {
 	return frame, nil
 }
 
-func TestGenericCLIArgumentsRejectsNonInteractiveOverrides(t *testing.T) {
-	arguments, err := genericCLIArguments([]any{"doc", "list", "--page-size", "20"})
-	if err != nil || len(arguments) != 4 {
-		t.Fatalf("genericCLIArguments() = %#v, %v", arguments, err)
-	}
-	for _, forbidden := range []string{"--yes", "--force", "--force=true"} {
-		if _, err := genericCLIArguments([]any{"doc", "delete", forbidden}); err == nil {
-			t.Fatalf("genericCLIArguments() accepted %q", forbidden)
-		}
-	}
-}
-
 func TestContainsPermissionScopeAcceptsScopedPermission(t *testing.T) {
 	if !connectorruntime.ContainsPermissionScope([]string{"network:larksuite.com"}, "network") {
 		t.Fatal("scoped network permission did not enable connector network access")
@@ -264,34 +237,34 @@ func TestContainsPermissionScopeAcceptsScopedPermission(t *testing.T) {
 	}
 }
 
-func TestImplementationHostChecksCLIInstallationWithDeclaredProbeArguments(t *testing.T) {
+func TestImplementationHostChecksCLIReadinessWithDeclaredArguments(t *testing.T) {
 	processes := &recordingConnectorProcessStub{}
 	host, _, connector, generation := testCLIHost(t, processes)
 	cli := connector.Release.Manifest.Implementation.ManagedStdio.CLI
 	cli.Arguments = []string{"--non-interactive"}
-	cli.InstallationProbe = &market.InstallationProbe{Arguments: []string{"doctor", "--quiet"}, TimeoutMS: 1_000}
-	request := market.InstallationCheckRequest{OperationID: "probe-1", ConnectionID: "workspace-1",
-		Connector: connector, Generation: generation}
+	cli.ReadinessProbe = &market.CLIReadinessProbe{Arguments: []string{"doctor", "--quiet"}, TimeoutMS: 1_000}
+	request := market.RuntimeReconcileRequest{OperationID: "reconcile-1", ConnectionID: "workspace-1",
+		Connector: connector, Enabled: true, Generation: generation}
 
-	observation, err := host.CheckInstallation(context.Background(), request)
+	receipt, err := host.Reconcile(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if observation.State != market.InstallationObservationPresent || observation.ConnectorKey != connector.Key ||
-		observation.ReleaseDigest != implementationHostTestReleaseDigest {
-		t.Fatalf("observation = %#v", observation)
+	if receipt.Readiness.State != market.RuntimeReadinessReady || len(receipt.Readiness.Interfaces) != 1 ||
+		receipt.Readiness.Interfaces[0].Kind != "cli" {
+		t.Fatalf("readiness = %#v", receipt.Readiness)
 	}
 	entrypoint := filepath.Join(processes.spec.CWD, "connector.js")
 	wantSuffix := []string{entrypoint, "--non-interactive", "doctor", "--quiet"}
 	if len(processes.spec.Command) < len(wantSuffix)+1 ||
 		!slices.Equal(processes.spec.Command[len(processes.spec.Command)-len(wantSuffix):], wantSuffix) {
-		t.Fatalf("probe command = %#v, want suffix %#v", processes.spec.Command, wantSuffix)
+		t.Fatalf("readiness command = %#v, want suffix %#v", processes.spec.Command, wantSuffix)
 	}
 
 	processes.exitCode = 1
-	observation, err = host.CheckInstallation(context.Background(), request)
-	if err != nil || observation.State != market.InstallationObservationAbsent {
-		t.Fatalf("absent observation = %#v, error = %v", observation, err)
+	request.Generation.Generation++
+	if _, err = host.Reconcile(context.Background(), request); err == nil || !strings.Contains(err.Error(), "CLI readiness") {
+		t.Fatalf("failed readiness error = %v", err)
 	}
 }
 
@@ -309,13 +282,13 @@ func TestImplementationHostRegistersWorkspaceFencedCLIAndDeactivatesIt(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	commands := NewConnectorCommandRegistry()
-	processes := &connectorProcessStub{}
+	commands := NewConnectorRuntimeRegistry()
+	stateRoot := t.TempDir()
 	host, err := NewImplementationHost(ImplementationHostConfig{
 		Artifacts: preparedResolverStub{receipt: market.PreparedArtifactReceipt{PreparedPath: root, InventoryDigest: inventory}},
 		Runtimes: connectorRuntimeStub{executable: connectorruntime.ConnectorExecutable{Path: runtimePath,
 			SHA256: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", SizeBytes: 7}},
-		Processes: processes, Commands: commands, StateRoot: t.TempDir(),
+		Processes: &connectorProcessStub{}, Registry: commands, StateRoot: stateRoot,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -334,27 +307,27 @@ func TestImplementationHostRegistersWorkspaceFencedCLIAndDeactivatesIt(t *testin
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(receipt.RouteIDs) != 1 {
-		t.Fatalf("route ids = %#v", receipt.RouteIDs)
+	if receipt.Readiness.State != market.RuntimeReadinessReady || len(receipt.Readiness.Interfaces) != 1 ||
+		receipt.Readiness.Interfaces[0].Kind != "cli" || len(receipt.Readiness.Interfaces[0].RouteIDs) != 0 {
+		t.Fatalf("readiness = %#v", receipt.Readiness)
 	}
-	capabilities := commands.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})
-	if len(capabilities) != 1 || capabilities[0].ID != "connector.github.cli.status" {
-		t.Fatalf("capabilities = %#v", capabilities)
+	routes := commands.runtime.Routes()
+	if len(routes) != 1 || routes[0].CLICommand != "tutti-connector-github" {
+		t.Fatalf("CLI routes = %#v", routes)
 	}
-	if capabilities := commands.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-2"}); len(capabilities) != 1 {
-		t.Fatalf("global connector capabilities = %#v", capabilities)
-	}
-	output, err := commands.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: receipt.RouteIDs[0], Input: map[string]any{},
-		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}})
-	if err != nil || output.Value["ok"] != true || processes.starts != 1 {
-		t.Fatalf("invoke = %#v, %v starts=%d", output, err, processes.starts)
+	shimPath := filepath.Join(stateRoot, "bin", routes[0].CLICommand)
+	if _, err := os.Stat(shimPath); err != nil {
+		t.Fatalf("CLI shim was not published: %v", err)
 	}
 	if err := host.DeactivateRuntime(context.Background(), market.RuntimeDeactivationRequest{ConnectionID: "workspace-1", ConnectorKey: "github",
 		ReleaseDigest: implementationHostTestReleaseDigest, Generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 3}}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := commands.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: receipt.RouteIDs[0], Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}}); err == nil {
-		t.Fatal("deactivated connector CLI command remained routable")
+	if routes := commands.runtime.Routes(); len(routes) != 0 {
+		t.Fatalf("deactivated connector route remained published: %#v", routes)
+	}
+	if _, err := os.Stat(shimPath); !os.IsNotExist(err) {
+		t.Fatalf("deactivated connector CLI shim remained: %v", err)
 	}
 }
 
@@ -367,56 +340,60 @@ func TestImplementationHostDiscoversAndInvokesRemoteStreamableHTTPMCP(t *testing
 		if request.Header.Get("Tutti-Connector-Version") != "1.0.0" {
 			t.Errorf("Tutti-Connector-Version = %q", request.Header.Get("Tutti-Connector-Version"))
 		}
-		if request.Method == http.MethodDelete {
-			response.WriteHeader(http.StatusNoContent)
-			return
-		}
 		var message struct {
 			ID     json.RawMessage `json:"id"`
 			Method string          `json:"method"`
+			Params map[string]any  `json:"params"`
 		}
 		if err := json.NewDecoder(request.Body).Decode(&message); err != nil {
 			t.Error(err)
 			return
 		}
-		if len(message.ID) == 0 {
-			response.WriteHeader(http.StatusAccepted)
-			return
+		if request.Header.Get("MCP-Protocol-Version") != mcp.ModernProtocolVersion || request.Header.Get("Mcp-Method") != message.Method {
+			t.Errorf("modern MCP metadata = %#v", request.Header)
 		}
 		calls = append(calls, message.Method)
 		result := map[string]any{}
 		switch message.Method {
-		case "initialize":
-			result = map[string]any{"protocolVersion": "2025-06-18"}
+		case "server/discover":
+			result = map[string]any{"resultType": "complete", "supportedVersions": []string{mcp.ModernProtocolVersion}, "capabilities": map[string]any{"tools": map[string]any{}}}
 		case "tools/list":
-			result = map[string]any{"tools": []any{map[string]any{
+			result = map[string]any{"resultType": "complete", "tools": []any{map[string]any{
 				"name": "status", "description": "Read status",
 				"inputSchema": map[string]any{"type": "object"},
 			}}}
 		case "tools/call":
-			result = map[string]any{"content": []any{map[string]any{"type": "text", "text": "ready"}}}
+			result = map[string]any{"resultType": "complete", "content": []any{map[string]any{"type": "text", "text": "ready"}}}
 		}
 		response.Header().Set("Content-Type", "application/json")
-		response.Header().Set("Mcp-Session-Id", "mcp-session")
 		_ = json.NewEncoder(response).Encode(map[string]any{"jsonrpc": "2.0", "id": message.ID, "result": result})
 	}))
 	defer server.Close()
 
 	root := t.TempDir()
+	skillDir := filepath.Join(root, "skills", "document-search")
+	if err := os.MkdirAll(skillDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte("---\nname: document-search\ndescription: Search Tencent Docs.\n---\n\nUse the Connector MCP tools.\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	runtimePath := filepath.Join(root, "node")
 	if err := os.WriteFile(runtimePath, []byte("runtime"), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	commands := NewConnectorCommandRegistry()
+	commands := NewConnectorRuntimeRegistry()
 	transport := server.Client().Transport.(*http.Transport).Clone()
 	transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
 		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
 	}
-	host, err := NewImplementationHost(ImplementationHostConfig{
-		Artifacts: preparedResolverStub{}, Runtimes: connectorRuntimeStub{executable: connectorruntime.ConnectorExecutable{
-			Path: runtimePath, SHA256: strings.Repeat("a", 64), SizeBytes: 7,
-		}}, Processes: &connectorProcessStub{}, Commands: commands, StateRoot: t.TempDir(),
-		RemoteHTTPClient: &http.Client{Transport: transport}, AuthorizeRemoteRequest: func(request *http.Request) error {
+	endpoint := strings.Replace(server.URL, "127.0.0.1", "example.com", 1)
+	remoteMCPClientFactory, err := NewDirectRemoteMCPClientFactory(DirectRemoteMCPClientFactoryConfig{
+		BaseURL: endpoint, HTTPClient: &http.Client{Transport: transport},
+		AuthorizeAccountRequest: func(request *http.Request, accountID string) error {
+			if accountID != "account-1" {
+				t.Fatalf("accountID = %q", accountID)
+			}
 			request.Header.Set("Cookie", "session_id=user-session")
 			return nil
 		},
@@ -424,178 +401,79 @@ func TestImplementationHostDiscoversAndInvokesRemoteStreamableHTTPMCP(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+	host, err := NewImplementationHost(ImplementationHostConfig{
+		Artifacts: preparedResolverStub{receipt: market.PreparedArtifactReceipt{PreparedPath: root}}, Runtimes: connectorRuntimeStub{executable: connectorruntime.ConnectorExecutable{
+			Path: runtimePath, SHA256: strings.Repeat("a", 64), SizeBytes: 7,
+		}}, Processes: &connectorProcessStub{}, Registry: commands, StateRoot: t.TempDir(),
+		RemoteMCPClientFactory: remoteMCPClientFactory,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = host.Close() })
-	endpoint := strings.Replace(server.URL, "127.0.0.1", "example.com", 1)
 	connector := market.Connector{Key: "github", Installation: market.Installation{
 		State: market.InstallationStateInstalled, InstalledReleaseDigest: implementationHostTestReleaseDigest,
 	}, Authorization: market.Authorization{State: market.AuthorizationStateNotRequired}}
 	connector.Release = completeImplementationHostTestRelease(market.Release{Manifest: market.Manifest{
 		AuthorizationKind: "none", IconURL: "data:image/png;base64,iVBORw0KGgo=",
+		RequiredCapabilities: []string{"tools"},
 		Implementation: market.Implementation{Kind: market.ImplementationKindRemoteStreamableHTTP,
 			RemoteStreamableHTTP: &market.RemoteStreamableHTTPImplementation{
-				Endpoint: endpoint, AllowedHosts: []string{"example.com"},
-				Authentication: market.RemoteTransportAuthentication{Type: "host_session"},
-				Limits:         market.RemoteTransportLimits{TimeoutMS: 10_000, MaxResponseBytes: 4096},
+				ProtocolVersion: mcp.ModernProtocolVersion, BindingRef: "github.primary", ContractVersion: 1,
+				BindingContractHash: "sha256:" + strings.Repeat("b", 64),
 			}},
 	}})
 	generation := market.HostGeneration{BootEpoch: "boot-1", Generation: 2}
 	receipt, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{
-		OperationID: "op-remote", ConnectionID: "default", Connector: connector, Enabled: true, Generation: generation,
+		OperationID: "op-remote", Scope: market.OperationScope{AccountID: "account-1"}, ConnectionID: "default", Connector: connector, Enabled: true, Generation: generation,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(receipt.RouteIDs) != 1 || receipt.RouteIDs[0] != "connector.github.mcp.status" {
-		t.Fatalf("routes = %#v", receipt.RouteIDs)
+	if receipt.Readiness.State != market.RuntimeReadinessReady || len(receipt.Readiness.Interfaces) != 1 ||
+		len(receipt.Readiness.Interfaces[0].RouteIDs) != 1 || receipt.Readiness.Interfaces[0].RouteIDs[0] != "connector.github.mcp.status" {
+		t.Fatalf("readiness = %#v", receipt.Readiness)
 	}
-	output, err := commands.Invoke(context.Background(), cliservice.InvokeRequest{
-		CommandID: receipt.RouteIDs[0], Input: map[string]any{}, Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"},
-	})
+	tools, err := commands.MCPRegistry().Tools(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if output.Value == nil {
+	if len(tools) != 1 || tools[0].Name != "github_status" {
+		t.Fatalf("native MCP tools = %#v", tools)
+	}
+	output, err := commands.MCPRegistry().Call(context.Background(), "github_status", map[string]any{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(output) == 0 {
 		t.Fatalf("output = %#v", output)
 	}
-	if len(calls) != 3 || calls[0] != "initialize" || calls[1] != "tools/list" || calls[2] != "tools/call" {
+	if len(calls) != 5 || calls[0] != "server/discover" || calls[1] != "tools/list" || calls[2] != "tools/list" || calls[3] != "tools/list" || calls[4] != "tools/call" {
 		t.Fatalf("calls = %#v", calls)
 	}
-}
-
-func TestImplementationHostExecutesFromVerifiedSnapshotAfterPreparedTreeReplacement(t *testing.T) {
-	processes := &recordingConnectorProcessStub{}
-	host, commands, connector, generation := testCLIHost(t, processes)
-	receipt, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{OperationID: "op-1", ConnectionID: "workspace-1",
-		Connector: connector, Enabled: true, Generation: generation})
-	if err != nil {
-		t.Fatal(err)
-	}
-	preparedRoot := host.artifacts.(preparedResolverStub).receipt.PreparedPath
-	if err := os.Remove(filepath.Join(preparedRoot, "connector.js")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(preparedRoot, "connector.js"), []byte("// replaced after validation"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := commands.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: receipt.RouteIDs[0], Input: map[string]any{},
-		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}}); err != nil {
-		t.Fatal(err)
-	}
-	if processes.spec.CWD == preparedRoot || len(processes.spec.Command) < 2 || !strings.HasPrefix(processes.spec.Command[1], processes.spec.CWD+string(filepath.Separator)) {
-		t.Fatalf("process spec re-opened prepared tree: %#v", processes.spec)
-	}
-	contents, err := os.ReadFile(processes.spec.Command[1])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(contents) != "// connector" {
-		t.Fatalf("executed snapshot contents = %q", contents)
-	}
-	if len(processes.spec.ArtifactTrees) != 1 || processes.spec.ArtifactTrees[0].Root != processes.spec.CWD {
-		t.Fatalf("snapshot artifact identity = %#v", processes.spec.ArtifactTrees)
+	hints := commands.RouteRegistry().RoutingHints()
+	if len(hints) != 1 || hints[0].SkillRoot != filepath.Join(root, "skills") {
+		t.Fatalf("remote Connector routing hints = %#v", hints)
 	}
 }
 
 func TestImplementationHostPublishesStagedRoutesAtomically(t *testing.T) {
 	host, commands, connector, generation := testCLIHost(t, &connectorProcessStub{})
 	host.SetCapabilityPublication(false)
-	receipt, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{OperationID: "op-1", ConnectionID: "workspace-1",
+	_, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{OperationID: "op-1", ConnectionID: "workspace-1",
 		Connector: connector, Enabled: true, Generation: generation})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if capabilities := commands.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"}); len(capabilities) != 0 {
-		t.Fatalf("staged capabilities leaked before commit: %#v", capabilities)
-	}
-	if _, err := commands.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: receipt.RouteIDs[0],
-		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}}); !errors.Is(err, cliservice.ErrServiceUnavailable) {
-		t.Fatalf("staged Invoke() error = %v", err)
+	if routes := commands.runtime.Routes(); len(routes) != 0 {
+		t.Fatalf("staged routes leaked before publication: %#v", routes)
 	}
 	if err := host.FenceAll(context.Background(), time.Now().Add(time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	host.SetCapabilityPublication(true)
-	if capabilities := commands.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"}); len(capabilities) != 0 {
-		t.Fatalf("failed bootstrap routes became visible: %#v", capabilities)
-	}
-}
-
-func TestImplementationHostDeactivationCancelsBlockingStartWithoutWaitingForCLICommandTimeout(t *testing.T) {
-	processes := &blockingStartProcessStub{started: make(chan struct{})}
-	host, commands, connector, generation := testCLIHost(t, processes)
-	receipt, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{OperationID: "op-1", ConnectionID: "workspace-1",
-		Connector: connector, Enabled: true, Generation: generation})
-	if err != nil {
-		t.Fatal(err)
-	}
-	invokeDone := make(chan error, 1)
-	go func() {
-		_, invokeErr := commands.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: receipt.RouteIDs[0], Input: map[string]any{},
-			Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}})
-		invokeDone <- invokeErr
-	}()
-	select {
-	case <-processes.started:
-	case <-time.After(time.Second):
-		t.Fatal("CLI process start did not block")
-	}
-	deadline := time.Now().Add(100 * time.Millisecond)
-	if err := host.DeactivateRuntime(context.Background(), market.RuntimeDeactivationRequest{ConnectionID: "workspace-1", ConnectorKey: "github",
-		ReleaseDigest: implementationHostTestReleaseDigest, Generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 3}, Deadline: deadline}); err != nil {
-		t.Fatal(err)
-	}
-	if time.Now().After(deadline) {
-		t.Fatal("deactivation waited past its deadline for blocking Start")
-	}
-	select {
-	case <-invokeDone:
-	case <-time.After(time.Second):
-		t.Fatal("blocking Start was not canceled")
-	}
-}
-
-func TestImplementationHostRetainsFencedRouteUntilCloseCanBeRetried(t *testing.T) {
-	connection := &retryCloseConnection{closed: make(chan struct{})}
-	started := make(chan struct{})
-	host, commands, connector, generation := testCLIHost(t, &retryCloseProcessStub{connection: connection, started: started})
-	receipt, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{OperationID: "op-1", ConnectionID: "workspace-1",
-		Connector: connector, Enabled: true, Generation: generation})
-	if err != nil {
-		t.Fatal(err)
-	}
-	invokeDone := make(chan error, 1)
-	go func() {
-		_, invokeErr := commands.Invoke(context.Background(), cliservice.InvokeRequest{CommandID: receipt.RouteIDs[0], Input: map[string]any{},
-			Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}})
-		invokeDone <- invokeErr
-	}()
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("CLI process did not start")
-	}
-	deactivation := market.RuntimeDeactivationRequest{ConnectionID: "workspace-1", ConnectorKey: "github", ReleaseDigest: implementationHostTestReleaseDigest,
-		Generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 3}, Deadline: time.Now().Add(time.Second)}
-	if err := host.DeactivateRuntime(context.Background(), deactivation); err == nil {
-		t.Fatal("first deactivation unexpectedly hid close failure")
-	}
-	if capabilities := commands.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"}); len(capabilities) != 0 {
-		t.Fatalf("fenced capabilities remained visible: %#v", capabilities)
-	}
-	deactivation.Deadline = time.Now().Add(time.Second)
-	if err := host.DeactivateRuntime(context.Background(), deactivation); err != nil {
-		t.Fatalf("retry deactivation failed: %v", err)
-	}
-	connection.mu.Lock()
-	closeCalls := connection.closeCalls
-	connection.mu.Unlock()
-	if closeCalls != 2 {
-		t.Fatalf("close calls = %d, want 2", closeCalls)
-	}
-	select {
-	case <-invokeDone:
-	case <-time.After(time.Second):
-		t.Fatal("retried close did not release invocation")
+	if routes := commands.runtime.Routes(); len(routes) != 0 {
+		t.Fatalf("failed bootstrap routes became visible: %#v", routes)
 	}
 }
 
@@ -608,21 +486,22 @@ func TestImplementationHostPaginatesMCPToolsSeparatesCLIPathAndRemovesDeadMCPRou
 		Connector: connector, Enabled: true, Generation: generation}); err != nil {
 		t.Fatal(err)
 	}
-	capabilities := commands.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})
-	if len(capabilities) != 3 {
-		t.Fatalf("paginated MCP/CLI capabilities = %#v", capabilities)
+	routes := commands.runtime.Routes()
+	if len(routes) != 1 || !routes[0].HasMCP || routes[0].CLICommand != "tutti-connector-github" {
+		t.Fatalf("paginated MCP/CLI route = %#v", routes)
 	}
-	paths := make(map[string]bool, len(capabilities))
-	for _, capability := range capabilities {
-		paths[fmt.Sprint(capability.Path)] = true
+	tools, err := commands.MCPRegistry().Tools(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
-	if !paths["[connector github mcp status]"] || !paths["[connector github cli status]"] || !paths["[connector github mcp second]"] {
-		t.Fatalf("capability paths = %#v", paths)
+	if len(tools) != 2 || tools[0].Name != "github_second" || tools[1].Name != "github_status" {
+		t.Fatalf("paginated native MCP tools = %#v", tools)
 	}
 	connection.exit()
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		if len(commands.Capabilities(context.Background(), cliservice.InvokeContext{WorkspaceID: "workspace-1"})) == 0 {
+		tools, _ := commands.MCPRegistry().Tools(context.Background())
+		if len(commands.runtime.Routes()) == 0 && len(tools) == 0 {
 			return
 		}
 		time.Sleep(time.Millisecond)

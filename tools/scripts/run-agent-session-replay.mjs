@@ -7,7 +7,6 @@ import {
   mkdir,
   readFile,
   readdir,
-  rename,
   rm,
   writeFile
 } from "node:fs/promises";
@@ -23,7 +22,8 @@ import {
   selectProvider,
   selectSession,
   waitForActiveSession,
-  waitForEvaluation
+  waitForEvaluation,
+  withTimeout
 } from "./agent-gui-performance-helpers.mjs";
 import {
   reservePort,
@@ -33,12 +33,16 @@ import {
 } from "./run-agent-gui-performance.mjs";
 import {
   cassettePolicy,
+  loadReplayTurnIdentityPlan,
   materializeReplayWorkspaceBlobs,
   parseActivityEvents,
   portableReplayCWDToken,
   replayActionFromManifest,
+  replayTurnIdentityPlan,
   verifyCassette
 } from "./agent-session-replay-runner/cassette.mjs";
+
+export { replayTurnIdentityPlan };
 import {
   createRuntime,
   enableAgentSessionRecordingFeature,
@@ -63,9 +67,142 @@ import {
   seedRecordingUserProject,
   verifyRecordedProjectBindingArtifacts
 } from "./agent-session-replay-runner/recording.mjs";
-import { bindManagedReplayShutdown } from "./agent-session-replay-runner/desktop-shutdown.mjs";
 import { acquireAgentSessionReplayProjectRoot } from "./agent-session-replay-runner/project-root.mjs";
 import { uiDriveScenario } from "./agent-session-replay-runner/ui-drive.mjs";
+import {
+  assertNoDuplicateEngineSends,
+  bindManagedReplayShutdown as bindManagedReplayShutdownCore,
+  checkpointAllowsOptionalScreenshotSettle,
+  checkpointNeedsScreenshotSettle,
+  checkpointNeedsToolSettle,
+  createReplayActivityClock,
+  createReplayPlaybackController as createReplayPlaybackControllerCore,
+  createReplayProductPorts,
+  createReplayTurnIdentityTracker as createReplayTurnIdentityTrackerCore,
+  createSerialAsyncQueue,
+  encodeKebabTimingModeValue,
+  KEBAB_REPLAY_TRANSPORT_COMMANDS,
+  loadReplayCheckpointPlan as loadReplayCheckpointPlanCore,
+  managedReplayCheckpointPrefix,
+  managedReplayCompletePrefix,
+  managedReplayFailedPrefix,
+  managedReplayFailure,
+  managedReplayReadyPrefix,
+  managedReplayReplacePrefix,
+  normalizePlaybackStateRequireTimingMode,
+  normalizeScreenshotClip,
+  replayCheckpointScreenshotPath,
+  replayControlRouter,
+  replayEventMayStartTurn,
+  ReplayReplacementRequested,
+  replayObservedTurnId,
+  replayPendingInteraction,
+  replayStatusErrorMessage,
+  replayStimulusPrecondition,
+  replayStimulusRequest as replayStimulusRequestCore,
+  replayStimulusRetryableStatus,
+  replayStimuli as replayStimuliCore,
+  requiredReplayRegistrations,
+  runReplayCassetteBatch,
+  scenarioPreparesToolEvidence,
+  screenshotEvidenceLabel,
+  submitRequestedRequiresSessionIdle,
+  validateReplayCheckpointPlan as validateReplayCheckpointPlanCore,
+  verifyDrainedReplayTransport,
+  writeReplayStatus
+} from "../../packages/agent/session-replay-runner/src/index.mjs";
+
+function bindManagedReplayShutdown(desktop, options = {}) {
+  const { stopDesktop = stopProcessTree, ...rest } = options;
+  return bindManagedReplayShutdownCore(desktop, {
+    ...rest,
+    exitOnSignal: rest.exitOnSignal ?? true,
+    stopDesktop
+  });
+}
+
+function tuttiReplayTimingSeekPolicy() {
+  const timingModeEnv =
+    process.env.TUTTI_AGENT_SESSION_REPLAY_TIMING_MODE?.trim() || "";
+  return {
+    preferFastForward: timingModeEnv === "fast-forward",
+    forceRealtimeSeek: timingModeEnv === "realtime"
+  };
+}
+
+function createTuttiReplayProductPorts(overrides = {}) {
+  return createReplayProductPorts({
+    workspaceScopeSegment: "workspaces",
+    transportCommands: KEBAB_REPLAY_TRANSPORT_COMMANDS,
+    encodeTimingModeValue: encodeKebabTimingModeValue,
+    normalizePlaybackState: normalizePlaybackStateRequireTimingMode,
+    timingSeekPolicy: tuttiReplayTimingSeekPolicy(),
+    fastForwardOnAutomaticSeek: true,
+    applyControlBeforeReconcileTarget: true,
+    applyControlWhileWaitingBeforeActivity: false,
+    watchSessionsDuringPlayback: false,
+    agentSessionStateSuffix: false,
+    sessionObservation: "canonical",
+    failIdleWaitOnTerminalSession: false,
+    captureActivityBaselinesInStimuli: false,
+    rebasePendingInteractionForResponseRequested: false,
+    listenerInfoPath: replayListenerInfoPath,
+    log,
+    ...overrides
+  });
+}
+
+export async function replayStimuli(
+  stateDirectory,
+  action,
+  timeoutMs,
+  input = {}
+) {
+  return replayStimuliCore(stateDirectory, action, timeoutMs, {
+    ...input,
+    ports: input.ports ?? createTuttiReplayProductPorts()
+  });
+}
+
+export function createReplayTurnIdentityTracker(plan, runtime = {}) {
+  return createReplayTurnIdentityTrackerCore(plan, {
+    ...runtime,
+    ports: runtime.ports ?? createTuttiReplayProductPorts()
+  });
+}
+
+export function createReplayPlaybackController(input) {
+  return createReplayPlaybackControllerCore({
+    ...input,
+    ports: input.ports ?? createTuttiReplayProductPorts()
+  });
+}
+
+export {
+  assertNoDuplicateEngineSends,
+  checkpointAllowsOptionalScreenshotSettle,
+  checkpointNeedsScreenshotSettle,
+  checkpointNeedsToolSettle,
+  createReplayActivityClock,
+  createSerialAsyncQueue,
+  managedReplayCheckpointPrefix,
+  managedReplayCompletePrefix,
+  managedReplayFailedPrefix,
+  managedReplayFailure,
+  managedReplayReadyPrefix,
+  managedReplayReplacePrefix,
+  normalizeScreenshotClip,
+  replayCheckpointScreenshotPath,
+  replayControlRouter,
+  replayEventMayStartTurn,
+  replayObservedTurnId,
+  replayPendingInteraction,
+  replayStimulusPrecondition,
+  replayStimulusRetryableStatus,
+  requiredReplayRegistrations,
+  screenshotEvidenceLabel,
+  submitRequestedRequiresSessionIdle
+};
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const workspaceRoot = resolve(scriptDirectory, "..", "..");
@@ -73,31 +210,6 @@ const workspaceRoot = resolve(scriptDirectory, "..", "..");
 let projectRoot = resolveAgentSessionReplayProjectRoot();
 const defaultTimeoutMs = 180_000;
 const defaultStallTimeoutMs = 60_000;
-export const managedReplayReadyPrefix = "[tutti-agent-session-replay-ready] ";
-export const managedReplayCompletePrefix =
-  "[tutti-agent-session-replay-complete] ";
-export const managedReplayFailedPrefix = "[tutti-agent-session-replay-failed] ";
-export const managedReplayCheckpointPrefix =
-  "[tutti-agent-session-replay-checkpoint] ";
-export const managedReplayReplacePrefix =
-  "[tutti-agent-session-replay-replace] ";
-export function replayControlRouter(
-  cassetteId,
-  revision,
-  command,
-  fields = {}
-) {
-  return {
-    schemaVersion: 2,
-    cassettes: {
-      [cassetteId]: {
-        command,
-        revision,
-        ...fields
-      }
-    }
-  };
-}
 const activityEventsName = cassettePolicy.files.activityEvents.path;
 const checkpointPlanName = cassettePolicy.files.checkpointPlan.path;
 const initialStateName = cassettePolicy.files.initialState.path;
@@ -542,12 +654,16 @@ async function replayWorkspace(options) {
     JSON.parse(await readFile(options.replayWorkspaceManifestPath, "utf8"))
   );
   let bootstrap = null;
+  const terminalCassetteIds = new Set();
   try {
     bootstrap = await bootstrapReplayWorkspace(manifest);
-    await runReplayWorkspaceOrchestration(bootstrap, options);
+    await runReplayWorkspaceOrchestration(bootstrap, options, {
+      terminalCassetteIds
+    });
   } catch (error) {
     if (options.managed) {
-      for (const cassette of manifest.cassettes) {
+      for (const cassette of bootstrap?.cassettes ?? manifest.cassettes) {
+        if (terminalCassetteIds.has(cassette.cassetteId)) continue;
         process.stdout.write(
           `${managedReplayFailedPrefix}${JSON.stringify(
             managedReplayFailure(cassette.cassetteId, error)
@@ -565,7 +681,11 @@ async function replayWorkspace(options) {
   }
 }
 
-async function runReplayWorkspaceOrchestration(bootstrap, options) {
+async function runReplayWorkspaceOrchestration(
+  bootstrap,
+  options,
+  { terminalCassetteIds = new Set() } = {}
+) {
   const statusPath = join(bootstrap.runtime.directory, "replay-status.json");
   const controlPath = join(bootstrap.runtime.directory, "replay-control.json");
   const logPath = join(bootstrap.runtime.directory, "logs", "desktop.log");
@@ -588,6 +708,9 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
         bootstrap.manifest.playbackMode
       )
     ])
+  );
+  const activityClockOriginUnixMs = replayWorkspaceActivityClockOrigin(
+    bootstrap.cassettes
   );
   const catalogLaunch = await reconcileEventStreamCatalogForLaunch({
     daemonPath: bootstrap.runtime.daemonPath,
@@ -642,13 +765,16 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
       options.timeoutMs
     );
     const runDesktopUi = createSerialAsyncQueue();
-    const reportSurfaceReady = (cassette) =>
+    const failedTerminalMarkers = [];
+    const reportSurfaceReady = (cassette, signal) =>
       runDesktopUi(async () => {
+        if (signal.aborted) return;
         await activateRendererReplayWorkspaceCassette(
           client,
           cassette.cassetteId,
           options.timeoutMs
         );
+        if (signal.aborted) return;
         process.stdout.write(
           `${managedReplayReadyPrefix}${JSON.stringify({
             cassetteId: cassette.cassetteId,
@@ -660,135 +786,164 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
       bootstrap.runtime.directory,
       "artifacts"
     );
-    const results = await Promise.all(
-      bootstrap.cassettes.map(async (cassette) => {
+    const { firstFailure, results } = await runReplayCassetteBatch(
+      bootstrap.cassettes,
+      async (cassette, signal) => {
         const initialTargetCheckpoint = initialTargetCheckpoints.get(
           cassette.cassetteId
         );
         let surfaceReadyReported = false;
         const reportSurfaceReadyOnce = async () => {
+          if (signal.aborted) return;
           if (surfaceReadyReported) return;
           surfaceReadyReported = true;
-          await reportSurfaceReady(cassette);
+          await reportSurfaceReady(cassette, signal);
         };
         const settleAgentSessionId =
           cassette.rootAgentSessionId ||
           cassette.action?.agentSessionId ||
           null;
-        try {
-          await replayStimuli(
-            bootstrap.runtime.stateDirectory,
-            cassette.action,
-            options.timeoutMs,
-            {
-              checkpoints: cassette.checkpoints,
-              controlPath,
-              initialTargetCheckpoint:
-                initialTargetCheckpoint === null
-                  ? undefined
-                  : initialTargetCheckpoint,
-              async onCheckpoint(checkpoint) {
-                if (options.screenshotCheckpoints) {
-                  const checkpointPlan = cassette.checkpoints[checkpoint];
-                  await runDesktopUi(async () => {
-                    await activateRendererReplayWorkspaceCassette(
-                      client,
-                      cassette.cassetteId,
-                      options.timeoutMs
-                    );
-                    await maybeSettleForScreenshot(
-                      cassette.settleScenario,
-                      client,
-                      options.timeoutMs,
-                      checkpointPlan,
-                      settleAgentSessionId
-                    );
-                    await captureCheckpointScreenshot({
-                      agentSessionId: settleAgentSessionId,
-                      artifactDirectory: workspaceArtifactDirectory,
-                      cassetteId: cassette.cassetteId,
-                      checkpointIndex: checkpoint,
-                      checkpoints: cassette.checkpoints,
-                      client,
-                      label: screenshotEvidenceLabel(cassette),
-                      prepareToolEvidence:
-                        scenarioPreparesToolEvidence(cassette.settleScenario) &&
-                        checkpointNeedsToolSettle(checkpointPlan)
-                    });
-                  });
-                }
-                process.stdout.write(
-                  `${managedReplayCheckpointPrefix}${JSON.stringify({
-                    checkpoint,
-                    cassetteId: cassette.cassetteId,
-                    totalDurationMs: cassette.totalDurationMs,
-                    totalCheckpoints: cassette.checkpoints.length
-                  })}\n`
-                );
-                if (checkpoint === initialTargetCheckpoint) {
-                  await reportSurfaceReadyOnce();
-                }
-              },
-              async waitForInspectable(_checkpoint, semantic) {
-                await reportSurfaceReadyOnce();
-                await waitForRendererReplayWorkspaceCheckpoint(
-                  client,
-                  cassette.cassetteId,
-                  semantic,
-                  options.timeoutMs
-                );
-              },
-              rendererDriver: createRendererActivityDriver(
-                client,
-                options.timeoutMs,
-                cassette.cassetteId
-              ),
-              cassetteId: cassette.cassetteId,
-              async onStimulusAccepted(stimulus) {
-                if (
-                  cassette.action.type !== "create-session" ||
-                  !["session.create", "session/activate"].includes(
-                    stimulus.type
-                  )
-                ) {
-                  return;
-                }
-                await runDesktopUi(() =>
-                  activateRendererReplayWorkspaceCassette(
+        await replayStimuli(
+          bootstrap.runtime.stateDirectory,
+          cassette.action,
+          options.timeoutMs,
+          {
+            activityClockOriginUnixMs,
+            checkpoints: cassette.checkpoints,
+            controlPath,
+            initialTargetCheckpoint:
+              initialTargetCheckpoint === null
+                ? undefined
+                : initialTargetCheckpoint,
+            async onCheckpoint(checkpoint) {
+              if (signal.aborted) return;
+              if (options.screenshotCheckpoints) {
+                const checkpointPlan = cassette.checkpoints[checkpoint];
+                await runDesktopUi(async () => {
+                  if (signal.aborted) return;
+                  await activateRendererReplayWorkspaceCassette(
                     client,
                     cassette.cassetteId,
                     options.timeoutMs
-                  )
-                );
+                  );
+                  if (signal.aborted) return;
+                  await maybeSettleForScreenshot(
+                    cassette.settleScenario,
+                    client,
+                    options.timeoutMs,
+                    checkpointPlan,
+                    settleAgentSessionId,
+                    {
+                      artifactDirectory: workspaceArtifactDirectory,
+                      cassetteId: cassette.cassetteId,
+                      checkpointIndex: checkpoint,
+                      checkpoints: cassette.checkpoints
+                    }
+                  );
+                  if (signal.aborted) return;
+                  await captureCheckpointScreenshot({
+                    agentSessionId: settleAgentSessionId,
+                    artifactDirectory: workspaceArtifactDirectory,
+                    cassetteId: cassette.cassetteId,
+                    checkpointIndex: checkpoint,
+                    checkpoints: cassette.checkpoints,
+                    client,
+                    label: screenshotEvidenceLabel(cassette),
+                    prepareToolEvidence:
+                      scenarioPreparesToolEvidence(cassette.settleScenario) &&
+                      checkpointNeedsToolSettle(checkpointPlan)
+                  });
+                });
               }
+              if (signal.aborted) return;
+              process.stdout.write(
+                `${managedReplayCheckpointPrefix}${JSON.stringify({
+                  checkpoint,
+                  cassetteId: cassette.cassetteId,
+                  totalDurationMs: cassette.totalDurationMs,
+                  totalCheckpoints: cassette.checkpoints.length
+                })}\n`
+              );
+              if (checkpoint === initialTargetCheckpoint) {
+                await reportSurfaceReadyOnce();
+              }
+            },
+            async waitForInspectable(_checkpoint, semantic) {
+              if (signal.aborted) return;
+              await reportSurfaceReadyOnce();
+              if (signal.aborted) return;
+              await waitForRendererReplayWorkspaceCheckpoint(
+                client,
+                cassette.cassetteId,
+                semantic,
+                options.timeoutMs
+              );
+            },
+            rendererDriver: createRendererActivityDriver(
+              client,
+              options.timeoutMs,
+              cassette.cassetteId
+            ),
+            cassetteId: cassette.cassetteId,
+            signal,
+            async onStimulusAccepted(stimulus) {
+              if (
+                signal.aborted ||
+                cassette.action.type !== "create-session" ||
+                !["session.create", "session/activate"].includes(stimulus.type)
+              ) {
+                return;
+              }
+              await runDesktopUi(async () => {
+                if (signal.aborted) return;
+                await activateRendererReplayWorkspaceCassette(
+                  client,
+                  cassette.cassetteId,
+                  options.timeoutMs
+                );
+              });
             }
-          );
-          await reportSurfaceReadyOnce();
-          await verifyReplayTransport(
-            bootstrap.runtime.stateDirectory,
-            cassette.cassetteId,
-            options.timeoutMs
-          );
-          process.stdout.write(
-            `${managedReplayCompletePrefix}${JSON.stringify({
-              cassetteId: cassette.cassetteId
-            })}\n`
-          );
-          return { cassetteId: cassette.cassetteId, succeeded: true };
-        } catch (error) {
-          process.stdout.write(
-            `${managedReplayFailedPrefix}${JSON.stringify(
-              managedReplayFailure(cassette.cassetteId, error)
-            )}\n`
-          );
-          return { cassetteId: cassette.cassetteId, succeeded: false };
+          }
+        );
+        await reportSurfaceReadyOnce();
+        await verifyReplayTransport(
+          bootstrap.runtime.stateDirectory,
+          cassette.cassetteId,
+          options.timeoutMs,
+          signal
+        );
+        return { cassetteId: cassette.cassetteId };
+      },
+      {
+        onTerminal(cassette, outcome) {
+          if (outcome.succeeded) {
+            process.stdout.write(
+              `${managedReplayCompletePrefix}${JSON.stringify({
+                cassetteId: cassette.cassetteId
+              })}\n`
+            );
+          } else {
+            failedTerminalMarkers.push(
+              `${managedReplayFailedPrefix}${JSON.stringify(
+                managedReplayFailure(cassette.cassetteId, outcome.error)
+              )}\n`
+            );
+          }
+          terminalCassetteIds.add(cassette.cassetteId);
         }
-      })
+      }
     );
+    if (failedTerminalMarkers.length > 0) {
+      process.stdout.write(failedTerminalMarkers.join(""));
+    }
     await writeReplayStatus(statusPath, {
       phase: results.every((result) => result.succeeded) ? "complete" : "failed"
     });
-    assertReplayWorkspaceSucceeded(results, options.managed);
+    assertReplayWorkspaceSucceeded(
+      results,
+      options.managed,
+      firstFailure?.error
+    );
     if (options.managed) {
       while (desktop.exitCode === null && desktop.signalCode === null) {
         await delay(100);
@@ -801,13 +956,15 @@ async function runReplayWorkspaceOrchestration(bootstrap, options) {
   }
 }
 
-export function createSerialAsyncQueue() {
-  let tail = Promise.resolve();
-  return (task) => {
-    const current = tail.then(() => task());
-    tail = current.catch(() => undefined);
-    return current;
-  };
+export function replayWorkspaceActivityClockOrigin(cassettes) {
+  const firstActivityTimes = cassettes.flatMap((cassette) => {
+    const occurredAtUnixMs =
+      cassette.action?.activityEvents?.[0]?.occurredAtUnixMs;
+    return Number.isSafeInteger(occurredAtUnixMs) && occurredAtUnixMs > 0
+      ? [occurredAtUnixMs]
+      : [];
+  });
+  return firstActivityTimes.length > 0 ? Math.min(...firstActivityTimes) : null;
 }
 
 export function createReplayWorkspaceSurfaceReadyQueue(activate) {
@@ -815,9 +972,16 @@ export function createReplayWorkspaceSurfaceReadyQueue(activate) {
   return (cassette) => enqueue(() => activate(cassette));
 }
 
-export function assertReplayWorkspaceSucceeded(results, managed) {
+export function assertReplayWorkspaceSucceeded(
+  results,
+  managed,
+  firstFailure = null
+) {
   const failed = results.filter((result) => !result.succeeded);
   if (failed.length > 0 && !managed) {
+    if (firstFailure instanceof Error) throw firstFailure;
+    const resultFailure = failed[0]?.error;
+    if (resultFailure instanceof Error) throw resultFailure;
     throw new Error(
       `Replay Workspace failed for ${failed.map((result) => result.cassetteId).join(", ")}`
     );
@@ -1336,66 +1500,6 @@ async function readReplayProviderIDs(cassetteDirectory) {
   return providers;
 }
 
-async function loadReplayTurnIdentityPlan(cassetteDirectory, mode) {
-  const expectedState = JSON.parse(
-    await readFile(join(cassetteDirectory, expectedStateName), "utf8")
-  );
-  const initialState =
-    mode === "continue-session"
-      ? JSON.parse(
-          await readFile(join(cassetteDirectory, initialStateName), "utf8")
-        )
-      : null;
-  return replayTurnIdentityPlan(expectedState, initialState);
-}
-
-export function replayTurnIdentityPlan(expectedState, initialState = null) {
-  const expectedSessions = expectedState?.agent?.sessions;
-  const initialSessions = new Map(
-    (initialState?.agent?.sessions ?? []).map((session) => [
-      session.id,
-      new Set((session.turns ?? []).map((turn) => turn.id))
-    ])
-  );
-  if (!Array.isArray(expectedSessions)) {
-    throw new Error("expected replay state has no Agent Sessions");
-  }
-  return Object.fromEntries(
-    expectedSessions.map((session) => {
-      const initialTurnIds = initialSessions.get(session.id) ?? new Set();
-      const recordedTurnIds = (session.turns ?? [])
-        .map((turn) => turn.id)
-        .filter((turnId) => !initialTurnIds.has(turnId));
-      if (
-        typeof session.id !== "string" ||
-        recordedTurnIds.some(
-          (turnId) => typeof turnId !== "string" || !turnId.trim()
-        )
-      ) {
-        throw new Error("expected replay state has invalid Turn identities");
-      }
-      return [
-        session.id,
-        {
-          initialTurnIds: [...initialTurnIds],
-          recordedTurnIds,
-          ...(session.kind === "child"
-            ? {
-                kind: "child",
-                initialSession: initialSessions.has(session.id),
-                rootSessionId: session.rootSessionId,
-                rootTurnId: session.rootTurnId,
-                parentSessionId: session.parentSessionId,
-                parentTurnId: session.parentTurnId,
-                parentToolCallId: session.parentToolCallId
-              }
-            : {})
-        }
-      ];
-    })
-  );
-}
-
 export async function verifyReplayWorkspaceTransports(
   stateDirectory,
   cassettes,
@@ -1591,7 +1695,12 @@ async function runDesktopAction(input) {
                 pageClient,
                 input.timeoutMs,
                 checkpointPlan,
-                input.action.agentSessionId
+                input.action.agentSessionId,
+                {
+                  artifactDirectory: input.artifactDirectory,
+                  checkpointIndex: checkpoint,
+                  checkpoints: input.checkpoints
+                }
               );
               await captureCheckpointScreenshot({
                 agentSessionId: input.action.agentSessionId,
@@ -1811,44 +1920,6 @@ async function runDesktopAction(input) {
   return result;
 }
 
-function requiredReplayRegistrations(value) {
-  if (!Array.isArray(value) || value.length === 0) {
-    throw new Error("Replay registrations are required");
-  }
-  for (const registration of value) {
-    if (
-      !registration ||
-      typeof registration.cassetteId !== "string" ||
-      !registration.cassetteId.trim() ||
-      typeof registration.rootAgentSessionId !== "string" ||
-      !registration.rootAgentSessionId.trim() ||
-      typeof registration.cassetteDirectory !== "string" ||
-      !registration.cassetteDirectory.trim()
-    ) {
-      throw new Error("Replay registration is invalid");
-    }
-  }
-  return value;
-}
-
-async function writeReplayStatus(path, status) {
-  if (!path) return;
-  let previous = {};
-  try {
-    previous = JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    if (error?.code !== "ENOENT") throw error;
-  }
-  const temporaryPath = `${path}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporaryPath, JSON.stringify({ ...previous, ...status }));
-    await rename(temporaryPath, path);
-  } catch (error) {
-    await rm(temporaryPath, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
 export function createRendererActivityDriver(client, timeoutMs, cassetteId) {
   if (typeof cassetteId !== "string" || cassetteId.trim() === "") {
     throw new Error("renderer activity driver requires cassetteId");
@@ -1902,13 +1973,23 @@ export function createRendererActivityDriver(client, timeoutMs, cassetteId) {
     const deadline = Date.now() + timeoutMs;
     let evaluation;
     while (true) {
+      const remainingMs = Math.max(1, deadline - Date.now());
       try {
-        evaluation = await client.send("Runtime.evaluate", {
-          expression,
-          awaitPromise: true,
-          returnByValue: true,
-          timeout: Math.max(1, deadline - Date.now())
-        });
+        // Node withTimeout is required: CDP `timeout` alone will not abort when
+        // the renderer event loop is wedged (busy-spin / infinite sync work).
+        evaluation = await withTimeout(
+          client.send("Runtime.evaluate", {
+            expression,
+            awaitPromise: true,
+            returnByValue: true,
+            timeout: remainingMs
+          }),
+          remainingMs,
+          `renderer replay invocation timed out after ${Math.max(
+            1,
+            Math.round(timeoutMs / 1000)
+          )}s`
+        );
         break;
       } catch (error) {
         if (
@@ -1942,40 +2023,12 @@ export function createRendererActivityDriver(client, timeoutMs, cassetteId) {
   };
 }
 
-function replayStatusErrorMessage(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  return message.slice(0, 12_000);
-}
-
-export function managedReplayFailure(cassetteId, error) {
-  const cause = structuredReplayFailureCause(
-    error instanceof Error ? error.cause : null
-  );
-  return {
-    ...(cause ? { cause } : {}),
-    cassetteId,
-    error: replayStatusErrorMessage(error)
-  };
-}
-
-function structuredReplayFailureCause(value) {
-  if (
-    !value ||
-    typeof value !== "object" ||
-    typeof value.code !== "string" ||
-    !value.code.trim() ||
-    typeof value.message !== "string" ||
-    !value.message.trim()
-  ) {
-    return null;
-  }
-  return {
-    code: value.code.trim(),
-    message: value.message.trim()
-  };
-}
-
-async function verifyReplayTransport(stateDirectory, cassetteId, timeoutMs) {
+async function verifyReplayTransport(
+  stateDirectory,
+  cassetteId,
+  timeoutMs,
+  signal
+) {
   const listener = JSON.parse(
     await readFile(replayListenerInfoPath(stateDirectory), "utf8")
   );
@@ -1983,67 +2036,49 @@ async function verifyReplayTransport(stateDirectory, cassetteId, timeoutMs) {
   const headers = {
     authorization: `Bearer ${listener.auth.token}`
   };
-  const deadline = Date.now() + timeoutMs;
-  const transportPath = `/v1/agent-session-replay/cassettes/${encodeURIComponent(cassetteId)}/transport`;
-  let latestPlayback = null;
   let nextHardFailureCheckAt = 0;
-  while (Date.now() < deadline) {
-    const playbackResponse = await fetch(
-      `${baseURL}${transportPath}/playback`,
-      {
-        headers,
-        signal: AbortSignal.timeout(timeoutMs)
-      }
-    );
-    const playbackBody = await playbackResponse.text();
-    if (!playbackResponse.ok) {
-      throw new Error(
-        `replay transport playback failed with ${playbackResponse.status}: ${playbackBody}`
-      );
-    }
-    latestPlayback = JSON.parse(playbackBody);
-    if (latestPlayback.drained === true) {
-      break;
-    }
-    // Fail fast on hard outbound faults instead of waiting out the full
-    // drain timeout while playback.drained stays false.
-    if (Date.now() >= nextHardFailureCheckAt) {
-      nextHardFailureCheckAt = Date.now() + 500;
-      const earlyFailure = await readReplayTransportHardFailure(
-        baseURL,
-        headers,
-        cassetteId,
-        timeoutMs
-      );
-      if (earlyFailure) {
-        throw new Error(
-          `replay transport failed before drain: ${earlyFailure}; playback=${JSON.stringify(latestPlayback)}`
-        );
-      }
-    }
-    await delay(50);
-  }
-  if (latestPlayback?.drained !== true) {
-    const lateFailure = await readReplayTransportHardFailure(
+  try {
+    await verifyDrainedReplayTransport({
       baseURL,
       headers,
       cassetteId,
-      timeoutMs
-    );
-    throw new Error(
-      `replay transport did not drain before verification: ${JSON.stringify(latestPlayback)}` +
-        (lateFailure ? `; transport=${lateFailure}` : "")
-    );
-  }
-  const response = await fetch(`${baseURL}${transportPath}/verify`, {
-    method: "POST",
-    headers,
-    signal: AbortSignal.timeout(timeoutMs)
-  });
-  if (!response.ok) {
-    throw new Error(
-      `replay transport verification failed with ${response.status}: ${await response.text()}`
-    );
+      timeoutMs,
+      delay,
+      signal,
+      async onStillDraining({ latestPlayback }) {
+        if (Date.now() < nextHardFailureCheckAt) return;
+        nextHardFailureCheckAt = Date.now() + 500;
+        const earlyFailure = await readReplayTransportHardFailure(
+          baseURL,
+          headers,
+          cassetteId,
+          timeoutMs,
+          signal
+        );
+        if (earlyFailure) {
+          throw new Error(
+            `replay transport failed before drain: ${earlyFailure}; playback=${JSON.stringify(latestPlayback)}`
+          );
+        }
+      }
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (
+      message.startsWith("replay transport did not drain before verification:")
+    ) {
+      const lateFailure = await readReplayTransportHardFailure(
+        baseURL,
+        headers,
+        cassetteId,
+        timeoutMs,
+        signal
+      );
+      throw new Error(
+        message + (lateFailure ? `; transport=${lateFailure}` : "")
+      );
+    }
+    throw error;
   }
 }
 
@@ -2064,15 +2099,19 @@ async function readReplayTransportHardFailure(
   baseURL,
   headers,
   cassetteId,
-  timeoutMs
+  timeoutMs,
+  signal
 ) {
   try {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
     const response = await fetch(
       `${baseURL}/v1/agent-session-replay/cassettes/${encodeURIComponent(cassetteId)}/transport/verify`,
       {
         method: "POST",
         headers,
-        signal: AbortSignal.timeout(timeoutMs)
+        signal: signal
+          ? AbortSignal.any([signal, timeoutSignal])
+          : timeoutSignal
       }
     );
     if (response.ok) return "";
@@ -2085,1309 +2124,28 @@ async function readReplayTransportHardFailure(
   }
 }
 
-export { bindManagedReplayShutdown } from "./agent-session-replay-runner/desktop-shutdown.mjs";
-
-export async function replayStimuli(
-  stateDirectory,
-  action,
-  timeoutMs,
-  input = {}
-) {
-  if (!Array.isArray(input.checkpoints) || input.checkpoints.length === 0) {
-    throw new Error("replay checkpoints are required");
-  }
-  const cassetteId = requiredReplayCassetteId(input.cassetteId);
-  const listener = JSON.parse(
-    await readFile(replayListenerInfoPath(stateDirectory), "utf8")
-  );
-  const baseURL = `http://${listener.addr}`;
-  const headers = {
-    authorization: `Bearer ${listener.auth.token}`,
-    "content-type": "application/json"
-  };
-  const playback = createReplayPlaybackController({
-    baseURL,
-    checkpoints: input.checkpoints,
-    controlPath: input.controlPath,
-    headers,
-    onCheckpoint: input.onCheckpoint,
-    onReplacement: input.onReplacement,
-    cassetteId,
-    statusPath: input.statusPath,
-    targetCheckpoint: input.initialTargetCheckpoint,
-    verifyBootstrap: action.type === "continue-session",
-    waitForInspectable: input.waitForInspectable,
-    timeoutMs
-  });
-  const turnIdentities = createReplayTurnIdentityTracker(
-    action.turnIdentityPlan ?? {},
-    { baseURL, headers, timeoutMs }
-  );
-  await playback.initialize();
-  assertNoDuplicateEngineSends(action.activityEvents);
-  const totalActivityEvents = action.activityEvents.length;
-  for (const event of action.activityEvents) {
-    log(
-      `activity ${event.sequence}/${totalActivityEvents}: ` +
-        `${event.kind} ${event.type}`
-    );
-    await playback.waitUntilRunnable();
-    await playback.waitBeforeActivity(event.sequence);
-    await playback.waitForRecordedEvent(event.occurredAtUnixMs);
-    if (submitRequestedRequiresSessionIdle(event, action.activityEvents)) {
-      await waitForSessionIdle(
-        baseURL,
-        headers,
-        event.workspaceId,
-        event.agentSessionId,
-        timeoutMs,
-        playback
-      );
-    }
-    if (event.kind === "intent" && event.type === "plan/feedbackRequested") {
-      await waitForSessionIdle(
-        baseURL,
-        headers,
-        event.workspaceId,
-        event.agentSessionId,
-        timeoutMs,
-        playback
-      );
-    }
-    switch (event.kind) {
-      case "intent":
-        if (!input.rendererDriver?.dispatchIntent) {
-          throw new Error(
-            `renderer activity driver is required for intent ${event.type}`
-          );
-        }
-        const replayIntent = await turnIdentities.rebase(event);
-        await playback.runWhilePolling(() =>
-          input.rendererDriver.waitUntilIntentReady?.(replayIntent)
-        );
-        await playback.runWhilePolling(() =>
-          input.rendererDriver.dispatchIntent(replayIntent)
-        );
-        break;
-      case "effect":
-        if (!input.rendererDriver?.verifyEffect) {
-          throw new Error(
-            `renderer activity driver is required for effect ${event.type}`
-          );
-        }
-        const replayEffect = await turnIdentities.rebase(event);
-        await playback.runWhilePolling(() =>
-          input.rendererDriver.verifyEffect(replayEffect)
-        );
-        break;
-      case "direct-stimulus":
-        await playback.runWhilePolling(() =>
-          replayDirectStimulus({
-            baseURL,
-            event,
-            headers,
-            playback,
-            cassetteId,
-            turnIdentities,
-            timeoutMs
-          })
-        );
-        await input.onStimulusAccepted?.(event);
-        break;
-      default:
-        throw new Error(`unsupported replay activity kind: ${event.kind}`);
-    }
-    if (replayEventMayStartTurn(event)) {
-      await turnIdentities.observeCurrentTurn(
-        event.workspaceId,
-        event.agentSessionId
-      );
-    }
-    await input.onActivityEventCompleted?.(event);
-    if (event.kind === "effect" && event.type === "session/activate") {
-      await input.onStimulusAccepted?.(event);
-    }
-    await playback.activityAdvanced(event.sequence);
-    const checkpoint = playback.checkpointAfter(event.sequence);
-    if (checkpoint) {
-      await playback.reach(checkpoint);
-    }
-  }
-  await waitForSessionIdle(
-    baseURL,
-    headers,
-    action.workspaceId,
-    action.agentSessionId,
-    timeoutMs,
-    playback
-  );
-  await playback.waitForAllCheckpoints();
-  await playback.waitUntilRunnable();
-  return playback;
-}
-
-async function replayDirectStimulus({
-  baseURL,
-  event,
-  headers,
-  playback,
-  cassetteId,
-  turnIdentities,
-  timeoutMs
-}) {
-  if (replayStimulusPrecondition(event) === "session-idle") {
-    await waitForSessionIdle(
-      baseURL,
-      headers,
-      event.workspaceId,
-      event.agentSessionId,
-      timeoutMs,
-      playback
-    );
-  }
-  const replayEvent = await turnIdentities.rebase(event);
-  let readyEvent = replayEvent;
-  if (event.type === "interactive.response") {
-    readyEvent = await waitForPendingReplayInteraction(
-      baseURL,
-      headers,
-      replayEvent,
-      timeoutMs,
-      playback
-    );
-  }
-  const request = replayStimulusRequest(readyEvent);
-  if (!request) {
-    throw new Error(`unsupported direct replay stimulus: ${event.type}`);
-  }
-  const deadline = Date.now() + timeoutMs;
-  let response;
-  let body = "";
-  while (Date.now() < deadline) {
-    response = await fetch(`${baseURL}${request.path}`, {
-      method: "POST",
-      headers,
-      ...(request.body === undefined
-        ? {}
-        : { body: JSON.stringify(request.body) })
-    });
-    body = await response.text();
-    if (response.ok) break;
-    if (!replayStimulusRetryableStatus(event.type, response.status)) {
-      const transportFailure =
-        response.status === 502
-          ? await replayTransportFailure(
-              baseURL,
-              headers,
-              cassetteId,
-              timeoutMs
-            )
-          : "";
-      throw new Error(
-        `stimulus ${event.type} failed with ${response.status}: ${body}${transportFailure ? `\n${transportFailure}` : ""}\nrequest: ${JSON.stringify(request.body)}`
-      );
-    }
-    await delay(100);
-  }
-  if (!response?.ok) {
-    throw new Error(
-      `stimulus ${event.type} did not become ready: ${response?.status} ${body}`
-    );
-  }
-}
-
-function replayEventMayStartTurn(event) {
-  return (
-    ["session.create", "session.send"].includes(event.type) ||
-    (event.kind === "effect" &&
-      ["queue/sendPrompt", "session/activate"].includes(event.type))
-  );
-}
-
-/**
- * Wait for session idle before replaying a submit only when that submit is
- * expected to drain into a send. Busy-queue submits (and send_now/immediate)
- * must not wait — the active turn is why they were queued, and idle arrives
- * only after later tape actions (edit/remove/send-now) intervene.
- *
- * Prefer explicit submitDiagnostics.queued when present; otherwise infer from
- * whether this intent caused a send/activate effect (covers older cassettes
- * that stamped queued:false before engine admission was recorded).
- */
-export function submitRequestedRequiresSessionIdle(event, activityEvents) {
-  if (event?.kind !== "intent" || event.type !== "submit/requested") {
-    return false;
-  }
-  if (event.payload?.submitDiagnostics?.queued === true) {
-    return false;
-  }
-  const routing = event.payload?.routing;
-  if (routing === "send_now" || routing === "immediate") {
-    return false;
-  }
-  return submitRequestedCausedSend(event, activityEvents);
-}
-
-function submitRequestedCausedSend(event, activityEvents) {
-  const eventId = event.eventId;
-  if (!eventId || !Array.isArray(activityEvents)) {
-    // Without a causable tape identity, treat non-queued auto submits as
-    // needing idle (the historical runner default).
-    return event.payload?.submitDiagnostics?.queued !== true;
-  }
-  return activityEvents.some(
-    (candidate) =>
-      candidate.kind === "effect" &&
-      (candidate.type === "queue/sendPrompt" ||
-        candidate.type === "session/activate") &&
-      candidate.causedByEventId === eventId
-  );
-}
-
-/**
- * Resolve the live Turn id from a session GET projection.
- * Protocol v2 embeds Turns as `{ turnId }`; older fixtures used `{ id }`.
- * After cancel/settle, `activeTurnId` is null and only `latestTurn` remains.
- */
-export function replayObservedTurnId(session) {
-  if (!session || typeof session !== "object") return null;
-  const candidates = [
-    session.activeTurnId,
-    session.activeTurn?.turnId,
-    session.activeTurn?.id,
-    session.latestTurn?.turnId,
-    session.latestTurn?.id
-  ];
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim()) {
-      return candidate.trim();
-    }
-  }
-  return null;
-}
-
-function createReplayTurnIdentityTracker(plan, runtime) {
-  const sessions = new Map(
-    Object.entries(plan).map(([sessionId, session]) => [
-      sessionId,
-      {
-        actualSessionId:
-          session.kind === "child" && session.initialSession !== true
-            ? null
-            : sessionId,
-        actualTurnIds: new Set(),
-        initialTurnIds: new Set(session.initialTurnIds ?? []),
-        kind: session.kind ?? "root",
-        parentSessionId: session.parentSessionId ?? null,
-        parentToolCallId: session.parentToolCallId ?? null,
-        parentTurnId: session.parentTurnId ?? null,
-        rootSessionId: session.rootSessionId ?? null,
-        rootTurnId: session.rootTurnId ?? null,
-        mappedTurnIds: new Map(),
-        recordedTurnIds: session.recordedTurnIds ?? []
-      }
-    ])
-  );
-
-  const observeSessionTurn = (recordedSessionId, session) => {
-    const identity = sessions.get(recordedSessionId);
-    if (!identity) return;
-    const actualTurnId = replayObservedTurnId(session);
-    if (!actualTurnId || identity.actualTurnIds.has(actualTurnId)) return;
-    const recordedTurnId =
-      identity.recordedTurnIds[identity.mappedTurnIds.size];
-    if (!recordedTurnId) {
-      throw new Error(
-        `replay Session ${recordedSessionId} produced an unexpected Turn ${actualTurnId}`
-      );
-    }
-    identity.actualTurnIds.add(actualTurnId);
-    identity.mappedTurnIds.set(recordedTurnId, actualTurnId);
-  };
-
-  const mappedTurnId = (recordedSessionId, recordedTurnId) => {
-    const identity = sessions.get(recordedSessionId);
-    if (!identity || identity.initialTurnIds.has(recordedTurnId)) {
-      return recordedTurnId;
-    }
-    return identity.mappedTurnIds.get(recordedTurnId) ?? null;
-  };
-
-  const readSession = async (workspaceId, actualSessionId) => {
-    const response = await fetch(
-      `${runtime.baseURL}/v1/workspaces/${encodeURIComponent(workspaceId)}/agent-sessions/${encodeURIComponent(actualSessionId)}`,
-      { headers: runtime.headers }
-    );
-    if (!response.ok) {
-      throw new Error(
-        `failed to resolve replay Session identity: ${response.status} ${await response.text()}`
-      );
-    }
-    const detail = await response.json();
-    return detail.session ?? detail;
-  };
-
-  const observeCurrentTurn = async (workspaceId, recordedSessionId) => {
-    const actualSessionId = await resolveSession(
-      workspaceId,
-      recordedSessionId
-    );
-    const session = await readSession(workspaceId, actualSessionId);
-    observeSessionTurn(recordedSessionId, session);
-  };
-
-  const resolveLineageTurn = async (
-    workspaceId,
-    recordedSessionId,
-    recordedTurnId
-  ) => {
-    if (!recordedTurnId) return null;
-    let actualTurnId = mappedTurnId(recordedSessionId, recordedTurnId);
-    if (actualTurnId) return actualTurnId;
-    await observeCurrentTurn(workspaceId, recordedSessionId);
-    actualTurnId = mappedTurnId(recordedSessionId, recordedTurnId);
-    if (!actualTurnId) {
-      throw new Error(
-        `replay lineage Turn identity is unresolved: ${recordedSessionId}/${recordedTurnId}`
-      );
-    }
-    return actualTurnId;
-  };
-
-  const readSessionGraph = async (workspaceId, rootSessionId) => {
-    const response = await fetch(
-      `${runtime.baseURL}/v1/workspaces/${encodeURIComponent(workspaceId)}/agent-sessions/${encodeURIComponent(rootSessionId)}?projection=messageHydration`,
-      { headers: runtime.headers }
-    );
-    if (!response.ok) {
-      throw new Error(
-        `failed to read replay Session graph: ${response.status} ${await response.text()}`
-      );
-    }
-    const body = await response.json();
-    return [
-      ...(body.session ? [body.session] : []),
-      ...(Array.isArray(body.childSessions) ? body.childSessions : [])
-    ];
-  };
-
-  const resolveSession = async (workspaceId, recordedSessionId) => {
-    const identity = sessions.get(recordedSessionId);
-    if (!identity) return recordedSessionId;
-    if (identity.actualSessionId) return identity.actualSessionId;
-    if (
-      identity.kind !== "child" ||
-      !identity.rootSessionId ||
-      !identity.parentSessionId ||
-      !identity.parentToolCallId
-    ) {
-      throw new Error(
-        `replay child Session lineage is incomplete: ${recordedSessionId}`
-      );
-    }
-    const actualRootSessionId = await resolveSession(
-      workspaceId,
-      identity.rootSessionId
-    );
-    const actualParentSessionId = await resolveSession(
-      workspaceId,
-      identity.parentSessionId
-    );
-    const actualRootTurnId = await resolveLineageTurn(
-      workspaceId,
-      identity.rootSessionId,
-      identity.rootTurnId
-    );
-    const actualParentTurnId = await resolveLineageTurn(
-      workspaceId,
-      identity.parentSessionId,
-      identity.parentTurnId
-    );
-    const deadline = Date.now() + runtime.timeoutMs;
-    while (Date.now() < deadline) {
-      const candidates = (
-        await readSessionGraph(workspaceId, actualRootSessionId)
-      ).filter(
-        (session) =>
-          session.kind === "child" &&
-          session.rootAgentSessionId === actualRootSessionId &&
-          session.parentAgentSessionId === actualParentSessionId &&
-          session.parentToolCallId === identity.parentToolCallId &&
-          (!actualRootTurnId || session.rootTurnId === actualRootTurnId) &&
-          (!actualParentTurnId || session.parentTurnId === actualParentTurnId)
-      );
-      if (candidates.length > 1) {
-        throw new Error(
-          `replay child Session lineage is ambiguous: ${recordedSessionId}`
-        );
-      }
-      if (candidates.length === 1) {
-        identity.actualSessionId = candidates[0].id;
-        observeSessionTurn(recordedSessionId, candidates[0]);
-        return identity.actualSessionId;
-      }
-      await delay(50);
-    }
-    throw new Error(
-      `replay child Session identity is unresolved: ${recordedSessionId}`
-    );
-  };
-
-  return {
-    observeCurrentTurn,
-    async rebase(event) {
-      const recordedSessionId = event.agentSessionId;
-      const actualSessionId = await resolveSession(
-        event.workspaceId,
-        recordedSessionId
-      );
-      const recordedTurnId = event.payload?.turnId;
-      if (typeof recordedTurnId !== "string") {
-        return actualSessionId === recordedSessionId
-          ? event
-          : { ...event, agentSessionId: actualSessionId };
-      }
-      const identity = sessions.get(recordedSessionId);
-      if (!identity) return event;
-      if (!identity || identity.initialTurnIds.has(recordedTurnId)) {
-        return actualSessionId === recordedSessionId
-          ? event
-          : { ...event, agentSessionId: actualSessionId };
-      }
-      let actualTurnId = identity.mappedTurnIds.get(recordedTurnId);
-      if (!actualTurnId) {
-        await observeCurrentTurn(event.workspaceId, recordedSessionId);
-        actualTurnId = identity.mappedTurnIds.get(recordedTurnId);
-      }
-      if (!actualTurnId) {
-        throw new Error(
-          `replay Turn identity is unresolved: ${recordedSessionId}/${recordedTurnId}`
-        );
-      }
-      const payload = {
-        ...event.payload,
-        turnId: actualTurnId,
-        ...([
-          "plan.decision",
-          "plan/decisionRequested",
-          "plan/submitDecision"
-        ].includes(event.type) && event.payload.requestId === recordedTurnId
-          ? {
-              requestId: actualTurnId
-            }
-          : {})
-      };
-      return {
-        ...event,
-        agentSessionId: actualSessionId,
-        ...(event.type === "interaction/respond" ||
-        event.type === "plan/submitDecision"
-          ? {
-              correlationId: replayScopedEntityKey(
-                actualSessionId,
-                replayScopedEntityKey(payload.turnId, payload.requestId)
-              )
-            }
-          : {}),
-        payload
-      };
-    }
-  };
-}
-
-function replayScopedEntityKey(scopeId, entityId) {
-  const scope = scopeId.trim();
-  return `${scope.length}:${scope}${entityId.trim()}`;
-}
-
-export function assertNoDuplicateEngineSends(activityEvents) {
-  const engineCorrelations = new Set(
-    activityEvents
-      .filter((event) => event.kind === "intent")
-      .map((event) => event.correlationId)
-      .filter((correlationID) => typeof correlationID === "string")
-  );
-  const duplicate = activityEvents.find(
-    (event) =>
-      event.kind === "direct-stimulus" &&
-      event.type === "session.send" &&
-      typeof event.correlationId === "string" &&
-      engineCorrelations.has(event.correlationId)
-  );
-  if (duplicate) {
-    throw new Error(
-      `direct session.send duplicates renderer intent correlation ${duplicate.correlationId}`
-    );
-  }
-}
+export { bindManagedReplayShutdown };
 
 export async function loadReplayCheckpointPlan(
   cassetteDirectory,
   activityEvents
 ) {
-  const plan = JSON.parse(
-    await readFile(join(cassetteDirectory, checkpointPlanName), "utf8")
-  );
-  return validateReplayCheckpointPlan(plan, activityEvents);
+  return loadReplayCheckpointPlanCore(cassetteDirectory, activityEvents, {
+    cassetteSchemaVersion: cassettePolicy.schemaVersion,
+    checkpointPlanPath: checkpointPlanName
+  });
 }
 
 export function validateReplayCheckpointPlan(plan, activityEvents) {
-  if (
-    plan?.schemaVersion !== 2 ||
-    plan.cassetteSchemaVersion !== cassettePolicy.schemaVersion ||
-    plan.observationSchemaVersion !== 2 ||
-    !Array.isArray(plan.checkpoints) ||
-    plan.checkpoints.length === 0
-  ) {
-    throw new Error("checkpoint_plan_invalid: unsupported plan schema");
-  }
-  let previousActivitySequence = 0;
-  const ids = new Set();
-  for (const [index, checkpoint] of plan.checkpoints.entries()) {
-    if (
-      checkpoint?.index !== index ||
-      checkpoint.id !== `checkpoint-${String(index).padStart(4, "0")}` ||
-      ids.has(checkpoint.id) ||
-      typeof checkpoint.kind !== "string" ||
-      !Array.isArray(checkpoint.tags) ||
-      !checkpoint.tags.includes(checkpoint.kind) ||
-      !Number.isSafeInteger(checkpoint.cursor?.activityEventSequence) ||
-      checkpoint.cursor.activityEventSequence < previousActivitySequence ||
-      !Array.isArray(checkpoint.cursor.providerConnections) ||
-      !["bootstrap", "activity-boundary", "provider-observation"].includes(
-        checkpoint.trigger?.source
-      )
-    ) {
-      throw new Error(`checkpoint_plan_invalid: checkpoint ${index}`);
-    }
-    if (
-      checkpoint.trigger.source === "activity-boundary" &&
-      checkpoint.trigger.afterActivityEventSequence !==
-        checkpoint.cursor.activityEventSequence
-    ) {
-      throw new Error(
-        `checkpoint_plan_invalid: activity boundary ${checkpoint.id}`
-      );
-    }
-    if (
-      checkpoint.cursor.activityEventSequence >
-      (activityEvents.at(-1)?.sequence ?? 0)
-    ) {
-      throw new Error(
-        `checkpoint_plan_invalid: activity cursor ${checkpoint.id}`
-      );
-    }
-    ids.add(checkpoint.id);
-    previousActivitySequence = checkpoint.cursor.activityEventSequence;
-  }
-  if (plan.checkpoints[0].trigger.source !== "bootstrap") {
-    throw new Error("checkpoint_plan_invalid: checkpoint zero");
-  }
-  return plan.checkpoints;
-}
-
-export function createReplayPlaybackController(input) {
-  const cassetteId = requiredReplayCassetteId(input.cassetteId);
-  const bySequence = new Map(
-    input.checkpoints
-      .slice(1)
-      .filter((checkpoint) => checkpoint.trigger.source === "activity-boundary")
-      .map((checkpoint) => [
-        checkpoint.trigger.afterActivityEventSequence,
-        checkpoint
-      ])
-  );
-  let currentCheckpoint = 0;
-  let lastRevision = 0;
-  let paused = false;
-  const automatic = input.targetCheckpoint === undefined;
-  let targetCheckpoint = automatic
-    ? input.checkpoints.length > 1
-      ? 1
-      : null
-    : input.targetCheckpoint;
-  let targetDeadline = null;
-  let activityEventSequence = 0;
-  const timingModeEnv =
-    process.env.TUTTI_AGENT_SESSION_REPLAY_TIMING_MODE?.trim() || "";
-  // preferFastForward: opt-in batch mode that keeps FF even after landing a
-  // checkpoint (env === "fast-forward"). Default seeking still uses FF via
-  // setFastForward, then setRealtime restores realtime on land — unless the
-  // operator explicitly requested realtime seeking for busy-queue visuals.
-  const preferFastForward = timingModeEnv === "fast-forward";
-  const forceRealtimeSeek = timingModeEnv === "realtime";
-  let timingMode = "realtime";
-  const transportPlaybackPath = `/v1/agent-session-replay/cassettes/${encodeURIComponent(cassetteId)}/transport/playback`;
-  const checkpointVerificationPath = (checkpointIndex) =>
-    `/v1/agent-session-replay/cassettes/${encodeURIComponent(cassetteId)}/checkpoints/${checkpointIndex}/verify`;
-
-  const updateStatus = () =>
-    writeReplayStatus(input.statusPath, {
-      currentCheckpoint,
-      totalCheckpoints: input.checkpoints.length,
-      paused,
-      timingMode,
-      targetCheckpoint
-    });
-
-  const setTransport = async (command) => {
-    const response = await fetch(`${input.baseURL}${transportPlaybackPath}`, {
-      method: "POST",
-      headers: input.headers,
-      body: JSON.stringify(command),
-      signal: AbortSignal.timeout(input.timeoutMs)
-    });
-    if (!response.ok) {
-      throw new Error(
-        `replay playback command failed with ${response.status}: ${await response.text()}`
-      );
-    }
-  };
-
-  const readTransportPlayback = async () => {
-    const response = await fetch(`${input.baseURL}${transportPlaybackPath}`, {
-      headers: input.headers,
-      signal: AbortSignal.timeout(input.timeoutMs)
-    });
-    const body = await response.text();
-    if (!response.ok) {
-      throw new Error(
-        `replay playback state failed with ${response.status}: ${body}`
-      );
-    }
-    const state = JSON.parse(body);
-    if (
-      typeof state.paused !== "boolean" ||
-      !Number.isFinite(state.playbackElapsedMs) ||
-      state.playbackElapsedMs < 0 ||
-      !Number.isFinite(state.speed) ||
-      state.speed <= 0 ||
-      !Array.isArray(state.providerConnections) ||
-      !["realtime", "fast-forward"].includes(state.timingMode)
-    ) {
-      throw new Error("replay playback state is invalid");
-    }
-    return state;
-  };
-
-  const setRealtime = async () => {
-    if (preferFastForward) {
-      if (timingMode === "fast-forward") return;
-      await setTransport({
-        command: "set-timing-mode",
-        timingMode: "fast-forward"
-      });
-      timingMode = "fast-forward";
-      return;
-    }
-    if (timingMode === "realtime") return;
-    await setTransport({
-      command: "set-timing-mode",
-      timingMode: "realtime"
-    });
-    timingMode = "realtime";
-  };
-
-  const setFastForward = async () => {
-    // Explicit realtime keeps seeking in realtime. Forcing FF here lets the
-    // provider finish a long busy turn before queued submit/requested intents
-    // are dispatched, so the composer queue never becomes visible.
-    if (forceRealtimeSeek) {
-      await setRealtime();
-      return;
-    }
-    if (timingMode === "fast-forward") return;
-    await setTransport({
-      command: "set-timing-mode",
-      timingMode: "fast-forward"
-    });
-    timingMode = "fast-forward";
-  };
-
-  const installProviderTarget = async (checkpointIndex) => {
-    const checkpoint = input.checkpoints[checkpointIndex];
-    await setTransport({
-      command: "set-provider-cursor",
-      providerConnections: checkpoint.cursor.providerConnections
-    });
-    targetDeadline = Date.now() + input.timeoutMs;
-  };
-
-  const compareProviderPosition = (left, right) =>
-    left.chunkSeq === right.chunkSeq
-      ? left.unitIndex - right.unitIndex
-      : left.chunkSeq - right.chunkSeq;
-
-  const providerTargetState = (checkpoint, state) => {
-    const current = new Map(
-      state.providerConnections.map((position) => [
-        position.connectionId,
-        position
-      ])
-    );
-    let reached = true;
-    for (const target of checkpoint.cursor.providerConnections) {
-      const position = current.get(target.connectionId);
-      if (!position || compareProviderPosition(position, target) < 0) {
-        reached = false;
-        continue;
-      }
-      if (compareProviderPosition(position, target) > 0) {
-        throw new Error(
-          `checkpoint_provider_overshot: ${checkpoint.id} ${target.connectionId}`
-        );
-      }
-    }
-    return reached;
-  };
-
-  const verifySemanticCheckpoint = async (checkpointIndex) => {
-    const response = await fetch(
-      `${input.baseURL}${checkpointVerificationPath(checkpointIndex)}`,
-      {
-        method: "POST",
-        headers: input.headers,
-        signal: AbortSignal.timeout(input.timeoutMs)
-      }
-    );
-    const body = await response.text();
-    if (!response.ok) {
-      throw new Error(
-        `replay checkpoint verification failed with ${response.status}: ${body}`
-      );
-    }
-    const state = JSON.parse(body);
-    if (
-      state.checkpointIndex !== checkpointIndex ||
-      typeof state.triggerMatched !== "boolean" ||
-      typeof state.readinessSatisfied !== "boolean" ||
-      !Number.isSafeInteger(state.canonicalSessionUpdatedAtUnixMs) ||
-      state.canonicalSessionUpdatedAtUnixMs < 0 ||
-      !Number.isSafeInteger(state.canonicalMessageVersion) ||
-      state.canonicalMessageVersion < 0
-    ) {
-      throw new Error("replay checkpoint verification state is invalid");
-    }
-    return state;
-  };
-
-  const reconcileTarget = async () => {
-    // Consume the newest control revision before landing. Otherwise a duplicate
-    // next command written during a fast seek can remain unread until after the
-    // target pauses, where it would be mistaken for a request to advance again.
-    await applyControl();
-    if (targetCheckpoint === null) return;
-    const checkpoint = input.checkpoints[targetCheckpoint];
-    if (activityEventSequence > checkpoint.cursor.activityEventSequence) {
-      throw new Error(`checkpoint_activity_overshot: ${checkpoint.id}`);
-    }
-    if (activityEventSequence < checkpoint.cursor.activityEventSequence) return;
-    const state = await readTransportPlayback();
-    if (!providerTargetState(checkpoint, state)) {
-      if (targetDeadline !== null && Date.now() >= targetDeadline) {
-        throw new Error(`checkpoint_readiness_timeout: ${checkpoint.id}`);
-      }
-      return;
-    }
-    const semantic = await verifySemanticCheckpoint(targetCheckpoint);
-    if (!semantic.triggerMatched || !semantic.readinessSatisfied) {
-      if (targetDeadline !== null && Date.now() >= targetDeadline) {
-        throw new Error(`checkpoint_readiness_timeout: ${checkpoint.id}`);
-      }
-      return;
-    }
-    currentCheckpoint = targetCheckpoint;
-    await setRealtime();
-    await input.waitForInspectable?.(checkpoint, semantic);
-    await input.onCheckpoint?.(currentCheckpoint);
-    if (automatic && currentCheckpoint < input.checkpoints.length - 1) {
-      targetCheckpoint = currentCheckpoint + 1;
-      await installProviderTarget(targetCheckpoint);
-      await setFastForward();
-      paused = false;
-    } else if (automatic || input.resumeAfterTarget) {
-      await setTransport({ command: "clear-provider-cursor" });
-      paused = false;
-      targetCheckpoint = null;
-      targetDeadline = null;
-    } else {
-      await setTransport({ command: "pause" });
-      paused = true;
-      targetCheckpoint = null;
-      targetDeadline = null;
-    }
-    await updateStatus();
-  };
-
-  const reachBootstrap = async () => {
-    const deadline = Date.now() + input.timeoutMs;
-    while (true) {
-      const semantic = await verifySemanticCheckpoint(0);
-      if (semantic.triggerMatched && semantic.readinessSatisfied) {
-        await input.waitForInspectable?.(input.checkpoints[0], semantic);
-        await input.onCheckpoint?.(0);
-        return;
-      }
-      if (Date.now() >= deadline) {
-        throw new Error(
-          `checkpoint_readiness_timeout: ${input.checkpoints[0].id}`
-        );
-      }
-      await delay(25);
-    }
-  };
-
-  const applyControl = async () => {
-    if (!input.controlPath) return;
-    let document;
-    try {
-      document = JSON.parse(await readFile(input.controlPath, "utf8"));
-    } catch (error) {
-      if (error?.code === "ENOENT") return;
-      throw new Error(
-        `replay control is invalid: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
-    if (
-      document?.schemaVersion !== 2 ||
-      !document.cassettes ||
-      typeof document.cassettes !== "object" ||
-      Array.isArray(document.cassettes)
-    ) {
-      throw new Error("replay control router is invalid");
-    }
-    const control = document.cassettes[cassetteId];
-    if (control == null) return;
-    if (typeof control !== "object" || Array.isArray(control)) {
-      throw new Error("replay cassette control is invalid");
-    }
-    if (control.revision === lastRevision) return;
-    if (
-      !Number.isSafeInteger(control.revision) ||
-      control.revision <= lastRevision
-    ) {
-      throw new Error("replay control revision is invalid");
-    }
-    switch (control.command) {
-      case "pause":
-        await setTransport({ command: "pause" });
-        paused = true;
-        targetCheckpoint = null;
-        targetDeadline = null;
-        break;
-      case "resume":
-        await setRealtime();
-        await setTransport({ command: "clear-provider-cursor" });
-        await setTransport({ command: "resume" });
-        paused = false;
-        targetCheckpoint = null;
-        targetDeadline = null;
-        break;
-      case "next-checkpoint":
-        // Ignore duplicate next while already seeking; only ack the revision.
-        if (targetCheckpoint === null) {
-          targetCheckpoint = Math.min(
-            currentCheckpoint + 1,
-            input.checkpoints.length - 1
-          );
-          if (targetCheckpoint > currentCheckpoint) {
-            await installProviderTarget(targetCheckpoint);
-            await setFastForward();
-            await setTransport({ command: "resume" });
-            paused = false;
-          } else {
-            targetCheckpoint = null;
-          }
-        }
-        break;
-      case "switch-cassette":
-        paused = true;
-        lastRevision = control.revision;
-        await updateStatus();
-        await input.onReplacement?.({
-          command: control.command,
-          currentCheckpoint,
-          ...(control.command === "switch-cassette"
-            ? { cassetteId: control.cassetteId }
-            : {})
-        });
-        throw new ReplayReplacementRequested();
-      default:
-        throw new Error(
-          `unsupported replay control command: ${control.command}`
-        );
-    }
-    lastRevision = control.revision;
-    await updateStatus();
-  };
-
-  const activityClock = createReplayActivityClock({
-    playbackState: async () => {
-      await applyControl();
-      return readTransportPlayback();
-    }
+  return validateReplayCheckpointPlanCore(plan, activityEvents, {
+    cassetteSchemaVersion: cassettePolicy.schemaVersion
   });
-
-  return {
-    checkpointAfter(sequence) {
-      return bySequence.get(sequence) ?? null;
-    },
-    async initialize() {
-      if (
-        targetCheckpoint !== null &&
-        (!Number.isSafeInteger(targetCheckpoint) ||
-          targetCheckpoint < 0 ||
-          targetCheckpoint >= input.checkpoints.length)
-      ) {
-        throw new Error(
-          `replay target checkpoint is invalid: ${targetCheckpoint}`
-        );
-      }
-      if (targetCheckpoint !== 0 && input.verifyBootstrap) {
-        await reachBootstrap();
-      }
-      if (targetCheckpoint === 0) {
-        await setTransport({ command: "pause" });
-        paused = true;
-        targetCheckpoint = null;
-        targetDeadline = null;
-        await reachBootstrap();
-      } else if (targetCheckpoint !== null) {
-        await installProviderTarget(targetCheckpoint);
-        await setFastForward();
-        await setTransport({ command: "resume" });
-      }
-      await updateStatus();
-    },
-    async reach(checkpoint) {
-      if (checkpoint.index === targetCheckpoint) await reconcileTarget();
-    },
-    async waitBeforeActivity(sequence) {
-      // Hold activity while paused after an inspectable land, and while seeking
-      // to a checkpoint whose activity cursor has not yet authorized this
-      // sequence. Clearing targetCheckpoint on land must not release the next
-      // recorded stimulus (for example an approval response) before the user
-      // next/resumes again.
-      while (true) {
-        await reconcileTarget();
-        const blockedByTarget =
-          targetCheckpoint !== null &&
-          sequence >
-            input.checkpoints[targetCheckpoint].cursor.activityEventSequence;
-        if (!paused && !blockedByTarget) return;
-        await delay(25);
-      }
-    },
-    async waitUntilRunnable() {
-      while (true) {
-        await reconcileTarget();
-        await activityClock.synchronize();
-        if (!paused) return;
-        await delay(50);
-      }
-    },
-    async activityAdvanced(sequence) {
-      activityEventSequence = sequence;
-      await reconcileTarget();
-    },
-    async waitForAllCheckpoints() {
-      while (currentCheckpoint < input.checkpoints.length - 1) {
-        await reconcileTarget();
-        await delay(25);
-      }
-    },
-    waitForRecordedEvent(occurredAtUnixMs) {
-      return activityClock.waitUntil(occurredAtUnixMs);
-    },
-    async runWhilePolling(operation) {
-      let settled = false;
-      const result = Promise.resolve()
-        .then(operation)
-        .finally(() => {
-          settled = true;
-        });
-      while (!settled) {
-        await Promise.race([result.catch(() => undefined), delay(50)]);
-        if (!settled) await applyControl();
-      }
-      return result;
-    },
-    async waitForReplacement(isSurfaceOpen) {
-      while (isSurfaceOpen()) {
-        await applyControl();
-        await delay(50);
-      }
-    }
-  };
-}
-
-export function createReplayActivityClock(input) {
-  const wait = input.wait ?? delay;
-  const pollIntervalMs = input.pollIntervalMs ?? 50;
-  let originOccurredAtUnixMs = null;
-  let originPlaybackElapsedMs = null;
-  let lastTargetOccurredAtUnixMs = null;
-  let skippedElapsedMs = 0;
-
-  const synchronize = () => input.playbackState();
-
-  return {
-    synchronize,
-    async waitUntil(occurredAtUnixMs) {
-      if (
-        !Number.isSafeInteger(occurredAtUnixMs) ||
-        occurredAtUnixMs <= 0 ||
-        (lastTargetOccurredAtUnixMs !== null &&
-          occurredAtUnixMs < lastTargetOccurredAtUnixMs)
-      ) {
-        throw new Error(`replay activity time is invalid: ${occurredAtUnixMs}`);
-      }
-      if (originOccurredAtUnixMs === null) {
-        originOccurredAtUnixMs = occurredAtUnixMs;
-        lastTargetOccurredAtUnixMs = occurredAtUnixMs;
-        const playback = await synchronize();
-        originPlaybackElapsedMs = playback.playbackElapsedMs;
-        return;
-      }
-      lastTargetOccurredAtUnixMs = occurredAtUnixMs;
-      const targetElapsedMs = occurredAtUnixMs - originOccurredAtUnixMs;
-      while (true) {
-        const playback = await synchronize();
-        const playbackElapsedMs =
-          playback.playbackElapsedMs -
-          originPlaybackElapsedMs +
-          skippedElapsedMs;
-        if (playback.timingMode === "fast-forward") {
-          skippedElapsedMs += Math.max(0, targetElapsedMs - playbackElapsedMs);
-          return;
-        }
-        const remainingMs = targetElapsedMs - playbackElapsedMs;
-        if (remainingMs <= 0 && !playback.paused) {
-          return;
-        }
-        await wait(
-          playback.paused
-            ? pollIntervalMs
-            : Math.max(
-                1,
-                Math.min(
-                  pollIntervalMs,
-                  Math.ceil(remainingMs / playback.speed)
-                )
-              )
-        );
-      }
-    }
-  };
-}
-
-class ReplayReplacementRequested extends Error {
-  constructor() {
-    super("Replay Cassette replacement requested");
-  }
-}
-
-export function replayStimulusPrecondition(stimulus) {
-  return stimulus.type === "session.send" &&
-    stimulus.payload?.guidance !== true &&
-    stimulus.payload?.guidance !== "steer"
-    ? "session-idle"
-    : null;
-}
-
-export function replayStimulusRetryableStatus(type, status) {
-  switch (type) {
-    case "session.send":
-    case "goal.control":
-    case "session.settings.update":
-      return status === 409;
-    case "turn.cancel":
-    case "plan.decision":
-      return status === 404 || status === 409;
-    default:
-      return false;
-  }
-}
-
-async function replayTransportFailure(baseURL, headers, cassetteId, timeoutMs) {
-  try {
-    const response = await fetch(
-      `${baseURL}/v1/agent-session-replay/cassettes/${encodeURIComponent(cassetteId)}/transport/verify`,
-      {
-        method: "POST",
-        headers,
-        signal: AbortSignal.timeout(timeoutMs)
-      }
-    );
-    if (response.ok) return "";
-    return `replay transport mismatch: ${await response.text()}`;
-  } catch (error) {
-    return `replay transport verification failed: ${error instanceof Error ? error.message : String(error)}`;
-  }
-}
-
-function requiredReplayCassetteId(value) {
-  const cassetteId = typeof value === "string" ? value.trim() : "";
-  if (!cassetteId) {
-    throw new Error("Replay Cassette id is required");
-  }
-  return cassetteId;
 }
 
 export function replayStimulusRequest(stimulus) {
-  const workspace = encodeURIComponent(stimulus.workspaceId);
-  const session = encodeURIComponent(stimulus.agentSessionId);
-  const base = `/v1/workspaces/${workspace}/agent-sessions`;
-  switch (stimulus.type) {
-    case "session.create": {
-      const { content, displayPrompt, ...payload } = stimulus.payload;
-      return {
-        path: base,
-        body: {
-          ...payload,
-          agentSessionId: stimulus.agentSessionId,
-          initialContent: content,
-          initialDisplayPrompt: displayPrompt
-        }
-      };
-    }
-    case "session.send":
-      return {
-        path: `${base}/${session}/input`,
-        body: stimulus.payload
-      };
-    case "turn.cancel":
-      return {
-        path: `${base}/${session}/turns/${encodeURIComponent(stimulus.payload.turnId)}/cancel`
-      };
-    case "interactive.response":
-      return {
-        path: `${base}/${session}/interactives/${encodeURIComponent(stimulus.payload.requestId)}/response`,
-        body: {
-          turnId: stimulus.payload.turnId,
-          action: stimulus.payload.action,
-          optionId: stimulus.payload.optionId,
-          payload: stimulus.payload.payload
-        }
-      };
-    case "plan.decision":
-      return {
-        path: `${base}/${session}/turns/${encodeURIComponent(stimulus.payload.turnId)}/plan-decisions/${encodeURIComponent(stimulus.payload.requestId)}`,
-        body: {
-          promptKind: stimulus.payload.promptKind,
-          action: stimulus.payload.action,
-          idempotencyKey: stimulus.payload.idempotencyKey
-        }
-      };
-    case "goal.control":
-      return {
-        path: `${base}/${session}/goal`,
-        body: {
-          action: stimulus.payload.action,
-          ...(stimulus.payload.clientSubmitId
-            ? { clientSubmitId: stimulus.payload.clientSubmitId }
-            : {}),
-          objective: stimulus.payload.objective
-        }
-      };
-    case "session.settings.update":
-      return {
-        path: `${base}/${session}/settings`,
-        body: stimulus.payload.settings
-      };
-    default:
-      return null;
-  }
-}
-
-async function waitForSessionIdle(
-  baseURL,
-  headers,
-  workspaceId,
-  agentSessionId,
-  timeoutMs,
-  playback
-) {
-  let remainingMs = timeoutMs;
-  let latest = null;
-  while (remainingMs > 0) {
-    await playback?.waitUntilRunnable();
-    const pollStartedAt = Date.now();
-    const response = await fetch(
-      `${baseURL}/v1/workspaces/${encodeURIComponent(workspaceId)}/agent-sessions/${encodeURIComponent(agentSessionId)}`,
-      { headers }
-    );
-    if (response.ok) {
-      latest = await response.json();
-      const session = latest.session ?? latest;
-      if (
-        !session.activeTurnId &&
-        !["working", "waiting"].includes(session.status)
-      ) {
-        return session;
-      }
-    }
-    await delay(100);
-    remainingMs -= Date.now() - pollStartedAt;
-  }
-  throw new Error(
-    `timed out waiting for replay Session ${agentSessionId} to become idle: ${JSON.stringify(latest)}`
-  );
-}
-
-async function waitForPendingReplayInteraction(
-  baseURL,
-  headers,
-  event,
-  timeoutMs,
-  playback
-) {
-  let remainingMs = timeoutMs;
-  let latest = null;
-  while (remainingMs > 0) {
-    await playback?.waitUntilRunnable();
-    const pollStartedAt = Date.now();
-    const response = await fetch(
-      `${baseURL}/v1/workspaces/${encodeURIComponent(event.workspaceId)}/agent-sessions/${encodeURIComponent(event.agentSessionId)}`,
-      { headers }
-    );
-    if (response.ok) {
-      latest = await response.json();
-      const interaction = replayPendingInteraction(
-        latest.session ?? latest,
-        event.payload.requestId
-      );
-      if (interaction) {
-        return {
-          ...event,
-          payload: {
-            ...event.payload,
-            turnId: interaction.turnId
-          }
-        };
-      }
-    }
-    await delay(100);
-    remainingMs -= Date.now() - pollStartedAt;
-  }
-  throw new Error(
-    `timed out waiting for replay Interaction ${event.payload.requestId}: ${JSON.stringify(latest)}`
-  );
-}
-
-export function replayPendingInteraction(session, requestId) {
-  const interactions = Array.isArray(session?.pendingInteractions)
-    ? session.pendingInteractions
-    : [];
-  return (
-    interactions.find(
-      (interaction) =>
-        interaction?.requestId === requestId &&
-        interaction?.status === "pending" &&
-        typeof interaction?.turnId === "string" &&
-        interaction.turnId.trim()
-    ) ?? null
-  );
+  return replayStimulusRequestCore(stimulus, {
+    workspaceScopeSegment: "workspaces"
+  });
 }
 
 async function startSessionRecording(client, timeoutMs) {
@@ -3806,37 +2564,6 @@ async function ensureReplayConversationRailExpanded(client, timeoutMs) {
   );
 }
 
-export function normalizeScreenshotClip(rect) {
-  if (!rect || typeof rect !== "object") return null;
-  const x = Math.max(0, Math.floor(Number(rect.x)));
-  const y = Math.max(0, Math.floor(Number(rect.y)));
-  const width = Math.floor(Number(rect.width));
-  const height = Math.floor(Number(rect.height));
-  if (
-    !Number.isFinite(x) ||
-    !Number.isFinite(y) ||
-    !Number.isFinite(width) ||
-    !Number.isFinite(height) ||
-    width < 8 ||
-    height < 8
-  ) {
-    return null;
-  }
-  return { x, y, width, height, scale: 1 };
-}
-
-export function screenshotEvidenceLabel(source) {
-  if (typeof source === "string") {
-    return source.trim();
-  }
-  if (!source || typeof source !== "object") return "";
-  for (const key of ["caseId", "screenshotLabel", "scenario", "label"]) {
-    const value = source[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
-  }
-  return "";
-}
-
 export async function resolveAgentSessionScreenshotClip(
   client,
   agentSessionId
@@ -4211,10 +2938,10 @@ export async function captureScreenshot(client, outputPath, options = {}) {
               return (element.textContent ?? '').trim().length > 0;
             });
             const commandVisible = Boolean(visibleCommand);
-            const toolDetailTextVisible = openRowReveals.some((reveal) => {
-              const text = (reveal.textContent ?? '').trim();
-              return text.length > 12;
-            });
+            const hasOpenToolDetailText = ${hasOpenToolDetailText.toString()};
+            const toolDetailTextVisible = hasOpenToolDetailText(
+              openRowReveals.map((reveal) => reveal.textContent ?? '')
+            );
             return {
               ready: commandVisible || toolDetailTextVisible,
               reason:
@@ -4267,39 +2994,6 @@ export async function captureScreenshot(client, outputPath, options = {}) {
   } finally {
     await stopToolEvidenceExpandKeepAlive(client);
   }
-}
-
-export function replayCheckpointScreenshotPath({
-  artifactDirectory,
-  cassetteId,
-  checkpointIndex,
-  checkpoints
-}) {
-  if (
-    typeof artifactDirectory !== "string" ||
-    artifactDirectory.trim() === ""
-  ) {
-    throw new Error("checkpoint screenshot artifact directory is required");
-  }
-  if (!Number.isSafeInteger(checkpointIndex) || checkpointIndex < 0) {
-    throw new Error(
-      `checkpoint screenshot index is invalid: ${checkpointIndex}`
-    );
-  }
-  const checkpoint = Array.isArray(checkpoints)
-    ? checkpoints[checkpointIndex]
-    : null;
-  const id =
-    typeof checkpoint?.id === "string" && checkpoint.id.trim()
-      ? checkpoint.id.trim()
-      : `checkpoint-${String(checkpointIndex).padStart(4, "0")}`;
-  const scope =
-    typeof cassetteId === "string" && cassetteId.trim()
-      ? cassetteId.trim()
-      : "";
-  return scope
-    ? join(artifactDirectory, scope, `${id}.png`)
-    : join(artifactDirectory, `${id}.png`);
 }
 
 export async function captureCheckpointScreenshot({
@@ -4540,56 +3234,13 @@ export async function loadRecordScenario(options) {
   return scenario;
 }
 
-export function checkpointNeedsToolSettle(checkpoint) {
-  if (!checkpoint) return false;
-  const kind = String(checkpoint.kind ?? "");
-  const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
-  // Forced expanded-tool PNG capture is only meaningful once a tool has
-  // completed. tool.started often has no painted body yet (I10/L06 Agent
-  // tool); requiring it hard-fails replay with tool-body-not-painted.
-  return [kind, ...tags].some((token) =>
-    /(?:^|[.])tool\.completed$/u.test(String(token))
-  );
-}
-
-export function checkpointNeedsScreenshotSettle(checkpoint) {
-  if (!checkpoint) return true;
-  const kind = String(checkpoint.kind ?? "");
-  const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
-  // Match checkpointNeedsToolSettle: tool.started is often paused mid-stream
-  // before Bash/command input is painted (Claude tool_started arrives with
-  // {toolName} only; command lands on the next tool_updated). Hard-settling
-  // there deadlocks replay — provider is frozen until settle returns.
-  return [kind, ...tags].some((token) =>
-    /(?:^|[.])(?:tool\.completed|turn\.terminal|turn\.completed)$/u.test(
-      String(token)
-    )
-  );
-}
-
-export function checkpointAllowsOptionalScreenshotSettle(checkpoint) {
-  if (!checkpoint) return false;
-  const kind = String(checkpoint.kind ?? "");
-  const tags = Array.isArray(checkpoint.tags) ? checkpoint.tags : [];
-  // Queue cases soft-wait for the composer blue bar on busy-queue submits.
-  // Do not fold this into checkpointNeedsScreenshotSettle: tool-evidence
-  // settlers (I10/L06/R*) would hang for the full timeout when no tool chrome
-  // exists yet at submission.accepted.
-  return [kind, ...tags].some((token) =>
-    /(?:^|[.])submission\.accepted$/u.test(String(token))
-  );
-}
-
-export function scenarioPreparesToolEvidence(scenario) {
-  return typeof scenario?.settleForScreenshot === "function";
-}
-
 export async function maybeSettleForScreenshot(
   scenario,
   client,
   timeoutMs,
   checkpoint = null,
-  agentSessionId = null
+  agentSessionId = null,
+  options = null
 ) {
   if (!scenario || typeof scenario.settleForScreenshot !== "function") {
     return;
@@ -4597,7 +3248,13 @@ export async function maybeSettleForScreenshot(
   if (
     checkpoint &&
     !checkpointNeedsScreenshotSettle(checkpoint) &&
-    !checkpointAllowsOptionalScreenshotSettle(checkpoint)
+    !checkpointAllowsOptionalScreenshotSettle(checkpoint) &&
+    !(
+      scenario.settleForWorkingScreenshot === true &&
+      [checkpoint.kind, ...(checkpoint.tags ?? [])].some(
+        (token) => String(token) === "turn.working"
+      )
+    )
   ) {
     return;
   }
@@ -4611,9 +3268,38 @@ export async function maybeSettleForScreenshot(
       `globalThis.__tuttiSettleAgentSessionId = ${JSON.stringify(pinned)}; true`
     );
   }
+  const artifactDirectory =
+    typeof options?.artifactDirectory === "string" &&
+    options.artifactDirectory.trim()
+      ? options.artifactDirectory.trim()
+      : null;
+  const captureFrame =
+    artifactDirectory &&
+    (async (suffix = "settle") => {
+      const token = String(suffix ?? "settle")
+        .trim()
+        .replace(/[^a-z0-9._-]+/giu, "-")
+        .replace(/^-+|-+$/gu, "")
+        .slice(0, 48);
+      const label = token || "settle";
+      const base =
+        checkpoint && Array.isArray(options?.checkpoints)
+          ? replayCheckpointScreenshotPath({
+              artifactDirectory,
+              cassetteId: options.cassetteId,
+              checkpointIndex: options.checkpointIndex ?? 0,
+              checkpoints: options.checkpoints
+            }).replace(/\.png$/u, "")
+          : join(artifactDirectory, "settle");
+      const outputPath = `${base}-${label}.png`;
+      await captureScreenshot(client, outputPath);
+      // Cases Console indexes live screenshots from this log line.
+      log(`checkpoint screenshot: ${outputPath}`);
+    });
   try {
     await scenario.settleForScreenshot({
       agentSessionId: pinned,
+      captureFrame: captureFrame || undefined,
       client,
       timeoutMs,
       checkpoint
@@ -4766,10 +3452,10 @@ export async function prepareToolEvidenceForScreenshot(
           if (!painted) return false;
           return (element.textContent ?? '').trim().length > 0;
         });
-        const toolDetailTextVisible = openRowReveals.some((reveal) => {
-          const text = (reveal.textContent ?? '').trim();
-          return text.length > 12;
-        });
+        const hasOpenToolDetailText = ${hasOpenToolDetailText.toString()};
+        const toolDetailTextVisible = hasOpenToolDetailText(
+          openRowReveals.map((reveal) => reveal.textContent ?? '')
+        );
         return {
           ready: commandVisible || toolDetailTextVisible,
           openToolRevealCount: openRowReveals.length,
@@ -4791,6 +3477,12 @@ export async function prepareToolEvidenceForScreenshot(
     );
   }
   return null;
+}
+
+export function hasOpenToolDetailText(texts) {
+  return texts.some(
+    (text) => typeof text === "string" && text.trim().length > 0
+  );
 }
 
 function setMode(options, mode, directory) {

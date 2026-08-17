@@ -40,6 +40,9 @@ import type {
   CancelCollaborationRunData,
   CancelCollaborationRunErrors,
   CancelCollaborationRunResponses,
+  CancelConnectorMarketAuthorizationData,
+  CancelConnectorMarketAuthorizationErrors,
+  CancelConnectorMarketAuthorizationResponses,
   CancelTuttiModeExecutionData,
   CancelTuttiModeExecutionErrors,
   CancelTuttiModeExecutionResponses,
@@ -189,6 +192,9 @@ import type {
   DeleteWorkspaceIssueTopicData,
   DeleteWorkspaceIssueTopicErrors,
   DeleteWorkspaceIssueTopicResponses,
+  DeleteWorkspaceManagedWorktreeData,
+  DeleteWorkspaceManagedWorktreeErrors,
+  DeleteWorkspaceManagedWorktreeResponses,
   DeleteWorkspaceResponses,
   DetectModelPlanData,
   DetectModelPlanErrors,
@@ -463,6 +469,9 @@ import type {
   ListWorkspaceAppsData,
   ListWorkspaceAppsErrors,
   ListWorkspaceAppsResponses,
+  ListWorkspaceDeletedAgentSessionsData,
+  ListWorkspaceDeletedAgentSessionsErrors,
+  ListWorkspaceDeletedAgentSessionsResponses,
   ListWorkspaceFileDirectoryData,
   ListWorkspaceFileDirectoryErrors,
   ListWorkspaceFileDirectoryResponses,
@@ -484,6 +493,9 @@ import type {
   ListWorkspaceIssueTopicsData,
   ListWorkspaceIssueTopicsErrors,
   ListWorkspaceIssueTopicsResponses,
+  ListWorkspaceManagedWorktreesData,
+  ListWorkspaceManagedWorktreesErrors,
+  ListWorkspaceManagedWorktreesResponses,
   ListWorkspaceRecentFilesData,
   ListWorkspaceRecentFilesErrors,
   ListWorkspaceRecentFilesResponses,
@@ -541,6 +553,12 @@ import type {
   PurgeDeletedAgentConversationsData,
   PurgeDeletedAgentConversationsErrors,
   PurgeDeletedAgentConversationsResponses,
+  PurgeWorkspaceDeletedAgentSessionData,
+  PurgeWorkspaceDeletedAgentSessionErrors,
+  PurgeWorkspaceDeletedAgentSessionResponses,
+  PurgeWorkspaceDeletedAgentSessionsData,
+  PurgeWorkspaceDeletedAgentSessionsErrors,
+  PurgeWorkspaceDeletedAgentSessionsResponses,
   PutDesktopPreferencesData,
   PutDesktopPreferencesErrors,
   PutDesktopPreferencesResponses,
@@ -556,6 +574,9 @@ import type {
   ReadWorkspaceFilePreviewData,
   ReadWorkspaceFilePreviewErrors,
   ReadWorkspaceFilePreviewResponses,
+  ReadWorkspaceIssueAttachmentData,
+  ReadWorkspaceIssueAttachmentErrors,
+  ReadWorkspaceIssueAttachmentResponses,
   ReconcileWorkspaceAgentSessionGoalData,
   ReconcileWorkspaceAgentSessionGoalErrors,
   ReconcileWorkspaceAgentSessionGoalResponses,
@@ -592,9 +613,15 @@ import type {
   ResizeWorkspaceTerminalData,
   ResizeWorkspaceTerminalErrors,
   ResizeWorkspaceTerminalResponses,
+  ResolveWorkspaceAgentSessionWorktreeSupportData,
+  ResolveWorkspaceAgentSessionWorktreeSupportErrors,
+  ResolveWorkspaceAgentSessionWorktreeSupportResponses,
   ResolveWorkspaceGitPatchSupportData,
   ResolveWorkspaceGitPatchSupportErrors,
   ResolveWorkspaceGitPatchSupportResponses,
+  RestoreWorkspaceDeletedAgentSessionData,
+  RestoreWorkspaceDeletedAgentSessionErrors,
+  RestoreWorkspaceDeletedAgentSessionResponses,
   RetryWorkspaceAppData,
   RetryWorkspaceAppErrors,
   RetryWorkspaceAppFactoryJobValidationData,
@@ -661,6 +688,9 @@ import type {
   StartMobileRemotePairingData,
   StartMobileRemotePairingErrors,
   StartMobileRemotePairingResponses,
+  StartWorkspaceIssueRunData,
+  StartWorkspaceIssueRunErrors,
+  StartWorkspaceIssueRunResponses,
   StopAllWorkspaceAppsData,
   StopAllWorkspaceAppsErrors,
   StopAllWorkspaceAppsResponses,
@@ -3172,6 +3202,78 @@ export const deleteWorkspaceAgentSessionsBatch = <
   });
 
 /**
+ * Permanently purge all soft-deleted agent sessions in one workspace
+ */
+export const purgeWorkspaceDeletedAgentSessions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PurgeWorkspaceDeletedAgentSessionsData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    PurgeWorkspaceDeletedAgentSessionsResponses,
+    PurgeWorkspaceDeletedAgentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions",
+    ...options
+  });
+
+/**
+ * List topmost soft-deleted agent session components for one workspace
+ */
+export const listWorkspaceDeletedAgentSessions = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceDeletedAgentSessionsData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceDeletedAgentSessionsResponses,
+    ListWorkspaceDeletedAgentSessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions",
+    ...options
+  });
+
+/**
+ * Permanently purge one topmost soft-deleted agent session component
+ */
+export const purgeWorkspaceDeletedAgentSession = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PurgeWorkspaceDeletedAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    PurgeWorkspaceDeletedAgentSessionResponses,
+    PurgeWorkspaceDeletedAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}",
+    ...options
+  });
+
+/**
+ * Restore one topmost soft-deleted agent session component
+ */
+export const restoreWorkspaceDeletedAgentSession = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<RestoreWorkspaceDeletedAgentSessionData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    RestoreWorkspaceDeletedAgentSessionResponses,
+    RestoreWorkspaceDeletedAgentSessionErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/deleted-agent-sessions/{agentSessionID}/restore",
+    ...options
+  });
+
+/**
  * List agent session rail sections for one workspace
  */
 export const listWorkspaceAgentSessionSections = <
@@ -3681,6 +3783,63 @@ export const resolveWorkspaceGitPatchSupport = <
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/git-patch-support",
+    ...options
+  });
+
+/**
+ * Resolve whether a local Agent Session can launch in an isolated git worktree
+ */
+export const resolveWorkspaceAgentSessionWorktreeSupport = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<
+    ResolveWorkspaceAgentSessionWorktreeSupportData,
+    ThrowOnError
+  >
+) =>
+  (options.client ?? client).get<
+    ResolveWorkspaceAgentSessionWorktreeSupportResponses,
+    ResolveWorkspaceAgentSessionWorktreeSupportErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/agent-session-worktree-support",
+    ...options
+  });
+
+/**
+ * List explicitly managed Git worktrees for a workspace
+ */
+export const listWorkspaceManagedWorktrees = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ListWorkspaceManagedWorktreesData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ListWorkspaceManagedWorktreesResponses,
+    ListWorkspaceManagedWorktreesErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/managed-worktrees",
+    ...options
+  });
+
+/**
+ * Explicitly delete one clean managed Git worktree
+ */
+export const deleteWorkspaceManagedWorktree = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<DeleteWorkspaceManagedWorktreeData, ThrowOnError>
+) =>
+  (options.client ?? client).delete<
+    DeleteWorkspaceManagedWorktreeResponses,
+    DeleteWorkspaceManagedWorktreeErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}",
     ...options
   });
 
@@ -4944,6 +5103,24 @@ export const removeWorkspaceIssueContextRef = <
   });
 
 /**
+ * Read one managed issue attachment by opaque ContextRef identity
+ */
+export const readWorkspaceIssueAttachment = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<ReadWorkspaceIssueAttachmentData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    ReadWorkspaceIssueAttachmentResponses,
+    ReadWorkspaceIssueAttachmentErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/context-refs/{contextRefID}/attachment",
+    ...options
+  });
+
+/**
  * Stop one issue-manager issue's execution
  *
  * Durably pauses future task dispatch, cancels the live agent turn of every running run's session, and settles those runs as canceled. Idempotent.
@@ -4992,6 +5169,28 @@ export const createWorkspaceIssueRun = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/workspaces/{workspaceID}/issues/{issueID}/runs",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Create and launch one Agent-backed run for an issue-manager issue
+ *
+ * Resolves the issue's managed image attachments before durably creating and delivering the run to Agent Host.
+ */
+export const startWorkspaceIssueRun = <ThrowOnError extends boolean = false>(
+  options: Options<StartWorkspaceIssueRunData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    StartWorkspaceIssueRunResponses,
+    StartWorkspaceIssueRunErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/workspaces/{workspaceID}/issues/{issueID}/run-launches",
     ...options,
     headers: {
       "Content-Type": "application/json",
@@ -5376,7 +5575,9 @@ export const installConnectorMarketConnector = <
   });
 
 /**
- * Uninstall one connector
+ * Uninstall one connector from this device
+ *
+ * Deactivates local runtime routes and removes the installed release and optional CLI. Account authorization is not disconnected and can be reused after reinstalling or from another device.
  */
 export const uninstallConnectorMarketConnector = <
   ThrowOnError extends boolean = false
@@ -5398,7 +5599,7 @@ export const uninstallConnectorMarketConnector = <
   });
 
 /**
- * Start connector authorization
+ * Start or replace connector authorization
  */
 export const startConnectorMarketAuthorization = <
   ThrowOnError extends boolean = false
@@ -5417,6 +5618,24 @@ export const startConnectorMarketAuthorization = <
       "Content-Type": "application/json",
       ...options.headers
     }
+  });
+
+/**
+ * Cancel a pending connector authorization attempt
+ */
+export const cancelConnectorMarketAuthorization = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<CancelConnectorMarketAuthorizationData, ThrowOnError>
+) =>
+  (options.client ?? client).post<
+    CancelConnectorMarketAuthorizationResponses,
+    CancelConnectorMarketAuthorizationErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/connector-market/connectors/{connectorKey}/authorization:cancel",
+    ...options
   });
 
 /**

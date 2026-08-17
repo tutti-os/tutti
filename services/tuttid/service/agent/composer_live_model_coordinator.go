@@ -28,7 +28,7 @@ func (s *Service) discoverLiveComposerModels(
 	}
 	cacheKey := scope.key()
 	resultCh := s.liveModelDiscoveryGroup.DoChan(cacheKey, func() (any, error) {
-		lifecycleCtx, cancelLifecycle := context.WithTimeout(ctx, liveModelDiscoveryLifecycleTimeout)
+		lifecycleCtx, cancelLifecycle := context.WithTimeout(context.WithoutCancel(ctx), liveModelDiscoveryLifecycleTimeout)
 		defer cancelLifecycle()
 		if newComposerLiveModelScopeForInput(input, settings).key() != cacheKey {
 			return nil, errLiveModelDiscoverySuperseded
@@ -73,7 +73,11 @@ func (s *Service) discoverLiveComposerModels(
 		s.setLiveComposerModelOptionsForScope(scope, time.Now().UTC(), discovered)
 		return discovered, nil
 	})
-	waitTimer := time.NewTimer(liveModelDiscoveryTimeout)
+	waitTimeout := liveModelDiscoveryTimeout
+	if s != nil && s.liveModelDiscoveryWaitTimeout > 0 {
+		waitTimeout = s.liveModelDiscoveryWaitTimeout
+	}
+	waitTimer := time.NewTimer(waitTimeout)
 	defer waitTimer.Stop()
 	select {
 	case <-ctx.Done():

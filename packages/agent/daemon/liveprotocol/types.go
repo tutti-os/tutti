@@ -144,13 +144,14 @@ type InteractionUpdateData struct {
 }
 
 // InteractionSnapshotData replaces the complete interaction collection for
-// one attached Session projection. An empty Interactions slice is an explicit
-// clear, not an omitted update.
+// one exact root Turn projection. RootTurnID scopes the collection even when
+// Interactions is empty, so consumers never infer its identity from members.
 type InteractionSnapshotData struct {
 	WorkspaceID      string             `json:"workspaceId"`
 	AgentSessionID   string             `json:"agentSessionId"`
 	EventType        EventType          `json:"eventType"`
 	OccurredAtUnixMS int64              `json:"occurredAtUnixMs"`
+	RootTurnID       string             `json:"rootTurnId"`
 	Interactions     []EventInteraction `json:"interactions"`
 }
 
@@ -201,12 +202,21 @@ type Discontinuity struct {
 }
 
 type AttachmentChanged struct {
-	BindingID          string `json:"bindingId"`
-	WorkspaceID        string `json:"workspaceId"`
-	AgentSessionID     string `json:"agentSessionId"`
-	CanonicalTurnID    string `json:"canonicalTurnId,omitempty"`
-	CallerTurnID       string `json:"callerTurnId,omitempty"`
-	AttachmentRevision uint64 `json:"attachmentRevision"`
+	BindingID       string `json:"bindingId"`
+	WorkspaceID     string `json:"workspaceId"`
+	AgentSessionID  string `json:"agentSessionId"`
+	CanonicalTurnID string `json:"canonicalTurnId,omitempty"`
+	// CanonicalTurnIDs contains the canonical Turn identities that are durably
+	// authorized for this attachment. Invocation attachments include their
+	// singular anchor and Host-proven continuations. Turnless Goal attachments
+	// have no singular anchor and grow this list from Host-proven Goal Turns.
+	CanonicalTurnIDs []string `json:"canonicalTurnIds,omitempty"`
+	CallerTurnID     string   `json:"callerTurnId,omitempty"`
+	// CurrentInteractionRootTurnID is the Host-proven root whose complete
+	// interaction collection belongs to this projection fence. It is empty
+	// only while a turnless attachment has not observed its first Goal Turn.
+	CurrentInteractionRootTurnID string `json:"currentInteractionRootTurnId"`
+	AttachmentRevision           uint64 `json:"attachmentRevision"`
 }
 
 // AttachmentCaughtUp fences one attachment recovery baseline. StreamReady
@@ -214,12 +224,14 @@ type AttachmentChanged struct {
 // synchronized after this control arrives for the same stream epoch and
 // attachment revision.
 type AttachmentCaughtUp struct {
-	BindingID          string `json:"bindingId"`
-	WorkspaceID        string `json:"workspaceId"`
-	AgentSessionID     string `json:"agentSessionId"`
-	CanonicalTurnID    string `json:"canonicalTurnId,omitempty"`
-	CallerTurnID       string `json:"callerTurnId,omitempty"`
-	AttachmentRevision uint64 `json:"attachmentRevision"`
+	BindingID                    string   `json:"bindingId"`
+	WorkspaceID                  string   `json:"workspaceId"`
+	AgentSessionID               string   `json:"agentSessionId"`
+	CanonicalTurnID              string   `json:"canonicalTurnId,omitempty"`
+	CanonicalTurnIDs             []string `json:"canonicalTurnIds,omitempty"`
+	CallerTurnID                 string   `json:"callerTurnId,omitempty"`
+	CurrentInteractionRootTurnID string   `json:"currentInteractionRootTurnId"`
+	AttachmentRevision           uint64   `json:"attachmentRevision"`
 }
 
 type GoalChanged struct {
@@ -324,6 +336,7 @@ type ProjectionContext struct {
 	OwnerWorkspaceID        string
 	OwnerAgentSessionID     string
 	CanonicalTurnID         string
+	CanonicalTurnIDs        []string
 	RecipientWorkspaceID    string
 	RecipientAgentSessionID string
 	CallerTurnID            string

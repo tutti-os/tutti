@@ -5,14 +5,28 @@ import type {
 } from "./pendingIntents.types.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 
+const pendingActivationsCache = new WeakMap<
+  Readonly<Record<string, PendingActivationIntentRecord>>,
+  readonly PendingActivationIntentRecord[]
+>();
+const pendingSubmitsCache = new WeakMap<
+  Readonly<Record<string, PendingSubmitIntentRecord>>,
+  readonly PendingSubmitIntentRecord[]
+>();
+
 export function selectPendingActivations(
   state: AgentSessionEngineStateBase
 ): readonly PendingActivationIntentRecord[] {
-  return Object.values(state.pendingIntents.activationsByRequestId).sort(
+  const records = state.pendingIntents.activationsByRequestId;
+  const cached = pendingActivationsCache.get(records);
+  if (cached) return cached;
+  const selected = Object.values(records).sort(
     (left, right) =>
       left.requestedAtUnixMs - right.requestedAtUnixMs ||
       left.requestId.localeCompare(right.requestId)
   );
+  pendingActivationsCache.set(records, selected);
+  return selected;
 }
 
 export function selectPendingActivationByRequestId(
@@ -24,6 +38,21 @@ export function selectPendingActivationByRequestId(
 }
 
 const EMPTY_PENDING_SUBMITS: readonly PendingSubmitIntentRecord[] = [];
+
+export function selectPendingSubmits(
+  state: AgentSessionEngineStateBase
+): readonly PendingSubmitIntentRecord[] {
+  const records = state.pendingIntents.submitsByClientSubmitId;
+  const cached = pendingSubmitsCache.get(records);
+  if (cached) return cached;
+  const selected = Object.values(records).sort(
+    (left, right) =>
+      left.requestedAtUnixMs - right.requestedAtUnixMs ||
+      left.clientSubmitId.localeCompare(right.clientSubmitId)
+  );
+  pendingSubmitsCache.set(records, selected);
+  return selected;
+}
 
 export interface SessionActivationPresentation {
   errorCode: string | null;
@@ -168,6 +197,18 @@ export function selectLatestStopTargetSubmitForSession(
     }
   }
   return latest;
+}
+
+/**
+ * Whether an implicit Session stop can target a pending prompt admission.
+ * Consumers use this presentation-safe fact instead of duplicating submit and
+ * canonical Turn correlation rules.
+ */
+export function selectSessionHasPendingSubmitStopTarget(
+  state: AgentSessionEngineStateBase,
+  agentSessionId: string | null | undefined
+): boolean {
+  return selectLatestStopTargetSubmitForSession(state, agentSessionId) !== null;
 }
 
 function stopTargetMayStillProduceUnsettledTurn(

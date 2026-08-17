@@ -15,6 +15,7 @@ type scriptedTurnState struct {
 	turnStartEntered        chan struct{}
 	turnStartRelease        chan struct{}
 	hangTurnStart           bool
+	closeOnTurnStart        bool
 	turnStartError          bool
 	hangSteer               bool
 	commandApproval         bool
@@ -37,6 +38,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 		turnStartEntered := s.turnStartEntered
 		turnStartRelease := s.turnStartRelease
 		hangTurnStart := s.hangTurnStart
+		closeOnTurnStart := s.closeOnTurnStart
 		turnStartError := s.turnStartError
 		s.mu.Unlock()
 		if turnStartEntered != nil {
@@ -46,6 +48,10 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 			<-turnStartRelease
 		}
 		if hangTurnStart {
+			return true
+		}
+		if closeOnTurnStart {
+			_ = s.Close()
 			return true
 		}
 		if turnStartError {

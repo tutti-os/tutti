@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { CompactionTracker } from "./compaction.ts";
+import {
+  CompactionTracker,
+  isContextOverflowCompactionFailure
+} from "./compaction.ts";
 import type { ClaudeSDKSidecarEvent } from "./protocol.ts";
 
 function createTracker(
@@ -31,6 +34,43 @@ test("compaction failure collapses a duplicated provider reason", () => {
   assert.equal(
     events[1]?.payload?.content,
     "Compacting failed: Not enough messages to compact."
+  );
+});
+
+test("pinned CLI compact_result overflow failure requires a new-conversation handoff", () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = createTracker(events);
+  const compactError =
+    "Compaction failed · conversation could not be reduced below the context limit";
+
+  tracker.selectCommand("turn-1", true);
+  assert.equal(
+    tracker.handleSystemMessage("status", { status: "compacting" }),
+    true
+  );
+  assert.equal(
+    tracker.handleSystemMessage("status", {
+      compact_result: "failed",
+      compact_error: compactError
+    }),
+    true
+  );
+  tracker.noteAssistantText(compactError);
+
+  const failures = events.filter((event) => event.type === "compact_failed");
+  assert.equal(failures.length, 1);
+  assert.deepEqual(failures[0]?.payload, {
+    turnId: "turn-1",
+    reason: compactError,
+    contextHandoffRequired: true,
+    content: `Compacting failed: ${compactError}`
+  });
+});
+
+test("non-overflow compact failure does not require a handoff", () => {
+  assert.equal(
+    isContextOverflowCompactionFailure("Not enough messages to compact."),
+    false
   );
 });
 
@@ -178,4 +218,34 @@ test("a result for another model cannot publish the query fallback window", asyn
     "stale"
   );
   assert.deepEqual(events, []);
+});
+
+test("restore usage publishes the raw hard limit and auto-compact diagnostics", async () => {
+  const events: ClaudeSDKSidecarEvent[] = [];
+  const tracker = new CompactionTracker({
+    activeTurnId: () => "",
+    ensureActive: () => {},
+    clearPendingOrphans: () => {},
+    getQuery: () => ({
+      getContextUsage: async () => ({
+        totalTokens: 915_111,
+        maxTokens: 200_000,
+        rawMaxTokens: 1_048_576,
+        autoCompactThreshold: 867_000,
+        isAutoCompactEnabled: true
+      })
+    }),
+    getModel: () => "default",
+    emit: (event) => events.push(event as ClaudeSDKSidecarEvent)
+  });
+
+  assert.equal(await tracker.emitContextUsageSnapshot(""), "emitted");
+  assert.deepEqual(events[0]?.payload?.contextWindow, {
+    usedTokens: 915_111,
+    totalTokens: 1_048_576,
+    rawMaxTokens: 1_048_576,
+    sdkMaxTokens: 200_000,
+    autoCompactThresholdTokens: 867_000,
+    compactsAutomatically: true
+  });
 });

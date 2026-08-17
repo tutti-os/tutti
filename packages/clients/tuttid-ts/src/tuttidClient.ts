@@ -9,6 +9,7 @@ import {
   completeWorkspaceIssueTaskRun,
   createWorkspaceIssue,
   createWorkspaceIssueRun,
+  startWorkspaceIssueRun,
   createWorkspaceIssueTask,
   createWorkspaceIssueTasks,
   createWorkspaceIssueTaskRun,
@@ -78,6 +79,7 @@ import {
   putWorkspaceWorkbench,
   checkWorkspaceTerminalCloseGuard,
   readWorkspaceFilePreview,
+  readWorkspaceIssueAttachment,
   removeWorkspaceIssueContextRef,
   removeWorkspaceIssueTaskContextRef,
   resizeWorkspaceTerminal,
@@ -441,6 +443,15 @@ export function createTuttidClient(
       return unwrapData(response, "Create workspace issue run request failed.")
         .run;
     },
+    async startWorkspaceIssueRun(workspaceID, issueID, request) {
+      const response = await startWorkspaceIssueRun({
+        client,
+        body: request,
+        path: { issueID, workspaceID }
+      });
+      return unwrapData(response, "Start workspace issue run request failed.")
+        .run;
+    },
     async createWorkspaceFile(workspaceID, path) {
       const response = await createWorkspaceFile({
         client,
@@ -629,6 +640,16 @@ export function createTuttidClient(
         path: { issueID, workspaceID }
       });
       return unwrapData(response, "Workspace issue detail request failed.");
+    },
+    async readWorkspaceIssueAttachment(workspaceID, issueID, contextRefID) {
+      const response = await readWorkspaceIssueAttachment({
+        client,
+        path: { contextRefID, issueID, workspaceID }
+      });
+      return unwrapData(
+        response,
+        "Read workspace issue attachment request failed."
+      );
     },
     async searchWorkspaceIssueReferences(workspaceID, request) {
       const response = await searchWorkspaceIssueReferences({

@@ -147,6 +147,8 @@ type WorkspaceAgentTurnStateUpdate struct {
 	ActiveTurnID            *string                             `json:"activeTurnId,omitempty"`
 	Phase                   string                              `json:"phase,omitempty"`
 	Outcome                 string                              `json:"outcome,omitempty"`
+	ErrorCode               string                              `json:"errorCode,omitempty"`
+	ErrorMessage            string                              `json:"errorMessage,omitempty"`
 	Settling                bool                                `json:"settling,omitempty"`
 	CompletedCommand        *WorkspaceAgentCompletedCommand     `json:"completedCommand,omitempty"`
 	SubmitAvailability      *WorkspaceAgentSubmitAvailability   `json:"submitAvailability,omitempty"`
@@ -238,7 +240,7 @@ type WorkspaceAgentSessionMessageUpdate struct {
 }
 
 type WorkspaceAgentMessageSemantics struct {
-	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse,omitempty"`
+	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse"`
 	TurnSettling                 bool   `json:"turnSettling,omitempty"`
 	NoticeCommand                string `json:"noticeCommand,omitempty"`
 	NoticeCommandStatus          string `json:"noticeCommandStatus,omitempty"`

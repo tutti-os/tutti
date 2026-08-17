@@ -128,6 +128,7 @@ func TestCompletedPlanMessageProjectsProviderNeutralObservation(t *testing.T) {
 		},
 		activityshared.MessageRoleAssistant,
 		"# Plan",
+		true,
 	)
 	event.Payload.Metadata = map[string]any{
 		"messageId": "plan-message-1", "messageKind": "plan",
@@ -208,6 +209,7 @@ func TestCompactionAndAttachmentProjectProviderNeutralObservations(
 				},
 				activityshared.MessageRoleUser,
 				"look",
+				false,
 			)
 			event.Payload.Metadata = test.metadata
 			event.ProviderInputUnit = &activityshared.ProviderInputUnitContext{

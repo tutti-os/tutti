@@ -51,6 +51,7 @@ type HistoricalSession struct {
 
 type HistoricalTurn struct {
 	ID                    string                `json:"id"`
+	IdentityAnchorTurnID  string                `json:"identityAnchorTurnId,omitempty"`
 	CapabilityRefs        []CapabilityReference `json:"capabilityRefs"`
 	Phase                 string                `json:"phase"`
 	Outcome               string                `json:"outcome,omitempty"`

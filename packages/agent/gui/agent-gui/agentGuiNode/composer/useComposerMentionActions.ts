@@ -62,6 +62,7 @@ interface Input {
   isSendingTurn: boolean;
   isSubmittingPrompt: boolean;
   showStopButton: boolean;
+  isActive: boolean;
   onSettingsChange: (settings: { planMode?: boolean }) => void;
   handleSlashPaletteKeyDown: (event: KeyboardEvent) => boolean;
   handleSlashCommandMenuKeyDown: (event: KeyboardEvent) => boolean;
@@ -106,6 +107,7 @@ export function useComposerMentionActions(input: Input) {
     isSendingTurn,
     isSubmittingPrompt,
     showStopButton,
+    isActive,
     onSettingsChange,
     handleSlashPaletteKeyDown,
     handleSlashCommandMenuKeyDown,
@@ -115,10 +117,72 @@ export function useComposerMentionActions(input: Input) {
     paletteContentRef,
     shouldCenterMentionHighlight
   } = input;
+  const replaceActiveFileMentionTrigger = useCallback(
+    (replacement: string): boolean => {
+      if (!fileMentionSuggestion) {
+        return false;
+      }
+      const triggerLength = Math.max(
+        fileMentionSuggestion.range.to - fileMentionSuggestion.range.from,
+        fileMentionSuggestion.text.length
+      );
+      const nextDraft =
+        triggerLength > 0
+          ? editorHandleRef.current?.replaceTextBeforeSelection(
+              triggerLength,
+              replacement
+            )
+          : null;
+      if (nextDraft === null || nextDraft === undefined) {
+        return false;
+      }
+      draftPromptRef.current = nextDraft;
+      setPaletteDraftPrompt(nextDraft);
+      onDraftContentChange(
+        updateAgentComposerDraft(draftContent, { prompt: nextDraft })
+      );
+      return true;
+    },
+    [draftContent, fileMentionSuggestion, onDraftContentChange]
+  );
+
+  const navigateIntoFileMentionItem = useCallback(
+    (item: AgentContextMentionItem): boolean => {
+      if (
+        item.kind === "file" &&
+        item.mentionNavigation === "workspace-folder" &&
+        fileMentionSuggestion?.query
+      ) {
+        if (!replaceActiveFileMentionTrigger("@")) {
+          return false;
+        }
+        mentionControllerRef.current?.updateQuery({
+          workspaceId,
+          currentUserId,
+          query: "",
+          sectionKey: selectedProjectSectionKey || null,
+          sessionCwd: selectedProjectPath || null
+        });
+      }
+      return (
+        mentionControllerRef.current?.selectFileMentionNavigationItem(item) ??
+        false
+      );
+    },
+    [
+      currentUserId,
+      fileMentionSuggestion,
+      replaceActiveFileMentionTrigger,
+      selectedProjectPath,
+      selectedProjectSectionKey,
+      workspaceId
+    ]
+  );
+
   const selectFileMention = useCallback(
     (entry: AgentContextMentionItem): void => {
       if (entry.kind === "file" && entry.mentionNavigation) {
-        mentionControllerRef.current?.selectFileMentionNavigationItem(entry);
+        navigateIntoFileMentionItem(entry);
         return;
       }
       fileMentionSuggestion?.command(entry);
@@ -129,7 +193,7 @@ export function useComposerMentionActions(input: Input) {
       setFileMentionSuggestion(null);
       setIsPaletteOpen(false);
     },
-    [fileMentionSuggestion]
+    [fileMentionSuggestion, navigateIntoFileMentionItem]
   );
 
   const closeFileMentionPalette = useCallback((): void => {
@@ -142,26 +206,8 @@ export function useComposerMentionActions(input: Input) {
   }, [fileMentionSuggestion]);
 
   const clearActiveFileMentionTrigger = useCallback((): void => {
-    if (!fileMentionSuggestion) {
-      return;
-    }
-    const triggerLength = Math.max(
-      fileMentionSuggestion.range.to - fileMentionSuggestion.range.from,
-      fileMentionSuggestion.text.length
-    );
-    const nextDraft =
-      triggerLength > 0
-        ? editorHandleRef.current?.replaceTextBeforeSelection(triggerLength, "")
-        : null;
-    if (nextDraft === null || nextDraft === undefined) {
-      return;
-    }
-    draftPromptRef.current = nextDraft;
-    setPaletteDraftPrompt(nextDraft);
-    onDraftContentChange(
-      updateAgentComposerDraft(draftContent, { prompt: nextDraft })
-    );
-  }, [draftContent, fileMentionSuggestion, onDraftContentChange]);
+    replaceActiveFileMentionTrigger("");
+  }, [replaceActiveFileMentionTrigger]);
   const closeOpenPalette = useCallback((): void => {
     if (showFileMentionPalette) {
       closeFileMentionPalette();
@@ -239,19 +285,9 @@ export function useComposerMentionActions(input: Input) {
       ) {
         return false;
       }
-      return (
-        mentionControllerRef.current?.selectFileMentionNavigationItem(item) ??
-        false
-      );
+      return navigateIntoFileMentionItem(item);
     },
-    [createFileMentionPaletteAdapter]
-  );
-
-  const navigateIntoFileMentionItem = useCallback(
-    (item: AgentContextMentionItem): void => {
-      mentionControllerRef.current?.selectFileMentionNavigationItem(item);
-    },
-    []
+    [createFileMentionPaletteAdapter, navigateIntoFileMentionItem]
   );
 
   const handleFileMentionKeyDown = useCallback(
@@ -392,34 +428,77 @@ export function useComposerMentionActions(input: Input) {
   }, [shouldCenterMentionHighlight, showFileMentionPalette]);
 
   useEffect(() => {
+    if (!isActive) {
+      closeFileMentionPalette();
+      return;
+    }
     if (!showFileMentionPalette) {
       return;
     }
 
     const handlePointerDown = (event: PointerEvent): void => {
       const target = event.target;
-      if (!(target instanceof Element)) {
+      if (!(target instanceof Node)) {
         return;
       }
-      if (target.closest(MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR)) {
+
+      const isInsideComposer = composerRef.current?.contains(target) ?? false;
+      const isInsidePalette =
+        paletteContentRef.current?.contains(target) ?? false;
+      if (
+        target instanceof Element &&
+        target.closest(MENTION_PALETTE_DISMISS_INTERACTION_SELECTOR)
+      ) {
+        closeOpenPalette();
+        return;
+      }
+      if (!isInsideComposer && !isInsidePalette) {
+        closeOpenPalette();
+      }
+    };
+    const handleFocusIn = (event: FocusEvent): void => {
+      const target = event.target;
+      if (!(target instanceof Node)) {
+        return;
+      }
+      const isInsideComposer = composerRef.current?.contains(target) ?? false;
+      const isInsidePalette =
+        paletteContentRef.current?.contains(target) ?? false;
+      if (!isInsideComposer && !isInsidePalette) {
         closeOpenPalette();
       }
     };
     const handleWindowResize = (): void => {
       closeOpenPalette();
     };
+    const handleWindowBlur = (): void => {
+      closeOpenPalette();
+    };
 
     document.addEventListener("pointerdown", handlePointerDown, {
       capture: true
     });
+    document.addEventListener("focusin", handleFocusIn, { capture: true });
     window.addEventListener("resize", handleWindowResize);
+    window.addEventListener("blur", handleWindowBlur);
     return () => {
       document.removeEventListener("pointerdown", handlePointerDown, {
         capture: true
       });
+      document.removeEventListener("focusin", handleFocusIn, {
+        capture: true
+      });
       window.removeEventListener("resize", handleWindowResize);
+      window.removeEventListener("blur", handleWindowBlur);
     };
-  }, [closeOpenPalette, showFileMentionPalette]);
+  }, [
+    closeFileMentionPalette,
+    closeOpenPalette,
+    composerRef,
+    paletteContentRef,
+    showFileMentionPalette,
+    isActive
+  ]);
 
   return {
     clearActiveFileMentionTrigger,

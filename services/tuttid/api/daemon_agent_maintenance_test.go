@@ -10,11 +10,27 @@ import (
 )
 
 type stubAgentMaintenanceService struct {
-	result agentmaintenance.PurgeResult
-	err    error
+	result           agentmaintenance.PurgeResult
+	err              error
+	purgeWorkspaceFn func(context.Context, string) (agentmaintenance.PurgeResult, error)
+	purgeSessionFn   func(context.Context, string, string) (agentmaintenance.PurgeResult, error)
 }
 
 func (s stubAgentMaintenanceService) PurgeNow(context.Context) (agentmaintenance.PurgeResult, error) {
+	return s.result, s.err
+}
+
+func (s stubAgentMaintenanceService) PurgeWorkspace(ctx context.Context, workspaceID string) (agentmaintenance.PurgeResult, error) {
+	if s.purgeWorkspaceFn != nil {
+		return s.purgeWorkspaceFn(ctx, workspaceID)
+	}
+	return s.result, s.err
+}
+
+func (s stubAgentMaintenanceService) PurgeSession(ctx context.Context, workspaceID string, agentSessionID string) (agentmaintenance.PurgeResult, error) {
+	if s.purgeSessionFn != nil {
+		return s.purgeSessionFn(ctx, workspaceID, agentSessionID)
+	}
 	return s.result, s.err
 }
 

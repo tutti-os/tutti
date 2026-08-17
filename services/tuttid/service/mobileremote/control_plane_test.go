@@ -4,11 +4,70 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
+
+type failingControlPlaneRoundTripper struct {
+	err error
+}
+
+func (r failingControlPlaneRoundTripper) RoundTrip(*http.Request) (*http.Response, error) {
+	return nil, r.err
+}
+
+func TestHTTPControlPlaneTransportErrorDoesNotExposeSignedURL(t *testing.T) {
+	t.Parallel()
+	const signature = "replayable-identity-signature"
+	networkFailure := &net.DNSError{IsTimeout: true, Err: "timeout"}
+	client := HTTPControlPlane{
+		BaseURL: "https://control.example.test",
+		HTTPClient: &http.Client{Transport: failingControlPlaneRoundTripper{err: &url.Error{
+			Op:  http.MethodGet,
+			URL: "https://control.example.test/device-link-attempts?identitySignature=" + signature,
+			Err: networkFailure,
+		}}},
+	}
+	_, err := client.ListDeviceLinkAttempts(
+		context.Background(), "session=cookie", "pairing-1", "desktop-device", []byte(signature),
+	)
+	if err == nil {
+		t.Fatal("expected request failure")
+	}
+	if strings.Contains(err.Error(), signature) || strings.Contains(err.Error(), "identitySignature") {
+		t.Fatalf("signed URL leaked into transport error: %v", err)
+	}
+	var networkErr net.Error
+	if !errors.As(err, &networkErr) || !networkErr.Timeout() {
+		t.Fatalf("sanitized error lost retry classification: %v", err)
+	}
+}
+
+func TestNormalizeDeviceLinkAttemptRejectsInvalidExpiry(t *testing.T) {
+	t.Parallel()
+	attempt := DeviceLinkAttempt{
+		AttemptID:      "attempt-1",
+		PairingID:      "pairing-1",
+		CallerDeviceID: "caller-device",
+		CallerICE:      &DeviceLinkICEParams{Ufrag: "caller-u", Pwd: "caller-p"},
+		OwnerDeviceID:  "owner-device",
+		State:          "awaiting_owner",
+		ExpiresAt:      "not-a-time",
+	}
+	if _, err := normalizeDeviceLinkAttempt(attempt); err == nil {
+		t.Fatal("invalid attempt expiry was accepted")
+	}
+	attempt.ExpiresAt = time.Now().Add(time.Minute).Format(time.RFC3339Nano)
+	if _, err := normalizeDeviceLinkAttempt(attempt); err != nil {
+		t.Fatalf("valid attempt expiry was rejected: %v", err)
+	}
+}
 
 func TestHTTPControlPlaneRegistersDeviceWithAccountCookie(t *testing.T) {
 	t.Parallel()

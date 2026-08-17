@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"time"
 
@@ -385,43 +384,6 @@ func (t *ReplayProcessTransport) requiredConnectionsConsumed() bool {
 	return true
 }
 
-func processCassetteConnectionKey(agentSessionID, provider string, launchOrdinal uint64) string {
-	return fmt.Sprintf(
-		"%s\x00%s\x00%d",
-		normalizeProcessCassetteIdentity(agentSessionID),
-		normalizeProcessCassetteIdentity(provider),
-		launchOrdinal,
-	)
-}
-
-func isOptionalReplayProbeConnection(
-	descriptor sessionreplay.ProviderReplayDescriptor,
-	record ProcessCassetteConnectionRecord,
-	chunks []processCassetteChunk,
-) bool {
-	if record.LaunchOrdinal <= 1 {
-		return false
-	}
-	hasProbe := false
-	for _, chunk := range chunks {
-		if chunk.Kind != "outbound" {
-			continue
-		}
-		method, _, ok := processCassetteJSONRPCRequest(chunk)
-		if !ok {
-			return false
-		}
-		switch {
-		case method == "initialize", method == "initialized":
-		case descriptor.IsOptionalProbeMethod(method):
-			hasProbe = true
-		default:
-			return false
-		}
-	}
-	return hasProbe
-}
-
 func (t *ReplayProcessTransport) Finalize() error {
 	return t.VerifyComplete()
 }
@@ -449,6 +411,11 @@ type replayProcessConnection struct {
 	responseIDs              map[string]any
 	identityValues           map[string]string
 	skippingOptionalProbeRun bool
+	// pendingSyntheticStdout holds JSON-RPC responses for optional probes that
+	// were absorbed while inbound delivery was blocked. Callers such as
+	// thread/goal/get NoHandler waits need a response or activation hangs until
+	// acpStartCallTimeout.
+	pendingSyntheticStdout [][]byte
 }
 
 func (c *replayProcessConnection) ProcessCassetteCaptureOrigin() ProcessCassetteCaptureOrigin {
@@ -456,6 +423,13 @@ func (c *replayProcessConnection) ProcessCassetteCaptureOrigin() ProcessCassette
 		return ""
 	}
 	return c.captureOrigin
+}
+
+func (c *replayProcessConnection) WaitForProviderProgress(
+	ctx context.Context,
+	duration time.Duration,
+) error {
+	return c.inputBarrier.waitForProgressDuration(ctx, c.connectionID, duration, c.closed)
 }
 
 func (c *replayProcessConnection) Send(data []byte) error {
@@ -469,7 +443,7 @@ func (c *replayProcessConnection) Send(data []byte) error {
 			// Extra observational probes (for example child-nickname
 			// thread/read retries) may fire after the tape ends. Absorb them
 			// instead of failing the connection and blocking drain.
-			if c.isOptionalProbeOutboundLocked(data) {
+			if c.absorbOptionalProbeOutboundLocked(data) {
 				c.mu.Unlock()
 				return nil
 			}
@@ -482,10 +456,10 @@ func (c *replayProcessConnection) Send(data []byte) error {
 		}
 		chunk := c.chunks[c.cursor]
 		if chunk.Kind != "outbound" {
-			// Don't queue optional probes behind inbound delivery — the client
-			// will time out waiting for a synthetic response, but the cassette
-			// connection stays healthy for required traffic.
-			if c.isOptionalProbeOutboundLocked(data) {
+			// Don't queue optional probes behind inbound delivery. Synthesize an
+			// empty JSON-RPC result so NoHandler callers (goal/get, thread/read)
+			// do not sit on acpStartCallTimeout while the provider cursor is gated.
+			if c.absorbOptionalProbeOutboundLocked(data) {
 				c.mu.Unlock()
 				return nil
 			}
@@ -523,7 +497,7 @@ func (c *replayProcessConnection) Send(data []byte) error {
 				c.mu.Unlock()
 				continue
 			}
-			if c.isOptionalProbeOutboundLocked(data) {
+			if c.absorbOptionalProbeOutboundLocked(data) {
 				c.mu.Unlock()
 				return nil
 			}
@@ -540,15 +514,11 @@ func (c *replayProcessConnection) Send(data []byte) error {
 		c.skippingOptionalProbeRun = false
 		c.playback.advanceTo(chunk.ElapsedMS)
 		c.cursor++
+		c.maybeSynthesizeImmediateStartupMetadataLocked(expected, data)
 		c.signalChangedLocked()
 		c.mu.Unlock()
 		return nil
 	}
-}
-
-func (c *replayProcessConnection) isOptionalProbeOutboundLocked(data []byte) bool {
-	method, _, ok := processCassetteJSONRPCRequestBytes(data)
-	return ok && c.descriptor.IsOptionalProbeMethod(method)
 }
 
 func (c *replayProcessConnection) failLocked(err error) error {
@@ -556,142 +526,6 @@ func (c *replayProcessConnection) failLocked(err error) error {
 		c.failure = err
 	}
 	return err
-}
-
-func (c *replayProcessConnection) Recv() (ProcessFrame, error) {
-	return c.recvContext(context.Background())
-}
-
-func (c *replayProcessConnection) RecvContext(ctx context.Context) (ProcessFrame, error) {
-	return c.recvContext(ctx)
-}
-
-func (c *replayProcessConnection) recvContext(ctx context.Context) (ProcessFrame, error) {
-	c.recvMu.Lock()
-	defer c.recvMu.Unlock()
-	for {
-		c.mu.Lock()
-		if c.isClosedLocked() {
-			c.mu.Unlock()
-			return ProcessFrame{}, io.EOF
-		}
-		if c.cursor >= len(c.chunks) {
-			if c.holdOpen {
-				changed := c.changed
-				c.mu.Unlock()
-				select {
-				case <-ctx.Done():
-					return ProcessFrame{}, ctx.Err()
-				case <-changed:
-				}
-				continue
-			}
-			c.mu.Unlock()
-			return ProcessFrame{}, io.EOF
-		}
-		chunk := c.chunks[c.cursor]
-		if chunk.Kind == "outbound" {
-			if method, responseID, ok := processCassetteJSONRPCRequest(chunk); ok &&
-				responseID != "" && c.descriptor.IsOptionalProbeMethod(method) {
-				if !c.skippingOptionalProbeRun {
-					changed := c.changed
-					c.mu.Unlock()
-					timer := time.NewTimer(50 * time.Millisecond)
-					select {
-					case <-ctx.Done():
-						stopReplayPlaybackTimer(timer)
-						return ProcessFrame{}, ctx.Err()
-					case <-c.closed:
-						stopReplayPlaybackTimer(timer)
-						return ProcessFrame{}, io.EOF
-					case <-changed:
-						stopReplayPlaybackTimer(timer)
-						continue
-					case <-timer.C:
-					}
-					c.mu.Lock()
-					if c.cursor >= len(c.chunks) ||
-						c.chunks[c.cursor].ChunkSeq != chunk.ChunkSeq {
-						c.mu.Unlock()
-						continue
-					}
-				}
-				c.playback.advanceTo(chunk.ElapsedMS)
-				c.skippedRPCs[responseID] = struct{}{}
-				c.skippingOptionalProbeRun = true
-				c.cursor++
-				c.signalChangedLocked()
-				c.mu.Unlock()
-				continue
-			}
-			changed := c.changed
-			c.mu.Unlock()
-			select {
-			case <-ctx.Done():
-				return ProcessFrame{}, ctx.Err()
-			case <-changed:
-			}
-			continue
-		}
-		c.mu.Unlock()
-		if err := c.playback.waitUntil(ctx, chunk.ElapsedMS, c.closed); err != nil {
-			if errors.Is(err, context.Canceled) && c.isClosed() {
-				return ProcessFrame{}, io.EOF
-			}
-			return ProcessFrame{}, err
-		}
-		endRelease, err := c.playback.controller.beginInboundRelease(ctx, c.closed)
-		if err != nil {
-			if errors.Is(err, context.Canceled) && c.isClosed() {
-				return ProcessFrame{}, io.EOF
-			}
-			return ProcessFrame{}, err
-		}
-		c.mu.Lock()
-		if c.isClosedLocked() {
-			c.mu.Unlock()
-			endRelease()
-			return ProcessFrame{}, io.EOF
-		}
-		frame, err := decodeProcessCassetteFrame(chunk)
-		if err != nil {
-			c.mu.Unlock()
-			endRelease()
-			return ProcessFrame{}, err
-		}
-		frame.Stdout = mapProcessCassetteFrameJSON(
-			frame.Stdout,
-			c.recordedCWD,
-			c.replayCWD,
-			c.replayHome,
-			c.descriptor,
-			c.identityValues,
-		)
-		frame.Stderr = mapProcessCassetteFrameJSON(
-			frame.Stderr,
-			c.recordedCWD,
-			c.replayCWD,
-			c.replayHome,
-			c.descriptor,
-			c.identityValues,
-		)
-		frame.Stdout = suppressSkippedProcessCassetteResponses(frame.Stdout, c.skippedRPCs)
-		frame.Stdout = mapProcessCassetteResponseIDs(frame.Stdout, c.responseIDs)
-		frame.ConnectionID = chunk.ConnectionID
-		frame.ChunkSeq = chunk.ChunkSeq
-		c.cursor++
-		c.signalChangedLocked()
-		c.mu.Unlock()
-		endRelease()
-		if len(frame.Stdout) == 0 && len(frame.Stderr) == 0 &&
-			frame.ExitCode == nil && frame.Message == "" {
-			continue
-		}
-		c.mu.Lock()
-		c.skippingOptionalProbeRun = false
-		c.mu.Unlock()
-		return frame, nil
-	}
 }
 
 func (c *replayProcessConnection) CompleteProviderInputUnit(
@@ -705,60 +539,33 @@ func (c *replayProcessConnection) CompleteProviderInputUnit(
 			c.connectionID,
 		)
 	}
-	return c.inputBarrier.complete(ctx, unit, c.closed)
+	for {
+		c.mu.Lock()
+		if len(c.pendingSyntheticStdout) > 0 {
+			c.mu.Unlock()
+			return errReplaySyntheticPending
+		}
+		interrupt := c.changed
+		c.mu.Unlock()
+		err := c.inputBarrier.complete(ctx, unit, c.closed, interrupt)
+		if errors.Is(err, errReplaySyntheticPending) {
+			// Absorb may have raced after the snapshot; re-check pending.
+			c.mu.Lock()
+			pending := len(c.pendingSyntheticStdout) > 0
+			c.mu.Unlock()
+			if pending {
+				return errReplaySyntheticPending
+			}
+			continue
+		}
+		return err
+	}
 }
 
 func (c *replayProcessConnection) isClosed() bool {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.isClosedLocked()
-}
-
-func mapProcessCassetteFrameJSON(
-	data []byte,
-	recordedCWD string,
-	replayCWD string,
-	replayHome string,
-	descriptor sessionreplay.ProviderReplayDescriptor,
-	identityValues map[string]string,
-) []byte {
-	if len(data) == 0 {
-		return data
-	}
-	values, ok := decodeProcessCassetteJSONValues(data)
-	if !ok {
-		return data
-	}
-	var output bytes.Buffer
-	encoder := json.NewEncoder(&output)
-	for _, value := range values {
-		value = mapProcessCassettePathFields(value, recordedCWD, replayCWD)
-		value = mapProcessCassettePathFields(
-			value,
-			portableProcessCassetteHomeToken,
-			replayHome,
-		)
-		value = mapProcessCassetteGeneratedIdentityValues(
-			value,
-			descriptor,
-			identityValues,
-		)
-		if err := encoder.Encode(value); err != nil {
-			return data
-		}
-	}
-	return output.Bytes()
-}
-
-func processCassetteReplayHome(
-	spec ProcessSpec,
-	descriptor sessionreplay.ProviderReplayDescriptor,
-) string {
-	if roots := processCassettePersonalRoots(spec, descriptor); len(roots) > 0 {
-		return roots[0]
-	}
-	home, _ := os.UserHomeDir()
-	return strings.TrimSpace(home)
 }
 
 func (c *replayProcessConnection) Close() error {
@@ -820,27 +627,4 @@ func (c *replayProcessConnection) verifyComplete() error {
 		)
 	}
 	return nil
-}
-
-func processCassetteOutboundMismatch(
-	chunk processCassetteChunk,
-	expected []byte,
-	actual []byte,
-) error {
-	return fmt.Errorf(
-		"process cassette outbound mismatch at connection %s chunk %d: expected %s, actual %s",
-		chunk.ConnectionID,
-		chunk.ChunkSeq,
-		summarizeProcessCassetteBytes(expected),
-		summarizeProcessCassetteBytes(actual),
-	)
-}
-
-func summarizeProcessCassetteBytes(data []byte) string {
-	const limit = 512
-	value := strings.TrimSpace(string(data))
-	if len(value) > limit {
-		value = value[:limit] + "…"
-	}
-	return fmt.Sprintf("%q", value)
 }

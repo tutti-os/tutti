@@ -234,16 +234,12 @@ export function projectWorkspaceActivitySnapshot({
       workspaceId
     }
   );
-  const projectBySessionId = new Map<string, UserProject>();
   const projectBySectionKey = new Map<string, UserProject>();
   for (const section of rail.sections) {
     if (section.kind !== "project" || !section.project) continue;
     const project = section.project;
-    const sectionKey = project.sectionKey?.trim() ?? section.id;
+    const sectionKey = project.sectionKey?.trim();
     if (sectionKey) projectBySectionKey.set(sectionKey, project);
-    for (const sessionId of section.sessionIds) {
-      projectBySessionId.set(sessionId, project);
-    }
   }
   for (const project of userProjects.projects) {
     const sectionKey = project.sectionKey?.trim();
@@ -257,9 +253,7 @@ export function projectWorkspaceActivitySnapshot({
     hasUnreadCompletion:
       attentionReadState.recordsBySessionId[conversation.id]?.isUnread ?? false,
     project:
-      projectBySessionId.get(conversation.id) ??
-      projectBySectionKey.get(conversation.railSectionKey?.trim() ?? "") ??
-      null
+      projectBySectionKey.get(conversation.railSectionKey?.trim() ?? "") ?? null
   }));
   const selectedRuntimeAvailability = selectEngineSessionRuntimeAvailability(
     state,

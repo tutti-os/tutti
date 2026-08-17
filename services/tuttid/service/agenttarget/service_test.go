@@ -18,9 +18,9 @@ type availabilityResolverStub struct {
 	resolved []string
 }
 
-func (s *availabilityResolverStub) ResolveAgentTargetAvailability(_ context.Context, target agenttargetbiz.Target) (string, string) {
+func (s *availabilityResolverStub) ResolveAgentTargetAvailability(_ context.Context, target agenttargetbiz.Target) (string, string, string) {
 	s.resolved = append(s.resolved, target.ID)
-	return "not_installed", "compatible_runtime_not_installed"
+	return "not_installed", "compatible_runtime_not_installed", "/resolved/bin/extension"
 }
 
 func TestServiceListResolvesOnlyExtensionTargetAvailability(t *testing.T) {
@@ -43,7 +43,7 @@ func TestServiceListResolvesOnlyExtensionTargetAvailability(t *testing.T) {
 		t.Fatalf("resolved targets = %#v", resolver.resolved)
 	}
 	for _, target := range targets {
-		if target.ID == "extension" && (target.AvailabilityStatus != "not_installed" || target.AvailabilityReason != "compatible_runtime_not_installed") {
+		if target.ID == "extension" && (target.AvailabilityStatus != "not_installed" || target.AvailabilityReason != "compatible_runtime_not_installed" || target.ExecutablePath != "/resolved/bin/extension") {
 			t.Fatalf("extension availability = %#v", target)
 		}
 	}

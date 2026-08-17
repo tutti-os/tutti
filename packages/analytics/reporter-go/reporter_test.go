@@ -29,6 +29,7 @@ type fakeTeaSend struct {
 	uuid   string
 	events []teaSDKEvent
 	common map[string]any
+	header teaSDKHeader
 }
 
 func (f *fakeTeaSDK) Init(config teaSDKConfig) error {
@@ -36,12 +37,19 @@ func (f *fakeTeaSDK) Init(config teaSDKConfig) error {
 	return nil
 }
 
-func (f *fakeTeaSDK) Send(appID int64, uuid string, events []teaSDKEvent, common map[string]any) error {
+func (f *fakeTeaSDK) Send(
+	appID int64,
+	uuid string,
+	events []teaSDKEvent,
+	common map[string]any,
+	header teaSDKHeader,
+) error {
 	f.sends = append(f.sends, fakeTeaSend{
 		appID:  appID,
 		uuid:   uuid,
 		events: events,
 		common: common,
+		header: header,
 	})
 	return nil
 }
@@ -125,7 +133,7 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 			AppID:         20004092,
 			AppKey:        "app-key",
 			ChannelDomain: "https://example.test",
-			AppVersion:    "0.0.0",
+			AppVersion:    "0.2.31-rc.0",
 		},
 		DebugPublisher: publisher,
 		StateDir:       stateDir,
@@ -168,6 +176,12 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 	if send.events[0].ClientTS < before || send.events[0].ClientTS > after {
 		t.Fatalf("client timestamp = %d, want between %d and %d", send.events[0].ClientTS, before, after)
 	}
+	if send.events[0].EventID == "" || send.events[0].EventID != send.events[0].Params["event_id"] {
+		t.Fatalf("event ID preset=%q params=%v, want matching compatibility values", send.events[0].EventID, send.events[0].Params["event_id"])
+	}
+	if send.header.AppVersion != "0.2.31-rc.0" || send.header.AppVersionMinor != "0.2.31-rc.0" || send.header.OSName == "" || send.header.CPUABI == "" {
+		t.Fatalf("preset header = %#v, want app and runtime metadata", send.header)
+	}
 	for _, key := range []string{"device_id", "session_id", "app_version", "os", "product_variant"} {
 		if _, exists := send.events[0].Params[key]; exists {
 			t.Fatalf("event params contains common key %q", key)
@@ -200,6 +214,115 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 	}
 	if !sdk.closed {
 		t.Fatal("Close did not delegate to SDK")
+	}
+}
+
+func TestReporterCommonBuildsPresetHeaderFromRuntimeInfo(t *testing.T) {
+	common, err := newReporterCommonWithRuntimeInfo(Config{
+		Analytics: AnalyticsConfig{AppVersion: "1.2.3-rc.4"},
+		DeviceID:  "host-device",
+	}, runtimeInfo{
+		osName:    "darwin",
+		osVersion: "15.6",
+		cpuABI:    "arm64",
+	})
+	if err != nil {
+		t.Fatalf("newReporterCommonWithRuntimeInfo() error = %v", err)
+	}
+
+	got := common.teaHeader()
+	want := (teaSDKHeader{
+		AppVersion:      "1.2.3-rc.4",
+		AppVersionMinor: "1.2.3-rc.4",
+		OSName:          "darwin",
+		OSVersion:       "15.6",
+		CPUABI:          "arm64",
+	})
+	if got != want {
+		t.Fatalf("preset header = %#v, want %#v", got, want)
+	}
+}
+
+func TestDebugReporterPublishesPresetHeaderFields(t *testing.T) {
+	publisher := &fakeDebugPublisher{}
+	common, err := newReporterCommonWithRuntimeInfo(Config{
+		Analytics: AnalyticsConfig{AppVersion: "1.2.3-rc.4"},
+		DeviceID:  "host-device",
+	}, runtimeInfo{
+		osName:    "darwin",
+		osVersion: "15.6",
+		cpuABI:    "arm64",
+	})
+	if err != nil {
+		t.Fatalf("newReporterCommonWithRuntimeInfo() error = %v", err)
+	}
+	reporter := &DebugReporter{common: common, debug: publisher}
+
+	reporter.Track(context.Background(), Event{
+		Name: "workspace.opened",
+		Params: map[string]any{
+			"os_name":    "spoofed",
+			"os_version": "spoofed",
+			"cpu_abi":    "spoofed",
+		},
+	})
+
+	if len(publisher.events) != 1 {
+		t.Fatalf("debug events = %d, want 1", len(publisher.events))
+	}
+	for key, want := range map[string]string{
+		"app_version":       "1.2.3-rc.4",
+		"app_version_minor": "1.2.3-rc.4",
+		"os_name":           "darwin",
+		"os_version":        "15.6",
+		"cpu_abi":           "arm64",
+	} {
+		if got := publisher.events[0].Params[key]; got != want {
+			t.Fatalf("debug params[%q] = %v, want %q", key, got, want)
+		}
+	}
+}
+
+func TestNormalizeEventsRepairsInvalidEventIDs(t *testing.T) {
+	for _, input := range []any{" ", 42, nil} {
+		events := normalizeEvents([]Event{{
+			Name:   "workspace.opened",
+			Params: map[string]any{"event_id": input},
+		}}, nil, teaSDKHeader{})
+		if len(events) != 1 {
+			t.Fatalf("normalizeEvents(event_id=%v) returned %d events, want 1", input, len(events))
+		}
+		if events[0].EventID == "" || events[0].Params["event_id"] != events[0].EventID {
+			t.Fatalf("normalized event_id=%v preset=%q, want matching generated IDs", events[0].Params["event_id"], events[0].EventID)
+		}
+	}
+}
+
+func TestNormalizeEventsAlwaysProtectsPresetHeaderFields(t *testing.T) {
+	events := normalizeEvents([]Event{{
+		Name: "workspace.opened",
+		Params: map[string]any{
+			"app_version":       "spoofed",
+			"app_version_minor": "spoofed",
+			"os_name":           "spoofed",
+			"os_version":        "spoofed",
+			"cpu_abi":           "spoofed",
+		},
+	}}, nil, teaSDKHeader{})
+	if len(events) != 1 {
+		t.Fatalf("normalizeEvents() returned %d events, want 1", len(events))
+	}
+	for _, key := range []string{"app_version", "app_version_minor", "os_name", "os_version", "cpu_abi"} {
+		if _, exists := events[0].Params[key]; exists {
+			t.Fatalf("normalized event contains protected preset key %q", key)
+		}
+	}
+}
+
+func TestCurrentRuntimeInfoIncludesStablePlatformKeys(t *testing.T) {
+	got := currentRuntimeInfo()
+	if got.osName == "" || got.cpuABI == "" {
+		t.Fatalf("runtime info = %#v, want OS and CPU architecture", got)
 	}
 }
 

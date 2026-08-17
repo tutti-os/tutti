@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.T) {
@@ -58,6 +59,8 @@ func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProvider
 	}
 	if !strings.Contains(codexPolicy, "rendered directly from `imageGeneration` tool output") ||
 		!strings.Contains(codexPolicy, "do not repeat generated images as Markdown image tags") ||
+		!strings.Contains(codexPolicy, "[title](mentionUri)") ||
+		!strings.Contains(codexPolicy, "never return only `agentSessionId`") ||
 		strings.Contains(codexPolicy, "final response must include Markdown image tag") {
 		t.Fatalf("codex host policy = %q, want native generated-image artifact contract", codexPolicy)
 	}
@@ -70,6 +73,143 @@ func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProvider
 		!strings.Contains(claudePolicy, "Multiple final images: one Markdown image tag each.") ||
 		strings.Contains(claudePolicy, "rendered directly from `imageGeneration` tool output") {
 		t.Fatalf("claude host policy = %q, want Markdown image fallback contract", claudePolicy)
+	}
+}
+
+func TestVerifiedEndpointOutputPackIsNarrowAndProviderRuntimeOnly(t *testing.T) {
+	t.Parallel()
+
+	input := PrepareInput{Provider: "codex", CLICommand: "tutti"}
+	resolved, err := resolveCapabilities(t.Context(), input, DeploymentProfile{
+		Name:  "managed-vm",
+		Packs: []CapabilityPack{VerifiedEndpointOutputPack()},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(resolved.PolicySections) != 1 {
+		t.Fatalf("policy section count = %d, want 1", len(resolved.PolicySections))
+	}
+	section := resolved.PolicySections[0]
+	if section.Delivery != PolicyDeliveryProviderRuntime {
+		t.Fatalf("policy delivery = %q, want %q", section.Delivery, PolicyDeliveryProviderRuntime)
+	}
+	for _, required := range []string{
+		"verified user-reachable HTTP(S) endpoint",
+		"Markdown link using `[label](url)`",
+		"Do not wrap a user-reachable URL or its Markdown link in backticks",
+		"Never invent, guess, or assume a port or URL",
+		"provide the verified listening address and port as inline code",
+	} {
+		if !strings.Contains(section.Body, required) {
+			t.Errorf("verified endpoint policy missing %q: %s", required, section.Body)
+		}
+	}
+	for _, forbidden := range []string{
+		"Tutti desktop app host",
+		"sandbox_permissions",
+		"Images/videos",
+		"generated_images",
+		"Code/workspace files",
+	} {
+		if strings.Contains(section.Body, forbidden) {
+			t.Errorf("verified endpoint policy inherited %q: %s", forbidden, section.Body)
+		}
+	}
+	if size := utf8.RuneCountInString(section.Body); size > 800 {
+		t.Fatalf("verified endpoint policy size = %d runes, want <= 800", size)
+	}
+
+	input.resolved = resolved
+	if providerPolicy := renderPolicySections(input, PolicyAnchorSpecialized, PolicyDeliveryProviderRuntime); providerPolicy != section.Body {
+		t.Fatalf("provider policy = %q, want %q", providerPolicy, section.Body)
+	}
+	if skillBundlePolicy := renderPolicySections(input, PolicyAnchorSpecialized, PolicyDeliverySkillBundle); skillBundlePolicy != "" {
+		t.Fatalf("skill bundle policy = %q, want empty", skillBundlePolicy)
+	}
+	providerPrompt, err := tuttiRuntimePolicy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(providerPrompt, section.Body) {
+		t.Fatalf("provider prompt missing verified endpoint policy: %s", providerPrompt)
+	}
+	skillBundlePrompt, err := tuttiSkillBundleRecommendedPolicy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(skillBundlePrompt, "## Local Server Output") {
+		t.Fatalf("skill bundle prompt inherited verified endpoint policy: %s", skillBundlePrompt)
+	}
+}
+
+func TestStandardProfileIncludesVerifiedEndpointOutputOnce(t *testing.T) {
+	t.Parallel()
+
+	bundle, err := Resolve(t.Context(), PrepareInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex", CLICommand: "tutti",
+	}, StandardProfile())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count := strings.Count(bundle.SystemPrompt, "## Local Server Output"); count != 1 {
+		t.Fatalf("local server output policy count = %d, want 1", count)
+	}
+	if !strings.Contains(bundle.SystemPrompt, "Do not wrap a user-reachable URL or its Markdown link in backticks") {
+		t.Fatalf("standard profile missing verified endpoint output contract: %s", bundle.SystemPrompt)
+	}
+}
+
+func TestDesktopProviderExecutionDoesNotLeakIntoSkillBundle(t *testing.T) {
+	t.Parallel()
+
+	input := PrepareInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex", CLICommand: "tutti",
+	}
+	resolved, err := resolveCapabilities(t.Context(), input, StandardProfile(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	input.resolved = resolved
+	providerPrompt, err := tuttiRuntimePolicy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillBundlePrompt, err := tuttiSkillBundleRecommendedPolicy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const providerExecution = "sandbox_permissions=require_escalated"
+	if !strings.Contains(providerPrompt, providerExecution) {
+		t.Fatalf("provider prompt missing desktop execution policy: %s", providerPrompt)
+	}
+	if strings.Contains(skillBundlePrompt, providerExecution) {
+		t.Fatalf("skill bundle inherited provider execution policy: %s", skillBundlePrompt)
+	}
+}
+
+func TestAgentSessionMentionReadsConversationWithoutWaiting(t *testing.T) {
+	t.Parallel()
+
+	input := testResolvedInput(t, PrepareInput{Provider: "codex", CLICommand: "tutti"})
+	providerPrompt, err := tuttiRuntimePolicy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	skillBundlePrompt, err := tuttiSkillBundleRecommendedPolicy(input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, prompt := range map[string]string{"provider": providerPrompt, "skill bundle": skillBundlePrompt} {
+		if !strings.Contains(prompt, "Agent-session mention") && !strings.Contains(prompt, "mention://agent-session") {
+			t.Fatalf("%s prompt missing agent-session route: %s", name, prompt)
+		}
+		if !strings.Contains(prompt, "tutti agent get --session-id <session-id>") {
+			t.Fatalf("%s prompt does not recover agent-session conversation with get: %s", name, prompt)
+		}
+		if strings.Contains(prompt, "Agent-session mention: `tutti agent wait") {
+			t.Fatalf("%s prompt treats a context reference as a wait instruction: %s", name, prompt)
+		}
 	}
 }
 
@@ -129,6 +269,20 @@ func TestDefaultPreparerIncludesHostSkillSources(t *testing.T) {
 	}
 }
 
+func TestResolveCapabilitiesSkipsSkillSourcesForModelProbe(t *testing.T) {
+	called := false
+	_, err := resolveCapabilities(t.Context(), PrepareInput{
+		Provider:   "codex",
+		SkipSkills: true,
+	}, StandardProfile(), []SkillSource{countingSkillSource{called: &called}})
+	if err != nil {
+		t.Fatalf("resolveCapabilities() error = %v", err)
+	}
+	if called {
+		t.Fatal("model-only capability resolution called a Skill source")
+	}
+}
+
 func TestResolveCapabilitiesRejectsSkillPathTraversal(t *testing.T) {
 	profile := DeploymentProfile{Name: "test", Packs: []CapabilityPack{{
 		Name: "unsafe", Resolve: staticCapability(SkillSpec{
@@ -151,4 +305,13 @@ type staticSkillSource []SkillSpec
 
 func (s staticSkillSource) Skills(context.Context, SkillContext) ([]SkillSpec, error) {
 	return append([]SkillSpec(nil), s...), nil
+}
+
+type countingSkillSource struct {
+	called *bool
+}
+
+func (s countingSkillSource) Skills(context.Context, SkillContext) ([]SkillSpec, error) {
+	*s.called = true
+	return nil, nil
 }

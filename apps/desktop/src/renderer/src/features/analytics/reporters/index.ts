@@ -57,6 +57,8 @@ export { AgentChatInputFocusedReporter } from "./agent-chat-input-focused";
 export type { AgentChatInputFocusedParams } from "./agent-chat-input-focused";
 export { AgentChatInputContentEnteredReporter } from "./agent-chat-input-content-entered";
 export type { AgentChatInputContentEnteredParams } from "./agent-chat-input-content-entered";
+export { AgentQuickPromptEngagementReporter } from "./agent-quick-prompt-engagement";
+export type { AgentQuickPromptEngagementParams } from "./agent-quick-prompt-engagement";
 export { AgentEnvDetectedReporter } from "./agent-env-detected";
 export type { AgentEnvDetectedParams } from "./agent-env-detected";
 export { AgentAvailabilitySnapshotReporter } from "./agent-availability-snapshot";

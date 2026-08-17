@@ -52,7 +52,7 @@ func TestOutboxDispatcherMarksOnlyPublishedEvents(t *testing.T) {
 	if err := dispatcher.Flush(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if len(publisher.events) != 1 || len(outbox.marked) != 1 || outbox.marked[0] != 1 {
+	if len(publisher.events) != 1 || publisher.events[0].Cursor != 1 || len(outbox.marked) != 1 || outbox.marked[0] != 1 {
 		t.Fatalf("published=%#v marked=%#v", publisher.events, outbox.marked)
 	}
 }

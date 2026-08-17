@@ -2000,6 +2000,71 @@ describe("projectAgentConversationVM", () => {
     });
   });
 
+  it("keeps a signed image URL when its MIME type is absent", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          workspaceId: "room-1"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      content: [
+                        {
+                          type: "image",
+                          url: "https://objects.example.test/signed/screen.png"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "image-grid"
+    ]);
+    expect(userRow?.messages[0]?.images?.[0]).toMatchObject({
+      url: "https://objects.example.test/signed/screen.png",
+      mimeType: ""
+    });
+  });
+
   it("replaces rich user prompt text blocks with displayPrompt while preserving images", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
@@ -2070,6 +2135,72 @@ describe("projectAgentConversationVM", () => {
     expect(userRow?.messages[1]?.body).toBe("Run Automation");
     expect(userRow?.messages.map((message) => message.body)).not.toContain(
       "long automation prompt"
+    );
+  });
+
+  it("prefers materialized content text over legacy composer-file displayPrompt", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        session: {
+          ...detailViewModel().session,
+          workspaceId: "room-1"
+        },
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "summarize",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt:
+                        "summarize [diagnostics.md](mention://composer-file/file-1?status=ready)",
+                      content: [
+                        {
+                          type: "text",
+                          text: "summarize [@diagnostics.md](/runtime/diagnostics.md)"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages[0]?.body).toBe(
+      "summarize [@diagnostics.md](/runtime/diagnostics.md)"
+    );
+    expect(userRow?.messages[0]?.body).not.toContain(
+      "mention://composer-file/"
     );
   });
 

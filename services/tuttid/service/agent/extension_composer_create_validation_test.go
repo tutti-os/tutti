@@ -5,12 +5,94 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
 const extensionComposerValidationTargetID = "extension:gemini-validation"
+
+func TestExtensionComposerModelValidationDegradesWhileLiveCatalogDiscoveryIsPending(t *testing.T) {
+	runtime := newFakeRuntime()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	closed := make(chan struct{})
+	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
+		if input.Visible != nil && !*input.Visible {
+			close(started)
+			<-release
+			session.RuntimeContext["configOptions"] = []any{map[string]any{
+				"id": "model", "options": []any{
+					map[string]any{"value": "gemini-pro", "name": "Gemini Pro"},
+				},
+			}}
+		}
+		return session
+	}
+	runtime.closeHook = func(RuntimeCloseInput) { close(closed) }
+	service := newIsolatedAgentService(runtime)
+	service.liveModelDiscoveryWaitTimeout = 10 * time.Millisecond
+	input := extensionComposerDiscoveryInput(t.TempDir())
+	input.Settings.Model = "gemini-pro"
+	input.extensionComposerProfile.ModelConfigOptionID = "model"
+	base := ComposerOptions{
+		Provider:          input.Provider,
+		EffectiveSettings: input.Settings,
+		ModelConfig: ComposerConfigOption{
+			CurrentValue: "gemini-pro",
+			DefaultValue: "gemini-pro",
+			Options:      composerSelectedModelOptions("gemini-pro"),
+		},
+		RuntimeContext: map[string]any{},
+	}
+
+	type mergeResult struct {
+		options ComposerOptions
+		err     error
+	}
+	result := make(chan mergeResult, 1)
+	go func() {
+		options, err := service.mergeLiveComposerModelsForComposerOptions(
+			context.Background(), input, input.Settings, base,
+		)
+		result <- mergeResult{options: options, err: err}
+	}()
+	<-started
+	merged := <-result
+	if merged.err != nil {
+		t.Fatalf("mergeLiveComposerModelsForComposerOptions() error = %v", merged.err)
+	}
+	if !merged.options.liveModelDiscoveryPending {
+		t.Fatal("live model discovery pending state was not preserved")
+	}
+	if err := validateExtensionComposerModelForCreate("gemini-pro", merged.options); err != nil {
+		t.Fatalf("pending live catalog rejected selected model: %v", err)
+	}
+
+	close(release)
+	select {
+	case <-closed:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for hidden discovery cleanup")
+	}
+}
+
+func TestExtensionComposerModelValidationRemainsStrictWithAdvertisedCatalog(t *testing.T) {
+	options := ComposerOptions{
+		liveModelDiscoveryPending: true,
+		ModelConfig: ComposerConfigOption{
+			Configurable: true,
+			Options: []ComposerConfigOptionValue{
+				{Value: "gemini-pro"},
+				{Value: "gemini-fast"},
+			},
+		},
+	}
+	if err := validateExtensionComposerModelForCreate("unknown-model", options); !errors.Is(err, ErrInvalidArgument) {
+		t.Fatalf("advertised catalog validation error = %v, want ErrInvalidArgument", err)
+	}
+}
 
 func TestServiceCreateValidatesExtensionDefaultsAndExplicitOverrides(t *testing.T) {
 	runtime, service := newExtensionComposerValidationService(t)

@@ -168,6 +168,40 @@ describe("AgentSubAgentCard", () => {
     expect(screen.queryByText("Starting…")).not.toBeInTheDocument();
   });
 
+  it.each(["running", "completed"] as const)(
+    "renders complete Markdown and routes its link while %s",
+    async (status) => {
+      setAgentGuiI18nTestLocale("en");
+      const onLinkClick = vi.fn();
+      render(
+        <AgentSubAgentCard
+          subAgent={subAgent({
+            status,
+            assistantMarkdown:
+              "Earlier context remains available in the [report](https://example.com/report.pdf)",
+            latestActivity: "…report.pdf)",
+            terminalAtUnixMs: 2_000
+          })}
+          onLinkClick={onLinkClick}
+        />
+      );
+
+      if (status === "completed") {
+        fireEvent.click(
+          screen.getByRole("button", {
+            name: /Sub-agent Repo smell analyst Completed/
+          })
+        );
+      }
+      fireEvent.click(await screen.findByRole("link", { name: "report" }));
+
+      expect(onLinkClick).toHaveBeenCalledWith(
+        "https://example.com/report.pdf"
+      );
+      expect(screen.queryByText("…report.pdf)")).not.toBeInTheDocument();
+    }
+  );
+
   it("shows failed instead of starting when failure detail is absent", async () => {
     setAgentGuiI18nTestLocale("en");
 
@@ -198,6 +232,87 @@ describe("AgentSubAgentCard", () => {
       })
     ).toBeInTheDocument();
     expect(screen.queryByText("Starting…")).not.toBeInTheDocument();
+  });
+
+  it("renders a completed Markdown result without duplicating its progress summary", async () => {
+    setAgentGuiI18nTestLocale("en");
+    const onLinkClick = vi.fn();
+
+    render(
+      <AgentSubAgentCard
+        onLinkClick={onLinkClick}
+        subAgent={subAgent({
+          status: "completed",
+          latestActivity: "Full result",
+          assistantMarkdown:
+            "## Full result\n\n[report](https://example.com/report.pdf)",
+          terminalAtUnixMs: 2_000
+        })}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Sub-agent Repo smell analyst Completed/
+      })
+    );
+    expect(
+      await screen.findByRole("heading", { name: "Full result" })
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("link", { name: "report" }));
+    expect(onLinkClick).toHaveBeenCalledWith("https://example.com/report.pdf");
+    expect(
+      screen.queryByText("Full result", { selector: "div" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps partial assistant Markdown alongside a terminal failure", async () => {
+    setAgentGuiI18nTestLocale("en");
+    render(
+      <AgentSubAgentCard
+        subAgent={subAgent({
+          status: "failed",
+          assistantMarkdown: "Partial **report**",
+          failureDetail: "Provider connection failed",
+          terminalAtUnixMs: 2_000
+        })}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /Sub-agent Repo smell analyst Failed/
+      })
+    );
+
+    expect(await screen.findByText("report")).toBeInTheDocument();
+    expect(screen.getByText("Provider connection failed")).toBeInTheDocument();
+  });
+
+  it("updates the same child from streaming Markdown to its completed result", async () => {
+    setAgentGuiI18nTestLocale("en");
+    const { rerender } = render(
+      <AgentSubAgentCard
+        subAgent={subAgent({
+          status: "running",
+          assistantMarkdown: "Streaming opening"
+        })}
+      />
+    );
+
+    expect(await screen.findByText("Streaming opening")).toBeInTheDocument();
+
+    rerender(
+      <AgentSubAgentCard
+        subAgent={subAgent({
+          status: "completed",
+          assistantMarkdown: "Streaming opening with **completed result**",
+          terminalAtUnixMs: 2_000
+        })}
+      />
+    );
+
+    expect(await screen.findByText("completed result")).toBeInTheDocument();
   });
 });
 

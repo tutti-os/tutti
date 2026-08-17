@@ -6,12 +6,44 @@ import {
   desktopAgentConversationDetailModes,
   formatDesktopShortcutBinding,
   isDesktopAgentConversationDetailMode,
+  mergeDesktopAgentSessionLaunchMode,
   mergeDesktopAgentComposerDefaultsByAgentTarget,
   normalizeDesktopAgentConversationDetailMode,
   normalizeDesktopFeatureFlags,
+  normalizeDesktopAgentSessionLaunchModesByWorkspace,
   normalizeDesktopShortcutKey,
   normalizeDesktopWorkbenchShortcuts
 } from "./core.ts";
+
+test("desktop Agent Session launch mode is remembered per workspace and project", () => {
+  const first = mergeDesktopAgentSessionLaunchMode(
+    {},
+    "workspace-a",
+    "project:/alpha",
+    "worktree"
+  );
+  const second = mergeDesktopAgentSessionLaunchMode(
+    first,
+    "workspace-a",
+    "project:/beta",
+    "local"
+  );
+  assert.deepEqual(second, {
+    "workspace-a": {
+      "project:/alpha": "worktree",
+      "project:/beta": "local"
+    }
+  });
+  assert.deepEqual(
+    normalizeDesktopAgentSessionLaunchModesByWorkspace({
+      " workspace-a ": {
+        " project:/alpha ": "worktree",
+        invalid: "remote"
+      }
+    }),
+    { "workspace-a": { "project:/alpha": "worktree" } }
+  );
+});
 
 test("Codex saver mode is remembered per agent target without clobbering model defaults", () => {
   const enabled = mergeDesktopAgentComposerDefaultsByAgentTarget(
@@ -81,7 +113,11 @@ test("normalizeDesktopWorkbenchShortcuts clamps + nulls empty", () => {
       newAgentConversation: "  Meta+K ",
       newSameTypeWindow: ""
     }),
-    { newAgentConversation: "Meta+K", newSameTypeWindow: null }
+    {
+      newAgentConversation: "Meta+K",
+      newSameTypeWindow: null,
+      captureScreenshot: null
+    }
   );
 });
 

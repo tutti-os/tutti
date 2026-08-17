@@ -49,6 +49,8 @@ export interface ACPConfigOptionSelection {
 }
 export interface UseAgentGUINodeControllerInput {
   nodeId?: string;
+  isSurfaceActive: boolean;
+  isSurfaceVisible: boolean;
   workspaceId: string;
   currentUserId?: string | null;
   workspacePath: string;

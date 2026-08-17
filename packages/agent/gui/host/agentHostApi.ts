@@ -194,6 +194,21 @@ export interface AgentHostResolveWorkspaceGitPatchSupportResult {
   errorCode?: "not-git-repo" | string;
 }
 
+export interface AgentHostResolveSessionWorktreeSupportInput {
+  agentTargetId: string;
+  cwd: string;
+}
+
+export interface AgentHostResolveSessionWorktreeSupportResult {
+  supported: boolean;
+  root?: string;
+  errorCode?:
+    | "git-unavailable"
+    | "not-git-repo"
+    | "unsupported-repo-layout"
+    | string;
+}
+
 export type AgentHostWorkspaceApi = AgentHostRecord & {
   applyGitPatch?: (
     input: AgentHostApplyWorkspaceGitPatchInput
@@ -201,6 +216,9 @@ export type AgentHostWorkspaceApi = AgentHostRecord & {
   resolveGitPatchSupport?: (
     input: AgentHostResolveWorkspaceGitPatchSupportInput
   ) => AgentHostAsyncResult<AgentHostResolveWorkspaceGitPatchSupportResult>;
+  resolveSessionWorktreeSupport?: (
+    input: AgentHostResolveSessionWorktreeSupportInput
+  ) => AgentHostAsyncResult<AgentHostResolveSessionWorktreeSupportResult>;
   copyPath?: (input: { path: string }) => AgentHostAsyncResult<void>;
   ensureDirectory: (input: { path: string }) => AgentHostAsyncResult<void>;
   readFile: (input: {

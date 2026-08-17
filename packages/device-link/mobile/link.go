@@ -14,6 +14,7 @@ import (
 
 	devicelink "github.com/tutti-os/tutti/packages/device-link"
 	authenticated "github.com/tutti-os/tutti/packages/device-link/authenticated"
+	"github.com/tutti-os/tutti/packages/device-link/candidateexchange"
 	"github.com/tutti-os/tutti/packages/device-link/linkmanager"
 	"github.com/tutti-os/tutti/packages/device-link/relaytransport"
 )
@@ -29,12 +30,19 @@ const (
 type Link struct {
 	participant *authenticated.Participant
 
-	mu          sync.Mutex
-	connected   *authenticated.Link
-	connectDone chan struct{}
-	connectOnce sync.Once
-	connectErr  error
-	closed      bool
+	mu            sync.Mutex
+	candidatePump *candidateexchange.ActionPump
+	connected     *authenticated.Link
+	connectDone   chan struct{}
+	connectOnce   sync.Once
+	connectErr    error
+	closed        bool
+}
+
+type candidateExchangeAction struct {
+	ActionID    uint64                       `json:"actionId"`
+	Kind        candidateexchange.ActionKind `json:"kind"`
+	Description *authenticated.Description   `json:"description,omitempty"`
 }
 
 func ProtocolEpoch() int { return ApplicationProtocolEpoch }
@@ -121,11 +129,121 @@ func (l *Link) LocalDescription(timeoutMillis int64) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	raw, err := json.Marshal(description)
+	return encodeLocalDescription(description)
+}
+
+// StartLocalDescription starts candidate gathering without waiting for STUN
+// completion. The returned description always contains credentials and may
+// contain zero candidates; callers must drain NextCandidateExchangeAction
+// while Connect is in progress.
+func (l *Link) StartLocalDescription() (string, error) {
+	if l == nil || l.participant == nil {
+		return "", errors.New("device-link mobile participant is unavailable")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return "", errors.New("device-link mobile session is closed")
+	}
+	if l.candidatePump != nil {
+		return "", errors.New("device-link local description already started")
+	}
+	exchange, initial, err := candidateexchange.Start(l.participant, candidateexchange.Config{})
 	if err != nil {
-		return "", fmt.Errorf("encode device-link local description: %w", err)
+		return "", err
+	}
+	pump, err := candidateexchange.NewActionPump(exchange)
+	if err != nil {
+		return "", err
+	}
+	l.candidatePump = pump
+	return encodeLocalDescription(initial)
+}
+
+// NextCandidateExchangeAction returns one Go-scheduled product rendezvous
+// action. Mobile executes only the signed I/O and resolves the action; worker
+// ordering, retry delay, polling, and cancellation remain Go-owned.
+func (l *Link) NextCandidateExchangeAction(timeoutMillis int64) (string, error) {
+	pump, err := l.candidateActionPump()
+	if err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), linkTimeout(timeoutMillis))
+	defer cancel()
+	action, err := pump.Next(ctx)
+	if err != nil {
+		return "", err
+	}
+	envelope := candidateExchangeAction{ActionID: action.ID, Kind: action.Kind}
+	if action.Kind == candidateexchange.ActionPublishLocal {
+		description := action.Description
+		description.Candidates = append([]string{}, description.Candidates...)
+		envelope.Description = &description
+	}
+	raw, err := json.Marshal(envelope)
+	if err != nil {
+		return "", fmt.Errorf("encode device-link candidate exchange action: %w", err)
 	}
 	return string(raw), nil
+}
+
+// ResolveCandidateExchangeAction reports product rendezvous I/O completion.
+// candidatesJSON is consumed only by a successful refresh_remote action.
+func (l *Link) ResolveCandidateExchangeAction(
+	actionID int64,
+	succeeded bool,
+	retryable bool,
+	candidatesJSON string,
+) (int, error) {
+	pump, err := l.candidateActionPump()
+	if err != nil {
+		return 0, err
+	}
+	if actionID <= 0 {
+		return 0, errors.New("device-link candidate action identity is invalid")
+	}
+	var candidates []string
+	if succeeded && strings.TrimSpace(candidatesJSON) != "" {
+		if err := json.Unmarshal([]byte(candidatesJSON), &candidates); err != nil {
+			return 0, fmt.Errorf("decode device-link remote candidates: %w", err)
+		}
+	}
+	if candidates == nil {
+		candidates = []string{}
+	}
+	added, err := pump.Resolve(uint64(actionID), candidateexchange.ActionOutcome{
+		Succeeded: succeeded, Retryable: retryable, RemoteCandidates: candidates,
+	})
+	if err != nil {
+		return 0, fmt.Errorf("resolve device-link candidate exchange action: %w", err)
+	}
+	return added, nil
+}
+
+// NotifyRemoteCandidateChange forwards a product push hint into the shared
+// push-plus-poll scheduler. Notifications coalesce until the next fetch.
+func (l *Link) NotifyRemoteCandidateChange() error {
+	pump, err := l.candidateActionPump()
+	if err != nil {
+		return err
+	}
+	pump.NotifyRemoteChange()
+	return nil
+}
+
+// StopCandidateExchange cancels local publication and remote refresh waits
+// without closing an already authenticated link.
+func (l *Link) StopCandidateExchange() {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	pump := l.candidatePump
+	l.candidatePump = nil
+	l.mu.Unlock()
+	if pump != nil {
+		pump.Stop()
+	}
 }
 
 func (l *Link) Connect(peerDescriptionJSON string, caller bool, timeoutMillis int64) (string, error) {
@@ -255,7 +373,12 @@ func (l *Link) Close() error {
 	l.closed = true
 	connected := l.connected
 	participant := l.participant
+	candidatePump := l.candidatePump
+	l.candidatePump = nil
 	l.mu.Unlock()
+	if candidatePump != nil {
+		candidatePump.Stop()
+	}
 	l.signalConnectDone()
 	if connected != nil {
 		return connected.Close()
@@ -282,6 +405,30 @@ func (l *Link) recordConnectError(err error) {
 	l.connectErr = err
 	l.mu.Unlock()
 	l.signalConnectDone()
+}
+
+func (l *Link) candidateActionPump() (*candidateexchange.ActionPump, error) {
+	if l == nil {
+		return nil, errors.New("device-link mobile participant is unavailable")
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if l.closed {
+		return nil, errors.New("device-link mobile session is closed")
+	}
+	if l.candidatePump == nil {
+		return nil, errors.New("device-link local description has not started")
+	}
+	return l.candidatePump, nil
+}
+
+func encodeLocalDescription(description authenticated.Description) (string, error) {
+	description.Candidates = append([]string{}, description.Candidates...)
+	raw, err := json.Marshal(description)
+	if err != nil {
+		return "", fmt.Errorf("encode device-link local description: %w", err)
+	}
+	return string(raw), nil
 }
 
 func (l *Link) openStreamContext(ctx context.Context) (net.Conn, error) {

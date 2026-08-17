@@ -20,8 +20,13 @@ import {
 } from "./pairingProtocol";
 import { PAIRING_OPERATION_SUSPENDED } from "./servicePorts";
 import type { MobileDiagnosticsPort } from "./servicePorts";
-import { DeviceLinkAttemptWake } from "./deviceLinkAttemptWake";
 import type { DeviceLinkAttemptEventSource } from "./deviceLinkAttemptEvents";
+import {
+  connectTrickledDeviceLink,
+  parseDeviceLinkDescription,
+  type DeviceLinkAttempt,
+  type DeviceLinkDescription
+} from "./deviceLinkCandidateExchange";
 import { raceSuccessful } from "./pairingTransportRace";
 
 interface RegisteredDevice {
@@ -30,27 +35,6 @@ interface RegisteredDevice {
 
 interface PairingChallenge extends DevicePairingChallenge {
   pairingId?: string;
-}
-
-interface DeviceLinkICE {
-  candidates: string[];
-  pwd: string;
-  ufrag: string;
-}
-
-interface DeviceLinkDescription extends DeviceLinkICE {
-  fingerprint: string;
-}
-
-interface DeviceLinkAttempt {
-  attemptId: string;
-  callerFingerprint: string;
-  callerIce: DeviceLinkICE;
-  expiresAt: string;
-  ownerFingerprint?: string;
-  ownerIce?: DeviceLinkICE;
-  state: "awaiting_owner" | "ready";
-  stunEndpoints?: string[];
 }
 
 export interface AgentRelayDescriptor {
@@ -147,11 +131,20 @@ export async function connectPairedDevice(
   const relayController = new AbortController();
   const directController = new AbortController();
   const raceStartedAt = Date.now();
-  const attemptWake = new DeviceLinkAttemptWake();
+  let remoteCandidateWakeBinding:
+    | { attemptId: string; token: number }
+    | undefined;
   const attemptEvents = options.attemptEvents?.start(
     sessionId,
     identity.deviceId,
-    (attemptId) => attemptWake.notify(attemptId)
+    (attemptId) => {
+      const binding = remoteCandidateWakeBinding;
+      if (binding?.attemptId === attemptId) {
+        void deviceLink
+          .notifyRemoteCandidateChange(binding.token)
+          .catch(() => undefined);
+      }
+    }
   );
   const directTask = connectDirectDevice(
     sessionId,
@@ -159,7 +152,15 @@ export async function connectPairedDevice(
     identity,
     isCurrent,
     directController.signal,
-    attemptWake,
+    (attemptId, token) => {
+      const binding = { attemptId, token };
+      remoteCandidateWakeBinding = binding;
+      return () => {
+        if (remoteCandidateWakeBinding === binding) {
+          remoteCandidateWakeBinding = undefined;
+        }
+      };
+    },
     options.diagnostics
   ).finally(() => attemptEvents?.close());
   const relayTask = configureRelayTransport(
@@ -229,88 +230,88 @@ async function connectDirectDevice(
   identity: DeviceIdentity,
   isCurrent: () => boolean,
   signal: AbortSignal,
-  wake: DeviceLinkAttemptWake,
+  bindRemoteCandidateWake: (attemptId: string, token: number) => () => void,
   diagnostics?: MobileDiagnosticsPort
 ): Promise<DeviceLinkPathScope> {
-  let prepared = await deviceLink.prepareLink("[]", 10_000);
-  let local = parseDeviceLinkDescription(prepared.descriptionJSON);
-  requireCurrentConnection(isCurrent, signal);
-  let attempt = await createDeviceLinkAttempt(
-    sessionId,
-    identity.deviceId,
-    pairingId,
-    local,
-    signal
-  );
-  requireCurrentConnection(isCurrent, signal);
   const startedAt = Date.now();
-  recordDeviceLinkStage(diagnostics, "direct_attempt_created", startedAt);
-  if ((attempt.stunEndpoints?.length ?? 0) > 0) {
-    prepared = await deviceLink.prepareLink(
-      JSON.stringify(attempt.stunEndpoints),
-      10_000
-    );
-    local = parseDeviceLinkDescription(prepared.descriptionJSON);
+  let prepared: { descriptionJSON: string; token: number } | undefined;
+  try {
+    prepared = await deviceLink.prepareLink("[]", 10_000);
+    let local = parseDeviceLinkDescription(prepared.descriptionJSON);
     requireCurrentConnection(isCurrent, signal);
-    attempt = await updateDeviceLinkParticipant(
+    let attempt = await createDeviceLinkAttempt(
       sessionId,
       identity.deviceId,
       pairingId,
-      attempt.attemptId,
       local,
       signal
     );
     requireCurrentConnection(isCurrent, signal);
-  }
-  const getSignature = standardBase64ToURL(
-    await mobileSecurity.sign(
-      deviceLinkProof("get", pairingId, attempt.attemptId, "")
-    )
-  );
-  const deadline = Date.parse(attempt.expiresAt);
-  let wakeVersion = wake.version(attempt.attemptId);
-  while (Date.now() < deadline) {
-    requireCurrentConnection(isCurrent, signal);
-    if (
-      attempt.state === "ready" &&
-      attempt.ownerIce &&
-      attempt.ownerFingerprint
-    ) {
-      const scope = await deviceLink.connectLink(
-        JSON.stringify({
-          candidates: attempt.ownerIce.candidates,
-          fingerprint: attempt.ownerFingerprint,
-          pwd: attempt.ownerIce.pwd,
-          ufrag: attempt.ownerIce.ufrag
-        }),
-        true,
-        prepared.token,
-        30_000
+    recordDeviceLinkStage(diagnostics, "direct_attempt_created", startedAt);
+    if ((attempt.stunEndpoints?.length ?? 0) > 0) {
+      prepared = await deviceLink.prepareLink(
+        JSON.stringify(attempt.stunEndpoints),
+        10_000
+      );
+      local = parseDeviceLinkDescription(prepared.descriptionJSON);
+      requireCurrentConnection(isCurrent, signal);
+      attempt = await updateDeviceLinkParticipant(
+        sessionId,
+        identity.deviceId,
+        pairingId,
+        attempt.attemptId,
+        local,
+        signal
       );
       requireCurrentConnection(isCurrent, signal);
-      recordDeviceLinkStage(diagnostics, "direct_connected", startedAt);
-      return normalizeDeviceLinkPathScope(scope);
     }
-    await waitForAttemptChange(wake, attempt.attemptId, wakeVersion, signal);
-    requireCurrentConnection(isCurrent, signal);
-    attempt = await getDeviceLinkAttempt(
-      sessionId,
-      identity.deviceId,
-      pairingId,
-      attempt.attemptId,
-      getSignature,
-      signal
+    recordDeviceLinkStage(diagnostics, "direct_credentials_ready", startedAt);
+    const deadline = Date.parse(attempt.expiresAt);
+    const getSignature = standardBase64ToURL(
+      await mobileSecurity.sign(
+        deviceLinkProof("get", pairingId, attempt.attemptId, "")
+      )
     );
-    wakeVersion = wake.version(attempt.attemptId);
-    if (
-      attempt.state === "ready" &&
-      attempt.ownerIce &&
-      attempt.ownerFingerprint
-    ) {
-      recordDeviceLinkStage(diagnostics, "direct_attempt_ready", startedAt);
+    const scope = await connectTrickledDeviceLink({
+      attempt,
+      bindRemoteCandidateWake,
+      deadline,
+      ensureCurrent: () => requireCurrentConnection(isCurrent, signal),
+      fetchRemote: (actionSignal) =>
+        getDeviceLinkAttempt(
+          sessionId,
+          identity.deviceId,
+          pairingId,
+          attempt.attemptId,
+          getSignature,
+          actionSignal
+        ),
+      local,
+      publishLocal: (description, actionSignal) =>
+        updateDeviceLinkParticipant(
+          sessionId,
+          identity.deviceId,
+          pairingId,
+          attempt.attemptId,
+          description,
+          actionSignal
+        ),
+      record: (stage) => recordDeviceLinkStage(diagnostics, stage, startedAt),
+      signal,
+      token: prepared.token
+    });
+    requireCurrentConnection(isCurrent, signal);
+    recordDeviceLinkStage(diagnostics, "direct_connected", startedAt);
+    return normalizeDeviceLinkPathScope(scope);
+  } catch (error) {
+    if (prepared) {
+      await deviceLink
+        .stopCandidateExchange(prepared.token)
+        .catch(() => undefined);
+      await deviceLink.cancelLink(prepared.token).catch(() => undefined);
     }
+    throw error;
   }
-  throw new Error("device-link attempt expired");
 }
 
 async function configureRelayTransport(
@@ -494,25 +495,6 @@ async function getDeviceLinkAttempt(
   return response.attempt;
 }
 
-function parseDeviceLinkDescription(raw: string): DeviceLinkDescription {
-  const parsed = JSON.parse(raw) as Partial<DeviceLinkDescription>;
-  if (
-    typeof parsed.fingerprint !== "string" ||
-    typeof parsed.ufrag !== "string" ||
-    typeof parsed.pwd !== "string" ||
-    !Array.isArray(parsed.candidates) ||
-    parsed.candidates.length === 0
-  ) {
-    throw new Error("invalid local DeviceLink description");
-  }
-  return {
-    candidates: parsed.candidates.map(String),
-    fingerprint: parsed.fingerprint,
-    pwd: parsed.pwd,
-    ufrag: parsed.ufrag
-  };
-}
-
 async function registerIdentity(
   sessionId: string,
   identity: DeviceIdentity
@@ -558,51 +540,15 @@ function requireCurrentConnection(
   throw new Error("device-link connection was cancelled");
 }
 
-function delay(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new Error("device-link connection race was cancelled"));
-      return;
-    }
-    const timer = setTimeout(() => {
-      signal?.removeEventListener("abort", onAbort);
-      resolve();
-    }, ms);
-    const onAbort = () => {
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      reject(new Error("device-link connection race was cancelled"));
-    };
-    signal?.addEventListener("abort", onAbort, { once: true });
-  });
-}
-
-async function waitForAttemptChange(
-  wake: DeviceLinkAttemptWake,
-  attemptId: string,
-  version: number,
-  signal: AbortSignal
-): Promise<void> {
-  const waitController = new AbortController();
-  const abortWait = () => waitController.abort();
-  signal.addEventListener("abort", abortWait, { once: true });
-  try {
-    await Promise.race([
-      wake.wait(attemptId, version, waitController.signal),
-      delay(500, signal)
-    ]);
-  } finally {
-    signal.removeEventListener("abort", abortWait);
-    waitController.abort();
-  }
-}
-
 function recordDeviceLinkStage(
   diagnostics: MobileDiagnosticsPort | undefined,
   stage:
     | "direct_attempt_created"
     | "direct_attempt_ready"
+    | "direct_credentials_ready"
     | "direct_connected"
+    | "direct_first_candidate_published"
+    | "direct_remote_candidate_received"
     | "relay_descriptor_ready"
     | "relay_probe_ready",
   startedAt: number

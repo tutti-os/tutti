@@ -33,6 +33,7 @@ type AuthStatus = providerstatus.AuthStatus
 
 const (
 	AuthAuthenticated = providerstatus.AuthAuthenticated
+	AuthConfigured    = providerstatus.AuthConfigured
 	AuthRequired      = providerstatus.AuthRequired
 	AuthUnknown       = providerstatus.AuthUnknown
 )
@@ -270,14 +271,17 @@ type Service struct {
 	// ClaudeCodeRuntimeDir is the user-local root that hosts provisioned Claude
 	// binaries. It is required for Claude Code runtime provisioning.
 	ClaudeCodeRuntimeDir string
-	AnalyticsReporter    reporterservice.Reporter
-	// RunOutcomes lets a runtime auth failure override a stale "logged in" marker
-	// so the dock/wizard surface that login dropped. Shared pointer across copies.
+	// UserCommandBinDir is the stable user-level directory published on PATH.
+	UserCommandBinDir string
+	AnalyticsReporter reporterservice.Reporter
+	// RunOutcomes lets real requests promote configured credentials to authenticated
+	// or override stale local status after an auth failure. Shared across copies.
 	RunOutcomes *RunOutcomeStore
 	// StatusCache is shared by the daemon API and agent session service so local
 	// readiness probes run once per provider instead of once per caller/window.
 	StatusCache                 *ProviderStatusCache
 	StatusCacheTTL              time.Duration
+	RemoteAuthProbeTTL          time.Duration
 	OnProviderStatusInvalidated func(string)
 	// CLIVersionCache, AdapterProbeCache and global-bin caches keep stable
 	// executable facts across forced auth refreshes. DetectionCommands bounds
@@ -298,10 +302,17 @@ type Service struct {
 	// CodexAuthProbe is injectable for deterministic auth tests. Nil uses the
 	// production app-server transport and account/read, matching TUI startup.
 	CodexAuthProbe func(context.Context, []string, []string) CodexAuthProbeEvidence
+	// RemoteAuthProbe is the provider-neutral test seam for descriptor-owned
+	// provider requests. Nil resolves credentials locally and uses HTTPClient.
+	RemoteAuthProbe func(context.Context, ProviderSpec) (providerstatus.AuthEvidence, bool)
+	// CodexRemoteAuthProbe is the narrow test seam for the provider-usage
+	// strategy. Nil uses Codex app-server account/rateLimits/read.
+	CodexRemoteAuthProbe func(context.Context, []string, []string) providerstatus.AuthEvidence
 	// CodexRuntimeSelectionStore persists only an explicit Codex launcher
 	// choice. A missing selection permits only one uniquely ready candidate;
 	// multiple ready candidates require the user to choose one.
 	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+	UserPathAdapter            UserPathAdapter
 }
 
 // ServiceDependencies are the daemon-owned dependencies required to construct
@@ -311,7 +322,9 @@ type ServiceDependencies struct {
 	AnalyticsReporter          reporterservice.Reporter
 	ManagedRuntime             managedruntime.Resolver
 	ClaudeCodeRuntimeDir       string
+	UserCommandBinDir          string
 	CodexRuntimeSelectionStore CodexRuntimeSelectionStore
+	UserPathAdapter            UserPathAdapter
 }
 
 // NewService constructs the production provider status service with its shared
@@ -321,6 +334,7 @@ func NewService(dependencies ServiceDependencies) Service {
 		AnalyticsReporter:          dependencies.AnalyticsReporter,
 		ManagedRuntime:             dependencies.ManagedRuntime,
 		ClaudeCodeRuntimeDir:       dependencies.ClaudeCodeRuntimeDir,
+		UserCommandBinDir:          dependencies.UserCommandBinDir,
 		RunOutcomes:                NewRunOutcomeStore(),
 		StatusCache:                NewProviderStatusCache(),
 		CLIVersionCache:            NewCLIVersionCache(),
@@ -330,6 +344,7 @@ func NewService(dependencies ServiceDependencies) Service {
 		DetectionCommands:          NewDetectionCommandLimiter(4),
 		UpdateCache:                NewProviderUpdateCache(),
 		CodexRuntimeSelectionStore: dependencies.CodexRuntimeSelectionStore,
+		UserPathAdapter:            dependencies.UserPathAdapter,
 	}
 }
 
@@ -403,6 +418,10 @@ func (s Service) List(ctx context.Context, input ListInput) (snapshot Snapshot, 
 	for i := range statuses {
 		statuses[i].Update = baseProviderUpdateStatus(specs[i], statuses[i].CLI.Version, statuses[i].CLI.BinaryPath)
 	}
+	// A valid managed CLI can predate user-PATH publication (notably the legacy
+	// Windows .local npm prefix). Adopt its verified directory in place instead
+	// of presenting an unnecessary install action or creating a second copy.
+	s.publishDetectedManagedBinaryDirs(ctx, specs, statuses)
 
 	// Remote update discovery is a separate, explicit opt-in. It never runs for
 	// ordinary readiness/status requests, and each provider records a cached,
@@ -537,11 +556,21 @@ func (s Service) providerStatusCacheTTL() time.Duration {
 }
 
 func (s Service) cachedProviderStatusStillValid(spec ProviderSpec, cachedAt time.Time, credentialFingerprint string) bool {
-	failedAt, invalidated := s.RunOutcomes.AuthInvalidatedSince(spec.Provider)
-	if invalidated && failedAt.After(cachedAt) {
+	if spec.RemoteAuthProbe.Kind != "" && s.now().Sub(cachedAt) >= s.remoteAuthProbeTTL() {
+		return false
+	}
+	_, evidenceAt, hasEvidence := s.RunOutcomes.AuthEvidence(spec.Provider)
+	if hasEvidence && evidenceAt.After(cachedAt) {
 		return false
 	}
 	return credentialFingerprint == s.providerCredentialFingerprint(spec)
+}
+
+func (s Service) remoteAuthProbeTTL() time.Duration {
+	if s.RemoteAuthProbeTTL > 0 {
+		return s.RemoteAuthProbeTTL
+	}
+	return defaultRemoteAuthProbeTTL
 }
 
 func (s Service) invalidateProviderStatus(provider string) {
@@ -631,6 +660,12 @@ func (s Service) runInstallActionOnce(ctx context.Context, spec ProviderSpec, re
 	if isCodexStatusSpec(spec) && strings.TrimSpace(runtimeResolution.CLIPath) != "" {
 		probe := s.probeAdapterRuntimeCommand(installCtx, spec, runtimeResolution, s.now())
 		if probe.Status == ProbeReady && !s.providerCLIRequiresInstall(spec, runtimeResolution) {
+			if err := s.publishManagedInstallBinaryDir(installCtx, runtimeResolution.CLIPath); err != nil {
+				result.Status = RunActionFailed
+				result.ReasonCode = "user_path_update_failed"
+				result.Message = err.Error()
+				return result, nil
+			}
 			result.Probe = &probe
 			result.Status = RunActionCompleted
 			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
@@ -708,6 +743,12 @@ func (s Service) runInstallActionOnce(ctx context.Context, spec ProviderSpec, re
 			})
 			return result, nil
 		}
+		if err := s.publishManagedInstallBinaryDir(installCtx, updatedRuntime.CLIPath); err != nil {
+			result.Status = RunActionFailed
+			result.ReasonCode = "user_path_update_failed"
+			result.Message = err.Error()
+			return result, nil
+		}
 		s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{
 			Node:      "install_post_probe",
 			Provider:  spec.Provider,
@@ -748,6 +789,12 @@ postInstallProbe:
 			Result:    result,
 			StartedAt: probeStartedAt,
 		})
+		return result, nil
+	}
+	if err := s.publishManagedInstallBinaryDir(installCtx, updatedRuntime.CLIPath); err != nil {
+		result.Status = RunActionFailed
+		result.ReasonCode = "user_path_update_failed"
+		result.Message = err.Error()
 		return result, nil
 	}
 	s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{

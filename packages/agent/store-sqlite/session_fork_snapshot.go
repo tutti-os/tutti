@@ -392,7 +392,7 @@ func insertForkedTurnTx(ctx context.Context, tx *sql.Tx, workspaceID, sessionID 
 	}
 	_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_turns (
-  workspace_id, agent_session_id, turn_id, capability_refs_json, phase, outcome,
+  workspace_id, agent_session_id, turn_id, identity_anchor_turn_id, capability_refs_json, phase, outcome,
   error_json, file_changes_json, completed_command_json, backfilled,
   started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
   turn_origin, source_goal_operation_id, source_goal_revision, source_goal_repair_epoch,
@@ -400,8 +400,8 @@ INSERT INTO workspace_agent_turns (
   root_provider_turn_phase, root_provider_turn_outcome,
   root_provider_turn_error_json, root_provider_turn_completed_command_json,
   root_provider_turn_updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)
-`, workspaceID, sessionID, turn.TurnID, string(capabilityRefsJSON), turn.Phase,
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, ?, ?, ?, ?)
+`, workspaceID, sessionID, turn.TurnID, nullString(turn.IdentityAnchorTurnID), string(capabilityRefsJSON), turn.Phase,
 		nullString(turn.Outcome), encodeTurnErrorJSON(turn.ErrorMessage, turn.ErrorCode),
 		fileChangesJSON,
 		encodeCompletedCommandJSON(turn.CompletedCommandKind, turn.CompletedCommandStatus, finalAssistantWatermark{

@@ -69,11 +69,15 @@ LIMIT 1
 
 func encodeTurnErrorJSON(message string, code string) any {
 	message = strings.TrimSpace(message)
-	if message == "" {
+	code = strings.TrimSpace(code)
+	if message == "" && code == "" {
 		return nil
 	}
-	payload := map[string]any{"message": message}
-	if code = strings.TrimSpace(code); code != "" {
+	payload := map[string]any{}
+	if message != "" {
+		payload["message"] = message
+	}
+	if code != "" {
 		payload["code"] = code
 	}
 	encoded, err := marshalJSONMap(payload)

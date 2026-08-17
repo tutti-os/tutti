@@ -352,7 +352,10 @@ func (s *Service) DeleteSessionsBatch(
 		return DeleteSessionsBatchResult{}, ErrInvalidArgument
 	}
 	hostResult, err := s.ApplicationHost().DeleteSessions(ctx, agenthost.DeleteSessionsInput{
-		WorkspaceID: workspaceID, SessionIDs: sessionIDs,
+		WorkspaceID:                workspaceID,
+		SessionIDs:                 sessionIDs,
+		RequiredRootRailSectionKey: strings.TrimSpace(input.RequiredRootRailSectionKey),
+		ExcludePinnedRoots:         input.ExcludePinnedRoots,
 	})
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err

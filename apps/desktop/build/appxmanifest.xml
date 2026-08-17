@@ -7,7 +7,9 @@
   xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
   xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
   xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
-  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities">
+  xmlns:desktop7="http://schemas.microsoft.com/appx/manifest/desktop/windows10/7"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="desktop7">
   <Identity Name="${identityName}"
     ProcessorArchitecture="${arch}"
     Publisher='${publisher}'
@@ -28,16 +30,30 @@
   <Applications>
     <Application Id="${applicationId}" Executable="${executable}" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        BackgroundColor="${backgroundColor}"
+        BackgroundColor="transparent"
         DisplayName="Tutti"
         Square150x150Logo="${square150x150Logo}"
         Square44x44Logo="${square44x44Logo}"
-        Description="${description}">
+        Description="${description}"
+        AppListEntry="default">
         ${lockScreen}
         ${defaultTile}
         ${splashScreen}
       </uap:VisualElements>
-      ${extensions}
+      <Extensions>
+        <uap:Extension Category="windows.protocol">
+          <uap:Protocol Name="tutti">
+            <uap:DisplayName>Tutti login callback</uap:DisplayName>
+          </uap:Protocol>
+        </uap:Extension>
+        <desktop7:Extension Category="windows.shortcut">
+          <desktop7:Shortcut
+            File="$(Desktop)\Tutti.lnk"
+            Icon="app\Tutti.exe"
+            PinToStartMenu="false"
+            Description="Tutti" />
+        </desktop7:Extension>
+      </Extensions>
     </Application>
   </Applications>
 </Package>

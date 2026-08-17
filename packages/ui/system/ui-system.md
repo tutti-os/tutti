@@ -74,6 +74,17 @@ contract. It uses Native semantic tokens and finite control-backed sizes, keeps
 the image decorative, shows loading feedback while a valid source is pending,
 and falls back to the caller's stable label when the source is absent or fails.
 
+`NativeProgressBar` is the React Native progress primitive. It clamps
+determinate values to the inclusive zero-to-one range, exposes progressbar
+accessibility semantics, and accepts `null` for an indeterminate task. Product
+phase labels, byte counts, cancellation, and workflow state stay caller-owned.
+
+`NativeControlGlyph` is the decorative React Native control-glyph primitive.
+Its finite variants cover add, back, chevron, send, status, and stop shapes;
+callers supply the semantic token color and keep the localized accessible name
+on the owning control. Chevron direction is explicit, and glyph content remains
+hidden from the accessibility tree.
+
 ## Current Package Role
 
 `@tutti-os/ui-system` is the single source of truth for:

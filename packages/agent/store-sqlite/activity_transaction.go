@@ -14,6 +14,25 @@ func (s *Store) upsertAgentSession(
 	input SessionStateReport,
 	now int64,
 ) (bool, bool, int64, Session, error) {
+	var (
+		accepted        bool
+		stateApplied    bool
+		lastEventUnixMS int64
+		session         Session
+	)
+	err := retrySQLiteBusy(ctx, func(attemptCtx context.Context) error {
+		var err error
+		accepted, stateApplied, lastEventUnixMS, session, err = s.upsertAgentSessionOnce(attemptCtx, input, now)
+		return err
+	})
+	return accepted, stateApplied, lastEventUnixMS, session, err
+}
+
+func (s *Store) upsertAgentSessionOnce(
+	ctx context.Context,
+	input SessionStateReport,
+	now int64,
+) (bool, bool, int64, Session, error) {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, false, 0, Session{}, fmt.Errorf("begin workspace agent session state report: %w", err)
@@ -49,6 +68,25 @@ func (s *Store) upsertAgentSession(
 	session.CommitTransactionID = delta.TransactionID
 	session.CommitDelta = delta
 	return accepted, stateApplied, lastEventUnixMS, session, nil
+}
+
+func sessionActivityWritableTx(
+	ctx context.Context,
+	tx *sql.Tx,
+	workspaceID string,
+	agentSessionID string,
+) (bool, error) {
+	var writable int
+	if err := tx.QueryRowContext(ctx, `
+SELECT EXISTS(
+  SELECT 1
+  FROM workspace_agent_sessions
+  WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
+)
+`, workspaceID, agentSessionID).Scan(&writable); err != nil {
+		return false, fmt.Errorf("check workspace agent session activity writability: %w", err)
+	}
+	return writable != 0, nil
 }
 
 func (s *Store) upsertAgentSessionTx(
@@ -189,6 +227,7 @@ SELECT EXISTS(
 		session.RuntimeContext,
 		input.ImportProjectPath,
 		input.RailPlacement,
+		input.RailPlacementAuthoritative,
 	)
 	if err != nil {
 		return false, false, 0, Session{}, err

@@ -44,7 +44,16 @@ export class ConnectorMarketUiStateService implements IConnectorMarketUiStateSer
 
   openConnector(connectorKey: string): void {
     if (!this.disposed) {
-      this.dataStore.dialog = { connectorKey };
+      this.dataStore.dialog = { connectorKey, kind: "connector" };
+    }
+  }
+
+  requestUninstall(connectorKey: string): void {
+    if (!this.disposed) {
+      this.dataStore.dialog = {
+        connectorKey,
+        kind: "uninstall_confirmation"
+      };
     }
   }
 

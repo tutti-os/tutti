@@ -1,7 +1,12 @@
 package agentstatus
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"reflect"
+	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -9,6 +14,89 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
+
+func TestResolveProviderCommandPrefersCompleteManagedNPMPackageOverStaleShim(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("managed npm fallback is Windows-only")
+	}
+	home := t.TempDir()
+	legacyShim := filepath.Join(home, ".local", "bin", "opencode.cmd")
+	if err := os.MkdirAll(filepath.Dir(legacyShim), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacyShim, []byte("@echo off\r\nmissing.exe %*\r\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	prefix := filepath.Join(home, ".local")
+	packageDir, ok := managedNPMGlobalPackageDir(prefix, "opencode-ai")
+	if !ok {
+		t.Fatal("managed npm package path rejected")
+	}
+	managedBinary := filepath.Join(packageDir, "bin", "opencode.exe")
+	if err := os.MkdirAll(filepath.Dir(managedBinary), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "package.json"), []byte(`{"name":"opencode-ai","bin":{"opencode":"./bin/opencode.exe"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(managedBinary, []byte("test binary"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	service := Service{
+		HomeDir:  func() (string, error) { return home, nil },
+		Environ:  func() []string { return []string{"PATH=" + filepath.Dir(legacyShim)} },
+		LookPath: func(string) (string, error) { return legacyShim, nil },
+		IsExecutableFile: func(path string) bool {
+			info, err := os.Stat(path)
+			return err == nil && !info.IsDir()
+		},
+	}
+	resolved, err := service.ResolveProviderCommand(context.Background(), agentprovider.OpenCode)
+	if err != nil {
+		t.Fatalf("ResolveProviderCommand() error = %v", err)
+	}
+	if !reflect.DeepEqual(resolved.Command, []string{managedBinary, "acp"}) {
+		t.Fatalf("Command = %#v, want managed package binary", resolved.Command)
+	}
+}
+
+func TestResolveStaticGenericProviderDoesNotRewriteClaudeSDKSidecar(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{agentprovider.ClaudeCode})
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("Select(claude-code) = %#v, %v", specs, err)
+	}
+	spec := specs[0]
+	spec.AdapterCommand = []string{"node", "--experimental-strip-types", "sidecar.ts"}
+	service := Service{
+		LookPath:         func(string) (string, error) { return "/usr/local/bin/claude", nil },
+		IsExecutableFile: func(string) bool { return true },
+	}
+	resolved := service.resolveStaticProviderSpec(context.Background(), spec, false)
+	if !reflect.DeepEqual(resolved.AdapterCommand, spec.AdapterCommand) {
+		t.Fatalf("AdapterCommand = %#v, want sidecar command %#v", resolved.AdapterCommand, spec.AdapterCommand)
+	}
+}
+
+func TestResolveStaticGenericProviderUsesSeparateAdapterBinary(t *testing.T) {
+	specs, err := DefaultRegistry().Select([]string{providerregistry.NexightProviderID})
+	if err != nil || len(specs) != 1 {
+		t.Fatalf("Select(nexight) = %#v, %v", specs, err)
+	}
+	spec := specs[0]
+	service := Service{
+		LookPath: func(name string) (string, error) {
+			return filepath.Join(t.TempDir(), name), nil
+		},
+		IsExecutableFile: func(string) bool { return true },
+	}
+	resolved := service.resolveStaticProviderSpec(context.Background(), spec, false)
+	got := filepath.Base(resolved.AdapterCommand[0])
+	got = strings.TrimSuffix(got, filepath.Ext(got))
+	if !strings.EqualFold(got, spec.AdapterBinaryNames[0]) {
+		t.Fatalf("AdapterCommand[0] = %q, want resolved %q adapter", resolved.AdapterCommand[0], spec.AdapterBinaryNames[0])
+	}
+}
 
 func TestCodexStatusSpecComesFromProviderDescriptor(t *testing.T) {
 	specs, err := DefaultRegistry().Select([]string{agentprovider.Codex})
@@ -184,6 +272,11 @@ func TestAuthStrategiesProjectFromProviderDescriptor(t *testing.T) {
 		}
 		if spec.AuthOutputParserKind != descriptor.Status.AuthOutputParserKind || spec.AuthMarkerParserKind != descriptor.Status.AuthMarkerParserKind || spec.AuthCommandRunnerKind != descriptor.Status.AuthCommandRunnerKind || spec.StaticSpecResolverKind != descriptor.Status.StaticSpecResolverKind {
 			t.Fatalf("provider %q auth strategies = %#v, want %#v", provider, spec, descriptor.Status)
+		}
+		if spec.RemoteAuthProbe.Kind != descriptor.Status.RemoteAuthProbe.Kind ||
+			spec.RemoteAuthProbe.CredentialKind != descriptor.Status.RemoteAuthProbe.CredentialKind ||
+			spec.RemoteAuthProbe.Endpoint != descriptor.Status.RemoteAuthProbe.Endpoint {
+			t.Fatalf("provider %q remote auth probe = %#v, want %#v", provider, spec.RemoteAuthProbe, descriptor.Status.RemoteAuthProbe)
 		}
 	}
 }

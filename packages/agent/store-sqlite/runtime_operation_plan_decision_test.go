@@ -115,6 +115,23 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND message_id = 
 	if err != nil || !changed || completion.Operation.Result != RuntimeOperationResultApplied || completion.Event.Kind != RuntimeOperationEventPlanDecisionCompleted {
 		t.Fatalf("completion=%#v changed=%v err=%v", completion, changed, err)
 	}
+	var identityAnchorTurnID string
+	if err := store.db.QueryRow(`
+SELECT COALESCE(identity_anchor_turn_id, '')
+FROM workspace_agent_turns
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND turn_id = 'implementation-turn'
+`).Scan(&identityAnchorTurnID); err != nil || identityAnchorTurnID != "turn-1" {
+		t.Fatalf("implementation identity anchor=%q err=%v", identityAnchorTurnID, err)
+	}
+	var sawIdentityMutation bool
+	for _, mutation := range completion.CommitDelta.Mutations {
+		if mutation.EntityKind == MutationEntityTurn && mutation.EntityID == "implementation-turn" && mutation.Operation == "identity_anchor" {
+			sawIdentityMutation = true
+		}
+	}
+	if !sawIdentityMutation {
+		t.Fatalf("completion mutations=%#v, want implementation Turn identity mutation", completion.CommitDelta.Mutations)
+	}
 	if err := store.db.QueryRow(`
 SELECT status, payload_json, COALESCE(turn_id, '') FROM workspace_agent_messages
 WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND message_id = ?

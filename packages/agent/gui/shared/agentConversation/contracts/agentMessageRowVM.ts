@@ -47,6 +47,7 @@ export interface AgentMessageContentVM {
   } | null;
   systemNotice?: {
     noticeKind: string | null;
+    semanticKind?: "context-handoff-required" | null;
     severity: string | null;
     source?: string | null;
     command?: AgentActivityMessageSemantics["noticeCommand"] | null;

@@ -8,6 +8,7 @@ Open only the area that matches the symptom:
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+- [Hermes is ready but a new Windows session reports Agent failed to start](./agent-provider-setup.md#hermes-is-ready-but-a-new-windows-session-reports-agent-failed-to-start)
 - [An extension Agent is installed in the terminal but Tutti cannot detect it](./agent-provider-setup.md#an-extension-agent-is-installed-in-the-terminal-but-tutti-cannot-detect-it)
 - [Codex `/status` shows a 5h limit for a weekly-only account window](./agent-provider-setup.md#codex-status-shows-a-5h-limit-for-a-weekly-only-account-window)
 - [Bun-installed Codex works in a terminal but Tutti cannot use it](./agent-provider-setup.md#bun-installed-codex-works-in-a-terminal-but-tutti-cannot-use-it)
@@ -68,6 +69,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI loading disappears before active turn settles](./agent-session-lifecycle.md#agentgui-loading-disappears-before-active-turn-settles)
 - [Queued AgentGUI prompt stalls after no-active-turn failure](./agent-session-lifecycle.md#queued-agentgui-prompt-stalls-after-no-active-turn-failure)
 - [Agent session stays loading after a completed turn](./agent-session-lifecycle.md#agent-session-stays-loading-after-a-completed-turn)
+- [Remote session stays planning while the provider already replied](./agent-session-lifecycle.md#remote-session-stays-planning-while-the-provider-already-replied)
 - [AgentGUI model switch changes defaults but not the active session](./agent-session-lifecycle.md#agentgui-model-switch-changes-defaults-but-not-the-active-session)
 - [New Agent conversation rejects a model that is no longer offered](./agent-session-lifecycle.md#new-agent-conversation-rejects-a-model-that-is-no-longer-offered)
 - [AgentGUI shows the selected settings but a new session does not inherit them](./agent-session-lifecycle.md#agentgui-shows-the-selected-settings-but-a-new-session-does-not-inherit-them)
@@ -94,6 +96,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [Claude Code starts another command after Stop](./agent-session-lifecycle.md#claude-code-starts-another-command-after-stop)
 - [AgentGUI freezes when session history is large](./agent-session-lifecycle.md#agentgui-freezes-when-session-history-is-large)
 - [AgentGUI @ Sessions tab is empty](./agent-session-lifecycle.md#agentgui--sessions-tab-is-empty)
+- [AgentGUI @ browse fails after reopening](./agent-session-lifecycle.md#agentgui--browse-fails-after-reopening)
 - [Fork reports only `agent_session_fork_conflict`](./agent-session-lifecycle.md#fork-reports-only-agent_session_fork_conflict)
 - [Agent diagnostics flood while a turn is streaming](./agent-session-lifecycle.md#agent-diagnostics-flood-while-a-turn-is-streaming)
 - [Codex turn stays working before any reply or tool activity](./agent-session-lifecycle.md#codex-turn-stays-working-before-any-reply-or-tool-activity)

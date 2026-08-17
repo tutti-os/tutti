@@ -33,6 +33,7 @@ Stable change rules live in [Conventions](../conventions/README.md).
 
 - [Connector Market](./connector-market.md)
 - [Desktop Backend Access](./desktop-backend-access.md)
+- [Desktop Screenshot To Qute](./desktop-screenshot-to-qute.md)
 - [Desktop Update Admission](./desktop-update-admission.md)
 - [Desktop Transport](./desktop-transport.md)
 - [Desktop Windows](./desktop-windows.md)

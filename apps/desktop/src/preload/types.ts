@@ -178,6 +178,7 @@ export interface DesktopHostNotificationsApi {
 
 export interface DesktopHostWindowApi {
   approveClose(): Promise<void>;
+  setCloseGuardEnabled(enabled: boolean): Promise<void>;
   capturePreview(
     input: DesktopHostWindowCapturePreviewInput
   ): Promise<string | null>;

@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "tutti.agent.discovery.v1",
+  "candidates": [
+    {
+      "binaryNames": ["tutti-test-agent"],
+      "version": {
+        "args": ["--version"],
+        "constraint": ">=1.0.0 <2.0.0"
+      },
+      "launchArgs": ["--acp"],
+      "probe": {
+        "kind": "acp-initialize",
+        "timeoutMs": 5000
+      }
+    }
+  ]
+}

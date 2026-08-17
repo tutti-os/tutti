@@ -14,11 +14,10 @@ import (
 
 type codexAppServerClient struct {
 	raw *acpClient
-	// closeOnce makes Close idempotent: the client is closed from several
-	// owners (session replacement, lifecycle Close/Release, force-cancel,
-	// startup failure defers) and only the first close may reach the process.
-	closeOnce sync.Once
-	closeErr  error
+	// Close remains idempotent after success but retries a failed physical
+	// transport close so lifecycle cleanup never loses process ownership.
+	closeMu sync.Mutex
+	closed  bool
 	// parsedNotificationMethods tracks notification methods already run
 	// through the typed schema parse (telemetry only).
 	parsedNotificationMethods sync.Map
@@ -30,6 +29,10 @@ type codexAppServerCaller struct {
 	handler   acpMessageHandler
 	noHandler bool
 	rawResult json.RawMessage
+}
+
+type providerProgressWaiter interface {
+	WaitForProviderProgress(context.Context, time.Duration) error
 }
 
 func newCodexAppServerClient(conn ProcessConnection) *codexAppServerClient {
@@ -60,10 +63,16 @@ func (c *codexAppServerClient) Close() error {
 	if c == nil || c.raw == nil {
 		return nil
 	}
-	c.closeOnce.Do(func() {
-		c.closeErr = c.raw.Close()
-	})
-	return c.closeErr
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closed {
+		return nil
+	}
+	err := c.raw.Close()
+	if err == nil {
+		c.closed = true
+	}
+	return err
 }
 
 func (c *codexAppServerClient) Done() <-chan struct{} {
@@ -73,6 +82,28 @@ func (c *codexAppServerClient) Done() <-chan struct{} {
 		return done
 	}
 	return c.raw.Done()
+}
+
+func (c *codexAppServerClient) waitForProviderProgress(
+	ctx context.Context,
+	duration time.Duration,
+) error {
+	if c == nil || c.raw == nil || c.raw.conn == nil {
+		return ErrSessionDisconnected
+	}
+	if waiter, ok := c.raw.conn.(providerProgressWaiter); ok {
+		return waiter.WaitForProviderProgress(ctx, duration)
+	}
+	timer := time.NewTimer(duration)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-c.Done():
+		return ErrSessionDisconnected
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (c *codexAppServerClient) Err() error {

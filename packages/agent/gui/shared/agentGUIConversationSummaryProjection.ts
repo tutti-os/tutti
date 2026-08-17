@@ -1,5 +1,6 @@
 import {
   selectWorkspaceAgentConsumerSessions,
+  type AgentActivitySession,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
 import {
@@ -32,6 +33,7 @@ export interface AgentConversationRailSummary {
   agentTargetId?: string | null;
   cwd: string;
   id: string;
+  isolation?: AgentActivitySession["isolation"];
   needsUserAction?: boolean;
   pinnedAtUnixMs?: number | null;
   provider: AgentGUIResolvedProvider;
@@ -78,6 +80,7 @@ export function projectCanonicalAgentGUIConversationSummaries(
       agentTargetId: item.session.agentTargetId ?? null,
       cwd: item.session.cwd,
       id: item.session.agentSessionId,
+      isolation: item.session.isolation,
       needsUserAction:
         rootSessionIdsAwaitingUserAction?.has(item.session.agentSessionId) ??
         item.pendingInteractions.length > 0,

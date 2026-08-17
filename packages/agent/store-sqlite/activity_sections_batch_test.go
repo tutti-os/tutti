@@ -235,6 +235,33 @@ WHERE type = 'index' AND name IN (
 	}
 }
 
+func TestStoreMigrationRepairsMissingProjectRemovalIndexWithAppliedMarker(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	if applied, err := store.hasMigration(ctx, schemaMigrationWorkspaceAgentActivityV11); err != nil || !applied {
+		t.Fatalf("project removal index migration marker applied = %v, error = %v", applied, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `DROP INDEX idx_workspace_agent_sessions_project_removal;`); err != nil {
+		t.Fatalf("prepare missing project removal index error = %v", err)
+	}
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatalf("Migrate() error = %v", err)
+	}
+	var count int
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(1)
+FROM sqlite_master
+WHERE type = 'index' AND name = 'idx_workspace_agent_sessions_project_removal'
+`).Scan(&count); err != nil {
+		t.Fatalf("inspect project removal index error = %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("project removal index count = %d, want 1", count)
+	}
+}
+
 func sectionBatchActivityReport(
 	workspaceID string,
 	sessionID string,

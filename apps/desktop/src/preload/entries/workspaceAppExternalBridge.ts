@@ -17,6 +17,7 @@ import type {
   TuttiExternalAgentActivityCancelTurnResult,
   TuttiExternalAgentActivityComposerOptions,
   TuttiExternalAgentActivityComposerOptionsInput,
+  TuttiExternalAgentActivityRememberComposerDefaultsInput,
   TuttiExternalAgentActivitySendInput,
   TuttiExternalAgentActivitySendResult,
   TuttiExternalAgentActivitySnapshot,
@@ -106,6 +107,8 @@ export const workspaceAppExternalChannels = {
     "workspace-app-agent-activity:get-composer-options",
   agentActivityGetSnapshot: "workspace-app-agent-activity:get-snapshot",
   agentActivityListTargets: "workspace-app-agent-activity:list-targets",
+  agentActivityRememberComposerDefaults:
+    "workspace-app-agent-activity:remember-composer-defaults",
   agentActivitySendInput: "workspace-app-agent-activity:send-input",
   atQuery: "workspace-app-at:query",
   atQueryDirectory: "workspace-app-at:query-directory",
@@ -190,6 +193,14 @@ export function createWorkspaceAppExternalBridge(
       listTargets() {
         return dependencies.invoke<TuttiExternalAgentTargetCatalog>(
           workspaceAppExternalChannels.agentActivityListTargets
+        );
+      },
+      rememberComposerDefaults(
+        input: TuttiExternalAgentActivityRememberComposerDefaultsInput
+      ) {
+        return dependencies.invoke<void>(
+          workspaceAppExternalChannels.agentActivityRememberComposerDefaults,
+          input
         );
       },
       sendInput(input: TuttiExternalAgentActivitySendInput) {

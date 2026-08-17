@@ -20,7 +20,7 @@ func (a *standardACPAdapter) Exec(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
-	acpSession := a.getSession(session.AgentSessionID)
+	acpSession := a.getUsableSession(session.AgentSessionID)
 	if acpSession == nil || acpSession.client == nil {
 		return []activityshared.Event{standardACPRootProviderTurnCompletedEvent(
 			session,
@@ -84,6 +84,13 @@ func (a *standardACPAdapter) Exec(
 	acpPromptContent := promptContentForACP(providerContent)
 	if mentionRoutingApplied {
 		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
+	}
+	initialPromptContext := a.pendingInitialPromptContext(acpSession)
+	if initialPromptContext != "" {
+		acpPromptContent = append(acpPromptContent, map[string]any{
+			"type": "text",
+			"text": initialPromptContext,
+		})
 	}
 	// ACP v1 has no developer/system or synthetic-message channel. Keep the
 	// canonical Tutti-owned context in the provider-only prompt payload; the
@@ -217,6 +224,10 @@ execLoop:
 				emitEvents(terminalEvents)
 			}
 			return snapshotEvents(), nil
+		}
+		if initialPromptContext != "" {
+			a.consumeInitialPromptContext(acpSession)
+			initialPromptContext = ""
 		}
 
 		stopReason := acpStopReason(result)
@@ -454,6 +465,38 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	optionID := strings.TrimSpace(input.OptionID)
 	action := strings.TrimSpace(input.Action)
 	payload := clonePayload(input.Payload)
+	if pending.providerMethod != "" {
+		result, resolvedOptionID, err := cursorNativeInteractiveResult(pending, action, optionID, payload)
+		if err != nil {
+			pending.supersede(err)
+			return SubmitInteractiveResult{
+				AgentSessionID: session.AgentSessionID,
+				RequestID:      requestID,
+				Disposition:    InteractiveDispositionSuperseded,
+			}, err
+		}
+		optionID = resolvedOptionID
+		if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
+			optionID: optionID,
+			action:   action,
+			payload:  payload,
+			result:   result,
+		}); err != nil {
+			return SubmitInteractiveResult{}, err
+		}
+		if state, err := pending.waitForDisposition(ctx); err != nil {
+			return SubmitInteractiveResult{}, err
+		} else if state != pendingInteractiveRequestStateAnswered {
+			return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
+		}
+		return SubmitInteractiveResult{
+			AgentSessionID: session.AgentSessionID,
+			RequestID:      requestID,
+			Accepted:       true,
+			OptionID:       optionID,
+			Disposition:    InteractiveDispositionAnswered,
+		}, nil
+	}
 	result := acpInteractiveResponseResult(action, optionID, payload)
 	if err := ctx.Err(); err != nil {
 		return SubmitInteractiveResult{}, err

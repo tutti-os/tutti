@@ -352,6 +352,7 @@ function tuttidSession(
     endedAtUnixMs: null,
     forkedFrom: null,
     goal,
+    goalSyncState: null,
     id: "session-1",
     imported: false,
     kind: "root",

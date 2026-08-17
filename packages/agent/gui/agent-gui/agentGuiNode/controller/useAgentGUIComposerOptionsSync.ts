@@ -11,7 +11,8 @@ import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpe
 import {
   composerTargetDataForConversation,
   type AgentGUIActiveSessionTarget,
-  type AgentGUIComposerTargetData
+  type AgentGUIComposerTargetData,
+  type OptimisticComposerTarget
 } from "./agentGuiController.composerPresentation";
 import {
   composerDefaultsPatchFromSettings,
@@ -38,9 +39,16 @@ export function useAgentGUIComposerOptionsSync(input: {
   isComposerHome: boolean;
   isComposerHomeRef: RefObject<boolean>;
   isCreatingConversation: boolean;
-  loadDraftComposerOptionsRef: RefObject<() => void>;
+  loadDraftComposerOptionsRef: RefObject<
+    (options?: {
+      force?: boolean;
+      section?: "core" | "capabilities" | "connectors";
+      waitForFreshModelCatalog?: boolean;
+    }) => void
+  >;
   loadSessionState(agentSessionId: string): void;
   onComposerDefaultsAuthorityReloadedRef: RefObject<AgentGUIComposerDefaultsAuthorityReconciler>;
+  optimisticComposerTarget?: OptimisticComposerTarget | null;
   providerComposerOptions:
     | { behavior?: { prewarmDraftSession?: boolean } | null }
     | null
@@ -62,6 +70,8 @@ export function useAgentGUIComposerOptionsSync(input: {
         allowWhileCreating?: boolean;
         excludePersistentDefaults?: boolean;
         force?: boolean;
+        section?: "core" | "capabilities" | "connectors";
+        waitForFreshModelCatalog?: boolean;
         reconcileAcknowledgedDefaults?: boolean;
         settings?: AgentSessionComposerSettings;
       }
@@ -98,16 +108,24 @@ export function useAgentGUIComposerOptionsSync(input: {
         input.selectedProjectPathRef.current?.trim() ||
         input.workspacePath.trim() ||
         "";
-      return Promise.resolve(
-        input.agentActivityRuntime.getComposerOptions({
-          workspaceId: input.workspaceId,
-          cwd,
-          force: options?.force || authorityRead.force ? true : undefined,
-          provider: targetData.provider,
-          agentTargetId: targetData.agentTargetId,
-          settings: requestSettings
-        })
-      ).then((returnedOptions) => {
+      const request = {
+        workspaceId: input.workspaceId,
+        cwd,
+        force: options?.force || authorityRead.force ? true : undefined,
+        waitForFreshModelCatalog: options?.waitForFreshModelCatalog,
+        provider: targetData.provider,
+        agentTargetId: targetData.agentTargetId,
+        settings: requestSettings
+      } as const;
+      const section = options?.section ?? "core";
+      const composerOptions = input.agentActivityRuntime.getComposerOptions({
+        ...request,
+        section
+      });
+      return Promise.resolve(composerOptions).then((returnedOptions) => {
+        if (section === "capabilities" || section === "connectors") {
+          return;
+        }
         const loadedOptions =
           composerOptionsForTarget({
             snapshot: input.agentActivityRuntime.getSnapshot(input.workspaceId),
@@ -134,13 +152,17 @@ export function useAgentGUIComposerOptionsSync(input: {
     ]
   );
   const loadDraftComposerOptions = useCallback(
-    (options?: { force?: boolean }) => {
+    (options?: {
+      force?: boolean;
+      section?: "core" | "capabilities" | "connectors";
+      waitForFreshModelCatalog?: boolean;
+    }) => {
       void loadComposerOptionsForTarget(
         composerTargetDataForConversation({
           activeConversationId: input.activeConversationIdRef.current,
           activeSessionTarget: input.activeSessionTarget,
           data: input.dataRef.current,
-          optimisticTarget: null,
+          optimisticTarget: input.optimisticComposerTarget ?? null,
           selectedTarget: input.selectedComposerTargetDataRef.current
         }),
         {
@@ -158,6 +180,7 @@ export function useAgentGUIComposerOptionsSync(input: {
       input.activeSessionTarget?.provider,
       input.dataRef,
       input.isComposerHomeRef,
+      input.optimisticComposerTarget,
       input.selectedComposerTargetDataRef,
       loadComposerOptionsForTarget
     ]
@@ -190,7 +213,7 @@ export function useAgentGUIComposerOptionsSync(input: {
           activeConversationId: input.activeConversationIdRef.current,
           activeSessionTarget: input.activeSessionTarget,
           data: input.dataRef.current,
-          optimisticTarget: null,
+          optimisticTarget: input.optimisticComposerTarget ?? null,
           selectedTarget: input.selectedComposerTargetDataRef.current
         }).provider;
         const activeId = input.activeConversationIdRef.current;
@@ -208,7 +231,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     );
     const disposeConnectorCatalog = subscribe(
       "agent-connector-catalog-invalidated",
-      () => loadDraftComposerOptions({ force: true })
+      () => loadDraftComposerOptions({ force: true, section: "connectors" })
     );
     return () => {
       disposeModelCatalog();
@@ -222,7 +245,7 @@ export function useAgentGUIComposerOptionsSync(input: {
         activeConversationId: input.activeConversationIdRef.current,
         activeSessionTarget: input.activeSessionTarget,
         data: input.dataRef.current,
-        optimisticTarget: null,
+        optimisticTarget: input.optimisticComposerTarget ?? null,
         selectedTarget: input.selectedComposerTargetDataRef.current
       });
       if (selectedTarget.agentTargetId !== event.agentTargetId) {
@@ -250,6 +273,7 @@ export function useAgentGUIComposerOptionsSync(input: {
     input.activeSessionTarget?.agentSessionId,
     input.activeSessionTarget?.provider,
     input.onComposerDefaultsAuthorityReloadedRef,
+    input.optimisticComposerTarget,
     loadComposerOptionsForTarget
   ]);
 

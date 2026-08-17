@@ -23,6 +23,10 @@ export {
   type BrowserNodeTabsStore
 } from "./core/tabsStore.ts";
 export {
+  activateBrowserNodePageByUrl,
+  findBrowserNodePageByUrl
+} from "./core/pageActivation.ts";
+export {
   closeBrowserNodeTab,
   closeBrowserNodeTabSurface,
   retainBrowserNodeTabSurface

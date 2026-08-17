@@ -7,7 +7,7 @@ import {
 } from "../../shared/workspaceAgentActivityListViewModel";
 import { workspaceAgentProviderLabel } from "../../shared/workspaceAgentProviderLabel";
 import { resolveDisplayableWorkspaceAgentSessionTitle } from "../../shared/workspaceAgentSessionTitle";
-import { extractPlainTextWithoutFilesFromContent } from "../../shared/richText/richTextDocument";
+import { extractPlainTextWithoutFilesFromContent } from "@tutti-os/ui-rich-text/core";
 import type {
   AgentContextMentionItem,
   AgentMentionScope,

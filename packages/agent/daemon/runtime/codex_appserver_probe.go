@@ -19,6 +19,7 @@ type CodexAppServerProbeInput struct {
 	CWD              string
 	Host             HostMetadata
 	ReadAccount      bool
+	ReadRateLimits   bool
 	StartupTimeout   time.Duration
 	HandshakeTimeout time.Duration
 	ShutdownTimeout  time.Duration
@@ -40,15 +41,17 @@ const (
 // separate. Callers must use ProtocolReady, not CommandStarted, as runtime
 // capability evidence.
 type CodexAppServerProbeResult struct {
-	CommandStarted   bool
-	ProtocolReady    bool
-	AccountRead      bool
-	AccountState     CodexAppServerAccountState
-	AccountLabel     string
-	AuthMethod       string
-	CommandCategory  string
-	ProtocolCategory string
-	AccountCategory  string
+	CommandStarted     bool
+	ProtocolReady      bool
+	AccountRead        bool
+	AccountState       CodexAppServerAccountState
+	AccountLabel       string
+	AuthMethod         string
+	RateLimitsRead     bool
+	CommandCategory    string
+	ProtocolCategory   string
+	AccountCategory    string
+	RateLimitsCategory string
 	// Category is the compatibility projection of the failing stage.
 	Category   string
 	Message    string
@@ -68,8 +71,9 @@ const (
 )
 
 // ProbeCodexAppServer reuses the production ProcessTransport, JSON-RPC client,
-// typed initialize request and initialized notification. When ReadAccount is
-// set, it also calls the same account/read method used during session startup.
+// typed initialize request and initialized notification. ReadAccount calls the
+// same account/read method used during session startup. ReadRateLimits calls
+// account/rateLimits/read, which requires a provider-accepted OAuth session.
 // The connection is always closed before returning; no user-facing Codex state
 // is created.
 func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (result CodexAppServerProbeResult) {
@@ -186,28 +190,40 @@ func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (r
 	// final protocol fact.
 	result.CommandStarted = true
 	result.Category = ""
-	if !input.ReadAccount {
-		return result
+	if input.ReadAccount {
+		accountRaw, err := client.AccountRead(handshakeCtx, handshakeTimeout, map[string]any{},
+			func(context.Context, acpMessage) error { return nil })
+		if err != nil {
+			result.AccountCategory = codexProbeErrorCategory(handshakeCtx, err)
+			result.Category = result.AccountCategory
+			result.Message = err.Error()
+			return result
+		}
+		account, ok := parseCodexProbeAccount(accountRaw)
+		if !ok {
+			result.AccountCategory = CodexProbeInvalidResponse
+			result.Category = result.AccountCategory
+			result.Message = "account/read returned an invalid account response"
+			return result
+		}
+		result.AccountRead = true
+		result.AccountState = account.State
+		result.AccountLabel = account.Label
+		result.AuthMethod = account.AuthMethod
 	}
-	accountRaw, err := client.AccountRead(handshakeCtx, handshakeTimeout, map[string]any{},
-		func(context.Context, acpMessage) error { return nil })
-	if err != nil {
-		result.AccountCategory = codexProbeErrorCategory(handshakeCtx, err)
-		result.Category = result.AccountCategory
-		result.Message = err.Error()
-		return result
+	if input.ReadRateLimits {
+		if _, err := client.AccountRateLimitsRead(
+			handshakeCtx,
+			handshakeTimeout,
+			func(context.Context, acpMessage) error { return nil },
+		); err != nil {
+			result.RateLimitsCategory = codexProbeErrorCategory(handshakeCtx, err)
+			result.Category = result.RateLimitsCategory
+			result.Message = err.Error()
+			return result
+		}
+		result.RateLimitsRead = true
 	}
-	account, ok := parseCodexProbeAccount(accountRaw)
-	if !ok {
-		result.AccountCategory = CodexProbeInvalidResponse
-		result.Category = result.AccountCategory
-		result.Message = "account/read returned an invalid account response"
-		return result
-	}
-	result.AccountRead = true
-	result.AccountState = account.State
-	result.AccountLabel = account.Label
-	result.AuthMethod = account.AuthMethod
 	return result
 }
 

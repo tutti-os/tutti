@@ -1,4 +1,4 @@
-import { screen } from "electron";
+import { ipcMain, screen } from "electron";
 import {
   captureWorkbenchDockPreview,
   captureWorkbenchPreviewImages,
@@ -6,6 +6,7 @@ import {
 } from "@tutti-os/workbench-electron";
 import {
   desktopIpcChannels,
+  type DesktopHostWindowCloseRequestResolutionPayload,
   type DesktopHostOpenAgentWindowInput,
   type DesktopHostWindowCapturePreviewInput
 } from "../../shared/contracts/ipc";
@@ -14,7 +15,11 @@ import type { WorkspaceLaunch } from "../host/workspaceLaunch";
 import { getDesktopLogger, type DesktopLogger } from "../logging";
 import { registerDesktopIpcHandler } from "./handle";
 import { resolveOwnerWindowFromEvent } from "./ownerWindow";
-import { getWorkspaceWindowKind } from "../windows/workspaceWindow";
+import {
+  getWorkspaceWindowKind,
+  resolveWorkspaceWindowCloseRequest,
+  setWorkspaceWindowCloseGuardEnabled
+} from "../windows/workspaceWindow";
 import {
   resolveStandaloneAgentWindowContentWidth,
   shouldAnimateStandaloneAgentWindowResize
@@ -32,9 +37,31 @@ export function registerHostWindowIpc(deps: HostWindowIpcDependencies): void {
   const windowAccess = createDesktopWindowAccess();
   const logger = getDesktopLogger();
 
+  ipcMain.on(
+    desktopIpcChannels.host.window.closeRequestResolved,
+    (event, payload: DesktopHostWindowCloseRequestResolutionPayload) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (!ownerWindow) {
+        return;
+      }
+      resolveWorkspaceWindowCloseRequest(ownerWindow, payload);
+    }
+  );
+
   registerDesktopIpcHandler(
     desktopIpcChannels.host.window.approveClose,
     (event) => windowAccess.approveClose(resolveOwnerWindowFromEvent(event))
+  );
+
+  registerDesktopIpcHandler(
+    desktopIpcChannels.host.window.setCloseGuardEnabled,
+    (event, input) => {
+      const ownerWindow = resolveOwnerWindowFromEvent(event);
+      if (!ownerWindow) {
+        return;
+      }
+      setWorkspaceWindowCloseGuardEnabled(ownerWindow, input.enabled);
+    }
   );
 
   registerDesktopIpcHandler(

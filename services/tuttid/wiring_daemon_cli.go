@@ -2,6 +2,7 @@ package main
 
 import (
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	agenttargetservice "github.com/tutti-os/tutti/services/tuttid/service/agenttarget"
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -14,7 +15,6 @@ import (
 	managedmodelscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/managedmodels"
 	referencescli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/references"
 	tuttigoalreviewcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttigoalreview"
-	tuttimodeactivationcli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeactivation"
 	tuttimodeplancli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/tuttimodeplan"
 	workbenchappscli "github.com/tutti-os/tutti/services/tuttid/service/cli/providers/workbenchapps"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
@@ -35,6 +35,7 @@ type daemonCLIRegistryInput struct {
 	ManagedCredentials   *managedcredentialsservice.Service
 	AgentSessions        *agentservice.Service
 	AgentTargets         agenttargetservice.Service
+	AgentTargetSetup     *agentextensionservice.SetupService
 	Preferences          *preferencesservice.Service
 	TuttiModePlans       *tuttimodeplanservice.Service
 	TuttiModeExecutions  *tuttimodeexecutionservice.Service
@@ -67,7 +68,7 @@ func buildDaemonCLIRegistry(
 			},
 			input.AgentTargets,
 			input.Preferences,
-		),
+		).WithAgentTargetSetup(input.AgentTargetSetup),
 		tuttimodeplancli.NewProviderWithExecutionSnapshot(
 			input.Workspaces,
 			input.TuttiModePlans,
@@ -83,7 +84,6 @@ func buildDaemonCLIRegistry(
 			input.TuttiModeExecutions,
 			input.AgentSessions,
 		),
-		tuttimodeactivationcli.NewProvider(input.TuttiModeActivations),
 	}
 	if input.Browser != nil {
 		providers = append(

@@ -28,8 +28,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: mobile-internal-build-${{ inputs.platform }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ inputs.publish_android && 'mobile-android-release-publish' || format('mobile-internal-build-{0}-{1}', inputs.platform, github.ref) }}
+  cancel-in-progress: ${{ !inputs.publish_android }}
 
 jobs:
   android:
@@ -249,16 +249,71 @@ jobs:
           TUTTI_ANDROID_VERSION_NAME: ${{ inputs.android_version_name }}
         run: |
           prefix="${TUTTI_MOBILE_RELEASE_ASSETS_S3_PREFIX%/}"
-          remote_dir="s3://${TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET}/${prefix}/tutti-mobile-v${TUTTI_ANDROID_VERSION_NAME}"
+          checksum_path="apps/mobile/android/app/build/outputs/apk/release/SHA256SUMS"
+          apk_sha256="$(awk 'NR == 1 { print $1 }' "${checksum_path}")"
+          if [[ ! "${apk_sha256}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Generated Android APK checksum is invalid." >&2
+            exit 1
+          fi
+          remote_dir="s3://${TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET}/${prefix}/tutti-mobile-v${TUTTI_ANDROID_VERSION_NAME}/${apk_sha256}"
           pointer_path="s3://${TUTTI_MOBILE_RELEASE_ASSETS_S3_BUCKET}/${prefix}/latest.json"
-          aws s3 cp apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
-            "${remote_dir}/app-release.apk" \
-            --cache-control "public, max-age=31536000, immutable" \
-            --content-type "application/vnd.android.package-archive"
-          aws s3 cp apps/mobile/android/app/build/outputs/apk/release/SHA256SUMS \
-            "${remote_dir}/SHA256SUMS" \
-            --cache-control "public, max-age=31536000, immutable" \
-            --content-type "text/plain"
+          preflight_immutable() {
+            local source_path="$1"
+            local destination_path="$2"
+            local comparison_path="${RUNNER_TEMP}/$(basename "${destination_path}").published"
+            local error_path="${comparison_path}.err"
+
+            if aws s3 cp "${destination_path}" "${comparison_path}" 2> "${error_path}"; then
+              if ! cmp --silent "${source_path}" "${comparison_path}"; then
+                echo "Refusing to overwrite immutable Android release asset: ${destination_path}" >&2
+                exit 1
+              fi
+              echo "Immutable Android release asset already exists with identical content: ${destination_path}"
+              return 0
+            fi
+            if grep -Eq "(404|NoSuchKey|Not Found)" "${error_path}"; then
+              return 10
+            else
+              cat "${error_path}" >&2
+              return 1
+            fi
+          }
+
+          upload_immutable() {
+            local source_path="$1"
+            local destination_path="$2"
+            local content_type="$3"
+            aws s3 cp "${source_path}" "${destination_path}" \
+              --cache-control "public, max-age=31536000, immutable" \
+              --content-type "${content_type}"
+          }
+
+          apk_needs_upload=false
+          if preflight_immutable \
+            apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
+            "${remote_dir}/app-release.apk"; then
+            :
+          else
+            status="$?"
+            if [[ "${status}" -eq 10 ]]; then apk_needs_upload=true; else exit "${status}"; fi
+          fi
+          checksum_needs_upload=false
+          if preflight_immutable "${checksum_path}" "${remote_dir}/SHA256SUMS"; then
+            :
+          else
+            status="$?"
+            if [[ "${status}" -eq 10 ]]; then checksum_needs_upload=true; else exit "${status}"; fi
+          fi
+
+          if [[ "${apk_needs_upload}" == true ]]; then
+            upload_immutable \
+              apps/mobile/android/app/build/outputs/apk/release/app-release.apk \
+              "${remote_dir}/app-release.apk" \
+              "application/vnd.android.package-archive"
+          fi
+          if [[ "${checksum_needs_upload}" == true ]]; then
+            upload_immutable "${checksum_path}" "${remote_dir}/SHA256SUMS" "text/plain"
+          fi
           aws s3 cp mobile-release-latest.json "${pointer_path}" \
             --cache-control "public, max-age=60" \
             --content-type "application/json"

@@ -1,5 +1,41 @@
 # Mobile Troubleshooting
 
+## Android stays on “Syncing the latest data” after pairing
+
+- **Symptom:** Device pairing and the direct DeviceLink handshake succeed, but
+  the mobile App remains on **Syncing the latest data**. The native log repeats
+  `Agent live stream rejected`, often once per retry interval.
+- **Quick checks:** Correlate the pairing ID and workspace across the phone and
+  computer logs. If DeviceLink reaches its connected stage and the Agent live
+  rejection reports `protocol_revision_mismatch`, compare the safe
+  `expectedRevision` and `receivedRevision` hashes. This is a protocol
+  compatibility failure, not a local-network or pairing failure.
+- **Root cause:** The computer rejects an Agent live subscription whose protocol
+  revision does not match its own. If the native rejection is collapsed into a
+  generic disconnect, the live lane treats a deterministic incompatibility as
+  transient and retries forever. Repeated disconnect callbacks can also keep
+  replacing the connection-ready deadline, so the App never reaches a visible
+  failed state.
+- **Fix:** Preserve the typed rejection reason and revision hashes through the
+  native bridge. Classify `protocol_revision_mismatch` as terminal for the
+  current connection attempt, close the rejected subscription without
+  scheduling another live retry, and keep the original synchronization
+  deadline for retryable transport failures. Present an explicit incompatible
+  version message with a mobile update action; do not automatically restart a
+  terminal attempt after foreground resume.
+- **Validation:** Verify an ordinary stream close still retries and rebuilds
+  DeviceLink after the recovery grace period. Inject a protocol-revision
+  rejection and assert that the connection enters the failed state once, emits
+  a `device_connection.phase_changed` diagnostic with stable
+  `protocol_revision_mismatch`, preserves both revision hashes, schedules no
+  additional subscription, and stays terminal across background and foreground
+  transitions. Confirm the failure UI offers **Check for updates** instead of
+  **Reconnect**.
+- **References:** `apps/mobile/src/native/agentLiveNativeBridge.ts`,
+  `apps/mobile/src/services/workspaceAgentLiveLane.ts`,
+  `apps/mobile/src/services/mobileApplicationService.ts`,
+  `apps/mobile/src/components/MobileConnectionRecoveryOverlay.tsx`
+
 ## Android QR scan closes without advancing pairing
 
 - **Symptom:** The pairing scanner opens, reads a valid Desktop QR code, and
@@ -59,93 +95,114 @@
 
 ## Android update stays on MainActivity without opening the installer
 
-- **Symptom:** The Android App reports that it cannot start an update, remains
-  on `sh.tutti.mobile/.MainActivity`, and no `PackageInstaller` or
-  `.InstallStart` activity appears. A successful feed request or an HTTP 200
-  response for the APK does not prove that the APK reached the installer.
+- **Symptom:** The Android App remains in the update progress overlay or never
+  opens `PackageInstaller` / `.InstallStart`. A successful feed request does
+  not prove that Android downloaded, verified, and handed off the APK.
 - **Quick checks:** Filter the device logcat by the native update tag:
 
   ```sh
   adb -s <serial> logcat -v threadtime TuttiMobileSecurity:I '*:S'
   ```
 
-  Follow the log sequence from `Starting update download` through `Android
-package installer activity started`. The first missing stage identifies the
-  failing boundary:
-  - no `Update HTTP response`: URL, connection, or HTTP response failure;
-  - `Update HTTP response` but no `Update download bytes received`: response
-    body read or temporary-file write failure;
-  - `Update download bytes received` but no `Update APK finalized`: checksum,
-    cached APK replacement, or temporary-file rename failure;
-  - `Update APK finalized` but no `Update FileProvider URI created`: cached
-    path or FileProvider configuration failure;
-  - `Update FileProvider URI created` but no `Android package installer
-activity started`: package-installer launch failure.
+  The UI phase narrows the boundary: **Preparing** means validation/storage,
+  **Downloading** or **Paused** is Android `DownloadManager`, **Verifying** is
+  exact-size plus SHA-256 verification, **Allow update installation** is the
+  per-app unknown-source permission handoff, and **Install the downloaded
+  update** is the Android package-installer handoff. Inspect the system-owned
+  job with:
 
-  The log includes the HTTP status, content length, downloaded byte count,
-  expected and actual SHA-256 values, cache path, and the exception stack trace.
+  ```sh
+  adb -s <serial> shell dumpsys download
+  ```
 
-- **Relevant error codes:** `UPDATE_URL_INVALID`,
-  `UPDATE_CONNECTION_FAILED`, `UPDATE_HTTP_FAILED`,
-  `UPDATE_DOWNLOAD_FAILED`, `UPDATE_CHECKSUM_INVALID`,
-  `UPDATE_CHECKSUM_FAILED`, `UPDATE_CACHE_FAILED`,
-  `UPDATE_CACHE_REPLACE_FAILED`, `UPDATE_FILE_FINALIZE_FAILED`,
-  `UPDATE_URI_FAILED`, and `UPDATE_INSTALLER_LAUNCH_FAILED`. If Android's
+  `DownloadManager` owns network reconnection and background continuation. The
+  App persists its download id and release metadata so reopening the App and
+  choosing the same release reconnects to the job or reuses a verified cached
+  APK. After verification it also records the target `versionCode`: a confirmed
+  install deletes the APK immediately, while a process replacement during
+  upgrade is handled on the next launch once the installed version reaches the
+  target. Installer cancellation or failure retains the APK for retry. The
+  in-App download cancel action removes the system job and cached artifact.
+
+- **Relevant error codes:** `UPDATE_URL_INVALID`, `UPDATE_VERSION_INVALID`,
+  `UPDATE_SIZE_INVALID`, `UPDATE_SIZE_MISMATCH`,
+  `UPDATE_STORAGE_INSUFFICIENT`, `UPDATE_DOWNLOAD_FILE_FAILED`,
+  `UPDATE_DOWNLOAD_SERVER_FAILED`, `UPDATE_DOWNLOAD_MANAGER_FAILED`,
+  `UPDATE_DOWNLOAD_QUERY_FAILED`, `UPDATE_CHECKSUM_INVALID`,
+  `UPDATE_CHECKSUM_FAILED`, `UPDATE_CACHE_FAILED`, `UPDATE_CACHE_REPLACE_FAILED`,
+  `UPDATE_INSTALL_DEFERRED`, `UPDATE_INSTALL_STORAGE_INSUFFICIENT`,
+  `UPDATE_INSTALL_INCOMPATIBLE`, `UPDATE_INSTALL_CONFLICT`,
+  `UPDATE_INSTALL_BLOCKED`, `UPDATE_INSTALL_PACKAGE_INVALID`,
+  `UPDATE_INSTALL_FAILED`, `UPDATE_URI_FAILED`, and
+  `UPDATE_INSTALLER_LAUNCH_FAILED`. If Android's
   per-app unknown-source permission is missing, `UPDATE_INSTALL_PERMISSION_REQUIRED`
-  is an expected recovery signal rather than an APK failure;
+  means the user returned without granting it rather than an APK failure;
   `UPDATE_PERMISSION_SETTINGS_FAILED` means the system settings page itself
-  could not be opened.
-- **Root cause:** The manual updater downloads and verifies the APK before
-  passing a `content://` URI from the Tutti FileProvider to Android's package
-  installer. Failures at any pre-installer stage previously collapsed into the
-  same user-facing error. Java's `URL.protocol` value is `"https"` without a
-  trailing colon; comparing it with `"https:"` rejects every valid HTTPS APK
-  URL before the download starts. Unknown-source permission is checked before
-  the download and opens the app-specific Android settings page when required.
-- **Fix:** Keep the native URL allowlist check against Java's protocol value
-  (`"https"`, without a colon). If the permission settings page opens, enable
-  **Allow from this source** for Tutti, return to the App, and tap **Software
-  update** and **Download and install** again. If permission is already
-  allowed, capture the first failing `TuttiMobileSecurity` log stage and its
-  error code rather than rechecking only the feed URL or APK HTTP status.
-  Compare the logged `expectedSHA256` and `actualSHA256` with the published
-  `latest.json` before investigating PackageInstaller.
+  could not be opened. The `EXTRA_RETURN_RESULT` flow reports the package
+  manager result through `android.intent.extra.INSTALL_RESULT`; project that
+  legacy result to the public `PackageInstaller` status before choosing the
+  in-App error. A cancelled activity without an install result is user
+  cancellation; an aborted or rejected result remains a failure.
+- **Root cause:** The release feed, Android system download, artifact
+  verification, FileProvider, and PackageInstaller are separate trust
+  boundaries. A stale or malformed `sizeBytes`, a reused version URL with
+  different bytes, insufficient storage, a paused system job, or missing
+  unknown-source permission can stop the chain at different phases.
+- **Fix:** Keep release URLs credential-free HTTPS and publish immutable APK
+  paths under `<tag>/<sha256>/`. Preflight both the APK and checksum before
+  uploading either object, then update `latest.json` last. Treat `latest.json`
+  `sizeBytes` and `sha256` as mandatory: both must match before PackageInstaller
+  opens. If the permission settings page opens, enable **Allow from this
+  source** and return to the App; the verified cached APK continues to the
+  installer automatically. Returning without granting permission produces a
+  localized recovery prompt and keeps the package for an explicit retry. Keep
+  the target version with that pending artifact, delete it on confirmed
+  success, and repeat cleanup on the first launch whose installed
+  `versionCode` reaches the target. For paused downloads, restore an allowed
+  network or cancel and retry rather than deleting app data.
 - **Validation:** Run `pnpm --filter @tutti-os/mobile check`,
   `./gradlew app:testDebugUnitTest`, and
   `./gradlew app:compileDebugKotlin` from `apps/mobile/android`. On a physical
-  device, reproduce from Settings, confirm the log reaches APK finalization
-  and URI creation, then confirm `Android package installer activity started`
-  and an installer session appears. For a permission recovery test, revoke
-  Tutti's unknown-source permission, tap update once, grant the permission in
-  Android settings, return to the App, and retry the update.
+  device, reproduce from Settings and verify determinate progress, cancel,
+  background/reopen continuation, offline pause/resume, exact-size/SHA failure,
+  and the installer handoff. Confirm that a late progress callback after cancel
+  cannot reopen the overlay. For permission recovery, revoke Tutti's
+  unknown-source permission, finish the download, grant the permission in
+  Android settings, return to the App, and confirm the installer opens without
+  another download action. Also deny the permission once and confirm the App
+  explains how to recover. Exercise an installer rejection and confirm it is
+  reported with the mapped failure rather than cancellation. Cancel once and
+  confirm the verified APK remains reusable; complete an update and confirm
+  the pending APK is gone either from the success callback or after the updated
+  App starts. For release recovery, simulate an APK-only upload, rerun the same
+  version with a different APK digest, and confirm the missing objects are
+  published before `latest.json` moves.
 - **References:**
   `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileSecurityModule.kt`,
-  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateDownloader.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateArtifact.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateCoordinator.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdateInstallResult.kt`,
+  `apps/mobile/android/app/src/main/java/sh/tutti/mobile/MobileUpdatePendingInstallStore.kt`,
   `apps/mobile/src/services/mobileUpdateService.ts`,
   `tools/scripts/build-mobile-release-latest.mjs`
 
 ## Mobile quick prompts are missing from the plus menu
 
-- **Symptom:** The Desktop quick-prompt library is enabled and contains
-  prompts, but the connected Mobile composer does not show Quick prompts under
-  `+`.
-- **Quick checks:** Read the host's Desktop preferences and confirm
-  `agent.quickPromptLibrary` is `true`. Then inspect the DeviceLink
-  `agent_http` responses for `GET /v1/preferences/desktop` and
+- **Symptom:** The connected Mobile composer does not show Quick prompts under
+  `+`, or the list is empty despite prompts saved on Desktop.
+- **Quick checks:** Inspect the DeviceLink `agent_http` response for
   `GET /v1/agent-quick-prompts`. A 403 response with `route_not_allowed`
   identifies an allowlist gap.
-- **Root cause:** Mobile deliberately fails closed when it cannot verify the
-  Desktop feature gate. It also loads prompt content only from the canonical
-  device list, so neither the UI nor workspace activity state invents a local
+- **Root cause:** Mobile loads prompt content only from the canonical device
+  list, so neither the UI nor workspace activity state invents a local
   fallback.
-- **Fix:** Keep the two exact GET routes in the DeviceLink allowlist and keep
-  all preference writes, quick-prompt mutations, and per-prompt routes blocked.
-  Refresh the authenticated-device quick-prompt service when the `+` menu
-  opens.
-- **Validation:** Confirm a disabled or missing feature flag hides the row,
-  enabling it exposes the canonical prompt order, search matches title and
-  content, and selecting a prompt adds text at the current input position
-  without replacing the existing draft or sending it.
+- **Fix:** Keep the exact quick-prompt GET route in the DeviceLink allowlist
+  and keep all preference writes, quick-prompt mutations, and per-prompt
+  routes blocked. Refresh the authenticated-device quick-prompt service when
+  the `+` menu opens.
+- **Validation:** Confirm the canonical prompt order is visible, search
+  matches title and content, and selecting a prompt adds text at the current
+  input position without replacing the existing draft or sending it.
 - **References:** `services/tuttid/service/mobileremote/remote_protocol.go`,
   `apps/mobile/src/services/mobileQuickPromptLibraryService.ts`,
   `apps/mobile/src/components/MobileComposerDock.tsx`
@@ -315,6 +372,47 @@ sh.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
   beyond the previous crash window with no new Go fatal message.
 - **References:** `packages/device-link/mobile/link.go`,
   `apps/mobile/android/app/src/main/java/sh/tutti/mobile/DeviceLinkModule.kt`
+
+## Mobile direct DeviceLink consistently takes about ten seconds
+
+- **Symptom:** A paired computer is online and often on the same LAN, but the
+  direct path regularly needs roughly ten seconds before it becomes usable.
+  Relay may appear much faster even though P2P eventually succeeds.
+- **Quick checks:** Inspect sanitized `device_link.stage` events for
+  `direct_credentials_ready`, `direct_attempt_created`,
+  `direct_first_candidate_published`, `direct_attempt_ready`,
+  `direct_remote_candidate_received`, and `direct_connected`. If credentials
+  or attempt creation appear only after a five-second boundary, inspect the
+  native prepare bridge for a blocking full ICE description. If ready is early
+  but connected is late, isolate candidate exchange from authenticated
+  ICE/QUIC instead of changing Relay delay.
+- **Root cause:** The caller previously waited for a complete host-only ICE
+  description, created the attempt to discover server STUN endpoints, replaced
+  the Participant, and then waited for a second complete description. The
+  Desktop owner also waited for its full description before publishing. Two
+  configured five-second gathering windows therefore sat on the critical path,
+  while TSH's lower-level implementation already published credentials and
+  trickled candidates during `Connect`.
+- **Fix:** Use `candidateexchange.Start` and publish valid ICE credentials
+  immediately, allowing an empty candidate list. Run `PublishLocal` and
+  `FeedRemote` beside `Participant.Connect`; keep signed attempt reads/writes,
+  push hints, account authorization, and pairing state in the product adapter.
+  Mobile must drain the gomobile `ActionPump` next/resolve protocol rather than
+  use the legacy blocking `LocalDescription` bridge or own a second TypeScript
+  retry/poll scheduler. Resolve a publication successfully only after the
+  returned authoritative attempt contains its candidate snapshot. Android must
+  keep enough native operation workers for `Connect`, candidate actions, and
+  Relay work to progress concurrently.
+- **Validation:** Cover an initial zero-candidate snapshot, a later local
+  candidate update, a ready peer with zero candidates, a later authoritative
+  remote snapshot, missed-push polling fallback, exact-snapshot publish retry,
+  and a successful stream probe. Compare stage deltas on LAN and external NAT;
+  do not log candidates, addresses, ICE credentials, fingerprints, tokens, or
+  payloads.
+- **References:** `packages/device-link/candidateexchange`,
+  `packages/device-link/mobile/link.go`,
+  `apps/mobile/src/services/deviceLinkCandidateExchange.ts`,
+  `services/tuttid/service/mobileremote/candidate_exchange.go`
 
 ## Mobile shows output from a completed Session after foreground resume
 

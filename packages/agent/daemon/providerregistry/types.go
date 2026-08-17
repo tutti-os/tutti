@@ -155,6 +155,32 @@ const (
 	AuthCommandRunnerKindCursor                AuthCommandRunnerKind = "cursor"
 )
 
+// RemoteAuthProbeKind identifies the provider-neutral transport used to turn
+// a locally resolved credential into provider-backed authentication evidence.
+// Credential collection remains adapter-owned so secrets never enter the
+// descriptor or a public status response.
+type RemoteAuthProbeKind string
+
+const (
+	RemoteAuthProbeKindHTTPBearer    RemoteAuthProbeKind = "http_bearer"
+	RemoteAuthProbeKindProviderUsage RemoteAuthProbeKind = "provider_usage"
+)
+
+// RemoteAuthCredentialKind identifies the provider credential grammar used by
+// a host or managed-runtime adapter before invoking RemoteAuthProbe.
+type RemoteAuthCredentialKind string
+
+const RemoteAuthCredentialKindClaudeOAuth RemoteAuthCredentialKind = "claude_oauth"
+
+type RemoteAuthProbeDescriptor struct {
+	Kind           RemoteAuthProbeKind
+	CredentialKind RemoteAuthCredentialKind
+	Endpoint       string
+	Method         string
+	Headers        map[string]string
+	TimeoutSeconds int
+}
+
 type StaticSpecResolverKind string
 
 const (
@@ -307,6 +333,7 @@ type StatusDescriptor struct {
 	AdapterBinaryNames              []string
 	AuthStatusCommand               []string
 	AuthStatusCommandTimeoutSeconds int
+	RemoteAuthProbe                 RemoteAuthProbeDescriptor
 	AuthMarkerPaths                 []string
 	APIEndpoints                    []string
 	CustomConfigEnvVars             []string
@@ -608,12 +635,16 @@ const (
 )
 
 type DesktopIntegrationDescriptor struct {
-	Managed              bool
-	ManagedOrder         int
-	StatusProbePriority  int
-	UsageProbeKind       DesktopUsageProbeKind
-	VisibilityGate       DesktopVisibilityGate
-	RuntimeProbeFallback DesktopRuntimeProbeFallback
+	Managed             bool
+	ManagedOrder        int
+	StatusProbePriority int
+	UsageProbeKind      DesktopUsageProbeKind
+	// AuthProbeAfterCredentialSync requires Desktop hosts to wait until the
+	// provider's credential projection has settled before reading auth state.
+	// Hosts map this semantic barrier to their own synchronization mechanism.
+	AuthProbeAfterCredentialSync bool
+	VisibilityGate               DesktopVisibilityGate
+	RuntimeProbeFallback         DesktopRuntimeProbeFallback
 	// CommandNetworkAccess explicitly opts a Codex-compatible app-server into
 	// command networking when it runs under the Tutti Desktop host.
 	CommandNetworkAccess       bool

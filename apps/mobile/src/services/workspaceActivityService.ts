@@ -31,7 +31,11 @@ import {
   resolvePendingSubmission,
   type PendingSubmission
 } from "./pendingSubmission";
-import type { ClockPort, DeviceLinkPort } from "./servicePorts";
+import type {
+  AgentLiveDelivery,
+  ClockPort,
+  DeviceLinkPort
+} from "./servicePorts";
 import {
   createWorkspaceActivityEffectPort,
   executeWorkspaceActivityExtensionCommand
@@ -92,7 +96,13 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
     private readonly clock: ClockPort,
     private readonly currentUserId: string,
     deviceLink?: DeviceLinkPort,
-    private readonly onTransportConnectionChanged?: (connected: boolean) => void
+    private readonly onTransportConnectionChanged?: (
+      connected: boolean,
+      failure?: Extract<
+        AgentLiveDelivery,
+        { kind: "connection"; status: "disconnected" }
+      >
+    ) => void
   ) {
     super();
     this.requiresLiveTransport = deviceLink !== undefined;
@@ -148,7 +158,7 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
       isAvailable: () => !this.disposed && !this.paused,
       navigation: this.navigation,
       onActivityChanged: () => this.onDependencyChanged(),
-      onConnectionChanged: (connected) => {
+      onConnectionChanged: (connected, failure) => {
         this.setTransportConnected(connected);
         if (connected) {
           this.messagePollTask?.cancel();
@@ -156,7 +166,7 @@ export class WorkspaceActivityService extends ObservableService<WorkspaceActivit
         } else {
           this.scheduleMessagesPoll();
         }
-        this.onTransportConnectionChanged?.(connected);
+        this.onTransportConnectionChanged?.(connected, failure);
       },
       rail: this.rail,
       readCanonicalActivity: () =>

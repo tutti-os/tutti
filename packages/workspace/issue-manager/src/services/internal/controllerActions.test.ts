@@ -6,6 +6,7 @@ import type {
   IssueManagerAgentSessionOpenInput,
   IssueManagerAnalyticsEvent,
   IssueManagerCreateIssueInput,
+  IssueManagerContextRef,
   IssueManagerAgentRunRequest,
   IssueManagerRemoveContextRefInput,
   IssueManagerUpdateIssueInput,
@@ -788,6 +789,53 @@ test("controller actions open references through the file adapter when available
       path: "/workspace/docs/README.md"
     }
   ]);
+});
+
+test("controller actions open attachments through the ContextRef host capability", async () => {
+  const reference: IssueManagerContextRef = {
+    accessKind: "managed_attachment",
+    contextRefId: "attachment-1",
+    displayName: "capture.png",
+    issueId: "issue-1",
+    parentKind: "issue",
+    refType: "image/png",
+    workspaceId: "workspace-1"
+  };
+  const openCalls: IssueManagerContextRef[] = [];
+  const harness = createControllerActionsHarness({
+    contextRefOpener: {
+      async openContextRef(input) {
+        openCalls.push(input);
+      }
+    }
+  });
+
+  await harness.actions.openContextRef(reference);
+
+  assert.deepEqual(openCalls, [reference]);
+});
+
+test("controller actions preserve workspace-path opening for legacy hosts", async () => {
+  const openCalls: string[] = [];
+  const harness = createControllerActionsHarness({
+    fileAdapter: {
+      async openReference(reference) {
+        openCalls.push(reference.path);
+      }
+    }
+  });
+
+  await harness.actions.openContextRef({
+    contextRefId: "context-ref-legacy",
+    displayName: "capture.png",
+    issueId: "issue-1",
+    parentKind: "issue",
+    path: "/workspace/capture.png",
+    refType: "image/png",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(openCalls, ["/workspace/capture.png"]);
 });
 
 test("controller actions open agent sessions from issue runs", async () => {

@@ -193,9 +193,9 @@ Migrated agent runtime state should derive from the same root:
     sessions/
       <date>-<sequence>/
     worktrees/
-      <agent-session-id>/
+      <worktree-id>/
       .metadata/
-        <agent-session-id>.json
+        <worktree-id>.json
     runs/
       <agent-session-id>/
         sidecar-manifest.json
@@ -204,6 +204,9 @@ Migrated agent runtime state should derive from the same root:
     attachments/
       <agent-session-id>/
         <attachment-id>.<ext>
+  agent-prompt-assets/
+    issues/
+      <attachment-id>.<ext>
     codex/
       tutti/
         current/
@@ -257,6 +260,20 @@ rebuildable snapshots of the embedded Skills installed by the active Tutti
 Agent binary; run-scoped homes link to the matching digest before thread
 startup. Session cleanup never removes either shared cache. `agent/attachments`
 stores persisted prompt attachments by agent session.
+
+`agent-prompt-assets/issues` stores daemon-managed PNG, JPEG, and WebP source
+files attached to Qute Issues. Their metadata and Issue/Task ownership remain
+in SQLite ContextRefs. The source root is intentionally inside the Agent prompt
+attachment allowlist: when an Issue Run starts, the prompt attachment store
+copies each image into `agent/attachments/<agent-session-id>` before provider
+preparation. Removing the owning Issue, Task, or ContextRef removes only
+matching files inside this managed directory. New image bytes are staged
+before the Issue and its ContextRefs are committed together in one SQLite
+transaction. Daemon startup reconciles the directory against durable SQLite
+ContextRefs and prepared/leased Issue Run payload snapshots. A launch snapshot
+pins its managed image paths until delivery is confirmed or the Run is settled,
+so editing an Issue cannot change an admitted prompt. Reconciliation removes
+files orphaned before the Issue transaction, or by a prior cleanup failure.
 
 ## Developer Agent Session Cassettes
 
@@ -312,24 +329,47 @@ days, with 30 days as the default. Existing tombstones use their original
 deletion timestamp; upgrades do not add another grace period. The daemon runs
 small permanent-removal batches only while Agent work is idle, no more than one
 successful automatic sweep per 24 hours. The desktop setting also exposes an
-explicitly confirmed manual cleanup that targets all current tombstones.
+explicitly confirmed manual cleanup that targets all current topmost tombstone
+components in the selected Workspace, regardless of the visible search or
+project filter.
 
-The filesystem cleanup checklist considered these Tutti-owned session roots:
+Only tombstones written by the lossless deletion generation are restorable.
+They retain the complete root/child Session tree and its transcript, history,
+provider resume identity, copied prompt attachments, and worktree reference.
+Legacy tombstones are listed but remain unavailable for restore because their
+Turn graph was already removed. Restore clears the exact tree tombstone without
+rewriting its original Session metadata or starting provider work.
+
+The Workspace store records a durable cleanup item in the same SQLite
+transaction that hard-deletes canonical and Tutti Mode state for these
+Tutti-owned Session components:
 
 - `agent/attachments/<agent-session-id>`: persisted prompt attachments owned by
   the purged session.
-- `agent/runs/<agent-session-id>`: residual provider sidecar state left when the
-  normal session-delete cleanup could not finish.
+- `agent/runs/<agent-session-id>`: the isolated provider sidecar state retained
+  while the Session is recoverable.
 
-This checklist is deliberately **not activated** by retention cleanup. A
-canonical row can be purged immediately before another workspace starts a new
-session with the same externally supplied id, and a real directory beneath a
-run root can be a filesystem mount rather than Tutti-owned content. Neither
-ownership can be proven safely across supported platforms without coordinating
-all session creation and mount topology. The conservative policy is therefore
-to delete no files at all. A session cwd, user project, worktree, provider
-installation, shared provider home, custom `CODEX_HOME`, the two candidate
-roots above, and every other filesystem path remain untouched.
+The queue remains keyed by Workspace and Session so each purge transaction has
+its own durable work item and is the only producer of that item. After Host
+returns, maintenance only drains the committed queue; it never re-enqueues the
+purge result. Cleanup is attempted immediately and failures remain durable for
+a later idle retry. A deliberately queue-less composition may perform direct
+best-effort cleanup instead. The physical roots above are currently keyed only
+by agent Session ID, however, so any pending queue row globally fences insertion
+of that Session ID in every Workspace. Before hard resource deletion, the
+cleanup worker queries canonical live and tombstoned state across the full
+database and retires the item without touching files if any Workspace still
+owns the ID. Multiple queue rows for the same ID are safe: the first may remove
+the roots and later attempts are idempotent. During recoverable deletion,
+Workspace-keyed runtime and Model Gateway cleanup still runs, but the global
+Agent/browser resource releaser is skipped when another Workspace has a live
+canonical owner with that ID. Canonical deletion remains successful when
+filesystem cleanup fails. Cleanup is limited to the two Session-scoped roots
+above; it never deletes a user project, arbitrary Session cwd, provider
+installation, shared provider home, or custom external provider home. A future
+migration to Workspace-scoped physical paths is outside this change.
+Managed worktrees are independent Workspace resources. Recoverable deletion,
+restore, hard deletion, and purge do not retain, release, or remove them.
 
 Deleted SQLite pages are immediately reusable by the database. After an
 explicit manual sweep only, the daemon may additionally run a three-second
@@ -338,17 +378,25 @@ best-effort `VACUUM` when the whole database is no larger than 64 MiB, at least
 Automatic maintenance never performs this compaction; a busy, timed-out, or
 failed attempt does not roll back the committed purge.
 
-`agent/worktrees/<agent-session-id>` is a daemon-managed Git checkout for a
-worktree-isolated agent session. The tuttid agent adapter owns the corresponding
-`.metadata/<agent-session-id>.json` record used for enumeration, failed-create
-rollback, and orphan recovery; it records the repository root, branch, base
-commit, and session scope. Canonical isolation coordinates remain in the
-session's existing runtime-context/metadata JSON, so this layout does not add a
-SQLite schema. Host startup recovery and the periodic Host worker only schedule
-cleanup through the adapter port. A tree is deleted only when it is clean with
-no commits ahead of its base, its creator is absent or not resumable, and no
-session cwd is inside the tree. Turn/runtime completion and session end times
-must never trigger this cleanup.
+`agent/worktrees/<worktree-id>` is a daemon-managed Git checkout with its own
+resource identity and explicit lifecycle. The tuttid agent adapter owns the
+corresponding `.metadata/<worktree-id>.json` record used for enumeration,
+creation-transaction recovery, and explicit deletion. It records the Workspace,
+repository root, branch, base commit, selected repository-relative working
+directory, and opaque creation-request hash; new records never persist a
+Session id. Metadata moves from `creating` to `ready` after `git worktree add`
+and cwd validation. An exact retry repairs an interrupted `creating` transaction
+or reuses its ready checkout; a Workspace, repository, or relative-directory
+mismatch fails closed. Legacy Session-keyed records remain readable but their
+Session id is compatibility data, not ownership.
+
+Canonical Session isolation JSON references the independent worktree id and Git
+coordinates as runtime facts. Fork copies the prepared cwd and runtime context
+without validating a Session-to-worktree ownership relation. Session deletion,
+restore, and purge never remove a worktree, and Host startup or periodic work
+never sweeps this directory. The Workspace managed-worktree API is the only
+normal deletion entrypoint. It refuses dirty or ahead resources and deletes the
+branch with an expected-object-id compare so a concurrent commit is preserved.
 
 `agent/extensions` is daemon-owned verified Agent Extension state. Version
 directories are immutable after installation; `active.json` selects the
@@ -417,8 +465,10 @@ npm prefix. All CLI Connector installations bind to the one signed
 The shared directories deduplicate registry downloads and physical dependency
 content. The release directory remains isolated and contains only its lock,
 links/hardlinks, package metadata, generated bin entry, and installation
-receipt. Uninstall removes the release directory but preserves shared content
-for other installed connectors.
+receipt. A release-scoped rollback removes only the target release. Explicit
+Connector uninstall removes every private release directory and prepared or
+download-cached artifact for that Connector, while preserving shared package
+content, account authorization, and user/workspace state.
 
 The action filename hashes exact Target plus fixed extension installation
 identity; workspace identity remains inside the record, not in a directory
@@ -459,6 +509,14 @@ Tutti provider startup.
 - desktop-to-daemon listener publication defaults to `<state-dir>/run/tuttid.listener.json`
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
 - packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the canonical user-level command path and points it at the packaged CLI binary; on macOS and Linux, when the login-shell `PATH` already contains writable `~/.local/bin` or `~/bin`, desktop also maintains a Tutti-owned forwarding shim there without replacing third-party commands
+- packaged Windows uninstall preserves the `.tutti` state root by default but
+  removes canonical and user-PATH `tutti.cmd` shims only when their marker line
+  identifies them as Tutti-owned; uninstall must not delete an unmarked
+  third-party command with the same name; interactive uninstall asks whether
+  to preserve or delete all user state, while silent uninstall preserves it
+  unless explicitly invoked with `--delete-app-data`; the delete path removes
+  daemon state, Electron user data, updater cache, and the per-user `tutti`
+  protocol registration
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
 - workspace app package cache, per-installation runtime/data/database/log state, and
   app factory job working directories live under `<state-dir>/apps`

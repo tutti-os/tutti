@@ -47,6 +47,7 @@ paths:
       summary: List one server-owned connector-market section
       parameters:
         - $ref: "#/components/parameters/ConnectorMarketSectionID"
+        - $ref: "#/components/parameters/ConnectorMarketInstallationFilter"
         - $ref: "#/components/parameters/ConnectorMarketPageSize"
         - $ref: "#/components/parameters/ConnectorMarketPageToken"
       responses:
@@ -148,7 +149,11 @@ paths:
     post:
       operationId: uninstallConnectorMarketConnector
       tags: [connector-market]
-      summary: Uninstall one connector
+      summary: Uninstall one connector from this device
+      description: >-
+        Deactivates local runtime routes and removes the installed release and
+        optional CLI. Account authorization is not disconnected and can be
+        reused after reinstalling or from another device.
       requestBody:
         required: true
         content:
@@ -178,7 +183,7 @@ paths:
     post:
       operationId: startConnectorMarketAuthorization
       tags: [connector-market]
-      summary: Start connector authorization
+      summary: Start or replace connector authorization
       requestBody:
         required: true
         content:
@@ -200,6 +205,22 @@ paths:
           $ref: "#/components/responses/ConnectorMarketNotFoundError"
         "409":
           $ref: "#/components/responses/ConnectorMarketConflictError"
+        "503":
+          $ref: "#/components/responses/ConnectorMarketUnavailableError"
+  /v1/connector-market/connectors/{connectorKey}/authorization:cancel:
+    parameters:
+      - $ref: "#/components/parameters/ConnectorMarketConnectorKey"
+    post:
+      operationId: cancelConnectorMarketAuthorization
+      tags: [connector-market]
+      summary: Cancel a pending connector authorization attempt
+      responses:
+        "204":
+          description: Pending authorization attempt canceled
+        "401":
+          $ref: "#/components/responses/ConnectorMarketUnauthorizedError"
+        "404":
+          $ref: "#/components/responses/ConnectorMarketNotFoundError"
         "503":
           $ref: "#/components/responses/ConnectorMarketUnavailableError"
   /v1/connector-market/connectors/{connectorKey}/authorization:disconnect:
@@ -277,6 +298,14 @@ components:
       schema:
         type: string
         minLength: 1
+    ConnectorMarketInstallationFilter:
+      name: installation
+      in: query
+      required: false
+      description: Filters connector installation projections before page boundaries and next-page calculation.
+      schema:
+        type: string
+        enum: [not_installed]
     ConnectorMarketPageSize:
       name: pageSize
       in: query
@@ -391,7 +420,7 @@ components:
     ConnectorMarketSnapshot:
       type: object
       additionalProperties: false
-      required: [catalogState, connectors, operations, revision]
+      required: [catalogState, connectors, operations, revision, eventCursor]
       properties:
         catalogState:
           $ref: "#/components/schemas/ConnectorMarketCatalogState"
@@ -404,6 +433,10 @@ components:
           items:
             $ref: "#/components/schemas/ConnectorMarketOperation"
         revision:
+          type: integer
+          format: int64
+          minimum: 0
+        eventCursor:
           type: integer
           format: int64
           minimum: 0
@@ -505,6 +538,19 @@ components:
           $ref: "#/components/schemas/ConnectorMarketImplementation"
         authorizationKind:
           type: string
+        authorizationInteraction:
+          type: object
+          description: >-
+            Opaque Connector-owned authorization interaction configuration.
+            Hosts transport this value without interpreting its UI semantics;
+            renderers must validate it against the versioned protocol.
+          additionalProperties: true
+        authorizationInteractionMode:
+          type: string
+          enum: [managed]
+          description: >-
+            Public host projection indicating that authorization is owned by a
+            managed credential broker and must start without a local secret.
         compatibility:
           $ref: "#/components/schemas/ConnectorMarketCompatibilityRequirements"
     ConnectorMarketAgentRouting:
@@ -665,6 +711,10 @@ components:
           type: integer
           format: int64
           minimum: 0
+        expectedConnectorRevision:
+          type: integer
+          format: int64
+          minimum: 0
     ConnectorMarketAuthorizationRequest:
       type: object
       additionalProperties: false
@@ -677,11 +727,24 @@ components:
           type: integer
           format: int64
           minimum: 0
+        expectedConnectorRevision:
+          type: integer
+          format: int64
+          minimum: 0
+        replacementPolicy:
+          $ref: "#/components/schemas/ConnectorMarketAuthorizationReplacementPolicy"
         secret:
           type: string
           minLength: 1
           maxLength: 16384
           writeOnly: true
+    ConnectorMarketAuthorizationReplacementPolicy:
+      type: string
+      description: >-
+        When set to replace_active, the Host fences and terminates a different
+        unresolved authorization attempt before starting this request. Omission
+        preserves the legacy resume-or-conflict behavior.
+      enum: [replace_active]
     ConnectorMarketMutationResponse:
       type: object
       additionalProperties: false
@@ -698,7 +761,7 @@ components:
     ConnectorMarketAuthorizationResponse:
       type: object
       additionalProperties: false
-      required: [connector, operation, revision]
+      required: [connector, operation, authorizationExpiresAt, revision]
       properties:
         connector:
           $ref: "#/components/schemas/ConnectorMarketConnector"
@@ -707,6 +770,15 @@ components:
         authorizationUrl:
           type: string
           format: uri
+        authorizationView:
+          type: object
+          description: >-
+            Opaque runtime Authorization View V1 envelope. Clients must validate
+            it with the shared authorization protocol before rendering.
+          additionalProperties: true
+        authorizationExpiresAt:
+          type: string
+          format: date-time
         revision:
           type: integer
           format: int64
@@ -777,7 +849,9 @@ components:
         - refreshing
         - installing
         - installed
+        - runtime_pending
         - deactivating
+        - removing
         - authorizing
         - disconnecting
         - completed

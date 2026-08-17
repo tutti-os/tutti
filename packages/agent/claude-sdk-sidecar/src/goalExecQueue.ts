@@ -58,6 +58,21 @@ export class GoalExecQueue {
     setTimeout(() => this.drain(), 0);
   }
 
+  cancelExact(turnId: string): GoalExecInput | undefined {
+    const expected = turnId.trim();
+    if (!expected) {
+      return undefined;
+    }
+    const index = this.pending.findIndex(
+      (input) => input.turnId.trim() === expected
+    );
+    if (index < 0) {
+      return undefined;
+    }
+    const [canceled] = this.pending.splice(index, 1);
+    return canceled;
+  }
+
   private drain(): void {
     this.dispatchScheduled = false;
     const pending = this.pending;

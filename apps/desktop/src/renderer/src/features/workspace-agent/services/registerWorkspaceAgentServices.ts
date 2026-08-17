@@ -10,6 +10,7 @@ import type { IReporterService } from "../../analytics/services/reporterService.
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import type { IDesktopPreferencesService } from "../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { NotificationService } from "@tutti-os/ui-notifications";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import {
   AGENT_SESSION_RECORDING_FLAG,
   EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,
@@ -42,7 +43,7 @@ import {
 } from "./agentQuickPromptService.interface.ts";
 
 export interface WorkspaceAgentServiceRegistrationInput {
-  accountLogin: { startLogin(): Promise<void> };
+  accountLogin: { startLogin(): Promise<unknown> };
   clipboard: { writeText(text: string): Promise<void> };
   desktopPreferencesService: IDesktopPreferencesService;
   eventStreamClient?: TuttidEventStreamClient;
@@ -65,6 +66,7 @@ export interface WorkspaceAgentServiceRegistrationInput {
     provider: string;
   }) => string;
   terminalCommandRunner: AgentProviderTerminalCommandRunner;
+  uiMode: DesktopWorkspaceUiMode;
   windowLifecycle: WorkspaceWindowLifecycle;
   workspaceId: string;
   workspaceUserProjectService?: IWorkspaceUserProjectService;
@@ -140,7 +142,6 @@ export function registerWorkspaceAgentServices(
     preferencesStore
   });
   const agentQuickPromptService = new DesktopAgentQuickPromptService({
-    desktopPreferencesService: input.desktopPreferencesService,
     eventStreamClient: input.eventStreamClient,
     tuttidClient: input.tuttidClient
   });

@@ -34,6 +34,78 @@ type closeRuntimeBackend struct {
 	input agentruntime.CloseInput
 }
 
+type workspaceDisconnectBackend struct {
+	RuntimeBackend
+	sessions  []agentruntime.Session
+	roomID    string
+	sessionID string
+	target    agentruntime.RuntimeDisconnectTarget
+}
+
+func (*workspaceDisconnectBackend) SnapshotRuntimeDisconnectTargets(string) []agentruntime.RuntimeDisconnectTarget {
+	return []agentruntime.RuntimeDisconnectTarget{{
+		RoomID: "workspace-1", AgentSessionID: "session-1", ConnectionGeneration: 7,
+	}}
+}
+
+func (b *workspaceDisconnectBackend) DisconnectRuntimeSessionTarget(
+	_ context.Context,
+	target agentruntime.RuntimeDisconnectTarget,
+) (agentruntime.DisconnectRuntimeSessionResult, error) {
+	b.target = target
+	return agentruntime.DisconnectRuntimeSessionResult{Disconnected: true}, nil
+}
+
+func (b *workspaceDisconnectBackend) RuntimeSessions(context.Context, string) ([]agentruntime.Session, error) {
+	return append([]agentruntime.Session(nil), b.sessions...), nil
+}
+
+func (*workspaceDisconnectBackend) State(_, _ string) (agentruntime.SessionStateSnapshot, error) {
+	return agentruntime.SessionStateSnapshot{}, nil
+}
+
+func (b *workspaceDisconnectBackend) DisconnectRuntimeSession(
+	_ context.Context,
+	roomID string,
+	sessionID string,
+) (agentruntime.DisconnectRuntimeSessionResult, error) {
+	b.roomID = roomID
+	b.sessionID = sessionID
+	return agentruntime.DisconnectRuntimeSessionResult{Disconnected: true}, nil
+}
+
+func TestRuntimeControllerBridgesWorkspaceRuntimeDisconnect(t *testing.T) {
+	t.Parallel()
+	backend := &workspaceDisconnectBackend{sessions: []agentruntime.Session{{
+		RoomID: "workspace-1", AgentSessionID: "session-1", ProviderSessionID: "provider-1",
+	}}}
+	controller := &RuntimeController{Backend: backend}
+	sessions, err := controller.WorkspaceRuntimeSessions(t.Context(), " workspace-1 ")
+	if err != nil {
+		t.Fatalf("WorkspaceRuntimeSessions: %v", err)
+	}
+	if len(sessions) != 1 || sessions[0].ID != "session-1" || sessions[0].ProviderSessionID != "provider-1" {
+		t.Fatalf("sessions=%#v", sessions)
+	}
+	disconnected, err := controller.DisconnectRuntimeSession(t.Context(), host.SessionRef{
+		WorkspaceID: " workspace-1 ", AgentSessionID: " session-1 ",
+	})
+	if err != nil || !disconnected {
+		t.Fatalf("disconnected=%v err=%v", disconnected, err)
+	}
+	if backend.roomID != "workspace-1" || backend.sessionID != "session-1" {
+		t.Fatalf("backend ref=%q/%q", backend.roomID, backend.sessionID)
+	}
+	targets := controller.SnapshotWorkspaceRuntimeDisconnectTargets("workspace-1")
+	if len(targets) != 1 || targets[0].ConnectionGeneration != 7 {
+		t.Fatalf("targets=%#v", targets)
+	}
+	disconnected, err = controller.DisconnectRuntimeSessionTarget(t.Context(), targets[0])
+	if err != nil || !disconnected || backend.target.ConnectionGeneration != 7 {
+		t.Fatalf("target disconnect=%v err=%v backend=%#v", disconnected, err, backend.target)
+	}
+}
+
 func (b *closeRuntimeBackend) Close(_ context.Context, input agentruntime.CloseInput) (agentruntime.CloseResult, error) {
 	b.input = input
 	return agentruntime.CloseResult{AgentSessionID: input.AgentSessionID, Disconnected: true}, nil
@@ -53,6 +125,25 @@ func TestRuntimeControllerPreservesCanonicalStateWhenClosingRuntime(t *testing.T
 		backend.input.AgentSessionID != "session-rejected" ||
 		!backend.input.PreserveCanonicalState {
 		t.Fatalf("backend close input = %#v", backend.input)
+	}
+}
+
+func TestRuntimeResumeInputMapsDurableGoalGenerationFences(t *testing.T) {
+	t.Parallel()
+	mapped := runtimeResumeInput(host.RuntimeResumeInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1", Provider: "codex",
+		GoalGenerationFences: []host.RuntimeGoalGenerationFenceInput{{
+			TargetOperationID: "old-goal", TargetRevision: 3, TargetRepairEpoch: 2,
+			Reason: "binding_revoked", RequireLive: false,
+		}},
+	})
+	if len(mapped.GoalGenerationFences) != 1 {
+		t.Fatalf("mapped fences=%#v", mapped.GoalGenerationFences)
+	}
+	fence := mapped.GoalGenerationFences[0]
+	if fence.OperationID != "old-goal" || fence.Revision != 3 || fence.RepairEpoch != 2 ||
+		fence.Reason != "binding_revoked" {
+		t.Fatalf("mapped fence=%#v", fence)
 	}
 }
 
@@ -126,8 +217,12 @@ func TestMapRuntimeErrorPreservesProviderDiagnostics(t *testing.T) {
 func TestMapRuntimeErrorKeepsTransportOutcomeUnknown(t *testing.T) {
 	for _, target := range []error{context.Canceled, context.DeadlineExceeded} {
 		t.Run(target.Error(), func(t *testing.T) {
+			code := "request_failed"
+			if errors.Is(target, context.DeadlineExceeded) {
+				code = "request_timed_out"
+			}
 			runtimeErr := &agentruntime.AppError{
-				Code:  "request_failed",
+				Code:  code,
 				Cause: fmt.Errorf("provider response: %w", target),
 			}
 			mapped := mapRuntimeError(runtimeErr)
@@ -142,6 +237,32 @@ func TestMapRuntimeErrorKeepsTransportOutcomeUnknown(t *testing.T) {
 	}
 }
 
+func TestMapRuntimeErrorPreservesProviderStartTimeoutVerdict(t *testing.T) {
+	runtimeErr := &agentruntime.AppError{
+		Code:         "request_timed_out",
+		Message:      "Agent could not start before the request timed out.",
+		DebugMessage: "provider startup exceeded its deadline",
+		Cause: errors.Join(
+			agentruntime.ErrProviderStartTimeout,
+			fmt.Errorf("provider start: %w", context.DeadlineExceeded),
+		),
+	}
+	mapped := mapRuntimeError(fmt.Errorf("daemon runtime: %w", runtimeErr))
+	var providerErr *host.ProviderError
+	if !errors.As(mapped, &providerErr) {
+		t.Fatalf("mapped error = %v, want ProviderError", mapped)
+	}
+	if providerErr.Code != host.ProviderErrorCodeStartTimeout {
+		t.Fatalf("ProviderError code = %q, want %q", providerErr.Code, host.ProviderErrorCodeStartTimeout)
+	}
+	if providerErr.Message != runtimeErr.Message || providerErr.DebugMessage != runtimeErr.DebugMessage {
+		t.Fatalf("ProviderError = %#v, want presentation diagnostics from %#v", providerErr, runtimeErr)
+	}
+	if !errors.Is(mapped, context.DeadlineExceeded) || !errors.Is(mapped, runtimeErr) {
+		t.Fatalf("mapped error did not preserve runtime deadline chain: %v", mapped)
+	}
+}
+
 func TestMapRuntimeErrorMapsDisconnectedSessionAcrossHostBoundary(t *testing.T) {
 	runtimeErr := fmt.Errorf("fence requires live provider: %w", agentruntime.ErrSessionDisconnected)
 	mapped := mapRuntimeError(runtimeErr)
@@ -150,6 +271,37 @@ func TestMapRuntimeErrorMapsDisconnectedSessionAcrossHostBoundary(t *testing.T) 
 	}
 	if !errors.Is(mapped, agentruntime.ErrSessionDisconnected) {
 		t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
+	}
+}
+
+func TestMapRuntimeErrorMapsMissingSessionAcrossHostBoundary(t *testing.T) {
+	runtimeErr := fmt.Errorf("fence session disappeared: %w", agentruntime.ErrSessionNotFound)
+	mapped := mapRuntimeError(runtimeErr)
+	if !errors.Is(mapped, host.ErrSessionNotFound) {
+		t.Fatalf("mapped error = %v, want Host missing-session sentinel", mapped)
+	}
+	if !errors.Is(mapped, agentruntime.ErrSessionNotFound) {
+		t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
+	}
+}
+
+func TestMapRuntimeErrorMapsGuidanceTargetVerdictsAcrossHostBoundary(t *testing.T) {
+	for _, testCase := range []struct {
+		runtimeErr error
+		hostErr    error
+	}{
+		{agentruntime.ErrActiveTurnTargetRequired, host.ErrActiveTurnTargetRequired},
+		{agentruntime.ErrActiveTurnTargetMismatch, host.ErrActiveTurnTargetMismatch},
+	} {
+		t.Run(testCase.runtimeErr.Error(), func(t *testing.T) {
+			mapped := mapRuntimeError(fmt.Errorf("guidance dispatch: %w", testCase.runtimeErr))
+			if !errors.Is(mapped, testCase.hostErr) {
+				t.Fatalf("mapped error = %v, want Host sentinel %v", mapped, testCase.hostErr)
+			}
+			if !errors.Is(mapped, testCase.runtimeErr) {
+				t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
+			}
+		})
 	}
 }
 

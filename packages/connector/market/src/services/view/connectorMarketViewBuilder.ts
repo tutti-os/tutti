@@ -1,4 +1,5 @@
 import type { Connector } from "../../contracts/index.ts";
+import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-authorization-protocol/v1";
 import type { ConnectorMarketStoreState } from "../connectorMarketService.interface.ts";
 import type { ConnectorMarketUiState } from "../ui-state/connectorMarketUiStateService.interface.ts";
 import type {
@@ -44,6 +45,7 @@ export function buildConnectorMarketView(
                 )
               )
               .map((connector) => connector.key),
+            error: false,
             hasMore: false,
             itemCount: installedCount,
             loading: false
@@ -59,7 +61,9 @@ export function buildConnectorMarketView(
               matchesQuery(connector)
             );
           }),
-          hasMore: Boolean(section.nextPageToken),
+          error: section.loadState === "error",
+          hasMore:
+            section.loadState === "ready" && Boolean(section.nextPageToken),
           itemCount: section.itemCount,
           loading: section.loadState === "loading"
         }));
@@ -82,20 +86,36 @@ export function buildConnectorMarketView(
       uiState.dialog
         ? market.connectorsByKey[uiState.dialog.connectorKey]
         : undefined,
+      uiState.dialog?.kind ?? null,
       uiState.dialog
         ? Boolean(market.authorizingConnectorKeys[uiState.dialog.connectorKey])
+        : false,
+      uiState.dialog
+        ? market.pendingAuthorizationsByConnectorKey[
+            uiState.dialog.connectorKey
+          ] === true
         : false,
       uiState.dialog
         ? market.pendingInstallationsByConnectorKey[
             uiState.dialog.connectorKey
           ] === true
-        : false
+        : false,
+      uiState.dialog
+        ? (market.operationsByConnectorKey[uiState.dialog.connectorKey]
+            ?.stage ?? null)
+        : null,
+      uiState.dialog
+        ? market.authorizationViewsByConnectorKey[uiState.dialog.connectorKey]
+        : undefined
     ),
     installedCount,
     refreshing: market.catalogState === "refreshing",
     sections: sections.filter(
       (section) =>
-        section.connectorKeys.length > 0 || section.loading || section.hasMore
+        section.connectorKeys.length > 0 ||
+        section.error ||
+        section.loading ||
+        section.hasMore
     ),
     status:
       market.loadState === "loading" || market.loadState === "idle"
@@ -104,7 +124,9 @@ export function buildConnectorMarketView(
           ? "error"
           : sections.every(
                 (section) =>
-                  section.connectorKeys.length === 0 && !section.loading
+                  section.connectorKeys.length === 0 &&
+                  !section.error &&
+                  !section.loading
               )
             ? "empty"
             : "ready"
@@ -134,21 +156,17 @@ function buildConnectorCardView(
   operationStage: ConnectorCardView["operationStage"],
   pendingInstallation: boolean
 ): ConnectorCardView {
-  const busy =
-    pendingInstallation ||
-    ["installing", "updating", "uninstalling"].includes(
-      connector.installation.state
-    ) ||
-    [
-      "accepted",
-      "installing",
-      "installed",
-      "deactivating",
-      "disconnecting"
-    ].includes(operationStage ?? "");
+  const busy = connectorMutationBusy(
+    connector,
+    operationStage,
+    pendingInstallation
+  );
   const installed = connectorHasInstalledArtifact(connector);
   const currentReleaseInstalled =
     connectorHasCurrentReleaseInstalled(connector);
+  const updating =
+    connector.installation.state === "updating" ||
+    (installed && !currentReleaseInstalled && pendingInstallation);
   const unavailable = connector.compatibility.state !== "supported";
   const connected = connector.authorization.state === "connected";
   const requiresAuthorization = !["connected", "not_required"].includes(
@@ -178,10 +196,13 @@ function buildConnectorCardView(
     implementationTags: implementationTags(connector),
     installationState: connector.installation.state,
     operationStage,
+    canUninstall: connectorCanUninstall(connector, busy),
     status: unavailable
       ? "unavailable"
       : busy
-        ? "installing"
+        ? updating
+          ? "updating"
+          : "installing"
         : !installed
           ? "not_installed"
           : !currentReleaseInstalled
@@ -194,8 +215,12 @@ function buildConnectorCardView(
 
 function buildConnectorDialogView(
   connector: Connector | undefined,
+  requestKind: NonNullable<ConnectorMarketUiState["dialog"]>["kind"] | null,
   authorizing: boolean,
-  pendingInstallation: boolean
+  pendingAuthorization: boolean,
+  pendingInstallation: boolean,
+  operationStage: ConnectorCardView["operationStage"],
+  authorizationView?: AuthorizationViewEnvelopeV1
 ): ConnectorDialogView | null {
   if (!connector) {
     return null;
@@ -210,6 +235,15 @@ function buildConnectorDialogView(
       name: permission
     }))
   };
+  const mutationBusy = connectorMutationBusy(
+    connector,
+    operationStage,
+    pendingInstallation
+  );
+  const canUninstall = connectorCanUninstall(connector, mutationBusy);
+  if (requestKind === "uninstall_confirmation") {
+    return canUninstall ? { ...base, kind: "uninstall_confirmation" } : null;
+  }
   if (connector.compatibility.state !== "supported") {
     return {
       ...base,
@@ -233,24 +267,69 @@ function buildConnectorDialogView(
   if (!["connected", "not_required"].includes(connector.authorization.state)) {
     return {
       ...base,
+      authorizationInteraction:
+        connector.release.manifest.authorizationInteraction,
       authorizationKind: connector.release.manifest.authorizationKind,
+      authorizationView,
       authorizing,
+      brokeredAuthorization:
+        connector.release.manifest.authorizationInteractionMode === "managed",
       kind: "authorization",
-      pending: connector.authorization.state === "pending"
+      pending:
+        pendingAuthorization || connector.authorization.state === "pending"
     };
   }
   return {
     ...base,
     canAuthorize: connector.release.manifest.authorizationKind !== "none",
+    canUninstall,
     details: buildDetailFields(connector),
     kind: "management"
   };
 }
 
+function connectorMutationBusy(
+  connector: Connector,
+  operationStage: ConnectorCardView["operationStage"],
+  pendingInstallation: boolean
+): boolean {
+  return (
+    pendingInstallation ||
+    ["installing", "updating", "uninstalling"].includes(
+      connector.installation.state
+    ) ||
+    [
+      "accepted",
+      "installing",
+      "installed",
+      "deactivating",
+      "disconnecting"
+    ].includes(operationStage ?? "")
+  );
+}
+
+function connectorCanUninstall(
+  connector: Connector,
+  mutationBusy: boolean
+): boolean {
+  return (
+    Boolean(connector.installation.installedReleaseDigest) && !mutationBusy
+  );
+}
+
 function connectorHasInstalledArtifact(connector: Connector): boolean {
   if (
+    connector.installation.state === "not_installed" ||
+    connector.installation.state === "installing"
+  ) {
+    return false;
+  }
+  if (
     connector.installation.state === "failed" &&
-    connector.installation.failureCode === "connector_installation_probe_absent"
+    [
+      "connector_installation_absent",
+      "connector_installation_invalid"
+    ].includes(connector.installation.failureCode ?? "")
   ) {
     return false;
   }

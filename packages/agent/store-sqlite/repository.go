@@ -20,6 +20,10 @@ type Repository interface {
 	PlanClearSessions(context.Context, string) (DeleteSessionsPlan, error)
 	PlanDeleteSessions(context.Context, DeleteSessionsBatchInput) (DeleteSessionsPlan, error)
 	DeleteSessionsBatch(context.Context, DeleteSessionsBatchInput) (DeleteSessionsBatchResult, error)
+	ListDeletedSessions(context.Context, ListDeletedSessionsInput) (DeletedSessionPage, error)
+	RestoreDeletedSession(context.Context, RestoreDeletedSessionInput) (RestoreDeletedSessionResult, error)
+	PurgeDeletedSessionTrees(context.Context, PurgeDeletedSessionTreesInput) (PurgeDeletedSessionTreesResult, error)
+	ListRecoverableDeletedSessionResources(context.Context) ([]DeletedSessionResource, error)
 	GetSession(context.Context, string, string) (Session, bool, error)
 	ListChildSessions(context.Context, string, string) ([]Session, error)
 	SessionDeleted(context.Context, string, string) (bool, error)
@@ -114,6 +118,91 @@ type DeleteSessionResult struct {
 	RemovedMessages   int
 	RemovedSessions   int
 	RemovedSessionIDs []string
+}
+
+const (
+	DeletedSessionUnavailableLegacyData           = "legacyDataUnavailable"
+	DeletedSessionUnavailableIncompleteTree       = "incompleteSessionTree"
+	recoverableDeleteVersionCurrent         int64 = 1
+)
+
+// ListDeletedSessionsInput selects topmost tombstones in one workspace. A
+// topmost tombstone has no tombstoned parent, so it may anchor either a root
+// tree or a deleted child subtree. A nil RailSectionKey means every section;
+// a non-nil value selects that exact persisted rail section key, including the
+// fixed conversations key.
+type ListDeletedSessionsInput struct {
+	WorkspaceID           string
+	SearchQuery           string
+	RailSectionKey        *string
+	CursorUpdatedAtUnixMS int64
+	CursorAgentSessionID  string
+	Limit                 int
+}
+
+type DeletedSessionSummary struct {
+	AgentSessionID    string
+	Title             string
+	RailSectionKey    string
+	ProjectPath       string
+	UpdatedAtUnixMS   int64
+	DeletedAtUnixMS   int64
+	Restorable        bool
+	UnavailableReason string
+}
+
+type DeletedSessionRailSection struct {
+	RailSectionKey string
+	ProjectPath    string
+}
+
+type DeletedSessionPage struct {
+	WorkspaceID         string
+	Sessions            []DeletedSessionSummary
+	RailSections        []DeletedSessionRailSection
+	TotalCount          int
+	WorkspaceTotalCount int
+	HasMore             bool
+	NextCursor          string
+}
+
+type RestoreDeletedSessionInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+}
+
+type RestoreDeletedSessionResult struct {
+	TransactionID      string           `json:"-"`
+	CommitDelta        TransactionDelta `json:"-"`
+	Restored           bool
+	RestoredSessionIDs []string
+}
+
+// PurgeDeletedSessionTreesInput permanently removes topmost deleted components
+// whose full reachable tree is tombstoned. RootSessionIDs is retained for
+// compatibility, but each value is a component anchor and may identify a root
+// or child Session. An empty slice selects every topmost tombstone in the
+// workspace. Recoverability metadata is deliberately not required, so legacy
+// or incomplete components remain explicitly purgeable.
+type PurgeDeletedSessionTreesInput struct {
+	WorkspaceID    string
+	RootSessionIDs []string
+}
+
+type PurgeDeletedSessionTreesResult struct {
+	PurgedRootSessionIDs []string
+	PurgedSessionIDs     []string
+	RemovedSessions      int
+	RemovedMessages      int
+	PayloadBytes         int64
+}
+
+// DeletedSessionResource is the minimum canonical identity needed by a host's
+// filesystem policy to protect recoverable state from background GC.
+type DeletedSessionResource struct {
+	WorkspaceID    string
+	AgentSessionID string
+	Cwd            string
 }
 
 // PurgeDeletedSessionsInput bounds one permanent-removal transaction. The
@@ -241,9 +330,11 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
-	WorkspaceID        string
-	SessionIDs         []string
-	ExpectedSessionIDs []string
+	WorkspaceID                string
+	SessionIDs                 []string
+	ExpectedSessionIDs         []string
+	RequiredRootRailSectionKey string
+	ExcludePinnedRoots         bool
 }
 
 type DeleteSessionsPlan struct {
@@ -383,9 +474,14 @@ const (
 // provider-initiated interaction and carries both Goal provenance and the
 // root-provider completion projection.
 type Turn struct {
-	WorkspaceID                            string
-	AgentSessionID                         string
-	TurnID                                 string
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	// IdentityAnchorTurnID is the canonical Turn whose externally projected
+	// identity this Turn inherits. Empty means the Turn anchors itself. The
+	// field never replaces TurnID for lifecycle, provider, or interaction
+	// operations.
+	IdentityAnchorTurnID                   string
 	CapabilityRefs                         []CapabilityReference
 	Phase                                  string
 	Outcome                                string
@@ -585,11 +681,19 @@ type ListSessionInteractionsInput struct {
 // StaleTurnSettlement identifies one turn that startup reconciliation
 // force-settled with outcome interrupted.
 type StaleTurnSettlement struct {
-	TransactionID  string           `json:"-"`
-	CommitDelta    TransactionDelta `json:"-"`
-	WorkspaceID    string
-	AgentSessionID string
-	TurnID         string
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
+	// Turn is the complete canonical row after startup reconciliation commits
+	// its settled/interrupted transition. Consumers must use this copy instead
+	// of reconstructing provenance from the scalar notification identity.
+	Turn            Turn
+	WorkspaceID     string
+	AgentSessionID  string
+	TurnID          string
+	Provider        string
+	IsChildSession  bool
+	StartedAtUnixMS int64
+	SettledAtUnixMS int64
 }
 
 type SessionStateReport struct {
@@ -617,15 +721,19 @@ type SessionStateReport struct {
 	ImportProjectPath string
 	// RailPlacement is an explicit caller-selected placement for a newly
 	// created session. The first accepted value is immutable.
-	RailPlacement    *RailSection
-	Title            string
-	Status           string
-	CurrentPhase     string
-	LastError        string
-	OccurredAtUnixMS int64
-	StartedAtUnixMS  int64
-	EndedAtUnixMS    int64
-	CreatedAtUnixMS  int64
+	RailPlacement *RailSection
+	// RailPlacementAuthoritative accepts an explicit project placement even
+	// when it is absent from this store's local project registry. It does not
+	// permit changing an existing session's immutable placement.
+	RailPlacementAuthoritative bool
+	Title                      string
+	Status                     string
+	CurrentPhase               string
+	LastError                  string
+	OccurredAtUnixMS           int64
+	StartedAtUnixMS            int64
+	EndedAtUnixMS              int64
+	CreatedAtUnixMS            int64
 }
 
 type StateReportResult struct {
@@ -666,12 +774,17 @@ type MessageUpdate struct {
 }
 
 type MessageReportResult struct {
-	TransactionID    string           `json:"-"`
-	CommitDelta      TransactionDelta `json:"-"`
-	AcceptedCount    int
-	LatestVersion    uint64
-	Messages         []Message
-	RequestBodyBytes int
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
+	AcceptedCount int
+	LatestVersion uint64
+	Messages      []Message
+	// StatusTransitionedMessageIDs lists the accepted messages that actually
+	// moved to a new status in this report. Messages replays a stored snapshot
+	// unchanged as well, so observers that treat a terminal status as an
+	// incident must key on this list instead.
+	StatusTransitionedMessageIDs []string
+	RequestBodyBytes             int
 }
 
 type Message struct {
@@ -695,7 +808,7 @@ type Message struct {
 }
 
 type MessageSemantics struct {
-	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse,omitempty"`
+	UserVisibleAssistantResponse bool   `json:"userVisibleAssistantResponse"`
 	TurnSettling                 bool   `json:"turnSettling,omitempty"`
 	NoticeCommand                string `json:"noticeCommand,omitempty"`
 	NoticeCommandStatus          string `json:"noticeCommandStatus,omitempty"`

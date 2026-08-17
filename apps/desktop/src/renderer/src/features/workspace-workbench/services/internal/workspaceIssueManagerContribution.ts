@@ -76,6 +76,7 @@ export function createWorkspaceIssueManagerContribution(input: {
   workspaceId: string;
 }): WorkbenchContribution {
   const feature = createDesktopIssueManagerFeature({
+    hostOs: input.platformApi.os,
     agentTargetOptions: {
       getOptions: () =>
         resolveIssueManagerReadyAgentTargetOptions(

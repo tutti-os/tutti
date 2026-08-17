@@ -45,13 +45,25 @@ export type ClaudeTurnBindingResolver = (input: {
   recoveryToken: string;
 }) => Promise<ClaudeTurnBinding>;
 
+export type ClaudeTurnBindingResolutionDetails = {
+  transcriptMessageCount: number;
+  rootUserMessageCount: number;
+  matchingRootUserMessageCount: number;
+  latestRootUserMessageId: string;
+};
+
 export class ClaudeTurnBindingResolutionError extends Error {
   readonly reason: "absent" | "ambiguous";
+  readonly details: ClaudeTurnBindingResolutionDetails | undefined;
 
-  constructor(reason: "absent" | "ambiguous") {
+  constructor(
+    reason: "absent" | "ambiguous",
+    details?: ClaudeTurnBindingResolutionDetails
+  ) {
     super(`Claude provider turn recovery proof is ${reason}`);
     this.name = "ClaudeTurnBindingResolutionError";
     this.reason = reason;
+    this.details = details;
   }
 }
 
@@ -115,11 +127,20 @@ async function resolveClaudeTurnBinding(
     transcriptOptions(input.cwd)
   )) as SDKMessage[];
   const matches = rootTurnBindingMatches(messages, input);
+  const rootMessages = messages.filter(isRootUserMessage);
+  const details: ClaudeTurnBindingResolutionDetails = {
+    transcriptMessageCount: messages.length,
+    rootUserMessageCount: rootMessages.length,
+    matchingRootUserMessageCount: matches.length,
+    latestRootUserMessageId: messageIdentity(
+      rootMessages[rootMessages.length - 1]
+    )
+  };
   if (matches.length === 0) {
-    throw new ClaudeTurnBindingResolutionError("absent");
+    throw new ClaudeTurnBindingResolutionError("absent", details);
   }
   if (matches.length > 1) {
-    throw new ClaudeTurnBindingResolutionError("ambiguous");
+    throw new ClaudeTurnBindingResolutionError("ambiguous", details);
   }
   return {
     providerSessionId: input.sessionId,

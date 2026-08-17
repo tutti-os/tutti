@@ -785,6 +785,132 @@ sleep 30
 	}
 }
 
+func TestAppRuntimeLogHasPortBindFailureOnlyReadsCurrentAttempt(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "runtime.log")
+	initial := "listen EACCES: permission denied 127.0.0.1:58239\n"
+	if err := os.WriteFile(logPath, []byte(initial), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(logPath, append([]byte(initial), []byte("application failed before listening\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if appRuntimeLogHasPortBindFailure(logPath, info.Size()) {
+		t.Fatal("stale bind error from a previous attempt was treated as current")
+	}
+	if err := os.WriteFile(logPath, append([]byte(initial), []byte("listen EADDRINUSE: address already in use\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if !appRuntimeLogHasPortBindFailure(logPath, info.Size()) {
+		t.Fatal("current bind error was not detected")
+	}
+	if appRuntimeLogHasPortBindFailure(logPath, info.Size()+100) {
+		t.Fatal("missing current log range was treated as a bind failure")
+	}
+}
+
+func TestAppRunnerRetriesFreshPortAfterBindFailure(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("bootstrap.sh runner test is POSIX-only")
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skip("python3 is required for runner retry test")
+	}
+
+	root := t.TempDir()
+	stateRoot := filepath.Join(root, "state")
+	packageDir := filepath.Join(root, "package")
+	runtimeDir := filepath.Join(root, "runtime")
+	dataDir := filepath.Join(root, "data")
+	databaseDir := filepath.Join(root, "database")
+	logDir := filepath.Join(root, "logs")
+	if err := os.MkdirAll(packageDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll(packageDir) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "bootstrap.sh"), []byte(`#!/bin/sh
+set -eu
+exec "$TUTTI_APP_PYTHON" "$TUTTI_APP_PACKAGE_DIR/server.py"
+`), 0o755); err != nil {
+		t.Fatalf("WriteFile(bootstrap.sh) error = %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(packageDir, "server.py"), []byte(`import http.server
+import os
+from pathlib import Path
+
+attempt_path = Path(os.environ["TUTTI_APP_DATA_DIR"]) / "attempts"
+attempt = int(attempt_path.read_text()) if attempt_path.exists() else 0
+attempt += 1
+attempt_path.write_text(str(attempt))
+if attempt == 1:
+    print("listen EADDRINUSE: address already in use", flush=True)
+    raise SystemExit(1)
+
+class Handler(http.server.BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == "/ready":
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"ok")
+        else:
+            self.send_response(404)
+            self.end_headers()
+    def log_message(self, format, *args):
+        pass
+
+server = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["TUTTI_APP_PORT"])), Handler)
+server.serve_forever()
+`), 0o644); err != nil {
+		t.Fatalf("WriteFile(server.py) error = %v", err)
+	}
+
+	t.Setenv(tuttiAppRuntimeRootEnv, createManagedAppRuntimeFixture(t, root))
+	t.Setenv("TUTTI_ENV", "production")
+	t.Setenv("TUTTI_STATE_DIR", stateRoot)
+	runner := &AppRunner{HealthcheckTimeout: 500 * time.Millisecond}
+	state, err := runner.Start(context.Background(), AppStartInput{
+		WorkspaceID:     "ws-runner-retry",
+		WorkspaceName:   "Runner Retry Workspace",
+		AppID:           "bind-race",
+		PackageDir:      packageDir,
+		Bootstrap:       "bootstrap.sh",
+		HealthcheckPath: "/ready",
+		RuntimeDir:      runtimeDir,
+		DataDir:         dataDir,
+		DatabaseDir:     databaseDir,
+		LogDir:          logDir,
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = runner.Stop(context.Background(), "ws-runner-retry", "bind-race")
+	})
+	if state.Status != workspacebiz.AppRuntimeStatusPreparing {
+		t.Fatalf("Start() status = %q, want preparing", state.Status)
+	}
+	state = waitForRunnerStatus(t, runner, "ws-runner-retry", "bind-race", workspacebiz.AppRuntimeStatusRunning)
+	if state.Port == nil || *state.Port <= 0 {
+		t.Fatalf("Port = %v, want a running retry process", state.Port)
+	}
+	attempts, err := os.ReadFile(filepath.Join(dataDir, "attempts"))
+	if err != nil {
+		t.Fatalf("ReadFile(attempts) error = %v", err)
+	}
+	if strings.TrimSpace(string(attempts)) != "2" {
+		t.Fatalf("attempt count = %q, want first bind failure plus one fresh-port retry", attempts)
+	}
+	logBody, err := os.ReadFile(filepath.Join(logDir, "runtime.log"))
+	if err != nil {
+		t.Fatalf("ReadFile(runtime.log) error = %v", err)
+	}
+	if !strings.Contains(string(logBody), "listen EADDRINUSE") {
+		t.Fatalf("runtime log = %q, want the bind failure evidence", logBody)
+	}
+}
+
 func TestAppRunnerDoesNotReturnToRunningAfterStopStarts(t *testing.T) {
 	key := appRuntimeKey("ws-runner", "stopping")
 	start := &appStart{cancel: func() {}}

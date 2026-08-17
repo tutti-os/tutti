@@ -16,7 +16,7 @@ import (
 
 type LocalFilesAdapter struct {
 	MaxSearchCandidates int
-	IgnoredDirectories  map[string]struct{}
+	searchProvider      localFileSearchProvider
 }
 
 func (LocalFilesAdapter) ListDirectory(
@@ -48,7 +48,7 @@ func (LocalFilesAdapter) ListDirectory(
 		if err := ctx.Err(); err != nil {
 			return workspacefiles.DirectoryListing{}, err
 		}
-		if !includeHidden && strings.HasPrefix(dirEntry.Name(), ".") {
+		if !includeHidden && shouldHideWorkspaceEntry(physicalPath, dirEntry) {
 			continue
 		}
 

@@ -6,9 +6,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -87,9 +89,6 @@ func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
 
 	legacyRelease := release
 	legacyRelease.Manifest.IconURL = ""
-	if err := os.WriteFile(filepath.Join(prepared.PreparedPath, ".DS_Store"), []byte("finder metadata"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	resolved, err := preparer.ResolvePrepared(context.Background(), legacyRelease)
 	if err != nil {
 		t.Fatalf("ResolvePrepared() rejected legacy presentation metadata: %v", err)
@@ -105,7 +104,7 @@ func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
 	}
 }
 
-func TestResolvePreparedRepairsInvalidInventoryFromLatestVerifiedArtifact(t *testing.T) {
+func TestResolvePreparedReportsInvalidInventoryWithoutRepair(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{
 		packagedManifestPath: manifest,
@@ -128,29 +127,19 @@ func TestResolvePreparedRepairsInvalidInventoryFromLatestVerifiedArtifact(t *tes
 		t.Fatal(err)
 	}
 
-	resolved, err := preparer.ResolvePrepared(context.Background(), release)
-	if err != nil {
-		t.Fatalf("ResolvePrepared() failed to repair invalid inventory: %v", err)
+	_, err = preparer.ResolvePrepared(context.Background(), release)
+	if !errors.Is(err, market.ErrReleaseInstallationInvalid) {
+		t.Fatalf("ResolvePrepared() error = %v, want invalid installation", err)
 	}
 	if fetcher.calls != 1 {
 		t.Fatalf("fetch calls = %d, want 1 verified artifact download", fetcher.calls)
 	}
-	if resolved.PreparedPath != prepared.PreparedPath || resolved.InventoryDigest != prepared.InventoryDigest {
-		t.Fatalf("resolved receipt = %#v, want repaired %#v", resolved, prepared)
-	}
-	if _, err := os.Stat(filepath.Join(resolved.PreparedPath, ".DS_Store")); !os.IsNotExist(err) {
-		t.Fatalf("unexpected metadata survived repair: %v", err)
-	}
-	content, err := os.ReadFile(filepath.Join(resolved.PreparedPath, "bin", "connector"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if string(content) != "executable" {
-		t.Fatalf("repaired content = %q", content)
+	if _, err := os.Stat(filepath.Join(prepared.PreparedPath, ".DS_Store")); err != nil {
+		t.Fatalf("invalid tree was unexpectedly changed: %v", err)
 	}
 }
 
-func TestResolvePreparedRepairsModifiedContentFromLatestVerifiedArtifact(t *testing.T) {
+func TestResolvePreparedReportsModifiedContentWithoutRepair(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{
 		packagedManifestPath: manifest,
@@ -174,15 +163,15 @@ func TestResolvePreparedRepairsModifiedContentFromLatestVerifiedArtifact(t *test
 		t.Fatal(err)
 	}
 
-	if _, err := preparer.ResolvePrepared(context.Background(), release); err != nil {
-		t.Fatalf("ResolvePrepared() failed to repair modified content: %v", err)
+	if _, err := preparer.ResolvePrepared(context.Background(), release); !errors.Is(err, market.ErrReleaseInstallationInvalid) {
+		t.Fatalf("ResolvePrepared() error = %v, want invalid installation", err)
 	}
 	content, err := os.ReadFile(connectorPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(content) != "executable" {
-		t.Fatalf("repaired content = %q", content)
+	if string(content) != "tampered" {
+		t.Fatalf("invalid content was unexpectedly repaired: %q", content)
 	}
 	if fetcher.calls != 1 {
 		t.Fatalf("fetch calls = %d, want 1 verified artifact download", fetcher.calls)
@@ -209,11 +198,83 @@ func TestPreparerRejectsArchivePathTraversal(t *testing.T) {
 		OperationID: "operation-1",
 		Release:     release,
 	})
-	if err == nil || !strings.Contains(err.Error(), "escapes the extraction root") {
+	if err == nil {
 		t.Fatalf("error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "escape")); !os.IsNotExist(err) {
 		t.Fatalf("escape file exists: %v", err)
+	}
+}
+
+func TestSafeArchiveEntryKeyRejectsWindowsUnsafePathsOnEveryHost(t *testing.T) {
+	for _, name := range []string{
+		`C:/runtime/gh.exe`, `\\server\share\gh.exe`, `runtime\gh.exe`, `runtime/gh.exe:stream`,
+		`runtime/CON`, `runtime/nul.txt`, `runtime/COM1.exe`, `runtime/trailing.`, `runtime/trailing `,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := safeArchiveEntryKey(name); err == nil {
+				t.Fatalf("Windows-unsafe archive path %q was accepted", name)
+			}
+		})
+	}
+}
+
+func TestPreparerRejectsCaseCollidingArchiveEntries(t *testing.T) {
+	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
+	archive := testZIPEntries(t, []testZIPEntry{
+		{name: packagedManifestPath, content: manifest},
+		{name: "runtime/GH.exe", content: []byte("first")},
+		{name: "runtime/gh.exe", content: []byte("second")},
+	})
+	release := testRelease(archive, manifest)
+	preparer, err := NewPreparer(Config{RootDir: t.TempDir(),
+		Fetcher: &memoryFetcher{body: archive, mediaType: release.Artifact.MediaType}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = preparer.Prepare(context.Background(), market.PrepareArtifactRequest{OperationID: "operation-1", Release: release})
+	if err == nil || !strings.Contains(err.Error(), "case-colliding") {
+		t.Fatalf("case-colliding archive error = %v", err)
+	}
+}
+
+func TestPreparerRemoveRejectsSymlinkParent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX symbolic-link removal coverage")
+	}
+	root := t.TempDir()
+	preparer, err := NewPreparer(Config{
+		RootDir: root,
+		Fetcher: &memoryFetcher{mediaType: "application/zip"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	victim := t.TempDir()
+	victimRelease := filepath.Join(victim, digest)
+	if err := os.MkdirAll(victimRelease, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(victimRelease, "keep")
+	if err := os.WriteFile(marker, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	connectorRoot := filepath.Join(root, "prepared", "github")
+	if err := os.MkdirAll(connectorRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(connectorRoot, "1.0.0")); err != nil {
+		t.Fatal(err)
+	}
+	err = preparer.Remove(context.Background(), market.RemoveArtifactRequest{
+		ConnectorKey: "github", Version: "1.0.0", ReleaseDigest: digest,
+	})
+	if err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("Remove() error = %v, want symbolic-link rejection", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("Remove() followed a symlink parent: %v", err)
 	}
 }
 
@@ -234,14 +295,28 @@ func (fetcher *memoryFetcher) Fetch(context.Context, FetchRequest) (FetchRespons
 
 func testZIP(t *testing.T, files map[string][]byte) []byte {
 	t.Helper()
+	entries := make([]testZIPEntry, 0, len(files))
+	for name, content := range files {
+		entries = append(entries, testZIPEntry{name: name, content: content})
+	}
+	return testZIPEntries(t, entries)
+}
+
+type testZIPEntry struct {
+	name    string
+	content []byte
+}
+
+func testZIPEntries(t *testing.T, entries []testZIPEntry) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
-	for name, content := range files {
-		file, err := writer.Create(name)
+	for _, entry := range entries {
+		file, err := writer.Create(entry.name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := file.Write(content); err != nil {
+		if _, err := file.Write(entry.content); err != nil {
 			t.Fatal(err)
 		}
 	}

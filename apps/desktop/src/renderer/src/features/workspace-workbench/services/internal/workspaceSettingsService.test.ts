@@ -9,9 +9,8 @@ import type { ReporterEventInput } from "../../../analytics/services/reporterSer
 import {
   AGENT_EXTENSION_ACTIVATION_FLAGS,
   AGENT_EXTENSION_GEMINI_FLAG,
-  AGENT_QUICK_PROMPT_LIBRARY_FLAG,
-  LAB_ENABLED_FLAG,
-  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  LAB_CONNECTORS_FLAG,
+  LAB_ENABLED_FLAG
 } from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import { WorkspaceSettingsService } from "./workspaceSettingsService.ts";
@@ -598,55 +597,6 @@ test("WorkspaceSettingsService does not refresh Agent Targets after changing an 
   );
 });
 
-test("WorkspaceSettingsService reports a quick prompt specific save failure", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    { client: createWorkspaceSettingsClient({}) },
-    createDesktopPreferencesService({
-      onSetFeatureFlags: async () => {
-        throw new Error("preferences unavailable");
-      },
-      state: createPreferencesState({ featureFlags: {} })
-    }),
-    notifications.service
-  );
-
-  await service.changeFeatureFlags({
-    [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true
-  });
-
-  assert.equal(notifications.items.length, 1);
-  assert.ok(
-    notifications.items[0] ===
-      "We couldn't update quick-prompt library availability." ||
-      notifications.items[0] === "暂时无法更新快捷提示词库可用状态"
-  );
-});
-
-test("WorkspaceSettingsService reports a mobile remote access settings save failure", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    { client: createWorkspaceSettingsClient({}) },
-    createDesktopPreferencesService({
-      onSetFeatureFlags: async () => {
-        throw new Error("preferences unavailable");
-      },
-      state: createPreferencesState({ featureFlags: {} })
-    }),
-    notifications.service
-  );
-
-  await service.changeFeatureFlags({
-    [MOBILE_REMOTE_ACCESS_SETTINGS_FLAG]: true
-  });
-
-  assert.equal(notifications.items.length, 1);
-  assert.ok(
-    notifications.items[0] === "We couldn't update mobile remote access." ||
-      notifications.items[0] === "暂时无法更新手机远程访问设置"
-  );
-});
-
 test("WorkspaceSettingsService compares Agent Extension activation against pending flags", async () => {
   assert.deepEqual(
     await changeFeatureFlagsAndRecordEffects({
@@ -875,7 +825,7 @@ test("WorkspaceSettingsService clears workspace conversation history", async () 
 });
 
 test("WorkspaceSettingsService purges deleted conversations once and reports the result", async () => {
-  let calls = 0;
+  const calls: string[] = [];
   const notifications = createNotificationRecorder();
   notifications.service.success = (input) => {
     notifications.items.push(input.title);
@@ -883,13 +833,9 @@ test("WorkspaceSettingsService purges deleted conversations once and reports the
   const service = new WorkspaceSettingsService(
     {
       client: createWorkspaceSettingsClient({
-        purgeDeletedAgentConversations: async () => {
-          calls += 1;
-          return {
-            removedSessions: 2,
-            removedMessages: 5,
-            payloadBytes: 128
-          };
+        purgeWorkspaceDeletedAgentSessions: async (workspaceID) => {
+          calls.push(workspaceID);
+          return { removedSessions: 2 };
         }
       })
     },
@@ -897,12 +843,14 @@ test("WorkspaceSettingsService purges deleted conversations once and reports the
     notifications.service
   );
 
-  await service.purgeDeletedConversations();
+  service.openPanel({ id: "workspace-1" });
+  service.store.deletedConversations.workspaceTotalCount = 2;
+  await service.deletedConversations.purgeAll();
 
-  assert.equal(calls, 1);
-  assert.equal(service.store.purgingDeletedConversations, false);
+  assert.deepEqual(calls, ["workspace-1"]);
+  assert.equal(service.store.deletedConversations.purgingAll, false);
   assert.deepEqual(notifications.items, [
-    "Cleaned up 2 deleted conversations."
+    "Permanently deleted 2 conversations."
   ]);
 });
 
@@ -1075,11 +1023,16 @@ function createWorkspaceSettingsClient(
       removedMessages: 0,
       removedSessions: 0
     }),
-    purgeDeletedAgentConversations: async () => ({
-      removedSessions: 0,
-      removedMessages: 0,
-      payloadBytes: 0
+    listWorkspaceDeletedAgentSessions: async () => ({
+      hasMore: false,
+      projectOptions: [],
+      sessions: [],
+      totalCount: 0,
+      workspaceTotalCount: 0
     }),
+    purgeWorkspaceDeletedAgentSession: async () => {},
+    purgeWorkspaceDeletedAgentSessions: async () => ({ removedSessions: 0 }),
+    restoreWorkspaceDeletedAgentSession: async () => {},
     exportLogs: async () => ({
       canceled: true,
       fileCount: 0,
@@ -1163,6 +1116,7 @@ function createDesktopPreferencesService(input: {
       supersededFields: []
     }),
     rememberAgentGuiConversationRailCollapsed: async () => {},
+    rememberAgentSessionLaunchMode: async () => {},
     setAppCatalogChannel:
       input.onSetAppCatalogChannel ?? (async (channel) => channel),
     setAgentConversationDetailMode:
@@ -1206,6 +1160,7 @@ function createPreferencesState(
     agentComposerDefaultsByProvider: {},
     agentComposerDefaultsByAgentTarget: {},
     agentGuiConversationRailCollapsedByProvider: {},
+    agentSessionLaunchModesByWorkspace: {},
     agentConversationDetailMode: "coding",
     appCatalogChannel: "production",
     browserUseConnectionMode: "isolated",
@@ -1241,7 +1196,8 @@ function createPreferencesState(
     updatePolicy: "prompt",
     workbenchShortcuts: {
       newAgentConversation: null,
-      newSameTypeWindow: null
+      newSameTypeWindow: null,
+      captureScreenshot: null
     },
     workbenchWindowSnapping: {
       enabled: false,
@@ -1342,16 +1298,29 @@ test("WorkspaceSettingsService Agents deep-link works without a provider (blank 
   assert.equal(service.store.agentFocusProvider, null);
 });
 
-test("WorkspaceSettingsService deep-links to the connector market panel", () => {
-  const service = new WorkspaceSettingsService({
-    client: createWorkspaceSettingsClient({})
-  });
+test("WorkspaceSettingsService gates the Connectors deep-link with its Lab flag", () => {
+  const disabled = new WorkspaceSettingsService(
+    { client: createWorkspaceSettingsClient({}) },
+    createDesktopPreferencesService({
+      state: createPreferencesState({ featureFlags: {} })
+    })
+  );
+  disabled.openPanel({ id: "workspace-1" }, { pane: "connectors" });
+  assert.equal(disabled.store.activeSection, "agent");
+  assert.equal(disabled.store.agentTab, "general");
 
-  service.openPanel({ id: "workspace-1" }, { pane: "connectors" });
-
-  assert.equal(service.store.open, true);
-  assert.equal(service.store.activeSection, "agent");
-  assert.equal(service.store.agentTab, "connectors");
+  const enabled = new WorkspaceSettingsService(
+    { client: createWorkspaceSettingsClient({}) },
+    createDesktopPreferencesService({
+      state: createPreferencesState({
+        featureFlags: { [LAB_CONNECTORS_FLAG]: true }
+      })
+    })
+  );
+  enabled.openPanel({ id: "workspace-1" }, { pane: "connectors" });
+  assert.equal(enabled.store.open, true);
+  assert.equal(enabled.store.activeSection, "agent");
+  assert.equal(enabled.store.agentTab, "connectors");
 });
 
 test("WorkspaceSettingsService deep-links to Custom Agents and Automation", () => {

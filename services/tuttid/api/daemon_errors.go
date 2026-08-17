@@ -37,6 +37,10 @@ func workspaceOperationError(err *apierrors.ProtocolError) tuttigenerated.Worksp
 	return tuttigenerated.WorkspaceOperationErrorJSONResponse(protocolErrorResponse(err))
 }
 
+func agentInteractiveConflictError(err *apierrors.ProtocolError) tuttigenerated.AgentInteractiveConflictErrorJSONResponse {
+	return tuttigenerated.AgentInteractiveConflictErrorJSONResponse(protocolErrorResponse(err))
+}
+
 func preferencesOperationError(err *apierrors.ProtocolError) tuttigenerated.PreferencesOperationErrorJSONResponse {
 	return tuttigenerated.PreferencesOperationErrorJSONResponse(protocolErrorResponse(err))
 }

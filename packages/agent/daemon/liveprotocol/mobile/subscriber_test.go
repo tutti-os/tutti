@@ -68,20 +68,22 @@ func TestSubscriberForwardsAttachmentRecoveryFence(t *testing.T) {
 		t.Fatal(err)
 	}
 	attachment := liveprotocol.AttachmentChanged{
-		BindingID:          "binding-1",
-		WorkspaceID:        "workspace-1",
-		AgentSessionID:     "session-1",
-		CanonicalTurnID:    "canonical-turn-1",
-		CallerTurnID:       "caller-turn-1",
-		AttachmentRevision: 3,
+		BindingID:                    "binding-1",
+		WorkspaceID:                  "workspace-1",
+		AgentSessionID:               "session-1",
+		CanonicalTurnID:              "canonical-turn-1",
+		CallerTurnID:                 "caller-turn-1",
+		CurrentInteractionRootTurnID: "canonical-turn-1",
+		AttachmentRevision:           3,
 	}
 	caughtUp := liveprotocol.AttachmentCaughtUp{
-		BindingID:          "binding-1",
-		WorkspaceID:        "workspace-1",
-		AgentSessionID:     "session-1",
-		CanonicalTurnID:    "canonical-turn-1",
-		CallerTurnID:       "caller-turn-1",
-		AttachmentRevision: 3,
+		BindingID:                    "binding-1",
+		WorkspaceID:                  "workspace-1",
+		AgentSessionID:               "session-1",
+		CanonicalTurnID:              "canonical-turn-1",
+		CallerTurnID:                 "caller-turn-1",
+		CurrentInteractionRootTurnID: "canonical-turn-1",
+		AttachmentRevision:           3,
 	}
 	encoded, err := liveprotocol.EncodeFrame(liveprotocol.Frame{
 		ProtocolRevision: liveprotocol.ProtocolRevision,

@@ -13,6 +13,21 @@ type recordingRuntimeStreamObserver struct {
 	err    error
 }
 
+type filteringRuntimeStreamObserver struct {
+	recordingRuntimeStreamObserver
+}
+
+func (*filteringRuntimeStreamObserver) FilterRuntimeStreamEvents(
+	_ string,
+	_ string,
+	events []StreamEvent,
+) []StreamEvent {
+	if len(events) < 2 {
+		return events
+	}
+	return events[:1]
+}
+
 func (o *recordingRuntimeStreamObserver) ObserveRuntimeStreamEvents(
 	_ context.Context,
 	_ string,
@@ -72,5 +87,35 @@ func TestPublishStreamEventsObservesBeforeSessionFanout(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for session fanout")
+	}
+}
+
+func TestPublishStreamEventsUsesObserverFilterForLocalFanout(t *testing.T) {
+	controller := NewController(nil, nil)
+	observer := &filteringRuntimeStreamObserver{}
+	controller.SetStreamEventObserver(observer)
+	events, unsubscribe := controller.hub.Subscribe("workspace-1", "session-1")
+	defer unsubscribe()
+
+	controller.publishStreamEvents("workspace-1", "session-1", []StreamEvent{
+		{EventType: StreamEventMessageDelta, Data: "delta-1"},
+		{EventType: StreamEventMessageDelta, Data: "delta-2"},
+	})
+
+	select {
+	case event := <-events:
+		if event.Data != "delta-1" {
+			t.Fatalf("session event = %#v, want filtered first event", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for filtered session fanout")
+	}
+	select {
+	case event := <-events:
+		t.Fatalf("unexpected second session event = %#v", event)
+	case <-time.After(25 * time.Millisecond):
+	}
+	if !observer.called || len(observer.events) != 2 {
+		t.Fatalf("observer events = %#v, want both events", observer.events)
 	}
 }

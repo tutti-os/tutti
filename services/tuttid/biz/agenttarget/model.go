@@ -65,6 +65,7 @@ type Target struct {
 	UpdatedAtUnixMS    int64
 	AvailabilityStatus string
 	AvailabilityReason string
+	ExecutablePath     string
 }
 
 type LaunchRef struct {
@@ -203,6 +204,7 @@ func NormalizeTarget(value Target) (Target, error) {
 	value.Source = normalizeSource(value.Source)
 	value.AvailabilityStatus = strings.TrimSpace(value.AvailabilityStatus)
 	value.AvailabilityReason = strings.TrimSpace(value.AvailabilityReason)
+	value.ExecutablePath = strings.TrimSpace(value.ExecutablePath)
 	if !agentTargetIDPattern.MatchString(value.ID) {
 		return Target{}, fmt.Errorf("%w: id must match %s", ErrInvalidTarget, agentTargetIDPattern.String())
 	}

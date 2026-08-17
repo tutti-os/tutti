@@ -261,7 +261,7 @@ func validateEvent(event Event) error {
 			}
 		}
 	case EventTypeInteractionSnapshot:
-		record, err := requiredJSONFields(event.Data, "workspaceId", "agentSessionId", "eventType", "occurredAtUnixMs", "interactions")
+		record, err := requiredJSONFields(event.Data, "workspaceId", "agentSessionId", "eventType", "occurredAtUnixMs", "rootTurnId", "interactions")
 		if err != nil {
 			return err
 		}
@@ -273,7 +273,8 @@ func validateEvent(event Event) error {
 			return err
 		}
 		if data.EventType != event.EventType || data.WorkspaceID != event.WorkspaceID ||
-			data.AgentSessionID != event.AgentSessionID || data.OccurredAtUnixMS < 0 {
+			data.AgentSessionID != event.AgentSessionID || strings.TrimSpace(data.RootTurnID) == "" ||
+			data.OccurredAtUnixMS < 0 {
 			return fmt.Errorf("%w: invalid interaction snapshot identity", ErrInvalidLiveEvent)
 		}
 		seen := make(map[string]struct{}, len(data.Interactions))

@@ -54,7 +54,9 @@ Recording portability is applied before candidate bytes are persisted.
 Product-owned Activity Event storage replaces only the structural
 Engine `session/activate` effect CWD and in-tree rail project path with
 `${REPLAY_CWD}`. API-origin `session.create` direct stimuli use the same
-projection because they remain a valid non-UI caller path. Prompt image blocks
+projection because they remain a valid non-UI caller path, and they retain the
+effective create-only `isolation` mode so a recorded Worktree launch creates an
+equivalent isolated checkout during replay. Prompt image blocks
 in activation `content`, `runtimeContent`, and `initialContent` replace only
 their state-owned asset path with inline bytes; persisted Agent attachments use
 the content-addressed blob manifest instead. Native generated-image outputs use

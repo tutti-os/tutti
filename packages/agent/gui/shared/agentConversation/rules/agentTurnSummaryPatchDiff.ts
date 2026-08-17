@@ -2,6 +2,10 @@ import type {
   AgentTurnSummaryPatchBatchVM,
   AgentTurnSummaryPatchChangeVM
 } from "../contracts/agentTurnSummaryRowVM";
+import {
+  isInsideOrEqualWorkspaceFilePath,
+  normalizeWorkspaceFilePath
+} from "../../../actions/workspaceFilePathCandidate";
 import { normalizeAgentPatchText } from "./agentPatchMetadata";
 import { isAgentUnifiedDiffText } from "./agentUnifiedDiffValidation";
 
@@ -22,7 +26,7 @@ function patchChangeToUnifiedDiff(
   const rawDiff = normalizeAgentPatchText(change.unifiedDiff ?? "").trim();
   if (rawDiff && isAgentUnifiedDiffText(rawDiff)) {
     return ensureTrailingNewline(
-      wrapUnifiedDiff(path, change.changeType, rawDiff)
+      wrapUnifiedDiff(path, change.changeType, rawDiff, cwd)
     );
   }
   if (change.changeType === "created") {
@@ -52,10 +56,11 @@ function patchChangeToUnifiedDiff(
 function wrapUnifiedDiff(
   path: string,
   changeType: AgentTurnSummaryPatchChangeVM["changeType"],
-  diff: string
+  diff: string,
+  cwd: string | null
 ): string {
   if (diff.startsWith("diff --git ")) {
-    return diff;
+    return rebaseUnifiedDiffPaths(diff, cwd);
   }
   const headers = [`diff --git a/${path} b/${path}`];
   if (changeType === "created") {
@@ -66,6 +71,43 @@ function wrapUnifiedDiff(
     headers.push(`--- a/${path}`, `+++ b/${path}`);
   }
   return [...headers, diff].join("\n");
+}
+
+function rebaseUnifiedDiffPaths(diff: string, cwd: string | null): string {
+  let inHunk = false;
+  return diff
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("diff --git ")) {
+        inHunk = false;
+      } else if (line.startsWith("@@ ")) {
+        inHunk = true;
+        return line;
+      } else if (inHunk) {
+        return line;
+      }
+
+      const gitHeader = line.match(/^diff --git a\/(.+?) b\/(.+)$/);
+      if (gitHeader?.[1] && gitHeader[2]) {
+        return `diff --git a/${patchPathRelativeToCwd(
+          gitHeader[1],
+          cwd
+        )} b/${patchPathRelativeToCwd(gitHeader[2], cwd)}`;
+      }
+
+      const fileHeader = line.match(/^(---|\+\+\+) ((?:a\/|b\/)?)(.+)$/);
+      const [, marker, prefix, filePath] = fileHeader ?? [];
+      if (
+        !marker ||
+        prefix === undefined ||
+        !filePath ||
+        filePath === "/dev/null"
+      ) {
+        return line;
+      }
+      return `${marker} ${prefix}${patchPathRelativeToCwd(filePath, cwd)}`;
+    })
+    .join("\n");
 }
 
 function fileContentPatch(
@@ -119,20 +161,25 @@ function modifiedFilePatch(
 }
 
 function patchPathRelativeToCwd(path: string, cwd: string | null): string {
-  const normalizedPath = normalizePathForPatch(path);
-  const normalizedCwd = normalizePathForPatch(cwd ?? "");
+  const normalizedCwd = normalizeWorkspaceFilePath(cwd ?? "");
+  const normalizedPath = normalizeWorkspaceFilePath(path, normalizedCwd);
   if (
-    normalizedPath.startsWith("/") &&
+    isAbsolutePatchPath(normalizedPath) &&
     normalizedCwd &&
-    normalizedPath.startsWith(`${normalizedCwd}/`)
+    isInsideOrEqualWorkspaceFilePath(normalizedPath, normalizedCwd)
   ) {
-    return normalizedPath.slice(normalizedCwd.length + 1);
+    const relativePath = normalizedPath
+      .slice(normalizedCwd.length)
+      .replace(/^\/+/, "");
+    if (relativePath) {
+      return relativePath;
+    }
   }
   return normalizedPath.replace(/^\/+/, "");
 }
 
-function normalizePathForPatch(path: string): string {
-  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+function isAbsolutePatchPath(path: string): boolean {
+  return path.startsWith("/") || /^\/?[A-Za-z]:\//.test(path);
 }
 
 function splitPatchContentLines(content: string): string[] {

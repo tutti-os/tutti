@@ -8,6 +8,27 @@ afterEach(() => {
 });
 
 describe("useComposerLayout", () => {
+  it("keeps embedded drafts in normal flow without dock measurement styles", () => {
+    const { result } = renderHook(() =>
+      useComposerLayout(
+        createComposerLayoutInput({
+          dockComposerMetrics: {
+            attachmentHeight: 72,
+            inputHeight: 152,
+            inputMaxHeight: 182,
+            textHeight: 56
+          },
+          isDockLayout: false,
+          isHeroLayout: false
+        })
+      )
+    );
+
+    expect(result.current.composerStyle).toBeUndefined();
+    expect(result.current.promptInputAreaStyle).toBeUndefined();
+    expect(result.current.showProjectRow).toBe(false);
+  });
+
   it("runs hero composer animations only while the AgentGUI window is active", () => {
     const promptTips = [
       { id: "tip-1", label: "First", prompt: "Prompt one" },
@@ -340,9 +361,11 @@ type ComposerLayoutInput = Parameters<typeof useComposerLayout>[0];
 function createComposerLayoutInput(
   overrides: Partial<ComposerLayoutInput>
 ): ComposerLayoutInput {
+  const isHeroLayout = overrides.isHeroLayout ?? false;
   return {
     isActive: true,
-    isHeroLayout: false,
+    isDockLayout: !isHeroLayout,
+    isHeroLayout,
     inputDisabled: false,
     projectMissingProbeEnabled: true,
     showFileMentionPalette: false,

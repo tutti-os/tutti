@@ -1,5 +1,12 @@
 export type BrowserNodeTabCloseIntent = "surface" | "tab";
 
+export function resolveBrowserNodeFinalTabCloseRequest(input: {
+  onCloseRequest?: () => void;
+  onFinalTabCloseRequest?: () => void;
+}): (() => void) | undefined {
+  return input.onFinalTabCloseRequest ?? input.onCloseRequest;
+}
+
 export function resolveBrowserNodeTabCloseIntent(input: {
   hasSurfaceCloseRequest: boolean;
   tabCount: number;

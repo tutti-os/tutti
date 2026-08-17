@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -18,6 +19,8 @@ const (
 	claudeSDKSidecarAdapterName    = "claude-agent-sdk"
 	claudeSDKSidecarDefaultNodeArg = "--experimental-strip-types"
 	claudeSDKAuthRefreshLogPrefix  = "CLAUDE_CODE_AUTH_REFRESH_DEBUG"
+	claudeSDKCancelLogPrefix       = "CLAUDE_CODE_CANCEL_DIAGNOSTIC"
+	claudeSDKProviderTurnLogPrefix = "CLAUDE_CODE_PROVIDER_TURN_DIAGNOSTIC"
 )
 
 type ClaudeCodeSDKAdapter struct {
@@ -26,6 +29,7 @@ type ClaudeCodeSDKAdapter struct {
 
 	mu                         sync.Mutex
 	sessions                   map[string]*claudeSDKAdapterSession
+	retiredSessions            map[string][]*claudeSDKAdapterSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
@@ -33,9 +37,20 @@ type ClaudeCodeSDKAdapter struct {
 	promptImageMaterializer    providerPromptImageMaterializer
 	interactiveAckTimeout      time.Duration
 	inputUnits                 *providerInputUnitTracker
+	lifecycleMu                sync.Mutex
+	lifecycleLocks             map[string]*claudeSDKSessionLock
+}
+
+type claudeSDKSessionLock struct {
+	mu   sync.Mutex
+	refs int
 }
 
 type claudeSDKAdapterSession struct {
+	// dispatchMu is the exact-session commit axis. Event projection may run
+	// before it, but canonical publication and registry replacement must hold
+	// this mutex so a stale reader cannot commit after a new generation wins.
+	dispatchMu        sync.Mutex
 	conn              ProcessConnection
 	reader            *claudeSDKLineReader
 	session           Session
@@ -78,11 +93,11 @@ type claudeSDKAdapterSession struct {
 	// WorkspaceAgentTurn ids.
 	rootTurnID        string
 	rootProviderTurns map[string]struct{}
-	// providerTurnAccepted closes after the current root turn's provider
-	// identity has crossed the durable acceptance barrier. Cancel waits on it
-	// so CompleteCancel cannot settle HasSettledTurn before Established.
-	// Guarded by the adapter mutex; recreate on each new root turn.
-	providerTurnAccepted chan struct{}
+	// providerAcceptanceOutcomes retains the durable Host acceptance result by
+	// exact canonical Turn. Cancel dispatches to the provider first and consults
+	// this latch only when the sidecar confirms a provider-active cancellation.
+	// Guarded by the adapter mutex.
+	providerAcceptanceOutcomes map[string]*claudeSDKProviderAcceptanceOutcome
 	// goalArmTurnID is the sidecar turn carrying a queued /goal set command
 	// that has not settled yet; until it does, other turns settling must not
 	// be read as goal completion. Guarded by the adapter mutex.
@@ -101,6 +116,13 @@ type claudeSDKAdapterSession struct {
 	fencedGoalIdentities map[goalOperationIdentity]struct{}
 	fencedGoalTurns      map[string]claudeSDKGoalTurnFenceState
 	goalTurnBindings     map[string]claudeSDKGoalTurnBinding
+	pendingGoalCommands  map[string]claudeSDKPendingGoalCommand
+}
+
+type claudeSDKProviderAcceptanceOutcome struct {
+	done chan struct{}
+	once sync.Once
+	err  error
 }
 
 type claudeSDKGoalTurnFenceState uint8
@@ -117,6 +139,13 @@ type claudeSDKGoalTurnBinding struct {
 	identity        goalOperationIdentity
 	published       bool
 	publicationDone chan struct{}
+}
+
+type claudeSDKPendingGoalCommand struct {
+	identity     goalOperationIdentity
+	action       string
+	previousGoal map[string]any
+	started      bool
 }
 
 type claudeSDKCompactMessage struct {
@@ -164,10 +193,11 @@ type claudeSDKTurnResult struct {
 }
 
 type claudeSDKLineReader struct {
-	conn            ProcessConnection
-	buffer          string
-	trackInputUnits bool
-	lines           []claudeSDKBufferedLine
+	conn                   ProcessConnection
+	buffer                 string
+	stderrDiagnosticBuffer string
+	trackInputUnits        bool
+	lines                  []claudeSDKBufferedLine
 	// stderrTail keeps only a bounded, sanitized classification of sidecar
 	// diagnostics. Raw stderr may contain prompts, paths, credentials, or stack
 	// traces and must never enter durable activity or user-visible errors.
@@ -198,13 +228,22 @@ func NewClaudeCodeSDKAdapter(transport ProcessTransport) *ClaudeCodeSDKAdapter {
 	return &ClaudeCodeSDKAdapter{
 		transport:             transport,
 		sessions:              make(map[string]*claudeSDKAdapterSession),
+		retiredSessions:       make(map[string][]*claudeSDKAdapterSession),
 		interactiveAckTimeout: claudeSDKInteractiveAckTimeout,
 		inputUnits:            providerInputUnitTrackerForTransport(transport),
+		lifecycleLocks:        make(map[string]*claudeSDKSessionLock),
 	}
 }
 
 func (*ClaudeCodeSDKAdapter) Provider() string {
 	return ProviderClaudeCode
+}
+
+func (*ClaudeCodeSDKAdapter) ConnectorCapabilities(
+	context.Context,
+	Session,
+) (ConnectorCapabilities, error) {
+	return ConnectorCapabilities{HTTPMCP: true}, nil
 }
 
 func (*ClaudeCodeSDKAdapter) UsesRootProviderTurnLifecycle() bool {

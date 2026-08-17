@@ -41,6 +41,17 @@ export function normalizeAgentActivitySession(
     parentToolCallId: source.parentToolCallId ?? null,
     agentTargetId: source.agentTargetId ?? null,
     providerSessionId: source.providerSessionId ?? null,
+    isolation: source.isolation
+      ? {
+          mode: source.isolation.mode,
+          ...(source.isolation.worktreeId?.trim()
+            ? { worktreeId: source.isolation.worktreeId.trim() }
+            : {}),
+          worktreePath: source.isolation.worktreePath.trim(),
+          branch: source.isolation.branch.trim(),
+          baseCommit: source.isolation.baseCommit.trim()
+        }
+      : null,
     activeTurnId: source.activeTurnId,
     activeTurn: source.activeTurn ?? null,
     latestTurn: source.latestTurn ?? source.activeTurn ?? null,
@@ -78,6 +89,19 @@ export function normalizeAgentActivitySession(
       : null,
     usage: source.usage ?? null,
     goal: source.goal ?? null,
+    ...(Object.prototype.hasOwnProperty.call(source, "goalSyncState")
+      ? {
+          goalSyncState: source.goalSyncState
+            ? {
+                revision: source.goalSyncState.revision,
+                syncStatus: source.goalSyncState.syncStatus,
+                pendingOperationId:
+                  source.goalSyncState.pendingOperationId?.trim() || null,
+                executionPending: source.goalSyncState.executionPending === true
+              }
+            : null
+        }
+      : {}),
     tuttiModeActivation: source.tuttiModeActivation ?? null,
     imported: source.imported ?? false,
     visible: source.visible ?? true,

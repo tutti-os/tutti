@@ -61,6 +61,7 @@ type IssueRunLaunch struct {
 	IssueID            string
 	Title              string
 	Prompt             string
+	Attachments        []IssueRunImageAttachment
 	ExecutionDirectory string
 	ModelPlanID        string
 	Model              string
@@ -75,6 +76,12 @@ type IssueRunLaunch struct {
 	// value keeps today's visible-session behavior.
 	HideSession   bool
 	RailPlacement *IssueRunRailPlacement
+}
+
+type IssueRunImageAttachment struct {
+	MimeType string
+	Name     string
+	Path     string
 }
 
 // IssueRunRailPlacement is the source conversation's logical rail identity.

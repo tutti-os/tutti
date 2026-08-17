@@ -3,7 +3,13 @@ import type {
   EngineExternalCommand,
   EngineIntent
 } from "@tutti-os/agent-activity-core";
-import { selectEngineSession } from "@tutti-os/agent-activity-core";
+import {
+  selectEngineInteraction,
+  selectEngineInteractionsForSession,
+  selectEngineSession,
+  selectEngineTurn,
+  selectEngineTurnsForSession
+} from "@tutti-os/agent-activity-core";
 import type { AgentSessionActivityEvent } from "./activity-event.ts";
 import {
   agentSessionReplayEffectCommandIdBinding,
@@ -326,8 +332,7 @@ export function installAgentSessionActivityReplayDriver(input: {
       waitUntilIntentReady(event) {
         assertActive();
         assertActivityEvent(event, "intent", scopeId);
-        assertCassetteOwnsEvent(cassette, event);
-        return waitForIntentReadiness(input.engine, event, effectTimeoutMs);
+        return waitForCassetteIntentReadiness(cassette, event);
       }
     };
     cassette = {
@@ -356,18 +361,32 @@ export function installAgentSessionActivityReplayDriver(input: {
     cassette: ReplayCassetteState,
     event: AgentSessionActivityEvent
   ): void {
+    if (
+      !claimCassetteEventSession(cassette, event, input.engine.getSnapshot?.())
+    ) {
+      throw new Error(
+        `replay cassette ${cassette.cassetteId} does not own Agent Session ${event.agentSessionId}`
+      );
+    }
+  }
+
+  function claimCassetteEventSession(
+    cassette: ReplayCassetteState,
+    event: AgentSessionActivityEvent,
+    snapshot: ReturnType<AgentSessionEngine["getSnapshot"]> | undefined
+  ): boolean {
     const agentSessionId = normalizedAgentSessionId(event.agentSessionId);
     if (
       cassette.agentSessionIds.size === 0 ||
       !agentSessionId ||
       cassette.agentSessionIds.has(agentSessionId)
     ) {
-      return;
+      return true;
     }
-    const snapshot = input.engine.getSnapshot?.();
     const session = snapshot
       ? selectEngineSession(snapshot, agentSessionId)
       : null;
+    if (!session) return false;
     const rootAgentSessionId = session?.rootAgentSessionId?.trim() ?? "";
     if (
       session?.kind !== "child" ||
@@ -387,6 +406,54 @@ export function installAgentSessionActivityReplayDriver(input: {
     }
     cassette.agentSessionIds.add(agentSessionId);
     cassetteIdByAgentSessionId.set(agentSessionId, cassette.cassetteId);
+    return true;
+  }
+
+  function waitForCassetteIntentReadiness(
+    cassette: ReplayCassetteState,
+    event: AgentSessionActivityEvent
+  ): Promise<void> {
+    if (!input.engine.getSnapshot || !input.engine.subscribe) {
+      assertCassetteOwnsEvent(cassette, event);
+      return Promise.resolve();
+    }
+    const isReady = (
+      snapshot: ReturnType<AgentSessionEngine["getSnapshot"]>
+    ): boolean =>
+      claimCassetteEventSession(cassette, event, snapshot) &&
+      isIntentReady(snapshot, event);
+    if (isReady(input.engine.getSnapshot())) return Promise.resolve();
+    const subscribe = input.engine.subscribe;
+    return new Promise<void>((resolve, reject) => {
+      let unsubscribe = () => {};
+      const timer = setTimeout(() => {
+        unsubscribe();
+        const snapshot = input.engine.getSnapshot!();
+        reject(
+          new Error(
+            `timed out waiting for renderer intent readiness ${event.type} ` +
+              `${event.agentSessionId ?? "<missing>"}; ` +
+              intentReadinessDiagnostic(snapshot, event)
+          )
+        );
+      }, effectTimeoutMs);
+      const settleIfReady = (
+        snapshot: ReturnType<AgentSessionEngine["getSnapshot"]>
+      ): void => {
+        try {
+          if (!isReady(snapshot)) return;
+          clearTimeout(timer);
+          unsubscribe();
+          resolve();
+        } catch (error) {
+          clearTimeout(timer);
+          unsubscribe();
+          reject(error);
+        }
+      };
+      unsubscribe = subscribe(settleIfReady);
+      settleIfReady(input.engine.getSnapshot!());
+    });
   }
 
   function resolveCommandCassette(
@@ -462,6 +529,40 @@ export function installAgentSessionActivityReplayDriver(input: {
     globalThis as typeof globalThis & AgentSessionActivityReplayGlobal
   ).__tuttiAgentSessionReplayDriver = driver;
   return driver;
+}
+
+function intentReadinessDiagnostic(
+  snapshot: ReturnType<AgentSessionEngine["getSnapshot"]>,
+  event: AgentSessionActivityEvent
+): string {
+  const agentSessionId = normalizedAgentSessionId(event.agentSessionId);
+  if (!agentSessionId) return "session=<missing>";
+  const session = selectEngineSession(snapshot, agentSessionId);
+  if (!session) return "session=absent";
+  const turnId = optionalString(event.payload.turnId)?.trim() ?? "";
+  const requestId = optionalString(event.payload.requestId)?.trim() ?? "";
+  const turn = selectEngineTurn(snapshot, agentSessionId, turnId);
+  const interaction = selectEngineInteraction(
+    snapshot,
+    agentSessionId,
+    turnId,
+    requestId
+  );
+  const turns = selectEngineTurnsForSession(snapshot, agentSessionId).map(
+    (item) => `${item.turnId}:${item.phase}`
+  );
+  const interactions = selectEngineInteractionsForSession(
+    snapshot,
+    agentSessionId
+  ).map((item) => `${item.turnId}/${item.requestId}:${item.status}`);
+  return [
+    `session=${session.kind}`,
+    `activeTurn=${session.activeTurnId ?? "<none>"}`,
+    `expectedTurn=${turnId || "<missing>"}:${turn?.phase ?? "absent"}`,
+    `expectedInteraction=${requestId || "<missing>"}:${interaction?.status ?? "absent"}`,
+    `turns=[${turns.join(",")}]`,
+    `interactions=[${interactions.join(",")}]`
+  ].join(" ");
 }
 
 export function rebaseReplayIntentPayload(
@@ -629,27 +730,46 @@ function isSameEffectCommand(
   event: AgentSessionActivityEvent,
   command: ObservedCommand
 ): boolean {
+  const stablePayloadMatches =
+    stableValue(eventStableEffectCommandPayload(event)) ===
+    stableValue(command.payload);
+  const hasComparableStableField =
+    stableAgentSessionReplayEffectFields(command.type)?.some(
+      (field) =>
+        Object.hasOwn(event.payload, field) &&
+        Object.hasOwn(command.payload, field)
+    ) ?? false;
   return (
     event.type === command.type &&
-    isSameEffectCorrelation(cassette, event, command) &&
     normalizedAgentSessionId(event.agentSessionId) === command.agentSessionId &&
-    stableValue(eventStableEffectCommandPayload(event)) ===
-      stableValue(command.payload)
+    (isSameEffectBoundCommandId(cassette, event, command) ||
+      (isSameEffectCorrelation(event, command, hasComparableStableField) &&
+        stablePayloadMatches))
   );
 }
 
-function isSameEffectCorrelation(
+function isSameEffectBoundCommandId(
   cassette: ReplayCassetteState,
   event: AgentSessionActivityEvent,
   command: ObservedCommand
 ): boolean {
-  if (normalizedCorrelationId(event.correlationId) === command.correlationId) {
-    return true;
+  const correlationId = normalizedCorrelationId(event.correlationId);
+  const replayCommandId = correlationId
+    ? cassette.commandIdByCorrelationId.get(correlationId)
+    : undefined;
+  return replayCommandId === command.commandId;
+}
+
+function isSameEffectCorrelation(
+  event: AgentSessionActivityEvent,
+  command: ObservedCommand,
+  hasComparableStableField: boolean
+): boolean {
+  const correlationId = normalizedCorrelationId(event.correlationId);
+  if (correlationId && correlationId === command.correlationId) return true;
+  if (!correlationId && !command.correlationId) {
+    return hasComparableStableField;
   }
-  const replayCommandId = cassette.commandIdByCorrelationId.get(
-    normalizedCorrelationId(event.correlationId) ?? ""
-  );
-  if (replayCommandId === command.commandId) return true;
   // Declared alternate correlation rule from the interaction contract. The
   // matched payload field also remains part of the stable-field comparison.
   const alternateField = alternateAgentSessionReplayEffectCorrelationField(
@@ -706,40 +826,6 @@ function stableValue(value: unknown): string {
       .join(",")}}`;
   }
   return JSON.stringify(value) ?? "undefined";
-}
-
-function waitForIntentReadiness(
-  engine: Pick<AgentSessionEngine, "dispatch" | "identity"> &
-    Partial<Pick<AgentSessionEngine, "getSnapshot" | "subscribe">>,
-  event: AgentSessionActivityEvent,
-  timeoutMs: number
-): Promise<void> {
-  if (!engine.getSnapshot || !engine.subscribe) return Promise.resolve();
-  if (isIntentReady(engine.getSnapshot(), event)) return Promise.resolve();
-  const subscribe = engine.subscribe;
-  return new Promise<void>((resolve, reject) => {
-    let unsubscribe = () => {};
-    const timer = setTimeout(() => {
-      unsubscribe();
-      reject(
-        new Error(
-          `timed out waiting for renderer intent readiness ${event.type} ` +
-            `${event.agentSessionId ?? "<missing>"}`
-        )
-      );
-    }, timeoutMs);
-    unsubscribe = subscribe((snapshot) => {
-      if (!isIntentReady(snapshot, event)) return;
-      clearTimeout(timer);
-      unsubscribe();
-      resolve();
-    });
-    if (isIntentReady(engine.getSnapshot!(), event)) {
-      clearTimeout(timer);
-      unsubscribe();
-      resolve();
-    }
-  });
 }
 
 function isIntentReady(

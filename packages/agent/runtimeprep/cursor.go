@@ -9,6 +9,7 @@ import (
 )
 
 const cursorPluginDirEnv = "TUTTI_CURSOR_PLUGIN_DIR"
+const cursorPromptContextFileEnv = "TUTTI_CURSOR_PROMPT_CONTEXT_FILE"
 
 const (
 	cursorBackgroundTaskGuardCommand       = `"${CURSOR_PLUGIN_ROOT}/hooks/guard-background-task.sh"`
@@ -122,11 +123,18 @@ func (CursorPreparer) Prepare(_ context.Context, input ProviderPrepareInput) (Pr
 	}
 	return ProviderPrepareResult{
 		Cwd: input.Cwd,
-		Env: []string{cursorPluginDirEnv + "=" + pluginDir},
+		Env: []string{
+			cursorPluginDirEnv + "=" + pluginDir,
+			cursorPromptContextFileEnv + "=" + filepath.Join(pluginDir, "tutti-context.md"),
+		},
 	}, nil
 }
 
 func installCursorTuttiPlugin(pluginDir string, input PrepareInput) error {
+	policy, err := tuttiCLIPolicy(input)
+	if err != nil {
+		return fmt.Errorf("render cursor prompt context: %w", err)
+	}
 	manifestDir := filepath.Join(pluginDir, ".cursor-plugin")
 	if err := os.MkdirAll(manifestDir, 0o700); err != nil {
 		return fmt.Errorf("create cursor plugin manifest directory: %w", err)
@@ -139,6 +147,7 @@ func installCursorTuttiPlugin(pluginDir string, input PrepareInput) error {
 		Author      map[string]string `json:"author"`
 		License     string            `json:"license"`
 		Skills      string            `json:"skills"`
+		Rules       []string          `json:"rules"`
 	}{
 		Name:        "tutti-cli",
 		DisplayName: "Tutti CLI",
@@ -149,6 +158,7 @@ func installCursorTuttiPlugin(pluginDir string, input PrepareInput) error {
 		},
 		License: "UNLICENSED",
 		Skills:  "./skills/",
+		Rules:   []string{},
 	}
 	content, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
@@ -157,8 +167,13 @@ func installCursorTuttiPlugin(pluginDir string, input PrepareInput) error {
 	if err := os.WriteFile(filepath.Join(manifestDir, "plugin.json"), append(content, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write cursor plugin manifest: %w", err)
 	}
-	if _, err := installProviderNativeSkills(filepath.Join(pluginDir, "skills"), input); err != nil {
+	skillPaths, err := installProviderNativeSkillsSessionScoped(filepath.Join(pluginDir, "skills"), input)
+	if err != nil {
 		return fmt.Errorf("install cursor tutti skill plugin: %w", err)
+	}
+	context := renderProviderPromptContext(policy, skillPaths)
+	if err := os.WriteFile(filepath.Join(pluginDir, "tutti-context.md"), []byte(context+"\n"), 0o600); err != nil {
+		return fmt.Errorf("write cursor prompt context: %w", err)
 	}
 	return nil
 }

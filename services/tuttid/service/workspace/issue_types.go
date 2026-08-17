@@ -35,6 +35,7 @@ type CreateIssueManagerIssueInput struct {
 	HasExecutionProfile bool
 	Budget              workspaceissues.Budget
 	HasBudget           bool
+	Attachments         []CreateIssueManagerImageAttachmentInput
 	// TuttiModeWorkflowOwned is an internal authority marker. Transport and
 	// generic CLI adapters never set it; only the accepted workflow materializer
 	// may create an Issue in the reserved deterministic namespace.
@@ -42,6 +43,13 @@ type CreateIssueManagerIssueInput struct {
 	// TuttiModeWorkflowID is the accepted workflow identity atomically bound to
 	// the execution aggregate. It is ignored for traditional Plan Issues.
 	TuttiModeWorkflowID string
+}
+
+type CreateIssueManagerImageAttachmentInput struct {
+	AttachmentID string
+	DisplayName  string
+	MimeType     string
+	Data         []byte
 }
 
 type CreateIssueManagerIssueFromPlanInput struct {
@@ -177,6 +185,11 @@ type CreateIssueManagerRunInput struct {
 	ExecutionDirectory string
 	ModelPlanID        string
 	Model              string
+}
+
+type StartIssueManagerRunInput struct {
+	AgentTargetID      string
+	ExecutionDirectory string
 }
 
 type CompleteIssueManagerRunInput struct {

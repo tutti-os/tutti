@@ -2,11 +2,15 @@ import { useMemo } from "react";
 import {
   WorkspaceUserProjectSelect,
   type WorkspaceUserProjectSelectChangeAction,
-  type WorkspaceUserProjectSelectLabelOverrides
+  type WorkspaceUserProjectSelectLabelOverrides,
+  type WorkspaceUserProjectSelectProps
 } from "@tutti-os/workspace-user-project/ui";
-import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
+import type {
+  WorkspaceUserProject,
+  WorkspaceUserProjectApi
+} from "@tutti-os/workspace-user-project/contracts";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
-import { useAgentHostApi } from "../../agentActivityHost";
+import { useOptionalAgentHostApi } from "../../agentActivityHost";
 import { NewWorkspaceLinedIcon, cn } from "@tutti-os/ui-system";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 import styles from "./AgentGUINode.styles";
@@ -24,11 +28,21 @@ export interface AgentProjectPathChangeMetadata {
   project?: WorkspaceUserProject;
 }
 
+export type AgentProjectDropdownOptions = Pick<
+  WorkspaceUserProjectSelectProps,
+  "labels" | "menuActions" | "showKnownProjectOptions"
+> & {
+  /** Optional Host-owned import flow. Absent by default, so existing Hosts are unchanged. */
+  importDirectory?: WorkspaceUserProjectApi["importDirectory"];
+};
+
 export function AgentProjectDropdown({
   composerSettings,
   labels,
+  options,
   i18n,
   selectProjectDirectory,
+  userProjectApi,
   onDismissAutoFocus,
   onProjectMissingChange,
   onProjectPathChange
@@ -41,7 +55,9 @@ export function AgentProjectDropdown({
   >;
   i18n: WorkspaceUserProjectI18nRuntime;
   labels: AgentProjectDropdownLabels;
+  options?: AgentProjectDropdownOptions;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  userProjectApi?: WorkspaceUserProjectApi | null;
   onDismissAutoFocus?: (event: Event) => void;
   onProjectMissingChange?: (isMissing: boolean) => void;
   onProjectPathChange: (
@@ -50,19 +66,22 @@ export function AgentProjectDropdown({
   ) => void;
 }): React.JSX.Element {
   "use memo";
-  const agentHostApi = useAgentHostApi();
-  const userProjectApi = useMemo(
+  const agentHostApi = useOptionalAgentHostApi();
+  const projectSource =
+    userProjectApi === undefined ? agentHostApi?.userProjects : userProjectApi;
+  const resolvedUserProjectApi = useMemo(
     () =>
       createAgentGUIUserProjectSelectionApi({
+        importDirectory: options?.importDirectory,
         selectProjectDirectory,
-        userProjects: agentHostApi.userProjects
+        userProjects: projectSource
       }),
-    [agentHostApi.userProjects, selectProjectDirectory]
+    [options?.importDirectory, projectSource, selectProjectDirectory]
   );
 
   return (
     <WorkspaceUserProjectSelect
-      api={userProjectApi}
+      api={resolvedUserProjectApi}
       classNames={{
         content: cn(
           styles.composerMenuContent,
@@ -72,12 +91,14 @@ export function AgentProjectDropdown({
         trigger: cn(
           "w-auto max-w-full",
           styles.composerMenuTrigger,
+          styles.composerProjectTrigger,
           "text-[var(--agent-gui-text-tertiary)]",
           "disabled:cursor-not-allowed disabled:text-[var(--agent-gui-text-tertiary)] disabled:opacity-60 disabled:hover:text-[var(--agent-gui-text-tertiary)]"
         )
       }}
       i18n={i18n}
-      labels={labels}
+      labels={{ ...options?.labels, ...labels }}
+      menuActions={options?.menuActions}
       projectLocked={Boolean(composerSettings.projectLocked)}
       renderAddProjectIcon={() => (
         <NewWorkspaceLinedIcon
@@ -87,10 +108,15 @@ export function AgentProjectDropdown({
         />
       )}
       selectedProjectPath={composerSettings.selectedProjectPath}
-      service={agentHostApi.userProjects?.service ?? null}
+      service={
+        userProjectApi === undefined
+          ? (agentHostApi?.userProjects?.service ?? null)
+          : null
+      }
       shouldApplyPreparedSelection={
         composerSettings.shouldApplyPreparedProjectSelection === true
       }
+      showKnownProjectOptions={options?.showKnownProjectOptions}
       onDismissAutoFocus={onDismissAutoFocus}
       onProjectMissingChange={onProjectMissingChange}
       onProjectPathChange={onProjectPathChange}

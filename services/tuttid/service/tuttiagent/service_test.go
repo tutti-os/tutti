@@ -79,6 +79,38 @@ func TestIssueTuttiAgentLLMTokenAppIDEnvOverride(t *testing.T) {
 	}
 }
 
+func TestIssueTuttiAgentLLMTokenTreatsHTTPUnauthorizedAsRejected(t *testing.T) {
+	account := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer account.Close()
+	t.Setenv("TUTTI_ACCOUNT_BASE_URL", account.URL)
+
+	_, err := issueTuttiAgentLLMToken(t.Context(), "session_id=stale")
+	if err == nil || !tuttiAgentLLMTokenIssueRejectedWithCode(err, http.StatusUnauthorized) {
+		t.Fatalf("issueTuttiAgentLLMToken() error = %v, want HTTP 401 rejection", err)
+	}
+}
+
+func TestTuttiAgentLoginEnvironmentUsesCanonicalAuthHome(t *testing.T) {
+	authPath := filepath.Join(t.TempDir(), ".tutti-agent", "auth.json")
+	env := tuttiAgentLoginEnvironment([]string{
+		"PATH=C:\\Windows\\System32",
+		"TUTTI_AGENT_HOME=C:\\stale\\session-home",
+		"CODEX_HOME=C:\\stale\\codex-home",
+		"TUTTI_AGENT_HOME=C:\\duplicate\\value",
+	}, authPath)
+	if got := environmentValue(env, "TUTTI_AGENT_HOME"); got != filepath.Dir(authPath) {
+		t.Fatalf("TUTTI_AGENT_HOME = %q, want %q", got, filepath.Dir(authPath))
+	}
+	if got := environmentValue(env, "CODEX_HOME"); got != "" {
+		t.Fatalf("CODEX_HOME = %q, want empty", got)
+	}
+	if count := environmentValueCount(env, "TUTTI_AGENT_HOME"); count != 1 {
+		t.Fatalf("TUTTI_AGENT_HOME entries = %d, want one", count)
+	}
+}
+
 func TestTuttiAgentUserAuthReadyRejectsExpiredAccessToken(t *testing.T) {
 	expiresAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_test"}}`)
@@ -229,6 +261,9 @@ func TestBootstrapTuttiAgentUserAuthRetainsAuthWhenHostAuthIsInvalidJSON(t *test
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	assertTuttiAgentAuthUnchanged(t, authPath, []byte(authJSON))
+	if _, err := os.Stat(filepath.Join(stateDir, "account", "auth.json")); err != nil {
+		t.Fatalf("host auth stat error = %v, want rejected session to be retained", err)
+	}
 	if got := revokeCalls.Load(); got != 0 {
 		t.Fatalf("revoke calls = %d, want 0", got)
 	}
@@ -301,6 +336,9 @@ func TestBootstrapTuttiAgentUserAuthRetainsAuthAfterUnauthorizedTokenIssue(t *te
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	assertTuttiAgentAuthUnchanged(t, authPath, []byte(authJSON))
+	if _, err := os.Stat(filepath.Join(stateDir, "account", "auth.json")); err != nil {
+		t.Fatalf("host auth stat error = %v, want rejected session to be retained", err)
+	}
 	if got := revokeCalls.Load(); got != 0 {
 		t.Fatalf("revoke calls = %d, want 0", got)
 	}
@@ -437,6 +475,7 @@ func TestLogoutTuttiAgentUserAuthRemovesAuthAndRevokesToken(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 
 	if err := logoutTuttiAgentUserAuth(t.Context()); err != nil {
 		t.Fatalf("logoutTuttiAgentUserAuth() error = %v", err)
@@ -516,6 +555,7 @@ func writeTuttiAgentUserAuth(t *testing.T, home string, authJSON string) {
 		t.Fatal(err)
 	}
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 }
 
 func assertTuttiAgentAuthUnchanged(t *testing.T, authPath string, expected []byte) {
@@ -580,6 +620,27 @@ func writeTuttiAgentTestBinary(t *testing.T, body string) string {
 		t.Fatal(err)
 	}
 	return binaryPath
+}
+
+func environmentValue(env []string, key string) string {
+	prefix := key + "="
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			return strings.TrimPrefix(entry, prefix)
+		}
+	}
+	return ""
+}
+
+func environmentValueCount(env []string, key string) int {
+	prefix := key + "="
+	count := 0
+	for _, entry := range env {
+		if strings.HasPrefix(entry, prefix) {
+			count++
+		}
+	}
+	return count
 }
 
 func installFakeTuttiAgentBinary(t *testing.T) {

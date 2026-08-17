@@ -113,6 +113,43 @@ describe("useAgentGUIPanelEngagement", () => {
     expect(events).toHaveLength(3);
   });
 
+  it("buffers quick prompt engagement until exposure with privacy-safe dimensions", () => {
+    const { events } = renderHarness();
+
+    exposePanel();
+    fireEvent.click(screen.getByRole("button", { name: "quick prompt panel" }));
+    fireEvent.click(screen.getByRole("button", { name: "use template" }));
+    expect(events).toEqual([]);
+
+    act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
+
+    expect(events).toEqual([
+      expect.objectContaining({ type: "panel_exposed" }),
+      expect.objectContaining({
+        source: "composer_input",
+        type: "quick_prompt_panel_opened"
+      }),
+      expect.objectContaining({
+        promptType: "recommended_template",
+        source: "composer_input",
+        type: "quick_prompt_used"
+      })
+    ]);
+    expect(JSON.stringify(events)).not.toContain("content");
+  });
+
+  it("drops buffered quick prompt engagement when exposure is cancelled", () => {
+    const { events } = renderHarness();
+
+    exposePanel();
+    fireEvent.click(screen.getByRole("button", { name: "quick prompt panel" }));
+    fireEvent.click(screen.getByRole("button", { name: "use template" }));
+    act(() => TestIntersectionObserver.current?.emit(0));
+    act(() => vi.advanceTimersByTime(AGENT_GUI_PANEL_EXPOSURE_DWELL_MS));
+
+    expect(events).toEqual([]);
+  });
+
   it("starts a new visit when the active conversation changes while visible", () => {
     const { events, rerender } = renderHarness({
       context: contextFor("session-a"),
@@ -324,6 +361,20 @@ function EngagementHarness({
         }
       >
         content
+      </button>
+      <button
+        type="button"
+        onClick={() => composerEngagement?.quickPromptPanelOpened?.()}
+      >
+        quick prompt panel
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          composerEngagement?.quickPromptUsed?.("recommended_template")
+        }
+      >
+        use template
       </button>
     </div>
   );

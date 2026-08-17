@@ -107,6 +107,12 @@ function createTransportClient(
     async listWorkspaceAgents() {
       throw new Error("not used");
     },
+    async listWorkspaceManagedWorktrees() {
+      throw new Error("not used");
+    },
+    async deleteWorkspaceManagedWorktree() {
+      throw new Error("not used");
+    },
     async createWorkspaceAgent() {
       throw new Error("not used");
     },
@@ -230,6 +236,9 @@ function createTransportClient(
     async createWorkspaceIssueRun() {
       throw new Error("not used");
     },
+    async startWorkspaceIssueRun() {
+      throw new Error("not used");
+    },
     async createWorkspace() {
       throw new Error("not used");
     },
@@ -279,6 +288,18 @@ function createTransportClient(
       throw new Error("not used");
     },
     async clearWorkspaceAgentSessions() {
+      throw new Error("not used");
+    },
+    async listWorkspaceDeletedAgentSessions() {
+      throw new Error("not used");
+    },
+    async restoreWorkspaceDeletedAgentSession() {
+      throw new Error("not used");
+    },
+    async purgeWorkspaceDeletedAgentSession() {
+      throw new Error("not used");
+    },
+    async purgeWorkspaceDeletedAgentSessions() {
       throw new Error("not used");
     },
     async deleteWorkspaceIssue() {
@@ -515,6 +536,9 @@ function createTransportClient(
     async resolveWorkspaceGitPatchSupport() {
       throw new Error("not used");
     },
+    async resolveWorkspaceAgentSessionWorktreeSupport() {
+      return { supported: false };
+    },
     async updateWorkspaceAgentSessionSettings() {
       throw new Error("not used");
     },
@@ -598,6 +622,9 @@ function createTransportClient(
       throw new Error("not used");
     },
     async cancelTuttiModeExecution() {
+      throw new Error("not used");
+    },
+    async readWorkspaceIssueAttachment() {
       throw new Error("not used");
     }
   };

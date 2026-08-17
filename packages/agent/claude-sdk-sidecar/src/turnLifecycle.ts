@@ -19,10 +19,17 @@ export type RuntimeTurn = {
   readonly goalRevision?: number;
   readonly goalRepairEpoch?: number;
   readonly goalAction?: "set" | "clear";
+  canceling?: boolean;
   settled: boolean;
 };
 
 type TerminalEvent = "turn_completed" | "turn_canceled" | "turn_failed";
+
+export type ExactTurnCancellationPreparation = {
+  disposition: "active" | "queued" | "absent" | "mismatch" | "unresolved";
+  providerTurnId: string;
+  differentActiveTurn?: boolean;
+};
 
 function turnProvenancePayload(
   turn: RuntimeTurn
@@ -43,6 +50,7 @@ export class TurnLifecycle {
   private readonly turns: RuntimeTurn[] = [];
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private readonly onActivate: () => void;
+  private readonly onSyntheticActivate: (turnId: string) => void;
   private readonly onSettled: (turnId: string) => void;
   private readonly onContinuationStartTimeout: () => void;
   private readonly continuationStartTimeoutMs: number;
@@ -59,12 +67,14 @@ export class TurnLifecycle {
   constructor(options: {
     emit: ClaudeSDKSidecarEventEmitter;
     onActivate: () => void;
+    onSyntheticActivate?: (turnId: string) => void;
     onSettled: (turnId: string) => void;
     onContinuationStartTimeout?: () => void;
     continuationStartTimeoutMs?: number;
   }) {
     this.emit = options.emit;
     this.onActivate = options.onActivate;
+    this.onSyntheticActivate = options.onSyntheticActivate ?? (() => {});
     this.onSettled = options.onSettled;
     this.onContinuationStartTimeout =
       options.onContinuationStartTimeout ?? (() => {});
@@ -130,7 +140,10 @@ export class TurnLifecycle {
 
   expectProviderTurnIdentity(turnId: string): void {
     const turn = this.turns.find(
-      (candidate) => !candidate.settled && candidate.turnId === turnId.trim()
+      (candidate) =>
+        !candidate.settled &&
+        !candidate.canceling &&
+        candidate.turnId === turnId.trim()
     );
     if (turn && !turn.synthetic && !turn.providerTurnId?.trim()) {
       turn.awaitingProviderTurnIdentity = true;
@@ -143,6 +156,7 @@ export class TurnLifecycle {
     if (
       !turn ||
       turn.settled ||
+      turn.canceling ||
       turn.synthetic ||
       turn.providerTurnStarted ||
       !normalizedProviderTurnId
@@ -159,13 +173,17 @@ export class TurnLifecycle {
       return;
     }
     const matched = this.turns.find(
-      (turn) => !turn.settled && turn.promptUuid === normalizedPromptUuid
+      (turn) =>
+        !turn.settled &&
+        !turn.canceling &&
+        turn.promptUuid === normalizedPromptUuid
     );
     const candidate =
       matched ??
       this.turns.find(
         (turn) =>
           !turn.settled &&
+          !turn.canceling &&
           !turn.synthetic &&
           turn.awaitingProviderTurnIdentity === true
       );
@@ -186,7 +204,10 @@ export class TurnLifecycle {
   ): ProviderTurnIdentityBindingDisposition {
     const normalizedTurnId = turnId.trim();
     const turn = this.turns.find(
-      (candidate) => !candidate.settled && candidate.turnId === normalizedTurnId
+      (candidate) =>
+        !candidate.settled &&
+        !candidate.canceling &&
+        candidate.turnId === normalizedTurnId
     );
     if (!turn) {
       return "missing";
@@ -204,7 +225,7 @@ export class TurnLifecycle {
   }
 
   ensureActive(messageType: string): RuntimeTurn | undefined {
-    if (this.active && !this.active.settled) {
+    if (this.active && !this.active.settled && !this.active.canceling) {
       if (messageType === "assistant" || messageType === "stream_event") {
         this.confirmContinuationStarted();
       }
@@ -216,7 +237,12 @@ export class TurnLifecycle {
     if (messageType !== "user" && this.pendingOrphanCount > 0) {
       return undefined;
     }
-    const turn = this.turns.find((candidate) => !candidate.settled);
+    if (this.active?.canceling) {
+      return undefined;
+    }
+    const turn = this.turns.find(
+      (candidate) => !candidate.settled && !candidate.canceling
+    );
     if (!turn) {
       return messageType === "assistant" ? this.activateSynthetic() : undefined;
     }
@@ -232,6 +258,7 @@ export class TurnLifecycle {
       settled: false
     };
     this.turns.push(turn);
+    this.onSyntheticActivate(turn.turnId);
     this.activate(turn);
     return turn;
   }
@@ -356,12 +383,142 @@ export class TurnLifecycle {
     return Boolean(this.active);
   }
 
-  cancelActiveExact(turnId: string): boolean {
+  prepareExactCancellation(turnId: string): ExactTurnCancellationPreparation {
     const expected = turnId.trim();
-    if (!expected || this.active?.turnId !== expected || this.active.settled) {
+    if (!expected) {
+      return { disposition: "absent", providerTurnId: "" };
+    }
+    if (this.active && !this.active.settled) {
+      if (this.active.turnId !== expected) {
+        const queued = this.turns.find(
+          (turn) =>
+            turn !== this.active && !turn.settled && turn.turnId === expected
+        );
+        if (!queued) {
+          return { disposition: "mismatch", providerTurnId: "" };
+        }
+        if (queued.canceling) {
+          return {
+            disposition: "unresolved",
+            providerTurnId: this.providerTurnId(queued),
+            differentActiveTurn: true
+          };
+        }
+        queued.canceling = true;
+        return {
+          disposition: "queued",
+          providerTurnId: this.providerTurnId(queued),
+          differentActiveTurn: true
+        };
+      }
+      if (this.active.canceling) {
+        return {
+          disposition: "unresolved",
+          providerTurnId: this.providerTurnId(this.active)
+        };
+      }
+      this.cancelledValue = true;
+      this.active.canceling = true;
+      return {
+        disposition: "active",
+        providerTurnId: this.providerTurnId(this.active)
+      };
+    }
+
+    const queued = this.turns.find(
+      (turn) => !turn.settled && turn.turnId === expected
+    );
+    if (!queued) {
+      return {
+        disposition: this.turns.some((turn) => !turn.settled)
+          ? "mismatch"
+          : "absent",
+        providerTurnId: ""
+      };
+    }
+    if (queued.canceling) {
+      return {
+        disposition: "unresolved",
+        providerTurnId: this.providerTurnId(queued)
+      };
+    }
+
+    queued.canceling = true;
+    return {
+      disposition: "queued",
+      providerTurnId: this.providerTurnId(queued)
+    };
+  }
+
+  commitExactCancellation(turnId: string): boolean {
+    const expected = turnId.trim();
+    if (!expected) {
       return false;
     }
-    this.cancelledValue = true;
+    if (
+      this.active?.turnId === expected &&
+      !this.active.settled &&
+      this.active.canceling
+    ) {
+      this.settleActive("turn_canceled");
+      return true;
+    }
+    const queued = this.turns.find(
+      (turn) => !turn.settled && turn.canceling && turn.turnId === expected
+    );
+    if (!queued) {
+      return false;
+    }
+    if (!this.isUnstartedGoalCommand(queued)) {
+      this.completedTurnCount += 1;
+    }
+    this.settleQueuedTurn(queued, "turn_canceled");
+    this.compactQueue();
+    this.onSettled(queued.turnId);
+    return true;
+  }
+
+  prepareGenerationCancellation(): string[] {
+    const turnIds: string[] = [];
+    for (const turn of this.turns) {
+      if (turn.settled) {
+        continue;
+      }
+      turn.canceling = true;
+      turnIds.push(turn.turnId);
+    }
+    return turnIds;
+  }
+
+  releaseExactCancellation(turnId: string): void {
+    const expected = turnId.trim();
+    const turn = this.turns.find(
+      (candidate) =>
+        !candidate.settled &&
+        candidate.canceling &&
+        candidate.turnId === expected
+    );
+    if (turn) {
+      turn.canceling = false;
+    }
+  }
+
+  discardExactAbsent(turnId: string): boolean {
+    const expected = turnId.trim();
+    const turn = this.turns.find(
+      (candidate) => !candidate.settled && candidate.turnId === expected
+    );
+    if (!turn) {
+      return false;
+    }
+    turn.settled = true;
+    if (this.active === turn) {
+      this.clearContinuationStartTimer();
+      this.active = undefined;
+      this.activeIdValue = "";
+    }
+    this.compactQueue();
+    this.onSettled(turn.turnId);
     return true;
   }
   clearCancelled(): void {
@@ -447,6 +604,20 @@ export class TurnLifecycle {
       return;
     }
     turn.settled = true;
+    if (type === "turn_canceled" && this.isUnstartedGoalCommand(turn)) {
+      this.emit({
+        type: "goal_command_canceled",
+        payload: {
+          turnId: turn.turnId,
+          operationId: turn.goalOperationId,
+          revision: turn.goalRevision,
+          repairEpoch: turn.goalRepairEpoch ?? 0,
+          action: turn.goalAction,
+          reason: "cancel_requested"
+        }
+      });
+      return;
+    }
     this.emit({
       type,
       payload: {
@@ -457,6 +628,15 @@ export class TurnLifecycle {
           : {})
       }
     });
+  }
+
+  private isUnstartedGoalCommand(turn: RuntimeTurn): boolean {
+    return Boolean(
+      turn.goalOperationId &&
+      turn.goalRevision &&
+      turn.goalAction &&
+      !turn.providerTurnStarted
+    );
   }
 
   private bindProviderTurnId(

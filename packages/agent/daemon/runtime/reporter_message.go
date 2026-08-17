@@ -78,30 +78,21 @@ func textMessageUpdateFromSessionEvent(
 	if messageKind := stringFromPayload(event.Payload.Metadata, "messageKind"); messageKind != "" {
 		update.Payload["messageKind"] = messageKind
 	}
-	update.Semantics = messageSemanticsFromMetadata(event.Payload.Metadata)
+	update.Semantics = messageSemanticsFromEventPayload(event.Payload)
 	forwardSystemNoticeMessageMetadata(update.Payload, event.Payload.Metadata)
 	return update, true
 }
 
-func messageSemanticsFromMetadata(metadata map[string]any) *canonical.WorkspaceAgentMessageSemantics {
-	if len(metadata) == 0 {
-		return nil
-	}
-	semantics := canonical.WorkspaceAgentMessageSemantics{}
-	if value, ok := metadata["userVisibleAssistantResponse"].(bool); ok {
-		semantics.UserVisibleAssistantResponse = value
+func messageSemanticsFromEventPayload(payload activityshared.EventPayload) *canonical.WorkspaceAgentMessageSemantics {
+	metadata := payload.Metadata
+	semantics := canonical.WorkspaceAgentMessageSemantics{
+		UserVisibleAssistantResponse: payload.Semantics.UserVisibleAssistantResponse,
 	}
 	if value, ok := metadata["turnSettling"].(bool); ok {
 		semantics.TurnSettling = value
 	}
 	semantics.NoticeCommand = stringFromPayload(metadata, "noticeCommand")
 	semantics.NoticeCommandStatus = stringFromPayload(metadata, "noticeCommandStatus")
-	if !semantics.UserVisibleAssistantResponse &&
-		!semantics.TurnSettling &&
-		semantics.NoticeCommand == "" &&
-		semantics.NoticeCommandStatus == "" {
-		return nil
-	}
 	return &semantics
 }
 
@@ -228,6 +219,12 @@ func callMessageUpdateFromSessionEvent(
 			payload["error"] = canonicalToolBodyPayload(event.Payload.Error)
 		}
 	}
+	// Preserve an explicit nil until the canonical deep merge so a terminal
+	// snapshot can clear reconstructible text left by an earlier running
+	// update. Detect the alias while the raw stream still has its full prefix;
+	// independent per-field truncation can otherwise make equal values diverge.
+	canonical.TombstoneTerminalCommandOutputAliases(status, payload)
+	truncateCanonicalToolMessagePayload(payload)
 	update := agentsessionstore.WorkspaceAgentMessageUpdate{
 		AgentSessionID:   strings.TrimSpace(sessionID),
 		MessageID:        messageID,
@@ -236,6 +233,7 @@ func callMessageUpdateFromSessionEvent(
 		Role:             string(activityshared.MessageRoleAssistant),
 		Kind:             "tool_call",
 		Status:           status,
+		Semantics:        &canonical.WorkspaceAgentMessageSemantics{UserVisibleAssistantResponse: false},
 		CallID:           callID,
 		Title:            name,
 		Payload:          payload,
@@ -263,17 +261,34 @@ func canonicalToolBodyPayload(value any) any {
 			body["text"] = text
 		}
 	}
-	return canonical.TruncateToolOutputBody(body)
+	return body
 }
 
 func canonicalToolMetadataPayload(metadata map[string]any) map[string]any {
-	result := clonePayload(metadata)
-	if result == nil || result["steps"] == nil {
-		return result
+	return clonePayload(metadata)
+}
+
+func truncateCanonicalToolMessagePayload(payload map[string]any) {
+	for _, key := range []string{"output", "error"} {
+		body, _ := payload[key].(map[string]any)
+		if body != nil {
+			payload[key] = canonical.TruncateToolOutputBody(body)
+		}
 	}
-	truncated := canonical.TruncateToolOutputBody(map[string]any{"steps": result["steps"]})
-	result["steps"] = truncated["steps"]
-	return result
+	if steps := payload["steps"]; steps != nil {
+		truncated := canonical.TruncateToolOutputBody(map[string]any{
+			"steps": steps,
+		})
+		payload["steps"] = truncated["steps"]
+	}
+	metadata, _ := payload["metadata"].(map[string]any)
+	if metadata == nil || metadata["steps"] == nil {
+		return
+	}
+	truncated := canonical.TruncateToolOutputBody(map[string]any{
+		"steps": metadata["steps"],
+	})
+	metadata["steps"] = truncated["steps"]
 }
 
 func canonicalToolBodyText(body map[string]any) string {

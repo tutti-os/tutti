@@ -324,9 +324,22 @@ func ProjectMessageUpdate(
 	version uint64,
 	nowUnixMS int64,
 ) (MessageSnapshot, bool) {
+	message, accepted, _ := ProjectMessageUpdateChecked(existing, hasExisting, update, version, nowUnixMS)
+	return message, accepted
+}
+
+// ProjectMessageUpdateChecked projects one update while surfacing canonical
+// tool payload budget failures to persistence callers.
+func ProjectMessageUpdateChecked(
+	existing MessageSnapshot,
+	hasExisting bool,
+	update MessageUpdate,
+	version uint64,
+	nowUnixMS int64,
+) (MessageSnapshot, bool, error) {
 	messageID := strings.TrimSpace(update.MessageID)
 	if messageID == "" {
-		return MessageSnapshot{}, false
+		return MessageSnapshot{}, false, nil
 	}
 	message := MessageSnapshot{
 		MessageID:         messageID,
@@ -349,7 +362,7 @@ func ProjectMessageUpdate(
 		if message.TurnID == "" {
 			message.TurnID = existing.TurnID
 		} else if existingTurnID := strings.TrimSpace(existing.TurnID); existingTurnID != "" && message.TurnID != existingTurnID {
-			return MessageSnapshot{}, false
+			return MessageSnapshot{}, false, nil
 		}
 		if message.Role == "" {
 			message.Role = existing.Role
@@ -386,12 +399,16 @@ func ProjectMessageUpdate(
 	}
 	message.Payload = clearStaleToolPayloadForStatus(message.Kind, message.Status, message.Payload)
 	if strings.TrimSpace(message.Kind) == "tool_call" {
-		message.Payload = CompactToolCallPayload(message.Status, message.Payload)
+		compacted, err := CompactToolCallPayloadChecked(message.Status, message.Payload)
+		if err != nil {
+			return MessageSnapshot{}, false, err
+		}
+		message.Payload = compacted
 	}
 	if message.Payload == nil {
 		message.Payload = map[string]any{}
 	}
-	return message, true
+	return message, true, nil
 }
 
 func clearStaleToolPayloadForStatus(kind string, status string, payload map[string]any) map[string]any {

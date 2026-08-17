@@ -9,6 +9,52 @@ import type { AgentGUIComposerTargetData } from "./agentGuiController.composerPr
 import { useAgentGUIComposerPresentation } from "./useAgentGUIComposerPresentation";
 
 describe("useAgentGUIComposerPresentation", () => {
+  it("exposes a terminal options error without leaving the composer in loading state", () => {
+    const data: AgentGUINodeData = {
+      provider: "opencode",
+      agentTargetId: "local:opencode",
+      lastActiveAgentSessionId: null
+    };
+    const target: AgentGUIComposerTargetData = {
+      agentTargetId: "local:opencode",
+      data,
+      provider: "opencode",
+      targetId: "local:opencode"
+    };
+
+    const { result } = renderHook(() =>
+      useAgentGUIComposerPresentation({
+        activeConversation: null,
+        activeConversationId: null,
+        activeEngineSession: null,
+        activeSessionState: null,
+        agentActivityRuntime: {
+          projectPathIsRemote: false
+        } as AgentGUIRuntime,
+        composerOptionsLoadStatus: "error",
+        composerOptionsLoading: false,
+        connectorOptionsLoading: false,
+        composerSupport: composerSettingsSupportFromOptions(null, null),
+        composerTargetProvider: "opencode",
+        composerTargetData: target,
+        data,
+        defaultReasoningEffort: null,
+        draftSettingsBySessionId: {},
+        providerComposerOptions: null,
+        selectedComposerTargetData: target,
+        selectedProjectPath: null,
+        shouldApplyPreparedProjectSelection: false,
+        userProjects: []
+      })
+    );
+
+    expect(result.current.stableComposerSettings).toMatchObject({
+      composerOptionsError: true,
+      composerOptionsLoadStatus: "error",
+      isSettingsLoading: false
+    });
+  });
+
   it("keeps all explicit home defaults above stale options, then yields to authority after retirement", () => {
     const data: AgentGUINodeData = {
       provider: "opencode",
@@ -81,8 +127,10 @@ describe("useAgentGUIComposerPresentation", () => {
             reasoning: false
           },
           composerOptionsLoading: false,
+          connectorOptionsLoading: false,
           composerTargetProvider: "opencode",
           codexSaverModeEntryEnabled: entryEnabled,
+          composerTargetData: target,
           data,
           defaultReasoningEffort: null,
           draftSettingsBySessionId: drafts,
@@ -113,6 +161,14 @@ describe("useAgentGUIComposerPresentation", () => {
     });
     expect(result.current.stableComposerSettings).toMatchObject({
       selectedModelValue: "opencode/new-model",
+      modelChoiceHistory: {
+        targetId: "local:opencode",
+        catalog: {
+          authoritative: false,
+          effectiveModel: "opencode/old-model",
+          loading: false
+        }
+      },
       selectedPermissionModeValue: "full-access",
       selectedReasoningEffortValue: "high",
       selectedSpeedValue: "fast"
@@ -251,7 +307,9 @@ describe("useAgentGUIComposerPresentation", () => {
           } as AgentGUIRuntime,
           composerSupport: composerSettingsSupportFromOptions(options, null),
           composerOptionsLoading: false,
+          connectorOptionsLoading: false,
           composerTargetProvider: "opencode",
+          composerTargetData: target,
           data,
           defaultReasoningEffort: "high",
           draftSettingsBySessionId,

@@ -582,7 +582,13 @@ function ReadyWorkspaceWorkbenchWithSession({
       unregisterBrowserLaunchRef.current =
         registerWorkspaceBrowserLaunchHandler(
           state.workspace.id,
-          createWorkbenchWorkspaceBrowserPresenter({ host })
+          createWorkbenchWorkspaceBrowserPresenter({
+            browserPages: {
+              openPage: (request) =>
+                runtime.workbenchHostService.openBrowserPage(request)
+            },
+            host
+          })
         );
       unregisterWorkbenchNodeLaunchRef.current =
         registerWorkspaceWorkbenchNodeLaunchHandler(

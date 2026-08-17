@@ -886,7 +886,7 @@ test("guidance during delegated continuation wait stays on reserved synthetic tu
     session.exec("turn-1", "delegate task");
     await waitForEvent(events, "task_completed");
     const reserved = events.find((event) => event.type === "turn_started");
-    session.guide("include the child result");
+    await session.guide("include the child result");
     await waitForEvent(events, "assistant_completed");
     await new Promise((resolve) => setTimeout(resolve, 20));
 

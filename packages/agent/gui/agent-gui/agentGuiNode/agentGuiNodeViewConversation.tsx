@@ -1,4 +1,4 @@
-import { Spinner } from "@tutti-os/ui-system";
+import { Spinner, WorktreeLinedIcon } from "@tutti-os/ui-system";
 import { AskLinedIcon } from "@tutti-os/ui-system/icons";
 import { resolveAgentGUIConversationSortTimeUnixMs } from "./model/agentGuiConversationModel";
 import type { AgentGUINodeViewModel } from "./model/agentGuiNodeTypes";
@@ -34,14 +34,19 @@ export function ConversationMeta({
 }): React.JSX.Element | null {
   "use memo";
   const kind = conversationMetaKind(item);
+  const worktreeGlyph =
+    item.isolation?.mode === "worktree" ? <WorktreeGlyph /> : null;
+  const worktreeData = worktreeGlyph ? "true" : undefined;
 
   if (kind === "loading") {
     return (
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
+        {worktreeGlyph}
         <LoadingGlyph />
       </span>
     );
@@ -52,8 +57,10 @@ export function ConversationMeta({
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
+        {worktreeGlyph}
         <AskLinedIcon
           aria-hidden="true"
           className={styles.conversationStatusGlyph}
@@ -67,8 +74,10 @@ export function ConversationMeta({
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
+        {worktreeGlyph}
         <AttentionGlyph />
       </span>
     );
@@ -79,19 +88,34 @@ export function ConversationMeta({
       <span
         className={styles.conversationMeta}
         data-kind={kind}
+        data-worktree={worktreeData}
         data-testid={`agent-gui-conversation-meta-${item.id}`}
       >
+        {worktreeGlyph}
         <span className={styles.conversationUnreadLamp} aria-hidden="true" />
       </span>
     );
   }
 
-  return hideTime ? null : (
+  return hideTime ? (
+    worktreeGlyph ? (
+      <span
+        className={styles.conversationMeta}
+        data-kind="worktree"
+        data-worktree={worktreeData}
+        data-testid={`agent-gui-conversation-meta-${item.id}`}
+      >
+        {worktreeGlyph}
+      </span>
+    ) : null
+  ) : (
     <span
       className={styles.conversationMeta}
       data-kind={kind}
+      data-worktree={worktreeData}
       data-testid={`agent-gui-conversation-meta-${item.id}`}
     >
+      {worktreeGlyph}
       <span className={styles.conversationTime}>
         {formatConversationRelativeTime(
           resolveAgentGUIConversationSortTimeUnixMs(item),
@@ -100,6 +124,15 @@ export function ConversationMeta({
         )}
       </span>
     </span>
+  );
+}
+
+function WorktreeGlyph(): React.JSX.Element {
+  return (
+    <WorktreeLinedIcon
+      aria-hidden="true"
+      className={styles.conversationWorktreeGlyph}
+    />
   );
 }
 

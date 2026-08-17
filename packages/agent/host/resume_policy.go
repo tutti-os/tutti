@@ -21,6 +21,19 @@ type ResumePolicy struct {
 	Mode ResumeMode
 }
 
+func runtimeSessionHasActiveTurn(session ProviderRuntimeSession) bool {
+	return session.TurnLifecycle != nil &&
+		session.TurnLifecycle.ActiveTurnID != nil &&
+		strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID) != ""
+}
+
+func persistedRuntimeStatus(activeTurnID string) string {
+	if strings.TrimSpace(activeTurnID) != "" {
+		return "working"
+	}
+	return "ready"
+}
+
 func ResolveResumePolicy(session storesqlite.Session) ResumePolicy {
 	if strings.TrimSpace(session.Kind) == canonical.SessionKindChild {
 		return ResumePolicy{Mode: ResumeModeReject}

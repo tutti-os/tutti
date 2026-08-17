@@ -2,11 +2,14 @@ export const agentGUIBuildEntries = {
   index: "index.ts",
   "agent-gui": "AgentGUI.tsx",
   "startup-shell": "AgentGUIStartupShell.tsx",
+  "quick-composer": "AgentGUIQuickComposer.tsx",
+  "composer-settings-core/index": "composer-settings-core/index.ts",
   agents: "agents.ts",
   "custom-mention": "custom-mention.ts",
   "dock-icons": "dockIcons.ts",
   layout: "layout.ts",
   "mention-search": "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
+  "abortable-single-flight": "abortable-single-flight.ts",
   "agent-message-center/index": "agent-message-center/index.ts",
   "agent-conversation/index": "agent-conversation/index.ts",
   "agent-conversation/follow-end":
@@ -48,13 +51,22 @@ export const agentGUIBuildEntries = {
 
 type AgentGUIBuildEntry = keyof typeof agentGUIBuildEntries;
 
+export const agentGUIDtsBuildEntries = Object.fromEntries(
+  Object.entries(agentGUIBuildEntries).map(([name, source]) => [
+    name,
+    `dist/.dts/${source.replace(/\.tsx?$/, ".d.ts")}`
+  ])
+) as Readonly<Record<AgentGUIBuildEntry, string>>;
+
 export const agentGUIDtsEntryGroups = [
   ["index"],
   [
     "agent-gui",
     "startup-shell",
+    "quick-composer",
     "agents",
     "mention-search",
+    "abortable-single-flight",
     "agent-message-center/index",
     "agent-conversation/index",
     "agent-conversation/follow-end",
@@ -80,7 +92,8 @@ export const agentGUIDtsEntryGroups = [
     "conversation-rail-runtime",
     "conversation-rail-projection",
     "conversation-projection",
-    "composer-projection"
+    "composer-projection",
+    "composer-settings-core/index"
   ],
   [
     "dock-icons",

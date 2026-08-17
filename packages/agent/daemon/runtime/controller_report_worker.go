@@ -14,25 +14,26 @@ import (
 )
 
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
+	c.enqueueSessionReportWithInitializationState(ctx, session, events, false)
+}
+
+// enqueueInitializedSessionReport publishes the release batch after Host has
+// already committed the canonical Session. The Controller intentionally keeps
+// its in-memory publication marker until all queued runtime callbacks are
+// drained, so this path must not mistake that ordering marker for an
+// uninitialized canonical Session and hide the report again.
+func (c *Controller) enqueueInitializedSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
+	c.enqueueSessionReportWithInitializationState(ctx, session, events, true)
+}
+
+func (c *Controller) enqueueSessionReportWithInitializationState(
+	ctx context.Context,
+	session Session,
+	events []activityshared.Event,
+	canonicalInitialized bool,
+) {
 	c.observeGoalControlLifecycle(ctx, session, events)
-	c.mu.Lock()
-	provisional := c.provisionalSessions[sessionKey(session.RoomID, session.AgentSessionID)]
-	c.mu.Unlock()
-	if provisional {
-		// A still-provisional runtime has not crossed the durable submitted-intent
-		// barrier. Keep incidental provider events hidden until that barrier
-		// publishes the canonical prompt. The normal initial-content path removes
-		// this marker immediately after the barrier, so an explicit rejection is
-		// projected as a visible failed Turn rather than compensated away.
-		session.Visible = false
-	}
-	report := reportActivityInput(session, events)
-	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
-	if provisional {
-		hideProvisionalSessionReport(&report)
-		report.MessageUpdates = nil
-		report.SessionAudits = nil
-	}
+	report := c.prepareSessionReportWithInitializationState(session, events, canonicalInitialized)
 	c.observeProviderObservations(ctx, session, report.ProviderObservations)
 	if len(report.GoalReconcileRequests) > 0 {
 		control := report
@@ -44,6 +45,87 @@ func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, 
 		_ = c.reportGoalReconcileControl(ctx, control)
 	}
 	c.enqueueReport(ctx, report)
+}
+
+func (c *Controller) prepareSessionReport(
+	session Session,
+	events []activityshared.Event,
+) agentsessionstore.ReportActivityInput {
+	return c.prepareSessionReportWithInitializationState(session, events, false)
+}
+
+func (c *Controller) prepareSessionReportWithInitializationState(
+	session Session,
+	events []activityshared.Event,
+	canonicalInitialized bool,
+) agentsessionstore.ReportActivityInput {
+	c.mu.Lock()
+	publicationPending := !canonicalInitialized && c.sessionPublicationPendingLocked(sessionKey(session.RoomID, session.AgentSessionID))
+	c.mu.Unlock()
+	if publicationPending {
+		// A still-provisional runtime has not crossed the durable submitted-intent
+		// barrier. Keep incidental provider events hidden until that barrier
+		// publishes the canonical prompt. The normal initial-content path removes
+		// this marker immediately after the barrier, so an explicit rejection is
+		// projected as a visible failed Turn rather than compensated away.
+		session.Visible = false
+	}
+	report := reportActivityInput(session, events)
+	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	if publicationPending {
+		hideProvisionalSessionReport(&report)
+		report.MessageUpdates = nil
+		report.SessionAudits = nil
+	}
+	return report
+}
+
+// reportSessionBeforePublish establishes the commit-before-publish barrier
+// for terminal facts. Live projections read the canonical Store while
+// handling the published event, so publishing a settled event before its
+// active-turn pointer is cleared creates an invalid snapshot and forces every
+// caller to reconnect. The bounded wait keeps a broken reporter fail-fast and
+// deliberately withholds the uncommitted event rather than advertising state
+// that the canonical store does not contain.
+func (c *Controller) reportSessionBeforePublish(
+	ctx context.Context,
+	session Session,
+	events []activityshared.Event,
+) error {
+	if c == nil || c.reporter == nil {
+		return nil
+	}
+	c.observeGoalControlLifecycle(ctx, session, events)
+	report := c.prepareSessionReport(session, events)
+	if len(report.StatePatches) == 0 && len(report.MessageUpdates) == 0 &&
+		len(report.SessionAudits) == 0 && len(report.GoalReconcileRequests) == 0 {
+		return nil
+	}
+	c.observeProviderObservations(ctx, session, report.ProviderObservations)
+	reportCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	request := reportRequest{
+		ctx:    reportCtx,
+		report: report,
+		done:   make(chan error, 1),
+	}
+	if c.reportQueue == nil {
+		return c.report(request.ctx, request)
+	}
+	c.reportQueue.enqueue(request)
+	select {
+	case err := <-request.done:
+		return err
+	case <-reportCtx.Done():
+		slog.Warn(
+			"agent session terminal activity report barrier timed out",
+			"event", "agent_session.activity_report.terminal_barrier_timeout",
+			"room_id", session.RoomID,
+			"agent_session_id", session.AgentSessionID,
+			"error", reportCtx.Err(),
+		)
+		return reportCtx.Err()
+	}
 }
 
 func (c *Controller) SetGoalControlLifecycleObserver(observer GoalControlLifecycleObserver) {
@@ -84,6 +166,7 @@ func (c *Controller) observeGoalControlLifecycle(
 			ProviderTurnID:   stringFromPayload(metadata, "providerTurnId"),
 			Observed:         payloadObject(metadata["goal"]),
 			OccurredAtUnixMS: event.OccurredAtUnixMS,
+			ExecutionPending: payloadBoolValue(metadata, "executionPending"),
 		}
 		if err := observer.ObserveGoalControlApplied(ctx, observation); err != nil {
 			slog.Warn(
@@ -139,8 +222,9 @@ func (c *Controller) observeProviderObservations(
 }
 
 // reportSubmittedTurnDurable is the acceptance barrier for a user submission.
-// The daemon reporter commits the submitted Turn and its session pointer before
-// Exec may publish the transition, start provider work, or return success.
+// The durable reporter commits the submitted Turn and canonical user message
+// together before Exec may publish the transition, start provider work, or
+// return success.
 func (c *Controller) reportSubmittedTurnDurable(
 	ctx context.Context,
 	session Session,
@@ -160,7 +244,7 @@ func (c *Controller) reportSubmittedTurnDurable(
 	if keepProvisional {
 		hideProvisionalSessionReport(&report)
 	}
-	return c.reporter.Report(ctx, report)
+	return c.reporter.ReportSubmitProvenance(ctx, report)
 }
 
 func hideProvisionalSessionReport(report *agentsessionstore.ReportActivityInput) {
@@ -189,8 +273,7 @@ func (c *Controller) reportProviderAcceptanceDurable(
 	if c == nil || c.reporter == nil || !containsDurableProviderAcceptance(events) {
 		return false, nil
 	}
-	report := reportActivityInput(session, events)
-	c.enrichReportStatePatchesWithSessionMetadata(session, &report)
+	report := c.prepareSessionReport(session, events)
 	// Mirror enqueueSessionReport: observe batches before the durable commit so
 	// checkpoint candidates exist when ObserveReplayCommitted runs.
 	c.observeProviderObservations(ctx, session, report.ProviderObservations)

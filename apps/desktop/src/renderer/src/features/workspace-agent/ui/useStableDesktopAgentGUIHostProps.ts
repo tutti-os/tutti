@@ -23,7 +23,8 @@ export type DesktopAgentGUIHostProps = {
     AgentGUIProps["hostCapabilities"],
     | "referenceProvenanceFilterEnabled"
     | "sessionInputHistoryEnabled"
-    | "sessionForkEnabled"
+    | "sessionWorktreeEnabled"
+    | "sessionLaunchModesByProjectSectionKey"
     | "codexSaverModeEntryEnabled"
     | "capabilityMenuState"
     | "visibleErrorPresentationOverrides"
@@ -48,6 +49,7 @@ export type DesktopAgentGUIHostProps = {
     | "onShowMessage"
     | "onUpdateNode"
     | "onRememberComposerDefaults"
+    | "onSessionLaunchModePreferenceChange"
     | "onEngagementEvent"
     | "onConversationRailLayoutChange"
     | "onOpenConversationWindow"
@@ -105,7 +107,9 @@ export function useStableDesktopAgentGUIHostProps({
         nextHostCapabilities.referenceProvenanceFilterEnabled,
       sessionInputHistoryEnabled:
         nextHostCapabilities.sessionInputHistoryEnabled,
-      sessionForkEnabled: nextHostCapabilities.sessionForkEnabled,
+      sessionWorktreeEnabled: nextHostCapabilities.sessionWorktreeEnabled,
+      sessionLaunchModesByProjectSectionKey:
+        nextHostCapabilities.sessionLaunchModesByProjectSectionKey,
       codexSaverModeEntryEnabled:
         nextHostCapabilities.codexSaverModeEntryEnabled,
       capabilityMenuState: nextHostCapabilities.capabilityMenuState,
@@ -131,6 +135,8 @@ export function useStableDesktopAgentGUIHostProps({
       onShowMessage: nextHostActions.onShowMessage,
       onUpdateNode: nextHostActions.onUpdateNode,
       onRememberComposerDefaults: nextHostActions.onRememberComposerDefaults,
+      onSessionLaunchModePreferenceChange:
+        nextHostActions.onSessionLaunchModePreferenceChange,
       onEngagementEvent: nextHostActions.onEngagementEvent,
       onConversationRailLayoutChange:
         nextHostActions.onConversationRailLayoutChange,

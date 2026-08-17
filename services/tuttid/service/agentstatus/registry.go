@@ -41,6 +41,7 @@ type ProviderSpec struct {
 	AdapterPackage               AdapterPackageRequirement
 	AuthStatusCommand            []string
 	AuthStatusCommandTimeout     time.Duration
+	RemoteAuthProbe              providerregistry.RemoteAuthProbeDescriptor
 	AuthMarkerPaths              []string
 	Install                      InstallerSpec
 	Update                       ProviderUpdateSpec
@@ -156,6 +157,7 @@ func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) 
 		AdapterBinaryNames:     adapterBinaryNames,
 		AdapterCommand:         append([]string(nil), descriptor.Runtime.Command...),
 		AuthStatusCommand:      append([]string(nil), descriptor.Status.AuthStatusCommand...),
+		RemoteAuthProbe:        descriptor.Status.RemoteAuthProbe,
 		AuthStatusCommandTimeout: time.Duration(
 			descriptor.Status.AuthStatusCommandTimeoutSeconds,
 		) * time.Second,
@@ -195,6 +197,16 @@ func isClaudeStatusSpec(spec ProviderSpec) bool {
 		}
 	}
 	return kind == providerregistry.StatusKindClaudeCLI
+}
+
+func isOpenCodeStatusSpec(spec ProviderSpec) bool {
+	kind := spec.Kind
+	if kind == "" {
+		if status, ok := migratedProviderStatus(spec.Provider); ok {
+			kind = status.Kind
+		}
+	}
+	return kind == providerregistry.StatusKindOpenCodeCLI
 }
 
 // isStandardACPStatusSpec reports whether spec's runtime is a "standard ACP"

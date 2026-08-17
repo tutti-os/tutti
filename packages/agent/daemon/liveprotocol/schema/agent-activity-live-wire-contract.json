@@ -146,7 +146,7 @@
   "controls": {
     "discontinuity": {
       "required": ["reason"],
-      "semanticReasons": ["session_deleted"],
+      "semanticReasons": ["session_deleted", "session_restored"],
       "properties": {
         "reason": "non-empty-string",
         "reconcileKeys": "reconcile-key-array"
@@ -157,6 +157,7 @@
         "bindingId",
         "workspaceId",
         "agentSessionId",
+        "currentInteractionRootTurnId",
         "attachmentRevision"
       ],
       "pairedOptional": [["canonicalTurnId", "callerTurnId"]],
@@ -165,7 +166,9 @@
         "workspaceId": "non-empty-string",
         "agentSessionId": "non-empty-string",
         "canonicalTurnId": "string",
+        "canonicalTurnIds": "unique-non-empty-string-array-containing-canonical-turn-id-when-present",
         "callerTurnId": "string",
+        "currentInteractionRootTurnId": "authorized-current-interaction-root-or-empty-before-first-turn",
         "attachmentRevision": "positive-integer"
       }
     },
@@ -174,6 +177,7 @@
         "bindingId",
         "workspaceId",
         "agentSessionId",
+        "currentInteractionRootTurnId",
         "attachmentRevision"
       ],
       "pairedOptional": [["canonicalTurnId", "callerTurnId"]],
@@ -182,7 +186,9 @@
         "workspaceId": "non-empty-string",
         "agentSessionId": "non-empty-string",
         "canonicalTurnId": "string",
+        "canonicalTurnIds": "unique-non-empty-string-array-containing-canonical-turn-id-when-present",
         "callerTurnId": "string",
+        "currentInteractionRootTurnId": "authorized-current-interaction-root-or-empty-before-first-turn",
         "attachmentRevision": "positive-integer"
       }
     },

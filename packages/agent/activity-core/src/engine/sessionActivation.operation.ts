@@ -53,8 +53,15 @@ export function requestSessionActivation(
     ...(input.initialTurnExpected !== undefined
       ? { initialTurnExpected: input.initialTurnExpected }
       : {}),
+    ...(input.isolation ? { isolation: input.isolation } : {}),
+    ...(input.modelExplicit !== undefined
+      ? { modelExplicit: input.modelExplicit }
+      : {}),
     ...(input.railPlacement
       ? { railPlacement: { ...input.railPlacement } }
+      : {}),
+    ...(input.reasoningEffortExplicit !== undefined
+      ? { reasoningEffortExplicit: input.reasoningEffortExplicit }
       : {}),
     ...(input.railSectionKey?.trim()
       ? { railSectionKey: input.railSectionKey.trim() }

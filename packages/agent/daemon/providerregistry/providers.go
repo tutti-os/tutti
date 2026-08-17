@@ -114,8 +114,9 @@ func tuttiAgentDescriptor() ProviderDescriptor {
 			PermissionModes: []PermissionModeDescriptor{{ID: "read-only", Semantic: "ask-before-write"}, {ID: "auto", Semantic: "auto"}, {ID: "full-access", Semantic: "full-access"}}, ConfigOptionIDs: ComposerConfigOptionIDs{Model: "model", Permission: "mode"},
 			CapabilityCatalog: CapabilityCatalogDescriptor{Kind: CapabilityCatalogKindAppServerSkills},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{
-				FallbackCommands: []string{"plan", "goal", "review"},
+				FallbackCommands: []string{"compact", "plan", "goal", "review"},
 				CommandEffects: []SlashCommandEffectDescriptor{
+					{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
 					{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
 					{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
 					{Command: "review", Effect: SlashCommandEffectShowReviewPicker},

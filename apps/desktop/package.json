@@ -2,7 +2,7 @@
   "name": "@tutti-os/desktop",
   "version": "0.0.0",
   "productName": "Tutti",
-  "description": "Tutti local-first desktop shell.",
+  "description": "Where people and agents build in tune.",
   "author": "Tutti",
   "private": true,
   "packageManager": "pnpm@10.11.0",
@@ -39,6 +39,13 @@
       {
         "from": "build/claude-sdk-sidecar",
         "to": "bin/claude-sdk-sidecar",
+        "filter": [
+          "**/*"
+        ]
+      },
+      {
+        "from": "build/managed-uv",
+        "to": "bin/managed-uv",
         "filter": [
           "**/*"
         ]
@@ -88,8 +95,19 @@
           "filter": [
             "**/*"
           ]
+        },
+        {
+          "from": "build/mutagen",
+          "to": "bin/mutagen",
+          "filter": [
+            "**/*"
+          ]
         }
       ]
+    },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false
     },
     "appx": {
       "applicationId": "Tutti",
@@ -102,7 +120,9 @@
       "languages": [
         "en-US",
         "zh-CN"
-      ]
+      ],
+      "minVersion": "10.0.17763.0",
+      "maxVersionTested": "10.0.26100.0"
     },
     "linux": {
       "target": [
@@ -118,6 +138,8 @@
     "build:mac:unsigned": "bash ../../tools/scripts/build-desktop-package.sh mac-unsigned",
     "build:unpack": "bash ../../tools/scripts/build-desktop-package.sh unpack",
     "build:win": "bash ../../tools/scripts/build-desktop-package.sh win",
+    "predev": "node scripts/prepare-managed-posix-shell-dev.mjs",
+    "build:win:prepared": "bash ../../tools/scripts/build-desktop-package.sh win --prepared-builtin-apps",
     "build:win:store": "bash ../../tools/scripts/build-desktop-package.sh win-store",
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.mjs",
@@ -164,6 +186,7 @@
     "@tutti-os/workspace-user-project": "workspace:*",
     "@tutti-os/workspace-terminal": "workspace:*",
     "@tailwindcss/vite": "^4.1.8",
+    "@tanstack/react-virtual": "^3.14.8",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",

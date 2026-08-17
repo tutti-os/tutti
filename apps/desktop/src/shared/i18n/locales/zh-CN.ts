@@ -16,11 +16,23 @@ export const zhCN = {
     loading: "加载中",
     neverOpened: "从未打开",
     ok: "好",
+    retry: "重试",
     selectFolder: "选择文件夹",
     unknownError: "未知错误",
     unreachable: "不可达",
     workspace: "工作区",
     zipArchive: "ZIP 压缩包"
+  },
+  capture: {
+    error: "Agent 启动失败，请重试",
+    loading: "正在准备截图…",
+    screenPreviewAlt: "等待选择区域的屏幕",
+    selectHint: "拖动选择区域 · Esc 取消",
+    taskPrompt:
+      "开始处理前，请创建一个 Qute Task 来记录这项请求；随后立即执行请求，把 Task 作为持续跟进的工作记录，并及时更新状态和备注，不要在创建 Task 后停止",
+    taskPromptAction: "创建 Task 并跟进",
+    taskPromptHint: "Agent 会立即处理，并持续更新 Task",
+    title: "Tutti"
   },
   dashboard: {
     chooseWorkspaceTitle: "选择一个工作区",
@@ -66,6 +78,7 @@ export const zhCN = {
     errorTitle: "无法检查更新",
     restartAction: "重启安装",
     retryAction: "重试",
+    releaseNotesAction: "更新内容",
     storeManaged: "更新由 Microsoft Store 管理"
   },
   desktop: {
@@ -257,6 +270,7 @@ export const zhCN = {
       settings: "设置",
       free: "Free",
       signIn: "登录",
+      signInFailed: "无法发起登录",
       signOut: "退出登录",
       copyUserId: "复制用户 ID",
       copyUserIdSuccess: "已复制用户 ID",
@@ -835,6 +849,10 @@ export const zhCN = {
           zhCN: "简体中文"
         },
         localeSaveFailed: "暂时无法切换应用语言",
+        captureShortcutDefaultPlaceholder: "默认：Cmd/Ctrl+Shift+S",
+        captureShortcutDescription:
+          "全局截图快捷键，需包含 Cmd、Ctrl 或 Alt 修饰键；清除后恢复默认",
+        captureShortcutLabel: "截图快捷键",
         preventSleepDescription: "可控制系统是否进入休眠",
         preventSleepLabel: "防止休眠",
         preventSleepOptions: {
@@ -847,6 +865,52 @@ export const zhCN = {
         updatePolicySaveFailed: "暂时无法更新更新方式",
         versionLabel: "桌面版本"
       },
+      deletedConversations: {
+        allProjects: "所有项目",
+        clearFilters: "清除筛选",
+        deleteAll: "全部删除",
+        deleteAllCompleted: "已永久删除 {{count}} 个会话",
+        deleteAllConfirm: "永久删除全部会话",
+        deleteAllConfirmationLabel: "确认文字",
+        deleteAllConfirmationPhrase: "永久清理",
+        deleteAllDescription:
+          "这会永久删除当前工作区的全部 {{count}} 个已删除会话，不受当前搜索和项目筛选影响且无法撤销，请输入「{{phrase}}」继续",
+        deleteAllTitle: "永久删除全部会话？",
+        deleteAction: "删除",
+        deleteCompleted: "会话已永久删除",
+        deleteDescription: "「{{title}}」将被永久删除且无法恢复",
+        deleteTitle: "永久删除这个会话？",
+        deleting: "删除中…",
+        deletingAll: "全部删除中…",
+        emptyDescription: "删除后的会话会在这里保留到自动清理期限结束",
+        emptyTitle: "暂无已删除会话",
+        legacyRestoreUnavailable: "旧版记录缺少完整会话数据，无法恢复",
+        incompleteRestoreUnavailable: "会话数据不完整，无法恢复",
+        listLabel: "已删除会话列表",
+        loadFailedDescription: "暂时无法加载已删除会话，请重试",
+        loadFailedTitle: "无法加载已删除会话",
+        loadingMore: "正在加载更多…",
+        noResultsDescription: "请尝试其他标题或清除当前项目筛选",
+        noResultsTitle: "没有符合条件的会话",
+        permanentDelete: "永久删除",
+        permanentDeleteFailed:
+          "暂时无法永久删除，请结束正在运行的 Agent 任务后重试",
+        projectFilterLabel: "按项目筛选",
+        removedProject: "{{project}}（已移除）",
+        restore: "恢复会话",
+        restoreCompleted: "会话已恢复",
+        restoreFailed: "暂时无法恢复会话，请重试",
+        restoring: "恢复中…",
+        retentionDays: "{{count}} 天",
+        retentionDescription:
+          "已删除会话会在期限后永久清理，此设置适用于本设备上的所有工作区",
+        retentionLabel: "自动清理",
+        searchLabel: "按标题搜索已删除会话",
+        searchPlaceholder: "搜索已删除会话",
+        title: "已删除会话",
+        unscoped: "聊天（无项目）",
+        untitled: "未命名会话"
+      },
       nav: {
         about: "关于",
         apps: "应用",
@@ -854,6 +918,7 @@ export const zhCN = {
         appearance: "外观",
         agent: "Agent",
         connection: "连接",
+        deletedConversations: "回收站",
         developer: "开发者",
         general: "通用",
         lab: "实验室",
@@ -1183,9 +1248,6 @@ export const zhCN = {
         agentSessionRecordingDescription:
           "在 Agent 首页显示会话录制与回放开发入口",
         agentSessionRecordingLabel: "Agent 会话录制",
-        agentSessionForkDescription:
-          "允许从支持的已完成轮次创建新的 Agent 会话",
-        agentSessionForkLabel: "会话 Fork",
         codexSaverModeDescription:
           "在 Codex 输入框显示可记忆的省额度开关，将合适的子任务交给 Luna Max",
         codexSaverModeLabel: "Codex 省额度模式",
@@ -1195,10 +1257,6 @@ export const zhCN = {
         referenceProvenanceFilterDescription:
           "在 Agent 对话的引用选择器中启用智能体来源筛选",
         referenceProvenanceFilterLabel: "智能体来源筛选",
-        quickPromptLibraryDescription:
-          "在 Agent 输入框中显示个人快捷提示词库入口",
-        quickPromptLibraryLabel: "快捷提示词库",
-        quickPromptLibrarySaveFailed: "暂时无法更新快捷提示词库可用状态",
         releaseChannelOptions: {
           rc: "预览版",
           stable: "稳定版"
@@ -1218,6 +1276,8 @@ export const zhCN = {
         conversationActivityViewDescription:
           "在 Agent 侧边栏中显示会话 Activity View",
         conversationActivityViewLabel: "会话 Activity View",
+        connectorsDescription: "在 Agent 设置和输入框中显示连接器",
+        connectorsLabel: "连接器",
         clearShortcutLabel: "清除 {{label}}",
         newAgentConversationShortcutLabel: "新建 Agent 对话",
         newSameTypeWindowShortcutLabel: "新建同类型窗口",
@@ -1320,12 +1380,14 @@ export const zhCN = {
         manageStatusAuthRequired: "需要登录",
         manageStatusAvailable: "可连接",
         manageStatusChecking: "检测中",
+        manageStatusConfigured: "凭据已配置",
         manageStatusConnected: "已连接",
         manageStatusSelectionRequired: "发现多个安装，请选择",
+        manageStatusTemporarilyUnsupported: "暂未支持",
         manageStatusUnknown: "状态不可用",
-        manageStatusUnsupported: "后台更新中",
+        manageStatusUnsupported: "不受支持",
         manageTitle: "管理智能体",
-        manageUnsupportedTooltip: "本地支持正在更新中，这个智能体暂时不可用。",
+        manageUnsupportedTooltip: "当前本地智能体运行环境不受支持",
         refresh: "重新检测",
         unknown: "暂时无法确认本地 CLI 状态，请刷新重新检测"
       },

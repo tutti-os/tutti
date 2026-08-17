@@ -1,8 +1,12 @@
-import { createRichTextMentionHref } from "@tutti-os/ui-rich-text/core";
+import {
+  createRichTextMentionHref,
+  isRichTextFolderHref
+} from "@tutti-os/ui-rich-text/core";
 import { getOptionalAgentHostApi } from "../../agentActivityHost";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 import type { AgentContextMentionDirectoryDescriptor } from "./agentContextMentionProvider";
 import { normalizeAgentSessionMentionTitle } from "./agentRichText/agentFileMentionExtension";
+import { dirnameFromPath } from "./agentRichText/agentMentionMarkdown";
 import { resolveAgentSessionMentionIconUrl } from "./agentRichText/agentMentionPresentation";
 import type { AgentContextMentionInsertResult } from "./agentContextMentionProvider";
 import type { AgentMentionProviderQueryDiagnostic } from "./agentMentionSearchDiagnostics";
@@ -573,7 +577,8 @@ export function providerItemToAgentMentionItem(input: {
       href,
       path: directoryPath || href,
       name: label,
-      entryKind: directoryPath || href.endsWith("/") ? "directory" : "unknown",
+      entryKind:
+        directoryPath || isRichTextFolderHref(href) ? "directory" : "unknown",
       directoryPath: dirnameFromProviderWorkspaceFileHref(
         directoryPath || href
       ),
@@ -615,7 +620,9 @@ export function providerItemToAgentMentionItem(input: {
       path: directoryPath || targetId,
       name: label,
       entryKind:
-        directoryPath || targetId.endsWith("/") ? "directory" : "unknown",
+        directoryPath || isRichTextFolderHref(targetId)
+          ? "directory"
+          : "unknown",
       directoryPath: dirnameFromProviderWorkspaceFileHref(
         directoryPath || targetId
       ),
@@ -735,8 +742,7 @@ export function providerItemToAgentMentionItem(input: {
           presentation.agentIconUrl?.trim() ||
           presentation.iconUrl?.trim() ||
           undefined,
-        agentProviderId: presentation.agentProviderId,
-        agentTargetId: scope.agentTargetId
+        agentProviderId: presentation.agentProviderId
       }),
       ...(scope.agentTargetId ? { agentTargetId: scope.agentTargetId } : {}),
       status: presentation.status?.trim() || undefined,
@@ -789,10 +795,5 @@ export function mentionSessionScope(input: {
 }
 
 export function dirnameFromProviderWorkspaceFileHref(href: string): string {
-  const normalized = href.replace(/\/+$/, "");
-  const index = normalized.lastIndexOf("/");
-  if (index <= 0) {
-    return "/";
-  }
-  return normalized.slice(0, index);
+  return dirnameFromPath(href) || "/";
 }

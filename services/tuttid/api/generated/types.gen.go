@@ -262,6 +262,7 @@ func (e AgentProviderActiveActionStepStatus) Valid() bool {
 // Defines values for AgentProviderAuthStatus.
 const (
 	AgentProviderAuthStatusAuthenticated AgentProviderAuthStatus = "authenticated"
+	AgentProviderAuthStatusConfigured    AgentProviderAuthStatus = "configured"
 	AgentProviderAuthStatusRequired      AgentProviderAuthStatus = "required"
 	AgentProviderAuthStatusUnknown       AgentProviderAuthStatus = "unknown"
 )
@@ -270,6 +271,8 @@ const (
 func (e AgentProviderAuthStatus) Valid() bool {
 	switch e {
 	case AgentProviderAuthStatusAuthenticated:
+		return true
+	case AgentProviderAuthStatusConfigured:
 		return true
 	case AgentProviderAuthStatusRequired:
 		return true
@@ -745,6 +748,24 @@ func (e AgentSlashCommandEffect) Valid() bool {
 	case TogglePlanMode:
 		return true
 	case ToggleSpeed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentSubmitDiagnosticsUiMode.
+const (
+	AgentSubmitDiagnosticsUiModeAgent AgentSubmitDiagnosticsUiMode = "agent"
+	AgentSubmitDiagnosticsUiModeOs    AgentSubmitDiagnosticsUiMode = "os"
+)
+
+// Valid indicates whether the value is a known member of the AgentSubmitDiagnosticsUiMode enum.
+func (e AgentSubmitDiagnosticsUiMode) Valid() bool {
+	switch e {
+	case AgentSubmitDiagnosticsUiModeAgent:
+		return true
+	case AgentSubmitDiagnosticsUiModeOs:
 		return true
 	default:
 		return false
@@ -1522,6 +1543,21 @@ func (e CollaborationRunTriggerSource) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketAuthorizationReplacementPolicy.
+const (
+	ReplaceActive ConnectorMarketAuthorizationReplacementPolicy = "replace_active"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketAuthorizationReplacementPolicy enum.
+func (e ConnectorMarketAuthorizationReplacementPolicy) Valid() bool {
+	switch e {
+	case ReplaceActive:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectorMarketAuthorizationState.
 const (
 	ConnectorMarketAuthorizationStateConnected    ConnectorMarketAuthorizationState = "connected"
@@ -1717,6 +1753,21 @@ func (e ConnectorMarketInstallationState) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketManifestAuthorizationInteractionMode.
+const (
+	Managed ConnectorMarketManifestAuthorizationInteractionMode = "managed"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketManifestAuthorizationInteractionMode enum.
+func (e ConnectorMarketManifestAuthorizationInteractionMode) Valid() bool {
+	switch e {
+	case Managed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectorMarketManifestSchemaVersion.
 const (
 	ConnectorMarketManifestSchemaVersionN1 ConnectorMarketManifestSchemaVersion = "1"
@@ -1761,15 +1812,17 @@ func (e ConnectorMarketOperationKind) Valid() bool {
 
 // Defines values for ConnectorMarketOperationStage.
 const (
-	ConnectorMarketOperationStageAccepted      ConnectorMarketOperationStage = "accepted"
-	ConnectorMarketOperationStageAuthorizing   ConnectorMarketOperationStage = "authorizing"
-	ConnectorMarketOperationStageCompleted     ConnectorMarketOperationStage = "completed"
-	ConnectorMarketOperationStageDeactivating  ConnectorMarketOperationStage = "deactivating"
-	ConnectorMarketOperationStageDisconnecting ConnectorMarketOperationStage = "disconnecting"
-	ConnectorMarketOperationStageFailed        ConnectorMarketOperationStage = "failed"
-	ConnectorMarketOperationStageInstalled     ConnectorMarketOperationStage = "installed"
-	ConnectorMarketOperationStageInstalling    ConnectorMarketOperationStage = "installing"
-	ConnectorMarketOperationStageRefreshing    ConnectorMarketOperationStage = "refreshing"
+	ConnectorMarketOperationStageAccepted       ConnectorMarketOperationStage = "accepted"
+	ConnectorMarketOperationStageAuthorizing    ConnectorMarketOperationStage = "authorizing"
+	ConnectorMarketOperationStageCompleted      ConnectorMarketOperationStage = "completed"
+	ConnectorMarketOperationStageDeactivating   ConnectorMarketOperationStage = "deactivating"
+	ConnectorMarketOperationStageDisconnecting  ConnectorMarketOperationStage = "disconnecting"
+	ConnectorMarketOperationStageFailed         ConnectorMarketOperationStage = "failed"
+	ConnectorMarketOperationStageInstalled      ConnectorMarketOperationStage = "installed"
+	ConnectorMarketOperationStageInstalling     ConnectorMarketOperationStage = "installing"
+	ConnectorMarketOperationStageRefreshing     ConnectorMarketOperationStage = "refreshing"
+	ConnectorMarketOperationStageRemoving       ConnectorMarketOperationStage = "removing"
+	ConnectorMarketOperationStageRuntimePending ConnectorMarketOperationStage = "runtime_pending"
 )
 
 // Valid indicates whether the value is a known member of the ConnectorMarketOperationStage enum.
@@ -1792,6 +1845,10 @@ func (e ConnectorMarketOperationStage) Valid() bool {
 	case ConnectorMarketOperationStageInstalling:
 		return true
 	case ConnectorMarketOperationStageRefreshing:
+		return true
+	case ConnectorMarketOperationStageRemoving:
+		return true
+	case ConnectorMarketOperationStageRuntimePending:
 		return true
 	default:
 		return false
@@ -1849,6 +1906,27 @@ func (e ConnectorMarketReleaseStatus) Valid() bool {
 	case ConnectorMarketReleaseStatusAvailable:
 		return true
 	case ConnectorMarketReleaseStatusSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CreateIssueManagerImageAttachmentRequestMimeType.
+const (
+	IssueAttachmentMimeTypeJPEG CreateIssueManagerImageAttachmentRequestMimeType = "image/jpeg"
+	IssueAttachmentMimeTypePNG  CreateIssueManagerImageAttachmentRequestMimeType = "image/png"
+	IssueAttachmentMimeTypeWebP CreateIssueManagerImageAttachmentRequestMimeType = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the CreateIssueManagerImageAttachmentRequestMimeType enum.
+func (e CreateIssueManagerImageAttachmentRequestMimeType) Valid() bool {
+	switch e {
+	case IssueAttachmentMimeTypeJPEG:
+		return true
+	case IssueAttachmentMimeTypePNG:
+		return true
+	case IssueAttachmentMimeTypeWebP:
 		return true
 	default:
 		return false
@@ -1924,6 +2002,24 @@ func (e DesktopAgentDockLayout) Valid() bool {
 	case LegacySplit:
 		return true
 	case Unified:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DesktopAgentSessionLaunchMode.
+const (
+	DesktopAgentSessionLaunchModeLocal    DesktopAgentSessionLaunchMode = "local"
+	DesktopAgentSessionLaunchModeWorktree DesktopAgentSessionLaunchMode = "worktree"
+)
+
+// Valid indicates whether the value is a known member of the DesktopAgentSessionLaunchMode enum.
+func (e DesktopAgentSessionLaunchMode) Valid() bool {
+	switch e {
+	case DesktopAgentSessionLaunchModeLocal:
+		return true
+	case DesktopAgentSessionLaunchModeWorktree:
 		return true
 	default:
 		return false
@@ -2455,6 +2551,54 @@ func (e ExternalAgentImportArchiveKind) Valid() bool {
 	}
 }
 
+// Defines values for GetAgentProviderComposerOptionsRequestSection.
+const (
+	GetAgentProviderComposerOptionsRequestSectionCapabilities GetAgentProviderComposerOptionsRequestSection = "capabilities"
+	GetAgentProviderComposerOptionsRequestSectionConnectors   GetAgentProviderComposerOptionsRequestSection = "connectors"
+	GetAgentProviderComposerOptionsRequestSectionCore         GetAgentProviderComposerOptionsRequestSection = "core"
+	GetAgentProviderComposerOptionsRequestSectionFull         GetAgentProviderComposerOptionsRequestSection = "full"
+)
+
+// Valid indicates whether the value is a known member of the GetAgentProviderComposerOptionsRequestSection enum.
+func (e GetAgentProviderComposerOptionsRequestSection) Valid() bool {
+	switch e {
+	case GetAgentProviderComposerOptionsRequestSectionCapabilities:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionConnectors:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionCore:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionFull:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection.
+const (
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCapabilities GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "capabilities"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionConnectors   GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "connectors"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCore         GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "core"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionFull         GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "full"
+)
+
+// Valid indicates whether the value is a known member of the GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection enum.
+func (e GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection) Valid() bool {
+	switch e {
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCapabilities:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionConnectors:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCore:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionFull:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatusResponseStatus.
 const (
 	Ok HealthStatusResponseStatus = "ok"
@@ -2491,6 +2635,27 @@ func (e IssueManagerAcceptanceState) Valid() bool {
 	}
 }
 
+// Defines values for IssueManagerAttachmentContentResponseMimeType.
+const (
+	IssueManagerAttachmentContentResponseMimeTypeImagejpeg IssueManagerAttachmentContentResponseMimeType = "image/jpeg"
+	IssueManagerAttachmentContentResponseMimeTypeImagepng  IssueManagerAttachmentContentResponseMimeType = "image/png"
+	IssueManagerAttachmentContentResponseMimeTypeImagewebp IssueManagerAttachmentContentResponseMimeType = "image/webp"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerAttachmentContentResponseMimeType enum.
+func (e IssueManagerAttachmentContentResponseMimeType) Valid() bool {
+	switch e {
+	case IssueManagerAttachmentContentResponseMimeTypeImagejpeg:
+		return true
+	case IssueManagerAttachmentContentResponseMimeTypeImagepng:
+		return true
+	case IssueManagerAttachmentContentResponseMimeTypeImagewebp:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for IssueManagerBudgetMode.
 const (
 	IssueManagerBudgetModeAuto  IssueManagerBudgetMode = "auto"
@@ -2521,6 +2686,24 @@ func (e IssueManagerBudgetStatus) Valid() bool {
 	case IssueManagerBudgetStatusActive:
 		return true
 	case IssueManagerBudgetStatusSoftLimited:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerIssueContextRefAccessKind.
+const (
+	IssueManagerIssueContextRefAccessKindManagedAttachment IssueManagerIssueContextRefAccessKind = "managed_attachment"
+	IssueManagerIssueContextRefAccessKindWorkspacePath     IssueManagerIssueContextRefAccessKind = "workspace_path"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerIssueContextRefAccessKind enum.
+func (e IssueManagerIssueContextRefAccessKind) Valid() bool {
+	switch e {
+	case IssueManagerIssueContextRefAccessKindManagedAttachment:
+		return true
+	case IssueManagerIssueContextRefAccessKindWorkspacePath:
 		return true
 	default:
 		return false
@@ -2662,6 +2845,24 @@ func (e IssueManagerStatusFilter) Valid() bool {
 	case IssueManagerStatusFilterPendingAcceptance:
 		return true
 	case IssueManagerStatusFilterRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for IssueManagerTaskContextRefAccessKind.
+const (
+	IssueManagerTaskContextRefAccessKindManagedAttachment IssueManagerTaskContextRefAccessKind = "managed_attachment"
+	IssueManagerTaskContextRefAccessKindWorkspacePath     IssueManagerTaskContextRefAccessKind = "workspace_path"
+)
+
+// Valid indicates whether the value is a known member of the IssueManagerTaskContextRefAccessKind enum.
+func (e IssueManagerTaskContextRefAccessKind) Valid() bool {
+	switch e {
+	case IssueManagerTaskContextRefAccessKindManagedAttachment:
+		return true
+	case IssueManagerTaskContextRefAccessKindWorkspacePath:
 		return true
 	default:
 		return false
@@ -3531,19 +3732,19 @@ func (e WorkspaceAgentRailPlacementVersion) Valid() bool {
 
 // Defines values for WorkspaceAgentSessionAttachmentResponseMimeType.
 const (
-	WorkspaceAgentSessionAttachmentResponseMimeTypeImagejpeg WorkspaceAgentSessionAttachmentResponseMimeType = "image/jpeg"
-	WorkspaceAgentSessionAttachmentResponseMimeTypeImagepng  WorkspaceAgentSessionAttachmentResponseMimeType = "image/png"
-	WorkspaceAgentSessionAttachmentResponseMimeTypeImagewebp WorkspaceAgentSessionAttachmentResponseMimeType = "image/webp"
+	Imagejpeg WorkspaceAgentSessionAttachmentResponseMimeType = "image/jpeg"
+	Imagepng  WorkspaceAgentSessionAttachmentResponseMimeType = "image/png"
+	Imagewebp WorkspaceAgentSessionAttachmentResponseMimeType = "image/webp"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSessionAttachmentResponseMimeType enum.
 func (e WorkspaceAgentSessionAttachmentResponseMimeType) Valid() bool {
 	switch e {
-	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagejpeg:
+	case Imagejpeg:
 		return true
-	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagepng:
+	case Imagepng:
 		return true
-	case WorkspaceAgentSessionAttachmentResponseMimeTypeImagewebp:
+	case Imagewebp:
 		return true
 	default:
 		return false
@@ -3721,6 +3922,51 @@ func (e WorkspaceAgentSessionGoalStateSyncStatus) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionGoalSyncStateSyncStatus.
+const (
+	WorkspaceAgentSessionGoalSyncStateSyncStatusApplying WorkspaceAgentSessionGoalSyncStateSyncStatus = "applying"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusDiverged WorkspaceAgentSessionGoalSyncStateSyncStatus = "diverged"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusFailed   WorkspaceAgentSessionGoalSyncStateSyncStatus = "failed"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusPending  WorkspaceAgentSessionGoalSyncStateSyncStatus = "pending"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusSynced   WorkspaceAgentSessionGoalSyncStateSyncStatus = "synced"
+	WorkspaceAgentSessionGoalSyncStateSyncStatusUnknown  WorkspaceAgentSessionGoalSyncStateSyncStatus = "unknown"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionGoalSyncStateSyncStatus enum.
+func (e WorkspaceAgentSessionGoalSyncStateSyncStatus) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusApplying:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusDiverged:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusFailed:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusPending:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusSynced:
+		return true
+	case WorkspaceAgentSessionGoalSyncStateSyncStatusUnknown:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkspaceAgentSessionIsolationMode.
+const (
+	WorkspaceAgentSessionIsolationModeWorktree WorkspaceAgentSessionIsolationMode = "worktree"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionIsolationMode enum.
+func (e WorkspaceAgentSessionIsolationMode) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionIsolationModeWorktree:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSessionKind.
 const (
 	Child WorkspaceAgentSessionKind = "child"
@@ -3757,18 +4003,42 @@ func (e WorkspaceAgentSessionSectionKind) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceAgentSessionWorktreeSupportErrorCode.
+const (
+	WorkspaceAgentSessionWorktreeSupportErrorCodeAgentTargetUnsupported WorkspaceAgentSessionWorktreeSupportErrorCode = "agent-target-unsupported"
+	WorkspaceAgentSessionWorktreeSupportErrorCodeGitUnavailable         WorkspaceAgentSessionWorktreeSupportErrorCode = "git-unavailable"
+	WorkspaceAgentSessionWorktreeSupportErrorCodeNotGitRepo             WorkspaceAgentSessionWorktreeSupportErrorCode = "not-git-repo"
+	WorkspaceAgentSessionWorktreeSupportErrorCodeUnsupportedRepoLayout  WorkspaceAgentSessionWorktreeSupportErrorCode = "unsupported-repo-layout"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceAgentSessionWorktreeSupportErrorCode enum.
+func (e WorkspaceAgentSessionWorktreeSupportErrorCode) Valid() bool {
+	switch e {
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeAgentTargetUnsupported:
+		return true
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeGitUnavailable:
+		return true
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeNotGitRepo:
+		return true
+	case WorkspaceAgentSessionWorktreeSupportErrorCodeUnsupportedRepoLayout:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceAgentSource.
 const (
-	LegacyBinding WorkspaceAgentSource = "legacy_binding"
-	User          WorkspaceAgentSource = "user"
+	WorkspaceAgentSourceLegacyBinding WorkspaceAgentSource = "legacy_binding"
+	WorkspaceAgentSourceUser          WorkspaceAgentSource = "user"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSource enum.
 func (e WorkspaceAgentSource) Valid() bool {
 	switch e {
-	case LegacyBinding:
+	case WorkspaceAgentSourceLegacyBinding:
 		return true
-	case User:
+	case WorkspaceAgentSourceUser:
 		return true
 	default:
 		return false
@@ -4150,6 +4420,24 @@ func (e WorkspaceAppUploadPurpose) Valid() bool {
 	}
 }
 
+// Defines values for WorkspaceDeletedAgentSessionUnavailableReason.
+const (
+	IncompleteSessionTree WorkspaceDeletedAgentSessionUnavailableReason = "incompleteSessionTree"
+	LegacyDataUnavailable WorkspaceDeletedAgentSessionUnavailableReason = "legacyDataUnavailable"
+)
+
+// Valid indicates whether the value is a known member of the WorkspaceDeletedAgentSessionUnavailableReason enum.
+func (e WorkspaceDeletedAgentSessionUnavailableReason) Valid() bool {
+	switch e {
+	case IncompleteSessionTree:
+		return true
+	case LegacyDataUnavailable:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkspaceFileEntryKind.
 const (
 	Directory WorkspaceFileEntryKind = "directory"
@@ -4272,19 +4560,19 @@ func (e WorkspaceFileUploadConflictKind) Valid() bool {
 
 // Defines values for WorkspaceGitPatchErrorCode.
 const (
-	InvalidPatch      WorkspaceGitPatchErrorCode = "invalid-patch"
-	NotGitRepo        WorkspaceGitPatchErrorCode = "not-git-repo"
-	PatchDoesNotApply WorkspaceGitPatchErrorCode = "patch-does-not-apply"
+	WorkspaceGitPatchErrorCodeInvalidPatch      WorkspaceGitPatchErrorCode = "invalid-patch"
+	WorkspaceGitPatchErrorCodeNotGitRepo        WorkspaceGitPatchErrorCode = "not-git-repo"
+	WorkspaceGitPatchErrorCodePatchDoesNotApply WorkspaceGitPatchErrorCode = "patch-does-not-apply"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceGitPatchErrorCode enum.
 func (e WorkspaceGitPatchErrorCode) Valid() bool {
 	switch e {
-	case InvalidPatch:
+	case WorkspaceGitPatchErrorCodeInvalidPatch:
 		return true
-	case NotGitRepo:
+	case WorkspaceGitPatchErrorCodeNotGitRepo:
 		return true
-	case PatchDoesNotApply:
+	case WorkspaceGitPatchErrorCodePatchDoesNotApply:
 		return true
 	default:
 		return false
@@ -4524,25 +4812,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
-	Failed    WorkspaceWorkflowOperationStatus = "failed"
-	Pending   WorkspaceWorkflowOperationStatus = "pending"
-	Running   WorkspaceWorkflowOperationStatus = "running"
-	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
+	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
+	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
+	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
+	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
+	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case Canceled:
+	case WorkspaceWorkflowOperationStatusCanceled:
 		return true
-	case Failed:
+	case WorkspaceWorkflowOperationStatusFailed:
 		return true
-	case Pending:
+	case WorkspaceWorkflowOperationStatusPending:
 		return true
-	case Running:
+	case WorkspaceWorkflowOperationStatusRunning:
 		return true
-	case Succeeded:
+	case WorkspaceWorkflowOperationStatusSucceeded:
 		return true
 	default:
 		return false
@@ -4630,6 +4918,36 @@ const (
 func (e AgentCommandOrigin) Valid() bool {
 	switch e {
 	case AgentCommandOriginRendererEngine:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ConnectorMarketInstallationFilter.
+const (
+	ConnectorMarketInstallationFilterNotInstalled ConnectorMarketInstallationFilter = "not_installed"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketInstallationFilter enum.
+func (e ConnectorMarketInstallationFilter) Valid() bool {
+	switch e {
+	case ConnectorMarketInstallationFilterNotInstalled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListConnectorMarketCatalogParamsInstallation.
+const (
+	ListConnectorMarketCatalogParamsInstallationNotInstalled ListConnectorMarketCatalogParamsInstallation = "not_installed"
+)
+
+// Valid indicates whether the value is a known member of the ListConnectorMarketCatalogParamsInstallation enum.
+func (e ListConnectorMarketCatalogParamsInstallation) Valid() bool {
+	switch e {
+	case ListConnectorMarketCatalogParamsInstallationNotInstalled:
 		return true
 	default:
 		return false
@@ -4753,6 +5071,21 @@ const (
 func (e SubmitWorkspaceAgentPlanDecisionParamsXTuttiAgentCommandOrigin) Valid() bool {
 	switch e {
 	case SubmitWorkspaceAgentPlanDecisionParamsXTuttiAgentCommandOriginRendererEngine:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListWorkspaceDeletedAgentSessionsParamsProjectScope.
+const (
+	Unscoped ListWorkspaceDeletedAgentSessionsParamsProjectScope = "unscoped"
+)
+
+// Valid indicates whether the value is a known member of the ListWorkspaceDeletedAgentSessionsParamsProjectScope enum.
+func (e ListWorkspaceDeletedAgentSessionsParamsProjectScope) Valid() bool {
+	switch e {
+	case Unscoped:
 		return true
 	default:
 		return false
@@ -5484,13 +5817,17 @@ type AgentSlashCommandPolicy struct {
 
 // AgentSubmitDiagnostics defines model for AgentSubmitDiagnostics.
 type AgentSubmitDiagnostics struct {
-	BlockCount        *int    `json:"blockCount,omitempty"`
-	HasImage          *bool   `json:"hasImage,omitempty"`
-	PromptLength      *int    `json:"promptLength,omitempty"`
-	Queued            *bool   `json:"queued,omitempty"`
-	Source            *string `json:"source,omitempty"`
-	SubmittedAtUnixMs *int64  `json:"submittedAtUnixMs,omitempty"`
+	BlockCount        *int                          `json:"blockCount,omitempty"`
+	HasImage          *bool                         `json:"hasImage,omitempty"`
+	PromptLength      *int                          `json:"promptLength,omitempty"`
+	Queued            *bool                         `json:"queued,omitempty"`
+	Source            *string                       `json:"source,omitempty"`
+	SubmittedAtUnixMs *int64                        `json:"submittedAtUnixMs,omitempty"`
+	UiMode            *AgentSubmitDiagnosticsUiMode `json:"uiMode,omitempty"`
 }
+
+// AgentSubmitDiagnosticsUiMode defines model for AgentSubmitDiagnostics.UiMode.
+type AgentSubmitDiagnosticsUiMode string
 
 // AgentTarget defines model for AgentTarget.
 type AgentTarget struct {
@@ -6028,6 +6365,12 @@ type CliCommandWarning struct {
 
 // CliInvokeContext Client-supplied invocation context. These fields are hints for routing and audit only; authorization and workspace validation remain daemon-owned.
 type CliInvokeContext struct {
+	// AgentCwd Host-injected caller Agent working directory inherited by nested Agent starts that omit an explicit cwd. This is not an authorization boundary.
+	AgentCwd *string `json:"agentCwd,omitempty"`
+
+	// AgentRailPlacementJSON Host-injected versioned RailPlacement JSON inherited together with agentCwd. The Agent command provider validates this value before use.
+	AgentRailPlacementJSON *string `json:"agentRailPlacementJSON,omitempty"`
+
 	// AgentSessionId Caller agent session id hint. This is not an authorization boundary.
 	AgentSessionId *string `json:"agentSessionId,omitempty"`
 
@@ -6167,19 +6510,30 @@ type ConnectorMarketAuthorization struct {
 	State       ConnectorMarketAuthorizationState `json:"state"`
 }
 
+// ConnectorMarketAuthorizationReplacementPolicy When set to replace_active, the Host fences and terminates a different unresolved authorization attempt before starting this request. Omission preserves the legacy resume-or-conflict behavior.
+type ConnectorMarketAuthorizationReplacementPolicy string
+
 // ConnectorMarketAuthorizationRequest defines model for ConnectorMarketAuthorizationRequest.
 type ConnectorMarketAuthorizationRequest struct {
-	ClientRequestId  string  `json:"clientRequestId"`
-	ExpectedRevision int64   `json:"expectedRevision"`
-	Secret           *string `json:"secret,omitempty"`
+	ClientRequestId           string `json:"clientRequestId"`
+	ExpectedConnectorRevision *int64 `json:"expectedConnectorRevision,omitempty"`
+	ExpectedRevision          int64  `json:"expectedRevision"`
+
+	// ReplacementPolicy When set to replace_active, the Host fences and terminates a different unresolved authorization attempt before starting this request. Omission preserves the legacy resume-or-conflict behavior.
+	ReplacementPolicy *ConnectorMarketAuthorizationReplacementPolicy `json:"replacementPolicy,omitempty"`
+	Secret            *string                                        `json:"secret,omitempty"`
 }
 
 // ConnectorMarketAuthorizationResponse defines model for ConnectorMarketAuthorizationResponse.
 type ConnectorMarketAuthorizationResponse struct {
-	AuthorizationUrl *string                  `json:"authorizationUrl,omitempty"`
-	Connector        ConnectorMarketConnector `json:"connector"`
-	Operation        ConnectorMarketOperation `json:"operation"`
-	Revision         int64                    `json:"revision"`
+	AuthorizationExpiresAt time.Time `json:"authorizationExpiresAt"`
+	AuthorizationUrl       *string   `json:"authorizationUrl,omitempty"`
+
+	// AuthorizationView Opaque runtime Authorization View V1 envelope. Clients must validate it with the shared authorization protocol before rendering.
+	AuthorizationView *map[string]interface{}  `json:"authorizationView,omitempty"`
+	Connector         ConnectorMarketConnector `json:"connector"`
+	Operation         ConnectorMarketOperation `json:"operation"`
+	Revision          int64                    `json:"revision"`
 }
 
 // ConnectorMarketAuthorizationState defines model for ConnectorMarketAuthorizationState.
@@ -6285,12 +6639,18 @@ type ConnectorMarketInstallationState string
 
 // ConnectorMarketManifest defines model for ConnectorMarketManifest.
 type ConnectorMarketManifest struct {
-	AgentRouting      *ConnectorMarketAgentRouting              `json:"agentRouting,omitempty"`
-	AuthorizationKind string                                    `json:"authorizationKind"`
-	Compatibility     *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
-	Description       *string                                   `json:"description,omitempty"`
-	DisplayName       string                                    `json:"displayName"`
-	IconUrl           string                                    `json:"iconUrl"`
+	AgentRouting *ConnectorMarketAgentRouting `json:"agentRouting,omitempty"`
+
+	// AuthorizationInteraction Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
+	AuthorizationInteraction *map[string]interface{} `json:"authorizationInteraction,omitempty"`
+
+	// AuthorizationInteractionMode Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
+	AuthorizationInteractionMode *ConnectorMarketManifestAuthorizationInteractionMode `json:"authorizationInteractionMode,omitempty"`
+	AuthorizationKind            string                                               `json:"authorizationKind"`
+	Compatibility                *ConnectorMarketCompatibilityRequirements            `json:"compatibility,omitempty"`
+	Description                  *string                                              `json:"description,omitempty"`
+	DisplayName                  string                                               `json:"displayName"`
+	IconUrl                      string                                               `json:"iconUrl"`
 
 	// Implementation Public implementation discriminator; sensitive host configuration is never returned.
 	Implementation ConnectorMarketImplementation        `json:"implementation"`
@@ -6298,13 +6658,17 @@ type ConnectorMarketManifest struct {
 	SchemaVersion  ConnectorMarketManifestSchemaVersion `json:"schemaVersion"`
 }
 
+// ConnectorMarketManifestAuthorizationInteractionMode Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
+type ConnectorMarketManifestAuthorizationInteractionMode string
+
 // ConnectorMarketManifestSchemaVersion defines model for ConnectorMarketManifest.SchemaVersion.
 type ConnectorMarketManifestSchemaVersion string
 
 // ConnectorMarketMutationRequest defines model for ConnectorMarketMutationRequest.
 type ConnectorMarketMutationRequest struct {
-	ClientRequestId  string `json:"clientRequestId"`
-	ExpectedRevision int64  `json:"expectedRevision"`
+	ClientRequestId           string `json:"clientRequestId"`
+	ExpectedConnectorRevision *int64 `json:"expectedConnectorRevision,omitempty"`
+	ExpectedRevision          int64  `json:"expectedRevision"`
 }
 
 // ConnectorMarketMutationResponse defines model for ConnectorMarketMutationResponse.
@@ -6371,6 +6735,7 @@ type ConnectorMarketReleaseStatus string
 type ConnectorMarketSnapshot struct {
 	CatalogState   ConnectorMarketCatalogState `json:"catalogState"`
 	Connectors     []ConnectorMarketConnector  `json:"connectors"`
+	EventCursor    int64                       `json:"eventCursor"`
 	Operations     []ConnectorMarketOperation  `json:"operations"`
 	Revision       int64                       `json:"revision"`
 	SourceRevision *string                     `json:"sourceRevision,omitempty"`
@@ -6417,14 +6782,49 @@ type CreateCollaborationRunRequest struct {
 	TriggerSource       CollaborationRunTriggerSource `json:"triggerSource"`
 }
 
+// CreateIssueManagerImageAttachmentRequest defines model for CreateIssueManagerImageAttachmentRequest.
+type CreateIssueManagerImageAttachmentRequest struct {
+	AttachmentId *openapi_types.UUID `json:"attachmentId,omitempty"`
+
+	// DataBase64 Base64-encoded image bytes. Decoded content is limited to 20 MiB.
+	DataBase64  string                                           `json:"dataBase64"`
+	DisplayName *string                                          `json:"displayName,omitempty"`
+	MimeType    CreateIssueManagerImageAttachmentRequestMimeType `json:"mimeType"`
+}
+
+// CreateIssueManagerImageAttachmentRequestMimeType defines model for CreateIssueManagerImageAttachmentRequest.MimeType.
+type CreateIssueManagerImageAttachmentRequestMimeType string
+
 // CreateIssueManagerIssueFromPlanRequest defines model for CreateIssueManagerIssueFromPlanRequest.
 type CreateIssueManagerIssueFromPlanRequest struct {
-	Issue CreateIssueManagerIssueRequest  `json:"issue"`
-	Tasks []CreateIssueManagerTaskRequest `json:"tasks"`
+	Issue CreateIssueManagerPlannedIssueRequest `json:"issue"`
+	Tasks []CreateIssueManagerTaskRequest       `json:"tasks"`
 }
 
 // CreateIssueManagerIssueRequest defines model for CreateIssueManagerIssueRequest.
 type CreateIssueManagerIssueRequest struct {
+	// Attachments Inline image attachments persisted as managed issue context references.
+	Attachments      *[]CreateIssueManagerImageAttachmentRequest `json:"attachments,omitempty"`
+	Budget           *IssueManagerBudget                         `json:"budget,omitempty"`
+	Content          *string                                     `json:"content,omitempty"`
+	ExecutionProfile *IssueManagerExecutionProfile               `json:"executionProfile,omitempty"`
+	IssueId          *string                                     `json:"issueId,omitempty"`
+
+	// ParallelExecution Persist the user's parallel Create-and-Start choice. Mutually exclusive with sequentialExecution.
+	ParallelExecution *bool `json:"parallelExecution,omitempty"`
+
+	// PlanningSource How the issue entered the durable execution workflow.
+	PlanningSource *IssueManagerPlanningSource `json:"planningSource,omitempty"`
+
+	// SequentialExecution Persist the user's Create-and-Start choice so successor dispatch survives desktop restarts.
+	SequentialExecution *bool   `json:"sequentialExecution,omitempty"`
+	SourceSessionId     *string `json:"sourceSessionId,omitempty"`
+	Title               string  `json:"title"`
+	TopicId             string  `json:"topicId"`
+}
+
+// CreateIssueManagerPlannedIssueRequest defines model for CreateIssueManagerPlannedIssueRequest.
+type CreateIssueManagerPlannedIssueRequest struct {
 	Budget           *IssueManagerBudget           `json:"budget,omitempty"`
 	Content          *string                       `json:"content,omitempty"`
 	ExecutionProfile *IssueManagerExecutionProfile `json:"executionProfile,omitempty"`
@@ -6507,7 +6907,13 @@ type CreateWorkspaceAgentSessionRequest struct {
 
 	// InitialTuttiModeActivation Optional independent Tutti mode activation intent applied before the first turn starts.
 	InitialTuttiModeActivation *TuttiModeActivationIntent `json:"initialTuttiModeActivation,omitempty"`
-	Model                      *string                    `json:"model,omitempty"`
+
+	// Isolation Optional create-only isolation mode. Omit or set null to launch in the selected checkout.
+	Isolation *WorkspaceAgentSessionIsolationMode `json:"isolation,omitempty"`
+	Model     *string                             `json:"model,omitempty"`
+
+	// ModelExplicit True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
+	ModelExplicit *bool `json:"modelExplicit,omitempty"`
 
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
 	NoProject        *bool                        `json:"noProject,omitempty"`
@@ -6515,6 +6921,9 @@ type CreateWorkspaceAgentSessionRequest struct {
 	PlanMode         *bool                        `json:"planMode,omitempty"`
 	RailPlacement    *WorkspaceAgentRailPlacement `json:"railPlacement,omitempty"`
 	ReasoningEffort  *string                      `json:"reasoningEffort,omitempty"`
+
+	// ReasoningEffortExplicit True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
+	ReasoningEffortExplicit *bool `json:"reasoningEffortExplicit,omitempty"`
 
 	// RecordingId Developer create-session scenario waiting for this root Session.
 	RecordingId       *openapi_types.UUID     `json:"recordingId,omitempty"`
@@ -6663,6 +7072,11 @@ type DeleteWorkspaceFileEntryResponse struct {
 	WorkspaceId string `json:"workspaceId"`
 }
 
+// DeleteWorkspaceManagedWorktreeResponse defines model for DeleteWorkspaceManagedWorktreeResponse.
+type DeleteWorkspaceManagedWorktreeResponse struct {
+	Deleted bool `json:"deleted"`
+}
+
 // DeleteWorkspaceResponse defines model for DeleteWorkspaceResponse.
 type DeleteWorkspaceResponse struct {
 	WorkspaceId string `json:"workspaceId"`
@@ -6718,6 +7132,15 @@ type DesktopAgentGuiConversationRailCollapsedByProvider struct {
 	TuttiAgent *bool `json:"tutti-agent,omitempty"`
 }
 
+// DesktopAgentSessionLaunchMode defines model for DesktopAgentSessionLaunchMode.
+type DesktopAgentSessionLaunchMode string
+
+// DesktopAgentSessionLaunchModesByProject defines model for DesktopAgentSessionLaunchModesByProject.
+type DesktopAgentSessionLaunchModesByProject map[string]DesktopAgentSessionLaunchMode
+
+// DesktopAgentSessionLaunchModesByWorkspace defines model for DesktopAgentSessionLaunchModesByWorkspace.
+type DesktopAgentSessionLaunchModesByWorkspace map[string]DesktopAgentSessionLaunchModesByProject
+
 // DesktopAppCatalogChannel defines model for DesktopAppCatalogChannel.
 type DesktopAppCatalogChannel string
 
@@ -6757,6 +7180,7 @@ type DesktopPreferences struct {
 	AgentConversationDetailMode                 DesktopAgentConversationDetailMode                 `json:"agentConversationDetailMode"`
 	AgentDockLayout                             DesktopAgentDockLayout                             `json:"agentDockLayout"`
 	AgentGuiConversationRailCollapsedByProvider DesktopAgentGuiConversationRailCollapsedByProvider `json:"agentGuiConversationRailCollapsedByProvider"`
+	AgentSessionLaunchModesByWorkspace          *DesktopAgentSessionLaunchModesByWorkspace         `json:"agentSessionLaunchModesByWorkspace,omitempty"`
 	AppCatalogChannel                           DesktopAppCatalogChannel                           `json:"appCatalogChannel"`
 	BrowserUseConnectionMode                    *DesktopBrowserUseConnectionMode                   `json:"browserUseConnectionMode,omitempty"`
 	DefaultAgentProvider                        DesktopDefaultAgentProvider                        `json:"defaultAgentProvider"`
@@ -6891,6 +7315,9 @@ type DesktopUpdatePolicy string
 
 // DesktopWorkbenchShortcuts defines model for DesktopWorkbenchShortcuts.
 type DesktopWorkbenchShortcuts struct {
+	// CaptureScreenshot Keyboard shortcut binding for the global screenshot capture, or null/absent when the built-in CommandOrControl+Shift+S default applies. Unlike the other bindings, null does not mean unbound.
+	CaptureScreenshot *string `json:"captureScreenshot,omitempty"`
+
 	// NewAgentConversation Keyboard shortcut binding for opening an AgentGUI new conversation, or null when unbound.
 	NewAgentConversation *string `json:"newAgentConversation"`
 
@@ -7069,20 +7496,35 @@ type ForkWorkspaceAgentSessionRequest struct {
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
-	AgentTargetId *string                       `json:"agentTargetId,omitempty"`
-	Cwd           *string                       `json:"cwd,omitempty"`
-	Locale        *DesktopLocale                `json:"locale,omitempty"`
-	Settings      *AgentSessionComposerSettings `json:"settings,omitempty"`
+	AgentTargetId *string        `json:"agentTargetId,omitempty"`
+	Cwd           *string        `json:"cwd,omitempty"`
+	Locale        *DesktopLocale `json:"locale,omitempty"`
+
+	// Section Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data; connectors contains only the local Connector Market projection. Full is retained for callers that need the combined legacy response.
+	Section  *GetAgentProviderComposerOptionsRequestSection `json:"section,omitempty"`
+	Settings *AgentSessionComposerSettings                  `json:"settings,omitempty"`
+
+	// WaitForFreshModelCatalog Waits for an authoritative model catalog when the cached result is stale. Use only for an explicit model-picker request; ordinary composer loads should render the last successful catalog first.
+	WaitForFreshModelCatalog *bool `json:"waitForFreshModelCatalog,omitempty"`
 
 	// WorkspaceId Workspace used for Claude Code live model discovery.
 	WorkspaceId *string `json:"workspaceId,omitempty"`
 }
 
+// GetAgentProviderComposerOptionsRequestSection Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data; connectors contains only the local Connector Market projection. Full is retained for callers that need the combined legacy response.
+type GetAgentProviderComposerOptionsRequestSection string
+
 // GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest defines model for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest.
 type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
-	Locale   *DesktopLocale                `json:"locale,omitempty"`
-	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
+	Locale *DesktopLocale `json:"locale,omitempty"`
+
+	// Section Independently loadable composer section.
+	Section  *GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection `json:"section,omitempty"`
+	Settings *AgentSessionComposerSettings                                   `json:"settings,omitempty"`
 }
+
+// GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection Independently loadable composer section.
+type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection string
 
 // HealthStatusResponse defines model for HealthStatusResponse.
 type HealthStatusResponse struct {
@@ -7136,6 +7578,17 @@ type InstallWorkspaceAppRequest struct {
 
 // IssueManagerAcceptanceState Three-step completion ladder. Only user_accepted closes a successful task.
 type IssueManagerAcceptanceState string
+
+// IssueManagerAttachmentContentResponse defines model for IssueManagerAttachmentContentResponse.
+type IssueManagerAttachmentContentResponse struct {
+	ContextRefId string                                        `json:"contextRefId"`
+	Data         []byte                                        `json:"data"`
+	DisplayName  string                                        `json:"displayName"`
+	MimeType     IssueManagerAttachmentContentResponseMimeType `json:"mimeType"`
+}
+
+// IssueManagerAttachmentContentResponseMimeType defines model for IssueManagerAttachmentContentResponse.MimeType.
+type IssueManagerAttachmentContentResponseMimeType string
 
 // IssueManagerAutoTokenBudgetEstimate defines model for IssueManagerAutoTokenBudgetEstimate.
 type IssueManagerAutoTokenBudgetEstimate struct {
@@ -7250,15 +7703,19 @@ type IssueManagerIssue struct {
 
 // IssueManagerIssueContextRef defines model for IssueManagerIssueContextRef.
 type IssueManagerIssueContextRef struct {
+	AccessKind    IssueManagerIssueContextRefAccessKind `json:"accessKind"`
 	ContextRefId  string                                `json:"contextRefId"`
 	CreatedAtUnix int64                                 `json:"createdAtUnix"`
 	DisplayName   string                                `json:"displayName"`
 	IssueId       string                                `json:"issueId"`
 	ParentKind    IssueManagerIssueContextRefParentKind `json:"parentKind"`
-	Path          string                                `json:"path"`
+	Path          *string                               `json:"path,omitempty"`
 	RefType       string                                `json:"refType"`
 	WorkspaceId   string                                `json:"workspaceId"`
 }
+
+// IssueManagerIssueContextRefAccessKind defines model for IssueManagerIssueContextRef.AccessKind.
+type IssueManagerIssueContextRefAccessKind string
 
 // IssueManagerIssueContextRefParentKind defines model for IssueManagerIssueContextRef.ParentKind.
 type IssueManagerIssueContextRefParentKind string
@@ -7439,16 +7896,20 @@ type IssueManagerTask struct {
 
 // IssueManagerTaskContextRef defines model for IssueManagerTaskContextRef.
 type IssueManagerTaskContextRef struct {
+	AccessKind    IssueManagerTaskContextRefAccessKind `json:"accessKind"`
 	ContextRefId  string                               `json:"contextRefId"`
 	CreatedAtUnix int64                                `json:"createdAtUnix"`
 	DisplayName   string                               `json:"displayName"`
 	IssueId       string                               `json:"issueId"`
 	ParentKind    IssueManagerTaskContextRefParentKind `json:"parentKind"`
-	Path          string                               `json:"path"`
+	Path          *string                              `json:"path,omitempty"`
 	RefType       string                               `json:"refType"`
 	TaskId        string                               `json:"taskId"`
 	WorkspaceId   string                               `json:"workspaceId"`
 }
+
+// IssueManagerTaskContextRefAccessKind defines model for IssueManagerTaskContextRef.AccessKind.
+type IssueManagerTaskContextRefAccessKind string
 
 // IssueManagerTaskContextRefParentKind defines model for IssueManagerTaskContextRef.ParentKind.
 type IssueManagerTaskContextRefParentKind string
@@ -7915,6 +8376,12 @@ type ResizeWorkspaceTerminalRequest struct {
 	Rows int `json:"rows"`
 }
 
+// RestoreWorkspaceDeletedAgentSessionResponse defines model for RestoreWorkspaceDeletedAgentSessionResponse.
+type RestoreWorkspaceDeletedAgentSessionResponse struct {
+	AgentSessionId string `json:"agentSessionId"`
+	Restored       bool   `json:"restored"`
+}
+
 // RollbackWorkspaceAppRequest defines model for RollbackWorkspaceAppRequest.
 type RollbackWorkspaceAppRequest struct {
 	Version string `json:"version"`
@@ -8021,6 +8488,12 @@ type StartAgentSessionRecordingRequest struct {
 	AgentSessionId      *string                         `json:"agentSessionId,omitempty"`
 	AgentTargetId       string                          `json:"agentTargetId"`
 	ReplayPrerequisites AgentSessionReplayPrerequisites `json:"replayPrerequisites"`
+}
+
+// StartIssueManagerRunRequest defines model for StartIssueManagerRunRequest.
+type StartIssueManagerRunRequest struct {
+	AgentTargetId      string  `json:"agentTargetId"`
+	ExecutionDirectory *string `json:"executionDirectory,omitempty"`
 }
 
 // StartupWorkspaceResponse defines model for StartupWorkspaceResponse.
@@ -8736,10 +9209,16 @@ type WorkspaceAgentSession struct {
 
 	// Goal Protocol v2. Explicit field extracted from runtimeContext.
 	Goal *WorkspaceAgentSessionGoal `json:"goal"`
-	Id   string                     `json:"id"`
+
+	// GoalSyncState Narrow Host-owned evidence for the durable Goal operation. Null means no Goal state exists for this Session; clients must not infer pending execution from the visible Goal alone.
+	GoalSyncState *WorkspaceAgentSessionGoalSyncState `json:"goalSyncState"`
+	Id            string                              `json:"id"`
 
 	// Imported Protocol v2. True when the session was imported from external provider history. Explicit field extracted from runtimeContext.
 	Imported bool `json:"imported"`
+
+	// Isolation Durable launch isolation metadata. Null for sessions launched in the selected checkout.
+	Isolation *WorkspaceAgentSessionIsolation `json:"isolation,omitempty"`
 
 	// Kind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
 	Kind WorkspaceAgentSessionKind `json:"kind"`
@@ -8961,6 +9440,32 @@ type WorkspaceAgentSessionGoalStateResponse struct {
 	State   WorkspaceAgentSessionGoalState `json:"state"`
 }
 
+// WorkspaceAgentSessionGoalSyncState defines model for WorkspaceAgentSessionGoalSyncState.
+type WorkspaceAgentSessionGoalSyncState struct {
+	// ExecutionPending Host-owned proof that an accepted initial Goal is expected to begin autonomous execution and has not produced its first exact Goal Turn yet.
+	ExecutionPending   bool                                         `json:"executionPending"`
+	PendingOperationId *string                                      `json:"pendingOperationId"`
+	Revision           int64                                        `json:"revision"`
+	SyncStatus         WorkspaceAgentSessionGoalSyncStateSyncStatus `json:"syncStatus"`
+}
+
+// WorkspaceAgentSessionGoalSyncStateSyncStatus defines model for WorkspaceAgentSessionGoalSyncState.SyncStatus.
+type WorkspaceAgentSessionGoalSyncStateSyncStatus string
+
+// WorkspaceAgentSessionIsolation defines model for WorkspaceAgentSessionIsolation.
+type WorkspaceAgentSessionIsolation struct {
+	BaseCommit string                             `json:"baseCommit"`
+	Branch     string                             `json:"branch"`
+	Mode       WorkspaceAgentSessionIsolationMode `json:"mode"`
+
+	// WorktreeId Independent managed worktree resource identity. Legacy sessions may omit it.
+	WorktreeId   *string `json:"worktreeId,omitempty"`
+	WorktreePath string  `json:"worktreePath"`
+}
+
+// WorkspaceAgentSessionIsolationMode defines model for WorkspaceAgentSessionIsolationMode.
+type WorkspaceAgentSessionIsolationMode string
+
 // WorkspaceAgentSessionKind Root sessions are user-visible conversations. Child sessions are provider-native agents reached through their immutable parent fields.
 type WorkspaceAgentSessionKind string
 
@@ -9081,6 +9586,16 @@ type WorkspaceAgentSessionSectionsResponse struct {
 	Pinned      WorkspaceAgentSessionPage      `json:"pinned"`
 	Sections    []WorkspaceAgentSessionSection `json:"sections"`
 	WorkspaceId string                         `json:"workspaceId"`
+}
+
+// WorkspaceAgentSessionWorktreeSupportErrorCode defines model for WorkspaceAgentSessionWorktreeSupportErrorCode.
+type WorkspaceAgentSessionWorktreeSupportErrorCode string
+
+// WorkspaceAgentSessionWorktreeSupportResponse defines model for WorkspaceAgentSessionWorktreeSupportResponse.
+type WorkspaceAgentSessionWorktreeSupportResponse struct {
+	ErrorCode *WorkspaceAgentSessionWorktreeSupportErrorCode `json:"errorCode,omitempty"`
+	Root      *string                                        `json:"root,omitempty"`
+	Supported bool                                           `json:"supported"`
 }
 
 // WorkspaceAgentSource Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
@@ -9392,6 +9907,66 @@ type WorkspaceAppUploadedFile struct {
 	SizeBytes int64  `json:"sizeBytes"`
 }
 
+// WorkspaceDeletedAgentSession defines model for WorkspaceDeletedAgentSession.
+type WorkspaceDeletedAgentSession struct {
+	// AgentSessionId Identity of the topmost Session in this deleted component. It may be a canonical root or a child whose parent is not deleted.
+	AgentSessionId string `json:"agentSessionId"`
+
+	// DeletedAtUnixMs Tombstone time used by the retention policy.
+	DeletedAtUnixMs int64 `json:"deletedAtUnixMs"`
+
+	// ProjectPath Persisted project path retained as presentation metadata. Classification is determined only by railSectionKey.
+	ProjectPath *string `json:"projectPath"`
+
+	// RailSectionKey Immutable persisted rail section identity used for classification.
+	RailSectionKey string `json:"railSectionKey"`
+	Restorable     bool   `json:"restorable"`
+
+	// Title Original canonical title. Empty titles remain empty.
+	Title string `json:"title"`
+
+	// UnavailableReason Null when the complete deleted Session component can be restored.
+	UnavailableReason *WorkspaceDeletedAgentSessionUnavailableReason `json:"unavailableReason"`
+
+	// UpdatedAtUnixMs Last session update before deletion. This value is not the deletion time.
+	UpdatedAtUnixMs int64 `json:"updatedAtUnixMs"`
+}
+
+// WorkspaceDeletedAgentSessionListResponse defines model for WorkspaceDeletedAgentSessionListResponse.
+type WorkspaceDeletedAgentSessionListResponse struct {
+	HasMore bool `json:"hasMore"`
+
+	// NextCursor Opaque cursor for the next older matching page.
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// ProjectOptions Distinct original tombstone projects for the workspace, independent of search, project filter, cursor, and limit.
+	ProjectOptions []WorkspaceDeletedAgentSessionProjectOption `json:"projectOptions"`
+	Sessions       []WorkspaceDeletedAgentSession              `json:"sessions"`
+
+	// TotalCount Total matching topmost soft-deleted Session components before cursor pagination.
+	TotalCount  int    `json:"totalCount"`
+	WorkspaceId string `json:"workspaceId"`
+
+	// WorkspaceTotalCount Total topmost soft-deleted Session components in this workspace before search, project filtering, and cursor pagination.
+	WorkspaceTotalCount int `json:"workspaceTotalCount"`
+}
+
+// WorkspaceDeletedAgentSessionProjectOption defines model for WorkspaceDeletedAgentSessionProjectOption.
+type WorkspaceDeletedAgentSessionProjectOption struct {
+	// ProjectAvailable Whether the original project is still registered in the current project catalog.
+	ProjectAvailable bool   `json:"projectAvailable"`
+	ProjectLabel     string `json:"projectLabel"`
+
+	// ProjectPath Persisted project path retained as presentation metadata; it is not the option identity.
+	ProjectPath *string `json:"projectPath"`
+
+	// RailSectionKey Exact persisted rail section identity represented by this option.
+	RailSectionKey string `json:"railSectionKey"`
+}
+
+// WorkspaceDeletedAgentSessionUnavailableReason defines model for WorkspaceDeletedAgentSessionUnavailableReason.
+type WorkspaceDeletedAgentSessionUnavailableReason string
+
 // WorkspaceFileDirectoryResponse defines model for WorkspaceFileDirectoryResponse.
 type WorkspaceFileDirectoryResponse struct {
 	DirectoryPath string               `json:"directoryPath"`
@@ -9549,6 +10124,22 @@ type WorkspaceGitPatchSupportResponse struct {
 
 // WorkspaceGitPatchTarget defines model for WorkspaceGitPatchTarget.
 type WorkspaceGitPatchTarget string
+
+// WorkspaceManagedWorktree defines model for WorkspaceManagedWorktree.
+type WorkspaceManagedWorktree struct {
+	BaseCommit   string  `json:"baseCommit"`
+	Branch       string  `json:"branch"`
+	RelativeCwd  *string `json:"relativeCwd,omitempty"`
+	RepoRoot     string  `json:"repoRoot"`
+	WorkspaceId  string  `json:"workspaceId"`
+	WorktreeId   string  `json:"worktreeId"`
+	WorktreePath string  `json:"worktreePath"`
+}
+
+// WorkspaceManagedWorktreeListResponse defines model for WorkspaceManagedWorktreeListResponse.
+type WorkspaceManagedWorktreeListResponse struct {
+	Worktrees []WorkspaceManagedWorktree `json:"worktrees"`
+}
 
 // WorkspaceResponse defines model for WorkspaceResponse.
 type WorkspaceResponse struct {
@@ -9805,6 +10396,9 @@ type CollaborationRunID = string
 // ConnectorMarketConnectorKey defines model for ConnectorMarketConnectorKey.
 type ConnectorMarketConnectorKey = string
 
+// ConnectorMarketInstallationFilter defines model for ConnectorMarketInstallationFilter.
+type ConnectorMarketInstallationFilter string
+
 // ConnectorMarketOperationID defines model for ConnectorMarketOperationID.
 type ConnectorMarketOperationID = string
 
@@ -9909,6 +10503,9 @@ type WorkspaceFileSearchWithin = string
 
 // WorkspaceID defines model for WorkspaceID.
 type WorkspaceID = string
+
+// AgentInteractiveConflictError defines model for AgentInteractiveConflictError.
+type AgentInteractiveConflictError = ApiErrorResponse
 
 // AgentQuickPromptConflictError defines model for AgentQuickPromptConflictError.
 type AgentQuickPromptConflictError = ApiErrorResponse
@@ -10039,10 +10636,16 @@ type ListCliCapabilitiesParams struct {
 
 // ListConnectorMarketCatalogParams defines parameters for ListConnectorMarketCatalog.
 type ListConnectorMarketCatalogParams struct {
-	SectionId ConnectorMarketSectionID  `form:"sectionId" json:"sectionId"`
-	PageSize  *ConnectorMarketPageSize  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
-	PageToken *ConnectorMarketPageToken `form:"pageToken,omitempty" json:"pageToken,omitempty"`
+	SectionId ConnectorMarketSectionID `form:"sectionId" json:"sectionId"`
+
+	// Installation Filters connector installation projections before page boundaries and next-page calculation.
+	Installation *ListConnectorMarketCatalogParamsInstallation `form:"installation,omitempty" json:"installation,omitempty"`
+	PageSize     *ConnectorMarketPageSize                      `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	PageToken    *ConnectorMarketPageToken                     `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 }
+
+// ListConnectorMarketCatalogParamsInstallation defines parameters for ListConnectorMarketCatalog.
+type ListConnectorMarketCatalogParamsInstallation string
 
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
 type ListWorkspaceAgentGeneratedFilesParams struct {
@@ -10098,6 +10701,12 @@ type ListWorkspaceAgentPinnedSessionPageParams struct {
 
 	// AgentTargetId Optional agent target filter applied before pinned pagination and hasMore calculation.
 	AgentTargetId *string `form:"agentTargetId,omitempty" json:"agentTargetId,omitempty"`
+}
+
+// ResolveWorkspaceAgentSessionWorktreeSupportParams defines parameters for ResolveWorkspaceAgentSessionWorktreeSupport.
+type ResolveWorkspaceAgentSessionWorktreeSupportParams struct {
+	AgentTargetId string `form:"agentTargetId" json:"agentTargetId"`
+	Cwd           string `form:"cwd" json:"cwd"`
 }
 
 // ListWorkspaceAgentSessionsParams defines parameters for ListWorkspaceAgentSessions.
@@ -10205,6 +10814,28 @@ type ListCollaborationRunsParams struct {
 	SourceSessionId *string `form:"sourceSessionId,omitempty" json:"sourceSessionId,omitempty"`
 	Limit           *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
+
+// ListWorkspaceDeletedAgentSessionsParams defines parameters for ListWorkspaceDeletedAgentSessions.
+type ListWorkspaceDeletedAgentSessionsParams struct {
+	// SearchQuery Case-insensitive search over the original session title only.
+	SearchQuery *string `form:"searchQuery,omitempty" json:"searchQuery,omitempty"`
+
+	// RailSectionKey Select sessions by their exact persisted rail section key. Mutually exclusive with the deprecated project filters; omit every section filter to list all locations.
+	RailSectionKey *string `form:"railSectionKey,omitempty" json:"railSectionKey,omitempty"`
+
+	// ProjectScope Deprecated explicit conversations-section selector. It is resolved to the fixed conversations rail section key and is mutually exclusive with railSectionKey and projectPath.
+	ProjectScope *ListWorkspaceDeletedAgentSessionsParamsProjectScope `form:"projectScope,omitempty" json:"projectScope,omitempty"`
+
+	// ProjectPath Deprecated explicit project selector. The path is resolved to its canonical rail section key before querying and is mutually exclusive with railSectionKey and projectScope.
+	ProjectPath *string `form:"projectPath,omitempty" json:"projectPath,omitempty"`
+
+	// Cursor Opaque cursor returned by the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListWorkspaceDeletedAgentSessionsParamsProjectScope defines parameters for ListWorkspaceDeletedAgentSessions.
+type ListWorkspaceDeletedAgentSessionsParamsProjectScope string
 
 // ListWorkspaceFileDirectoryParams defines parameters for ListWorkspaceFileDirectory.
 type ListWorkspaceFileDirectoryParams struct {
@@ -10565,6 +11196,9 @@ type UpdateWorkspaceIssueJSONRequestBody = UpdateIssueManagerIssueRequest
 
 // AddWorkspaceIssueContextRefsJSONRequestBody defines body for AddWorkspaceIssueContextRefs for application/json ContentType.
 type AddWorkspaceIssueContextRefsJSONRequestBody = AddIssueManagerContextRefsRequest
+
+// StartWorkspaceIssueRunJSONRequestBody defines body for StartWorkspaceIssueRun for application/json ContentType.
+type StartWorkspaceIssueRunJSONRequestBody = StartIssueManagerRunRequest
 
 // CreateWorkspaceIssueRunJSONRequestBody defines body for CreateWorkspaceIssueRun for application/json ContentType.
 type CreateWorkspaceIssueRunJSONRequestBody = CreateIssueManagerRunRequest

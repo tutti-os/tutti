@@ -4,6 +4,8 @@ import type {
 } from "@tutti-os/workbench-surface";
 import type {
   IWorkspaceWorkbenchHostService,
+  WorkspaceBrowserPageOpenInput,
+  WorkspaceBrowserPageOpenResult,
   WorkspaceOnboardingAutoOpenDiagnostic,
   WorkspaceCustomWallpaperSnapshot,
   WorkspaceCustomWallpaperStatus,
@@ -269,6 +271,10 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
     return this.dependencies.hostWindowApi.approveClose();
   }
 
+  setWindowCloseGuardEnabled(enabled: boolean): Promise<void> {
+    return this.dependencies.hostWindowApi.setCloseGuardEnabled(enabled);
+  }
+
   onWindowCloseRequest(
     listener: Parameters<
       IWorkspaceWorkbenchHostService["onWindowCloseRequest"]
@@ -315,6 +321,7 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
           getLocationSections: () =>
             loadDesktopWorkspaceFileLocationSections({
               homeDirectory: this.dependencies.platformApi.homeDirectory,
+              os: this.dependencies.platformApi.os,
               workspaceUserProjectService:
                 this.dependencies.workspaceUserProjectService
             }),
@@ -341,6 +348,12 @@ export class WorkspaceWorkbenchHostService implements IWorkspaceWorkbenchHostSer
 
   openExternal(url: string): Promise<void> {
     return this.dependencies.hostFilesApi.openExternal(url);
+  }
+
+  openBrowserPage(
+    input: WorkspaceBrowserPageOpenInput
+  ): WorkspaceBrowserPageOpenResult | null {
+    return this.dependencies.browserService.openPage(input);
   }
 
   async queryWorkspaceAppExternalAt(input: {

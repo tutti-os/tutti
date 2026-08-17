@@ -65,6 +65,31 @@ func durableGoalForResponse(state storesqlite.SessionGoalState) map[string]any {
 	return clonePayload(state.Desired)
 }
 
+func acceptedGoalControlResult(operationID string, state *storesqlite.SessionGoalState) GoalControlResult {
+	result := GoalControlResult{OperationID: strings.TrimSpace(operationID)}
+	if result.OperationID == "" || state == nil {
+		return result
+	}
+	result.Goal = durableGoalForResponse(*state)
+	result.GoalState = state
+	result.IntentAccepted = true
+	return result
+}
+
+func goalControlResultPending(result GoalControlResult) bool {
+	if !result.IntentAccepted || result.GoalState == nil ||
+		strings.TrimSpace(result.OperationID) == "" ||
+		strings.TrimSpace(result.GoalState.PendingOperationID) != strings.TrimSpace(result.OperationID) {
+		return false
+	}
+	switch strings.TrimSpace(result.GoalState.SyncStatus) {
+	case storesqlite.GoalSyncStatusPending, storesqlite.GoalSyncStatusApplying:
+		return true
+	default:
+		return false
+	}
+}
+
 func goalControlOperationID(workspaceID, agentSessionID, clientSubmitID string) string {
 	clientSubmitID = strings.TrimSpace(clientSubmitID)
 	if clientSubmitID == "" {
@@ -109,36 +134,33 @@ func (h *Host) existingGoalControlResult(
 		operation.Objective != objective {
 		return GoalControlResult{}, true, storesqlite.ErrGoalOperationConflict
 	}
+	state, stateFound, stateErr := h.goals.GetSessionGoalState(ctx, workspaceID, agentSessionID)
+	if stateErr != nil {
+		return GoalControlResult{}, true, stateErr
+	}
+	if !stateFound {
+		return GoalControlResult{}, true, storesqlite.ErrGoalStateAbsent
+	}
+	accepted := acceptedGoalControlResult(operation.OperationID, &state)
 	switch operation.Status {
 	case storesqlite.GoalOperationStatusCompleted, storesqlite.GoalOperationStatusSuperseded:
-		state, stateFound, stateErr := h.goals.GetSessionGoalState(ctx, workspaceID, agentSessionID)
-		if stateErr != nil {
-			return GoalControlResult{}, true, stateErr
-		}
-		if !stateFound {
-			return GoalControlResult{}, true, storesqlite.ErrGoalStateAbsent
-		}
 		canonical, sessionFound, sessionErr := h.store.GetSession(ctx, workspaceID, agentSessionID)
 		if sessionErr != nil {
-			return GoalControlResult{}, true, sessionErr
+			return accepted, true, sessionErr
 		}
 		if !sessionFound {
-			return GoalControlResult{}, true, ErrSessionNotFound
+			return accepted, true, ErrSessionNotFound
 		}
-		return GoalControlResult{
-			Canonical:   canonical,
-			Goal:        durableGoalForResponse(state),
-			OperationID: operation.OperationID,
-			GoalState:   &state,
-		}, true, nil
+		accepted.Canonical = canonical
+		return accepted, true, nil
 	case storesqlite.GoalOperationStatusFailed:
-		return GoalControlResult{}, true, fmt.Errorf(
+		return accepted, true, fmt.Errorf(
 			"%w: %s",
 			ErrRuntimeOperationFailed,
 			strings.TrimSpace(operation.LastError),
 		)
 	default:
-		return GoalControlResult{}, true, ErrRuntimeOperationInProgress
+		return accepted, true, ErrRuntimeOperationInProgress
 	}
 }
 
@@ -284,7 +306,7 @@ func (h *Host) goalControlSerialized(
 			return nil
 		})
 		if err != nil {
-			return GoalControlResult{}, err
+			return acceptedGoalControlResult(operationID, persistedState), err
 		}
 	}
 	if replayed {
@@ -298,6 +320,7 @@ func (h *Host) goalControlSerialized(
 		return GoalControlResult{
 			Canonical: canonical, Goal: durableGoalForResponse(*persistedState),
 			OperationID: operationID, GoalState: persistedState,
+			IntentAccepted: true,
 		}, nil
 	}
 	if _, err := h.EnsureRuntimeSession(ctx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}); err != nil {
@@ -307,7 +330,18 @@ func (h *Host) goalControlSerialized(
 			"agentSessionId", agentSessionID,
 			"error", err.Error(),
 		)
-		return GoalControlResult{}, err
+		h.observeTerminalFailure(ctx, TerminalFailure{
+			Flow:           "goal_control",
+			FailureStage:   "prepare",
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+			OperationID:    operationID,
+			ClientSubmitID: clientSubmitID,
+			ErrorCode:      terminalFailureCode(err),
+			ErrorMessage:   err.Error(),
+			Retryable:      isRetryableRuntimeOperationError(err),
+		})
+		return acceptedGoalControlResult(operationID, persistedState), err
 	}
 	if h.goals != nil {
 		err := h.withGoalActor(ctx, workspaceID, agentSessionID, func(actorCtx context.Context) error {
@@ -333,7 +367,7 @@ func (h *Host) goalControlSerialized(
 			return err
 		})
 		if err != nil {
-			return GoalControlResult{}, err
+			return acceptedGoalControlResult(operationID, persistedState), err
 		}
 	}
 	controlResult, err := h.goalRuntime.GoalControl(ctx, RuntimeGoalControlInput{
@@ -370,9 +404,12 @@ func (h *Host) goalControlSerialized(
 				})
 				return releaseErr
 			})
+			if latest, found, stateErr := h.goals.GetSessionGoalState(persistCtx, workspaceID, agentSessionID); stateErr == nil && found {
+				persistedState = &latest
+			}
 			cancel()
 			if persistErr != nil {
-				return GoalControlResult{}, errors.Join(normalizedErr, persistErr)
+				return acceptedGoalControlResult(operationID, persistedState), errors.Join(normalizedErr, persistErr)
 			}
 		}
 		slog.Warn("workspace agent session goal control runtime request failed",
@@ -382,7 +419,7 @@ func (h *Host) goalControlSerialized(
 			"action", action,
 			"error", normalizedErr.Error(),
 		)
-		return GoalControlResult{}, normalizedErr
+		return acceptedGoalControlResult(operationID, persistedState), normalizedErr
 	}
 	responseGoal := clonePayload(controlResult.Goal)
 	if h.goals != nil && operationID != "" {
@@ -412,6 +449,7 @@ func (h *Host) goalControlSerialized(
 				_, state, _, err := h.goals.AcknowledgeGoalControlOperation(actorCtx, storesqlite.GoalControlOperationAcknowledge{
 					WorkspaceID: workspaceID, OperationID: operationID,
 					Evidence: clonePayload(controlResult.Evidence), OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
+					ExecutionPending: controlResult.ExecutionPending,
 				})
 				persistedState = &state
 				return err
@@ -420,13 +458,14 @@ func (h *Host) goalControlSerialized(
 				WorkspaceID: workspaceID, OperationID: operationID, Succeeded: true,
 				Observed: clonePayload(controlResult.Goal), Evidence: clonePayload(controlResult.Evidence),
 				OccurredAtUnixMS: h.goalOperationNow().UnixMilli(),
+				ExecutionPending: controlResult.ExecutionPending,
 			})
 			persistedState = &state
 			return err
 		})
 		cancel()
 		if persistErr != nil {
-			return GoalControlResult{}, persistErr
+			return acceptedGoalControlResult(operationID, persistedState), persistErr
 		}
 	}
 	if persistedState != nil {
@@ -444,10 +483,21 @@ func (h *Host) goalControlSerialized(
 			"agentSessionId", agentSessionID,
 			"error", err.Error(),
 		)
-		return GoalControlResult{}, err
+		h.observeTerminalFailure(ctx, TerminalFailure{
+			Flow:           "goal_control",
+			FailureStage:   "refresh",
+			WorkspaceID:    workspaceID,
+			AgentSessionID: agentSessionID,
+			OperationID:    operationID,
+			ClientSubmitID: clientSubmitID,
+			ErrorCode:      terminalFailureCode(err),
+			ErrorMessage:   err.Error(),
+			Retryable:      isRetryableRuntimeOperationError(err),
+		})
+		return acceptedGoalControlResult(operationID, persistedState), err
 	}
 	if !found {
-		return GoalControlResult{}, ErrSessionNotFound
+		return acceptedGoalControlResult(operationID, persistedState), ErrSessionNotFound
 	}
 	slog.Info("workspace agent session goal control completed",
 		"event", "workspace_agent_session.goal_control.completed",
@@ -455,7 +505,10 @@ func (h *Host) goalControlSerialized(
 		"agentSessionId", agentSessionID,
 		"action", action,
 	)
-	return GoalControlResult{Canonical: canonical, Goal: responseGoal, OperationID: operationID, GoalState: persistedState}, nil
+	return GoalControlResult{
+		Canonical: canonical, Goal: responseGoal, OperationID: operationID,
+		GoalState: persistedState, IntentAccepted: operationID != "" && persistedState != nil,
+	}, nil
 }
 
 func goalControlSubmissionMetadata(clientSubmitID string) map[string]any {

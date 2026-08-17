@@ -1,13 +1,10 @@
 import { createContext, useContext, type JSX, type ReactNode } from "react";
+import type { AgentMessageMarkdownAgentTarget } from "./agentTargetPresentation";
 
-export interface AgentMessageMarkdownAgentTarget {
-  agentTargetId: string;
-  iconUrl?: string | null;
-  maskIconUrl?: string | null;
-  name?: string | null;
-  provider?: string | null;
-  workspaceId?: string | null;
-}
+export {
+  resolveAgentTargetPresentation,
+  type AgentMessageMarkdownAgentTarget
+} from "./agentTargetPresentation";
 
 const EMPTY_AGENT_TARGETS: readonly AgentMessageMarkdownAgentTarget[] =
   Object.freeze([]);
@@ -33,27 +30,4 @@ export function AgentTargetPresentationProvider({
 
 export function useAgentTargetPresentations(): readonly AgentMessageMarkdownAgentTarget[] {
   return useContext(AgentTargetPresentationContext);
-}
-
-export function resolveAgentTargetPresentation(input: {
-  agentTargetId: string;
-  agentTargets: readonly AgentMessageMarkdownAgentTarget[];
-  workspaceId?: string | null;
-}): AgentMessageMarkdownAgentTarget | null {
-  const agentTargetId = input.agentTargetId.trim();
-  if (!agentTargetId) {
-    return null;
-  }
-  const workspaceId = input.workspaceId?.trim() ?? "";
-  return (
-    input.agentTargets.find(
-      (target) =>
-        target.agentTargetId.trim() === agentTargetId &&
-        (target.workspaceId?.trim() ?? "") === workspaceId
-    ) ??
-    input.agentTargets.find(
-      (target) => target.agentTargetId.trim() === agentTargetId
-    ) ??
-    null
-  );
 }

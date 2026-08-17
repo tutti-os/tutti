@@ -1,9 +1,3 @@
-import {
-  type Dispatch,
-  type MutableRefObject,
-  type RefObject,
-  type SetStateAction
-} from "react";
 import { createPortal } from "react-dom";
 import {
   Popover,
@@ -23,21 +17,15 @@ import {
 } from "../AgentComposerSettingsMenus";
 import { AgentChromeNotice } from "../AgentSessionChrome";
 import { AgentFullAccessRestoredWarning } from "../AgentFullAccessRestoredWarning";
-import {
-  AgentRichTextEditor,
-  type AgentRichTextEditorHandle
-} from "../agentRichText/AgentRichTextEditor";
+import { AgentRichTextEditor } from "../agentRichText/AgentRichTextEditor";
 import { AgentFileMentionPalette } from "../AgentFileMentionPalette";
 import { AgentReferenceProvenanceFilterControl } from "../AgentReferenceProvenanceFilterControl";
-import type {
-  AgentMentionFilterId,
-  AgentMentionSearchController
-} from "../AgentMentionSearchController";
+import type { AgentMentionFilterId } from "../AgentMentionSearchController";
 import { AgentSlashCommandPalette } from "../AgentSlashCommandPalette";
 import { AgentSlashStatusPanel } from "../AgentSlashStatusPanel";
 import { AgentReviewPickerPanel } from "../AgentReviewPickerPanel";
 import { ComposerFloatingMenuSurface } from "../composerFloatingMenu/ComposerFloatingMenuSurface";
-import type { AgentComposerProps } from "./AgentComposer.types";
+import type { AgentComposerViewProps } from "./AgentComposerView.types";
 import {
   EMPTY_PROVIDER_SKILLS,
   EMPTY_WORKSPACE_APP_ICONS,
@@ -46,74 +34,19 @@ import {
 } from "./AgentComposerChrome";
 import { ComposerDraftAttachments } from "./ComposerDraftAttachments";
 import { ComposerFooter } from "./ComposerFooter";
-import type { useComposerDraftAttachments } from "./useComposerDraftAttachments";
-import type { useComposerFocusAndDrop } from "./useComposerFocusAndDrop";
-import type { useComposerLayout } from "./useComposerLayout";
-import type { useComposerMentionActions } from "./useComposerMentionActions";
-import type { useComposerPaletteCatalog } from "./useComposerPaletteCatalog";
-import type { useComposerPresentation } from "./useComposerPresentation";
-import type { useComposerProviderTargets } from "./useComposerProviderTargets";
-import type { useComposerSlashActions } from "./useComposerSlashActions";
-import type { useMentionPaletteFrame } from "./useMentionPaletteFrame";
+import { AgentSessionLaunchModeSelect } from "./AgentSessionLaunchModeSelect";
 import { AgentQuickPromptPopover } from "./quickPrompts/AgentQuickPromptPopover";
-import type { useAgentQuickPromptLibrary } from "./quickPrompts/useAgentQuickPromptLibrary";
 import {
   agentComposerDraftHasContent,
+  agentComposerDraftConnectors,
   agentComposerDraftImages,
   agentComposerDraftPrompt,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
 
-interface Props {
-  props: AgentComposerProps;
-  paletteCatalog: ReturnType<typeof useComposerPaletteCatalog>;
-  mentionFrame: ReturnType<typeof useMentionPaletteFrame>;
-  slashActions: ReturnType<typeof useComposerSlashActions>;
-  mentionActions: ReturnType<typeof useComposerMentionActions>;
-  attachments: ReturnType<typeof useComposerDraftAttachments>;
-  providerState: ReturnType<typeof useComposerProviderTargets>;
-  focusAndDrop: ReturnType<typeof useComposerFocusAndDrop>;
-  layout: ReturnType<typeof useComposerLayout>;
-  presentation: ReturnType<typeof useComposerPresentation>;
-  composerRef: RefObject<HTMLFormElement | null>;
-  inputShellRef: RefObject<HTMLDivElement | null>;
-  promptInputAreaRef: RefObject<HTMLDivElement | null>;
-  paletteContentRef: RefObject<HTMLDivElement | null>;
-  promptTipRef: RefObject<HTMLSpanElement | null>;
-  editorHandleRef: RefObject<AgentRichTextEditorHandle | null>;
-  mentionControllerRef: MutableRefObject<AgentMentionSearchController | null>;
-  externalPromptEntriesSupported: boolean;
-  addExternalPromptEntries: (files: readonly File[]) => void;
-  onDismissProjectMenuAutoFocus?: (event: Event) => void;
-  paletteDraftPrompt: string;
-  showFileMentionPalette: boolean;
-  showSlashPalette: boolean;
-  activeHighlight: number;
-  mentionSearchState: Parameters<typeof AgentFileMentionPalette>[0]["state"];
-  quickPromptLibrary: ReturnType<typeof useAgentQuickPromptLibrary>;
-  mentionHighlightedKey: string | null;
-  shouldCenterMentionHighlight: boolean;
-  isSlashStatusPanelOpen: boolean;
-  isReviewPickerOpen: boolean;
-  isSelectedProjectMissing: boolean;
-  setIsSelectedProjectMissing: (value: boolean) => void;
-  setIsPaletteOpen: Dispatch<SetStateAction<boolean>>;
-  setHighlightedIndex: Dispatch<SetStateAction<number>>;
-  isGoalModeActive: boolean;
-  isPlanModeActive: boolean;
-  isTuttiModeActive: boolean;
-  isTuttiModeUpdating: boolean;
-  tuttiModeEffect: number;
-  tuttiModeSpeed: number;
-  onClearPlanMode: () => void;
-  onClearTuttiMode: () => void;
-  onTuttiModeEffectChange: (value: number) => void;
-  onTuttiModeSpeedChange: (value: number) => void;
-  isPromptTipOverflowing: boolean;
-  onHistoryNavigation: (direction: "older" | "newer") => boolean;
-}
-
-export function AgentComposerView(input: Props): React.JSX.Element {
+export function AgentComposerView(
+  input: AgentComposerViewProps
+): React.JSX.Element {
   const {
     provider,
     slashStatus = null,
@@ -127,10 +60,12 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     queuedPrompts,
     drainingQueuedPromptId,
     workspaceAppIcons = EMPTY_WORKSPACE_APP_ICONS,
+    activePromptDisabledReason = null,
     activePromptKeyboardShortcutsEnabled = true,
     promptImagesSupported = true,
     layoutMode = "dock",
     providerSelectLabel = "",
+    composerActionAccessory,
     labels,
     workspaceUserProjectI18n,
     isSubmittingPrompt,
@@ -141,6 +76,8 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     onRequestWorkspaceReferences,
     referenceProvenanceFilters,
     selectProjectDirectory,
+    projectSelectOptions,
+    userProjectApi,
     onProjectPathChange = () => {},
     onSettingsChange,
     onLinkAction,
@@ -152,6 +89,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     hasCompactableContext = true
   } = input.props;
   const draftImages = agentComposerDraftImages(draftContent);
+  const draftConnectors = agentComposerDraftConnectors(draftContent);
   const slashStatusAgentSessionId = slashStatus?.agentSessionId ?? null;
   const draftPrompt = agentComposerDraftPrompt(draftContent);
   const { availableCapabilities, slashPaletteEntries, slashQuery } =
@@ -192,7 +130,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     handlePastedLargeText,
     handleWorkspaceReferencePicker,
     removeDraftImage,
-    removeDraftLargeText
+    removeDraftConnector,
+    removeDraftLargeText,
+    setDraftConnectorSelected
   } = input.attachments;
   const {
     composerClassName,
@@ -232,6 +172,57 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     visibleActivePrompt,
     visibleDraftLargeTexts
   } = input.presentation;
+  const composerActionNode = composerActionAccessory ? (
+    <div className="inline-flex shrink-0 items-center gap-2">
+      {composerActionAccessory}
+      {composerActionButton}
+    </div>
+  ) : (
+    composerActionButton
+  );
+  const showComposerActionInFooter =
+    isHeroLayout || input.props.composerActionPlacement === "footer";
+  const showProjectSelectorInFooter =
+    !isHeroLayout && input.props.showProjectSelectorInFooter === true;
+  const projectSelectorNode =
+    showHeroProjectSelector || showProjectSelectorInFooter ? (
+      <AgentProjectDropdown
+        composerSettings={composerSettings}
+        i18n={workspaceUserProjectI18n}
+        labels={{
+          projectLocked: labels.projectLocked,
+          projectMissingDescription: labels.projectMissingDescription
+        }}
+        selectProjectDirectory={selectProjectDirectory}
+        options={projectSelectOptions}
+        userProjectApi={userProjectApi}
+        onDismissAutoFocus={input.onDismissProjectMenuAutoFocus}
+        onProjectMissingChange={input.setIsSelectedProjectMissing}
+        onProjectPathChange={onProjectPathChange}
+      />
+    ) : null;
+  const sessionLaunchModeNode =
+    input.sessionWorktreeLaunch.visible &&
+    input.props.labels.sessionLaunchModeLabel &&
+    input.props.labels.sessionLaunchModeLocal &&
+    input.props.labels.sessionLaunchModeWorktree ? (
+      <AgentSessionLaunchModeSelect
+        labels={{
+          launchMode: input.props.labels.sessionLaunchModeLabel,
+          local: input.props.labels.sessionLaunchModeLocal,
+          worktree: input.props.labels.sessionLaunchModeWorktree
+        }}
+        mode={input.sessionWorktreeLaunch.mode}
+        onModeChange={input.sessionWorktreeLaunch.onModeChange}
+      />
+    ) : null;
+  const projectControlsNode =
+    projectSelectorNode || sessionLaunchModeNode ? (
+      <div className={styles.composerProjectControls}>
+        {projectSelectorNode}
+        {sessionLaunchModeNode}
+      </div>
+    ) : null;
 
   return (
     <form
@@ -243,6 +234,9 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           : undefined
       }
       data-agent-turn-id={input.props.activeTurnId?.trim() || undefined}
+      data-fill-available-height={
+        input.props.fillAvailableHeight ? "true" : undefined
+      }
       data-layout={layoutMode}
       style={composerStyle}
       onSubmit={submit}
@@ -259,6 +253,8 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             edgeGlow={true}
             keyboardShortcuts={activePromptKeyboardShortcutsEnabled}
             isSubmitting={isSubmittingPrompt}
+            isInteractionDisabled={Boolean(activePromptDisabledReason)}
+            interactionDisabledReason={activePromptDisabledReason}
             onSubmit={submitInteractivePromptAndDismiss}
             labels={{
               approvalLead: labels.approvalLead,
@@ -376,10 +372,13 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                 style={promptInputAreaStyle}
               >
                 <ComposerDraftAttachments
+                  availableSkills={availableSkills}
+                  draftConnectors={draftConnectors}
                   draftImages={draftImages}
                   draftLargeTexts={visibleDraftLargeTexts}
                   removeLabel={labels.removeMention}
                   onRemoveImage={removeDraftImage}
+                  onRemoveConnector={removeDraftConnector}
                   onRemoveLargeText={removeDraftLargeText}
                   onExpandLargeText={expandDraftLargeTextToPrompt}
                 />
@@ -445,8 +444,13 @@ export function AgentComposerView(input: Props): React.JSX.Element {
                         ? input.addExternalPromptEntries
                         : undefined
                     }
+                    onResolvePastedPath={
+                      input.props.resolvePastedPath ?? undefined
+                    }
                   />
-                  {!isHeroLayout ? composerActionButton : null}
+                  {!isHeroLayout && !showComposerActionInFooter
+                    ? composerActionNode
+                    : null}
                 </div>
               </div>
             </PopoverAnchor>
@@ -632,11 +636,17 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             }
             permissionModeControlsDisabled={permissionModeControlsDisabled}
             isSendingTurn={input.props.isSendingTurn}
-            isHeroLayout={isHeroLayout}
+            showComposerAction={showComposerActionInFooter}
             isGoalModeActive={input.isGoalModeActive}
             isPlanModeActive={input.isPlanModeActive}
+            connectorsVisible={
+              input.props.capabilityMenuState?.connectors?.enabled !== false
+            }
             onClearPlanMode={input.onClearPlanMode}
-            composerActionButton={composerActionButton}
+            composerAction={composerActionNode}
+            projectControl={
+              showProjectSelectorInFooter ? projectControlsNode : null
+            }
             quickPromptControl={
               <AgentQuickPromptPopover
                 controller={input.quickPromptLibrary}
@@ -659,9 +669,15 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             providerSelectLabel={providerSelectLabel}
             selectedProviderLabel={selectedProviderLabel}
             providerMenuTargets={providerMenuTargets}
+            menuViewportTopInset={input.props.menuViewportTopInset}
             onProviderSelect={onProviderSelect}
             onLinkAction={onLinkAction}
             availableSkills={availableSkills}
+            selectedConnectorKeys={draftConnectors.map(
+              (connector) => connector.connectorKey
+            )}
+            onConnectorSelected={setDraftConnectorSelected}
+            onRetryComposerOptions={input.props.onRetryComposerOptions}
             onCapabilitySettingsRequest={
               input.props.onCapabilitySettingsRequest
             }
@@ -681,20 +697,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
               input.isSelectedProjectMissing ? "true" : undefined
             }
           >
-            {showHeroProjectSelector ? (
-              <AgentProjectDropdown
-                composerSettings={composerSettings}
-                i18n={workspaceUserProjectI18n}
-                labels={{
-                  projectLocked: labels.projectLocked,
-                  projectMissingDescription: labels.projectMissingDescription
-                }}
-                selectProjectDirectory={selectProjectDirectory}
-                onDismissAutoFocus={input.onDismissProjectMenuAutoFocus}
-                onProjectMissingChange={input.setIsSelectedProjectMissing}
-                onProjectPathChange={onProjectPathChange}
-              />
-            ) : null}
+            {showHeroProjectSelector ? projectControlsNode : null}
             {activePromptTip ? (
               <div
                 className={styles.composerPromptTips}

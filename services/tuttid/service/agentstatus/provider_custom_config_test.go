@@ -107,6 +107,145 @@ func TestProviderUsesCustomConfigClaudeApiKeyHelper(t *testing.T) {
 	}
 }
 
+func TestProviderUsesCustomConfigOpenCodeProviderEndpoint(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"), `{
+		"provider": {
+			"newapi": {"options": {"baseURL": "https://gateway.example/v1"}}
+		}
+	}`)
+	svc := customConfigService(home)
+	if !svc.providerUsesCustomConfig(agentprovider.OpenCode) {
+		t.Fatal("expected OpenCode provider baseURL to count as custom config")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeProviderAPIKey(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"), `{
+		"provider": {
+			"newapi": {"options": {"apiKey": "sk-test"}}
+		}
+	}`)
+	svc := customConfigService(home)
+	if !svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OpenCode provider apiKey to count as an API credential")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeConfigDir(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, "custom-opencode")
+	writeFile(t, filepath.Join(configDir, "opencode.json"), `{
+		"provider": {
+			"newapi": {"options": {"apiKey": "sk-override"}}
+		}
+	}`)
+	svc := customConfigService(home)
+	svc.Environ = func() []string { return []string{"OPENCODE_CONFIG_DIR=" + configDir} }
+	if !svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OPENCODE_CONFIG_DIR provider apiKey to be detected")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeConfigContentEnvReference(t *testing.T) {
+	svc := customConfigService(t.TempDir())
+	svc.Environ = func() []string {
+		return []string{
+			"OPENCODE_CONFIG_CONTENT={\"provider\":{\"newapi\":{\"options\":{\"apiKey\":\"{env:NEWAPI_KEY}\"}}}}",
+			"NEWAPI_KEY=sk-env",
+		}
+	}
+	if !svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OpenCode config content env reference to be detected")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeEndpointOnlyIsNotCredential(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"), `{
+		"provider": {
+			"newapi": {"options": {"baseURL": "https://gateway.example/v1"}}
+		}
+	}`)
+	svc := customConfigService(home)
+	if svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("an OpenCode endpoint without apiKey must not count as an API credential")
+	}
+	if !svc.providerUsesCustomConfig(agentprovider.OpenCode) {
+		t.Fatal("an OpenCode endpoint should still count as custom config")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeJSONC(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.jsonc"), `{
+		// CCSwitch/OpenCode also accept JSONC config files.
+		"provider": {
+			"newapi": {
+				"options": {
+					"apiKey": "sk-jsonc",
+				},
+			},
+		},
+	}`)
+	if !customConfigService(home).providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OpenCode JSONC apiKey to be detected")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeConfigPrecedence(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "opencode")
+	writeFile(t, filepath.Join(configDir, "config.json"), `{
+		"provider": {"newapi": {"options": {"apiKey": "sk-global"}}}
+	}`)
+	writeFile(t, filepath.Join(configDir, "opencode.jsonc"), `{
+		"provider": {"newapi": {"options": {"apiKey": null}}}
+	}`)
+	if customConfigService(home).providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("a later JSONC null must override an earlier provider apiKey")
+	}
+
+	overrideHome := t.TempDir()
+	overrideConfigDir := filepath.Join(overrideHome, ".config", "opencode")
+	writeFile(t, filepath.Join(overrideConfigDir, "opencode.json"), `{
+		"provider": {"newapi": {"options": {"apiKey": "sk-global"}}}
+	}`)
+	override := filepath.Join(overrideHome, "override.json")
+	writeFile(t, override, `{
+		"provider": {"newapi": {"options": {"apiKey": null}}}
+	}`)
+	svc := customConfigService(overrideHome)
+	svc.Environ = func() []string { return []string{"OPENCODE_CONFIG=" + override} }
+	if svc.providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("OPENCODE_CONFIG must override an earlier global provider apiKey")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeFileReference(t *testing.T) {
+	home := t.TempDir()
+	configDir := filepath.Join(home, ".config", "opencode")
+	writeFile(t, filepath.Join(configDir, "secrets", "api-key"), "sk-file\n")
+	writeFile(t, filepath.Join(configDir, "opencode.json"), `{
+		"provider": {"newapi": {"options": {"apiKey": "{file:secrets/api-key}"}}}
+	}`)
+	if !customConfigService(home).providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OpenCode {file:...} apiKey to be detected")
+	}
+}
+
+func TestProviderHasAPICredentialOpenCodeWindowsHomeFileReference(t *testing.T) {
+	home := t.TempDir()
+	writeFile(t, filepath.Join(home, "api-key"), "sk-home-file\n")
+	writeFile(t, filepath.Join(home, ".config", "opencode", "opencode.json"), `{
+		"provider": {"newapi": {"options": {"apiKey": "{file:~\\api-key}"}}}
+	}`)
+	if !customConfigService(home).providerHasAPICredential(agentprovider.OpenCode) {
+		t.Fatal("expected OpenCode Windows-style home file reference to be detected")
+	}
+}
+
 func TestProviderUsesCustomConfigCleanCodexLoginIsNotCustom(t *testing.T) {
 	home := t.TempDir()
 	// A normal ChatGPT-login config.toml with only a model pin — no custom key

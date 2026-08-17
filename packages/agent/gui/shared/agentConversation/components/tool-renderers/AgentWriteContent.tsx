@@ -1,12 +1,17 @@
 import type { JSX } from "react";
+import { translate } from "../../../../i18n/index";
 import { AgentCodeBlock } from "./code/AgentCodeBlock";
 import { AgentUnifiedPatchViewer } from "./file-diff/AgentUnifiedPatchViewer";
 import {
   stringValue,
   ToolMarkdownBlock,
+  ToolSection,
   type AgentToolRendererProps
 } from "./agentToolContentShared";
-import { getFileChangeRenderData } from "./render-data/agentToolRenderData";
+import {
+  getFileChangeRenderData,
+  getToolCallFailureText
+} from "./render-data/agentToolRenderData";
 
 export function AgentWriteContent({
   call,
@@ -29,8 +34,10 @@ export function AgentWriteContent({
   );
   const fallbackContent =
     files.length === 0 ? call.summary.trim() || null : null;
+  const failureText = getToolCallFailureText(call);
   const showFileHeaders = files.length > 1;
   const hasRenderableContent =
+    Boolean(failureText) ||
     Boolean(path && files.length === 0) ||
     patchFiles.length > 0 ||
     contentFiles.length > 0 ||
@@ -42,6 +49,15 @@ export function AgentWriteContent({
 
   return (
     <div className="workspace-agents-status-panel__detail-tool-body workspace-agents-status-panel__detail-tool-body--flat">
+      {failureText ? (
+        <ToolSection title={translate("agentHost.agentTool.details.error")}>
+          <ToolMarkdownBlock
+            content={failureText}
+            onLinkClick={onLinkClick}
+            collapsible
+          />
+        </ToolSection>
+      ) : null}
       {path && files.length === 0 ? (
         <ToolMarkdownBlock content={path} onLinkClick={onLinkClick} />
       ) : null}

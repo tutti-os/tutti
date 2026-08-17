@@ -17,8 +17,13 @@ import type { DesktopLogger } from "./logging";
 import { getDesktopThemeState } from "./desktopTheme";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import { resolveWorkspaceLaunchWindowKind } from "./host/workspaceLaunchMode.ts";
+import {
+  createDesktopCaptureService,
+  type DesktopCaptureService
+} from "./capture/desktopCaptureService.ts";
 
 export interface DesktopHostServices {
+  capture: DesktopCaptureService;
   fileDialogs: DesktopFileDialogAccess;
   preferences: DesktopHostPreferencesState;
   workspaceLaunch: WorkspaceLaunch;
@@ -27,6 +32,8 @@ export interface DesktopHostServices {
 export interface CreateDesktopHostServicesOptions {
   appVersion?: string;
   browserNodeGuestPreloadPath?: string;
+  capturePreloadPath: string;
+  captureRendererFilePath: string;
   enableDevelopmentReloadShortcut?: boolean;
   fallbackLocale: DesktopLocale;
   isPackaged?: boolean;
@@ -78,8 +85,21 @@ export async function createDesktopHostServices(
     },
     tuttidClient: options.tuttidClient
   });
+  const capture = createDesktopCaptureService({
+    ensureWorkspaceOwner: (workspaceId) =>
+      workspaceLaunch.ensureAgentBrowserHost({ workspaceID: workspaceId }),
+    fileDialogs,
+    logger: options.logger,
+    preferences,
+    preloadPath: options.capturePreloadPath,
+    rendererFilePath: options.captureRendererFilePath,
+    rendererUrl: options.rendererUrl,
+    resolveStartupWorkspaceId: async () =>
+      (await options.tuttidClient.getStartupWorkspace())?.id ?? null
+  });
 
   return {
+    capture,
     fileDialogs,
     preferences,
     workspaceLaunch

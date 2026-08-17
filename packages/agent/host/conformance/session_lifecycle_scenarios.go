@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -117,6 +118,9 @@ func runCreateWithInitialGoal(ctx context.Context, driver Driver) error {
 	if goal.Goal["objective"] != "ship the feature" {
 		return fmt.Errorf("typed initial goal = %#v", goal.Goal)
 	}
+	if goal.ExecutionPending {
+		return fmt.Errorf("completed initial Goal retained execution pending: %#v", goal)
+	}
 	replayed, replayedTurnID, err := driver.Create(ctx, "workspace-1", input)
 	if err != nil {
 		return fmt.Errorf("retry create with typed initial goal: %w", err)
@@ -141,8 +145,151 @@ func runCreateWithInitialGoal(ctx context.Context, driver Driver) error {
 	return nil
 }
 
-func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
+func runInitialGoalExecutionPending(ctx context.Context, driver Driver) error {
 	if err := driver.Reset(ctx, Fixture{}); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-initial-goal-execution-pending",
+	}
+	if _, turnID, err := driver.Create(ctx, ref.WorkspaceID, agenthost.CreateSessionInput{
+		AgentSessionID: ref.AgentSessionID, AgentTargetID: "target-1", Provider: "codex",
+		ClientSubmitID: "create-goal-execution-pending-1",
+		InitialGoalControl: &agenthost.TypedGoalControl{
+			Action: "set", Objective: "start autonomous execution",
+		},
+	}); err != nil {
+		return fmt.Errorf("create initial Goal execution: %w", err)
+	} else if turnID != "" {
+		return fmt.Errorf("initial Goal manufactured turn %q", turnID)
+	}
+	goal, err := driver.GetGoalState(ctx, ref)
+	if err != nil {
+		return fmt.Errorf("read initial Goal execution state: %w", err)
+	}
+	if goal.SyncStatus != storesqlite.GoalSyncStatusSynced || !goal.ExecutionPending {
+		return fmt.Errorf("initial Goal execution state=%#v", goal)
+	}
+	return nil
+}
+
+func runTypedInitialGoalWaitsForCanonicalRailInitialization(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{
+		CompleteGoalOnSet:      true,
+		RaceRuntimeStartReport: true,
+		RailProjectPaths:       []string{"/workspace/selected-project"},
+	}); err != nil {
+		return err
+	}
+	input := agenthost.CreateSessionInput{
+		AgentSessionID:       "session-initial-goal-rail-race",
+		AgentTargetID:        "target-1",
+		Provider:             "codex",
+		ClientSubmitID:       "create-goal-rail-race-1",
+		InitialDisplayPrompt: "/goal ship from the selected project",
+		InitialGoalControl: &agenthost.TypedGoalControl{
+			Action:    "set",
+			Objective: "ship from the selected project",
+		},
+		RailPlacement: &agenthost.RailPlacement{
+			Version:     1,
+			Kind:        agenthost.RailPlacementKindProject,
+			ProjectPath: "/workspace/selected-project",
+		},
+	}
+	created, turnID, err := driver.Create(ctx, "workspace-1", input)
+	if err != nil {
+		return fmt.Errorf("create typed initial goal during runtime start report: %w", err)
+	}
+	if turnID != "" {
+		return fmt.Errorf("typed initial goal race created turn %q", turnID)
+	}
+	wantRail := storesqlite.RailSectionKeyForProject("/workspace/selected-project")
+	if created.RailSectionKey != wantRail {
+		return fmt.Errorf(
+			"typed initial goal race rail=%q, want %q",
+			created.RailSectionKey,
+			wantRail,
+		)
+	}
+
+	replayed, replayedTurnID, err := driver.Create(ctx, "workspace-1", input)
+	if err != nil {
+		return fmt.Errorf("retry typed initial goal after runtime start report: %w", err)
+	}
+	if replayed.SessionID != created.SessionID || replayedTurnID != "" {
+		return fmt.Errorf(
+			"retried typed initial goal race=%#v turn=%q, want session %q without turn",
+			replayed,
+			replayedTurnID,
+			created.SessionID,
+		)
+	}
+	metrics := driver.Metrics()
+	if metrics.StartCalls != 1 || metrics.RuntimeSessionPublishCalls != 1 ||
+		metrics.GoalControlCalls != 1 || metrics.RuntimeStartReportWrites != 1 {
+		return fmt.Errorf(
+			"typed initial goal race calls start=%d publish=%d goal=%d runtimeReports=%d, want 1/1/1/1",
+			metrics.StartCalls,
+			metrics.RuntimeSessionPublishCalls,
+			metrics.GoalControlCalls,
+			metrics.RuntimeStartReportWrites,
+		)
+	}
+	return nil
+}
+
+func runFailedCanonicalInitializationAbortsUnpublishedRuntime(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{
+		RaceRuntimeStartReport:    true,
+		FailSessionInitialization: true,
+		RailProjectPaths:          []string{"/workspace/selected-project"},
+	}); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-initialization-failure",
+	}
+	_, _, err := driver.Create(ctx, ref.WorkspaceID, agenthost.CreateSessionInput{
+		AgentSessionID: ref.AgentSessionID,
+		AgentTargetID:  "target-1",
+		Provider:       "codex",
+		ClientSubmitID: "create-initialization-failure-1",
+		InitialGoalControl: &agenthost.TypedGoalControl{
+			Action:    "set",
+			Objective: "must not execute",
+		},
+		RailPlacement: &agenthost.RailPlacement{
+			Version:     1,
+			Kind:        agenthost.RailPlacementKindProject,
+			ProjectPath: "/workspace/selected-project",
+		},
+	})
+	if err == nil {
+		return errors.New("failed canonical initialization returned nil error")
+	}
+	if _, readErr := driver.GetCanonicalSession(ctx, ref); !errors.Is(readErr, agenthost.ErrSessionNotFound) {
+		return fmt.Errorf("canonical session after initialization failure error=%v", readErr)
+	}
+	metrics := driver.Metrics()
+	if metrics.StartCalls != 1 || metrics.RuntimeSessionPublishCalls != 0 ||
+		metrics.CloseCalls != 1 || metrics.GoalControlCalls != 0 ||
+		metrics.RuntimeStartReportWrites != 0 {
+		return fmt.Errorf(
+			"failed canonical initialization calls start=%d publish=%d close=%d goal=%d runtimeReports=%d, want 1/0/1/0/0",
+			metrics.StartCalls,
+			metrics.RuntimeSessionPublishCalls,
+			metrics.CloseCalls,
+			metrics.GoalControlCalls,
+			metrics.RuntimeStartReportWrites,
+		)
+	}
+	return nil
+}
+
+func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
+	if err := driver.Reset(ctx, Fixture{RailProjectPaths: []string{"/workspace/project"}}); err != nil {
 		return err
 	}
 	input := agenthost.CreateSessionInput{
@@ -173,6 +320,13 @@ func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
 			wantKey,
 		)
 	}
+	metrics := driver.Metrics()
+	if err := requireRuntimeRailPlacement(metrics.LastStartEnv, agenthost.RailPlacement{
+		Version: 1, Kind: agenthost.RailPlacementKindProject,
+		ProjectPath: "/workspace/project", SectionKey: wantKey,
+	}); err != nil {
+		return fmt.Errorf("create runtime: %w", err)
+	}
 	if err := verifyRetriedInitialCreate(ctx, driver, input, session, turnID); err != nil {
 		return err
 	}
@@ -185,6 +339,46 @@ func runCreateWithRailPlacement(ctx context.Context, driver Driver) error {
 		agenthost.ErrRailPlacementConflict,
 	) {
 		return fmt.Errorf("retry with conflicting rail placement error=%v", err)
+	}
+	return nil
+}
+
+func runRecoverCanonicalSessionOnlyOnMatchingRail(
+	ctx context.Context,
+	driver RailPlacementRecoveryDriver,
+) error {
+	if err := driver.Reset(ctx, Fixture{RailProjectPaths: []string{"/workspace/project"}}); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-rail-recovery",
+	}
+	placement := &agenthost.RailPlacement{
+		Version: 1, Kind: agenthost.RailPlacementKindProject,
+		ProjectPath: "/workspace/project", SectionKey: "project:/workspace/project",
+	}
+	created, _, err := driver.Create(ctx, ref.WorkspaceID, agenthost.CreateSessionInput{
+		AgentSessionID: ref.AgentSessionID, AgentTargetID: "target-1", Provider: "codex",
+		RailPlacement: placement,
+	})
+	if err != nil {
+		return fmt.Errorf("create session for rail recovery: %w", err)
+	}
+	recovered, err := driver.GetSessionWithRailPlacement(ctx, ref, &agenthost.RailPlacement{
+		Version: 1, Kind: agenthost.RailPlacementKindProject,
+		ProjectPath: "/workspace/project", SectionKey: "project:/ignored-by-normalization",
+	})
+	if err != nil {
+		return fmt.Errorf("recover session on matching rail: %w", err)
+	}
+	if recovered.SessionID != created.SessionID || recovered.RailSectionKey != created.RailSectionKey {
+		return fmt.Errorf("recovered session=%#v, want %#v", recovered, created)
+	}
+	if _, err := driver.GetSessionWithRailPlacement(ctx, ref, &agenthost.RailPlacement{
+		Version: 1, Kind: agenthost.RailPlacementKindProject,
+		ProjectPath: "/workspace/other-project",
+	}); !errors.Is(err, agenthost.ErrRailPlacementConflict) {
+		return fmt.Errorf("recover session on mismatched rail error=%v", err)
 	}
 	return nil
 }
@@ -207,8 +401,18 @@ func runResumePersistedSession(ctx context.Context, driver Driver) error {
 	if session.SessionID != "session-resume" || session.ProviderSessionID != "provider-session-1" || !session.Resumable {
 		return fmt.Errorf("resumed session = %#v", session)
 	}
-	if metrics := driver.Metrics(); metrics.ResumeCalls != 1 || metrics.StartCalls != 0 {
+	metrics := driver.Metrics()
+	if metrics.ResumeCalls != 1 || metrics.StartCalls != 0 {
 		return fmt.Errorf("resume calls resume=%d start=%d", metrics.ResumeCalls, metrics.StartCalls)
+	}
+	if err := requireRuntimeRailPlacement(metrics.LastResumeEnv, agenthost.RailPlacement{
+		Version: 1, Kind: agenthost.RailPlacementKindConversations,
+		SectionKey: storesqlite.RailSectionKeyConversations,
+	}); err != nil {
+		return fmt.Errorf("resume runtime: %w", err)
+	}
+	if cwd, found := environmentValue(metrics.LastResumeEnv, "TUTTI_AGENT_CWD"); !found || cwd != "/workspace" {
+		return fmt.Errorf("resume runtime cwd env=%q found=%v, env=%#v", cwd, found, metrics.LastResumeEnv)
 	}
 	return nil
 }
@@ -389,6 +593,131 @@ func runNewTurnsRequireDurableProviderAcceptance(
 		return errors.New("sent Turn did not require durable provider acceptance")
 	}
 	return nil
+}
+
+func runProviderlessCanonicalTerminalSettlesAndReplaysSubmission(
+	ctx context.Context,
+	driver Driver,
+) error {
+	providerlessDriver, ok := driver.(ProviderlessTerminalDriver)
+	if !ok {
+		return errors.New("conformance driver does not support providerless terminal execution")
+	}
+	if err := providerlessDriver.ResetProviderlessTerminalExec(ctx, nil); err != nil {
+		return err
+	}
+	createInput := agenthost.CreateSessionInput{
+		AgentSessionID: "session-providerless-terminal-create",
+		AgentTargetID:  "target-1",
+		Provider:       "codex",
+		InitialContent: []agenthost.PromptContentBlock{{
+			Type: "text", Text: "fail before provider identity",
+		}},
+		ClientSubmitID: "providerless-terminal-create-1",
+	}
+	_, firstCreateTurnID, err := driver.Create(ctx, "workspace-1", createInput)
+	if err != nil {
+		return fmt.Errorf("create with providerless canonical terminal: %w", err)
+	}
+	if err := requireCanonicalFailedTurn(
+		ctx,
+		driver,
+		agenthost.SessionRef{
+			WorkspaceID: "workspace-1", AgentSessionID: createInput.AgentSessionID,
+		},
+		firstCreateTurnID,
+	); err != nil {
+		return fmt.Errorf("initial providerless terminal: %w", err)
+	}
+	_, replayedCreateTurnID, err := driver.Create(ctx, "workspace-1", createInput)
+	if err != nil {
+		return fmt.Errorf("replay providerless initial submit: %w", err)
+	}
+	if firstCreateTurnID == "" || replayedCreateTurnID != firstCreateTurnID {
+		return fmt.Errorf(
+			"providerless initial replay turns first=%q replay=%q",
+			firstCreateTurnID,
+			replayedCreateTurnID,
+		)
+	}
+	if metrics := driver.Metrics(); metrics.StartCalls != 1 || metrics.ExecCalls != 1 {
+		return fmt.Errorf(
+			"providerless initial replay calls start=%d exec=%d",
+			metrics.StartCalls,
+			metrics.ExecCalls,
+		)
+	}
+
+	sendFixture := liveSessionFixture("session-providerless-terminal-send", "")
+	if err := providerlessDriver.ResetProviderlessTerminalExec(
+		ctx,
+		sendFixture.Session,
+	); err != nil {
+		return err
+	}
+	ref := agenthost.SessionRef{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-providerless-terminal-send",
+	}
+	sendInput := agenthost.SendInput{
+		Content: []agenthost.PromptContentBlock{{
+			Type: "text", Text: "fail before provider identity",
+		}},
+		ClientSubmitID: "providerless-terminal-send-1",
+	}
+	firstSend, err := driver.SendInput(ctx, ref, sendInput)
+	if err != nil {
+		return fmt.Errorf("send with providerless canonical terminal: %w", err)
+	}
+	if err := requireCanonicalFailedTurn(ctx, driver, ref, firstSend.TurnID); err != nil {
+		return fmt.Errorf("ordinary providerless terminal: %w", err)
+	}
+	replayedSend, err := driver.SendInput(ctx, ref, sendInput)
+	if err != nil {
+		return fmt.Errorf("replay providerless ordinary submit: %w", err)
+	}
+	if firstSend.TurnID == "" || replayedSend.TurnID != firstSend.TurnID {
+		return fmt.Errorf(
+			"providerless send replay turns first=%q replay=%q",
+			firstSend.TurnID,
+			replayedSend.TurnID,
+		)
+	}
+	if metrics := driver.Metrics(); metrics.ExecCalls != 1 {
+		return fmt.Errorf("providerless send replay exec calls=%d", metrics.ExecCalls)
+	}
+	return nil
+}
+
+func requireCanonicalFailedTurn(
+	ctx context.Context,
+	driver Driver,
+	ref agenthost.SessionRef,
+	turnID string,
+) error {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return errors.New("canonical Turn id is empty")
+	}
+	page, err := driver.ListSessionTurns(ctx, ref, agenthost.SessionTurnQuery{Limit: 20})
+	if err != nil {
+		return err
+	}
+	for _, turn := range page.Turns {
+		if strings.TrimSpace(turn.TurnID) != turnID {
+			continue
+		}
+		if strings.TrimSpace(turn.Phase) != "settled" ||
+			strings.TrimSpace(turn.Outcome) != "failed" {
+			return fmt.Errorf(
+				"canonical Turn %q phase=%q outcome=%q, want settled/failed",
+				turnID,
+				turn.Phase,
+				turn.Outcome,
+			)
+		}
+		return nil
+	}
+	return fmt.Errorf("canonical Turn %q not found", turnID)
 }
 
 func runRejectedInitialSubmitDiscardsRuntime(

@@ -19,6 +19,36 @@ func (sqliteCanonicalStore) InitializeRuntimeSession(context.Context, agenthost.
 	return storesqlite.Session{}, nil
 }
 
+func (s sqliteCanonicalStore) ResolveRuntimeSessionRailPlacement(
+	ctx context.Context,
+	input agenthost.ResolveRuntimeSessionRailPlacementInput,
+) (*agenthost.RailPlacement, error) {
+	var explicit *storesqlite.RailSection
+	if input.RailPlacement != nil {
+		explicit = &storesqlite.RailSection{
+			Kind:        string(input.RailPlacement.Kind),
+			ProjectPath: input.RailPlacement.ProjectPath,
+			Key:         input.RailPlacement.SectionKey,
+		}
+	}
+	section, err := s.ResolveAgentSessionRailSection(ctx, storesqlite.ResolveAgentSessionRailSectionInput{
+		WorkspaceID:       input.WorkspaceID,
+		AgentSessionID:    input.AgentSessionID,
+		Cwd:               input.Cwd,
+		RuntimeContext:    input.RuntimeContext,
+		ExplicitPlacement: explicit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &agenthost.RailPlacement{
+		Version:     1,
+		Kind:        agenthost.RailPlacementKind(section.Kind),
+		ProjectPath: section.ProjectPath,
+		SectionKey:  section.Key,
+	}, nil
+}
+
 func TestSessionInteractionSnapshotReadsOnlyLatestTurnFromSQLite(t *testing.T) {
 	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "agent-host.db"))
 	if err != nil {

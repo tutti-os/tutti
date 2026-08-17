@@ -1,8 +1,7 @@
 import {
   DEFAULT_AGENT_MENTION_FILTER,
   DEFAULT_MENTION_GROUP_PAGE_SIZE,
-  mentionGroupPageSize,
-  normalizeQuery
+  mentionGroupPageSize
 } from "./agentMentionSearchHelpers";
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
@@ -37,7 +36,7 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import { presentWorkspaceFileDirectoryMentionItems } from "./agentMentionWorkspaceFilesPresentation";
 import { AgentMentionProvenanceFilterState } from "./AgentMentionProvenanceFilterState";
-
+import { resolveAgentMentionQueryUpdate } from "./AgentMentionQueryUpdate";
 export type {
   AgentMentionBrowseCategory,
   AgentMentionFilterId,
@@ -46,7 +45,6 @@ export type {
   AgentMentionSearchState
 } from "./AgentMentionSearchContracts";
 export { MAX_BROWSE_CACHE_ENTRIES, resetAgentMentionSearchBrowseCacheForTests };
-
 export class AgentMentionSearchController extends AgentMentionSearchControllerBase {
   private readonly issueLoadMoreRequests = new Map<
     string,
@@ -55,7 +53,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   private readonly directoryRequestLifecycle =
     new AgentMentionDirectoryRequestLifecycle();
   private readonly provenanceFilters = new AgentMentionProvenanceFilterState();
-
   setProvenanceCatalog(catalog: ReferenceProvenanceCatalog | null): void {
     if (this.currentProvenanceCatalog === catalog) return;
     this.currentProvenanceCatalog = catalog;
@@ -70,7 +67,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       groups: this.groupsFromRawGroups()
     });
   }
-
   setProvenanceFilters(
     filters: Record<AgentMentionFilterId, ReferenceProvenanceFilter | null>
   ): void {
@@ -78,6 +74,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     if (!next.changed) return;
     this.cancelPendingPreload();
     this.currentProvenanceFilter = next.value;
+    this.resetWorkspaceFileBrowsePaths();
     this.updateQuery({
       workspaceId: this.activeWorkspaceId,
       currentUserId: this.currentUserId,
@@ -86,7 +83,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       sessionCwd: this.currentSessionCwd
     });
   }
-
   subscribe(listener: AgentMentionSearchListener): () => void {
     this.listeners.add(listener);
     listener(this.state);
@@ -94,7 +90,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       this.listeners.delete(listener);
     };
   }
-
   updateQuery(input: {
     workspaceId: string;
     currentUserId?: string | null;
@@ -102,14 +97,23 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     sectionKey?: string | null;
     sessionCwd?: string | null;
   }): void {
-    if (this.disposed) {
-      return;
-    }
-    this.activeWorkspaceId = input.workspaceId.trim();
-    this.currentUserId = input.currentUserId?.trim() ?? "";
-    this.currentSectionKey = input.sectionKey?.trim() ?? "";
-    this.currentSessionCwd = input.sessionCwd?.trim() ?? "";
-    this.currentQuery = normalizeQuery(input.query);
+    if (this.disposed) return;
+    const next = resolveAgentMentionQueryUpdate(input, {
+      agentGeneratedBrowsePath: this.agentGeneratedBrowsePath,
+      workspaceId: this.activeWorkspaceId,
+      currentUserId: this.currentUserId,
+      sectionKey: this.currentSectionKey,
+      sessionCwd: this.currentSessionCwd,
+      query: this.currentQuery,
+      filter: this.currentFilter,
+      directoryDepth: this.workspaceFileBrowsePaths.length
+    });
+    if (next.ignore) return;
+    this.activeWorkspaceId = next.workspaceId;
+    this.currentUserId = next.currentUserId;
+    this.currentSectionKey = next.sectionKey;
+    this.currentSessionCwd = next.sessionCwd;
+    this.currentQuery = next.query;
     this.clearTimer();
     this.abortActiveRequest();
     this.directoryRequestLifecycle.cancel();
@@ -120,7 +124,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
     this.resetExpandedCounts();
     this.resetSearchLimits();
     this.resetRawGroups();
-
     if (!this.activeWorkspaceId) {
       this.setState({
         status: "idle",
@@ -133,12 +136,10 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       });
       return;
     }
-
     if (!this.currentQuery) {
       this.startBrowseModeFetch(this.currentFilter);
       return;
     }
-
     this.setState({
       status: "loading",
       query: this.currentQuery,
@@ -163,7 +164,6 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       });
     });
   }
-
   setFilter(filter: AgentMentionFilterId): void {
     if (this.disposed) {
       return;

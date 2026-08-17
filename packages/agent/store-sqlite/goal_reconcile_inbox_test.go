@@ -148,7 +148,7 @@ func TestGoalRepairIncidentBudgetPersistsAcrossSourcesAndResetsOnRevision(t *tes
 	}
 }
 
-func TestGoalDurableControlRowsAreExplicitlyDeletedWithForeignKeysOff(t *testing.T) {
+func TestGoalDurableControlRowsSurviveSoftDeleteAndClearWithWorkspace(t *testing.T) {
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
@@ -168,8 +168,8 @@ func TestGoalDurableControlRowsAreExplicitlyDeletedWithForeignKeysOff(t *testing
 	}
 	for _, table := range []string{"workspace_agent_goal_reconcile_inbox", "workspace_agent_goal_repair_incidents"} {
 		var count int
-		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id='ws-clean' AND agent_session_id='delete-me'`).Scan(&count); err != nil || count != 0 {
-			t.Fatalf("delete %s count=%d err=%v", table, count, err)
+		if err := store.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table+` WHERE workspace_id='ws-clean' AND agent_session_id='delete-me'`).Scan(&count); err != nil || count != 1 {
+			t.Fatalf("soft delete %s count=%d err=%v, want preserved", table, count, err)
 		}
 	}
 	if _, err := store.ClearSessions(ctx, "ws-clean"); err != nil {

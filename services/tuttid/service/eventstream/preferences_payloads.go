@@ -6,6 +6,7 @@ type desktopPreferencesMutationPayload struct {
 		AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
 		AgentComposerDefaultsByAgentTarget          desktopAgentComposerDefaultsByAgentTargetPayload          `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 		AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
+		AgentSessionLaunchModesByWorkspace          desktopAgentSessionLaunchModesByWorkspacePayload          `json:"agentSessionLaunchModesByWorkspace,omitempty"`
 		AgentConversationDetailMode                 string                                                    `json:"agentConversationDetailMode"`
 		AgentDockLayout                             string                                                    `json:"agentDockLayout"`
 		AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
@@ -38,6 +39,7 @@ type desktopPreferencesSettingsPayload struct {
 	AgentComposerDefaultsByProvider             desktopAgentComposerDefaultsByProviderPayload             `json:"agentComposerDefaultsByProvider"`
 	AgentComposerDefaultsByAgentTarget          desktopAgentComposerDefaultsByAgentTargetPayload          `json:"agentComposerDefaultsByAgentTarget,omitempty"`
 	AgentGUIConversationRailCollapsedByProvider desktopAgentGUIConversationRailCollapsedByProviderPayload `json:"agentGuiConversationRailCollapsedByProvider"`
+	AgentSessionLaunchModesByWorkspace          desktopAgentSessionLaunchModesByWorkspacePayload          `json:"agentSessionLaunchModesByWorkspace,omitempty"`
 	AgentConversationDetailMode                 string                                                    `json:"agentConversationDetailMode"`
 	AgentDockLayout                             string                                                    `json:"agentDockLayout"`
 	AppCatalogChannel                           string                                                    `json:"appCatalogChannel"`
@@ -67,6 +69,7 @@ type desktopWorkbenchWindowSnappingPayload struct {
 type desktopWorkbenchShortcutsPayload struct {
 	NewAgentConversation *string `json:"newAgentConversation"`
 	NewSameTypeWindow    *string `json:"newSameTypeWindow"`
+	CaptureScreenshot    *string `json:"captureScreenshot,omitempty"`
 }
 
 type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentComposerDefaultsPayload
@@ -74,6 +77,8 @@ type desktopAgentComposerDefaultsByProviderPayload map[string]desktopAgentCompos
 type desktopAgentComposerDefaultsByAgentTargetPayload map[string]desktopAgentComposerDefaultsPayload
 
 type desktopAgentGUIConversationRailCollapsedByProviderPayload map[string]bool
+
+type desktopAgentSessionLaunchModesByWorkspacePayload map[string]map[string]string
 
 type desktopFileDefaultOpenersByExtensionPayload map[string]string
 

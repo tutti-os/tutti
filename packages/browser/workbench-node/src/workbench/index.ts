@@ -18,6 +18,7 @@ import {
   resolveBrowserNodeInitialUrl,
   type BrowserNodeExternalState
 } from "./browserNodeInitialUrl.ts";
+import { createBrowserNodeWorkbenchCloseRequests } from "./browserNodeCloseRequests.ts";
 
 export type {
   BrowserNodeExternalState,
@@ -137,11 +138,7 @@ export function createBrowserNodeDefinition({
         dragHandleProps: headerContext.dragHandleProps,
         feature,
         nodeId: headerContext.node.id,
-        onCloseRequest: () => {
-          void feature.hostApi
-            .close({ nodeId: headerContext.node.id })
-            .catch(() => undefined);
-        },
+        ...createBrowserNodeWorkbenchCloseRequests(headerContext.windowActions),
         onFocusRequest: headerContext.isFocused
           ? undefined
           : () => headerContext.windowActions.focus()

@@ -64,6 +64,27 @@ func (s *Store) ReportActivityState(
 		return ActivityStateReportResult{}, err
 	}
 
+	now := unixMs(time.Now().UTC())
+	if input.Session.OccurredAtUnixMS <= 0 {
+		input.Session.OccurredAtUnixMS = now
+	}
+	var result ActivityStateReportResult
+	err := retrySQLiteBusy(ctx, func(attemptCtx context.Context) error {
+		var err error
+		result, err = s.reportActivityStateOnce(attemptCtx, input, now)
+		return err
+	})
+	return result, err
+}
+
+func (s *Store) reportActivityStateOnce(
+	ctx context.Context,
+	input ActivityStateReport,
+	now int64,
+) (ActivityStateReportResult, error) {
+	workspaceID := strings.TrimSpace(input.Session.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.Session.AgentSessionID)
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return ActivityStateReportResult{}, fmt.Errorf("begin workspace agent activity state report: %w", err)
@@ -75,15 +96,15 @@ func (s *Store) ReportActivityState(
 		}
 	}()
 
-	now := unixMs(time.Now().UTC())
-	if input.Session.OccurredAtUnixMS <= 0 {
-		input.Session.OccurredAtUnixMS = now
-	}
 	goalBefore, err := readSessionGoalProjectionTx(ctx, tx, input.Session)
 	if err != nil {
 		return ActivityStateReportResult{}, err
 	}
 	accepted, stateApplied, lastEventUnixMS, session, err := s.upsertAgentSessionTx(ctx, tx, input.Session, now)
+	if err != nil {
+		return ActivityStateReportResult{}, err
+	}
+	sessionWritable, err := sessionActivityWritableTx(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
 		return ActivityStateReportResult{}, err
 	}
@@ -93,6 +114,8 @@ func (s *Store) ReportActivityState(
 		LastEventUnixMS: lastEventUnixMS,
 		Session:         session,
 	}}
+	turnTerminalTransition := false
+	rootTurnTerminalTransition := false
 	result.Messages.LatestVersion = session.MessageVersion
 	if !accepted && len(input.Messages) > 0 {
 		return ActivityStateReportResult{}, errors.New("workspace agent activity session rejected atomic messages")
@@ -101,7 +124,7 @@ func (s *Store) ReportActivityState(
 	// first durable evidence attached to an otherwise exact-replay session
 	// snapshot (notably provider-initiated interactions). Apply them regardless
 	// of whether the enclosing session projection changed.
-	if accepted && input.Turn != nil {
+	if input.Turn != nil && sessionWritable {
 		result.Turn, result.TurnAccepted, err = s.recordTurnTransitionTx(ctx, tx, *input.Turn, now)
 		if err != nil {
 			return ActivityStateReportResult{}, err
@@ -109,18 +132,22 @@ func (s *Store) ReportActivityState(
 		if !result.TurnAccepted && !turnTransitionAlreadyApplied(result.Turn, *input.Turn) {
 			return ActivityStateReportResult{}, errors.New("workspace agent activity turn transition was rejected")
 		}
+		turnTerminalTransition = result.TurnAccepted &&
+			strings.TrimSpace(input.Turn.Phase) == TurnPhaseSettled
 	}
 	// RootProviderTurn may arrive on an exact-replay session envelope after Exec
 	// already set CurrentPhase (Claude Code identity_resolved). Apply whenever the
 	// session row is addressable so Replay commit correlation still gets a
 	// durable turn mutation / RootProviderTurnAccepted flag.
-	if input.RootProviderTurn != nil && strings.TrimSpace(session.ID) != "" {
+	if input.RootProviderTurn != nil && sessionWritable {
 		result.RootTurn, result.RootTurnAccepted, result.RootProviderTurnAccepted, err = s.applyRootProviderTurnTransitionTx(ctx, tx, *input.RootProviderTurn, now)
 		if err != nil {
 			return ActivityStateReportResult{}, err
 		}
+		rootTurnTerminalTransition = result.RootTurnAccepted &&
+			result.RootTurn.Phase == TurnPhaseSettled
 	}
-	if result.TurnAccepted && result.Turn.Phase == TurnPhaseSettled {
+	if turnTerminalTransition {
 		rootTurn, rootAccepted, err := s.reconcileRootTurnAfterChildTerminalTx(ctx, tx, result.Turn, now)
 		if err != nil {
 			return ActivityStateReportResult{}, err
@@ -128,13 +155,14 @@ func (s *Store) ReportActivityState(
 		if rootTurn.TurnID != "" {
 			result.RootTurn = rootTurn
 			result.RootTurnAccepted = rootAccepted
+			rootTurnTerminalTransition = rootAccepted && rootTurn.Phase == TurnPhaseSettled
 		}
 	}
 	// Interaction transitions have their own monotonic identity/state machine.
 	// Always validate and apply them even when the enclosing session report is
 	// an exact replay; otherwise an immutable-identity conflict could hide
 	// behind a stale session timestamp.
-	if accepted && input.Interaction != nil {
+	if input.Interaction != nil && sessionWritable {
 		result.Interaction, result.InteractionResult, err = s.upsertInteractionTx(ctx, tx, *input.Interaction, now)
 		if err != nil {
 			return ActivityStateReportResult{}, err
@@ -153,7 +181,7 @@ func (s *Store) ReportActivityState(
 					index,
 				)
 			}
-			acceptedMessage, messageAccepted, messageErr := s.upsertAgentMessageTx(
+			acceptedMessage, messageAccepted, _, messageErr := s.upsertAgentMessageTx(
 				ctx, tx, workspaceID, agentSessionID, message, now, false, true,
 			)
 			if messageErr != nil {
@@ -172,7 +200,7 @@ func (s *Store) ReportActivityState(
 			result.Messages.Messages = append(result.Messages.Messages, acceptedMessage)
 		}
 	}
-	mutations := activityStateMutations(result)
+	mutations := activityStateMutations(result, turnTerminalTransition, rootTurnTerminalTransition)
 	goalMutations, err := sessionGoalMutationsTx(ctx, tx, input.Session, goalBefore)
 	if err != nil {
 		return ActivityStateReportResult{}, err
@@ -192,17 +220,29 @@ func (s *Store) ReportActivityState(
 	return result, nil
 }
 
-func activityStateMutations(result ActivityStateReportResult) []TransactionMutation {
+func activityStateMutations(
+	result ActivityStateReportResult,
+	turnTerminalTransition bool,
+	rootTurnTerminalTransition bool,
+) []TransactionMutation {
 	mutations := make([]TransactionMutation, 0, 4+len(result.Messages.Messages))
 	if result.State.Accepted {
 		session := result.State.Session
 		mutations = append(mutations, transactionMutation(session.WorkspaceID, session.ID, MutationEntitySession, session.ID, "upsert", session.UpdatedAtUnixMS))
 	}
 	if result.TurnAccepted {
-		mutations = append(mutations, transactionMutation(result.Turn.WorkspaceID, result.Turn.AgentSessionID, MutationEntityTurn, result.Turn.TurnID, "upsert", result.Turn.UpdatedAtUnixMS))
+		turnMutation := transactionMutation(result.Turn.WorkspaceID, result.Turn.AgentSessionID, MutationEntityTurn, result.Turn.TurnID, "upsert", result.Turn.UpdatedAtUnixMS)
+		if turnTerminalTransition {
+			turnMutation = terminalTurnMutation(result.Turn.WorkspaceID, result.Turn.AgentSessionID, result.Turn.TurnID, "upsert", result.Turn.UpdatedAtUnixMS, false)
+		}
+		mutations = append(mutations, turnMutation)
 	}
 	if result.RootTurnAccepted || result.RootProviderTurnAccepted {
-		mutations = append(mutations, transactionMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, MutationEntityTurn, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS))
+		rootMutation := transactionMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, MutationEntityTurn, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS)
+		if rootTurnTerminalTransition {
+			rootMutation = terminalTurnMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS, false)
+		}
+		mutations = append(mutations, rootMutation)
 	}
 	if result.InteractionResult == InteractionTransitionApplied {
 		mutations = append(mutations, transactionMutation(
@@ -301,6 +341,24 @@ func (s *Store) ReportSessionMessages(
 		return MessageReportResult{}, err
 	}
 
+	now := unixMs(time.Now().UTC())
+	var result MessageReportResult
+	err := retrySQLiteBusy(ctx, func(attemptCtx context.Context) error {
+		var err error
+		result, err = s.reportSessionMessagesOnce(attemptCtx, input, now)
+		return err
+	})
+	return result, err
+}
+
+func (s *Store) reportSessionMessagesOnce(
+	ctx context.Context,
+	input SessionMessageReport,
+	now int64,
+) (MessageReportResult, error) {
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return MessageReportResult{}, fmt.Errorf("begin workspace agent message report: %w", err)
@@ -312,7 +370,6 @@ func (s *Store) ReportSessionMessages(
 		}
 	}()
 
-	now := unixMs(time.Now().UTC())
 	agentSessionID, err = resolveAgentMessageReportSessionIDTx(ctx, tx, workspaceID, agentSessionID, input.Provider, input.Origin)
 	if err != nil {
 		return MessageReportResult{}, err
@@ -350,7 +407,7 @@ func (s *Store) ReportSessionMessages(
 		if message.MessageID == "" {
 			continue
 		}
-		acceptedMessage, accepted, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, allowLegacyTurnless, false)
+		acceptedMessage, accepted, statusTransitioned, err := s.upsertAgentMessageTx(ctx, tx, workspaceID, agentSessionID, message, now, allowLegacyTurnless, false)
 		if err != nil {
 			return MessageReportResult{}, err
 		}
@@ -366,6 +423,9 @@ func (s *Store) ReportSessionMessages(
 		result.AcceptedCount++
 		result.LatestVersion = acceptedMessage.Version
 		result.Messages = append(result.Messages, acceptedMessage)
+		if statusTransitioned {
+			result.StatusTransitionedMessageIDs = append(result.StatusTransitionedMessageIDs, acceptedMessage.MessageID)
+		}
 	}
 
 	historicalTurns := []Turn(nil)

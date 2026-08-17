@@ -31,6 +31,7 @@ import {
 } from "./macosUpdaterSupport.ts";
 import {
   createDesktopReleaseFeedResolver,
+  type DesktopReleaseFeed,
   type DesktopReleaseFeedResolver
 } from "./desktopReleaseFeed.ts";
 
@@ -71,7 +72,7 @@ interface AppUpdateDriver {
 }
 
 export interface AppUpdateService {
-  checkForUpdates(): Promise<AppUpdateState>;
+  checkForUpdates(reason?: string): Promise<AppUpdateState>;
   configure(input: ConfigureAppUpdatesInput): Promise<AppUpdateState>;
   dispose(): void;
   downloadUpdate(): Promise<AppUpdateState>;
@@ -350,6 +351,7 @@ export function createAppUpdateService(
   let activeDownloadPromise: Promise<void> | null = null;
   let preserveAvailableStateDuringCheck = false;
   let quitAndInstallPending = false;
+  let activeReleaseFeed: DesktopReleaseFeed | null = null;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
   >();
@@ -425,6 +427,14 @@ export function createAppUpdateService(
     });
   };
 
+  const applyUpdaterErrorIfNeeded = (error: Error): void => {
+    const message = normalizeMessage(error);
+    if (state.status === "error" && state.message === message) {
+      return;
+    }
+    applyUpdaterError(error);
+  };
+
   const resetConfiguredState = (
     status: AppUpdateStatus,
     message: string | null = null
@@ -486,7 +496,11 @@ export function createAppUpdateService(
         checkedAt: new Date().toISOString(),
         latestVersion: info.version ?? null,
         releaseDate: normalizeReleaseDate(info.releaseDate),
-        releaseName: info.releaseName ?? null
+        releaseName: info.releaseName ?? null,
+        releaseNotesUrl:
+          activeReleaseFeed?.version === info.version
+            ? activeReleaseFeed.releaseNotesUrl
+            : null
       });
     }),
     resolvedDriver.onUpdateNotAvailable(() => {
@@ -527,28 +541,37 @@ export function createAppUpdateService(
       });
     }),
     resolvedDriver.onError((error) => {
-      applyUpdaterError(error);
+      applyUpdaterErrorIfNeeded(error);
       quitAndInstallPending = false;
     })
   ];
 
   service = {
-    async checkForUpdates() {
+    async checkForUpdates(reason = "manual") {
       assertUpdaterAccess();
       if (
         !supportsUpdates ||
         state.policy === "off" ||
         state.status === "downloaded"
       ) {
+        getDesktopLogger().debug?.("application update check skipped", {
+          reason,
+          status: state.status,
+          supports_updates: supportsUpdates,
+          policy: state.policy
+        });
         return state;
       }
 
       if (activeCheckPromise) {
+        getDesktopLogger().debug?.("application update check joined", {
+          reason
+        });
         await activeCheckPromise;
         return state;
       }
 
-      activeCheckPromise = runStaticFeedUpdateCheck().finally(() => {
+      activeCheckPromise = runStaticFeedUpdateCheck(reason).finally(() => {
         activeCheckPromise = null;
       });
       await activeCheckPromise;
@@ -630,7 +653,7 @@ export function createAppUpdateService(
 
       preserveAvailableStateDuringCheck = true;
       try {
-        await service.checkForUpdates();
+        await service.checkForUpdates("download");
       } finally {
         preserveAvailableStateDuringCheck = false;
       }
@@ -638,9 +661,29 @@ export function createAppUpdateService(
         return state;
       }
 
-      activeDownloadPromise = resolvedDriver.downloadUpdate().finally(() => {
-        activeDownloadPromise = null;
+      getDesktopLogger().info("application update download started", {
+        channel: state.channel,
+        latest_version: state.latestVersion,
+        policy: state.policy
       });
+      activeDownloadPromise = resolvedDriver
+        .downloadUpdate()
+        .catch((error) => {
+          const updateError =
+            error instanceof Error
+              ? error
+              : new Error(formatErrorDetail(error));
+          applyUpdaterErrorIfNeeded(updateError);
+          throw updateError;
+        })
+        .finally(() => {
+          getDesktopLogger().info("application update download finished", {
+            channel: state.channel,
+            latest_version: state.latestVersion,
+            status: state.status
+          });
+          activeDownloadPromise = null;
+        });
       await activeDownloadPromise;
       return state;
     },
@@ -698,7 +741,7 @@ export function createAppUpdateService(
   };
 
   const runBackgroundCheck = (reason: string): void => {
-    void service.checkForUpdates().catch((error) => {
+    void service.checkForUpdates(reason).catch((error) => {
       getDesktopLogger().warn("background application update check failed", {
         error: formatErrorDetail(error),
         reason
@@ -706,10 +749,16 @@ export function createAppUpdateService(
     });
   };
 
-  const runStaticFeedUpdateCheck = async (): Promise<void> => {
+  const runStaticFeedUpdateCheck = async (reason: string): Promise<void> => {
+    getDesktopLogger().info("application update check started", {
+      channel: state.channel,
+      policy: state.policy,
+      reason
+    });
     try {
       if (releaseFeedResolver) {
         const feed = await releaseFeedResolver({ channel: state.channel });
+        activeReleaseFeed = feed;
         resolvedDriver.setFeedUrl(feed.feedUrl);
         getDesktopLogger().info("application updater static feed configured", {
           channel: state.channel,
@@ -718,14 +767,20 @@ export function createAppUpdateService(
           version: feed.version
         });
       }
+
+      await resolvedDriver.checkForUpdates();
+      getDesktopLogger().info("application update check finished", {
+        channel: state.channel,
+        latest_version: state.latestVersion,
+        reason,
+        status: state.status
+      });
     } catch (error) {
       const updateError =
         error instanceof Error ? error : new Error(formatErrorDetail(error));
-      applyUpdaterError(updateError);
+      applyUpdaterErrorIfNeeded(updateError);
       throw updateError;
     }
-
-    await resolvedDriver.checkForUpdates();
   };
 
   return service;

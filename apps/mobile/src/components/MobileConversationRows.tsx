@@ -103,9 +103,10 @@ export function MobileInteractionCard({
                               return updated;
                             });
                           }}
-                          style={[
+                          style={({ pressed }) => [
                             styles.option,
-                            active && styles.optionSelected
+                            active && styles.optionSelected,
+                            pressed && styles.pressed
                           ]}
                         >
                           <Text style={styles.optionText}>{option.label}</Text>
@@ -175,13 +176,22 @@ export function MobileInteractionCard({
       ) : prompt?.kind === "approval" ? (
         <View style={styles.actionList}>
           {options.map((option) => (
-            <PrimaryButton
-              disabled={submitting || !runtimeAvailable}
-              key={option.id}
-              label={option.label}
-              onPress={() => submit({ optionId: option.id })}
-              secondary
-            />
+            <View key={option.id} style={styles.approvalOption}>
+              <PrimaryButton
+                accessibilityLabel={[option.label, option.description]
+                  .filter(Boolean)
+                  .join(". ")}
+                disabled={submitting || !runtimeAvailable}
+                label={option.label}
+                onPress={() => submit({ optionId: option.id })}
+                secondary
+              />
+              {option.description ? (
+                <Text style={styles.optionDescription}>
+                  {option.description}
+                </Text>
+              ) : null}
+            </View>
           ))}
         </View>
       ) : prompt?.kind === "exit-plan" && prompt.options.length > 0 ? (
@@ -234,7 +244,7 @@ function MobileExitPlanActions({
           disabled={submitting || !runtimeAvailable}
           key={mode.id}
           onPress={() => onSubmit({ action: "allow", optionId: mode.id })}
-          style={styles.option}
+          style={({ pressed }) => [styles.option, pressed && styles.pressed]}
         >
           <Text style={styles.optionText}>{mode.label}</Text>
           {mode.description ? (
@@ -290,23 +300,31 @@ function interactionSummary(interaction: AgentActivityInteraction): string {
 
 function createStyles(theme: NativeTheme) {
   return StyleSheet.create({
-    actionList: { gap: theme.space.small, marginTop: theme.space.medium },
+    actionList: { gap: theme.space.small, marginTop: theme.space.small },
     answerInput: {
+      backgroundColor: theme.color.panel,
       borderColor: theme.color.border,
       borderRadius: theme.radius.medium,
       borderWidth: StyleSheet.hairlineWidth,
       color: theme.color.text,
-      minHeight: 72,
-      padding: theme.space.small
+      fontSize: 15,
+      lineHeight: 21,
+      minHeight: 84,
+      padding: theme.space.medium,
+      textAlignVertical: "top"
     },
+    approvalOption: { gap: 3 },
     error: { color: theme.color.danger, fontSize: 12 },
     interactionCard: {
       backgroundColor: theme.color.panelRaised,
-      borderColor: theme.color.accent,
-      borderRadius: theme.radius.medium,
+      borderColor: theme.color.border,
+      borderLeftColor: theme.color.accent,
+      borderLeftWidth: 3,
+      borderRadius: theme.radius.large,
       borderWidth: StyleSheet.hairlineWidth,
       gap: theme.space.small,
-      padding: theme.space.medium
+      paddingHorizontal: theme.space.medium,
+      paddingVertical: theme.space.medium
     },
     interactionKind: {
       color: theme.color.accent,
@@ -316,22 +334,44 @@ function createStyles(theme: NativeTheme) {
     },
     interactionTitle: {
       color: theme.color.text,
-      fontSize: 15,
+      fontSize: 16,
       fontWeight: "700",
-      lineHeight: 21
+      lineHeight: 22
     },
     option: {
+      backgroundColor: theme.color.panel,
       borderColor: theme.color.border,
       borderRadius: theme.radius.medium,
       borderWidth: StyleSheet.hairlineWidth,
-      padding: theme.space.small
+      justifyContent: "center",
+      minHeight: theme.control.regular,
+      paddingHorizontal: theme.space.medium,
+      paddingVertical: theme.space.small
     },
-    optionDescription: { color: theme.color.muted, fontSize: 12, marginTop: 3 },
-    optionList: { gap: 6 },
-    optionSelected: { borderColor: theme.color.accent },
-    optionText: { color: theme.color.text, fontSize: 14 },
+    optionDescription: {
+      color: theme.color.muted,
+      fontSize: 12,
+      lineHeight: 17,
+      marginTop: 3
+    },
+    optionList: { gap: theme.space.small },
+    optionSelected: {
+      backgroundColor: theme.color.panelRaised,
+      borderColor: theme.color.accent
+    },
+    optionText: {
+      color: theme.color.text,
+      fontSize: 14,
+      fontWeight: "600",
+      lineHeight: 20
+    },
+    pressed: { opacity: 0.72 },
     question: { gap: theme.space.small },
-    questionText: { color: theme.color.textSecondary, fontSize: 14 },
+    questionText: {
+      color: theme.color.textSecondary,
+      fontSize: 14,
+      lineHeight: 20
+    },
     unsupportedInteraction: {
       color: theme.color.textSecondary,
       fontSize: 13,

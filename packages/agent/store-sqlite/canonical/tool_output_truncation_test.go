@@ -75,9 +75,10 @@ func TestCompactToolCallPayloadLimitsOutputErrorAndStepBodiesWithoutChangingInpu
 	t.Parallel()
 
 	large := strings.Repeat("x", ToolOutputTextMaxBytes+64)
+	inputText := "preserved input"
 	got := CompactToolCallPayload("failed", map[string]any{
 		"callId": "call-1",
-		"input":  map[string]any{"text": large},
+		"input":  map[string]any{"text": inputText},
 		"output": map[string]any{"text": large, "stdout": large},
 		"error":  map[string]any{"text": large, "stderr": large},
 		"steps": []any{
@@ -90,7 +91,7 @@ func TestCompactToolCallPayloadLimitsOutputErrorAndStepBodiesWithoutChangingInpu
 		},
 	})
 
-	if got["input"].(map[string]any)["text"] != large {
+	if got["input"].(map[string]any)["text"] != inputText {
 		t.Fatal("tool input was truncated")
 	}
 	assertTruncatedToolTextFields(t, got["output"].(map[string]any), "text", "stdout")
