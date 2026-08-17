@@ -8,7 +8,8 @@ import (
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
-const railPlacementVersion = 1
+// RailPlacementVersion is the current Host rail-placement contract version.
+const RailPlacementVersion = 1
 
 func normalizeRailPlacement(placement *RailPlacement) (*RailPlacement, error) {
 	if placement == nil {
@@ -20,7 +21,7 @@ func normalizeRailPlacement(placement *RailPlacement) (*RailPlacement, error) {
 		ProjectPath: strings.TrimSpace(placement.ProjectPath),
 		SectionKey:  strings.TrimSpace(placement.SectionKey),
 	}
-	if normalized.Version != railPlacementVersion {
+	if normalized.Version != RailPlacementVersion {
 		return nil, fmt.Errorf("%w: unsupported rail placement version", ErrInvalidArgument)
 	}
 	switch normalized.Kind {
@@ -56,6 +57,50 @@ func railPlacementMatchesSession(placement *RailPlacement, session storesqlite.S
 			storesqlite.NormalizeProjectPath(placement.ProjectPath) &&
 		storesqlite.NormalizeRailSectionKey(session.RailSectionKey) ==
 			storesqlite.NormalizeRailSectionKey(placement.SectionKey)
+}
+
+func railPlacementFromSession(session storesqlite.Session) (*RailPlacement, error) {
+	kind := RailPlacementKind(strings.TrimSpace(session.RailSectionKind))
+	projectPath := strings.TrimSpace(session.RailProjectPath)
+	sectionKey := storesqlite.NormalizeRailSectionKey(session.RailSectionKey)
+	if kind == "" {
+		switch {
+		case sectionKey == "", sectionKey == storesqlite.RailSectionKeyConversations:
+			kind = RailPlacementKindConversations
+		case strings.HasPrefix(sectionKey, "project:"):
+			kind = RailPlacementKindProject
+		}
+	}
+	if kind == RailPlacementKindConversations && sectionKey == "" {
+		sectionKey = storesqlite.RailSectionKeyConversations
+	}
+	if kind == RailPlacementKindProject && projectPath == "" && strings.HasPrefix(sectionKey, "project:") {
+		projectPath = strings.TrimPrefix(sectionKey, "project:")
+	}
+	if kind == RailPlacementKindConversations && projectPath == "" {
+		return normalizeRailPlacement(&RailPlacement{
+			Version: RailPlacementVersion, Kind: RailPlacementKindConversations,
+			SectionKey: storesqlite.RailSectionKeyConversations,
+		})
+	}
+	return normalizeRailPlacement(&RailPlacement{
+		Version:     RailPlacementVersion,
+		Kind:        kind,
+		ProjectPath: projectPath,
+		SectionKey:  sectionKey,
+	})
+}
+
+func runtimeEnvironmentForCanonicalSession(
+	env []string,
+	cwd string,
+	session storesqlite.Session,
+) ([]string, error) {
+	placement, err := railPlacementFromSession(session)
+	if err != nil {
+		return nil, err
+	}
+	return withAgentRailPlacementEnvironment(env, cwd, placement)
 }
 
 // GetSessionWithRailPlacement reads one canonical Session only when its

@@ -1,5 +1,8 @@
 import type { CSSProperties } from "react";
-import { isRichTextMentionHref } from "../core/richTextDocument.ts";
+import {
+  isRichTextFolderHref,
+  isRichTextMentionHref
+} from "../core/richTextDocument.ts";
 import { findRichTextMarkdownLinks } from "../core/richTextMarkdownLinks.ts";
 
 const EXTERNAL_LINK_PREFIX = /^(?:[a-z]+:)?\/\//i;
@@ -94,7 +97,7 @@ export function buildRichTextTextareaDecorationSegments(
         to,
         label,
         href,
-        kind: href.endsWith("/") ? "folder" : "file"
+        kind: isRichTextFolderHref(href) ? "folder" : "file"
       });
     } else {
       segments.push({

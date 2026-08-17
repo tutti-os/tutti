@@ -142,7 +142,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 		return nil, fmt.Errorf("%w: agent target id is required", cliservice.ErrInvalidInput)
 	}
 	provider := strings.TrimSpace(target.Provider)
-	launchContext, err := p.resolveStartLaunchContext(ctx, invoke.WorkspaceID, input.Cwd, invoke.Request.Context)
+	launchContext, err := resolveStartLaunchContext(input.Cwd, invoke.Request.Context)
 	if err != nil {
 		return nil, err
 	}
@@ -212,57 +212,36 @@ type startLaunchContext struct {
 	railPlacement *agenthost.RailPlacement
 }
 
-func (p Provider) resolveStartLaunchContext(
-	ctx context.Context,
-	workspaceID string,
+func resolveStartLaunchContext(
 	explicit string,
 	invokeContext cliservice.InvokeContext,
 ) (startLaunchContext, error) {
 	if cwd := strings.TrimSpace(explicit); cwd != "" {
 		return startLaunchContext{cwd: cwd}, nil
 	}
-	callerID := strings.TrimSpace(invokeContext.AgentSessionID)
-	if callerID == "" {
+	cwd := strings.TrimSpace(invokeContext.AgentCWD)
+	encodedPlacement := strings.TrimSpace(invokeContext.AgentRailPlacementJSON)
+	if cwd == "" && encodedPlacement == "" {
 		return startLaunchContext{}, nil
 	}
-	session, err := p.sessions.Get(ctx, workspaceID, callerID)
-	if err != nil {
-		return startLaunchContext{}, err
+	if cwd == "" || encodedPlacement == "" {
+		return startLaunchContext{}, fmt.Errorf(
+			"%w: inherited Agent cwd and rail placement must be provided together",
+			cliservice.ErrInvalidInput,
+		)
 	}
-	kind := agenthost.RailPlacementKind(strings.TrimSpace(session.RailSectionKind))
-	projectPath := strings.TrimSpace(session.RailProjectPath)
-	cwd := strings.TrimSpace(session.Cwd)
-	if cwd == "" && kind == agenthost.RailPlacementKindProject {
-		cwd = projectPath
+	placement, err := agenthost.ParseAgentRailPlacementEnvironment(encodedPlacement)
+	if err != nil {
+		return startLaunchContext{}, fmt.Errorf(
+			"%w: invalid inherited Agent rail placement: %v",
+			cliservice.ErrInvalidInput,
+			err,
+		)
 	}
 	return startLaunchContext{
 		cwd:           cwd,
-		railPlacement: railPlacementFromCallerSession(session),
+		railPlacement: placement,
 	}, nil
-}
-
-func railPlacementFromCallerSession(session agentservice.Session) *agenthost.RailPlacement {
-	kind := agenthost.RailPlacementKind(strings.TrimSpace(session.RailSectionKind))
-	projectPath := strings.TrimSpace(session.RailProjectPath)
-	sectionKey := strings.TrimSpace(session.RailSectionKey)
-	switch kind {
-	case agenthost.RailPlacementKindConversations:
-		if projectPath != "" || sectionKey != "conversations" {
-			return nil
-		}
-	case agenthost.RailPlacementKindProject:
-		if projectPath == "" || sectionKey == "" || sectionKey == "conversations" {
-			return nil
-		}
-	default:
-		return nil
-	}
-	return &agenthost.RailPlacement{
-		Version:     1,
-		Kind:        kind,
-		ProjectPath: projectPath,
-		SectionKey:  sectionKey,
-	}
 }
 
 func (p Provider) newOpenCommand() cliservice.Command {

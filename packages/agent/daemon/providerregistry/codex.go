@@ -85,6 +85,10 @@ func codexDescriptor() ProviderDescriptor {
 						Paths:          []string{"auth.json", "config.toml"},
 					},
 				},
+				// Codex and external credential switchers commonly rewrite these
+				// files atomically. Compare content so an identical rewrite does
+				// not evict the warm model catalog or its app-server process.
+				ContentFingerprint: AuthWatchContentFingerprintFullFile,
 			},
 		},
 

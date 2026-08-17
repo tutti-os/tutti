@@ -44,6 +44,18 @@ export function createConversationRailConversationsSelector(): (
     for (const sessionId of input.querySnapshot.railSearch.sessionIds) {
       projectionSessionIds.add(sessionId);
     }
+    const scopedAgentTargetId = input.querySnapshot.agentTargetId;
+    for (const item of workspaceSessions) {
+      if (
+        item.session.kind === "root" &&
+        item.activeTurn?.phase !== undefined &&
+        item.activeTurn.phase !== "settled" &&
+        (!scopedAgentTargetId ||
+          item.session.agentTargetId?.trim() === scopedAgentTargetId)
+      ) {
+        projectionSessionIds.add(item.session.agentSessionId);
+      }
+    }
     const rootSessionIdsAwaitingUserAction = new Set([
       ...selectRootAgentSessionIdsWithPendingInteractions(input.engineState),
       ...selectRootAgentSessionIdsAwaitingPlanImplementation(input.engineState)

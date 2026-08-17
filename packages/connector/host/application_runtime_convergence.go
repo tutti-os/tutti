@@ -1,0 +1,670 @@
+package host
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"math"
+	"strings"
+	"time"
+)
+
+func (application *Application) prepareInstallRuntimeDesired(
+	ctx context.Context,
+	operationID string,
+	release Release,
+	binding RuntimeBinding,
+) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		operation, err := tx.Operation(operationID)
+		if err != nil {
+			return err
+		}
+		if operation.State == OperationStateCompleted {
+			return nil
+		}
+		connector, err := tx.Connector(operation.ConnectorKey)
+		if err != nil {
+			return err
+		}
+		revision := tx.AdvanceRevision()
+		connector.Installation.CandidateVersion = release.Version
+		connector.Installation.CandidateReleaseID = release.ReleaseID
+		connector.Installation.CandidateReleaseDigest = release.ReleaseDigest
+		connector.Installation.FailureCode = ""
+		connector.Revision = revision
+		operation.State = OperationStateRunning
+		operation.Stage = OperationStageRuntimePending
+		operation.FailureCode = ""
+		operation.UpdatedAt = application.config.Now().UTC()
+		if _, _, err := upsertRuntimeDesired(
+			tx, operation.Scope, connector.Key, release.ReleaseDigest, binding, nextGeneration(revision), false, operation.UpdatedAt,
+		); err != nil {
+			return err
+		}
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		if err := tx.SaveOperation(operation); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
+			ConnectorKey: connector.Key,
+			OperationID:  operation.OperationID,
+			Revision:     revision,
+		})
+	})
+}
+
+func (application *Application) finalizeInstallAfterRuntime(
+	ctx context.Context,
+	operationID string,
+) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		operation, err := tx.Operation(operationID)
+		if err != nil {
+			return err
+		}
+		if operation.State == OperationStateCompleted {
+			return nil
+		}
+		connector, err := tx.Connector(operation.ConnectorKey)
+		if err != nil {
+			return err
+		}
+		if operation.Target == nil || connector.Installation.CandidateReleaseDigest != operation.Target.ReleaseDigest {
+			return NewDomainError(ErrorCodeRevisionConflict, "connector install candidate changed before completion", true, nil)
+		}
+		convergence, err := tx.RuntimeConvergence(operation.Scope, connector.Key)
+		if err != nil {
+			return err
+		}
+		if convergence.Desired.ReleaseDigest != operation.Target.ReleaseDigest ||
+			convergence.Observed.DesiredGeneration != convergence.Desired.Generation ||
+			convergence.Observed.BootEpoch != application.config.BootEpoch {
+			return NewDomainError(ErrorCodeUnavailable, "connector runtime candidate is not observed", true, nil)
+		}
+		revision := tx.AdvanceRevision()
+		connector.Installation.State = InstallationStateInstalled
+		connector.Installation.InstalledVersion = connector.Installation.CandidateVersion
+		connector.Installation.InstalledReleaseID = connector.Installation.CandidateReleaseID
+		connector.Installation.InstalledReleaseDigest = connector.Installation.CandidateReleaseDigest
+		connector.Installation.CandidateVersion = ""
+		connector.Installation.CandidateReleaseID = ""
+		connector.Installation.CandidateReleaseDigest = ""
+		connector.Installation.FailureCode = ""
+		connector.Revision = revision
+		operation.State = OperationStateCompleted
+		operation.Stage = OperationStageCompleted
+		operation.FailureCode = ""
+		operation.UpdatedAt = application.config.Now().UTC()
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		if err := tx.SaveOperation(operation); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
+			ConnectorKey: connector.Key, OperationID: operation.OperationID, Revision: revision,
+		})
+	})
+}
+
+func (application *Application) prepareUninstallRuntimeDisabled(
+	ctx context.Context,
+	operationID string,
+	release Release,
+	binding RuntimeBinding,
+) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		operation, err := tx.Operation(operationID)
+		if err != nil {
+			return err
+		}
+		connector, err := tx.Connector(operation.ConnectorKey)
+		if err != nil {
+			return err
+		}
+		if connector.Installation.State != InstallationStateUninstalling ||
+			connector.Installation.InstalledReleaseDigest != release.ReleaseDigest {
+			return NewDomainError(ErrorCodeRevisionConflict, "connector uninstall target changed", true, nil)
+		}
+		binding.Enabled = false
+		now := application.config.Now().UTC()
+		revision := tx.AdvanceRevision()
+		if _, _, err := upsertRuntimeDesired(
+			tx, operation.Scope, connector.Key, release.ReleaseDigest, binding, nextGeneration(revision), false, now,
+		); err != nil {
+			return err
+		}
+		connector.Revision = revision
+		operation.State = OperationStateRunning
+		operation.Stage = OperationStageDeactivating
+		operation.UpdatedAt = now
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		if err := tx.SaveOperation(operation); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
+			ConnectorKey: connector.Key, OperationID: operation.OperationID, Revision: revision,
+		})
+	})
+}
+
+// EnsureRuntimeDesired derives and durably records the current runtime intent
+// without issuing or persisting a credential grant. Repeating the same intent
+// is a no-op; a changed intent advances only the Connector's convergence
+// generation.
+func (application *Application) EnsureRuntimeDesired(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) (RuntimeConvergence, error) {
+	return application.ensureRuntimeDesired(ctx, scope, connectorKey, false)
+}
+
+func (application *Application) ensureRuntimeDesired(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+	forceNewGeneration bool,
+) (RuntimeConvergence, error) {
+	connectorKey = strings.TrimSpace(connectorKey)
+	scope.AccountID = strings.TrimSpace(scope.AccountID)
+	if connectorKey == "" {
+		return RuntimeConvergence{}, invalidRequest("connectorKey is required")
+	}
+	connector, release, err := application.runtimeConnectorAndRelease(ctx, connectorKey)
+	if err != nil {
+		return RuntimeConvergence{}, err
+	}
+	binding, err := application.resolveRuntimeBinding(ctx, Operation{
+		OperationID:  "plan-runtime/" + connectorKey,
+		ConnectorKey: connectorKey,
+		Scope:        scope,
+	}, connector, release, RuntimeBindingPurposePlan)
+	if err != nil {
+		return RuntimeConvergence{}, err
+	}
+	defer clear(binding.CredentialBrokerGrant)
+	if len(binding.CredentialBrokerGrant) != 0 {
+		return RuntimeConvergence{}, invalidOperationReceipt("runtime planning returned a credential grant")
+	}
+	return application.saveRuntimeDesired(ctx, scope, connectorKey, release.ReleaseDigest, binding, forceNewGeneration)
+}
+
+// DueRuntimeConvergences returns private, level-triggered work for the active
+// scope. Callers use it only as a scheduling hint; ClaimRuntimeConvergence
+// rechecks every due predicate atomically.
+func (application *Application) DueRuntimeConvergences(
+	ctx context.Context,
+	scope OperationScope,
+	limit int,
+) ([]RuntimeConvergence, error) {
+	return application.config.Repository.DueRuntimeConvergences(
+		ctx, scope, application.config.BootEpoch, application.config.Now().UTC(), limit,
+	)
+}
+
+// ReconcileRuntimeDesired synchronously proves that the latest Desired is
+// observed by this boot. If another worker owns the lease, it waits for that
+// worker rather than creating a second public operation.
+func (application *Application) ReconcileRuntimeDesired(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) error {
+	if _, err := application.EnsureRuntimeDesired(ctx, scope, connectorKey); err != nil {
+		return err
+	}
+	return application.awaitRuntimeDesired(ctx, scope, connectorKey)
+}
+
+func (application *Application) reconcileRuntimeDesiredAfterFence(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) error {
+	if _, err := application.ensureRuntimeDesired(ctx, scope, connectorKey, true); err != nil {
+		return err
+	}
+	return application.awaitRuntimeDesired(ctx, scope, connectorKey)
+}
+
+// ReconcileRuntimeAfterInvalidation advances the Desired generation even when
+// its payload is unchanged. Runtime-exit and route-loss observers use this to
+// invalidate an otherwise matching Observed receipt.
+func (application *Application) ReconcileRuntimeAfterInvalidation(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) error {
+	return application.reconcileRuntimeDesiredAfterFence(ctx, scope, connectorKey)
+}
+
+func (application *Application) awaitRuntimeDesired(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) error {
+	ticker := time.NewTicker(25 * time.Millisecond)
+	defer ticker.Stop()
+	for {
+		if err := application.ConvergeRuntime(ctx, scope, connectorKey); err != nil {
+			return err
+		}
+		convergence, err := application.config.Repository.RuntimeConvergence(ctx, scope, connectorKey)
+		if err != nil {
+			return err
+		}
+		if convergence.Observed.DesiredGeneration == convergence.Desired.Generation &&
+			convergence.Observed.BootEpoch == application.config.BootEpoch {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+}
+
+// ConvergeRuntime applies one durable Desired generation. Failures remain
+// retryable convergence debt instead of becoming public terminal Operations.
+func (application *Application) ConvergeRuntime(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) (executeErr error) {
+	now := application.config.Now().UTC()
+	convergence, claimed, err := application.config.Repository.ClaimRuntimeConvergence(
+		ctx, scope, connectorKey, application.config.BootEpoch, application.config.WorkerID,
+		now, now.Add(application.config.LeaseDuration),
+	)
+	if err != nil || !claimed {
+		return err
+	}
+	executionContext, cancelExecution := context.WithCancel(ctx)
+	heartbeatDone := make(chan error, 1)
+	go application.renewRuntimeConvergenceLease(executionContext, cancelExecution, convergence, heartbeatDone)
+	defer func() {
+		cancelExecution()
+		heartbeatErr := <-heartbeatDone
+		if heartbeatErr != nil {
+			executeErr = errors.Join(executeErr, heartbeatErr)
+		}
+		_ = application.config.Repository.ReleaseRuntimeConvergenceLease(
+			context.WithoutCancel(ctx), convergence.Desired.Scope, convergence.Desired.ConnectorKey,
+			application.config.WorkerID, convergence.LeaseToken,
+		)
+	}()
+
+	connector, release, err := application.runtimeConnectorAndReleaseForDigest(
+		executionContext, convergence.Desired.ConnectorKey, convergence.Desired.ReleaseDigest, convergence.Desired.Enabled,
+	)
+	if err != nil {
+		return application.retryRuntimeConvergence(ctx, convergence, err)
+	}
+	if release.ReleaseDigest != convergence.Desired.ReleaseDigest {
+		return application.retryRuntimeConvergence(ctx, convergence,
+			NewDomainError(ErrorCodeRevisionConflict, "installed connector changed during runtime convergence", true, nil))
+	}
+	operationID := fmt.Sprintf("runtime/%s/%s/%d", application.config.BootEpoch,
+		convergence.Desired.ConnectorKey, convergence.Desired.Generation)
+	operation := Operation{OperationID: operationID, ConnectorKey: connector.Key, Scope: convergence.Desired.Scope}
+	binding := RuntimeBinding{
+		ConnectionID: convergence.Desired.ConnectionID, Enabled: false,
+		AuthorizationState: convergence.Desired.AuthorizationState,
+	}
+	if convergence.Desired.Enabled {
+		connector, err = application.inspectRuntimeAuthorization(executionContext, convergence, connector)
+		if err != nil {
+			return application.retryRuntimeConvergence(ctx, convergence, err)
+		}
+		binding, err = application.resolveRuntimeBinding(executionContext, operation, connector, release, RuntimeBindingPurposeReconcile)
+		if err != nil {
+			return application.retryRuntimeConvergence(ctx, convergence, err)
+		}
+	}
+	defer clear(binding.CredentialBrokerGrant)
+	if !runtimeBindingMatchesDesired(binding, convergence.Desired) {
+		clear(binding.CredentialBrokerGrant)
+		_, saveErr := application.saveRuntimeDesired(
+			context.WithoutCancel(ctx), convergence.Desired.Scope, connector.Key, release.ReleaseDigest, binding, false,
+		)
+		return saveErr
+	}
+	connector.Authorization.State = binding.AuthorizationState
+	generation := HostGeneration{BootEpoch: application.config.BootEpoch, Generation: convergence.Desired.Generation}
+	receipt, err := application.reconcileRuntime(executionContext, RuntimeReconcileRequest{
+		OperationID: operationID, Scope: convergence.Desired.Scope, ConnectionID: binding.ConnectionID,
+		Connector: connector, Enabled: binding.Enabled, Generation: generation,
+		CredentialBrokerGrant: binding.CredentialBrokerGrant,
+	})
+	if err != nil {
+		return application.retryRuntimeConvergence(ctx, convergence,
+			NewDomainError(ErrorCodeInstallFailed, "connector runtime could not be reconciled", true, err))
+	}
+	if err := validateRuntimeReceipt(receipt, operationID, binding.ConnectionID, connector.Key,
+		release.ReleaseDigest, generation, binding.Enabled); err != nil {
+		return application.retryRuntimeConvergence(ctx, convergence, err)
+	}
+	observedAt := application.config.Now().UTC()
+	observed := RuntimeObserved{
+		DesiredGeneration: convergence.Desired.Generation,
+		BootEpoch:         application.config.BootEpoch,
+		Enabled:           binding.Enabled,
+		ConnectionID:      binding.ConnectionID,
+		ReleaseDigest:     release.ReleaseDigest,
+		Readiness:         receipt.Readiness,
+		Summary:           receipt.Summary,
+		ObservedAt:        observedAt,
+	}
+	return application.config.Repository.CompleteRuntimeConvergence(
+		context.WithoutCancel(ctx), convergence.Desired.Scope, connector.Key, application.config.WorkerID,
+		convergence.LeaseToken, convergence.Desired.Generation, observed, observedAt,
+	)
+}
+
+func (application *Application) inspectRuntimeAuthorization(
+	ctx context.Context,
+	convergence RuntimeConvergence,
+	connector Connector,
+) (Connector, error) {
+	if connector.Release.Manifest.Implementation.ManagedStdio == nil ||
+		connector.Release.Manifest.AuthorizationKind == "none" {
+		return connector, nil
+	}
+	inspector, ok := application.config.Authorization.(AuthorizationInspector)
+	if !ok {
+		return connector, nil
+	}
+	observation, err := inspector.InspectAuthorization(ctx, AuthorizationInspectRequest{
+		Scope: convergence.Desired.Scope, Connector: connector,
+		AuthorizationGeneration: convergence.Desired.Generation,
+		DesktopBootEpoch:        application.config.BootEpoch,
+		StateRevision:           connector.Revision,
+	})
+	if err != nil {
+		return Connector{}, fmt.Errorf("inspect connector authorization: %w", err)
+	}
+	if observation.ConnectorKey != "" && observation.ConnectorKey != connector.Key ||
+		observation.ReleaseDigest != "" && observation.ReleaseDigest != connector.Release.ReleaseDigest {
+		return Connector{}, invalidOperationReceipt("authorization inspector returned a mismatched observation")
+	}
+	var state AuthorizationState
+	switch observation.State {
+	case AuthorizationObservationConnected:
+		state = AuthorizationStateConnected
+	case AuthorizationObservationDisconnected:
+		state = AuthorizationStateDisconnected
+	case AuthorizationObservationExpired:
+		state = AuthorizationStateExpired
+	case AuthorizationObservationFailed:
+		state = AuthorizationStateFailed
+	case AuthorizationObservationPending:
+		state = AuthorizationStatePending
+	default:
+		return Connector{}, invalidOperationReceipt("authorization inspector returned an invalid state")
+	}
+	if connector.Authorization.State != state || connector.Authorization.FailureCode != observation.FailureCode {
+		err = application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+			stored, txErr := tx.Connector(connector.Key)
+			if txErr != nil {
+				return txErr
+			}
+			revision := tx.AdvanceRevision()
+			stored.Authorization = Authorization{State: state, FailureCode: strings.TrimSpace(observation.FailureCode)}
+			stored.Revision = revision
+			if txErr := tx.SaveConnector(stored); txErr != nil {
+				return txErr
+			}
+			return tx.EnqueueConnectorMarketChanged(ChangedEvent{ConnectorKey: stored.Key, Revision: revision})
+		})
+		if err != nil {
+			return Connector{}, err
+		}
+		connector.Authorization = Authorization{State: state, FailureCode: strings.TrimSpace(observation.FailureCode)}
+	}
+	if application.config.AuthorizationProjections != nil && strings.TrimSpace(convergence.Desired.Scope.AccountID) != "" {
+		connectionID := strings.TrimSpace(observation.ConnectionID)
+		if state == AuthorizationStateConnected && connectionID == "" {
+			return Connector{}, invalidOperationReceipt("connected authorization inspection returned no connection id")
+		}
+		if err := application.saveAuthorizationProjection(ctx, ConnectorMutation{
+			ConnectorKey: connector.Key, AccountID: convergence.Desired.Scope.AccountID,
+		}, AuthorizationProjection{
+			AccountID: convergence.Desired.Scope.AccountID, ConnectorKey: connector.Key,
+			ConnectionID: connectionID, State: state, FailureCode: observation.FailureCode,
+			UpdatedAt: application.config.Now().UTC(),
+		}); err != nil {
+			return Connector{}, err
+		}
+	}
+	return connector, nil
+}
+
+func (application *Application) runtimeConnectorAndRelease(
+	ctx context.Context,
+	connectorKey string,
+) (Connector, Release, error) {
+	connector, err := application.config.Repository.Connector(ctx, strings.TrimSpace(connectorKey))
+	if err != nil {
+		return Connector{}, Release{}, err
+	}
+	connector, err = validateRuntimeReconcileConnector(connector)
+	if err != nil {
+		return Connector{}, Release{}, err
+	}
+	release, err := application.installedReleaseEvidence(ctx, connector)
+	if err != nil {
+		return Connector{}, Release{}, err
+	}
+	connector.Release = release
+	return connector, release, nil
+}
+
+func (application *Application) runtimeConnectorAndReleaseForDigest(
+	ctx context.Context,
+	connectorKey, releaseDigest string,
+	validateRelease bool,
+) (Connector, Release, error) {
+	connector, err := application.config.Repository.Connector(ctx, strings.TrimSpace(connectorKey))
+	if err != nil {
+		return Connector{}, Release{}, err
+	}
+	releaseDigest = strings.TrimSpace(releaseDigest)
+	current := (connector.Installation.State == InstallationStateInstalled ||
+		connector.Installation.State == InstallationStateUninstalling) &&
+		connector.Installation.InstalledReleaseDigest == releaseDigest
+	candidate := (connector.Installation.State == InstallationStateInstalling ||
+		connector.Installation.State == InstallationStateUpdating) &&
+		connector.Installation.CandidateReleaseDigest == releaseDigest
+	if !current && !candidate {
+		return Connector{}, Release{}, NewDomainError(
+			ErrorCodeRevisionConflict, "runtime target is not the current or candidate release", true, nil,
+		)
+	}
+	release, err := application.config.Repository.InstalledRelease(ctx, connector.Key, releaseDigest)
+	if errors.Is(err, ErrNotFound) && connector.Release.ReleaseDigest == releaseDigest {
+		release, err = connector.Release, nil
+	}
+	if err != nil {
+		return Connector{}, Release{}, err
+	}
+	if validateRelease {
+		if err := ValidateRuntimeReleaseShape(release); err != nil {
+			return Connector{}, Release{}, err
+		}
+	}
+	connector.Release = release
+	return connector, release, nil
+}
+
+func (application *Application) saveRuntimeDesired(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey, releaseDigest string,
+	binding RuntimeBinding,
+	forceNewGeneration bool,
+) (RuntimeConvergence, error) {
+	var saved RuntimeConvergence
+	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		connector, err := tx.Connector(connectorKey)
+		if err != nil {
+			return err
+		}
+		if connector.Installation.State != InstallationStateInstalled ||
+			connector.Installation.InstalledReleaseDigest != releaseDigest {
+			return NewDomainError(ErrorCodeRevisionConflict, "installed connector changed while planning runtime", true, nil)
+		}
+		convergence, changed, err := upsertRuntimeDesired(
+			tx, scope, connectorKey, releaseDigest, binding, nextGeneration(connector.Revision), forceNewGeneration,
+			application.config.Now().UTC(),
+		)
+		if err != nil {
+			return err
+		}
+		saved = convergence
+		if !changed {
+			return nil
+		}
+		revision := tx.AdvanceRevision()
+		for revision <= connector.Revision {
+			revision = tx.AdvanceRevision()
+		}
+		connector.Revision = revision
+		if err := tx.SaveConnector(connector); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{ConnectorKey: connectorKey, Revision: revision})
+	})
+	return saved, err
+}
+
+func upsertRuntimeDesired(
+	tx Transaction,
+	scope OperationScope,
+	connectorKey, releaseDigest string,
+	binding RuntimeBinding,
+	minimumGeneration uint64,
+	forceNewGeneration bool,
+	now time.Time,
+) (RuntimeConvergence, bool, error) {
+	scope.AccountID = strings.TrimSpace(scope.AccountID)
+	connectorKey = strings.TrimSpace(connectorKey)
+	releaseDigest = strings.TrimSpace(releaseDigest)
+	binding.ConnectionID = strings.TrimSpace(binding.ConnectionID)
+	if connectorKey == "" || releaseDigest == "" || binding.ConnectionID == "" {
+		return RuntimeConvergence{}, false, invalidOperationReceipt("runtime desired identity is incomplete")
+	}
+	convergence, err := tx.RuntimeConvergence(scope, connectorKey)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return RuntimeConvergence{}, false, err
+	}
+	if err == nil && !forceNewGeneration && runtimeDesiredMatchesBinding(convergence.Desired, releaseDigest, binding) {
+		return convergence, false, nil
+	}
+	generation := maxGeneration(minimumGeneration)
+	if err == nil {
+		if convergence.Desired.Generation == math.MaxUint64 {
+			return RuntimeConvergence{}, false, NewDomainError(ErrorCodeUnavailable, "runtime desired generation is exhausted", false, nil)
+		}
+		generation = convergence.Desired.Generation + 1
+		if generation < minimumGeneration {
+			generation = minimumGeneration
+		}
+		convergence.LeaseToken++
+	}
+	convergence.Desired = RuntimeDesired{
+		Scope: scope, ConnectorKey: connectorKey, Generation: generation, Enabled: binding.Enabled,
+		ConnectionID: binding.ConnectionID, ReleaseDigest: releaseDigest, AuthorizationState: binding.AuthorizationState,
+		UpdatedAt: now,
+	}
+	convergence.Attempt = 0
+	convergence.NextAttemptAt = now
+	convergence.LeaseOwner = ""
+	convergence.LeaseExpiresAt = nil
+	convergence.LastErrorCode = ""
+	convergence.LastError = ""
+	convergence.UpdatedAt = now
+	if err := tx.SaveRuntimeConvergence(convergence); err != nil {
+		return RuntimeConvergence{}, false, err
+	}
+	return convergence, true, nil
+}
+
+func runtimeDesiredMatchesBinding(desired RuntimeDesired, releaseDigest string, binding RuntimeBinding) bool {
+	return desired.ReleaseDigest == strings.TrimSpace(releaseDigest) && desired.Enabled == binding.Enabled &&
+		desired.ConnectionID == strings.TrimSpace(binding.ConnectionID) && desired.AuthorizationState == binding.AuthorizationState
+}
+
+func runtimeBindingMatchesDesired(binding RuntimeBinding, desired RuntimeDesired) bool {
+	return runtimeDesiredMatchesBinding(desired, desired.ReleaseDigest, binding)
+}
+
+func (application *Application) retryRuntimeConvergence(
+	ctx context.Context,
+	convergence RuntimeConvergence,
+	cause error,
+) error {
+	now := application.config.Now().UTC()
+	nextAttemptAt := now.Add(runtimeConvergenceBackoff(convergence.Attempt + 1))
+	message := strings.TrimSpace(cause.Error())
+	if len(message) > 512 {
+		message = message[:512]
+	}
+	retryErr := application.config.Repository.RetryRuntimeConvergence(
+		context.WithoutCancel(ctx), convergence.Desired.Scope, convergence.Desired.ConnectorKey,
+		application.config.WorkerID, convergence.LeaseToken, convergence.Desired.Generation,
+		nextAttemptAt, string(errorCodeOr(cause, ErrorCodeUnavailable)), message, now,
+	)
+	if retryErr != nil && !errors.Is(retryErr, ErrOperationLeaseLost) {
+		return errors.Join(cause, fmt.Errorf("record runtime convergence retry: %w", retryErr))
+	}
+	return cause
+}
+
+func runtimeConvergenceBackoff(attempt uint32) time.Duration {
+	if attempt > 6 {
+		attempt = 6
+	}
+	return time.Second * time.Duration(uint64(1)<<attempt)
+}
+
+func (application *Application) renewRuntimeConvergenceLease(
+	ctx context.Context,
+	cancel context.CancelFunc,
+	convergence RuntimeConvergence,
+	done chan<- error,
+) {
+	interval := application.config.LeaseDuration / 3
+	if interval < 10*time.Millisecond {
+		interval = 10 * time.Millisecond
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	defer close(done)
+	for {
+		select {
+		case <-ctx.Done():
+			done <- nil
+			return
+		case <-ticker.C:
+			now := application.config.Now().UTC()
+			renewContext, renewCancel := context.WithTimeout(context.WithoutCancel(ctx), interval)
+			err := application.config.Repository.RenewRuntimeConvergenceLease(
+				renewContext, convergence.Desired.Scope, convergence.Desired.ConnectorKey,
+				application.config.WorkerID, convergence.LeaseToken, now, now.Add(application.config.LeaseDuration),
+			)
+			renewCancel()
+			if err != nil {
+				cancel()
+				done <- err
+				return
+			}
+		}
+	}
+}

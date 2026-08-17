@@ -149,6 +149,10 @@ function buildChildSessionLane(input: {
   );
   const latestTurn = input.childSession.latestTurn;
   const status = childSessionStatus(input.childSession);
+  const assistantMarkdown = childSessionAssistantMarkdown(
+    childTimelineItems,
+    childMessages
+  );
   const terminalAtUnixMs =
     status === "running"
       ? null
@@ -165,6 +169,7 @@ function buildChildSessionLane(input: {
     laneCount: 1,
     latestActivity: latestActivity?.text ?? null,
     latestActivityKind: latestActivity?.kind ?? null,
+    assistantMarkdown,
     activityLog: activity.entries,
     activityOmittedCount: activity.omittedCount,
     queued: input.childSession.activeTurn?.phase === "submitted",
@@ -195,6 +200,7 @@ function emptyCycleLane(session: AgentActivitySession): AgentTaskSubAgentVM {
     laneCount: 1,
     latestActivity: null,
     latestActivityKind: null,
+    assistantMarkdown: null,
     activityLog: [],
     activityOmittedCount: 0,
     failureDetail: session.latestTurn?.error?.message?.trim() ?? null,
@@ -323,6 +329,59 @@ function timelineItemText(item: WorkspaceAgentActivityTimelineItem): string {
     .trim();
 }
 
+function childSessionAssistantMarkdown(
+  timelineItems: readonly WorkspaceAgentActivityTimelineItem[],
+  messages: readonly AgentActivityMessage[]
+): string | null {
+  const assistantTextMessageIds = new Set(
+    messages
+      .filter((message) => {
+        const kind = message.kind.trim().toLowerCase();
+        const role = message.role.trim().toLowerCase();
+        const payloadKind =
+          typeof message.payload?.kind === "string"
+            ? message.payload.kind.trim().toLowerCase()
+            : "";
+        return (
+          kind === "text" &&
+          (role === "assistant" || role === "agent") &&
+          message.semantics?.noticeCommand !== "compact" &&
+          message.payload?.noticeCommand !== "compact" &&
+          payloadKind !== "agent_system_notice" &&
+          payloadKind !== "agent_visible_error"
+        );
+      })
+      .map((message) => message.messageId.trim())
+      .filter(Boolean)
+  );
+  for (let index = timelineItems.length - 1; index >= 0; index -= 1) {
+    const item = timelineItems[index];
+    if (!item) continue;
+    const itemType = item.itemType?.trim().toLowerCase() ?? "";
+    const role = item.role?.trim().toLowerCase() ?? "";
+    const payloadKind =
+      typeof item.payload?.kind === "string"
+        ? item.payload.kind.trim().toLowerCase()
+        : "";
+    if (
+      role !== "assistant" ||
+      itemType !== "message.assistant" ||
+      !assistantTextMessageIds.has(item.eventId.trim()) ||
+      typeof item.payload?.noticeKind === "string" ||
+      payloadKind === "agent_visible_error" ||
+      payloadKind === "agent_system_notice"
+    ) {
+      continue;
+    }
+    const markdown =
+      markdownStringValue(item.payload?.text) ??
+      markdownStringValue(item.payload?.content) ??
+      markdownStringValue(item.content);
+    if (markdown) return markdown;
+  }
+  return null;
+}
+
 function snippet(text: string): string {
   return text.length <= 140
     ? text
@@ -370,6 +429,10 @@ function normalizedString(value: string | null | undefined): string | null {
 
 function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function markdownStringValue(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function recordValue(value: unknown): Record<string, unknown> | null {

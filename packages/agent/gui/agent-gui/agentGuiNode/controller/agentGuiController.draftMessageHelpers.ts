@@ -176,13 +176,10 @@ export function agentActivityDisplayStatusBusy(
   return status === "working" || status === "waiting";
 }
 
-export function conversationBusyStatusFromAgentActivityDisplayStatus(
+export function conversationStatusFromAgentActivityDisplayStatus(
   status: AgentActivityDisplayStatus | null | undefined
-): "working" | "waiting" | null {
-  if (status === "working" || status === "waiting") {
-    return status;
-  }
-  return null;
+): AgentGUIConversationSummary["status"] | null {
+  return status === "idle" ? "ready" : (status ?? null);
 }
 
 export function agentActivitySessionHasLiveTurn(

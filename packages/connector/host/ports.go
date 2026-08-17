@@ -23,10 +23,17 @@ type CatalogSourcePageQuery struct {
 	PageToken string
 }
 
+type CatalogInstallationFilter string
+
+const (
+	CatalogInstallationFilterNotInstalled CatalogInstallationFilter = "not_installed"
+)
+
 type CatalogPageQuery struct {
-	SectionID string
-	PageSize  int
-	PageToken string
+	SectionID          string
+	PageSize           int
+	PageToken          string
+	InstallationFilter CatalogInstallationFilter
 }
 
 type CatalogCategory struct {
@@ -70,6 +77,7 @@ type Repository interface {
 	Snapshot(ctx context.Context) (Snapshot, error)
 	Connector(ctx context.Context, connectorKey string) (Connector, error)
 	Operation(ctx context.Context, operationID string) (Operation, error)
+	OperationForScope(ctx context.Context, scope OperationScope, operationID string) (Operation, error)
 	// UnresolvedAuthorizationSessionOperations exposes private durable receipts
 	// only for the explicitly active account. Snapshot remains safe for public
 	// presentation and must not contain Operation.Execution.
@@ -81,6 +89,13 @@ type Repository interface {
 	Transaction(ctx context.Context, fn func(Transaction) error) error
 	RecoverableOperations(ctx context.Context) ([]Operation, error)
 	InstalledRelease(ctx context.Context, connectorKey, releaseDigest string) (Release, error)
+	RuntimeConvergence(ctx context.Context, scope OperationScope, connectorKey string) (RuntimeConvergence, error)
+	DueRuntimeConvergences(ctx context.Context, scope OperationScope, bootEpoch string, now time.Time, limit int) ([]RuntimeConvergence, error)
+	ClaimRuntimeConvergence(ctx context.Context, scope OperationScope, connectorKey, bootEpoch, owner string, now, leaseExpiresAt time.Time) (RuntimeConvergence, bool, error)
+	RenewRuntimeConvergenceLease(ctx context.Context, scope OperationScope, connectorKey, owner string, token uint64, now, leaseExpiresAt time.Time) error
+	ReleaseRuntimeConvergenceLease(ctx context.Context, scope OperationScope, connectorKey, owner string, token uint64) error
+	CompleteRuntimeConvergence(ctx context.Context, scope OperationScope, connectorKey, owner string, token, desiredGeneration uint64, observed RuntimeObserved, now time.Time) error
+	RetryRuntimeConvergence(ctx context.Context, scope OperationScope, connectorKey, owner string, token, desiredGeneration uint64, nextAttemptAt time.Time, errorCode, errorMessage string, now time.Time) error
 }
 
 type Transaction interface {
@@ -89,13 +104,16 @@ type Transaction interface {
 	Connectors() ([]Connector, error)
 	Connector(connectorKey string) (Connector, error)
 	Operation(operationID string) (Operation, error)
-	OperationByClientRequestID(clientRequestID string) (*Operation, error)
+	OperationByClientRequestID(ownerAccountID, clientRequestID string) (*Operation, error)
 	ActiveOperation(connectorKey string) (*Operation, error)
 	SaveCatalogRevision(sourceRevision string) error
 	SetCatalogState(state CatalogState) error
 	SaveConnector(Connector) error
 	DeleteConnector(connectorKey string) error
 	SaveOperation(Operation) error
+	RuntimeConvergence(scope OperationScope, connectorKey string) (RuntimeConvergence, error)
+	SaveRuntimeConvergence(RuntimeConvergence) error
+	DeleteRuntimeConvergence(scope OperationScope, connectorKey string) error
 	EnqueueConnectorMarketChanged(ChangedEvent) error
 }
 
@@ -292,6 +310,7 @@ type RuntimeBindingRequest struct {
 type RuntimeBindingPurpose string
 
 const (
+	RuntimeBindingPurposePlan       RuntimeBindingPurpose = "plan"
 	RuntimeBindingPurposeReconcile  RuntimeBindingPurpose = "reconcile"
 	RuntimeBindingPurposeDeactivate RuntimeBindingPurpose = "deactivate"
 )
@@ -389,9 +408,12 @@ type OperationScheduler interface {
 }
 
 type ChangedEvent struct {
-	ConnectorKey string `json:"connectorKey,omitempty"`
-	OperationID  string `json:"operationId,omitempty"`
-	Revision     uint64 `json:"revision"`
+	ConnectorKey   string              `json:"connectorKey,omitempty"`
+	OperationID    string              `json:"operationId,omitempty"`
+	OwnerAccountID string              `json:"ownerAccountId,omitempty"`
+	Visibility     OperationVisibility `json:"visibility,omitempty"`
+	Revision       uint64              `json:"revision"`
+	Cursor         int64               `json:"cursor,omitempty"`
 }
 
 type ChangedEventRecord struct {

@@ -1,4 +1,5 @@
 import type { Connector } from "../../contracts/index.ts";
+import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-authorization-protocol/v1";
 import type { ConnectorMarketStoreState } from "../connectorMarketService.interface.ts";
 import type { ConnectorMarketUiState } from "../ui-state/connectorMarketUiStateService.interface.ts";
 import type {
@@ -90,6 +91,11 @@ export function buildConnectorMarketView(
         ? Boolean(market.authorizingConnectorKeys[uiState.dialog.connectorKey])
         : false,
       uiState.dialog
+        ? market.pendingAuthorizationsByConnectorKey[
+            uiState.dialog.connectorKey
+          ] === true
+        : false,
+      uiState.dialog
         ? market.pendingInstallationsByConnectorKey[
             uiState.dialog.connectorKey
           ] === true
@@ -97,7 +103,10 @@ export function buildConnectorMarketView(
       uiState.dialog
         ? (market.operationsByConnectorKey[uiState.dialog.connectorKey]
             ?.stage ?? null)
-        : null
+        : null,
+      uiState.dialog
+        ? market.authorizationViewsByConnectorKey[uiState.dialog.connectorKey]
+        : undefined
     ),
     installedCount,
     refreshing: market.catalogState === "refreshing",
@@ -208,8 +217,10 @@ function buildConnectorDialogView(
   connector: Connector | undefined,
   requestKind: NonNullable<ConnectorMarketUiState["dialog"]>["kind"] | null,
   authorizing: boolean,
+  pendingAuthorization: boolean,
   pendingInstallation: boolean,
-  operationStage: ConnectorCardView["operationStage"]
+  operationStage: ConnectorCardView["operationStage"],
+  authorizationView?: AuthorizationViewEnvelopeV1
 ): ConnectorDialogView | null {
   if (!connector) {
     return null;
@@ -259,9 +270,13 @@ function buildConnectorDialogView(
       authorizationInteraction:
         connector.release.manifest.authorizationInteraction,
       authorizationKind: connector.release.manifest.authorizationKind,
+      authorizationView,
       authorizing,
+      brokeredAuthorization:
+        connector.release.manifest.authorizationInteractionMode === "managed",
       kind: "authorization",
-      pending: connector.authorization.state === "pending"
+      pending:
+        pendingAuthorization || connector.authorization.state === "pending"
     };
   }
   return {

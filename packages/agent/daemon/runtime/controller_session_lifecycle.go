@@ -79,13 +79,21 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	}
 	events, err := adapter.Start(ctx, session)
 	if err != nil {
-		detail := cleanVisibleErrorText(err.Error())
-		code := visibleFailureCode(detail)
-		startError := &AppError{
-			Code:         code,
-			Message:      visibleFailureContent(provider, "start", code),
-			DebugMessage: detail,
-			Cause:        err,
+		startError := err
+		if AppErrorCode(err) == "" {
+			detail := cleanVisibleErrorText(err.Error())
+			code := visibleFailureCode(detail)
+			if errors.Is(err, ErrProviderStartTimeout) {
+				// Provider-start ownership is carried separately in the error
+				// chain. Keep the established presentation/API vocabulary here.
+				code = "request_timed_out"
+			}
+			startError = &AppError{
+				Code:         code,
+				Message:      visibleFailureContent(provider, "start", code),
+				DebugMessage: detail,
+				Cause:        err,
+			}
 		}
 		// Provider adapters may emit command/config snapshots before Start returns.
 		// Roll those provisional side channels back with the failed transaction so
@@ -96,6 +104,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		c.mu.Unlock()
 		return StartResult{}, startError
 	}
+	c.advanceLiveConnectionGeneration(roomID, agentSessionID)
 	session = applySessionEvents(session, events)
 	c.mu.Lock()
 	key := sessionKey(roomID, agentSessionID)
@@ -291,6 +300,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		}
 		return session, nil
 	}
+	c.advanceLiveConnectionGeneration(roomID, agentSessionID)
 	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter); err != nil {
 		return Session{}, err
 	}
@@ -372,6 +382,7 @@ func (c *Controller) Reprepare(ctx context.Context, input ResumeInput) (Session,
 	if err := adapter.Resume(withProviderLaunchRuntimeContext(ctx, input.ProviderLaunchRuntimeContext), replacement); err != nil {
 		return Session{}, err
 	}
+	c.advanceLiveConnectionGeneration(roomID, agentSessionID)
 	if err := c.applyRetainedGoalGenerationFences(ctx, replacement, adapter); err != nil {
 		_ = releaser.ReleaseLiveSession(context.WithoutCancel(ctx), replacement)
 		return Session{}, err
@@ -438,6 +449,7 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 		delete(c.provisionalSessions, key)
 		delete(c.sessionInitializations, key)
 		delete(c.sessions, key)
+		delete(c.liveConnectionGenerations, key)
 		delete(c.turns, key)
 		delete(c.commands, key)
 		delete(c.pendingCommandSnapshots, session.AgentSessionID)
@@ -461,6 +473,7 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	c.enqueueSessionReport(ctx, session, events)
 	c.mu.Lock()
 	delete(c.sessions, key)
+	delete(c.liveConnectionGenerations, key)
 	delete(c.turns, key)
 	delete(c.commands, key)
 	delete(c.pendingCommandSnapshots, session.AgentSessionID)

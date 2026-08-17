@@ -15,6 +15,7 @@ import {
   projectConversationRailSearchSections,
   projectConversationRailSectionsWithActiveConversation,
   projectConversationRailSectionsWithTransientConversations,
+  conversationRailActiveOverlayCountsTowardTotal,
   conversationRailSectionActiveConversationId,
   conversationRailSectionHeaderVisibility,
   isConversationRailProjectPinned,
@@ -615,24 +616,27 @@ export const AgentGUIConversationRailPane = memo(
                     activeOverlayConversation &&
                     section.items.some(
                       (item) =>
-                        item.projectionSource !== "pending_activation" &&
+                        item.projectionSource === undefined &&
                         item.id === activeOverlayConversation.id
                     )
                   );
-                  const activeOverlayCountsTowardTotal = Boolean(
-                    activeOverlayConversation &&
-                    activeOverlayConversation.projectionSource !==
-                      "pending_activation" &&
-                    matchesAgentGUIConversationSummaryFilter(
-                      activeOverlayConversation,
-                      conversationFilter
-                    )
-                  );
+                  const activeOverlayCountsTowardTotal =
+                    conversationRailActiveOverlayCountsTowardTotal({
+                      activeConversation: activeOverlayConversation,
+                      matchesFilter: Boolean(
+                        activeOverlayConversation &&
+                        matchesAgentGUIConversationSummaryFilter(
+                          activeOverlayConversation,
+                          conversationFilter
+                        )
+                      ),
+                      sectionItems: section.items
+                    });
                   const sectionTotalCount = backendSearchActive
                     ? section.items.length + (searchSectionHasMore ? 1 : 0)
                     : (sectionPageState?.totalCount ??
                       section.items.filter(
-                        (item) => item.projectionSource !== "pending_activation"
+                        (item) => item.projectionSource === undefined
                       ).length +
                         (activeOverlayCountsTowardTotal &&
                         !activeOverlayIsCanonical

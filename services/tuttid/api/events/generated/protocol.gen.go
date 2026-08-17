@@ -6,7 +6,7 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:92fde556d9bb44a6"
+	BusinessEventCatalogRevision = "sha256:6d8446843b4f5a8d"
 )
 
 type Topic string
@@ -301,6 +301,7 @@ type ConnectorMarketChangedPayload struct {
 	ConnectorKey *string `json:"connectorKey,omitempty"`
 	OperationId  *string `json:"operationId,omitempty"`
 	Revision     int     `json:"revision"`
+	Cursor       *int    `json:"cursor,omitempty"`
 }
 
 type PreferencesAgentComposerDefaultsChangedPayload struct {

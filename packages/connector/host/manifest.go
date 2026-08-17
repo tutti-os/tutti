@@ -14,12 +14,15 @@ import (
 )
 
 const (
-	ImplementationKindBuiltin              = "builtin"
-	ImplementationKindManagedStdio         = "managed_stdio"
-	ImplementationKindRemoteStreamableHTTP = "remote_streamable_http"
-	CredentialBrokerProtocolV1             = "tutti.connector.credentials.v1"
-	maxAgentRoutingAliases                 = 12
-	maxAgentRoutingAliasRunes              = 48
+	ImplementationKindBuiltin                = "builtin"
+	ImplementationKindManagedStdio           = "managed_stdio"
+	ImplementationKindRemoteStreamableHTTP   = "remote_streamable_http"
+	CredentialBrokerProtocolV1               = "tutti.connector.credentials.v1"
+	CredentialBrokerPresentationEmbeddedPage = "embedded_page"
+	CredentialBrokerPresentationQRCode       = "qr_code"
+	AuthorizationInteractionModeManaged      = "managed"
+	maxAgentRoutingAliases                   = 12
+	maxAgentRoutingAliasRunes                = 48
 )
 
 var connectorKeyPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,126}[a-z0-9])?$`)
@@ -117,7 +120,22 @@ func validateReleaseShape(release Release, validateIcon bool) error {
 		strings.TrimSpace(release.Artifact.MediaType) == "" {
 		return invalidManifest("artifact key, lowercase SHA-256, positive sizeBytes, and mediaType are required", nil)
 	}
-	return validateManifestShape(release.Manifest, validateIcon)
+	if err := validateManifestShape(release.Manifest, validateIcon); err != nil {
+		return err
+	}
+	return validateLegacyCredentialBrokerPresentation(release)
+}
+
+func validateLegacyCredentialBrokerPresentation(release Release) error {
+	managed := release.Manifest.Implementation.ManagedStdio
+	if managed == nil || managed.CredentialBroker == nil ||
+		managed.CredentialBroker.Presentation != CredentialBrokerPresentationEmbeddedPage {
+		return nil
+	}
+	if release.ConnectorKey == "wecom-cli" && release.Version == "0.1.4" {
+		return nil
+	}
+	return invalidManifest("embedded_page presentation is reserved for the legacy wecom-cli 0.1.4 release", nil)
 }
 
 func ValidateManifestShape(manifest Manifest) error {
@@ -271,6 +289,9 @@ func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind 
 		if !safeRelativeEntrypoint(managed.CLI.Entrypoint) {
 			return invalidManifest("managed CLI entrypoint is required", nil)
 		}
+		if !manifestIdentifierPattern.MatchString(ManagedCLICommandName(*managed.CLI)) {
+			return invalidManifest("managed CLI command must be a safe identifier", nil)
+		}
 		for _, argument := range managed.CLI.Arguments {
 			if strings.ContainsRune(argument, '\x00') {
 				return invalidManifest("managed CLI arguments must not contain NUL", nil)
@@ -342,6 +363,14 @@ func validateManagedCredentialBroker(broker *ManagedCredentialBroker, hasCLI boo
 	}
 	if broker.TimeoutMS < 1_000 || broker.TimeoutMS > 10*60*1_000 {
 		return invalidManifest("credential broker timeoutMs must be between 1000 and 600000", nil)
+	}
+	// Manifest-only validation has no connector identity or release version.
+	// Release validation restricts embedded_page to the legacy wecom-cli 0.1.4
+	// compatibility case; hosts deliberately project it as an external link.
+	if broker.Presentation != "" &&
+		broker.Presentation != CredentialBrokerPresentationEmbeddedPage &&
+		broker.Presentation != CredentialBrokerPresentationQRCode {
+		return invalidManifest("credential broker presentation is unsupported", nil)
 	}
 	if len(broker.AllowedHosts) == 0 {
 		return invalidManifest("credential broker requires at least one allowed authorization host", nil)

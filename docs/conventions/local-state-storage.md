@@ -503,6 +503,14 @@ Tutti provider startup.
 - desktop-to-daemon listener publication defaults to `<state-dir>/run/tuttid.listener.json`
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
 - packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the canonical user-level command path and points it at the packaged CLI binary; on macOS and Linux, when the login-shell `PATH` already contains writable `~/.local/bin` or `~/bin`, desktop also maintains a Tutti-owned forwarding shim there without replacing third-party commands
+- packaged Windows uninstall preserves the `.tutti` state root by default but
+  removes canonical and user-PATH `tutti.cmd` shims only when their marker line
+  identifies them as Tutti-owned; uninstall must not delete an unmarked
+  third-party command with the same name; interactive uninstall asks whether
+  to preserve or delete all user state, while silent uninstall preserves it
+  unless explicitly invoked with `--delete-app-data`; the delete path removes
+  daemon state, Electron user data, updater cache, and the per-user `tutti`
+  protocol registration
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
 - workspace app package cache, per-installation runtime/data/database/log state, and
   app factory job working directories live under `<state-dir>/apps`

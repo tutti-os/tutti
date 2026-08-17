@@ -93,7 +93,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("workspace-apps.app.open", []string{"app", "open"}, []string{"app-id"}, nil),
 		command("references.task.list", []string{"reference", "list"}, []string{"source", "id"}, []string{"group-id"}),
 		command("agent-context.agent.list", []string{"agent", "list"}, nil, []string{"agent-id"}),
-		command("agent-context.agent.start", []string{"agent", "start"}, []string{"agent-id", "prompt"}, []string{"show", "image"}),
+		command("agent-context.agent.start", []string{"agent", "start"}, []string{"agent-id", "prompt"}, []string{"show", "image", "cwd"}),
 		command("agent-context.agent.send", []string{"agent", "send"}, []string{"session-id", "prompt"}, nil),
 		command("agent-context.agent.get", []string{"agent", "get"}, []string{"session-id"}, []string{"view", "turns", "turn-id"}),
 		command("agent-context.agent.sessions", []string{"agent", "sessions"}, nil, nil),
@@ -124,7 +124,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("computer.move-cursor", []string{"computer", "move-cursor"}, []string{"x", "y"}, nil),
 		command("computer.tool.list", []string{"computer", "tool", "list"}, nil, nil),
 		command("computer.tool.describe", []string{"computer", "tool", "describe"}, []string{"name"}, nil),
-		command("computer.tool.call", []string{"computer", "tool", "call"}, []string{"name", "arguments-json"}, nil),
+		command("computer.tool.call", []string{"computer", "tool", "call"}, []string{"name"}, []string{"arguments-json"}),
 	}
 	for index := range commands {
 		if commands[index].ID == "agent-context.agent.wait" {

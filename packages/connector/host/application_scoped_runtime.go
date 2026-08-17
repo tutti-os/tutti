@@ -195,34 +195,14 @@ func (application *Application) projectAuthorizationAndScheduleRuntime(
 	state AuthorizationState,
 	failureCode string,
 ) error {
-	remote, err := application.projectAuthorization(ctx, scope, connectorKey, connectionID, state, failureCode)
+	_, err := application.projectAuthorization(ctx, scope, connectorKey, connectionID, state, failureCode)
 	if err != nil || application.config.AuthorizationProjections == nil || strings.TrimSpace(scope.AccountID) == "" {
 		return err
 	}
 	if state == AuthorizationStatePending {
 		return nil
 	}
-	deviceSnapshot, err := application.Snapshot(ctx)
-	if err != nil {
-		return err
-	}
-	requestID, err := application.config.NewID()
-	if err != nil {
-		return err
-	}
-	requestPrefix := "authorization-projection/"
-	if remote {
-		requestPrefix = "authorization-snapshot/"
-	}
-	_, err = application.ReconcileRuntime(ctx, ConnectorMutation{
-		Mutation: Mutation{
-			ClientRequestID:  requestPrefix + requestID,
-			ExpectedRevision: deviceSnapshot.Revision,
-		},
-		ConnectorKey: strings.TrimSpace(connectorKey),
-		AccountID:    strings.TrimSpace(scope.AccountID),
-	})
-	return err
+	return application.ReconcileRuntimeDesired(ctx, scope, connectorKey)
 }
 
 // projectAuthorization persists authorization truth without creating runtime
@@ -380,97 +360,11 @@ func (application *Application) reconcileInstalledRuntimesForScope(ctx context.C
 			reconcileFailures.add(connector.Key, "validate installed release", validationErr)
 			continue
 		}
-		installedConnector := connector
-		installedConnector.Release = installedRelease
-		// Bootstrap first fences durable runtime intent at the connector's
-		// current revision. Recovery must publish a strictly newer generation;
-		// otherwise RouteTable correctly rejects it as a stale resurrection.
-		generation := nextGeneration(connector.Revision)
-		operationID := "reconcile/" + application.config.BootEpoch + "/" + connector.Key
-		operation := Operation{OperationID: operationID, ConnectorKey: connector.Key, Scope: scope}
-		binding, err := application.resolveRuntimeBinding(ctx, operation, installedConnector, installedRelease, RuntimeBindingPurposeReconcile)
-		if err != nil {
-			reconcileFailures.add(connector.Key, "resolve runtime binding", err)
-			continue
-		}
-		installedConnector.Authorization.State = binding.AuthorizationState
-		receipt, err := application.reconcileRuntime(ctx, RuntimeReconcileRequest{
-			OperationID: operationID, Scope: scope, ConnectionID: binding.ConnectionID,
-			Connector: installedConnector, Enabled: binding.Enabled, CredentialBrokerGrant: binding.CredentialBrokerGrant,
-			Generation: HostGeneration{BootEpoch: application.config.BootEpoch, Generation: generation},
-		})
-		if err != nil {
+		if err := application.reconcileRuntimeDesiredAfterFence(ctx, scope, connector.Key); err != nil {
 			reconcileFailures.add(connector.Key, "reconcile runtime", err)
-			continue
-		}
-		if err := validateRuntimeReceipt(receipt, operationID, binding.ConnectionID, connector.Key,
-			installedRelease.ReleaseDigest, HostGeneration{BootEpoch: application.config.BootEpoch, Generation: generation},
-			binding.Enabled); err != nil {
-			reconcileFailures.add(connector.Key, "validate runtime receipt", err)
-			continue
-		}
-		if err := application.recordDirectRuntimeGeneration(ctx, scope, connector.Key, installedRelease.ReleaseDigest, operationID, generation); err != nil {
-			if remoteAuthorizedOnly {
-				reconcileFailures.add(connector.Key, "record runtime generation", err)
-				continue
-			}
-			return err
 		}
 	}
 	return reconcileFailures.errOrNil()
-}
-
-// recordDirectRuntimeGeneration makes startup reconciliation participate in
-// the same durable generation clock as user-initiated operations. Without this
-// commit, the VM can accept generation N+1 while SQLite remains at N; the next
-// same-boot fence is then rejected as stale even though desktopd is the owner.
-func (application *Application) recordDirectRuntimeGeneration(
-	ctx context.Context,
-	scope OperationScope,
-	connectorKey, releaseDigest, operationID string,
-	generation uint64,
-) error {
-	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		connector, err := tx.Connector(connectorKey)
-		if err != nil {
-			return err
-		}
-		if connector.Installation.State != InstallationStateInstalled ||
-			connector.Installation.InstalledReleaseDigest != releaseDigest {
-			return NewDomainError(ErrorCodeRevisionConflict, "installed connector changed during runtime recovery", true, nil)
-		}
-		if connector.Revision >= generation {
-			return nil
-		}
-		revision := tx.Revision()
-		for revision < generation {
-			revision = tx.AdvanceRevision()
-		}
-		connector.Revision = revision
-		if err := tx.SaveConnector(connector); err != nil {
-			return err
-		}
-		now := application.config.Now().UTC()
-		if err := tx.SaveOperation(Operation{
-			OperationID:     operationID,
-			ClientRequestID: operationID,
-			ConnectorKey:    connector.Key,
-			Kind:            OperationKindReconcileRuntime,
-			Scope:           scope,
-			State:           OperationStateCompleted,
-			Stage:           OperationStageCompleted,
-			Target:          operationTarget(OperationKindReconcileRuntime, connector),
-			HostGeneration:  HostGeneration{BootEpoch: application.config.BootEpoch, Generation: generation},
-			Attempt:         1,
-			CreatedAt:       now,
-			UpdatedAt:       now,
-		}); err != nil {
-			return err
-		}
-		return tx.EnqueueConnectorMarketChanged(ChangedEvent{
-			ConnectorKey: connector.Key, OperationID: operationID, Revision: revision,
-		})
-	})
 }
 
 func (application *Application) FenceInstalledRuntimes(ctx context.Context) error {
@@ -494,7 +388,20 @@ func (application *Application) FenceInstalledRuntimesForScope(ctx context.Conte
 		}
 		installedRelease, evidenceErr := application.installedReleaseEvidence(ctx, connector)
 		if evidenceErr != nil {
-			fenceErrors = append(fenceErrors, evidenceErr)
+			// Legacy stores may have lost the previous release metadata when a
+			// prepared update failed. The implementation host can still fence every
+			// route for the connector by identity, without trusting that metadata.
+			// This keeps the connector fail-closed without holding the global
+			// publication gate closed and blocking a repair install.
+			fallbackErr := application.config.Host.DeactivateRuntime(ctx, RuntimeDeactivationRequest{
+				Scope: scope, ConnectionID: defaultConnectorConnectionID, ConnectorKey: connector.Key,
+				ReleaseDigest: connector.Installation.InstalledReleaseDigest, AllConnections: true,
+				Generation: HostGeneration{BootEpoch: application.config.BootEpoch, Generation: maxGeneration(connector.Revision)},
+				Deadline:   application.config.Now().UTC().Add(5 * time.Second),
+			})
+			if fallbackErr != nil {
+				fenceErrors = append(fenceErrors, errors.Join(evidenceErr, fallbackErr))
+			}
 			continue
 		}
 		connector.Release = installedRelease

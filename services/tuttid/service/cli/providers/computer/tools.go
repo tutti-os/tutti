@@ -20,7 +20,7 @@ type toolNameInput struct {
 
 type toolCallInput struct {
 	Name          string `cli:"name" validate:"required" description:"Native cua-driver tool name from computer tool list."`
-	ArgumentsJSON string `cli:"arguments-json" description:"Tool arguments as one JSON object. Defaults to {}."`
+	ArgumentsJSON string `cli:"arguments-json" description:"JSON object. Use - in the CLI to read from standard input. Defaults to {}."`
 }
 
 type toolListResult struct {
@@ -144,7 +144,11 @@ func nativeToolOutputSpec() framework.OutputSpec {
 		RawJSONReason: "native computer tool results preserve the complete MCP result envelope, " +
 			"including future content variants",
 		PlainText: func(result any) string {
-			return result.(computersvc.ToolResult).Text
+			toolResult := result.(computersvc.ToolResult)
+			if toolResult.IsError {
+				return computersvc.ToolResultDiagnostic(toolResult)
+			}
+			return toolResult.Text
 		},
 		JSONViews: map[framework.OutputView]func(any) map[string]any{
 			framework.ViewSummary: func(result any) map[string]any {
@@ -154,6 +158,9 @@ func nativeToolOutputSpec() framework.OutputSpec {
 					decoder := json.NewDecoder(bytes.NewReader(toolResult.Raw))
 					decoder.UseNumber()
 					if err := decoder.Decode(&native); err == nil && native != nil {
+						if toolResult.IsError {
+							native["tuttiDiagnostic"] = computersvc.ToolResultDiagnostic(toolResult)
+						}
 						return native
 					}
 				}

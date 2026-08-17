@@ -107,6 +107,37 @@ func TestStandardACPAdaptersReportProviderLifecycleWithoutSettlingCanonicalRoot(
 	}
 }
 
+func TestStandardACPAdapterPreservesFinalMarkdownThroughTurnProjection(t *testing.T) {
+	t.Parallel()
+
+	const finalMarkdown = "# Result\n\n- first\n- second\n\n```go\nfmt.Println(\"ok\")\n```\n"
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-markdown")
+	transport.conn.promptFinalContent = []map[string]any{
+		{"type": "text", "text": "# Result\n\n"},
+		{"type": "text", "text": "- first\n- second\n\n"},
+		{"type": "text", "text": "```go\nfmt.Println(\"ok\")\n```\n"},
+	}
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-markdown"
+
+	events, err := adapter.Exec(context.Background(), session, textPrompt("format the result"), "", "turn-markdown", nil, nil)
+	if err != nil {
+		t.Fatalf("Exec: %v", err)
+	}
+	messages := activityMessagesWithRole(events, activityshared.MessageRoleAssistant)
+	if len(messages) == 0 {
+		t.Fatalf("assistant messages = %#v, want final Markdown snapshot", messages)
+	}
+	want := strings.TrimSpace(finalMarkdown)
+	if got := messages[len(messages)-1].Payload.Content; got != want {
+		t.Fatalf("final assistant content = %q, want %q", got, want)
+	}
+}
+
 func TestStandardACPAdapterFailsEmptyCompletedTurn(t *testing.T) {
 	t.Parallel()
 

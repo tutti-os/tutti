@@ -221,6 +221,7 @@ export function useAgentGUIDetailModel(input: Input) {
   const activeConversationTurnBusy = viewModel.composer.gate.conversationBusy;
   const isComposerSending =
     activeConversationTurnBusy ||
+    viewModel.composer.gate.isAwaitingTurnStart === true ||
     (!hasActiveConversation &&
       viewModel.composer.gate.submission.status === "blocked" &&
       viewModel.composer.gate.submission.reason === "creating_conversation");
@@ -238,6 +239,8 @@ export function useAgentGUIDetailModel(input: Input) {
     isCancelPending: viewModel.composer.isCancelPending,
     isConversationBusy: activeConversationTurnBusy,
     isCreatingConversation: viewModel.composer.isCreatingConversation,
+    hasPendingSubmitStopTarget:
+      viewModel.composer.hasPendingSubmitStopTarget === true,
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
     isUnavailable: viewModel.readiness.activeLiveState === "failed"
@@ -551,6 +554,7 @@ export function useAgentGUIDetailModel(input: Input) {
       addContentConnectorConnect: labels.addContentConnectorConnect,
       addContentConnectorAuthorize: labels.addContentConnectorAuthorize,
       addContentConnectorEmpty: labels.addContentConnectorEmpty,
+      addContentConnectorLoading: labels.addContentConnectorLoading,
       addContentConnectorMore: labels.addContentConnectorMore,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       handoffConversation: labels.handoffConversation,
@@ -586,6 +590,7 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.addContentConnectorConnect,
       labels.addContentConnectorAuthorize,
       labels.addContentConnectorEmpty,
+      labels.addContentConnectorLoading,
       labels.addContentConnectorMore,
       labels.deleteQueuedPrompt,
       labels.editQueuedPrompt,

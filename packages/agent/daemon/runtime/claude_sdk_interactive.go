@@ -225,6 +225,21 @@ func (a *ClaudeCodeSDKAdapter) applyClaudeSDKInteractiveAck(
 	response pendingInteractiveResponse,
 	ack claudeSDKInteractiveAck,
 ) {
+	if a == nil || adapterSession == nil || pending == nil {
+		return
+	}
+	// The sidecar response is received without this lock, but its canonical
+	// effects share the exact-session commit axis with reader dispatch and
+	// replacement. A response from E1 cannot settle or publish after E2 wins.
+	adapterSession.dispatchMu.Lock()
+	defer adapterSession.dispatchMu.Unlock()
+	rootAgentSessionID := firstNonEmptyString(
+		strings.TrimSpace(adapterSession.session.AgentSessionID),
+		strings.TrimSpace(session.AgentSessionID),
+	)
+	if !a.sessionMayDispatch(rootAgentSessionID, adapterSession) {
+		return
+	}
 	var state pendingInteractiveRequestState
 	var terminalErr error
 	switch ack.disposition {

@@ -9,6 +9,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/Agent
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto/agentSession";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
+import type { AgentProjectDropdownOptions } from "../AgentComposerProjectMenu";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type { AgentRichTextEditorProps } from "../agentRichText/AgentRichTextEditor.types";
@@ -53,6 +54,8 @@ export interface AgentComposerReferenceProvenanceFilters {
 }
 
 export interface AgentComposerSubmitOptions {
+  /** Exact draft captured by the Composer for conditional post-submit clearing. */
+  submittedDraft?: AgentComposerDraft;
   isolation?: "worktree";
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
   capabilityRefs?: readonly AgentComposerCapabilityReference[];
@@ -365,6 +368,7 @@ export interface AgentComposerProps {
     addContentConnectorConnect: string;
     addContentConnectorAuthorize: string;
     addContentConnectorEmpty: string;
+    addContentConnectorLoading: string;
     addContentConnectorMore: string;
     referenceWorkspaceFiles: string;
     handoffConversation: string;
@@ -419,8 +423,11 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
-  /** Retries the target-scoped composer options request after a terminal failure. */
-  onRetryComposerOptions?: () => void;
+  /** Retries or explicitly refreshes the target-scoped composer options. */
+  onRetryComposerOptions?: (options?: {
+    section?: "core" | "capabilities" | "connectors";
+    waitForFreshModelCatalog?: boolean;
+  }) => void;
   onTuttiModeChange?: (active: boolean) => void;
   onTuttiModeEffectChange?: (value: number) => void;
   onTuttiModeSpeedChange?: (value: number) => void;
@@ -471,6 +478,7 @@ export interface AgentComposerProps {
   resolvePastedPath?: AgentRichTextEditorProps["onResolvePastedPath"] | null;
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  projectSelectOptions?: AgentProjectDropdownOptions;
   /** Explicit project capability for lifecycle-free Composer embeddings. */
   userProjectApi?: WorkspaceUserProjectApi | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
@@ -492,6 +500,8 @@ export interface AgentComposerCapabilityMenuState {
   computerUse?: {
     authorization?: AgentComposerComputerUseAuthorizationState | null;
     installed?: boolean | null;
+    /** Host can present the computer-use setup surface. Fail closed. */
+    presentationSupported?: boolean | null;
   };
   /**
    * Host-owned connector visibility override. Missing preserves the existing

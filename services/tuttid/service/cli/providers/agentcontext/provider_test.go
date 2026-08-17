@@ -1563,28 +1563,22 @@ func TestStartCommandPreservesCommaInImagePath(t *testing.T) {
 }
 
 func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
-	sessions := &fakeAgentSessions{
-		getSession: agentservice.Session{
-			ID:              "CALLER-1",
-			Cwd:             "/workspace/a-worktree",
-			RailSectionKind: "project",
-			RailProjectPath: "/workspace/a",
-			RailSectionKey:  "project:/workspace/a",
-		},
-	}
+	sessions := &fakeAgentSessions{}
 	command := newTestClaudeStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"agent-id": agenttargetbiz.IDLocalClaudeCode, "model": "sonnet", "prompt": "do work"},
 		Context: cliservice.InvokeContext{
-			AgentSessionID: "CALLER-1",
+			AgentSessionID:         "CALLER-1",
+			AgentCWD:               "/workspace/a-worktree",
+			AgentRailPlacementJSON: `{"version":1,"kind":"project","projectPath":"/workspace/a","sectionKey":"project:/workspace/a"}`,
 		},
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.sessionID != "CALLER-1" {
-		t.Fatalf("sessionID = %q, want CALLER-1", sessions.sessionID)
+	if sessions.sessionID != "" {
+		t.Fatalf("sessionID = %q, want no caller lookup", sessions.sessionID)
 	}
 	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/a-worktree" {
 		t.Fatalf("Cwd = %#v, want /workspace/a-worktree", sessions.createInput.Cwd)
@@ -1598,31 +1592,28 @@ func TestStartCommandInheritsCallerSessionCwd(t *testing.T) {
 	}
 }
 
-func TestStartCommandFallsBackToCallerProjectPathWhenCwdIsEmpty(t *testing.T) {
-	sessions := &fakeAgentSessions{
-		getSession: agentservice.Session{
-			ID:              "CALLER-1",
-			RailSectionKind: "project",
-			RailProjectPath: "/workspace/a",
-			RailSectionKey:  "project:/workspace/a",
-		},
-	}
+func TestStartCommandInheritsCallerConversationsPlacement(t *testing.T) {
+	sessions := &fakeAgentSessions{}
 	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
 		Input: map[string]any{"agent-id": agenttargetbiz.IDLocalCodex, "prompt": "do work"},
 		Context: cliservice.InvokeContext{
-			AgentSessionID: "CALLER-1",
+			AgentSessionID:         "CALLER-1",
+			AgentCWD:               "/workspace/a",
+			AgentRailPlacementJSON: `{"version":1,"kind":"conversations","sectionKey":"conversations"}`,
 		},
 	})
 	if err != nil {
 		t.Fatalf("Handler: %v", err)
 	}
 	if sessions.createInput.Cwd == nil || *sessions.createInput.Cwd != "/workspace/a" {
-		t.Fatalf("Cwd = %#v, want caller project path fallback", sessions.createInput.Cwd)
+		t.Fatalf("Cwd = %#v, want /workspace/a", sessions.createInput.Cwd)
 	}
-	if sessions.createInput.RailPlacement == nil {
-		t.Fatal("RailPlacement = nil, want caller project placement")
+	if sessions.createInput.RailPlacement == nil ||
+		sessions.createInput.RailPlacement.Kind != "conversations" ||
+		sessions.createInput.RailPlacement.SectionKey != "conversations" {
+		t.Fatalf("RailPlacement = %#v, want caller conversations placement", sessions.createInput.RailPlacement)
 	}
 }
 
@@ -1654,9 +1645,7 @@ func TestStartCommandExposesAndPassesWorktreeIsolation(t *testing.T) {
 }
 
 func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
-	sessions := &fakeAgentSessions{
-		getSession: agentservice.Session{ID: "CALLER-1", Cwd: "/workspace/a"},
-	}
+	sessions := &fakeAgentSessions{}
 	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
@@ -1667,7 +1656,9 @@ func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
 			"prompt":   "do work",
 		},
 		Context: cliservice.InvokeContext{
-			AgentSessionID: "CALLER-1",
+			AgentSessionID:         "CALLER-1",
+			AgentCWD:               "/workspace/a",
+			AgentRailPlacementJSON: "invalid inherited placement must be ignored",
 		},
 	})
 	if err != nil {
@@ -1684,23 +1675,8 @@ func TestStartCommandExplicitCwdOverridesCallerSessionCwd(t *testing.T) {
 	}
 }
 
-func TestStartCommandWithoutCallerSessionLeavesCwdForAllocator(t *testing.T) {
+func TestStartCommandWithoutInheritedRuntimeContextLeavesCwdForAllocator(t *testing.T) {
 	sessions := &fakeAgentSessions{}
-	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
-
-	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"agent-id": agenttargetbiz.IDLocalCodex, "model": "gpt-5", "prompt": "do work"},
-	})
-	if err != nil {
-		t.Fatalf("Handler: %v", err)
-	}
-	if sessions.createInput.Cwd != nil {
-		t.Fatalf("Cwd = %#v, want nil", sessions.createInput.Cwd)
-	}
-}
-
-func TestStartCommandMissingCallerSessionFailsClosed(t *testing.T) {
-	sessions := &fakeAgentSessions{getErr: agentservice.ErrSessionNotFound}
 	command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
 
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
@@ -1709,11 +1685,60 @@ func TestStartCommandMissingCallerSessionFailsClosed(t *testing.T) {
 			AgentSessionID: "CALLER-1",
 		},
 	})
-	if !errors.Is(err, agentservice.ErrSessionNotFound) {
-		t.Fatalf("Handler error = %v, want ErrSessionNotFound", err)
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
 	}
-	if sessions.createCallCount != 0 {
-		t.Fatalf("createCallCount = %d, want no detached session", sessions.createCallCount)
+	if sessions.createInput.Cwd != nil {
+		t.Fatalf("Cwd = %#v, want nil", sessions.createInput.Cwd)
+	}
+	if sessions.sessionID != "" {
+		t.Fatalf("sessionID = %q, want no caller lookup", sessions.sessionID)
+	}
+}
+
+func TestStartCommandRejectsInvalidInheritedRuntimeContext(t *testing.T) {
+	for _, tt := range []struct {
+		name    string
+		context cliservice.InvokeContext
+	}{
+		{
+			name: "missing placement",
+			context: cliservice.InvokeContext{
+				AgentSessionID: "CALLER-1",
+				AgentCWD:       "/workspace/a",
+			},
+		},
+		{
+			name: "missing cwd",
+			context: cliservice.InvokeContext{
+				AgentSessionID:         "CALLER-1",
+				AgentRailPlacementJSON: `{"version":1,"kind":"project","projectPath":"/workspace/a","sectionKey":"project:/workspace/a"}`,
+			},
+		},
+		{
+			name: "malformed placement",
+			context: cliservice.InvokeContext{
+				AgentSessionID:         "CALLER-1",
+				AgentCWD:               "/workspace/a",
+				AgentRailPlacementJSON: `{"version":1,"kind":"project"}`,
+			},
+		},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			sessions := &fakeAgentSessions{}
+			command := newTestCodexStartCommand(newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions))
+
+			_, err := command.Handler(context.Background(), cliservice.InvokeRequest{
+				Input:   map[string]any{"agent-id": agenttargetbiz.IDLocalCodex, "model": "gpt-5", "prompt": "do work"},
+				Context: tt.context,
+			})
+			if !errors.Is(err, cliservice.ErrInvalidInput) {
+				t.Fatalf("Handler error = %v, want ErrInvalidInput", err)
+			}
+			if sessions.createCallCount != 0 || sessions.sessionID != "" {
+				t.Fatalf("createCallCount=%d sessionID=%q, want no create or caller lookup", sessions.createCallCount, sessions.sessionID)
+			}
+		})
 	}
 }
 

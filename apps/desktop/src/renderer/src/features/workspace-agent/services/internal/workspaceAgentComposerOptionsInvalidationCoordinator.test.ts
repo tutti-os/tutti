@@ -48,8 +48,8 @@ test("connector Lab visibility changes invalidate cached Composer Options", () =
   publishVisibility(true);
 
   assert.deepEqual(dispatched, [
-    { type: "composerOptions/invalidated" },
-    { type: "composerOptions/invalidated" }
+    { sections: ["connectors"], type: "composerOptions/invalidated" },
+    { sections: ["connectors"], type: "composerOptions/invalidated" }
   ]);
   assert.deepEqual(catalogInvalidations, [{ revision: 1 }, { revision: 2 }]);
 });

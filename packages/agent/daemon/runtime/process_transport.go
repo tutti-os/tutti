@@ -46,10 +46,10 @@ type localProcessConnection struct {
 	frames             chan ProcessFrame
 	stdin              io.WriteCloser
 
-	closeOnce sync.Once
-	sendMu    sync.Mutex
-	inputOnce sync.Once
-	closeErr  error
+	closeMu     sync.Mutex
+	closingOnce sync.Once
+	sendMu      sync.Mutex
+	inputOnce   sync.Once
 }
 
 func NewLocalProcessTransport() ProcessTransport {
@@ -303,29 +303,34 @@ func (c *localProcessConnection) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.closeOnce.Do(func() {
-		close(c.closing)
-		_ = c.CloseInput()
-		if !c.waitDone(250 * time.Millisecond) {
-			_ = c.Terminate()
-		}
-		if !c.waitDone(750 * time.Millisecond) {
-			killErr := c.Kill()
-			if !c.waitDone(2 * time.Second) {
-				if killErr != nil {
-					c.closeErr = killErr
-					return
-				}
-				c.closeErr = errors.New("process did not exit after kill")
-				return
-			}
-		}
-	})
-	if c.closeErr != nil {
-		return c.closeErr
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.waitDone(0) {
+		return nil
 	}
-	<-c.done
-	return nil
+	c.closingOnce.Do(func() { close(c.closing) })
+	return closeLocalProcessAttempt(c.waitDone, c.CloseInput, c.Terminate, c.Kill)
+}
+
+func closeLocalProcessAttempt(
+	waitDone func(time.Duration) bool,
+	closeInput func() error,
+	terminate func() error,
+	kill func() error,
+) error {
+	_ = closeInput()
+	if waitDone(250 * time.Millisecond) {
+		return nil
+	}
+	_ = terminate()
+	if waitDone(750 * time.Millisecond) {
+		return nil
+	}
+	killErr := kill()
+	if waitDone(2 * time.Second) {
+		return nil
+	}
+	return errors.Join(killErr, errors.New("process did not exit after kill"))
 }
 
 func (c *localProcessConnection) CloseInput() error {

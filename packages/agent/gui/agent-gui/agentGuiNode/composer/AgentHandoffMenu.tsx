@@ -114,7 +114,7 @@ export function AgentHandoffMenu({
           triggerClassName
         )}
       >
-        <span className="flex min-w-0 items-center gap-1.5">
+        <span className="flex min-w-0 items-center gap-1">
           <AgentComposerHandoffIcon
             disabled={menuDisabled}
             isPlaying={isIconPlaying}
@@ -166,7 +166,7 @@ export function AgentHandoffMenu({
         }}
       >
         {tooltip ? (
-          <TooltipProvider delayDuration={120}>
+          <TooltipProvider delayDuration={120} disableHoverableContent>
             <Tooltip>
               <TooltipTrigger asChild>{trigger}</TooltipTrigger>
               <TooltipContent side="top">{tooltip}</TooltipContent>
@@ -222,7 +222,7 @@ export function AgentHandoffMenu({
                   <span className="flex min-w-0 flex-col gap-0.5">
                     <span className="min-w-0 truncate">{target.label}</span>
                     {ownershipLabel || deviceSourceLabel ? (
-                      <span className="flex min-w-0 items-center gap-1.5 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
+                      <span className="flex min-w-0 items-center gap-1 truncate text-[11px] leading-none text-[var(--agent-gui-text-secondary)]">
                         {ownershipLabel ? <span>{ownershipLabel}</span> : null}
                         {deviceSourceLabel ? (
                           <span>{deviceSourceLabel}</span>

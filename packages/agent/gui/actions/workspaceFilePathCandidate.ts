@@ -154,7 +154,8 @@ function stripWorkspaceFileLineAnchor(path: string): string {
 }
 
 export function workspaceFilePathBasename(path: string): string {
-  return path.split("/").filter(Boolean).at(-1) ?? path;
+  const normalized = path.trim().replaceAll("\\", "/");
+  return normalized.split("/").filter(Boolean).at(-1) ?? path;
 }
 
 export function isInsideOrEqualWorkspaceFilePath(

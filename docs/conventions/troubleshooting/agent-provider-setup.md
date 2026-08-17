@@ -985,24 +985,42 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   after the request, the canceled handler did not finish cleaning up its
   discovery subprocess.
 - Root cause:
-  Codex Composer Options needs both `model/list` and the app-server capability
-  catalog. Running those independent, individually bounded probes in series
-  can exceed the Desktop's aggregate request deadline. A second failure mode
-  occurs when timeout kills only the JavaScript launcher: its native child
-  inherits stdout, the response scanner never receives EOF, and deferred
-  `Wait` cannot run because it sits behind that scanner.
+  Codex Composer Options has two independent waits: `model/list` feeds the
+  model, reasoning, and speed controls, while app-server capability discovery
+  feeds skills and capability entries. A legacy combined response can still
+  wait for both, and repeated capability failures can otherwise start another
+  eight-second probe for every refresh.
 - Fix:
-  Start model-catalog loading before capability discovery so the two independent
-  app-server exchanges overlap. Run every short-lived Codex app-server in its
-  own process group, begin process reaping immediately, and make timeout cancel
-  the entire group. Keep the Desktop deadline unchanged so a genuinely stuck
-  daemon request still fails closed.
+  Desktop requests `section=core` for model controls. It requests
+  `section=capabilities` only when the user opens or uses a capability surface,
+  so the capability response and its eight-second provider timeout never block
+  the model controls. The legacy `section=full` response still starts both
+  catalogs concurrently. Capability loads use single-flight sharing plus a
+  short negative cache so identical callers do not stampede a broken app-server.
+  Run every short-lived Codex
+  app-server in its own process group, begin process reaping immediately, and
+  make timeout cancel the entire group. The daemon keeps one initialized Codex
+  app-server session warm per provider for up to two minutes, and refreshes the
+  five-minute model catalog in the background after expiry or an auth/config
+  invalidation. Identical atomic rewrites of Codex auth/config do not
+  invalidate the catalog because the watcher compares file content. Keep the
+  Desktop deadline unchanged so a genuinely stuck daemon request still fails
+  closed.
 - Validation:
   Block both catalog fixtures and assert both start before either is released.
   Use a fake app-server whose child retains stdout and assert model and
-  capability timeouts return promptly with no surviving child. Finally, time a
-  cold Composer Options request and confirm it completes within the Desktop
-  deadline.
+  capability timeouts return promptly with no surviving child. Assert concurrent
+  cold catalog callers share one fetch, stale options remain visible while the
+  background refresh runs, and repeated requests reuse one app-server process.
+  Finally, time a cold Composer Options request and confirm it completes within
+  the Desktop deadline. Useful logs are
+  `agent.model_catalog.fetch_start`, `stage_settled`, `fetch_settled`,
+  `request_settled`, `agent.composer_options.load`, and `process_idle_close`.
+  Composer telemetry reports section/stage, outcome, duration, and bounded
+  model identifiers without paths or settings. When an auth/config watcher
+  causes invalidation, `agent.model_catalog.invalidated` also includes the
+  exact changed file and change kind; use that field to distinguish Codex
+  auth/config churn from a provider-side fetch failure.
 - References:
   [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
   [codex_appserver_process.go](../../../services/tuttid/service/agent/codex_appserver_process.go)

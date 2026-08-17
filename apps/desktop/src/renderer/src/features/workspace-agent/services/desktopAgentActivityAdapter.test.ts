@@ -1282,7 +1282,10 @@ test("desktop agent activity adapter normalizes provider composer options", asyn
     {
       agentTargetId: null,
       durationMs: "number",
+      modelCount: 2,
+      modelNames: "gpt-5.5,gpt-5.4",
       provider: "codex",
+      section: "full",
       status: "ready"
     }
   );

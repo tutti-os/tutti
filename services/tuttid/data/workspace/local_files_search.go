@@ -175,6 +175,7 @@ func localFileSearchCandidates(
 	candidates := make([]workspacefiles.SearchCandidate, 0, min(len(paths), input.Limit))
 	stats := localFileSearchStats{indexedPathCount: len(paths)}
 	seen := make(map[string]struct{}, len(paths))
+	visibilityCache := make(map[string]bool)
 	for _, rawPath := range paths {
 		physicalPath := filepath.Clean(strings.TrimSpace(rawPath))
 		if physicalPath == "" {
@@ -216,7 +217,7 @@ func localFileSearchCandidates(
 			continue
 		}
 		if !input.IncludeHidden {
-			if localSearchPathIsHidden(relativeToRoot) {
+			if localSearchPathIsHidden(relativeToRoot) || shouldHideWorkspacePathCached(rootPath, physicalPath, visibilityCache) {
 				stats.skippedHiddenCount++
 				continue
 			}

@@ -13,11 +13,13 @@ import { createDesktopConnectorMarketBackend } from "./internal/desktopConnector
 import { createDesktopConnectorMarketEvents } from "./internal/desktopConnectorMarketEvents.ts";
 
 export interface ConnectorMarketModuleRegistrationInput {
+  autoUpdateInstalledConnectors?: boolean;
   canRequest?: () => boolean;
   client: ConnectorMarketClient;
   eventStreamClient: TuttidEventStreamClient;
   openAuthorizationUrl?: (url: string) => Promise<void>;
   reportDiagnostic?: (error: unknown) => void;
+  requestInstallAdmission?: () => void | Promise<void>;
 }
 
 export function registerConnectorMarketModule(
@@ -26,11 +28,14 @@ export function registerConnectorMarketModule(
 ): ConnectorMarketModuleService {
   const module = new ConnectorMarketModule({
     market: {
+      autoUpdateInstalledConnectors:
+        input.autoUpdateInstalledConnectors ?? true,
       backend: createDesktopConnectorMarketBackend(input.client),
       canRequest: input.canRequest,
       events: createDesktopConnectorMarketEvents(input.eventStreamClient),
       openAuthorizationUrl: input.openAuthorizationUrl,
-      reportDiagnostic: input.reportDiagnostic
+      reportDiagnostic: input.reportDiagnostic,
+      requestInstallAdmission: input.requestInstallAdmission
     },
     scope: {}
   });

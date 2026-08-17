@@ -218,9 +218,9 @@ the user.
 
 Explicit in-composer “model consult” (ask another plan/model for advice from
 the current session) is not a product surface: do not ship composer entry
-points, runtime commands, or timeline cards for it. The composer's `@` panel
-may still list enabled plan models as `workspace-model` mentions for prompt
-context; that chip is presentation-only and must not imply a consult runtime.
+points, runtime commands, timeline cards, or `@` mentions for it. Model access
+plans remain configurable through workspace settings and Agent/plan assignment
+surfaces; the composer does not select models through its `@` panel.
 
 ## Migration
 

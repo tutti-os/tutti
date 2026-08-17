@@ -91,7 +91,7 @@ test("isFeatureEnabled falls back to catalog default when key absent", () => {
       { [MOBILE_REMOTE_ACCESS_SETTINGS_FLAG]: true },
       MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
     ),
-    true
+    false
   );
 });
 

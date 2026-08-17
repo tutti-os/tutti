@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +16,23 @@ import (
 // agenthost.SQLiteWorkspaceStore; package tests retain this adapter for their
 // narrow in-memory service fakes.
 type serviceHostStore struct{ service *Service }
+
+func (p *ActivityProjection) ResolveRuntimeSessionRailPlacement(
+	ctx context.Context,
+	input agenthost.ResolveRuntimeSessionRailPlacementInput,
+) (*agenthost.RailPlacement, error) {
+	provider, ok := p.repo.(interface {
+		AgentCanonicalStore() *storesqlite.Store
+	})
+	if !ok || provider.AgentCanonicalStore() == nil {
+		return nil, fmt.Errorf("agent activity canonical store is unavailable")
+	}
+	canonical := provider.AgentCanonicalStore()
+	store := &agenthost.SQLiteWorkspaceStore{
+		StoreForWorkspace: func(string) *storesqlite.Store { return canonical },
+	}
+	return store.ResolveRuntimeSessionRailPlacement(ctx, input)
+}
 
 func (serviceHostStore) GetSessionForkLineage(
 	context.Context,
@@ -53,6 +71,40 @@ func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID
 	return storesqlite.Session{}, false, nil
 }
 
+func (a serviceHostStore) ResolveRuntimeSessionRailPlacement(
+	ctx context.Context,
+	input agenthost.ResolveRuntimeSessionRailPlacementInput,
+) (*agenthost.RailPlacement, error) {
+	if a.service != nil && a.service.SessionInitializer != nil {
+		if resolver, ok := a.service.SessionInitializer.(interface {
+			ResolveRuntimeSessionRailPlacement(context.Context, agenthost.ResolveRuntimeSessionRailPlacementInput) (*agenthost.RailPlacement, error)
+		}); ok {
+			return resolver.ResolveRuntimeSessionRailPlacement(ctx, input)
+		}
+	}
+	if input.RailPlacement != nil {
+		placement := *input.RailPlacement
+		return &placement, nil
+	}
+	if session, found, err := a.GetSession(ctx, input.WorkspaceID, input.AgentSessionID); err != nil {
+		return nil, err
+	} else if found && strings.TrimSpace(session.RailSectionKey) != "" {
+		return &agenthost.RailPlacement{
+			Version:     agenthost.RailPlacementVersion,
+			Kind:        agenthost.RailPlacementKind(session.RailSectionKind),
+			ProjectPath: session.RailProjectPath,
+			SectionKey:  session.RailSectionKey,
+		}, nil
+	}
+	section := storesqlite.ClassifyRailSection(input.Cwd, input.RuntimeContext, nil)
+	return &agenthost.RailPlacement{
+		Version:     agenthost.RailPlacementVersion,
+		Kind:        agenthost.RailPlacementKind(section.Kind),
+		ProjectPath: section.ProjectPath,
+		SectionKey:  section.Key,
+	}, nil
+}
+
 func (a serviceHostStore) SessionDeleted(ctx context.Context, workspaceID, sessionID string) (bool, error) {
 	if a.service == nil || a.service.SessionReader == nil {
 		return false, nil
@@ -71,7 +123,9 @@ func (a serviceHostStore) RollbackRuntimeSessionInitialization(ctx context.Conte
 }
 
 func (a serviceHostStore) InitializeRuntimeSession(ctx context.Context, input agenthost.RuntimeSessionInitialization) (storesqlite.Session, error) {
-	persisted, err := a.service.initializeRuntimeSession(ctx, input.Session, input.RailPlacement)
+	persisted, err := a.service.initializeRuntimeSessionWithRailAuthority(
+		ctx, input.Session, input.RailPlacement, input.RailPlacementAuthoritative,
+	)
 	return activitySessionFromPersisted(persisted), err
 }
 
@@ -264,6 +318,46 @@ func (a serviceHostStore) DeleteSubmitClaim(ctx context.Context, workspaceID, se
 
 type serviceHostRuntime struct{ service *Service }
 
+func (a serviceHostRuntime) WorkspaceRuntimeSessions(_ context.Context, workspaceID string) ([]ProviderRuntimeSession, error) {
+	return a.service.controller().Sessions(workspaceID), nil
+}
+
+func (a serviceHostRuntime) DisconnectRuntimeSession(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+) (bool, error) {
+	disconnector, ok := a.service.controller().(interface {
+		DisconnectRuntimeSession(context.Context, string, string) (bool, error)
+	})
+	if !ok {
+		return false, agenthost.ErrWorkspaceDisconnectUnavailable
+	}
+	return disconnector.DisconnectRuntimeSession(ctx, ref.WorkspaceID, ref.AgentSessionID)
+}
+
+func (a serviceHostRuntime) SnapshotWorkspaceRuntimeDisconnectTargets(workspaceID string) []agenthost.RuntimeDisconnectTarget {
+	targeter, ok := a.service.controller().(interface {
+		SnapshotWorkspaceRuntimeDisconnectTargets(string) []agenthost.RuntimeDisconnectTarget
+	})
+	if !ok {
+		return nil
+	}
+	return targeter.SnapshotWorkspaceRuntimeDisconnectTargets(workspaceID)
+}
+
+func (a serviceHostRuntime) DisconnectRuntimeSessionTarget(
+	ctx context.Context,
+	target agenthost.RuntimeDisconnectTarget,
+) (bool, error) {
+	targeter, ok := a.service.controller().(interface {
+		DisconnectRuntimeSessionTarget(context.Context, agenthost.RuntimeDisconnectTarget) (bool, error)
+	})
+	if !ok {
+		return false, agenthost.ErrWorkspaceDisconnectUnavailable
+	}
+	return targeter.DisconnectRuntimeSessionTarget(ctx, target)
+}
+
 func (a serviceHostRuntime) RuntimeSessionLive(workspaceID, agentSessionID string) bool {
 	if liveness, ok := a.service.controller().(interface {
 		RuntimeSessionLive(string, string) bool
@@ -336,6 +430,9 @@ func (a serviceHostRuntime) InteractiveDisposition(workspaceID, rootAgentSession
 	return a.service.controller().InteractiveDisposition(workspaceID, rootAgentSessionID, agentSessionID, turnID, requestID)
 }
 func (a serviceHostRuntime) UpdateSettings(ctx context.Context, input RuntimeUpdateSettingsInput) error {
+	return normalizeRuntimeError(a.service.controller().UpdateSettings(ctx, input))
+}
+func (a serviceHostRuntime) UpdateRetainedSettings(ctx context.Context, input RuntimeUpdateSettingsInput) error {
 	return normalizeRuntimeError(a.service.controller().UpdateSettings(ctx, input))
 }
 func (a serviceHostRuntime) SetTitle(ctx context.Context, input RuntimeSetTitleInput) (ProviderRuntimeSession, error) {

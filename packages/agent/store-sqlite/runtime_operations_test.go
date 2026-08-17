@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -26,6 +27,46 @@ func TestRuntimeOperationPrepareIsSubjectIdempotentAndCrashRecoverable(t *testin
 	claimable, err := store.ListClaimableRuntimeOperations(context.Background(), ListClaimableRuntimeOperationsInput{WorkspaceID: "ws-1", NowUnixMS: 20})
 	if err != nil || len(claimable) != 1 || claimable[0].Status != RuntimeOperationStatusPrepared {
 		t.Fatalf("claimable after crash = %#v err=%v", claimable, err)
+	}
+}
+
+func TestInteractiveRuntimeOperationCheckpointOnlyAddsFollowUpIntent(t *testing.T) {
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	seedRuntimeInteractiveSubject(t, store, "session-follow-up", "turn-follow-up", "request-follow-up")
+	op, _, _, err := store.PrepareInteractiveRuntimeOperation(context.Background(), RuntimeOperationPrepare{
+		OperationID: "operation-follow-up", WorkspaceID: "ws-1", AgentSessionID: "session-follow-up",
+		Kind: RuntimeOperationKindInteractiveResponse, TurnID: "turn-follow-up", RequestID: "request-follow-up",
+		Payload: map[string]any{"action": "", "optionId": "deny", "payload": map[string]any(nil)}, OccurredAtMS: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, claimed, err := store.ClaimRuntimeOperationLease(context.Background(), ClaimRuntimeOperationLeaseInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-follow-up", NowUnixMS: 20, LeaseExpiresAtMS: 100,
+	}); err != nil || !claimed {
+		t.Fatalf("claim operation = claimed=%v error=%v", claimed, err)
+	}
+
+	checkpointed, changed, err := store.CheckpointRuntimeOperation(context.Background(), CheckpointRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-follow-up", NowUnixMS: 30,
+		Payload: map[string]any{
+			"action": "", "optionId": "deny", "payload": map[string]any(nil),
+			"followUpPrompt":         "Please split the work into smaller steps.",
+			"followUpClientSubmitId": "interactive-deny:operation-follow-up",
+			"followUpDisposition":    InteractionStatusAnswered,
+		},
+	})
+	if err != nil || !changed || checkpointed.Payload["followUpPrompt"] == nil {
+		t.Fatalf("checkpoint = %#v changed=%v error=%v", checkpointed, changed, err)
+	}
+	if got := checkpointed.Payload["followUpDisposition"]; got != InteractionStatusAnswered {
+		t.Fatalf("checkpointed follow-up disposition = %#v, want answered", got)
+	}
+	if _, _, err := store.CheckpointRuntimeOperation(context.Background(), CheckpointRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: op.OperationID, LeaseOwner: "worker-follow-up", NowUnixMS: 31,
+		Payload: map[string]any{"action": "approve", "optionId": "deny", "payload": map[string]any(nil)},
+	}); !errors.Is(err, ErrRuntimeOperationSubjectState) {
+		t.Fatalf("identity-changing checkpoint error = %v", err)
 	}
 }
 

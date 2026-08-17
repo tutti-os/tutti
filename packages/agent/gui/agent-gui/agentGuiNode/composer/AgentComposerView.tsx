@@ -146,6 +146,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
     onRequestWorkspaceReferences,
     referenceProvenanceFilters,
     selectProjectDirectory,
+    projectSelectOptions,
     userProjectApi,
     onProjectPathChange = () => {},
     onSettingsChange,
@@ -260,6 +261,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
           projectMissingDescription: labels.projectMissingDescription
         }}
         selectProjectDirectory={selectProjectDirectory}
+        options={projectSelectOptions}
         userProjectApi={userProjectApi}
         onDismissAutoFocus={input.onDismissProjectMenuAutoFocus}
         onProjectMissingChange={input.setIsSelectedProjectMissing}
@@ -741,6 +743,7 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onProviderSelect={onProviderSelect}
             onLinkAction={onLinkAction}
             availableSkills={availableSkills}
+            onRetryComposerOptions={input.props.onRetryComposerOptions}
             onCapabilitySettingsRequest={
               input.props.onCapabilitySettingsRequest
             }
@@ -748,7 +751,6 @@ export function AgentComposerView(input: Props): React.JSX.Element {
             onWorkspaceReferencePicker={handleWorkspaceReferencePicker}
             onMentionPaletteButton={handleMentionPaletteButton}
             onSettingsChange={onSettingsChange}
-            onRetryComposerOptions={input.props.onRetryComposerOptions}
             onSubmit={onSubmit}
             onClearGoalMode={clearGoalModeBadge}
             draftPrompt={draftPrompt}

@@ -562,7 +562,8 @@ function DesktopAgentGUISurfaceImpl({
       },
       computerUse: {
         authorization: resolveComputerUseAuthorizationState(computerUseStatus),
-        installed: computerUseStatus?.installed ?? null
+        installed: computerUseStatus?.installed ?? null,
+        presentationSupported: true
       },
       connectors: {
         enabled: isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)

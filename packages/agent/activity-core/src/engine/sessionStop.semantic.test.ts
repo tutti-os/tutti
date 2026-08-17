@@ -3,7 +3,10 @@ import { test } from "node:test";
 import { normalizeAgentActivitySession } from "../sessionNormalization.ts";
 import type { AgentActivityTurn } from "../types.ts";
 import { createAgentSessionEngine } from "./createAgentSessionEngine.ts";
-import { selectLatestStopTargetSubmitForSession } from "./pendingIntents.selectors.ts";
+import {
+  selectLatestStopTargetSubmitForSession,
+  selectSessionHasPendingSubmitStopTarget
+} from "./pendingIntents.selectors.ts";
 import { selectEngineCancelState } from "./sessionLifecycle.selectors.ts";
 import { createTestEngineCommandPort } from "./testEngineCommandPort.ts";
 import type { EngineExternalCommand, EngineScheduler } from "./types.ts";
@@ -119,6 +122,13 @@ test("semantic session stop targets the latest pending prompt admission", () => 
     }),
     { accepted: true, queued: false }
   );
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(
+      harness.engine.getSnapshot(),
+      "session-1"
+    ),
+    true
+  );
 
   harness.engine.stopSession({ agentSessionId: "session-1" });
 
@@ -211,6 +221,13 @@ test("stop target selection ignores a submit whose canonical Turn is settled", (
       "session-1"
     ),
     null
+  );
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(
+      harness.engine.getSnapshot(),
+      "session-1"
+    ),
+    false
   );
 });
 

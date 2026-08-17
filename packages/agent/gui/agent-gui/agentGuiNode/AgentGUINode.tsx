@@ -157,6 +157,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     composerFooterAccessory: renderComposerFooterAccessory,
     projectDirectoryPickerHeaderActions:
       renderProjectDirectoryPickerHeaderActions,
+    projectSelectOptions,
+    referencePickerSidebarActions: renderReferencePickerSidebarActions,
     providerRailEmpty: renderProviderRailEmpty,
     sidebarFooter: renderSidebarFooter
   } = renderSlots;
@@ -282,6 +284,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
   const { viewModel, actions } = useAgentGUINodeController({
     nodeId,
+    isSurfaceActive: isActive,
+    isSurfaceVisible: isVisible,
     workspaceId,
     currentUserId,
     workspacePath,
@@ -589,6 +593,10 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               renderProjectDirectoryPickerHeaderActions={
                 renderProjectDirectoryPickerHeaderActions
+              }
+              projectSelectOptions={projectSelectOptions}
+              renderReferencePickerSidebarActions={
+                renderReferencePickerSidebarActions
               }
               renderComposerFooterAccessory={renderComposerFooterAccessory}
             />

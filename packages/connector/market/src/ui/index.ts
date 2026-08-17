@@ -11,3 +11,10 @@ export {
   useConnectorMarketServices,
   type ConnectorMarketServices
 } from "./ConnectorMarketServicesContext.tsx";
+export {
+  ConnectorComposerMenu,
+  type ConnectorComposerItem,
+  type ConnectorComposerItemStatus,
+  type ConnectorComposerMenuLabels,
+  type ConnectorComposerMenuProps
+} from "./composer/ConnectorComposerMenu.tsx";

@@ -11,6 +11,64 @@ type routedAuthorizationProvider struct {
 	observeCount    int
 }
 
+type inspectOnlyAuthorizationProvider struct {
+	inspectCount int
+	observation  AuthorizationObservation
+}
+
+func (*inspectOnlyAuthorizationProvider) Begin(context.Context, AuthorizationStartRequest) (AuthorizationSession, error) {
+	return AuthorizationSession{}, nil
+}
+
+func (*inspectOnlyAuthorizationProvider) Disconnect(context.Context, AuthorizationDisconnectRequest) error {
+	return nil
+}
+
+func (provider *inspectOnlyAuthorizationProvider) InspectAuthorization(
+	context.Context,
+	AuthorizationInspectRequest,
+) (AuthorizationObservation, error) {
+	provider.inspectCount++
+	if provider.observation.State == "" {
+		return AuthorizationObservation{State: AuthorizationObservationConnected}, nil
+	}
+	return provider.observation, nil
+}
+
+func TestImplementationAuthorizationRouterKeepsDisconnectedManagedSessionPending(t *testing.T) {
+	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{State: AuthorizationObservationDisconnected}}
+	router := NewImplementationAuthorizationRouter(managed, &routedAuthorizationProvider{})
+	release := Release{Manifest: Manifest{Implementation: Implementation{Kind: ImplementationKindManagedStdio}}}
+
+	observation, err := router.Observe(context.Background(), AuthorizationObserveRequest{
+		Connector: Connector{Key: "wecom", Release: release}, Release: release,
+		Session: AuthorizationSession{SessionID: "session-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.State != AuthorizationObservationPending {
+		t.Fatalf("observation state = %q, want pending", observation.State)
+	}
+}
+
+func TestImplementationAuthorizationRouterFailsExpiredManagedSession(t *testing.T) {
+	managed := &inspectOnlyAuthorizationProvider{observation: AuthorizationObservation{State: AuthorizationObservationExpired}}
+	router := NewImplementationAuthorizationRouter(managed, &routedAuthorizationProvider{})
+	release := Release{Manifest: Manifest{Implementation: Implementation{Kind: ImplementationKindManagedStdio}}}
+
+	observation, err := router.Observe(context.Background(), AuthorizationObserveRequest{
+		Connector: Connector{Key: "wecom", Release: release}, Release: release,
+		Session: AuthorizationSession{SessionID: "session-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.State != AuthorizationObservationFailed || observation.FailureCode != "connector_authorization_expired" {
+		t.Fatalf("observation = %#v, want terminal expiry", observation)
+	}
+}
+
 func (provider *routedAuthorizationProvider) Begin(_ context.Context, request AuthorizationStartRequest) (AuthorizationSession, error) {
 	provider.beginCount++
 	return AuthorizationSession{OperationID: request.OperationID, ConnectorKey: request.Connector.Key}, nil
@@ -60,5 +118,21 @@ func TestImplementationAuthorizationRouterRejectsUnsupportedImplementation(t *te
 	router := NewImplementationAuthorizationRouter(&routedAuthorizationProvider{}, &routedAuthorizationProvider{})
 	if _, err := router.Begin(context.Background(), AuthorizationStartRequest{Release: Release{}}); err == nil {
 		t.Fatal("expected unsupported implementation error")
+	}
+}
+
+func TestImplementationAuthorizationRouterUsesInspectorToRecoverManagedObservation(t *testing.T) {
+	managed := &inspectOnlyAuthorizationProvider{}
+	router := NewImplementationAuthorizationRouter(managed, &routedAuthorizationProvider{})
+	release := Release{Manifest: Manifest{Implementation: Implementation{Kind: ImplementationKindManagedStdio}}}
+	observation, err := router.Observe(context.Background(), AuthorizationObserveRequest{
+		Connector: Connector{Key: "lark", Release: release}, Release: release,
+		Session: AuthorizationSession{SessionID: "session-1"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if managed.inspectCount != 1 || observation.State != AuthorizationObservationConnected {
+		t.Fatalf("managed inspection = %d, observation = %#v", managed.inspectCount, observation)
 	}
 }

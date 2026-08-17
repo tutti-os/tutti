@@ -426,6 +426,10 @@ func (s *Store) CheckpointRuntimeOperation(ctx context.Context, input Checkpoint
 		return current, false, ErrRuntimeOperationLeaseLost
 	}
 	switch current.Kind {
+	case RuntimeOperationKindInteractiveResponse:
+		if !interactiveResponseCheckpointIdentityEqual(current.Payload, input.Payload) {
+			return current, false, ErrRuntimeOperationSubjectState
+		}
 	case RuntimeOperationKindPlanDecision:
 		if err := validatePlanDecisionOperationPayload(input.OperationID, input.Payload); err != nil {
 			return current, false, err
@@ -777,4 +781,14 @@ func jsonMapsEqual(left map[string]any, right map[string]any) bool {
 	leftJSON, leftErr := marshalJSONMap(left)
 	rightJSON, rightErr := marshalJSONMap(right)
 	return leftErr == nil && rightErr == nil && leftJSON == rightJSON
+}
+
+func interactiveResponseCheckpointIdentityEqual(previous, next map[string]any) bool {
+	previousIdentity := cloneJSONMap(previous)
+	nextIdentity := cloneJSONMap(next)
+	for _, key := range []string{"followUpPrompt", "followUpClientSubmitId", "followUpDisposition"} {
+		delete(previousIdentity, key)
+		delete(nextIdentity, key)
+	}
+	return jsonMapsEqual(previousIdentity, nextIdentity)
 }

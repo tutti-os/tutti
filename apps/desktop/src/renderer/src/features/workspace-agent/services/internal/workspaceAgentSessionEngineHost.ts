@@ -286,6 +286,12 @@ export function createWorkspaceAgentSessionEngineHost(
               agentTargetId: command.targetKey,
               ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
               provider: command.provider,
+              ...(command.waitForFreshModelCatalog
+                ? { waitForFreshModelCatalog: true }
+                : {}),
+              ...(command.section !== undefined
+                ? { section: command.section }
+                : {}),
               ...(command.settings !== undefined
                 ? { settings: command.settings }
                 : {}),

@@ -162,6 +162,12 @@ export interface TurnUpsertedIntent {
    * and is treated as a live observation.
    */
   live?: boolean;
+  /**
+   * Internal replay of an already accepted live completion after reconcile
+   * supplied Session identity. It may create attention even though canonical
+   * state already contains the settled Turn.
+   */
+  replayAcceptedLiveCompletion?: true;
   turn: AgentActivityTurn;
 }
 

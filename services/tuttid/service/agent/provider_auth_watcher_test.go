@@ -54,6 +54,35 @@ func TestChangedProvidersTreatsCreateAndDeleteAsChanges(t *testing.T) {
 	}
 }
 
+func TestChangedProviderAuthFilesReportsExactPathAndKind(t *testing.T) {
+	path := "/tmp/codex/config.toml"
+	secondPath := "/tmp/codex/auth.json"
+	entries := []ProviderAuthWatchEntry{{
+		Provider: agentprovider.Codex,
+		Paths:    []string{secondPath, path},
+	}}
+	previous := map[string]providerAuthFileFingerprint{
+		path:       {exists: true, size: 10},
+		secondPath: {exists: true, size: 10},
+	}
+	next := map[string]providerAuthFileFingerprint{
+		path:       {exists: true, size: 20},
+		secondPath: {exists: true, size: 20},
+	}
+	changes := changedProviderAuthFiles(entries, previous, next)
+	if len(changes) != 2 {
+		t.Fatalf("changes = %#v, want both changed files", changes)
+	}
+	for _, change := range changes {
+		if change.Provider != agentprovider.Codex || change.Kind != "metadata_changed" {
+			t.Fatalf("change = %#v, want codex metadata_changed", change)
+		}
+	}
+	if changes[0].Path != secondPath || changes[1].Path != path {
+		t.Fatalf("changes = %#v, want sorted auth then config paths", changes)
+	}
+}
+
 func TestProviderAuthWatcherReportsFileRewrites(t *testing.T) {
 	dir := t.TempDir()
 	authPath := filepath.Join(dir, "auth.json")
@@ -152,6 +181,25 @@ func TestProviderAuthWatcherStartWithoutCallbackIsInert(_ *testing.T) {
 	watcher.Close()
 }
 
+func TestProviderAuthWatcherCloseRunsHookOnce(t *testing.T) {
+	closeCalls := 0
+	watcher := &ProviderAuthWatcher{
+		Entries: []ProviderAuthWatchEntry{
+			{Provider: agentprovider.Codex, Paths: []string{filepath.Join(t.TempDir(), "auth.json")}},
+		},
+		OnChange: func([]string) {},
+		OnClose: func() {
+			closeCalls++
+		},
+	}
+	watcher.Start()
+	watcher.Close()
+	watcher.Close()
+	if closeCalls != 1 {
+		t.Fatalf("OnClose calls = %d, want one", closeCalls)
+	}
+}
+
 func TestDefaultProviderAuthWatchEntriesCoverCredentialBackedCatalogs(t *testing.T) {
 	home := t.TempDir()
 	configDir := filepath.Join(home, "opencode-config")
@@ -177,6 +225,11 @@ func TestDefaultProviderAuthWatchEntriesCoverCredentialBackedCatalogs(t *testing
 	} {
 		if !containsString(codexPaths, want) {
 			t.Fatalf("codex paths = %v, want %q", codexPaths, want)
+		}
+	}
+	for _, entry := range entries {
+		if entry.Provider == agentprovider.Codex && entry.ContentFingerprint == nil {
+			t.Fatal("codex auth watch entry must fingerprint full file content")
 		}
 	}
 	if len(byProvider[agentprovider.ClaudeCode]) == 0 {

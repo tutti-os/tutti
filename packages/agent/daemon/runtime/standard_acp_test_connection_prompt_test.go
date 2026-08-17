@@ -109,12 +109,16 @@ func (c *standardACPConnection) streamPromptResult(promptID json.RawMessage) {
 	if c.pauseBeforePromptResult != nil {
 		<-c.pauseBeforePromptResult
 	}
+	result := map[string]any{
+		"stopReason": "end_turn",
+	}
+	if len(c.promptFinalContent) > 0 {
+		result["content"] = c.promptFinalContent
+	}
 	c.sendJSON(map[string]any{
 		"jsonrpc": "2.0",
 		"id":      promptID,
-		"result": map[string]any{
-			"stopReason": "end_turn",
-		},
+		"result":  result,
 	})
 }
 

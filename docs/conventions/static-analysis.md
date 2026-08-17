@@ -69,7 +69,8 @@ adapter workflows in parallel; `services/tuttid` changes run only the daemon
 adapter workflow. The Agent process lane needs only Go, while the daemon lane
 prepares the builtin Onboarding package before its Go tests. Each lane invokes
 its selected Go packages together so independent packages can build and test in
-parallel.
+parallel. The Agent process lane also crosses a native Windows child-process
+boundary to verify case-insensitive environment-key precedence.
 
 Both adapter workflows also run for matching pushes to `main`. Those trusted
 runs maintain default-branch Go and pnpm caches that new pull requests can

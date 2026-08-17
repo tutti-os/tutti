@@ -76,15 +76,17 @@ const (
 type OperationStage string
 
 const (
-	OperationStageAccepted      OperationStage = "accepted"
-	OperationStageRefreshing    OperationStage = "refreshing"
-	OperationStageInstalling    OperationStage = "installing"
-	OperationStageInstalled     OperationStage = "installed"
-	OperationStageDeactivating  OperationStage = "deactivating"
-	OperationStageAuthorizing   OperationStage = "authorizing"
-	OperationStageDisconnecting OperationStage = "disconnecting"
-	OperationStageCompleted     OperationStage = "completed"
-	OperationStageFailed        OperationStage = "failed"
+	OperationStageAccepted       OperationStage = "accepted"
+	OperationStageRefreshing     OperationStage = "refreshing"
+	OperationStageInstalling     OperationStage = "installing"
+	OperationStageInstalled      OperationStage = "installed"
+	OperationStageRuntimePending OperationStage = "runtime_pending"
+	OperationStageDeactivating   OperationStage = "deactivating"
+	OperationStageRemoving       OperationStage = "removing"
+	OperationStageAuthorizing    OperationStage = "authorizing"
+	OperationStageDisconnecting  OperationStage = "disconnecting"
+	OperationStageCompleted      OperationStage = "completed"
+	OperationStageFailed         OperationStage = "failed"
 )
 
 // Release is the immutable catalog fact selected for an install operation.
@@ -103,17 +105,18 @@ type Release struct {
 }
 
 type Manifest struct {
-	SchemaVersion            string                    `json:"schemaVersion"`
-	DisplayName              string                    `json:"displayName"`
-	IconURL                  string                    `json:"iconUrl"`
-	Description              string                    `json:"description,omitempty"`
-	AgentRouting             *AgentRouting             `json:"agentRouting,omitempty"`
-	Permissions              []string                  `json:"permissions"`
-	RequiredCapabilities     []string                  `json:"requiredCapabilities,omitempty"`
-	Implementation           Implementation            `json:"implementation"`
-	AuthorizationKind        string                    `json:"authorizationKind"`
-	AuthorizationInteraction json.RawMessage           `json:"authorizationInteraction,omitempty"`
-	Compatibility            CompatibilityRequirements `json:"compatibility,omitempty"`
+	SchemaVersion                string                    `json:"schemaVersion"`
+	DisplayName                  string                    `json:"displayName"`
+	IconURL                      string                    `json:"iconUrl"`
+	Description                  string                    `json:"description,omitempty"`
+	AgentRouting                 *AgentRouting             `json:"agentRouting,omitempty"`
+	Permissions                  []string                  `json:"permissions"`
+	RequiredCapabilities         []string                  `json:"requiredCapabilities,omitempty"`
+	Implementation               Implementation            `json:"implementation"`
+	AuthorizationKind            string                    `json:"authorizationKind"`
+	AuthorizationInteraction     json.RawMessage           `json:"authorizationInteraction,omitempty"`
+	AuthorizationInteractionMode string                    `json:"authorizationInteractionMode,omitempty"`
+	Compatibility                CompatibilityRequirements `json:"compatibility,omitempty"`
 }
 
 // AgentRouting carries connector-owned brand and product aliases used only to
@@ -171,6 +174,7 @@ type ManagedCredentialBroker struct {
 	Protocol     string   `json:"protocol"`
 	Entrypoint   string   `json:"entrypoint"`
 	TimeoutMS    int      `json:"timeoutMs"`
+	Presentation string   `json:"presentation,omitempty"`
 	AllowedHosts []string `json:"allowedHosts"`
 }
 
@@ -181,6 +185,7 @@ type ManagedMCPInterface struct {
 
 type ManagedCLIInterface struct {
 	Entrypoint     string             `json:"entrypoint"`
+	Command        string             `json:"command,omitempty"`
 	Arguments      []string           `json:"arguments,omitempty"`
 	TimeoutMS      int                `json:"timeoutMs,omitempty"`
 	ReadinessProbe *CLIReadinessProbe `json:"readinessProbe,omitempty"`
@@ -247,6 +252,9 @@ type Installation struct {
 	InstalledVersion       string            `json:"installedVersion,omitempty"`
 	InstalledReleaseID     string            `json:"installedReleaseId,omitempty"`
 	InstalledReleaseDigest string            `json:"installedReleaseDigest,omitempty"`
+	CandidateVersion       string            `json:"candidateVersion,omitempty"`
+	CandidateReleaseID     string            `json:"candidateReleaseId,omitempty"`
+	CandidateReleaseDigest string            `json:"candidateReleaseDigest,omitempty"`
 	FailureCode            string            `json:"failureCode,omitempty"`
 }
 
@@ -270,23 +278,25 @@ type Connector struct {
 }
 
 type Operation struct {
-	OperationID     string             `json:"operationId"`
-	ClientRequestID string             `json:"clientRequestId"`
-	ConnectorKey    string             `json:"connectorKey,omitempty"`
-	Kind            OperationKind      `json:"kind"`
-	Scope           OperationScope     `json:"scope,omitempty"`
-	State           OperationState     `json:"state"`
-	Stage           OperationStage     `json:"stage,omitempty"`
-	Target          *OperationTarget   `json:"target,omitempty"`
-	HostGeneration  HostGeneration     `json:"hostGeneration,omitempty"`
-	Execution       OperationExecution `json:"execution,omitempty"`
-	Attempt         uint32             `json:"attempt"`
-	LeaseOwner      string             `json:"leaseOwner,omitempty"`
-	LeaseToken      uint64             `json:"leaseToken,omitempty"`
-	LeaseExpiresAt  *time.Time         `json:"leaseExpiresAt,omitempty"`
-	FailureCode     string             `json:"failureCode,omitempty"`
-	CreatedAt       time.Time          `json:"createdAt"`
-	UpdatedAt       time.Time          `json:"updatedAt"`
+	OperationID     string              `json:"operationId"`
+	ClientRequestID string              `json:"clientRequestId"`
+	OwnerAccountID  string              `json:"ownerAccountId,omitempty"`
+	Visibility      OperationVisibility `json:"visibility"`
+	ConnectorKey    string              `json:"connectorKey,omitempty"`
+	Kind            OperationKind       `json:"kind"`
+	Scope           OperationScope      `json:"scope,omitempty"`
+	State           OperationState      `json:"state"`
+	Stage           OperationStage      `json:"stage,omitempty"`
+	Target          *OperationTarget    `json:"target,omitempty"`
+	HostGeneration  HostGeneration      `json:"hostGeneration,omitempty"`
+	Execution       OperationExecution  `json:"execution,omitempty"`
+	Attempt         uint32              `json:"attempt"`
+	LeaseOwner      string              `json:"leaseOwner,omitempty"`
+	LeaseToken      uint64              `json:"leaseToken,omitempty"`
+	LeaseExpiresAt  *time.Time          `json:"leaseExpiresAt,omitempty"`
+	FailureCode     string              `json:"failureCode,omitempty"`
+	CreatedAt       time.Time           `json:"createdAt"`
+	UpdatedAt       time.Time           `json:"updatedAt"`
 }
 
 // OperationScope freezes the external authority under which a durable
@@ -296,6 +306,13 @@ type Operation struct {
 type OperationScope struct {
 	AccountID string `json:"accountId,omitempty"`
 }
+
+type OperationVisibility string
+
+const (
+	OperationVisibilityAccount       OperationVisibility = "account"
+	OperationVisibilitySystemPrivate OperationVisibility = "system_private"
+)
 
 // OperationTarget freezes the exact release identity at command acceptance so
 // a concurrent catalog refresh cannot change what an operation installs.
@@ -400,6 +417,7 @@ type RuntimeReceipt struct {
 // never contain credentials, filesystem paths, or Skill bodies.
 type ConnectorSummary struct {
 	Key         string                      `json:"key"`
+	Version     string                      `json:"version,omitempty"`
 	Name        string                      `json:"name"`
 	Description string                      `json:"description"`
 	Skills      []ConnectorSkillSummary     `json:"skills"`
@@ -447,6 +465,49 @@ type RuntimeReadiness struct {
 	Interfaces []InterfaceReadiness  `json:"interfaces,omitempty"`
 }
 
+// RuntimeDesired is the durable, level-triggered runtime intent for one
+// account scope and Connector. Generation belongs to this convergence stream;
+// it must not reuse the catalog or public event revision.
+type RuntimeDesired struct {
+	Scope              OperationScope     `json:"scope,omitempty"`
+	ConnectorKey       string             `json:"connectorKey"`
+	Generation         uint64             `json:"generation"`
+	Enabled            bool               `json:"enabled"`
+	ConnectionID       string             `json:"connectionId"`
+	ReleaseDigest      string             `json:"releaseDigest"`
+	AuthorizationState AuthorizationState `json:"authorizationState"`
+	UpdatedAt          time.Time          `json:"updatedAt"`
+}
+
+// RuntimeObserved records the exact desired generation applied by one host
+// boot. A matching generation from an older boot is intentionally stale.
+type RuntimeObserved struct {
+	DesiredGeneration uint64            `json:"desiredGeneration"`
+	BootEpoch         string            `json:"bootEpoch"`
+	Enabled           bool              `json:"enabled"`
+	ConnectionID      string            `json:"connectionId"`
+	ReleaseDigest     string            `json:"releaseDigest"`
+	Readiness         RuntimeReadiness  `json:"readiness"`
+	Summary           *ConnectorSummary `json:"summary,omitempty"`
+	ObservedAt        time.Time         `json:"observedAt,omitempty"`
+}
+
+// RuntimeConvergence is private durable work. It is deliberately separate
+// from public Operations so runtime anti-entropy cannot block or leak into the
+// Connector Market command contract.
+type RuntimeConvergence struct {
+	Desired        RuntimeDesired  `json:"desired"`
+	Observed       RuntimeObserved `json:"observed"`
+	Attempt        uint32          `json:"attempt"`
+	NextAttemptAt  time.Time       `json:"nextAttemptAt,omitempty"`
+	LeaseOwner     string          `json:"leaseOwner,omitempty"`
+	LeaseToken     uint64          `json:"leaseToken,omitempty"`
+	LeaseExpiresAt *time.Time      `json:"leaseExpiresAt,omitempty"`
+	LastErrorCode  string          `json:"lastErrorCode,omitempty"`
+	LastError      string          `json:"lastError,omitempty"`
+	UpdatedAt      time.Time       `json:"updatedAt"`
+}
+
 type AuthorizationSession struct {
 	OperationID      string                         `json:"operationId"`
 	ConnectorKey     string                         `json:"connectorKey"`
@@ -454,6 +515,7 @@ type AuthorizationSession struct {
 	SessionID        string                         `json:"sessionId"`
 	ActionType       string                         `json:"actionType"`
 	AuthorizationURL string                         `json:"-"`
+	ExpiresAt        time.Time                      `json:"expiresAt"`
 	State            AuthorizationState             `json:"-"`
 	Resolution       AuthorizationSessionResolution `json:"resolution"`
 }
@@ -518,18 +580,21 @@ type Snapshot struct {
 	Connectors     []Connector  `json:"connectors"`
 	Operations     []Operation  `json:"operations"`
 	Revision       uint64       `json:"revision"`
+	EventCursor    int64        `json:"eventCursor"`
 	SourceRevision string       `json:"sourceRevision,omitempty"`
 }
 
 type Mutation struct {
-	ClientRequestID  string `json:"clientRequestId"`
-	ExpectedRevision uint64 `json:"expectedRevision"`
+	ClientRequestID  string         `json:"clientRequestId"`
+	ExpectedRevision uint64         `json:"expectedRevision"`
+	Scope            OperationScope `json:"scope,omitempty"`
 }
 
 type ConnectorMutation struct {
 	Mutation
-	ConnectorKey string `json:"connectorKey"`
-	AccountID    string `json:"accountId,omitempty"`
+	ConnectorKey              string  `json:"connectorKey"`
+	AccountID                 string  `json:"accountId,omitempty"`
+	ExpectedConnectorRevision *uint64 `json:"expectedConnectorRevision,omitempty"`
 }
 
 // EnsureRuntimeReconcileResult reports whether a level-triggered repair
@@ -575,8 +640,10 @@ type MutationResult struct {
 }
 
 type AuthorizationResult struct {
-	Connector        Connector `json:"connector"`
-	Operation        Operation `json:"operation"`
-	AuthorizationURL string    `json:"authorizationUrl,omitempty"`
-	Revision         uint64    `json:"revision"`
+	Connector              Connector                  `json:"connector"`
+	Operation              Operation                  `json:"operation"`
+	AuthorizationURL       string                     `json:"authorizationUrl,omitempty"`
+	AuthorizationView      *AuthorizationViewEnvelope `json:"authorizationView,omitempty"`
+	AuthorizationExpiresAt time.Time                  `json:"authorizationExpiresAt"`
+	Revision               uint64                     `json:"revision"`
 }

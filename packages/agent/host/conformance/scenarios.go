@@ -13,11 +13,15 @@ var (
 		Name: "failed canonical initialization aborts unpublished runtime",
 		run:  runFailedCanonicalInitializationAbortsUnpublishedRuntime,
 	}
-	createWithRailPlacementScenario = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
-	resumePersistedSessionScenario  = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
-	sendInputScenario               = Scenario{Name: "send input", run: runSendInput}
-	sendConnectorOnlyInputScenario  = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
-	providerAcceptanceScenario      = Scenario{
+	createWithRailPlacementScenario              = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
+	createWithAuthoritativeRailPlacementScenario = Scenario{
+		Name: "create with authoritative rail placement outside local project registry",
+		run:  runCreateWithAuthoritativeRailPlacement,
+	}
+	resumePersistedSessionScenario = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	sendInputScenario              = Scenario{Name: "send input", run: runSendInput}
+	sendConnectorOnlyInputScenario = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
+	providerAcceptanceScenario     = Scenario{
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
 	}
@@ -34,6 +38,7 @@ var (
 	interactiveResponseScenario         = Scenario{Name: "interactive response", run: runInteractiveResponse}
 	interactiveResponseReusedIDScenario = Scenario{Name: "interactive response reuses provider request id across turns", run: runInteractiveResponseReusedRequestID}
 	interactiveResponseRaceScenario     = Scenario{Name: "interactive response race", run: runInteractiveResponseRace}
+	interactiveFollowUpRecoveryScenario = Scenario{Name: "interactive follow-up recovers through Host admission", run: runInteractiveFollowUpRecovery}
 	planDecisionScenario                = Scenario{Name: "plan decision", run: runPlanDecision}
 	initialTitleCASScenario             = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
 	getSessionScenario                  = Scenario{Name: "get session", run: runGetSession}
@@ -73,6 +78,7 @@ func Scenarios() []Scenario {
 		typedInitialGoalRailBarrierScenario,
 		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
+		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
@@ -147,6 +153,7 @@ func CoordinatorScenarios() []Scenario {
 		interactiveResponseScenario,
 		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
+		interactiveFollowUpRecoveryScenario,
 		planDecisionScenario,
 		{Name: "recover operations before stale turns", run: runRecoveryOrder},
 	}
@@ -224,6 +231,7 @@ func ApplicationCoreScenarios() []Scenario {
 		typedInitialGoalRailBarrierScenario,
 		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
+		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,

@@ -33,6 +33,7 @@ describe("useAgentGUIComposerPresentation", () => {
         } as AgentGUIRuntime,
         composerOptionsLoadStatus: "error",
         composerOptionsLoading: false,
+        connectorOptionsLoading: false,
         composerSupport: composerSettingsSupportFromOptions(null, null),
         composerTargetProvider: "opencode",
         composerTargetData: target,
@@ -126,6 +127,7 @@ describe("useAgentGUIComposerPresentation", () => {
             reasoning: false
           },
           composerOptionsLoading: false,
+          connectorOptionsLoading: false,
           composerTargetProvider: "opencode",
           codexSaverModeEntryEnabled: entryEnabled,
           composerTargetData: target,
@@ -305,6 +307,7 @@ describe("useAgentGUIComposerPresentation", () => {
           } as AgentGUIRuntime,
           composerSupport: composerSettingsSupportFromOptions(options, null),
           composerOptionsLoading: false,
+          connectorOptionsLoading: false,
           composerTargetProvider: "opencode",
           composerTargetData: target,
           data,

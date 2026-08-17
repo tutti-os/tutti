@@ -4,7 +4,7 @@ export interface ConversationRailMembershipRecord {
   agentTargetId?: string | null;
   id: string;
   pinnedAtUnixMs?: number | null;
-  projectionSource?: "pending_activation";
+  projectionSource?: "pending_activation" | "runtime_overlay";
   railSectionKey?: string | null;
   title: string;
 }
@@ -41,8 +41,7 @@ export function planRuntimeRailMembershipRefresh(input: {
     new Map(
       records
         .filter(
-          (record) =>
-            record.projectionSource !== "pending_activation" && visible(record)
+          (record) => record.projectionSource === undefined && visible(record)
         )
         .map((record) => [record.id, record] as const)
     );

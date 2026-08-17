@@ -20,6 +20,7 @@
     "dockIcons.ts",
     "layout.ts",
     "agent-gui/agentGuiNode/AgentMentionSearchController.ts",
+    "abortable-single-flight.ts",
     "agent-message-center/index.ts",
     "agent-conversation/index.ts",
     "shared/agentConversation/agentConversationFollowEndController.ts",

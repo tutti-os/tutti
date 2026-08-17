@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	CanonicalStore          CanonicalStore
+	RuntimeRailPlacement    RuntimeSessionRailPlacementResolver
 	InteractionTrees        CanonicalInteractionTreeStore
 	TurnSubmissions         TurnSubmissionStore
 	EffectiveHistory        EffectiveHistoryStore
@@ -63,52 +64,54 @@ type Config struct {
 }
 
 type Host struct {
-	store                  CanonicalStore
-	interactionTrees       CanonicalInteractionTreeStore
-	turnSubmissions        TurnSubmissionStore
-	effectiveHistory       EffectiveHistoryStore
-	sessionManagement      SessionManagementStore
-	sessionBatchManagement SessionBatchManagementStore
-	sessionDeletionGuard   SessionDeletionGuard
-	sessionPurge           SessionPurgeStore
-	deletedSessions        DeletedSessionStore
-	historicalState        HistoricalSessionStateStore
-	sessionForks           SessionForkStore
-	sessionForkRecovery    SessionForkRecoveryStore
-	sessionForkRuntime     SessionForkRuntime
-	sessionForkContext     SessionForkContextPolicy
-	sessionForkState       SessionForkProviderStateBinder
-	sessionForkAttachments SessionForkAttachmentStager
-	runtime                RuntimeController
-	historyRuntime         RuntimeHistoryController
-	preparation            RuntimePreparationPort
-	settingsPolicy         SettingsPolicy
-	attachments            AttachmentMaterializer
-	clock                  Clock
-	locker                 SessionLocker
-	startupGate            RuntimeStartGate
-	observer               LifecycleObserver
-	terminalFailure        TerminalFailureObserver
-	commitObserver         CommitObserver
-	operations             RuntimeOperationStore
-	events                 RuntimeOperationEventPublisher
-	owner                  string
-	scheduler              Scheduler
-	staleTurns             StaleTurnSettler
-	goals                  GoalStateStore
-	goalFences             GoalGenerationFenceStore
-	goalRuntime            GoalRuntimeController
-	goalInbox              GoalReconcileInboxStore
-	goalOwner              string
-	goalClock              Clock
-	goalAttemptTimeout     time.Duration
-	goalRecoveryBudget     time.Duration
-	goalMaxAttempts        int
-	goalDispatchDeadline   time.Duration
-	goalActor              *SessionActor
-	sessionMutationActor   *SessionActor
-	editRetryDisabled      bool
-	goalFencesRestored     sync.Map
+	store                     CanonicalStore
+	runtimeRailPlacement      RuntimeSessionRailPlacementResolver
+	interactionTrees          CanonicalInteractionTreeStore
+	turnSubmissions           TurnSubmissionStore
+	effectiveHistory          EffectiveHistoryStore
+	sessionManagement         SessionManagementStore
+	sessionBatchManagement    SessionBatchManagementStore
+	sessionDeletionGuard      SessionDeletionGuard
+	sessionPurge              SessionPurgeStore
+	deletedSessions           DeletedSessionStore
+	historicalState           HistoricalSessionStateStore
+	sessionForks              SessionForkStore
+	sessionForkRecovery       SessionForkRecoveryStore
+	sessionForkRuntime        SessionForkRuntime
+	sessionForkContext        SessionForkContextPolicy
+	sessionForkState          SessionForkProviderStateBinder
+	sessionForkAttachments    SessionForkAttachmentStager
+	runtime                   RuntimeController
+	historyRuntime            RuntimeHistoryController
+	preparation               RuntimePreparationPort
+	settingsPolicy            SettingsPolicy
+	attachments               AttachmentMaterializer
+	clock                     Clock
+	locker                    SessionLocker
+	startupGate               RuntimeStartGate
+	observer                  LifecycleObserver
+	terminalFailure           TerminalFailureObserver
+	commitObserver            CommitObserver
+	operations                RuntimeOperationStore
+	events                    RuntimeOperationEventPublisher
+	owner                     string
+	scheduler                 Scheduler
+	staleTurns                StaleTurnSettler
+	goals                     GoalStateStore
+	goalFences                GoalGenerationFenceStore
+	goalRuntime               GoalRuntimeController
+	goalInbox                 GoalReconcileInboxStore
+	goalOwner                 string
+	goalClock                 Clock
+	goalAttemptTimeout        time.Duration
+	goalRecoveryBudget        time.Duration
+	goalMaxAttempts           int
+	goalDispatchDeadline      time.Duration
+	goalActor                 *SessionActor
+	sessionMutationActor      *SessionActor
+	workspaceRuntimeAdmission *workspaceRuntimeAdmission
+	editRetryDisabled         bool
+	goalFencesRestored        sync.Map
 }
 
 func New(config Config) *Host {
@@ -121,8 +124,9 @@ func New(config Config) *Host {
 		sessionMutationActor = NewSessionActor()
 	}
 	host := &Host{
-		store: config.CanonicalStore, interactionTrees: config.InteractionTrees,
-		turnSubmissions: config.TurnSubmissions, effectiveHistory: config.EffectiveHistory,
+		store: config.CanonicalStore, runtimeRailPlacement: config.RuntimeRailPlacement,
+		interactionTrees: config.InteractionTrees,
+		turnSubmissions:  config.TurnSubmissions, effectiveHistory: config.EffectiveHistory,
 		sessionManagement: config.SessionManagement, sessionBatchManagement: config.SessionBatchManagement, sessionDeletionGuard: config.SessionDeletionGuard, sessionPurge: config.SessionPurge,
 		deletedSessions: config.DeletedSessions,
 		sessionForks:    config.SessionForks, sessionForkRuntime: config.SessionForkRuntime,
@@ -143,7 +147,11 @@ func New(config Config) *Host {
 		goalAttemptTimeout: config.GoalAttemptTimeout, goalRecoveryBudget: config.GoalRecoveryBudget,
 		goalMaxAttempts: config.GoalMaxAttempts, goalDispatchDeadline: config.GoalDispatchDeadline,
 		goalActor: goalActor, sessionMutationActor: sessionMutationActor,
-		editRetryDisabled: config.EditRetryDisabled,
+		workspaceRuntimeAdmission: newWorkspaceRuntimeAdmission(),
+		editRetryDisabled:         config.EditRetryDisabled,
+	}
+	if host.runtimeRailPlacement == nil {
+		host.runtimeRailPlacement, _ = host.store.(RuntimeSessionRailPlacementResolver)
 	}
 	if host.interactionTrees == nil {
 		host.interactionTrees, _ = host.store.(CanonicalInteractionTreeStore)

@@ -39,8 +39,13 @@ type Application struct {
 
 	// executionMu and inFlight provide process-local ownership for operation
 	// execution. Durable recovery remains the repository and adapter contract.
-	executionMu sync.Mutex
-	inFlight    map[string]*operationExecution
+	executionMu            sync.Mutex
+	inFlight               map[string]*operationExecution
+	catalogMu              sync.Mutex
+	catalogFetchSequence   uint64
+	catalogAppliedSequence uint64
+	authorizationMu        sync.Mutex
+	authorizationLanes     map[string]*sync.Mutex
 }
 
 type operationExecution struct {
@@ -98,11 +103,50 @@ func NewApplication(config ApplicationConfig) (*Application, error) {
 	if config.LeaseDuration <= 0 {
 		config.LeaseDuration = 30 * time.Second
 	}
-	return &Application{config: config, inFlight: make(map[string]*operationExecution)}, nil
+	return &Application{config: config, inFlight: make(map[string]*operationExecution),
+		authorizationLanes: make(map[string]*sync.Mutex)}, nil
 }
 
 func (application *Application) Snapshot(ctx context.Context) (Snapshot, error) {
-	return application.config.Repository.Snapshot(ctx)
+	snapshot, err := application.config.Repository.Snapshot(ctx)
+	return publicSnapshot(snapshot, OperationScope{}), err
+}
+
+func (application *Application) SnapshotForScope(ctx context.Context, scope OperationScope) (Snapshot, error) {
+	if repository, ok := application.config.Repository.(ScopedSnapshotReader); ok {
+		snapshot, err := repository.SnapshotForScope(ctx, scope)
+		return publicSnapshot(snapshot, scope), err
+	}
+	snapshot, err := application.config.Repository.Snapshot(ctx)
+	if err != nil || strings.TrimSpace(scope.AccountID) == "" || application.config.AuthorizationProjections == nil {
+		return publicSnapshot(snapshot, scope), err
+	}
+	for index := range snapshot.Connectors {
+		projection, projectionErr := application.config.AuthorizationProjections.AuthorizationProjection(
+			ctx, scope.AccountID, snapshot.Connectors[index].Key,
+		)
+		if errors.Is(projectionErr, ErrNotFound) {
+			continue
+		}
+		if projectionErr != nil {
+			return Snapshot{}, projectionErr
+		}
+		snapshot.Connectors[index].Authorization = Authorization{
+			State: projection.State, FailureCode: projection.FailureCode,
+		}
+	}
+	return publicSnapshot(snapshot, scope), nil
+}
+
+func publicSnapshot(snapshot Snapshot, scope OperationScope) Snapshot {
+	operations := snapshot.Operations[:0]
+	for _, operation := range snapshot.Operations {
+		if OperationVisibleToScope(operation, scope) {
+			operations = append(operations, operation)
+		}
+	}
+	snapshot.Operations = operations
+	return snapshot
 }
 
 func (application *Application) ListCatalogCategories(ctx context.Context) ([]CatalogCategory, error) {
@@ -128,14 +172,67 @@ func (application *Application) ListCatalogCategories(ctx context.Context) ([]Ca
 func (application *Application) ListCatalogPage(ctx context.Context, query CatalogPageQuery) (CatalogPage, error) {
 	query.SectionID = strings.TrimSpace(query.SectionID)
 	query.PageToken = strings.TrimSpace(query.PageToken)
+	query.InstallationFilter = CatalogInstallationFilter(strings.TrimSpace(string(query.InstallationFilter)))
 	if query.SectionID == "" || query.PageSize < 1 || query.PageSize > 100 {
 		return CatalogPage{}, invalidRequest("sectionId and a pageSize between 1 and 100 are required")
 	}
-	page, err := application.config.CatalogSource.ListPage(ctx, CatalogSourcePageQuery(query))
-	if err != nil {
-		return CatalogPage{}, preserveCatalogSourceError("connector catalog page could not be loaded", err)
+	if query.InstallationFilter != "" && query.InstallationFilter != CatalogInstallationFilterNotInstalled {
+		return CatalogPage{}, invalidRequest("installation filter is invalid")
 	}
-	if page.SectionID != query.SectionID {
+	fetchSequence := application.beginCatalogFetch()
+	pageToken := query.PageToken
+	seenPageTokens := map[string]struct{}{pageToken: {}}
+	result := CatalogPage{
+		SectionID: query.SectionID,
+		Items:     make([]CatalogListing, 0, query.PageSize),
+	}
+	for {
+		pageSize := query.PageSize
+		if query.InstallationFilter == CatalogInstallationFilterNotInstalled {
+			pageSize -= len(result.Items)
+		}
+		page, err := application.config.CatalogSource.ListPage(ctx, CatalogSourcePageQuery{
+			SectionID: query.SectionID,
+			PageSize:  pageSize,
+			PageToken: pageToken,
+		})
+		if err != nil {
+			return CatalogPage{}, preserveCatalogSourceError("connector catalog page could not be loaded", err)
+		}
+		projected, err := application.projectCatalogSourcePage(ctx, fetchSequence, query.SectionID, page)
+		if err != nil {
+			return CatalogPage{}, err
+		}
+		if query.InstallationFilter == "" {
+			return projected, nil
+		}
+		if projected.Revision > result.Revision {
+			result.Revision = projected.Revision
+		}
+		for _, item := range projected.Items {
+			if !connectorHasInstalledArtifact(item.Connector) {
+				result.Items = append(result.Items, item)
+			}
+		}
+		result.NextPageToken = projected.NextPageToken
+		if len(result.Items) >= query.PageSize || projected.NextPageToken == "" {
+			return result, nil
+		}
+		if _, exists := seenPageTokens[projected.NextPageToken]; exists {
+			return CatalogPage{}, invalidManifest("connector catalog pagination did not advance", nil)
+		}
+		seenPageTokens[projected.NextPageToken] = struct{}{}
+		pageToken = projected.NextPageToken
+	}
+}
+
+func (application *Application) projectCatalogSourcePage(
+	ctx context.Context,
+	fetchSequence uint64,
+	sectionID string,
+	page CatalogSourcePage,
+) (CatalogPage, error) {
+	if page.SectionID != sectionID {
 		return CatalogPage{}, invalidManifest("connector catalog page section does not match the request", nil)
 	}
 	seen := make(map[string]struct{}, len(page.Entries))
@@ -162,51 +259,99 @@ func (application *Application) ListCatalogPage(ctx context.Context, query Catal
 	// makes an item immediately installable without waiting for the background
 	// authoritative refresh; unseen items are never removed by a partial page.
 	var revision uint64
-	err = application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		revision = tx.Revision()
-		changed := make([]Connector, 0, len(page.Entries))
-		for _, entry := range page.Entries {
-			connector, lookupErr := tx.Connector(entry.Release.ConnectorKey)
-			if lookupErr != nil && !errors.Is(lookupErr, ErrNotFound) {
-				return lookupErr
+	applied, err := application.applyCatalogFetch(fetchSequence, func() error {
+		return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+			revision = tx.Revision()
+			changed := make([]Connector, 0, len(page.Entries))
+			for _, entry := range page.Entries {
+				connector, lookupErr := tx.Connector(entry.Release.ConnectorKey)
+				if lookupErr != nil && !errors.Is(lookupErr, ErrNotFound) {
+					return lookupErr
+				}
+				if errors.Is(lookupErr, ErrNotFound) {
+					connector = newCatalogConnector(entry.Release)
+				}
+				compatibility := compatibilityByKey[entry.Release.ConnectorKey]
+				if lookupErr == nil && reflect.DeepEqual(connector.Release, entry.Release) && reflect.DeepEqual(connector.Compatibility, compatibility) {
+					continue
+				}
+				connector.Release = entry.Release
+				connector.Authorization = authorizationForManifest(connector.Authorization, entry.Release.Manifest.AuthorizationKind)
+				connector.Compatibility = compatibility
+				changed = append(changed, connector)
 			}
-			if errors.Is(lookupErr, ErrNotFound) {
-				connector = newCatalogConnector(entry.Release)
+			if len(changed) == 0 {
+				return nil
 			}
-			compatibility := compatibilityByKey[entry.Release.ConnectorKey]
-			if lookupErr == nil && reflect.DeepEqual(connector.Release, entry.Release) && reflect.DeepEqual(connector.Compatibility, compatibility) {
-				continue
+			revision = tx.AdvanceRevision()
+			for _, connector := range changed {
+				connector.Revision = revision
+				if err := tx.SaveConnector(connector); err != nil {
+					return err
+				}
 			}
-			connector.Release = entry.Release
-			connector.Authorization = authorizationForManifest(connector.Authorization, entry.Release.Manifest.AuthorizationKind)
-			connector.Compatibility = compatibility
-			changed = append(changed, connector)
-		}
-		if len(changed) == 0 {
-			return nil
-		}
-		revision = tx.AdvanceRevision()
-		for _, connector := range changed {
-			connector.Revision = revision
-			if err := tx.SaveConnector(connector); err != nil {
-				return err
-			}
-		}
-		return tx.EnqueueConnectorMarketChanged(ChangedEvent{Revision: revision})
+			return tx.EnqueueConnectorMarketChanged(ChangedEvent{Revision: revision})
+		})
 	})
 	if err != nil {
 		return CatalogPage{}, err
+	}
+	if !applied {
+		snapshot, snapshotErr := application.config.Repository.Snapshot(ctx)
+		if snapshotErr != nil {
+			return CatalogPage{}, snapshotErr
+		}
+		revision = snapshot.Revision
 	}
 
 	result := CatalogPage{SectionID: page.SectionID, Items: make([]CatalogListing, 0, len(page.Entries)), NextPageToken: page.NextPageToken, Revision: revision}
 	for _, entry := range page.Entries {
 		connector, err := application.config.Repository.Connector(ctx, entry.Release.ConnectorKey)
+		if !applied && errors.Is(err, ErrNotFound) {
+			continue
+		}
 		if err != nil {
 			return CatalogPage{}, err
 		}
 		result.Items = append(result.Items, CatalogListing{CategoryID: entry.CategoryID, Featured: entry.Featured, Connector: connector})
 	}
 	return result, nil
+}
+
+func connectorHasInstalledArtifact(connector Connector) bool {
+	installation := connector.Installation
+	if installation.State == InstallationStateNotInstalled || installation.State == InstallationStateInstalling {
+		return false
+	}
+	if installationRequiresPhysicalRepair(installation) {
+		return false
+	}
+	if installation.InstalledReleaseDigest != "" || installation.InstalledReleaseID != "" || installation.InstalledVersion != "" {
+		return true
+	}
+	return installation.State == InstallationStateInstalled ||
+		installation.State == InstallationStateUpdating ||
+		installation.State == InstallationStateUninstalling
+}
+
+func (application *Application) beginCatalogFetch() uint64 {
+	application.catalogMu.Lock()
+	defer application.catalogMu.Unlock()
+	application.catalogFetchSequence++
+	return application.catalogFetchSequence
+}
+
+func (application *Application) applyCatalogFetch(sequence uint64, apply func() error) (bool, error) {
+	application.catalogMu.Lock()
+	defer application.catalogMu.Unlock()
+	if sequence < application.catalogAppliedSequence {
+		return false, nil
+	}
+	if err := apply(); err != nil {
+		return false, err
+	}
+	application.catalogAppliedSequence = sequence
+	return true, nil
 }
 
 func (application *Application) GetConnector(
@@ -223,7 +368,32 @@ func (application *Application) GetOperation(ctx context.Context, operationID st
 	if strings.TrimSpace(operationID) == "" {
 		return Operation{}, invalidRequest("operationID is required")
 	}
-	return application.config.Repository.Operation(ctx, operationID)
+	operation, err := application.config.Repository.Operation(ctx, operationID)
+	if err != nil {
+		return Operation{}, err
+	}
+	if operation.Kind == OperationKindReconcileRuntime {
+		return Operation{}, ErrNotFound
+	}
+	return operation, nil
+}
+
+func (application *Application) GetOperationForScope(
+	ctx context.Context,
+	scope OperationScope,
+	operationID string,
+) (Operation, error) {
+	if strings.TrimSpace(operationID) == "" {
+		return Operation{}, invalidRequest("operationID is required")
+	}
+	operation, err := application.config.Repository.OperationForScope(ctx, scope, operationID)
+	if err != nil {
+		return Operation{}, err
+	}
+	if !OperationVisibleToScope(operation, scope) {
+		return Operation{}, ErrNotFound
+	}
+	return operation, nil
 }
 
 func (application *Application) RefreshCatalog(
@@ -325,6 +495,8 @@ func (application *Application) BeginAuthorization(
 	if err := validateConnectorMutation(mutation); err != nil {
 		return AuthorizationResult{}, err
 	}
+	unlock := application.lockAuthorization(mutation.AccountID, mutation.ConnectorKey)
+	defer unlock()
 	current, err := application.config.Repository.Connector(ctx, mutation.ConnectorKey)
 	if err != nil {
 		return AuthorizationResult{}, err
@@ -342,6 +514,21 @@ func (application *Application) BeginAuthorization(
 	)
 	if err != nil {
 		return AuthorizationResult{}, err
+	}
+	if !idempotentReplay {
+		unresolved, unresolvedErr := application.config.Repository.UnresolvedAuthorizationSessionOperations(
+			ctx, OperationScope{AccountID: accountID},
+		)
+		if unresolvedErr != nil {
+			return AuthorizationResult{}, unresolvedErr
+		}
+		for _, receipt := range unresolved {
+			if receipt.ConnectorKey == mutation.ConnectorKey {
+				return AuthorizationResult{}, NewDomainError(
+					ErrorCodeOperationInProgress, "connector authorization is already pending", true, nil,
+				)
+			}
+		}
 	}
 	if accountScoped && !idempotentReplay {
 		projection, projectionErr := application.GetAuthorizationProjection(ctx, accountID, mutation.ConnectorKey)
@@ -394,6 +581,9 @@ func (application *Application) BeginAuthorization(
 
 	session, err := application.beginAuthorizationSession(ctx, accepted.Operation, secret)
 	if err != nil {
+		// Starting authorization has no durable provider receipt yet. Keep retry
+		// under explicit user control instead of leaving a running operation for
+		// the recovery worker to replay continuously.
 		if accepted.Operation.State != OperationStateCompleted {
 			_ = application.failOperation(ctx, accepted.Operation.OperationID, ErrorCodeAuthorizationFailed)
 		}
@@ -416,13 +606,106 @@ func (application *Application) BeginAuthorization(
 		} else {
 			connector.Authorization = Authorization{State: projection.State, FailureCode: projection.FailureCode}
 		}
+		// The account projection remains the durable authorization truth, but a
+		// redirect session can be pending before the control plane publishes its
+		// first changed projection. Preserve that in-flight state in this command
+		// result so callers keep following the same idempotent session instead of
+		// treating the initial disconnected projection as terminal.
+		if !session.IsResolved() && session.State == AuthorizationStatePending && connector.Authorization.State != AuthorizationStateConnected {
+			connector.Authorization = Authorization{State: AuthorizationStatePending}
+		}
 	}
 	return AuthorizationResult{
-		Connector:        connector,
-		Operation:        operation,
-		AuthorizationURL: session.AuthorizationURL,
-		Revision:         connector.Revision,
+		Connector:              connector,
+		Operation:              operation,
+		AuthorizationURL:       session.AuthorizationURL,
+		AuthorizationView:      authorizationViewForSession(connector.Release, session),
+		AuthorizationExpiresAt: session.ExpiresAt,
+		Revision:               connector.Revision,
 	}, nil
+}
+
+// CancelAuthorization terminates the unresolved local authorization attempt.
+// It does not disconnect an already-authorized account connection.
+func (application *Application) CancelAuthorization(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) error {
+	connectorKey = strings.TrimSpace(connectorKey)
+	scope.AccountID = strings.TrimSpace(scope.AccountID)
+	if connectorKey == "" {
+		return invalidRequest("connectorKey is required")
+	}
+	unlock := application.lockAuthorization(scope.AccountID, connectorKey)
+	defer unlock()
+	connector, err := application.config.Repository.Connector(ctx, connectorKey)
+	if err != nil {
+		return err
+	}
+	operations, err := application.config.Repository.UnresolvedAuthorizationSessionOperations(ctx, scope)
+	if err != nil {
+		return err
+	}
+	for _, operation := range operations {
+		if operation.ConnectorKey != connectorKey {
+			continue
+		}
+		if err := application.config.Repository.ResolveAuthorizationSession(
+			ctx,
+			operation.OperationID,
+			AuthorizationSessionResolutionSuperseded,
+		); err != nil {
+			return err
+		}
+	}
+	if connector.Authorization.State == AuthorizationStatePending {
+		if err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+			stored, txErr := tx.Connector(connectorKey)
+			if txErr != nil || stored.Authorization.State != AuthorizationStatePending {
+				return txErr
+			}
+			revision := tx.AdvanceRevision()
+			stored.Authorization = Authorization{State: AuthorizationStateDisconnected}
+			stored.Revision = revision
+			if txErr := tx.SaveConnector(stored); txErr != nil {
+				return txErr
+			}
+			return tx.EnqueueConnectorMarketChanged(ChangedEvent{ConnectorKey: connectorKey, Revision: revision})
+		}); err != nil {
+			return err
+		}
+	}
+	if scope.AccountID != "" && application.config.AuthorizationProjections != nil {
+		projection, projectionErr := application.GetAuthorizationProjection(ctx, scope.AccountID, connectorKey)
+		if projectionErr == nil && projection.State == AuthorizationStatePending {
+			projection.State = AuthorizationStateDisconnected
+			projection.ConnectionID = ""
+			projection.FailureCode = ""
+			projection.UpdatedAt = application.config.Now().UTC()
+			if err := application.saveAuthorizationProjection(ctx, ConnectorMutation{
+				ConnectorKey: connectorKey, AccountID: scope.AccountID,
+			}, projection); err != nil {
+				return err
+			}
+		} else if projectionErr != nil && !errors.Is(projectionErr, ErrNotFound) {
+			return projectionErr
+		}
+	}
+	return nil
+}
+
+func (application *Application) lockAuthorization(accountID, connectorKey string) func() {
+	key := strings.TrimSpace(accountID) + "\x00" + strings.TrimSpace(connectorKey)
+	application.authorizationMu.Lock()
+	lane := application.authorizationLanes[key]
+	if lane == nil {
+		lane = &sync.Mutex{}
+		application.authorizationLanes[key] = lane
+	}
+	application.authorizationMu.Unlock()
+	lane.Lock()
+	return lane.Unlock
 }
 
 // ReconcileAuthorizations observes unresolved private start receipts for one
@@ -470,12 +753,31 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context, sco
 			continue
 		}
 		session := *operation.Execution.AuthorizationSession
-		observation, observeErr := observer.Observe(ctx, AuthorizationObserveRequest{
-			Scope: operation.Scope, Connector: connector, Release: release, Session: session,
-		})
-		if observeErr != nil {
-			reconcileErr = errors.Join(reconcileErr, observeErr)
-			continue
+		observation := AuthorizationObservation{}
+		expiresAt := session.ExpiresAt
+		if expiresAt.IsZero() {
+			expiresAt = operation.UpdatedAt
+			if expiresAt.IsZero() {
+				expiresAt = operation.CreatedAt
+			}
+			if !expiresAt.IsZero() {
+				expiresAt = expiresAt.Add(authorizationSessionTTL)
+			}
+		}
+		if !expiresAt.IsZero() && !expiresAt.After(application.config.Now().UTC()) {
+			observation = AuthorizationObservation{
+				State:       AuthorizationObservationFailed,
+				FailureCode: "connector_authorization_timeout",
+			}
+		} else {
+			var observeErr error
+			observation, observeErr = observer.Observe(ctx, AuthorizationObserveRequest{
+				Scope: operation.Scope, Connector: connector, Release: release, Session: session,
+			})
+			if observeErr != nil {
+				reconcileErr = errors.Join(reconcileErr, observeErr)
+				continue
+			}
 		}
 		if observation.State == AuthorizationObservationPending {
 			continue
@@ -647,6 +949,10 @@ func (application *Application) executeOperation(ctx context.Context, operationI
 		executeErr = invalidRequest(fmt.Sprintf("operation kind %q is not executable", operation.Kind))
 	}
 	if executeErr != nil {
+		if operation.Kind != OperationKindRefreshCatalog && operation.Kind != OperationKindStartAuthorization &&
+			isRetryableError(executeErr) {
+			return executeErr
+		}
 		code := ErrorCodeInstallFailed
 		if operation.Kind == OperationKindRefreshCatalog {
 			code = errorCodeOr(executeErr, ErrorCodeUpstreamUnavailable)
@@ -775,7 +1081,7 @@ func (application *Application) acceptConnectorOperation(
 	}
 	var result MutationResult
 	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		existing, err := tx.OperationByClientRequestID(mutation.ClientRequestID)
+		existing, err := tx.OperationByClientRequestID(mutation.AccountID, mutation.ClientRequestID)
 		if err != nil {
 			return err
 		}
@@ -790,14 +1096,23 @@ func (application *Application) acceptConnectorOperation(
 			result = MutationResult{Connector: &connector, Operation: *existing, Revision: tx.Revision()}
 			return nil
 		}
-		if err := verifyRevision(tx, mutation.ExpectedRevision); err != nil {
+		connector, err := tx.Connector(mutation.ConnectorKey)
+		if err != nil {
+			return err
+		}
+		if mutation.ExpectedConnectorRevision != nil {
+			if connector.Revision != *mutation.ExpectedConnectorRevision {
+				return NewDomainError(
+					ErrorCodeRevisionConflict,
+					fmt.Sprintf("expected connector revision %d but current connector revision is %d", *mutation.ExpectedConnectorRevision, connector.Revision),
+					true,
+					nil,
+				)
+			}
+		} else if err := verifyRevision(tx, mutation.ExpectedRevision); err != nil {
 			return err
 		}
 		if err := rejectActiveOperation(tx, mutation.ConnectorKey); err != nil {
-			return err
-		}
-		connector, err := tx.Connector(mutation.ConnectorKey)
-		if err != nil {
 			return err
 		}
 		connector, err = transition(connector)
@@ -814,6 +1129,8 @@ func (application *Application) acceptConnectorOperation(
 		operation := Operation{
 			OperationID:     operationID,
 			ClientRequestID: mutation.ClientRequestID,
+			OwnerAccountID:  strings.TrimSpace(mutation.AccountID),
+			Visibility:      OperationVisibilityAccount,
 			ConnectorKey:    mutation.ConnectorKey,
 			Kind:            kind,
 			Scope:           OperationScope{AccountID: strings.TrimSpace(mutation.AccountID)},
@@ -867,7 +1184,7 @@ func (application *Application) isIdempotentConnectorOperation(
 ) (bool, error) {
 	var replay bool
 	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		existing, err := tx.OperationByClientRequestID(mutation.ClientRequestID)
+		existing, err := tx.OperationByClientRequestID(mutation.AccountID, mutation.ClientRequestID)
 		if err != nil {
 			return err
 		}
@@ -894,12 +1211,13 @@ func (application *Application) acceptOperation(
 	}
 	var result MutationResult
 	err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-		existing, err := tx.OperationByClientRequestID(mutation.ClientRequestID)
+		ownerAccountID := strings.TrimSpace(mutation.Scope.AccountID)
+		existing, err := tx.OperationByClientRequestID(ownerAccountID, mutation.ClientRequestID)
 		if err != nil {
 			return err
 		}
 		if existing != nil {
-			if err := verifyIdempotentOperation(*existing, kind, connectorKey, ""); err != nil {
+			if err := verifyIdempotentOperation(*existing, kind, connectorKey, ownerAccountID); err != nil {
 				return err
 			}
 			result = MutationResult{Operation: *existing, Revision: tx.Revision()}
@@ -920,8 +1238,11 @@ func (application *Application) acceptOperation(
 		operation := Operation{
 			OperationID:     operationID,
 			ClientRequestID: mutation.ClientRequestID,
+			OwnerAccountID:  ownerAccountID,
+			Visibility:      OperationVisibilityAccount,
 			ConnectorKey:    connectorKey,
 			Kind:            kind,
+			Scope:           OperationScope{AccountID: ownerAccountID},
 			State:           OperationStateAccepted,
 			Stage:           OperationStageAccepted,
 			CreatedAt:       now,

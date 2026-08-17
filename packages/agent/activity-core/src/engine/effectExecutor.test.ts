@@ -134,6 +134,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
     correlationId: "submit-create",
     cwd: "/repo",
     isolation: "worktree",
+    modelExplicit: false,
     initialContent: [{ text: "build it", type: "text" }],
     initialDisplayPrompt: "Build it",
     initialGoalControl: { action: "set", objective: "ship it" },
@@ -150,6 +151,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
       sectionKey: "project:/repo",
       version: 1
     },
+    reasoningEffortExplicit: true,
     settings: { model: "model-1", planMode: true },
     submitDiagnostics: { blockCount: 1, source: "test" },
     title: "Session",
@@ -269,6 +271,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
     clientSubmitId: "submit-create",
     cwd: "/repo",
     isolation: "worktree",
+    modelExplicit: false,
     initialContent: [{ text: "build it", type: "text" }],
     initialDisplayPrompt: "Build it",
     initialGoalControl: { action: "set", objective: "ship it" },
@@ -285,6 +288,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
       sectionKey: "project:/repo",
       version: 1
     },
+    reasoningEffortExplicit: true,
     settings: { model: "model-1", planMode: true },
     submitDiagnostics: { blockCount: 1, source: "test" },
     title: "Session",

@@ -410,26 +410,30 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 			section.Body = renderedBody
 			section.Key = name + "/" + section.Key
 		}
-		resolved.Skills = append(resolved.Skills, contribution.Skills...)
+		if !input.SkipSkills {
+			resolved.Skills = append(resolved.Skills, contribution.Skills...)
+		}
 		resolved.PolicySections = append(resolved.PolicySections, contribution.PolicySections...)
 		resolved.EnvOverlay = append(resolved.EnvOverlay, contribution.EnvOverlay...)
 	}
-	for _, source := range sources {
-		if source == nil {
-			continue
-		}
-		skills, err := source.Skills(ctx, SkillContext{WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Provider: input.Provider, Cwd: input.Cwd})
-		if err != nil {
-			return nil, fmt.Errorf("resolve runtime preparation skill source: %w", err)
-		}
-		for index := range skills {
-			if skills[index].Source == "" {
-				skills[index].Source = "host"
+	if !input.SkipSkills {
+		for _, source := range sources {
+			if source == nil {
+				continue
 			}
+			skills, err := source.Skills(ctx, SkillContext{WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Provider: input.Provider, Cwd: input.Cwd})
+			if err != nil {
+				return nil, fmt.Errorf("resolve runtime preparation skill source: %w", err)
+			}
+			for index := range skills {
+				if skills[index].Source == "" {
+					skills[index].Source = "host"
+				}
+			}
+			resolved.Skills = append(resolved.Skills, skills...)
 		}
-		resolved.Skills = append(resolved.Skills, skills...)
+		resolved.Skills = append(resolved.Skills, input.ExtraSkills...)
 	}
-	resolved.Skills = append(resolved.Skills, input.ExtraSkills...)
 	if err := validateResolvedSkills(resolved.Skills, input.Provider); err != nil {
 		return nil, err
 	}

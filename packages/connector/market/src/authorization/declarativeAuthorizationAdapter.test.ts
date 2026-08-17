@@ -26,6 +26,17 @@ test("creates a legacy secret form only when interaction is absent", () => {
   }
 });
 
+test("does not synthesize a secret form for brokered API-key authorization", () => {
+  const resolved = resolveAuthorizationInteraction({
+    authorizationKind: "api_key",
+    enableLegacySecretFallback: false,
+    interaction: undefined,
+    legacyLabels,
+    locale: "en-US"
+  });
+  assert.deepEqual(resolved, { kind: "none" });
+});
+
 test("fails closed for an explicitly invalid interaction", () => {
   const resolved = resolveAuthorizationInteraction({
     authorizationKind: "api_key",

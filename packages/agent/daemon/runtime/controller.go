@@ -20,38 +20,38 @@ var (
 )
 
 const defaultStreamingReportCoalesceWindow = 50 * time.Millisecond
-const interactiveDenyFollowUpStartTimeout = 30 * time.Second
-const interactiveDenyFollowUpPollInterval = 25 * time.Millisecond
 
 type execMetadataContextKey struct{}
 
 type Controller struct {
-	mu                          sync.Mutex
-	streamObserverMu            sync.RWMutex
-	providerObservationMu       sync.RWMutex
-	goalControlObserverMu       sync.RWMutex
-	sessions                    map[string]Session
-	sessionAvailabilityWaiters  map[string]*sessionAvailabilityWaiter
-	adapters                    map[string]Adapter
-	adapterResolver             AdapterResolver
-	turns                       map[string]activeTurn
-	commands                    map[string]AgentSessionCommandSnapshot
-	pendingCommandSnapshots     map[string]AgentSessionCommandSnapshot
-	configOptionsUpdates        map[string]AgentSessionConfigOptionsUpdate
-	pendingConfigOptionsUpdates map[string][]AgentSessionConfigOptionsUpdate
-	provisionalSessions         map[string]bool
-	sessionInitializations      map[string]*controllerSessionInitialization
-	goalGenerationFences        map[string]*controllerGoalGenerationFenceRegistry
-	startupLocks                map[startupLockKey]*controllerLifecycleLock
-	lifecycleLocks              map[string]*controllerLifecycleLock
-	hub                         *EventHub
-	reporter                    DurableActivityReporter
-	reportQueue                 *reportRequestQueue
-	providerGoalAdoptionSink    ProviderGoalAdoptionSink
-	terminalInteractions        terminalInteractiveDispositionStore
-	streamObserver              RuntimeStreamEventObserver
-	providerObservationObserver ProviderObservationObserver
-	goalControlObserver         GoalControlLifecycleObserver
+	mu                           sync.Mutex
+	streamObserverMu             sync.RWMutex
+	providerObservationMu        sync.RWMutex
+	goalControlObserverMu        sync.RWMutex
+	sessions                     map[string]Session
+	liveConnectionGenerations    map[string]uint64
+	nextLiveConnectionGeneration uint64
+	sessionAvailabilityWaiters   map[string]*sessionAvailabilityWaiter
+	adapters                     map[string]Adapter
+	adapterResolver              AdapterResolver
+	turns                        map[string]activeTurn
+	commands                     map[string]AgentSessionCommandSnapshot
+	pendingCommandSnapshots      map[string]AgentSessionCommandSnapshot
+	configOptionsUpdates         map[string]AgentSessionConfigOptionsUpdate
+	pendingConfigOptionsUpdates  map[string][]AgentSessionConfigOptionsUpdate
+	provisionalSessions          map[string]bool
+	sessionInitializations       map[string]*controllerSessionInitialization
+	goalGenerationFences         map[string]*controllerGoalGenerationFenceRegistry
+	startupLocks                 map[startupLockKey]*controllerLifecycleLock
+	lifecycleLocks               map[string]*controllerLifecycleLock
+	hub                          *EventHub
+	reporter                     DurableActivityReporter
+	reportQueue                  *reportRequestQueue
+	providerGoalAdoptionSink     ProviderGoalAdoptionSink
+	terminalInteractions         terminalInteractiveDispositionStore
+	streamObserver               RuntimeStreamEventObserver
+	providerObservationObserver  ProviderObservationObserver
+	goalControlObserver          GoalControlLifecycleObserver
 }
 
 // RuntimeStreamEventObserver receives the ordered precommit stream projection
@@ -65,6 +65,15 @@ type RuntimeStreamEventObserver interface {
 		string,
 		[]StreamEvent,
 	) error
+}
+
+// RuntimeStreamEventFilter can be implemented by an observer that validates
+// event identity before the same stream is delivered to daemon-local
+// subscribers. Observation and filtering are separate so an external
+// projection can still emit a reconcile signal while the invalid event is
+// withheld from the local session fan-out.
+type RuntimeStreamEventFilter interface {
+	FilterRuntimeStreamEvents(string, string, []StreamEvent) []StreamEvent
 }
 
 // ProviderObservationObserver receives capture-only provider observations
@@ -99,8 +108,9 @@ type GoalControlLifecycleObserver interface {
 }
 
 type controllerLifecycleLock struct {
-	gate chan struct{}
-	refs int
+	gate              chan struct{}
+	refs              int
+	startupOperations map[chan struct{}]struct{}
 }
 
 // controllerSessionInitialization retains every provider observation emitted
@@ -150,22 +160,44 @@ type ReleaseIdleLiveSessionsInput struct {
 }
 
 type ReleaseIdleLiveSessionsResult struct {
-	Scanned            int
-	Released           int
-	SkippedFresh       int
-	SkippedActiveTurn  int
-	SkippedUnsupported int
-	SkippedNotLive     int
-	SkippedBusy        int
-	Failed             int
+	Scanned                  int
+	Released                 int
+	SkippedFresh             int
+	SkippedActiveTurn        int
+	SkippedUnsupported       int
+	SkippedNotLive           int
+	SkippedBusy              int
+	SkippedCleanupBudget     int
+	Failed                   int
+	ResourceCleanupAttempted int
+	ResourceCleanupCleaned   int
+	ResourceCleanupFailed    int
 }
 
 // CloseAllLiveSessionsResult reports the outcome of CloseAllLiveSessions.
 type CloseAllLiveSessionsResult struct {
 	// Scanned counts sessions whose adapter reported a live provider process.
-	Scanned int
-	Closed  int
-	Failed  int
+	Scanned                  int
+	Closed                   int
+	SkippedCleanupBudget     int
+	Failed                   int
+	ResourceCleanupAttempted int
+	ResourceCleanupCleaned   int
+	ResourceCleanupFailed    int
+}
+
+// DisconnectRuntimeSessionResult reports whether a live provider connection
+// was released. The Controller session record and provider session id remain.
+type DisconnectRuntimeSessionResult struct {
+	Disconnected bool
+}
+
+// RuntimeDisconnectTarget identifies one exact live-connection incarnation.
+// A stale target must never disconnect a later Resume for the same Session.
+type RuntimeDisconnectTarget struct {
+	RoomID               string
+	AgentSessionID       string
+	ConnectionGeneration uint64
 }
 
 type asyncActivityReporter interface {
@@ -190,6 +222,7 @@ func NewControllerWithAdapterResolver(adapters []Adapter, reporter DurableActivi
 	}
 	controller := &Controller{
 		sessions:                    make(map[string]Session),
+		liveConnectionGenerations:   make(map[string]uint64),
 		sessionAvailabilityWaiters:  make(map[string]*sessionAvailabilityWaiter),
 		adapters:                    byProvider,
 		adapterResolver:             resolver,

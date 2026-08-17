@@ -85,6 +85,8 @@ export function AgentGUINodeView({
   onSessionLaunchModePreferenceChange,
   renderAgentTargetInfo,
   renderProjectDirectoryPickerHeaderActions,
+  projectSelectOptions,
+  renderReferencePickerSidebarActions,
   renderSidebarFooter,
   renderProviderRailEmpty,
   providerRailAllPresentation,
@@ -269,7 +271,6 @@ export function AgentGUINodeView({
       if (conversationRailCollapsed || event.button !== 0) {
         return;
       }
-
       event.preventDefault();
       event.currentTarget.setPointerCapture?.(event.pointerId);
       railResizeInteractionRef.current = {
@@ -283,7 +284,6 @@ export function AgentGUINodeView({
     },
     [conversationRailCollapsed, conversationRailWidthPx]
   );
-
   const handleConversationRailResizePointerMove =
     useAgentGUIConversationRailResizePointerMove({
       clampConversationRailWidth,
@@ -292,7 +292,6 @@ export function AgentGUINodeView({
       providerRailWidthPx,
       railResizeInteractionRef
     });
-
   const endConversationRailResize = useCallback(
     (event?: PointerEvent<HTMLDivElement>): void => {
       const resizeState = railResizeInteractionRef.current;
@@ -315,7 +314,6 @@ export function AgentGUINodeView({
     },
     [onConversationRailWidthChanged]
   );
-
   useEffect(() => {
     if (isRailResizing || railResizeWidthPx === null) {
       return;
@@ -732,6 +730,7 @@ export function AgentGUINodeView({
                 resolvePastedPath={resolvePastedPath}
                 promptAssetLimit={promptAssetLimit}
                 selectProjectDirectory={effectiveSelectProjectDirectory}
+                projectSelectOptions={projectSelectOptions}
                 onRequestGitBranches={onRequestGitBranches}
                 onRequestComposerFocus={requestComposerFocus}
                 workspaceAppIcons={effectiveWorkspaceAppIcons}
@@ -756,6 +755,7 @@ export function AgentGUINodeView({
           renderDirectoryHeaderActions={
             renderProjectDirectoryPickerHeaderActions
           }
+          renderSidebarActions={renderReferencePickerSidebarActions}
           resolveContentErrorAction={resolveReferenceContentErrorAction}
           resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.shell.workspaceId}

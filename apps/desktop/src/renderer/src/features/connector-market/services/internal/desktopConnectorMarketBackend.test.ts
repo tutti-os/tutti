@@ -14,6 +14,7 @@ test("desktop connector market backend delegates snapshot reads to the daemon cl
     connectors: [],
     operations: [],
     revision: 7,
+    eventCursor: 11,
     sourceRevision: "sha256:catalog"
   };
   const client = {
@@ -111,6 +112,20 @@ test("desktop connector market backend delegates uninstall idempotency fields", 
       }
     }
   ]);
+});
+
+test("desktop connector market backend delegates authorization cancellation", async () => {
+  const calls: string[] = [];
+  const client = {
+    async cancelConnectorMarketAuthorization(connectorKey: string) {
+      calls.push(connectorKey);
+    }
+  } as ConnectorMarketClient;
+
+  const backend = createDesktopConnectorMarketBackend(client);
+  await backend.cancelAuthorization({ connectorKey: "supabase" });
+
+  assert.deepEqual(calls, ["supabase"]);
 });
 
 test("desktop connector market backend preserves structured daemon errors", async () => {

@@ -326,6 +326,19 @@ func (a *standardACPAdapter) getSession(agentSessionID string) *standardACPSessi
 	return a.sessions[agentSessionID]
 }
 
+func (a *standardACPAdapter) getUsableSession(agentSessionID string) *standardACPSession {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[strings.TrimSpace(agentSessionID)]
+	if session == nil || session.releasing || session.releaseFailed {
+		return nil
+	}
+	return session
+}
+
 func (a *standardACPAdapter) rememberSessionTurn(agentSessionID string, turnID string) {
 	turnID = strings.TrimSpace(turnID)
 	if a == nil || turnID == "" {

@@ -23,6 +23,7 @@ import {
   selectLatestPendingSubmitForSession,
   selectPendingSubmitsForSession,
   selectSessionHasUnconfirmedSubmit,
+  selectSessionHasPendingSubmitStopTarget,
   selectSessionGoalControlPresentation,
   selectSessionIsSubmitting,
   sessionGoalControlPresentationsEqual,
@@ -80,6 +81,11 @@ export function useAgentGUISessionEngineState(input: {
   );
   const hasUnconfirmedSubmit = useEngineSelector(sessionEngine, (state) =>
     selectSessionHasUnconfirmedSubmit(state, activeConversationId)
+  );
+  const activeHasPendingSubmitStopTarget = useEngineSelector(
+    sessionEngine,
+    (state) =>
+      selectSessionHasPendingSubmitStopTarget(state, activeConversationId)
   );
   const activeCancelState = useEngineSelector(sessionEngine, (state) =>
     selectEngineCancelState(state, activeConversationId)
@@ -227,6 +233,7 @@ export function useAgentGUISessionEngineState(input: {
     activeEngineSessionDeleted,
     activeEngineSettingsUpdate,
     activeGoalControlPresentation,
+    activeHasPendingSubmitStopTarget,
     activeLatestPendingSubmit,
     activePendingActivation,
     activePendingSubmits,

@@ -58,3 +58,25 @@ func TestNewProviderErrorLeavesDeliveryUnknownContextErrorsRecoverable(t *testin
 		t.Fatalf("NewProviderError(nil) = %v, want nil", mapped)
 	}
 }
+
+func TestNewProviderStartTimeoutErrorPreservesTypedVerdictAndDeadlineCause(t *testing.T) {
+	cause := fmt.Errorf("provider start: %w", context.DeadlineExceeded)
+	mapped := NewProviderStartTimeoutError(
+		"Agent provider took too long to start",
+		"provider startup exceeded its deadline",
+		cause,
+	)
+	var providerErr *ProviderError
+	if !errors.As(mapped, &providerErr) {
+		t.Fatalf("NewProviderStartTimeoutError() = %v, want ProviderError", mapped)
+	}
+	if providerErr.Code != ProviderErrorCodeStartTimeout {
+		t.Fatalf("ProviderError code = %q, want %q", providerErr.Code, ProviderErrorCodeStartTimeout)
+	}
+	if !errors.Is(mapped, context.DeadlineExceeded) {
+		t.Fatalf("mapped error = %v, want deadline cause preserved", mapped)
+	}
+	if mapped := NewProviderStartTimeoutError("", "", nil); mapped != nil {
+		t.Fatalf("NewProviderStartTimeoutError(nil) = %v, want nil", mapped)
+	}
+}

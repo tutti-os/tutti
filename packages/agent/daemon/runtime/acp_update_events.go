@@ -286,7 +286,7 @@ func acpPromptResultAssistantText(raw json.RawMessage) string {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return ""
 	}
-	return strings.TrimSpace(acpTextFromValue(decoded))
+	return acpTextFromValue(decoded)
 }
 
 func acpTextFromValue(value any) string {
@@ -296,7 +296,7 @@ func acpTextFromValue(value any) string {
 	case []any:
 		parts := make([]string, 0, len(typed))
 		for _, item := range typed {
-			if text := strings.TrimSpace(acpTextFromValue(item)); text != "" {
+			if text := acpTextFromValue(item); strings.TrimSpace(text) != "" {
 				parts = append(parts, text)
 			}
 		}
@@ -305,17 +305,17 @@ func acpTextFromValue(value any) string {
 		if role := strings.TrimSpace(asString(typed["role"])); role != "" && role != "assistant" && role != "agent" {
 			return ""
 		}
-		if text := strings.TrimSpace(asString(typed["text"])); text != "" {
+		if text, ok := typed["text"].(string); ok && strings.TrimSpace(text) != "" {
 			return text
 		}
 		for _, key := range []string{"content", "message", "output", "result"} {
-			if text := strings.TrimSpace(acpTextFromValue(typed[key])); text != "" {
+			if text := acpTextFromValue(typed[key]); strings.TrimSpace(text) != "" {
 				return text
 			}
 		}
 		if messages, ok := typed["messages"].([]any); ok {
 			for i := len(messages) - 1; i >= 0; i-- {
-				if text := strings.TrimSpace(acpTextFromValue(messages[i])); text != "" {
+				if text := acpTextFromValue(messages[i]); strings.TrimSpace(text) != "" {
 					return text
 				}
 			}

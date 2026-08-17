@@ -7,8 +7,10 @@ import {
   useSyncExternalStore
 } from "react";
 import { useService } from "@tutti-os/infra/di";
-import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
-import { openConnectorDialogFromComposer } from "../services/openConnectorDialogFromComposer.ts";
+import {
+  IConnectorMarketModule,
+  openConnectorMarketDialog
+} from "@tutti-os/connector-market/services";
 import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -191,7 +193,7 @@ export function useWorkspaceWorkbenchShellRuntime({
           return;
         }
         if (target.action === "open") {
-          void openConnectorDialogFromComposer(
+          void openConnectorMarketDialog(
             connectorMarketModule.root,
             target.connectorKey
           ).catch(() => undefined);

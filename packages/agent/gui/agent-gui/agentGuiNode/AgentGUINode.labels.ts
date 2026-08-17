@@ -759,6 +759,7 @@ export function useAgentGUIViewLabels(input: {
       addContentConnectorEmpty: t(
         "agentHost.agentGui.addContentConnectorEmpty"
       ),
+      addContentConnectorLoading: t("common.loading"),
       addContentConnectorMore: t("agentHost.agentGui.addContentConnectorMore"),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),

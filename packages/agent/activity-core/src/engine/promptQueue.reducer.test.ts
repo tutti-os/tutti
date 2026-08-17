@@ -584,6 +584,33 @@ test("no-active-turn send failure reconciles before retrying queued prompt", () 
   assert.equal(reconciled.commands[0]?.type, "queue/sendPrompt");
 });
 
+test("session no-active-turn app error reconciles before retrying queued prompt", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const sending = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const failed = reduce(
+    sending.state,
+    commandResult(
+      commandId(sending.commands[0]),
+      "queue/sendPrompt",
+      "failed",
+      { errorCode: "agent.session_no_active_turn" }
+    ),
+    available
+  );
+
+  assert.equal(failed.commands.length, 1);
+  assert.equal(failed.commands[0]?.type, "session/reconcile");
+  assert.equal(
+    failed.state.recordsBySessionId["session-1"]?.failedPromptId,
+    null
+  );
+  assert.equal(failed.state.recordsBySessionId["session-1"]?.inFlight, null);
+});
+
 test("timeout confirmation waits for its exact canonical turn to settle", () => {
   const available = canonicalLifecycle("settled", 1, "turn-0");
   const first = reduce(

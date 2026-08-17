@@ -13,6 +13,10 @@ published outbox receipts for one hour, with bounded SQLite cleanup batches;
 each run drains eligible backlog through repeated transactions. Active
 operations and pending events are outside the cleanup contract.
 
+Accepted/running Operations are also scanned every 500 ms. The in-memory
+scheduler is a wake-up optimization only: losing a schedule call or restarting
+after an external effect cannot strand durable work.
+
 The module provides the market catalog projection, while hosts inject their
 HTTP client/proxy policy, request authorization, event publication,
 persistence, and execution ports. Product account policy and generated HTTP
@@ -35,12 +39,21 @@ normal uninstall/reconcile concern.
 
 The active account scope also bounds authorization receipt polling. Snapshot
 sync atomically converges the account Projection and surfaces matching private
-receipts, but does not terminalize them or enqueue runtime work. The daemon is
-the single scheduler for this recovery path: while holding the lifecycle fence
-it atomically creates or joins one scoped Runtime Reconcile, awaits it, and only
-then resolves those receipts. Joining existing work is not treated as proof of
-current convergence: after that operation completes, the daemon ensures and
-awaits a reconcile created from the latest Projection.
+receipts, but does not terminalize them. The daemon is the single scheduler for
+this recovery path: while holding the lifecycle fence it updates the scoped
+Runtime Desired and waits until Observed records that exact generation before
+resolving those receipts. Runtime convergence is private durable state and does
+not consume the public one-active-Operation slot.
 WebSocket events are only refresh hints; a five-minute level-triggered pass
 reconciles every installed remote authorized Connector so a lost event or an
 interrupted earlier pass cannot leave route state stale.
+
+A continuous scanner also claims due Runtime Desired rows with bounded
+cross-Connector concurrency. Same-Connector duplication is prevented by the
+durable lease and desired-generation CAS; different Connectors may reconcile in
+parallel. A new daemon boot treats every older-boot Observed receipt as stale.
+The implementation host combines a global admission/fence barrier with a
+Connector-keyed lifecycle lane: account switching and FailClosed wait for every
+in-flight route transition, while different Connectors may install, authorize,
+or reconcile concurrently. Shared download and package-install resources use a
+bounded semaphore rather than a long global lifecycle lock.

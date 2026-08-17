@@ -4,5 +4,6 @@ export const enAgentGuiComposer = {
   composerOptionsRetry: "Retry",
   composerOptionsRetryTooltip:
     "Unable to load shared Agent information. Click to retry",
+  sendFailed: "The message could not be sent.",
   inheritedUnavailable: "Inherited / unavailable"
 };

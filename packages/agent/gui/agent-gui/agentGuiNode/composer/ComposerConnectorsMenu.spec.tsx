@@ -10,6 +10,7 @@ const labels = {
   connectorConnect: "Connect",
   connectorAuthorize: "Authorize",
   connectorEmpty: "No connectors available",
+  connectorLoading: "Loading connectors…",
   connectorMore: "View more connectors"
 };
 
@@ -28,6 +29,56 @@ function connector(
 }
 
 describe("ComposerConnectorsMenu", () => {
+  it("shows loading instead of an empty state while the first catalog request is pending", async () => {
+    render(
+      <ComposerConnectorsMenu
+        connectors={[]}
+        disabled={false}
+        labels={labels}
+        loading
+        onOpenConnector={vi.fn()}
+        onOpenConnectors={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+
+    expect(
+      await screen.findByTestId("connector-market-composer-loading")
+    ).toHaveTextContent("Loading connectors…");
+    expect(
+      screen.queryByText("No connectors available")
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps the last successful connector list visible during a refresh", async () => {
+    render(
+      <ComposerConnectorsMenu
+        connectors={[connector("github", "available")]}
+        disabled={false}
+        labels={labels}
+        loading
+        onOpenConnector={vi.fn()}
+        onOpenConnectors={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+
+    expect(
+      await screen.findByTestId("connector-market-composer-item-github")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-market-composer-loading")
+    ).not.toBeInTheDocument();
+  });
+
   it("summarizes connected connectors in a compact preview group", () => {
     const connectedConnectors = Array.from({ length: 5 }, (_, index) => ({
       ...connector(`connected-${index}`, "available"),
@@ -44,22 +95,23 @@ describe("ComposerConnectorsMenu", () => {
     );
 
     expect(
-      screen.getByTestId("agent-gui-composer-connector-preview-connected-0")
+      screen.getByTestId("connector-market-composer-preview-connected-0")
     ).toBeInTheDocument();
     expect(
-      screen.getByTestId("agent-gui-composer-connector-preview-connected-2")
+      screen.getByTestId("connector-market-composer-preview-connected-2")
     ).toBeInTheDocument();
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-preview-connected-3")
+      screen.queryByTestId("connector-market-composer-preview-connected-3")
     ).not.toBeInTheDocument();
     expect(
-      screen.getByTestId("agent-gui-composer-connector-preview-count")
+      screen.getByTestId("connector-market-composer-preview-count")
     ).toHaveTextContent("+2");
   });
 
   it("shows connected versus connect actions and opens the catalog footer", async () => {
     const onOpenConnector = vi.fn();
     const onOpenConnectors = vi.fn();
+    const onOpenChange = vi.fn();
     render(
       <ComposerConnectorsMenu
         connectors={[
@@ -69,6 +121,7 @@ describe("ComposerConnectorsMenu", () => {
         ]}
         disabled={false}
         labels={labels}
+        onOpenChange={onOpenChange}
         onOpenConnector={onOpenConnector}
         onOpenConnectors={onOpenConnectors}
       />
@@ -80,43 +133,44 @@ describe("ComposerConnectorsMenu", () => {
     });
 
     const connected = await screen.findByTestId(
-      "agent-gui-composer-connector-github"
+      "connector-market-composer-item-github"
     );
     expect(connected).toHaveTextContent("Connected");
     expect(
-      screen.getByTestId("agent-gui-composer-connector-github-status")
+      screen.getByTestId("connector-market-composer-status-github")
     ).toHaveClass("ml-auto");
+    expect(connected).toHaveAttribute("data-disabled");
     expect(
-      screen.getByTestId("agent-gui-composer-connector-notion")
+      screen.getByTestId("connector-market-composer-item-notion")
     ).toHaveTextContent("Authorize");
-    expect(
-      screen.getByRole("button", { name: "Authorize Connector notion" })
-    ).toBeEnabled();
-
-    const connectAction = screen.getByRole("button", {
-      name: "Connect Connector lark"
+    const connectAction = screen.getByTestId(
+      "connector-market-composer-item-lark"
+    );
+    fireEvent.pointerDown(connectAction, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
     });
-    expect(connectAction).toBeEnabled();
-    fireEvent.pointerDown(connectAction, { button: 0, ctrlKey: false });
-    fireEvent.click(connectAction, { detail: 1 });
     expect(onOpenConnector).toHaveBeenCalledWith("lark");
     expect(onOpenConnector).toHaveBeenCalledOnce();
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-lark")
+      screen.queryByTestId("connector-market-composer-item-lark")
     ).not.toBeInTheDocument();
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
 
     fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
       button: 0,
       ctrlKey: false
     });
     fireEvent.pointerDown(
-      await screen.findByTestId("agent-gui-composer-more-connectors-entry"),
-      { button: 0, ctrlKey: false }
+      await screen.findByTestId("connector-market-composer-more"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
     );
     expect(onOpenConnectors).toHaveBeenCalledOnce();
     expect(
-      screen.queryByTestId("agent-gui-composer-more-connectors-entry")
+      screen.queryByTestId("connector-market-composer-more")
     ).not.toBeInTheDocument();
+    expect(onOpenChange).toHaveBeenLastCalledWith(false);
   });
 
   it("replaces connected state with authorize when connector status refreshes", async () => {
@@ -138,7 +192,7 @@ describe("ComposerConnectorsMenu", () => {
       ctrlKey: false
     });
     expect(
-      await screen.findByTestId("agent-gui-composer-connector-lark-cli-status")
+      await screen.findByTestId("connector-market-composer-status-lark-cli")
     ).toHaveTextContent("Connected");
 
     rendered.rerender(
@@ -149,11 +203,11 @@ describe("ComposerConnectorsMenu", () => {
     );
 
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-lark-cli-status")
+      screen.queryByTestId("connector-market-composer-status-lark-cli")
     ).not.toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Authorize Connector lark-cli" })
-    ).toBeEnabled();
+      screen.getByTestId("connector-market-composer-item-lark-cli")
+    ).toHaveTextContent("Authorize");
   });
 
   it("limits the quick connector projection to ten catalog entries", async () => {
@@ -183,10 +237,45 @@ describe("ComposerConnectorsMenu", () => {
     });
 
     expect(
-      await screen.findByTestId("agent-gui-composer-connector-connector-9")
+      await screen.findByTestId("connector-market-composer-item-connector-9")
     ).toBeInTheDocument();
     expect(
-      screen.queryByTestId("agent-gui-composer-connector-connector-10")
+      screen.queryByTestId("connector-market-composer-item-connector-10")
+    ).not.toBeInTheDocument();
+  });
+
+  it("prioritizes connected connectors before applying the quick menu limit", async () => {
+    const setupRequiredConnectors = Array.from({ length: 10 }, (_, index) =>
+      connector(`setup-${index}`, "setupRequired")
+    );
+    render(
+      <ComposerConnectorsMenu
+        connectors={[
+          ...setupRequiredConnectors,
+          connector("connected-after-limit", "available")
+        ]}
+        disabled={false}
+        labels={labels}
+        onOpenConnector={vi.fn()}
+        onOpenConnectors={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+
+    const quickItems = await screen.findAllByTestId(
+      /^connector-market-composer-item-/
+    );
+    expect(quickItems).toHaveLength(10);
+    expect(quickItems[0]).toHaveAttribute(
+      "data-testid",
+      "connector-market-composer-item-connected-after-limit"
+    );
+    expect(
+      screen.queryByTestId("connector-market-composer-item-setup-9")
     ).not.toBeInTheDocument();
   });
 });

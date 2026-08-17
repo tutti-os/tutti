@@ -102,12 +102,10 @@ func (table *RouteTable) Commit(next ManagedRoute) error {
 		table.mu.Unlock()
 		return errors.New("connector runtime reconcile generation is stale")
 	}
-	if current != nil {
-		delete(table.routes, key)
-		table.retiring[key] = current
-		current.Fence()
-	}
 	table.mu.Unlock()
+
+	// Finish older cleanup debt before creating another retired generation.
+	// The current published route remains available throughout this wait.
 	if retiring != nil {
 		if err := retiring.Close(time.Now().Add(3 * time.Second)); err != nil {
 			return fmt.Errorf("retire previous connector route: %w", err)
@@ -118,6 +116,21 @@ func (table *RouteTable) Commit(next ManagedRoute) error {
 		}
 		table.mu.Unlock()
 	}
+
+	table.mu.Lock()
+	if table.closed || table.routes[key] != current {
+		table.mu.Unlock()
+		return errors.New("connector runtime route changed while committing")
+	}
+	// Publish the ready candidate before fencing the previous route. Consumers
+	// therefore always see old or next; close failure is cleanup debt, not an
+	// availability gap.
+	table.routes[key] = next
+	if current != nil {
+		table.retiring[key] = current
+		current.Fence()
+	}
+	table.mu.Unlock()
 	if current != nil {
 		if err := current.Close(time.Now().Add(3 * time.Second)); err != nil {
 			return fmt.Errorf("retire previous connector route: %w", err)
@@ -128,12 +141,6 @@ func (table *RouteTable) Commit(next ManagedRoute) error {
 		}
 		table.mu.Unlock()
 	}
-	table.mu.Lock()
-	defer table.mu.Unlock()
-	if table.closed || table.routes[key] != nil {
-		return errors.New("connector runtime route changed while committing")
-	}
-	table.routes[key] = next
 	return nil
 }
 

@@ -18,6 +18,14 @@ func (store *Store) migrateLifecycle(ctx context.Context) error {
 		!isDuplicateColumnError(err) {
 		return fmt.Errorf("migrate connector market operation update timestamp: %w", err)
 	}
+	if _, err := store.db.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS connector_market_release_installations (
+  connector_key TEXT NOT NULL,
+  release_digest TEXT NOT NULL,
+  release_json TEXT NOT NULL,
+  PRIMARY KEY (connector_key, release_digest)
+)`); err != nil {
+		return fmt.Errorf("migrate connector release installations: %w", err)
+	}
 	if err := store.backfillLifecycleColumns(ctx); err != nil {
 		return err
 	}
@@ -119,9 +127,10 @@ func backfillInstalledReleaseEvidence(ctx context.Context, tx *sql.Tx) error {
 		if digest == "" {
 			continue
 		}
-		var storedDigest string
-		err := tx.QueryRowContext(ctx, `SELECT release_digest FROM connector_market_installed_releases WHERE connector_key = ?`, connector.Key).Scan(&storedDigest)
-		if err == nil && storedDigest == digest {
+		var historicalDigest string
+		err := tx.QueryRowContext(ctx, `SELECT release_digest FROM connector_market_release_installations
+WHERE connector_key = ? AND release_digest = ?`, connector.Key, digest).Scan(&historicalDigest)
+		if err == nil {
 			continue
 		}
 		if err != nil && !errors.Is(err, sql.ErrNoRows) {
@@ -132,7 +141,12 @@ func backfillInstalledReleaseEvidence(ctx context.Context, tx *sql.Tx) error {
 			return err
 		}
 		if !found {
-			return fmt.Errorf("backfill installed connector release %q for %q: %w", digest, connector.Key, market.ErrNotFound)
+			// Older stores could promote a prepared candidate in the current-release
+			// index before runtime convergence completed. If that update then failed,
+			// the previous release metadata was no longer recoverable from SQLite.
+			// Keep the store available and let runtime recovery fail this connector
+			// closed until a subsequent install repairs its durable evidence.
+			continue
 		}
 		if err := saveInstalledReleaseOn(ctx, tx, release); err != nil {
 			return err
@@ -142,6 +156,19 @@ func backfillInstalledReleaseEvidence(ctx context.Context, tx *sql.Tx) error {
 }
 
 func legacyInstalledReleaseEvidence(ctx context.Context, tx *sql.Tx, connector market.Connector, digest string) (market.Release, bool, error) {
+	var currentPayload string
+	err := tx.QueryRowContext(ctx, `SELECT release_json FROM connector_market_installed_releases
+WHERE connector_key = ? AND release_digest = ?`, connector.Key, digest).Scan(&currentPayload)
+	if err == nil {
+		var release market.Release
+		if err := json.Unmarshal([]byte(currentPayload), &release); err != nil {
+			return market.Release{}, false, fmt.Errorf("decode current installed connector release: %w", err)
+		}
+		return release, true, nil
+	}
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return market.Release{}, false, err
+	}
 	if connector.Release.ReleaseDigest == digest {
 		return connector.Release, true, nil
 	}
@@ -169,17 +196,27 @@ WHERE connector_key = ? AND kind = ? AND state = ? ORDER BY updated_at_unix_ms D
 }
 
 func saveInstalledReleaseEvidenceOn(ctx context.Context, tx *sql.Tx, operation market.Operation) error {
-	if operation.State != market.OperationStateCompleted {
-		return nil
-	}
 	switch operation.Kind {
 	case market.OperationKindInstall:
-		if operation.Target == nil || operation.Target.Release == nil || operation.Target.ReleaseDigest == "" {
-			return errors.New("completed connector install is missing release evidence")
+		if operation.Execution.ReleaseInstallation == nil && operation.State != market.OperationStateCompleted {
+			return nil
 		}
-		return saveInstalledReleaseOn(ctx, tx, *operation.Target.Release)
+		if operation.Target == nil || operation.Target.Release == nil || operation.Target.ReleaseDigest == "" {
+			return errors.New("prepared connector install is missing release evidence")
+		}
+		if operation.State == market.OperationStateCompleted {
+			return saveInstalledReleaseOn(ctx, tx, *operation.Target.Release)
+		}
+		return saveReleaseInstallationOn(ctx, tx, *operation.Target.Release)
 	case market.OperationKindUninstall:
+		if operation.State != market.OperationStateCompleted {
+			return nil
+		}
 		_, err := tx.ExecContext(ctx, `DELETE FROM connector_market_installed_releases WHERE connector_key = ?`, operation.ConnectorKey)
+		if err != nil {
+			return err
+		}
+		_, err = tx.ExecContext(ctx, `DELETE FROM connector_market_release_installations WHERE connector_key = ?`, operation.ConnectorKey)
 		return err
 	default:
 		return nil
@@ -187,6 +224,9 @@ func saveInstalledReleaseEvidenceOn(ctx context.Context, tx *sql.Tx, operation m
 }
 
 func saveInstalledReleaseOn(ctx context.Context, tx *sql.Tx, release market.Release) error {
+	if err := saveReleaseInstallationOn(ctx, tx, release); err != nil {
+		return err
+	}
 	payload, err := json.Marshal(release)
 	if err != nil {
 		return err
@@ -196,6 +236,19 @@ INSERT INTO connector_market_installed_releases (connector_key, release_digest, 
 VALUES (?, ?, ?)
 ON CONFLICT(connector_key) DO UPDATE SET
   release_digest = excluded.release_digest,
+  release_json = excluded.release_json`, release.ConnectorKey, release.ReleaseDigest, string(payload))
+	return err
+}
+
+func saveReleaseInstallationOn(ctx context.Context, tx *sql.Tx, release market.Release) error {
+	payload, err := json.Marshal(release)
+	if err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `
+INSERT INTO connector_market_release_installations (connector_key, release_digest, release_json)
+VALUES (?, ?, ?)
+ON CONFLICT(connector_key, release_digest) DO UPDATE SET
   release_json = excluded.release_json`, release.ConnectorKey, release.ReleaseDigest, string(payload))
 	return err
 }

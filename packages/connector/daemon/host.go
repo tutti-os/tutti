@@ -52,6 +52,8 @@ type Host struct {
 	authorizationScopeWake     chan struct{}
 	runtimeRecoveryDone        chan struct{}
 	runtimeRecoveryWake        chan struct{}
+	runtimeConvergenceDone     chan struct{}
+	operationRecoveryDone      chan struct{}
 	closeOnce                  sync.Once
 	bootstrapMu                sync.Mutex
 	bootstrapped               bool
@@ -118,6 +120,8 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 		authorizationScopeWake:  make(chan struct{}, 1),
 		runtimeRecoveryDone:     make(chan struct{}),
 		runtimeRecoveryWake:     make(chan struct{}, 1),
+		runtimeConvergenceDone:  make(chan struct{}),
+		operationRecoveryDone:   make(chan struct{}),
 		repository:              config.Repository,
 		implementationHost:      config.ImplementationHost,
 		activationGate:          activationGate,
@@ -158,6 +162,14 @@ func NewHost(parent context.Context, config HostConfig) (*Host, error) {
 	go func() {
 		defer close(host.runtimeRecoveryDone)
 		host.runRuntimeRecoveryWorker(hostContext)
+	}()
+	go func() {
+		defer close(host.runtimeConvergenceDone)
+		host.runRuntimeConvergenceWorker(hostContext)
+	}()
+	go func() {
+		defer close(host.operationRecoveryDone)
+		host.runOperationRecoveryWorker(hostContext)
 	}()
 	cleanupWorker := LifecycleCleanupWorker{Store: config.Lifecycle, Policy: config.LifecyclePolicy}
 	go func() {
@@ -557,40 +569,30 @@ func (host *Host) ReconcileRuntimeForScope(ctx context.Context, scope market.Ope
 		// a second per-Connector operation here would race its generation fence.
 		return nil
 	}
-	return host.reconcileRuntimeForScopeLocked(ctx, scope, connectorKey)
+	return host.reconcileRuntimeForScopeLockedMode(ctx, scope, connectorKey, true)
 }
 
 func (host *Host) reconcileRuntimeForScopeLocked(ctx context.Context, scope market.OperationScope, connectorKey string) error {
-	for {
-		connector, err := host.Application.GetConnector(ctx, connectorKey)
-		if errors.Is(err, market.ErrNotFound) || err == nil && connector.Installation.State != market.InstallationStateInstalled {
-			return nil
-		}
-		if err != nil {
-			return err
-		}
-		result, err := host.Application.EnsureRuntimeReconcile(ctx, scope, connectorKey)
-		if err != nil {
-			return err
-		}
-		operation, waitErr := host.waitForOperationTerminal(ctx, result.Operation.OperationID)
-		if result.Created {
-			if waitErr != nil {
-				return waitErr
-			}
-			if operation.State == market.OperationStateFailed {
-				return fmt.Errorf("connector market runtime reconcile failed: %s", operation.FailureCode)
-			}
-			return nil
-		}
-		if waitErr != nil {
-			return waitErr
-		}
-		// A joined operation may have resolved its runtime binding before the
-		// current authorization projection was persisted. Ensure once more after
-		// it reaches terminal state so success proves convergence of current
-		// desired state rather than merely completion of older work.
+	return host.reconcileRuntimeForScopeLockedMode(ctx, scope, connectorKey, false)
+}
+
+func (host *Host) reconcileRuntimeForScopeLockedMode(
+	ctx context.Context,
+	scope market.OperationScope,
+	connectorKey string,
+	force bool,
+) error {
+	connector, err := host.Application.GetConnector(ctx, connectorKey)
+	if errors.Is(err, market.ErrNotFound) || err == nil && connector.Installation.State != market.InstallationStateInstalled {
+		return nil
 	}
+	if err != nil {
+		return err
+	}
+	if force {
+		return host.Application.ReconcileRuntimeAfterInvalidation(ctx, scope, connectorKey)
+	}
+	return host.Application.ReconcileRuntimeDesired(ctx, scope, connectorKey)
 }
 
 // ObserveAuthorizationForScope commits account authorization and its runtime
@@ -696,26 +698,6 @@ func (host *Host) refreshAndWait(ctx context.Context) error {
 	}
 }
 
-func (host *Host) waitForOperationTerminal(ctx context.Context, operationID string) (market.Operation, error) {
-	ticker := time.NewTicker(25 * time.Millisecond)
-	defer ticker.Stop()
-	for {
-		operation, err := host.Application.GetOperation(ctx, operationID)
-		if err != nil {
-			return market.Operation{}, err
-		}
-		switch operation.State {
-		case market.OperationStateCompleted, market.OperationStateFailed:
-			return operation, nil
-		}
-		select {
-		case <-ctx.Done():
-			return market.Operation{}, ctx.Err()
-		case <-ticker.C:
-		}
-	}
-}
-
 func (host *Host) runCatalogRefreshWorker() {
 	bootstrapRetry := time.Second
 	catalogRetry := time.Duration(0)
@@ -782,6 +764,8 @@ func (host *Host) Close() {
 		<-host.authorizationSyncDone
 		<-host.authorizationEventsDone
 		<-host.runtimeRecoveryDone
+		<-host.runtimeConvergenceDone
+		<-host.operationRecoveryDone
 		host.scheduler.Wait()
 	})
 }

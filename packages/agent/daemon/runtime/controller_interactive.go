@@ -3,9 +3,7 @@ package agentruntime
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
-	"time"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -39,7 +37,7 @@ func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteract
 		if err == nil {
 			c.syncInteractiveSelectionState(adapter, session, result.OptionID)
 			if adapterShouldReceiveInteractiveDenyFollowUp(adapter) {
-				c.scheduleInteractiveDenyFollowUp(input)
+				result.FollowUpPrompt = interactiveDenyFollowUpPrompt(input)
 			}
 		}
 		return result, err
@@ -237,49 +235,6 @@ func adapterShouldReceiveInteractiveDenyFollowUp(adapter Adapter) bool {
 		return policy.ControllerSendsInteractiveDenyFollowUp()
 	}
 	return true
-}
-
-func (c *Controller) scheduleInteractiveDenyFollowUp(input SubmitInteractiveInput) {
-	prompt := interactiveDenyFollowUpPrompt(input)
-	if c == nil || prompt == "" {
-		return
-	}
-	roomID := strings.TrimSpace(input.RoomID)
-	agentSessionID := strings.TrimSpace(input.AgentSessionID)
-	if roomID == "" || agentSessionID == "" {
-		return
-	}
-	go c.runInteractiveDenyFollowUp(roomID, agentSessionID, prompt)
-}
-
-func (c *Controller) runInteractiveDenyFollowUp(roomID string, agentSessionID string, prompt string) {
-	deadline := time.Now().Add(interactiveDenyFollowUpStartTimeout)
-	for {
-		if _, ok := c.activeTurn(roomID, agentSessionID); !ok {
-			break
-		}
-		if time.Now().After(deadline) {
-			slog.Warn("agent interactive deny follow-up skipped because the active turn did not finish",
-				"event", "agent_session.interactive.deny_follow_up.timeout",
-				"room_id", roomID,
-				"agent_session_id", agentSessionID,
-			)
-			return
-		}
-		time.Sleep(interactiveDenyFollowUpPollInterval)
-	}
-	if _, err := c.Exec(context.Background(), ExecInput{
-		RoomID:         roomID,
-		AgentSessionID: agentSessionID,
-		Content:        []PromptContentBlock{{Type: "text", Text: prompt}},
-	}); err != nil {
-		slog.Warn("agent interactive deny follow-up failed to start",
-			"event", "agent_session.interactive.deny_follow_up.failed",
-			"room_id", roomID,
-			"agent_session_id", agentSessionID,
-			"error", err.Error(),
-		)
-	}
 }
 
 func interactiveDenyFollowUpPrompt(input SubmitInteractiveInput) string {

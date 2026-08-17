@@ -104,10 +104,16 @@ describe("AgentGUIEngineSettlementController", () => {
   });
 
   it("restores the original image preview after a non-visible send fails", async () => {
+    const failed = vi.fn();
     const engine = createTestAgentSessionEngine("test-workspace", {
       execute(command) {
         return command.type === "queue/sendPrompt"
-          ? Promise.reject(new Error("send failed"))
+          ? Promise.reject(
+              Object.assign(new Error("send failed"), {
+                code: "workspace_operation_failed",
+                reason: "agent.process_cleanup_pending"
+              })
+            )
           : Promise.resolve({ ok: true });
       }
     });
@@ -151,6 +157,8 @@ describe("AgentGUIEngineSettlementController", () => {
         drafts = update(drafts);
       },
       engine,
+      isCurrentConversation: (agentSessionId) => agentSessionId === "session-1",
+      onSubmitFailed: failed,
       snapshots
     });
     const detach = controller.attach();
@@ -176,6 +184,14 @@ describe("AgentGUIEngineSettlementController", () => {
       expect(drafts[sourceScopeKey]).toEqual(submittedDraft);
     });
     expect(snapshots).toEqual({});
+    expect(failed).toHaveBeenCalledTimes(1);
+    expect(failed.mock.calls[0]?.[0]).toMatchObject({
+      agentSessionId: "session-1",
+      errorCode: "workspace_operation_failed",
+      errorMessage: "send failed",
+      errorReason: "agent.process_cleanup_pending",
+      status: "failed"
+    });
     detach();
     engine.dispose();
   });

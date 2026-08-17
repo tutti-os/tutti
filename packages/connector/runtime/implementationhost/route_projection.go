@@ -32,11 +32,11 @@ func connectorSummaryFromDescriptor(route RouteDescriptor) ConnectorSummary {
 		interfaces = append(interfaces, ConnectorInterfaceSummary{Kind: "mcp", ServerName: "connector",
 			ToolPrefix: route.ConnectorKey + "_", Status: string(route.InterfaceState("mcp"))})
 	}
-	if route.CLICommand != "" {
-		interfaces = append(interfaces, ConnectorInterfaceSummary{Kind: "cli", Command: route.CLICommand,
+	if route.CLIInvocationCommand != "" {
+		interfaces = append(interfaces, ConnectorInterfaceSummary{Kind: "cli", Command: route.CLIInvocationCommand,
 			Status: string(route.InterfaceState("cli"))})
 	}
-	return ConnectorSummary{Key: route.ConnectorKey, Name: route.DisplayName, Description: route.Description,
+	return ConnectorSummary{Key: route.ConnectorKey, Version: route.ConnectorVersion, Name: route.DisplayName, Description: route.Description,
 		Skills: append([]SkillSummary(nil), route.Skills...), Interfaces: interfaces}
 }
 

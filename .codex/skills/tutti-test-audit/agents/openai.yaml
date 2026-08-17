@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tutti Test Audit"
+  short_description: "Design and audit behavior-protecting Tutti tests"
+  default_prompt: "Use $tutti-test-audit to design or review tests that protect this change’s real behavior."

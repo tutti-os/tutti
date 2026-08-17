@@ -10,9 +10,16 @@ var capabilityFlagDefaults = map[string]bool{
 	FeatureFlagMobileRemoteAccess:    false,
 }
 
-// IsCapabilityFlagEnabled resolves daemon-enforced feature behavior. Stored
-// values win and unknown or absent keys fail closed.
+var permanentlyDisabledCapabilityFlags = map[string]struct{}{
+	FeatureFlagMobileRemoteAccess: {},
+}
+
+// IsCapabilityFlagEnabled resolves daemon-enforced feature behavior. Permanently
+// disabled capabilities stay off even when an old profile stores them as true.
 func IsCapabilityFlagEnabled(flags map[string]bool, key string) bool {
+	if _, disabled := permanentlyDisabledCapabilityFlags[key]; disabled {
+		return false
+	}
 	if enabled, ok := flags[key]; ok {
 		return enabled
 	}

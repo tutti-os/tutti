@@ -116,7 +116,7 @@ export function canonicalConversationRailSummaries(
   conversations: AgentGUINodeViewModel["rail"]["conversations"]
 ): AgentGUINodeViewModel["rail"]["conversations"] {
   return conversations.filter(
-    (conversation) => conversation.projectionSource !== "pending_activation"
+    (conversation) => conversation.projectionSource === undefined
   );
 }
 
@@ -130,6 +130,8 @@ export function projectConversationRailSectionsWithTransientConversations(input:
   const transientConversations = input.conversations.filter(
     (conversation) =>
       conversation.projectionSource === "pending_activation" ||
+      conversation.status === "working" ||
+      conversation.status === "waiting" ||
       reconcilingSessionIds.has(conversation.id)
   );
   if (transientConversations.length === 0) {
@@ -139,9 +141,13 @@ export function projectConversationRailSectionsWithTransientConversations(input:
     input.sections.flatMap((section) => section.items.map((item) => item.id))
   );
   const transientSections = projectConversationsByExactRailSectionKey({
-    conversations: transientConversations.filter(
-      (conversation) => !loadedIds.has(conversation.id)
-    ),
+    conversations: transientConversations
+      .filter((conversation) => !loadedIds.has(conversation.id))
+      .map((conversation) =>
+        conversation.projectionSource === "pending_activation"
+          ? conversation
+          : { ...conversation, projectionSource: "runtime_overlay" as const }
+      ),
     labels: input.labels,
     sections: input.sections
   });
@@ -210,6 +216,25 @@ export function resolveConversationRailActiveConversation(input: {
     (input.activeConversation?.id === activeConversationId
       ? input.activeConversation
       : null)
+  );
+}
+
+export function conversationRailActiveOverlayCountsTowardTotal(input: {
+  activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
+  matchesFilter: boolean;
+  sectionItems: ConversationSection["items"];
+}): boolean {
+  const activeConversation = input.activeConversation;
+  if (
+    !activeConversation ||
+    activeConversation.projectionSource !== undefined ||
+    !input.matchesFilter
+  ) {
+    return false;
+  }
+  return !input.sectionItems.some(
+    (item) =>
+      item.id === activeConversation.id && item.projectionSource !== undefined
   );
 }
 

@@ -9,6 +9,7 @@ This skill is the handoff contract between agents: who executes, what gets hande
 
 {{if hasAll "agent-context.agent.list" "agent-context.agent.start"}}
 Before starting a new Agent session, run `{{command "agent-context.agent.list"}}`. Select the exact Agent id from the current result or verify the id carried by an `agent-target` mention. Do not infer an id from a provider name. Start it with `{{if hasInput "agent-context.agent.start" "show"}}{{command "agent-context.agent.start" (args "show" "true")}}{{else}}{{command "agent-context.agent.start"}}{{end}}`.
+{{if hasInput "agent-context.agent.start" "cwd"}}Omit `--cwd` to inherit the current Agent session's working directory and rail placement. Use `--cwd` only when the user explicitly requests a different working directory or project. Never set `TUTTI_AGENT_CWD` or `TUTTI_AGENT_RAIL_PLACEMENT` manually.{{end}}
 {{else}}
 The current Host does not advertise the complete Agent list/start workflow. Do not invent a launcher command.
 {{end}}

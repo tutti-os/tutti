@@ -140,6 +140,24 @@
   -webkit-app-region: no-drag;
 }
 
+/*
+ * The image preview is portaled to document.body, so it cannot inherit the
+ * workbench header's scoped Windows titlebar inset. Reuse the same native
+ * caption-button geometry for the portal controls; otherwise the close and
+ * zoom buttons sit underneath the minimize/maximize/close buttons.
+ */
+body[data-tutti-titlebar-overlay="true"] {
+  --tutti-titlebar-controls-inset: calc(
+    100vw - env(titlebar-area-width, calc(100vw - 138px)) + 10px
+  );
+}
+
+body[data-tutti-titlebar-overlay="true"]
+  .tsh-zoom-dialog__toolbar-actions {
+  right: calc(20px + var(--tutti-titlebar-controls-inset));
+  inset-inline-end: calc(20px + var(--tutti-titlebar-controls-inset));
+}
+
 .tsh-zoom-dialog__image {
   display: block;
   max-width: calc(100vw - 48px);
@@ -168,9 +186,20 @@
   -webkit-app-region: no-drag;
 }
 
+body[data-tutti-titlebar-overlay="true"]
+  .tsh-zoom-dialog__zoom-controls {
+  right: calc(168px + var(--tutti-titlebar-controls-inset));
+}
+
 .tsh-zoom-dialog:not([data-tsh-image-actions="true"])
   .tsh-zoom-dialog__zoom-controls {
   right: 72px;
+}
+
+body[data-tutti-titlebar-overlay="true"]
+  .tsh-zoom-dialog:not([data-tsh-image-actions="true"])
+  .tsh-zoom-dialog__zoom-controls {
+  right: calc(72px + var(--tutti-titlebar-controls-inset));
 }
 
 .tsh-image-context-menu {

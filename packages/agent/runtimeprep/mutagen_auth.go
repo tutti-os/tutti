@@ -27,6 +27,7 @@ const (
 	mutagenWindowsSHA256  = "3e237e77f69959ed520a0f877330a431507bb0a85d9da7919764ba0c87b702c7"
 	mutagenMaxArchiveSize = 100 << 20
 	mutagenSessionMarker  = ".tutti-mutagen-session"
+	mutagenCommandTimeout = 20 * time.Second
 )
 
 type AuthFileProjection struct {
@@ -53,6 +54,7 @@ type MutagenAuthFileProjector struct {
 	HTTPClient        *http.Client
 	DownloadURL       string
 	ArchiveSHA256     string
+	CommandTimeout    time.Duration
 }
 
 type authFileSnapshot struct {
@@ -101,6 +103,14 @@ func writeAuthFileAtomically(path string, content []byte) error {
 }
 
 func (p MutagenAuthFileProjector) Project(ctx context.Context, input AuthFileProjection) (func(context.Context) error, error) {
+	// Runtime preparation is part of Host-owned session startup. A renderer or
+	// HTTP response going away must not kill a partially-created Mutagen session
+	// and make the submitted session disappear. Individual Mutagen commands stay
+	// bounded by run(), and setup for the same stable credential is serialized.
+	ctx = context.WithoutCancel(ctx)
+	releaseProjection := acquireAuthProjection(input.SourcePath)
+	defer releaseProjection()
+
 	if err := os.MkdirAll(filepath.Dir(input.TargetPath), 0o700); err != nil {
 		return nil, fmt.Errorf("create auth target directory: %w", err)
 	}
@@ -165,15 +175,18 @@ func (p MutagenAuthFileProjector) Project(ctx context.Context, input AuthFilePro
 		"sync", "create", "--name=" + sessionName, "--sync-mode=two-way-safe",
 		"--no-global-configuration", input.SourcePath, input.TargetPath,
 	}); err != nil {
-		p.removeProjectionTargets(input)
-		return nil, fmt.Errorf("create Mutagen auth session: %w", err)
+		if _, terminateErr := p.run(ctx, executable, []string{"sync", "terminate", sessionName}); terminateErr != nil {
+			return nil, fmt.Errorf("create Mutagen auth session: %w; cleanup failed: %v", err, terminateErr)
+		}
+		return p.copyFallbackCleanup(input, baseline), nil
 	}
 	// Establish the common baseline before the provider can refresh the token;
 	// create may return while Mutagen's initial scan is still in progress.
 	if _, err := p.run(ctx, executable, []string{"sync", "flush", sessionName}); err != nil {
-		_, _ = p.run(ctx, executable, []string{"sync", "terminate", sessionName})
-		p.removeProjectionTargets(input)
-		return nil, fmt.Errorf("initialize Mutagen auth session: %w", err)
+		if _, terminateErr := p.run(ctx, executable, []string{"sync", "terminate", sessionName}); terminateErr != nil {
+			return nil, fmt.Errorf("flush Mutagen auth session: %w; cleanup failed: %v", err, terminateErr)
+		}
+		return p.copyFallbackCleanup(input, baseline), nil
 	}
 	if err := os.WriteFile(markerPath, []byte(sessionName+"\n"), 0o600); err != nil {
 		_, _ = p.run(ctx, executable, []string{"sync", "terminate", sessionName})
@@ -185,6 +198,12 @@ func (p MutagenAuthFileProjector) Project(ctx context.Context, input AuthFilePro
 
 func (MutagenAuthFileProjector) copyFallbackCleanup(input AuthFileProjection, baseline authFileSnapshot) func(context.Context) error {
 	return func(context.Context) error {
+		// Multiple runtimes can safely start from the same stable baseline. Their
+		// fallback reconciliation must still be serialized so each cleanup reads
+		// the stable file after the previous cleanup committed. If both sides then
+		// differ, preserve both rather than choosing a token implicitly.
+		releaseProjection := acquireAuthProjection(input.SourcePath)
+		defer releaseProjection()
 		run, err := readValidAuthFile(input.TargetPath)
 		if err != nil {
 			return fmt.Errorf("read runtime auth for copy fallback; runtime preserved: %w", err)
@@ -318,14 +337,56 @@ func (MutagenAuthFileProjector) removeProjectionTargets(input AuthFileProjection
 }
 
 func (p MutagenAuthFileProjector) run(ctx context.Context, executable string, args []string) ([]byte, error) {
+	timeout := p.CommandTimeout
+	if timeout <= 0 {
+		timeout = mutagenCommandTimeout
+	}
+	runCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	env := append(os.Environ(), "MUTAGEN_DATA_DIRECTORY="+filepath.Join(p.StateDir, "mutagen"))
 	if p.Run != nil {
-		return p.Run(ctx, executable, args, env)
+		return p.Run(runCtx, executable, args, env)
 	}
-	command := exec.CommandContext(ctx, executable, args...)
+	command := exec.CommandContext(runCtx, executable, args...)
 	command.Env = env
 	command.Stderr = io.Discard
 	return command.Output()
+}
+
+type authProjectionGate struct {
+	token chan struct{}
+	refs  int
+}
+
+var authProjectionCoordinator = struct {
+	sync.Mutex
+	gates map[string]*authProjectionGate
+}{gates: make(map[string]*authProjectionGate)}
+
+func acquireAuthProjection(sourcePath string) func() {
+	key := filepath.Clean(sourcePath)
+	if runtime.GOOS == "windows" {
+		key = strings.ToLower(key)
+	}
+	authProjectionCoordinator.Lock()
+	gate := authProjectionCoordinator.gates[key]
+	if gate == nil {
+		gate = &authProjectionGate{token: make(chan struct{}, 1)}
+		authProjectionCoordinator.gates[key] = gate
+	}
+	gate.refs++
+	authProjectionCoordinator.Unlock()
+
+	gate.token <- struct{}{}
+	return func() {
+		<-gate.token
+		authProjectionCoordinator.Lock()
+		gate.refs--
+		if gate.refs == 0 {
+			delete(authProjectionCoordinator.gates, key)
+		}
+		authProjectionCoordinator.Unlock()
+	}
 }
 
 func mutagenAuthSessionName(source, target string) string {

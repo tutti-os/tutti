@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -101,6 +102,12 @@ func composerCapabilityCatalogLister(profile composerProfile) (CodexCLICapabilit
 }
 
 func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]ComposerCapabilityOption, error) {
+	startedAt := time.Now()
+	slog.Info("agent capability catalog fetch started",
+		"event", "agent.capability_catalog.fetch_start",
+		"provider", "codex",
+		"request_set", l.RequestSet,
+	)
 	timeout := l.Timeout
 	if timeout <= 0 {
 		timeout = codexAppServerCapabilityListTimeout
@@ -123,9 +130,31 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 	defer cancel()
 	process, err := startCodexAppServerProcess(processCtx, command, args, processEnv)
 	if err != nil {
+		slog.Info("agent capability catalog fetch settled",
+			"event", "agent.capability_catalog.fetch_settled",
+			"provider", "codex",
+			"request_set", l.RequestSet,
+			"durationMs", time.Since(startedAt).Milliseconds(),
+			"error", err,
+		)
 		return nil, err
 	}
+	slog.Info("agent capability catalog process launch",
+		"event", "agent.capability_catalog.process_start",
+		"provider", "codex",
+		"command", command,
+		"args", args,
+	)
+	requestStartedAt := time.Now()
 	if err := writeAppServerCapabilityListRequests(process.stdin, cwd, l.RequestSet); err != nil {
+		slog.Info("agent capability catalog request stage settled",
+			"event", "agent.capability_catalog.stage_settled",
+			"provider", "codex",
+			"request_set", l.RequestSet,
+			"stage", "request_dispatch",
+			"durationMs", time.Since(requestStartedAt).Milliseconds(),
+			"error", err,
+		)
 		processErr := processCtx.Err()
 		_ = process.stop(cancel)
 		if processErr != nil {
@@ -133,18 +162,51 @@ func (l CodexCLICapabilityLister) List(ctx context.Context, cwd string) ([]Compo
 		}
 		return nil, err
 	}
+	slog.Info("agent capability catalog request stage settled",
+		"event", "agent.capability_catalog.stage_settled",
+		"provider", "codex",
+		"request_set", l.RequestSet,
+		"stage", "request_dispatch",
+		"durationMs", time.Since(requestStartedAt).Milliseconds(),
+	)
+	responseStartedAt := time.Now()
 	options, err := readAppServerCapabilityListResponses(process.stdout, l.RequestSet)
+	slog.Info("agent capability catalog response stage settled",
+		"event", "agent.capability_catalog.stage_settled",
+		"provider", "codex",
+		"request_set", l.RequestSet,
+		"stage", "capability_response",
+		"durationMs", time.Since(responseStartedAt).Milliseconds(),
+		"optionCount", len(options),
+		"error", err,
+	)
 	processErr := processCtx.Err()
 	_ = process.stop(cancel)
+	settled := func(settledErr error) {
+		slog.Info("agent capability catalog fetch settled",
+			"event", "agent.capability_catalog.fetch_settled",
+			"provider", "codex",
+			"request_set", l.RequestSet,
+			"durationMs", time.Since(startedAt).Milliseconds(),
+			"optionCount", len(options),
+			"error", settledErr,
+		)
+	}
 	if err == nil {
+		settled(nil)
 		return options, nil
 	}
 	if processErr != nil {
-		return nil, fmt.Errorf("codex app-server capability discovery timed out: %w", processErr)
+		timeoutErr := fmt.Errorf("codex app-server capability discovery timed out: %w", processErr)
+		settled(timeoutErr)
+		return nil, timeoutErr
 	}
 	if stderr := strings.TrimSpace(process.stderr.String()); stderr != "" {
-		return nil, fmt.Errorf("%w: %s", err, stderr)
+		stderrErr := fmt.Errorf("%w: %s", err, stderr)
+		settled(stderrErr)
+		return nil, stderrErr
 	}
+	settled(err)
 	return nil, err
 }
 

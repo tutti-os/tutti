@@ -57,6 +57,10 @@ export interface WorkspaceUserProjectApi {
   getDefaultSelection?(): Promise<WorkspaceUserProjectDefaultSelection | null>;
   getSnapshot?(): Promise<WorkspaceUserProjectServiceSnapshot>;
   isNoProjectPath?(input: { path: string }): boolean;
+  importDirectory?():
+    | Promise<{ path: string } | null>
+    | { path: string }
+    | null;
   list(): Promise<{ projects: WorkspaceUserProject[] }>;
   move?(input: WorkspaceUserProjectMoveInput): Promise<void> | void;
   prepareSelection?(

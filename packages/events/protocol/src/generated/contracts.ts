@@ -496,6 +496,7 @@ export interface ConnectorMarketChangedPayloadV1 {
   connectorKey?: string;
   operationId?: string;
   revision: number;
+  cursor?: number;
 }
 
 export interface PreferencesAgentComposerDefaultsChangedPayloadV1 {

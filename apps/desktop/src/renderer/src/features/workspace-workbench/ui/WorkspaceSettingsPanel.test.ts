@@ -75,23 +75,16 @@ test("workspace settings places enabled signed-in Connectors between Agent Runti
   assert.doesNotMatch(runtimeTabSource, /WorkspaceAgentsSection/);
 });
 
-test("workspace settings shows Connection with mobile remote access settings", () => {
-  assert.match(
-    panelSource,
-    /\.\.\.\(mobileRemoteAccessSettingsEnabled[\s\S]{0,220}id: "connection" as const/
-  );
+test("workspace settings keeps account Connection without mobile remote access", () => {
+  assert.match(panelSource, /id: "connection" as const/);
   assert.match(
     panelSource,
     /activeSection === "connection"[\s\S]{0,220}<WorkspaceConnectionSettingsSection/
   );
-  assert.match(
-    panelSource,
-    /!mobileRemoteAccessSettingsEnabled[\s\S]{0,120}activeSection === "connection"[\s\S]{0,120}selectSection\("general"\)/
-  );
   assert.match(connectionSectionSource, /accountService\.refreshUserInfo\(\)/);
-  assert.match(
+  assert.doesNotMatch(
     connectionSectionSource,
-    /user && mobileRemoteAccessSettingsEnabled[\s\S]{0,120}<WorkspaceMobileRemoteSettingsSection/
+    /WorkspaceMobileRemoteSettingsSection/
   );
 });
 

@@ -76,6 +76,7 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  projectSelectOptions?: AgentComposerProps["projectSelectOptions"];
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];

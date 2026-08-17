@@ -228,12 +228,14 @@ export function shouldShowAgentGUIStopButton(input: {
   isCancelPending: boolean;
   isConversationBusy: boolean;
   isCreatingConversation: boolean;
+  hasPendingSubmitStopTarget: boolean;
   isInterrupting: boolean;
   isSubmitting: boolean;
   isUnavailable: boolean;
 }): boolean {
   if (input.isUnavailable || input.isAuthBlocked) return false;
   if (input.isCreatingConversation || input.isCancelPending) return true;
+  if (input.hasPendingSubmitStopTarget) return true;
   return (
     !input.isSubmitting &&
     (input.isConversationBusy ||
@@ -289,6 +291,7 @@ export function resolveAgentGUIStopControl(input: {
   isCancelPending: boolean;
   isConversationBusy: boolean;
   isCreatingConversation: boolean;
+  hasPendingSubmitStopTarget: boolean;
   isInterrupting: boolean;
   isSubmitting: boolean;
   isUnavailable: boolean;

@@ -198,11 +198,13 @@ export {
 export type { SessionMessagesState } from "./engine/sessionMessages.types.ts";
 export {
   selectComposerOptions,
-  selectComposerOptionsLoadStatus
+  selectComposerOptionsLoadStatus,
+  selectComposerOptionsSectionLoadStatus
 } from "./engine/composerOptions.selectors.ts";
 export type {
   ComposerOptionsIntent,
   ComposerOptionsCommand,
+  ComposerOptionsSection,
   ComposerOptionsState
 } from "./engine/composerOptions.types.ts";
 export type {
@@ -350,6 +352,7 @@ export {
   selectPendingSubmitsForSession,
   selectSessionActivationPresentations,
   selectSessionHasUnconfirmedSubmit,
+  selectSessionHasPendingSubmitStopTarget,
   selectSessionIsSubmitting
 } from "./engine/pendingIntents.selectors.ts";
 export type { SessionActivationPresentation } from "./engine/pendingIntents.selectors.ts";

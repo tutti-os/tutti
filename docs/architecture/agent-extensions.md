@@ -181,6 +181,14 @@ contract supplies an empty MCP array and does not manage an agent's private MCP
 configuration; adding a non-empty product-level MCP input is a separate Host
 contract change.
 
+Standard ACP process recycling is capability-driven rather than extension-name
+driven. When the live `initialize` response advertises `session/load` or
+`session/resume`, the shared 30-minute idle reaper may close only that ACP
+transport and CLI process while retaining the Tutti session and provider
+session id. The next execution launches a new process and restores the provider
+session. The reaper does not send `session/close`, skips providers without a
+proven restore method, and treats pending interactive requests as busy.
+
 Extension composer controls stay runtime-owned after the model list is
 discovered. `tuttid` selects the newest context only within the exact workspace,
 normalized project, Agent Target, fixed installation, and request-settings

@@ -1081,6 +1081,62 @@ func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
 	}
 }
 
+func TestDefaultPreparerCodexReconcilesNativeSkillsAcrossRepeatedPrepare(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+
+	preparer := newTestPreparer(t.TempDir())
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	}
+	first, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	second, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+
+	firstCodexHome := envValue(first.Env, "CODEX_HOME")
+	secondCodexHome := envValue(second.Env, "CODEX_HOME")
+	if firstCodexHome != secondCodexHome {
+		t.Fatalf("repeated Prepare() CODEX_HOME = %q and %q, want the same durable home", firstCodexHome, secondCodexHome)
+	}
+	if _, err := os.Stat(filepath.Join(secondCodexHome, "skills", "tutti-cli", "SKILL.md")); err != nil {
+		t.Fatalf("stable tutti-cli skill missing after repeated Prepare(): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(secondCodexHome, "skills", "tutti-cli-tutti")); !os.IsNotExist(err) {
+		t.Fatalf("repeated Prepare() created a suffixed tutti-cli skill, err = %v", err)
+	}
+}
+
+func TestDefaultPreparerCodexSkipsSkillsForModelProbe(t *testing.T) {
+	preparer := newTestPreparer(t.TempDir())
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "model-probe-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+		SkipSkills:     true,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "skills")); !os.IsNotExist(err) {
+		t.Fatalf("model-only Prepare() created a Skill root, err = %v", err)
+	}
+}
+
 func TestDefaultPreparerCodexUserSkillNameWinsBeforeTuttiInjection(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
@@ -2124,6 +2180,37 @@ func TestTuttiAgentManagedConfigPreservesLegacyProviderWithExtraKey(t *testing.T
 	}
 	if next != input {
 		t.Fatalf("next changed customized legacy provider:\n%s", next)
+	}
+}
+
+func TestDefaultPreparerClaudeReconcilesNativeSkillsAcrossRepeatedPrepare(t *testing.T) {
+	preparer := newTestPreparer(t.TempDir())
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:claude-code",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+	}
+	first, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	second, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+
+	firstPluginDir := envValue(first.Env, claudePluginDirEnv)
+	secondPluginDir := envValue(second.Env, claudePluginDirEnv)
+	if firstPluginDir != secondPluginDir {
+		t.Fatalf("repeated Prepare() Claude plugin dir = %q and %q, want the same runtime root", firstPluginDir, secondPluginDir)
+	}
+	if _, err := os.Stat(filepath.Join(secondPluginDir, "skills", "tutti-cli", "SKILL.md")); err != nil {
+		t.Fatalf("stable tutti-cli skill missing after repeated Prepare(): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(secondPluginDir, "skills", "tutti-cli-tutti")); !os.IsNotExist(err) {
+		t.Fatalf("repeated Prepare() created a suffixed tutti-cli skill, err = %v", err)
 	}
 }
 

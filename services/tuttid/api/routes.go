@@ -810,6 +810,13 @@ func registerConnectorMarketRoutes(mux *http.ServeMux, wrapper *tuttigenerated.S
 		}
 		wrapper.StartConnectorMarketAuthorization(w, r)
 	})
+	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/authorization:cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CancelConnectorMarketAuthorization(w, r)
+	})
 	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/authorization:disconnect", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)

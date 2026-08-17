@@ -41,13 +41,15 @@ type NodePackageInstallerConfig struct {
 // invocations. All connectors share one content-addressed store and one
 // Corepack cache while retaining a release-scoped node_modules link tree.
 type NodePackageInstaller struct {
-	rootDir     string
-	runtimes    ConnectorRuntimeResolver
-	processes   agentruntime.ProcessTransport
-	pnpmVersion string
-	timeout     time.Duration
-	environ     func() []string
-	mu          sync.Mutex
+	rootDir        string
+	runtimes       ConnectorRuntimeResolver
+	processes      agentruntime.ProcessTransport
+	pnpmVersion    string
+	timeout        time.Duration
+	environ        func() []string
+	mu             sync.Mutex
+	connectorLanes map[string]*sync.Mutex
+	installSlots   chan struct{}
 }
 
 var _ market.CLIInstallationManager = (*NodePackageInstaller)(nil)
@@ -76,7 +78,8 @@ func NewNodePackageInstaller(config NodePackageInstallerConfig) (*NodePackageIns
 		environ = os.Environ
 	}
 	return &NodePackageInstaller{rootDir: filepath.Clean(root), runtimes: config.Runtimes,
-		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout, environ: environ}, nil
+		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout, environ: environ,
+		connectorLanes: make(map[string]*sync.Mutex), installSlots: make(chan struct{}, 4)}, nil
 }
 
 func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request market.InstallCLIRequest) (market.CLIInstallationReceipt, error) {
@@ -93,8 +96,14 @@ func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request m
 	if strings.TrimSpace(request.OperationID) == "" {
 		return market.CLIInstallationReceipt{}, errors.New("connector CLI installation operation id is required")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.Release.ConnectorKey)
+	defer releaseLane()
+	select {
+	case installer.installSlots <- struct{}{}:
+		defer func() { <-installer.installSlots }()
+	case <-ctx.Done():
+		return market.CLIInstallationReceipt{}, ctx.Err()
+	}
 
 	resolved, node, err := installer.resolveNode(ctx, managed.Runtime)
 	if err != nil {
@@ -177,8 +186,8 @@ func (installer *NodePackageInstaller) ResolveCLI(ctx context.Context, release m
 	if err != nil {
 		return market.CLIInstallationReceipt{}, err
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(release.ConnectorKey)
+	defer releaseLane()
 	resolved, node, err := installer.resolveNode(ctx, managed.Runtime)
 	if err != nil {
 		return market.CLIInstallationReceipt{}, err
@@ -203,8 +212,8 @@ func (installer *NodePackageInstaller) RemoveCLI(ctx context.Context, request ma
 	if installer == nil || !safeCLIPathSegment(request.ConnectorKey) || !isSHA256Hex(request.ReleaseDigest) {
 		return errors.New("connector CLI removal identity is invalid")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.ConnectorKey)
+	defer releaseLane()
 	target := installer.installRoot(request.ConnectorKey, request.ReleaseDigest)
 	if !pathWithin(installer.rootDir, target) {
 		return errors.New("connector CLI removal path escapes package root")
@@ -225,8 +234,8 @@ func (installer *NodePackageInstaller) RemoveConnector(
 	if installer == nil || !safeCLIPathSegment(request.ConnectorKey) {
 		return errors.New("connector CLI removal identity is invalid")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.ConnectorKey)
+	defer releaseLane()
 	target := filepath.Join(installer.rootDir, "packages", request.ConnectorKey)
 	if !pathWithin(installer.rootDir, target) {
 		return errors.New("connector CLI removal path escapes package root")
@@ -235,6 +244,18 @@ func (installer *NodePackageInstaller) RemoveConnector(
 		return fmt.Errorf("remove Connector CLI installations: %w", err)
 	}
 	return nil
+}
+
+func (installer *NodePackageInstaller) lockConnector(connectorKey string) func() {
+	installer.mu.Lock()
+	lane := installer.connectorLanes[connectorKey]
+	if lane == nil {
+		lane = &sync.Mutex{}
+		installer.connectorLanes[connectorKey] = lane
+	}
+	installer.mu.Unlock()
+	lane.Lock()
+	return lane.Unlock
 }
 
 type connectorNodeSharedPaths struct{ store, corepack, npmCache, pnpmHome string }

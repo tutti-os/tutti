@@ -10,6 +10,7 @@ import type {
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
+import { isRichTextFolderHref } from "@tutti-os/ui-rich-text/core";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -238,7 +239,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
             return [
               {
                 displayName: insert.label,
-                kind: insert.href.endsWith("/") ? "folder" : "file",
+                kind: isRichTextFolderHref(insert.href) ? "folder" : "file",
                 path: insert.href
               }
             ];
@@ -283,8 +284,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
           "workspace-issue",
           "agent-session",
           "workspace-app",
-          "agent-target",
-          "workspace-model"
+          "agent-target"
         ],
         surface: "composer",
         target: "agent-gui",

@@ -1,6 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
+import { inflateSync } from "node:zlib";
 
 const desktopPackagePath = new URL(
   "../../apps/desktop/package.json",
@@ -86,6 +87,76 @@ function readPngDimensions(buffer) {
   assert.equal(buffer.subarray(1, 4).toString("ascii"), "PNG");
   assert.equal(buffer.subarray(12, 16).toString("ascii"), "IHDR");
   return [buffer.readUInt32BE(16), buffer.readUInt32BE(20)];
+}
+
+function readPngAlphaRange(buffer) {
+  assert.equal(buffer.readUInt8(24), 8, "Store assets must use 8-bit PNG data");
+  assert.equal(buffer.readUInt8(25), 6, "Store assets must use RGBA PNG data");
+  assert.equal(
+    buffer.readUInt8(28),
+    0,
+    "Interlaced Store assets are unsupported"
+  );
+
+  const [width, height] = readPngDimensions(buffer);
+  const chunks = [];
+  let offset = 8;
+  while (offset < buffer.length) {
+    const chunkLength = buffer.readUInt32BE(offset);
+    const chunkType = buffer.subarray(offset + 4, offset + 8).toString("ascii");
+    if (chunkType === "IDAT") {
+      chunks.push(buffer.subarray(offset + 8, offset + 8 + chunkLength));
+    }
+    offset += chunkLength + 12;
+    if (chunkType === "IEND") break;
+  }
+
+  const decoded = inflateSync(Buffer.concat(chunks));
+  const bytesPerPixel = 4;
+  const rowLength = width * bytesPerPixel;
+  let decodedOffset = 0;
+  let previous = Buffer.alloc(rowLength);
+  let minAlpha = 255;
+  let maxAlpha = 0;
+
+  for (let y = 0; y < height; y += 1) {
+    const filter = decoded[decodedOffset];
+    decodedOffset += 1;
+    const current = Buffer.alloc(rowLength);
+    for (let x = 0; x < rowLength; x += 1) {
+      const encoded = decoded[decodedOffset];
+      decodedOffset += 1;
+      const left = x >= bytesPerPixel ? current[x - bytesPerPixel] : 0;
+      const above = previous[x];
+      const upperLeft = x >= bytesPerPixel ? previous[x - bytesPerPixel] : 0;
+      let predictor = 0;
+      if (filter === 1) predictor = left;
+      else if (filter === 2) predictor = above;
+      else if (filter === 3) predictor = Math.floor((left + above) / 2);
+      else if (filter === 4) {
+        const estimate = left + above - upperLeft;
+        const leftDistance = Math.abs(estimate - left);
+        const aboveDistance = Math.abs(estimate - above);
+        const upperLeftDistance = Math.abs(estimate - upperLeft);
+        predictor =
+          leftDistance <= aboveDistance && leftDistance <= upperLeftDistance
+            ? left
+            : aboveDistance <= upperLeftDistance
+              ? above
+              : upperLeft;
+      } else {
+        assert.equal(filter, 0, `Unsupported PNG row filter ${filter}`);
+      }
+      current[x] = (encoded + predictor) & 0xff;
+    }
+    for (let x = 3; x < rowLength; x += bytesPerPixel) {
+      minAlpha = Math.min(minAlpha, current[x]);
+      maxAlpha = Math.max(maxAlpha, current[x]);
+    }
+    previous = current;
+  }
+
+  return [minAlpha, maxAlpha];
 }
 
 test("desktop package includes runtime outputs without repository source", async () => {
@@ -174,6 +245,14 @@ test("desktop release submits only stable builds to an isolated Store workflow",
   assert.match(storeWorkflow, /Store executable mismatch/);
   assert.match(storeWorkflow, /Store entry point mismatch/);
   assert.match(storeWorkflow, /Installed application display name mismatch/);
+  assert.match(
+    storeWorkflow,
+    /application tile background must be transparent/
+  );
+  assert.match(storeWorkflow, /application must appear in the Start menu/);
+  assert.match(storeWorkflow, /does not declare the Tutti desktop shortcut/);
+  assert.match(storeWorkflow, /Store desktop shortcut path mismatch/);
+  assert.match(storeWorkflow, /Store desktop shortcut icon mismatch/);
   assert.match(storeWorkflow, /Store package did not use branded asset/);
   for (const assetName of desktopStoreAssetDimensions.keys()) {
     assert.match(storeWorkflow, new RegExp(assetName.replaceAll(".", "\\.")));
@@ -189,10 +268,16 @@ test("desktop Store packaging reuses the Windows payload and emits AppX only", a
   const storeManifest = await readFile(desktopStoreManifestPath, "utf8");
 
   assert.equal(
+    packageJson.description,
+    "Where people and agents build in tune."
+  );
+  assert.equal(
     packageJson.scripts["build:win:store"],
     "bash ../../tools/scripts/build-desktop-package.sh win-store"
   );
   assert.equal(packageJson.build.appx.electronUpdaterAware, false);
+  assert.equal(packageJson.build.appx.minVersion, "10.0.17763.0");
+  assert.equal(packageJson.build.appx.maxVersionTested, "10.0.26100.0");
   assert.equal(
     packageJson.build.appx.customManifestPath,
     "build/appxmanifest.xml"
@@ -203,6 +288,18 @@ test("desktop Store packaging reuses the Windows payload and emits AppX only", a
     /<Properties>[\s\S]*?<DisplayName>\$\{displayName\}<\/DisplayName>/
   );
   assert.match(storeManifest, /<uap:VisualElements[\s\S]*?DisplayName="Tutti"/);
+  assert.match(storeManifest, /BackgroundColor="transparent"/);
+  assert.match(storeManifest, /AppListEntry="default"/);
+  assert.match(
+    storeManifest,
+    /xmlns:desktop7="http:\/\/schemas\.microsoft\.com\/appx\/manifest\/desktop\/windows10\/7"/
+  );
+  assert.match(storeManifest, /IgnorableNamespaces="desktop7"/);
+  assert.match(
+    storeManifest,
+    /<desktop7:Extension Category="windows\.shortcut">[\s\S]*?File="\$\(Desktop\)\\Tutti\.lnk"[\s\S]*?Icon="app\\Tutti\.exe"/
+  );
+  assert.doesNotMatch(storeManifest, /\$\{extensions\}/);
   assert.deepEqual(packageJson.build.win.protocols, [
     {
       name: "Tutti login callback",
@@ -231,6 +328,11 @@ test("desktop Store packaging provides branded assets for every manifest tile", 
       readPngDimensions(asset),
       expectedDimensions,
       `${fileName} should use the dimensions expected by electron-builder`
+    );
+    assert.deepEqual(
+      readPngAlphaRange(asset),
+      [0, 255],
+      `${fileName} should preserve fully transparent and fully opaque pixels`
     );
   }
 });

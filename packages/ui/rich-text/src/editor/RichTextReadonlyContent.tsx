@@ -7,6 +7,7 @@ import {
 } from "@tutti-os/ui-system/components";
 import { cn } from "@tutti-os/ui-system/utils";
 import {
+  isRichTextFolderHref,
   isRichTextMentionHref,
   normalizeRichTextContent,
   normalizeRichTextLinkHref,
@@ -174,7 +175,7 @@ function RichTextReadonlyInlineLink({
     );
   }
 
-  const kind = trimmedHref.endsWith("/") ? "folder" : "file";
+  const kind = isRichTextFolderHref(trimmedHref) ? "folder" : "file";
   const path = normalizeRichTextLinkHref(trimmedHref, kind);
 
   return (

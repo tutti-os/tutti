@@ -9,9 +9,7 @@ import {
 import {
   createAgentActivitySnapshotProjector,
   createAgentActivitySessionReconcileExecutor,
-  createAgentActivityWorkspaceEventCoordinator,
-  selectEngineSession,
-  selectLatestActivationForSession
+  createAgentActivityWorkspaceEventCoordinator
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityEnsureSessionSynchronizedInput } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
@@ -137,6 +135,9 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   ensureSessionSynchronized(
     input: WorkspaceAgentActivityEnsureSessionSynchronizedInput
   ): () => void {
+    // Desktop owns one workspace-scoped event stream, so focusing a Session
+    // needs an exact reconcile but does not acquire a per-Session subscription.
+    // Keep the release hook for hosts that implement a narrower stream lease.
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
     if (agentSessionId) {
@@ -487,19 +488,6 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
           if (!agentSessionId) return;
           const entry = this.entries.get(workspaceId);
           if (!entry) return;
-          const snapshot = entry.engine.getSnapshot();
-          const pendingActivation = selectLatestActivationForSession(
-            snapshot,
-            agentSessionId
-          );
-          if (
-            !selectEngineSession(snapshot, agentSessionId) &&
-            pendingActivation?.mode === "new" &&
-            (pendingActivation.status === "requested" ||
-              pendingActivation.status === "uncertain")
-          ) {
-            return;
-          }
           entry.engine.dispatch({
             agentSessionId,
             needsMessages: false,

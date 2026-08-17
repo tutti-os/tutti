@@ -20,11 +20,32 @@ type initializationBarrierTestStore struct {
 	rollbackCtx  contextObservation
 }
 
+type canonicalStoreWithoutRuntimeRailPlacement struct {
+	CanonicalStore
+}
+
 func (s *initializationBarrierTestStore) GetSession(
 	_ context.Context,
 	_, _ string,
 ) (storesqlite.Session, bool, error) {
 	return s.existing, s.exists, nil
+}
+
+func (s *initializationBarrierTestStore) ResolveRuntimeSessionRailPlacement(
+	_ context.Context,
+	input ResolveRuntimeSessionRailPlacementInput,
+) (*RailPlacement, error) {
+	if input.RailPlacement != nil {
+		placement := *input.RailPlacement
+		return &placement, nil
+	}
+	if s.exists && strings.TrimSpace(s.existing.RailSectionKey) != "" {
+		return railPlacementFromSession(s.existing)
+	}
+	return &RailPlacement{
+		Version: RailPlacementVersion, Kind: RailPlacementKindConversations,
+		SectionKey: storesqlite.RailSectionKeyConversations,
+	}, nil
 }
 
 func (s *initializationBarrierTestStore) InitializeRuntimeSession(
@@ -263,6 +284,25 @@ func TestCreateSessionConflictDoesNotStartOrCloseExistingRuntime(t *testing.T) {
 	}
 	if runtime.startCalls != 0 || runtime.closeCalls != 0 || store.rollback {
 		t.Fatalf("conflicting retry mutated existing state: start=%d close=%d rollback=%v", runtime.startCalls, runtime.closeCalls, store.rollback)
+	}
+}
+
+func TestCreateSessionFailsClosedWithoutRuntimeRailPlacementResolver(t *testing.T) {
+	store := &initializationBarrierTestStore{}
+	runtime := &initializationBarrierTestRuntime{}
+	host := New(Config{
+		CanonicalStore: canonicalStoreWithoutRuntimeRailPlacement{CanonicalStore: store},
+		Runtime:        runtime,
+	})
+
+	_, err := host.CreateSession(t.Context(), "workspace-1", CreateSessionInput{
+		AgentSessionID: "session-1", AgentTargetID: "target-1", Provider: "codex",
+	})
+	if !errors.Is(err, ErrRuntimeRailPlacementUnavailable) {
+		t.Fatalf("CreateSession() error = %v, want %v", err, ErrRuntimeRailPlacementUnavailable)
+	}
+	if runtime.startCalls != 0 {
+		t.Fatalf("runtime start calls = %d, want 0", runtime.startCalls)
 	}
 }
 

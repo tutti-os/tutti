@@ -16,9 +16,19 @@ type CanonicalSessionStore interface {
 	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
+// RuntimeSessionRailPlacementResolver is the optional create-time capability
+// that resolves a prepared runtime's final canonical rail placement before a
+// provider process starts. Keeping it separate preserves source compatibility
+// for external CanonicalStore implementations; CreateSession fails closed
+// when the capability is unavailable.
+type RuntimeSessionRailPlacementResolver interface {
+	ResolveRuntimeSessionRailPlacement(context.Context, ResolveRuntimeSessionRailPlacementInput) (*RailPlacement, error)
+}
+
 type RuntimeSessionInitialization struct {
-	Session       ProviderRuntimeSession
-	RailPlacement *RailPlacement
+	Session                    ProviderRuntimeSession
+	RailPlacement              *RailPlacement
+	RailPlacementAuthoritative bool
 }
 
 type CanonicalTurnStore interface {
@@ -289,6 +299,28 @@ type RuntimeSessionLiveness interface {
 	RuntimeSessionLive(workspaceID, agentSessionID string) bool
 }
 
+// RuntimeWorkspaceDisconnector exposes registered runtime sessions and
+// releases only their live provider connection. It must preserve the runtime
+// session record and provider resume identity, and must not invoke a
+// provider-history session close operation.
+type RuntimeWorkspaceDisconnector interface {
+	WorkspaceRuntimeSessions(context.Context, string) ([]ProviderRuntimeSession, error)
+	DisconnectRuntimeSession(context.Context, SessionRef) (bool, error)
+}
+
+// RuntimeWorkspaceDisconnectTargeter supports a reentrant detach that must
+// defer semantic cleanup without targeting a later provider connection.
+type RuntimeWorkspaceDisconnectTargeter interface {
+	SnapshotWorkspaceRuntimeDisconnectTargets(string) []RuntimeDisconnectTarget
+	DisconnectRuntimeSessionTarget(context.Context, RuntimeDisconnectTarget) (bool, error)
+}
+
+// RuntimeRetainedSettingsUpdater refreshes the settings snapshot kept by a
+// disconnected runtime Session without starting its provider connection.
+type RuntimeRetainedSettingsUpdater interface {
+	UpdateRetainedSettings(context.Context, RuntimeUpdateSettingsInput) error
+}
+
 // RuntimeHistoryController is an optional semantic capability. Host lifecycle
 // code never invokes provider-specific history methods directly.
 type RuntimeHistoryController interface {
@@ -536,20 +568,21 @@ type LifecycleObserver interface {
 // settlement. It carries the failure stage and original error text so adapters
 // can report without depending on user-supplied logs.
 type TerminalFailure struct {
-	Flow            string
-	FailureStage    string
-	WorkspaceID     string
-	AgentSessionID  string
-	TurnID          string
-	OperationID     string
-	ClientSubmitID  string
-	RequestID       string
-	Provider        string
-	ErrorCode       string
-	ErrorMessage    string
-	ToolNameFamily  string
-	InteractionKind string
-	TurnOutcome     string
+	Flow                          string
+	FailureStage                  string
+	WorkspaceID                   string
+	AgentSessionID                string
+	TurnID                        string
+	OperationID                   string
+	ClientSubmitID                string
+	RequestID                     string
+	Provider                      string
+	ErrorCode                     string
+	ErrorMessage                  string
+	ProviderAcceptanceDiagnostics *RuntimeProviderAcceptanceDiagnostics
+	ToolNameFamily                string
+	InteractionKind               string
+	TurnOutcome                   string
 	// DurationMS is populated only when the canonical terminal fact carries a
 	// valid start and settlement timestamp. Zero means unavailable.
 	DurationMS int64

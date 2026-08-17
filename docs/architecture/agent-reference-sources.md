@@ -227,13 +227,43 @@ be prepended to ranked query results.
 
 Picker purpose constrains result kinds before pagination: the reference picker
 searches files only, while the project-directory picker searches folders only.
-A file-type filter by itself remains in browse mode, filters files in the
-recursively loaded source tree, and keeps only folders with matching descendant
-files. The traversal is cancellable and the picker remains loading until the
-filtered projection is complete. When a keyword is present, the same category
-ids are passed to the source for pre-pagination filtering. Search rows render a
-source-provided `contextLabel` when available and otherwise omit the subtitle;
-opaque `nodeId` values are never presentation copy.
+A file-type filter by itself normally remains in browse mode, filters files in
+the recursively loaded source tree, and keeps only folders with matching
+descendant files. A source may instead declare `filtersUseSearch` when it can
+enforce the categories before pagination. The traversal and search request are
+cancellable. When a keyword is present, the same category ids are passed to the
+source for pre-pagination filtering. Search rows render a source-provided
+`contextLabel` when available and otherwise omit the subtitle; opaque `nodeId`
+values are never presentation copy.
+
+A source opts into search continuation independently from browse pagination.
+`capabilities.paginated` only describes `listChildren()` cursors; existing
+sources continue using the growing-limit search protocol by default. A source
+must declare `capabilities.searchPagination: "cursor"` before the controller
+passes an opaque `nextCursor` to fixed-size search requests. A
+`SearchResult.searchPagination` value may override that default for one query,
+which lets a source keep ordinary cursor search while routing a provenance
+query through a legacy backend.
+
+For cursor search, the controller uses cursor presence—not a returned-count
+heuristic or a growing total limit—to decide whether more data exists. It keeps
+an incremental identity set and inspects only the incoming page before
+appending unique nodes to an immutable, bounded-block index in source order.
+Appending copies only the bounded tail block, and previously observed picker
+snapshots remain unchanged. The view performs random access through that index
+and renders only an overscanned virtual window. Historical entries remain
+reachable by scrolling without retaining one DOM row, icon subscription, or
+focus/selection render dependency per result. Repeated
+or cyclic `nextCursor` values stop continuation with a stable visible error.
+This removes any controller-owned total result ceiling.
+Legacy search retains the growing-limit behavior and compatibility ceiling.
+
+If a host reports cursor expiry with `ReferenceSearchCursorExpiredError`, the
+controller clears the stale pages and automatically restarts the unchanged
+search from page one. Other invalid or mismatched cursor errors remain visible
+failures because retrying them would hide a source or request-contract bug.
+An explicit retry of a visible search error also starts at page one after
+discarding stale continuation state.
 
 Local-file queries are field-aware:
 
@@ -353,6 +383,8 @@ cache expires; they do not claim exhaustive history.
 - Keep picker snapshots and source-service inputs as plain structured-cloneable
   data; never pass state-library proxies across host boundaries.
 - Append cursor pages without reordering already loaded entries.
+- Drive deep-search continuation from the virtual window's logical end rather
+  than assuming an appended page will produce another native scroll event.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or
   enabled apps that are not running are not valid reference sources.

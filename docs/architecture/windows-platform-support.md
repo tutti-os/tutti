@@ -100,8 +100,11 @@ Project paths have one display form and one comparison form; callers must not
 compare raw strings when the path crosses a desktop/daemon boundary. The shared
 user-project core normalizes slash direction and trailing separators, then
 folds case only for Windows-shaped drive or UNC paths. POSIX paths remain
-case-sensitive. The Go rail store keeps the existing canonical filesystem path
-for display and derives a Windows-stable section key for persistence. Project
+case-sensitive. On a Windows host, a single-root POSIX project path is an
+explicit logical namespace: the Go rail store cleans it with POSIX semantics
+and never rebases it onto the current drive. Native drive and UNC paths keep
+Windows filesystem normalization. The rail store keeps the resulting canonical
+path for display and derives a stable section key for persistence. Project
 registration and deletion resolve an incoming path variant to the existing
 stored row before applying the table's ordinary unique-path write guard, so no
 second identity column is needed.
@@ -285,6 +288,11 @@ starts a new `tuttid`; the daemon also resolves those locations so an install
 performed while the current desktop process is running is visible without a
 restart. The native UI Automation, capture, and input implementation remains
 inside Cua Driver rather than becoming a Tutti platform library.
+
+Daemon startup readiness is bounded but tolerant of transient status failures.
+If the service still owns a live `serve` process, a later readiness check polls
+again instead of failing immediately. A process exit before readiness and a
+readiness timeout remain distinct, sanitized diagnostic errors.
 
 The desktop does not currently vendor `cua-driver.exe` into the Windows
 package. Users or deployment tooling must install the pinned driver (or set

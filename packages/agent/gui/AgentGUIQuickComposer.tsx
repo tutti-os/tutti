@@ -37,6 +37,7 @@ export type { AgentGUIQuickComposerSettings } from "./quickComposerSettings";
 
 const readyGate: AgentGUIComposerGate = {
   conversationBusy: false,
+  isAwaitingTurnStart: false,
   editor: { reason: null, status: "editable" },
   runtime: {
     reason: null,

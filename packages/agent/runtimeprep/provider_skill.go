@@ -255,6 +255,9 @@ func templateInputValues(input PrepareInput) func(string, string) []string {
 }
 
 func providerSkills(input PrepareInput) ([]providerSkillSpec, error) {
+	if input.SkipSkills {
+		return nil, nil
+	}
 	if input.resolved == nil {
 		return nil, errors.New("provider skills require resolved runtime capabilities")
 	}
@@ -293,6 +296,9 @@ func installProviderNativeSkillsStable(root string, input PrepareInput) ([]strin
 }
 
 func installProviderNativeSkillsSessionScoped(root string, input PrepareInput) ([]string, error) {
+	if input.SkipSkills {
+		return nil, nil
+	}
 	skills, err := providerSkills(input)
 	if err != nil {
 		return nil, err

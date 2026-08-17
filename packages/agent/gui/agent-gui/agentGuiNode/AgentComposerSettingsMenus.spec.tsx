@@ -169,6 +169,28 @@ describe("AgentModelReasoningDropdown", () => {
     expect(screen.queryByText("Model selection")).not.toBeInTheDocument();
   });
 
+  it("requests a fresh model catalog when the model picker opens", async () => {
+    const onRetryComposerOptions = vi.fn();
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={composerModelSettings()}
+        labels={modelSettingsLabels}
+        onRetryComposerOptions={onRetryComposerOptions}
+        onSettingsChange={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+
+    expect(await screen.findByText("Model selection")).toBeInTheDocument();
+    expect(onRetryComposerOptions).toHaveBeenCalledWith({
+      waitForFreshModelCatalog: true
+    });
+  });
+
   it("disables the compact retry while composer options are loading", () => {
     const onRetryComposerOptions = vi.fn();
     render(

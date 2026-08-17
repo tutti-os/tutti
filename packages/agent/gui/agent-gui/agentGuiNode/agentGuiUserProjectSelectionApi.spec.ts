@@ -39,6 +39,21 @@ describe("createAgentGUIUserProjectSelectionApi", () => {
     expect(api?.selectDirectory).toBeUndefined();
   });
 
+  it("adds the optional import flow without changing the default project API", async () => {
+    const importDirectory = vi.fn(async () => ({
+      path: "/workspace/imported"
+    }));
+    const api = createAgentGUIUserProjectSelectionApi({
+      importDirectory,
+      userProjects: createUserProjectsApi()
+    });
+
+    await expect(api?.importDirectory?.()).resolves.toEqual({
+      path: "/workspace/imported"
+    });
+    expect(api?.selectDirectory).toBeUndefined();
+  });
+
   it("does not fabricate a project catalog for a directory-only host", () => {
     const selectProjectDirectory = vi.fn(async () => ({
       path: "/workspace/existing"

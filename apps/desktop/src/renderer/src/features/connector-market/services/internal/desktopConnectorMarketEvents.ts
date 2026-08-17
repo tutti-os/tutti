@@ -15,6 +15,9 @@ export function createDesktopConnectorMarketEvents(
           listener({
             type: "connector.market.changed",
             revision: event.payload.revision,
+            ...(event.payload.cursor !== undefined
+              ? { cursor: event.payload.cursor }
+              : {}),
             ...(event.payload.connectorKey
               ? { connectorKey: event.payload.connectorKey }
               : {}),

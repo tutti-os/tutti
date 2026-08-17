@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -95,8 +96,26 @@ func TestModernStreamableHTTPClientPreservesJSONRPCErrorOnHTTPFailure(t *testing
 	defer server.Close()
 	client := newModernTestClient(t, server, "1.0.0")
 	_, err := client.Call(context.Background(), "tools/list", map[string]any{})
-	rpcErr, ok := err.(*RPCError)
-	if !ok || rpcErr.Code != -33001 {
+	var httpErr *ModernHTTPError
+	var rpcErr *RPCError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusPreconditionRequired ||
+		!errors.As(err, &rpcErr) || rpcErr.Code != -33001 {
+		t.Fatalf("error = %#v", err)
+	}
+}
+
+func TestModernStreamableHTTPClientPreservesHTTPFailureBeforeContentTypeValidation(t *testing.T) {
+	server := httptest.NewTLSServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		response.WriteHeader(http.StatusConflict)
+		_, _ = io.WriteString(response, "Connector is not installed for this release\n")
+	}))
+	defer server.Close()
+	client := newModernTestClient(t, server, "1.0.0")
+	_, err := client.Call(context.Background(), "tools/list", map[string]any{})
+	var httpErr *ModernHTTPError
+	if !errors.As(err, &httpErr) || httpErr.StatusCode != http.StatusConflict ||
+		string(httpErr.Body) != "Connector is not installed for this release\n" {
 		t.Fatalf("error = %#v", err)
 	}
 }

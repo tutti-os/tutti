@@ -72,7 +72,11 @@ interface UseAgentGUIComposerSettingsActionsInput {
     Record<string, AgentSessionComposerSettings>
   >;
   isMountedRef: RefObject<boolean>;
-  loadDraftComposerOptions(options?: { force?: boolean }): void;
+  loadDraftComposerOptions(options?: {
+    force?: boolean;
+    section?: "core" | "capabilities" | "connectors";
+    waitForFreshModelCatalog?: boolean;
+  }): void;
   onDataChangeRef: RefObject<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
@@ -95,6 +99,7 @@ interface UseAgentGUIComposerSettingsActionsInput {
   setDraftSettingsBySessionId: Dispatch<
     SetStateAction<Record<string, AgentSessionComposerSettings>>
   >;
+  setDetailError?: Dispatch<SetStateAction<string | null>>;
   updateComposerSettingsRef: RefObject<
     (settings: Partial<AgentSessionComposerSettings>) => void
   >;
@@ -123,6 +128,7 @@ export function useAgentGUIComposerSettingsActions(
     selectedComposerTargetDataRef,
     sessionEngine,
     setDraftSettingsBySessionId,
+    setDetailError,
     updateComposerSettingsRef,
     workspaceId
   } = input;
@@ -235,6 +241,12 @@ export function useAgentGUIComposerSettingsActions(
   };
   const updateComposerSettings = useCallback(
     (nextSettings: Partial<AgentSessionComposerSettings>) => {
+      // A model validation failure belongs to the model that was submitted.
+      // Once the user selects another model, retaining that failure makes the
+      // new valid selection look broken before it has even been submitted.
+      if (normalizeOptionalText(nextSettings.model) !== null) {
+        setDetailError?.(null);
+      }
       // Values pass through unclamped: the toggle visibility is capability
       // gated and the daemon clamps persisted settings per provider.
       const supportedNextSettings: Partial<AgentSessionComposerSettings> = {
@@ -487,7 +499,8 @@ export function useAgentGUIComposerSettingsActions(
       loadDraftComposerOptions,
       reloadComposerOptionsForTarget,
       sessionEngine,
-      workspaceId
+      workspaceId,
+      setDetailError
     ]
   );
   updateComposerSettingsRef.current = updateComposerSettings;
@@ -507,9 +520,18 @@ export function useAgentGUIComposerSettingsActions(
   // Recovery entry for the composer-options terminal error state. Leave the
   // request non-forced so Activity Core joins an already-running load when a
   // user double-clicks the retry control instead of superseding it.
-  const retryComposerOptions = useStableControllerEventCallback(() => {
-    loadDraftComposerOptions();
-  });
+  const retryComposerOptions = useStableControllerEventCallback(
+    (options?: {
+      section?: "core" | "capabilities" | "connectors";
+      waitForFreshModelCatalog?: boolean;
+    }) => {
+      if (options === undefined) {
+        loadDraftComposerOptions();
+        return;
+      }
+      loadDraftComposerOptions(options);
+    }
+  );
 
   return {
     retryComposerOptions,

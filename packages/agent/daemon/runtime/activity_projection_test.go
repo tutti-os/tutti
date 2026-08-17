@@ -719,6 +719,29 @@ func TestRootProviderTurnFailurePersistsVisibleErrorCode(t *testing.T) {
 	}
 }
 
+func TestRootProviderTurnFailurePersistsUnknownCodeWithoutDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	ctx, ok := activityEventContext(session, "root-provider-turn-failed", "root-turn-1")
+	if !ok {
+		t.Fatal("activityEventContext() returned !ok")
+	}
+	failed := activityshared.NewRootProviderTurnCompleted(ctx, "root-turn-1", "provider-turn-1", activityshared.TurnOutcomeFailed)
+
+	report := reportActivityInput(session, []activityshared.Event{failed})
+	if len(report.StatePatches) != 1 {
+		t.Fatalf("state patches = %#v, want one root provider failure", report.StatePatches)
+	}
+	completed := report.StatePatches[0].RootProviderTurn
+	if completed == nil {
+		t.Fatal("root provider turn transition is nil")
+	}
+	if completed.ErrorCode != "unknown" || completed.ErrorMessage != "" {
+		t.Fatalf("root provider turn error = %q/%q, want unknown/empty", completed.ErrorCode, completed.ErrorMessage)
+	}
+}
+
 func TestSessionStatusFromActivityPreservesWaiting(t *testing.T) {
 	t.Parallel()
 

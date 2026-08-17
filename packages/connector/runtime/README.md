@@ -6,15 +6,21 @@ the managed guest. It owns the latest-only `current + candidate` raw artifact
 cache, a no-network importer for synchronized archives, secure artifact preparation, managed runtime
 identity, runtime ABI verification, typed Node package installation, MCP
 clients, the host-neutral ImplementationHost, RouteRegistry and MCPRegistry,
-Connector discovery, stable CLI shims, verified Connector Skill discovery, and
+Connector discovery, stable CLI shims, exact CLI execution, verified Connector Skill discovery, and
 the session-bound loopback MCP server used by native Agent MCP clients.
 
 `ImplementationHost` validates the optional Skill tree before publishing a
 route and commits its metadata into `RouteRegistry` as an immutable projection.
 Agent discovery and routing hints read that projection directly; they never
-rescan a mutable installation directory. MCP calls use `MCPRegistry`, while CLI
-calls use the stable per-Connector shim. There is no generic Connector broker
-or generic `connector.invoke` transport in the public runtime.
+rescan a mutable installation directory. MCP calls use `MCPRegistry`. Product-
+owned CLI brokers use `ImplementationHost.StartCLI`, binding each launch to the
+exact connection, Connector version, release digest, host generation, and
+derived CLI contract hash published by `RouteRegistry`. Callers provide only
+user arguments; the host resolves the verified executable, working directory,
+environment, state root, and artifact identities. Stable per-Connector shims
+remain the same-machine compatibility surface and are not an authorization
+boundary. There is no generic `connector.invoke` or arbitrary-command
+transport in the public runtime.
 
 Every successful enabled `Reconcile` returns the bounded discovery summary for
 the exact committed connection, release digest, and host generation. This
@@ -30,6 +36,16 @@ MCP bootstrap and route lifecycle, while the product factory owns the physical
 connection path and request authorization. A desktop host may connect directly
 to its Gateway; a VM-backed host may return a client for a typed desktop relay
 without hiding target rewrites inside a generic HTTP transport.
+
+`ManagedCLIContractHash` is derived from invocation semantics, not release
+implementation details. Command ordering and descriptions do not affect the
+digest; fixed arguments, command argument mappings, input schemas, and timeouts
+do. Cross-machine products must authorize a public Connector key, version and
+command in their own typed protocol. The receiving machine resolves and pins
+its exact current route identity before calling `StartCLI`; boot epoch,
+generation, release digest and contract hash are never trusted across machines.
+Products must not serialize executable paths or treat an existing generic
+command tunnel as a fine-grained Connector grant.
 
 `mcpserver.Start` projects one `implementationhost.MCPRegistry`, or a
 product-supplied `mcpserver.SessionRouter`, through the stateless Connector

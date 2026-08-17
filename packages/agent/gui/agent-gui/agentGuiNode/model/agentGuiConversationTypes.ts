@@ -59,7 +59,7 @@ export interface AgentGUIConversationSummary {
   // presentation layer may use it for the ordinary Rail/detail overlay, but
   // it is excluded before Activity candidates are built.
   isTransient?: boolean;
-  projectionSource?: "pending_activation";
+  projectionSource?: "pending_activation" | "runtime_overlay";
   isImported?: boolean;
   activeTurn?: AgentActivitySession["activeTurn"];
 }

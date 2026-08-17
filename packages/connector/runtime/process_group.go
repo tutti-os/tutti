@@ -67,6 +67,12 @@ func (group *ProcessGroup) CommitStart(processID uint64, connection agentruntime
 }
 
 func (group *ProcessGroup) Release(processID uint64, connection agentruntime.ProcessConnection) {
+	_ = group.ReleaseWithError(processID, connection)
+}
+
+// ReleaseWithError releases an owned process and reports the transport close
+// result. Release remains source-compatible for existing lifecycle callers.
+func (group *ProcessGroup) ReleaseWithError(processID uint64, connection agentruntime.ProcessConnection) error {
 	group.mu.Lock()
 	current, owned := group.processes[processID]
 	if owned && current.connection == connection && !current.closing {
@@ -77,8 +83,9 @@ func (group *ProcessGroup) Release(processID uint64, connection agentruntime.Pro
 	group.mu.Unlock()
 	if owned {
 		current.cancel()
-		_ = connection.Close()
+		return connection.Close()
 	}
+	return nil
 }
 
 func (group *ProcessGroup) Fence() {

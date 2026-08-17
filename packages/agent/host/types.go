@@ -14,6 +14,22 @@ type SessionRef struct {
 	AgentSessionID string
 }
 
+// DisconnectWorkspaceRuntimeResult reports provider runtime connections
+// released without deleting their canonical or resumable session identity.
+type DisconnectWorkspaceRuntimeResult struct {
+	Scanned      int
+	Disconnected int
+	Failed       int
+}
+
+// RuntimeDisconnectTarget identifies an exact provider-connection incarnation
+// for deferred attachment cleanup.
+type RuntimeDisconnectTarget struct {
+	WorkspaceID          string
+	AgentSessionID       string
+	ConnectionGeneration uint64
+}
+
 // InteractionRef identifies one canonical interaction. Provider request IDs
 // are transport-local correlation values and are only unique within the Turn
 // that owns them.
@@ -434,22 +450,6 @@ const (
 	RuntimeAcceptanceSourceHistoryRead       RuntimeAcceptanceSource = "history_read"
 )
 
-// RuntimeProviderAcceptanceReceipt is positive provider evidence that a
-// replacement turn crossed the provider delivery boundary.
-type RuntimeProviderAcceptanceReceipt struct {
-	ProviderSessionID string
-	ProviderTurnID    string
-	Source            RuntimeAcceptanceSource
-}
-
-// RuntimeProviderDispatchResult separates an explicit provider outcome from a
-// transport failure whose effect is unknown. Acceptance is present only when
-// the provider supplied positive evidence for the dispatched turn.
-type RuntimeProviderDispatchResult struct {
-	Disposition RuntimeDispatchDisposition
-	Acceptance  *RuntimeProviderAcceptanceReceipt
-}
-
 type RuntimeHistoryTurn struct {
 	ID                  string
 	Status              string
@@ -557,10 +557,6 @@ type RuntimeSubmitInteractiveInput struct {
 	Payload            map[string]any
 }
 
-type RuntimeSubmitInteractiveResult struct {
-	Disposition RuntimeInteractiveDisposition
-}
-
 type RuntimeInteractiveDisposition string
 
 const (
@@ -627,6 +623,18 @@ type RailPlacement struct {
 	SectionKey  string            `json:"sectionKey"`
 }
 
+// ResolveRuntimeSessionRailPlacementInput identifies the final prepared
+// runtime context whose canonical rail placement must be known before a
+// provider process starts.
+type ResolveRuntimeSessionRailPlacementInput struct {
+	WorkspaceID                string
+	AgentSessionID             string
+	Cwd                        string
+	RuntimeContext             map[string]any
+	RailPlacement              *RailPlacement
+	RailPlacementAuthoritative bool
+}
+
 // CreateSessionInput is the provider-neutral create contract. Adapter-only
 // import paths, workspace resolution, identity, and transport state are not
 // part of this type.
@@ -665,6 +673,11 @@ type CreateSessionInput struct {
 	ConversationDetailMode string
 	Visible                *bool
 	RailPlacement          *RailPlacement
+	// RailPlacementAuthoritative declares that RailPlacement was selected by
+	// an external canonical authority and may name a project absent from this
+	// Host's local project registry. It applies only to first initialization
+	// and never permits replacing an existing canonical placement.
+	RailPlacementAuthoritative bool
 }
 
 type SendInput struct {

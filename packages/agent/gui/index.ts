@@ -219,6 +219,7 @@ export type {
   AgentGUIFirstTokenKind,
   AgentGUIPerformanceDurationBucket,
   AgentGUIPerformanceEvent,
+  AgentGUIPerformanceFailureStage,
   AgentGUIPerformanceMonitor
 } from "./agentGUIPerformanceMonitor";
 export type {

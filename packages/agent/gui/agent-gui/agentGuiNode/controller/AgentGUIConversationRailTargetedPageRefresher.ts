@@ -1,5 +1,12 @@
 import type { AgentConversationRailRuntimePort } from "../../../agentConversationRailContracts";
+import type { AgentGuiScheduler } from "../agentGuiScheduler";
 import type { ConversationRailRefreshedPage } from "./agentGuiConversationRailQueryCache";
+import {
+  conversationRailRetryMode,
+  isConversationRailAbortError,
+  requestConversationRailWithRetry,
+  type ConversationRailRetryMode
+} from "./agentGuiConversationRailRequestRetry";
 
 type TargetedPageRuntime = Pick<
   AgentConversationRailRuntimePort,
@@ -15,8 +22,10 @@ export class AgentGUIConversationRailTargetedPageRefresher {
     private readonly input: {
       onFailed?(): void;
       onResolved(pages: readonly ConversationRailRefreshedPage[]): void;
+      onRetryScheduled?(mode: ConversationRailRetryMode): void;
       pageSize: number;
       runtime: TargetedPageRuntime;
+      scheduler: AgentGuiScheduler;
       workspaceId: string;
     }
   ) {}
@@ -30,50 +39,72 @@ export class AgentGUIConversationRailTargetedPageRefresher {
     this.abortController = abortController;
     const requestSequence = ++this.requestSequence;
     const pageIds = [...this.pendingPageIds];
-    const requests = pageIds.flatMap((id) => {
-      if (id === "pinned") {
-        const listPage = this.input.runtime.listPinnedSessionsPage;
+    const createRequests = (
+      signal: AbortSignal
+    ): Promise<ConversationRailRefreshedPage>[] =>
+      pageIds.flatMap((id) => {
+        if (id === "pinned") {
+          const listPage = this.input.runtime.listPinnedSessionsPage;
+          return listPage
+            ? [
+                listPage({
+                  agentTargetId: input.agentTargetId || undefined,
+                  limit: this.input.pageSize,
+                  signal,
+                  workspaceId: this.input.workspaceId
+                }).then(
+                  (page): ConversationRailRefreshedPage => ({
+                    kind: "pinned",
+                    page
+                  })
+                )
+              ]
+            : [];
+        }
+        const listPage = this.input.runtime.listSessionSectionPage;
         return listPage
           ? [
               listPage({
                 agentTargetId: input.agentTargetId || undefined,
                 limit: this.input.pageSize,
-                signal: abortController.signal,
+                sectionKey: id,
+                signal,
                 workspaceId: this.input.workspaceId
               }).then(
                 (page): ConversationRailRefreshedPage => ({
-                  kind: "pinned",
+                  id,
+                  kind: "section",
                   page
                 })
               )
             ]
           : [];
-      }
-      const listPage = this.input.runtime.listSessionSectionPage;
-      return listPage
-        ? [
-            listPage({
-              agentTargetId: input.agentTargetId || undefined,
-              limit: this.input.pageSize,
-              sectionKey: id,
-              signal: abortController.signal,
-              workspaceId: this.input.workspaceId
-            }).then(
-              (page): ConversationRailRefreshedPage => ({
-                id,
-                kind: "section",
-                page
-              })
-            )
-          ]
-        : [];
-    });
-    if (requests.length !== pageIds.length) {
+      });
+    const hasAllPageReaders = pageIds.every((id) =>
+      id === "pinned"
+        ? Boolean(this.input.runtime.listPinnedSessionsPage)
+        : Boolean(this.input.runtime.listSessionSectionPage)
+    );
+    if (!hasAllPageReaders) {
       for (const id of pageIds) this.pendingPageIds.delete(id);
       this.input.onFailed?.();
       return;
     }
-    void Promise.all(requests)
+    void requestConversationRailWithRetry({
+      onRetryScheduled: ({ mode }) => this.input.onRetryScheduled?.(mode),
+      request: () =>
+        requestTargetedPages({
+          createRequests,
+          signal: abortController.signal
+        }),
+      retryKey: JSON.stringify([
+        this.input.workspaceId,
+        input.agentTargetId,
+        pageIds
+      ]),
+      scheduler: this.input.scheduler,
+      signal: abortController.signal
+    })
       .then((pages) => {
         if (
           abortController.signal.aborted ||
@@ -102,4 +133,54 @@ export class AgentGUIConversationRailTargetedPageRefresher {
     this.abortController = null;
     this.pendingPageIds.clear();
   }
+}
+
+async function requestTargetedPages(input: {
+  createRequests(signal: AbortSignal): Promise<ConversationRailRefreshedPage>[];
+  signal: AbortSignal;
+}): Promise<ConversationRailRefreshedPage[]> {
+  const attemptAbortController = new AbortController();
+  const abortFromParent = (): void => {
+    attemptAbortController.abort(input.signal.reason);
+  };
+  input.signal.addEventListener("abort", abortFromParent, { once: true });
+  if (input.signal.aborted) abortFromParent();
+  const failures: unknown[] = [];
+  try {
+    const requests = input
+      .createRequests(attemptAbortController.signal)
+      .map((request) =>
+        request.catch((error: unknown) => {
+          failures.push(error);
+          attemptAbortController.abort(error);
+          throw error;
+        })
+      );
+    try {
+      return await Promise.all(requests);
+    } catch (error) {
+      attemptAbortController.abort(error);
+      await Promise.resolve();
+      throw preferredTargetedPageFailure(failures, error);
+    }
+  } finally {
+    input.signal.removeEventListener("abort", abortFromParent);
+  }
+}
+
+function preferredTargetedPageFailure(
+  failures: readonly unknown[],
+  fallback: unknown
+): unknown {
+  const eligible = failures.filter(
+    (error) => !isConversationRailAbortError(error)
+  );
+  return (
+    eligible.find((error) => conversationRailRetryMode(error) === null) ??
+    eligible.find(
+      (error) => conversationRailRetryMode(error) === "background"
+    ) ??
+    eligible[0] ??
+    fallback
+  );
 }

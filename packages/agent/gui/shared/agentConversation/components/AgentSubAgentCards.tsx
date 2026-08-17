@@ -7,6 +7,7 @@ import type { AgentToolCallVM } from "../contracts/agentToolCallVM";
 import { CollapsibleReveal } from "./CollapsibleReveal";
 import { useAgentConversationNowUnixMs } from "./AgentConversationClock";
 import { formatAgentToolDurationMs } from "./tool-renderers/render-data/agentToolRenderData";
+import { AgentMessageMarkdown } from "../../AgentMessageMarkdown";
 
 // A delegated sub-agent renders as a first-class row aligned with tool rows:
 // header = "Sub-agent · <name> · <elapsed> · <status>" with a chevron, body =
@@ -62,6 +63,7 @@ function subAgentVMEquals(
     left.laneIndex === right.laneIndex &&
     left.laneCount === right.laneCount &&
     left.latestActivity === right.latestActivity &&
+    left.assistantMarkdown === right.assistantMarkdown &&
     left.failureDetail === right.failureDetail &&
     left.queued === right.queued &&
     left.startedAtUnixMs === right.startedAtUnixMs &&
@@ -186,7 +188,7 @@ function SubAgentBody({
             {subAgent.task}
           </div>
         ) : null}
-        <SubAgentProgress subAgent={subAgent} />
+        <SubAgentProgress subAgent={subAgent} onLinkClick={onLinkClick} />
         {subAgent.childSessions.length > 0 ? (
           <div className="workspace-agents-status-panel__detail-subagent-children">
             {subAgent.childSessions.map((childSession) => (
@@ -204,16 +206,38 @@ function SubAgentBody({
 }
 
 function SubAgentProgress({
-  subAgent
+  subAgent,
+  onLinkClick
 }: {
   subAgent: AgentTaskSubAgentVM;
+  onLinkClick?: (href: string) => void;
 }): JSX.Element {
   "use memo";
-  // Progress stays a single line - the sub-agent's most recent activity (or
-  // failure detail), not a scrolling log.
+  if (subAgent.assistantMarkdown?.trim()) {
+    return (
+      <div className="workspace-agents-status-panel__detail-subagent-activity workspace-agents-status-panel__detail-subagent-activity--in-terminal">
+        <AgentMessageMarkdown
+          content={subAgent.assistantMarkdown}
+          documentCacheKey={`sub-agent:${subAgent.childSessionId}:assistant`}
+          onLinkClick={onLinkClick}
+          streaming={subAgent.status === "running"}
+          enableImageZoom
+          className="workspace-agents-status-panel__detail-tool-markdown [&_ol]:text-[var(--text-secondary)] [&_ul]:text-[var(--text-secondary)]"
+        />
+        {subAgent.failureDetail ? (
+          <div className="workspace-agents-status-panel__detail-subagent-activity--failure">
+            {subAgent.failureDetail}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+  // Tool/reasoning activity remains a short fallback until the child emits an
+  // assistant message. Once it does, the complete Markdown above owns both the
+  // streaming and settled presentation.
   const text =
     subAgent.failureDetail ??
-    subAgent.latestActivity ??
+    (subAgent.status === "running" ? subAgent.latestActivity : null) ??
     translate(
       subAgent.status === "completed"
         ? "agentHost.agentTool.statusCompleted"

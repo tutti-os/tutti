@@ -25,6 +25,7 @@ type managedCLILaunch struct {
 	executable    connectorruntime.ConnectorExecutable
 	language      string
 	stateDir      string
+	timeout       time.Duration
 }
 
 type credentialBrokerCLILaunch struct {
@@ -167,7 +168,7 @@ func (provider *managedCredentialAuthorizationProvider) Disconnect(
 	if err != nil {
 		return fmt.Errorf("start connector credential broker disconnect: %w", err)
 	}
-	defer route.releaseProcess(processID, connection)
+	defer func() { _ = route.releaseProcess(processID, connection) }()
 	event, err := readCredentialBrokerTerminalEvent(operationContext, connection)
 	if err != nil {
 		return fmt.Errorf("disconnect connector authorization: %w", err)
@@ -196,7 +197,7 @@ func (provider *managedCredentialAuthorizationProvider) Inspect(
 	if err != nil {
 		return market.AuthorizationObservation{}, fmt.Errorf("start connector credential broker inspect: %w", err)
 	}
-	defer route.releaseProcess(processID, connection)
+	defer func() { _ = route.releaseProcess(processID, connection) }()
 	event, err := readCredentialBrokerInspectionEvent(operationContext, connection)
 	if err != nil {
 		return market.AuthorizationObservation{}, fmt.Errorf("inspect connector authorization: %w", err)
@@ -262,7 +263,7 @@ func consumeAuthorizationEvents(
 	session *credentialBrokerSession,
 ) {
 	defer session.cancel()
-	defer route.releaseProcess(processID, connection)
+	defer func() { _ = route.releaseProcess(processID, connection) }()
 	var stdout, stderr strings.Builder
 	for {
 		frame, err := receiveCredentialBrokerFrame(connection)
@@ -339,12 +340,12 @@ func (host *Host) authorizationRoute(ctx context.Context, scope market.Operation
 	if host == nil {
 		return nil, errors.New("managed connector authorization is unavailable")
 	}
-	host.lifecycleMu.Lock()
-	defer host.lifecycleMu.Unlock()
+	releaseLane := host.enterConnectorLane(connector.Key)
+	defer releaseLane()
 	managed := connector.Release.Manifest.Implementation.ManagedStdio
 	if connector.Release.Manifest.Implementation.Kind != market.ImplementationKindManagedStdio ||
 		connector.Release.Manifest.AuthorizationKind == "none" || managed == nil || managed.CredentialBroker == nil ||
-		connector.Installation.State != market.InstallationStateInstalled {
+		!installationTargetsRelease(connector.Installation, connector.Release.ReleaseDigest) {
 		return nil, errors.New("managed connector authorization is unavailable")
 	}
 	connectionID := "default"
@@ -387,7 +388,7 @@ func (host *Host) buildAuthorizationRoute(ctx context.Context, connectionID stri
 	if err := market.ValidateRuntimeReleaseShape(connector.Release); err != nil {
 		return nil, err
 	}
-	if connector.Installation.InstalledReleaseDigest != connector.Release.ReleaseDigest {
+	if !installationTargetsRelease(connector.Installation, connector.Release.ReleaseDigest) {
 		return nil, errors.New("managed connector authorization release is not installed")
 	}
 	prepared, err := host.artifacts.ResolvePrepared(ctx, connector.Release)
@@ -512,7 +513,7 @@ func (host *Host) startCredentialBroker(
 		}
 	}
 	if err != nil {
-		route.releaseProcess(processID, connection)
+		_ = route.releaseProcess(processID, connection)
 		return nil, 0, err
 	}
 	return connection, processID, nil

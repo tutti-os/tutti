@@ -200,6 +200,7 @@ function pendingSubmit(): PendingSubmitIntentRecord {
     ],
     errorCode: null,
     errorMessage: null,
+    errorReason: null,
     expiresAtUnixMs: 120_000,
     requestedAtUnixMs: 200,
     status: "requested",

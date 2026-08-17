@@ -133,7 +133,7 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 			AppID:         20004092,
 			AppKey:        "app-key",
 			ChannelDomain: "https://example.test",
-			AppVersion:    "0.0.0",
+			AppVersion:    "0.2.31-rc.0",
 		},
 		DebugPublisher: publisher,
 		StateDir:       stateDir,
@@ -179,7 +179,7 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 	if send.events[0].EventID == "" || send.events[0].EventID != send.events[0].Params["event_id"] {
 		t.Fatalf("event ID preset=%q params=%v, want matching compatibility values", send.events[0].EventID, send.events[0].Params["event_id"])
 	}
-	if send.header.AppVersion != "0.0.0" || send.header.OSName == "" || send.header.CPUABI == "" {
+	if send.header.AppVersion != "0.2.31-rc.0" || send.header.AppVersionMinor != "0.2.31-rc.0" || send.header.OSName == "" || send.header.CPUABI == "" {
 		t.Fatalf("preset header = %#v, want app and runtime metadata", send.header)
 	}
 	for _, key := range []string{"device_id", "session_id", "app_version", "os", "product_variant"} {
@@ -219,7 +219,7 @@ func TestTeaReporterPersistsIdentityAndSendsSanitizedEvents(t *testing.T) {
 
 func TestReporterCommonBuildsPresetHeaderFromRuntimeInfo(t *testing.T) {
 	common, err := newReporterCommonWithRuntimeInfo(Config{
-		Analytics: AnalyticsConfig{AppVersion: "1.2.3"},
+		Analytics: AnalyticsConfig{AppVersion: "1.2.3-rc.4"},
 		DeviceID:  "host-device",
 	}, runtimeInfo{
 		osName:    "darwin",
@@ -232,10 +232,11 @@ func TestReporterCommonBuildsPresetHeaderFromRuntimeInfo(t *testing.T) {
 
 	got := common.teaHeader()
 	want := (teaSDKHeader{
-		AppVersion: "1.2.3",
-		OSName:     "darwin",
-		OSVersion:  "15.6",
-		CPUABI:     "arm64",
+		AppVersion:      "1.2.3-rc.4",
+		AppVersionMinor: "1.2.3-rc.4",
+		OSName:          "darwin",
+		OSVersion:       "15.6",
+		CPUABI:          "arm64",
 	})
 	if got != want {
 		t.Fatalf("preset header = %#v, want %#v", got, want)
@@ -245,7 +246,7 @@ func TestReporterCommonBuildsPresetHeaderFromRuntimeInfo(t *testing.T) {
 func TestDebugReporterPublishesPresetHeaderFields(t *testing.T) {
 	publisher := &fakeDebugPublisher{}
 	common, err := newReporterCommonWithRuntimeInfo(Config{
-		Analytics: AnalyticsConfig{AppVersion: "1.2.3"},
+		Analytics: AnalyticsConfig{AppVersion: "1.2.3-rc.4"},
 		DeviceID:  "host-device",
 	}, runtimeInfo{
 		osName:    "darwin",
@@ -270,10 +271,11 @@ func TestDebugReporterPublishesPresetHeaderFields(t *testing.T) {
 		t.Fatalf("debug events = %d, want 1", len(publisher.events))
 	}
 	for key, want := range map[string]string{
-		"app_version": "1.2.3",
-		"os_name":     "darwin",
-		"os_version":  "15.6",
-		"cpu_abi":     "arm64",
+		"app_version":       "1.2.3-rc.4",
+		"app_version_minor": "1.2.3-rc.4",
+		"os_name":           "darwin",
+		"os_version":        "15.6",
+		"cpu_abi":           "arm64",
 	} {
 		if got := publisher.events[0].Params[key]; got != want {
 			t.Fatalf("debug params[%q] = %v, want %q", key, got, want)
@@ -300,16 +302,17 @@ func TestNormalizeEventsAlwaysProtectsPresetHeaderFields(t *testing.T) {
 	events := normalizeEvents([]Event{{
 		Name: "workspace.opened",
 		Params: map[string]any{
-			"app_version": "spoofed",
-			"os_name":     "spoofed",
-			"os_version":  "spoofed",
-			"cpu_abi":     "spoofed",
+			"app_version":       "spoofed",
+			"app_version_minor": "spoofed",
+			"os_name":           "spoofed",
+			"os_version":        "spoofed",
+			"cpu_abi":           "spoofed",
 		},
 	}}, nil, teaSDKHeader{})
 	if len(events) != 1 {
 		t.Fatalf("normalizeEvents() returned %d events, want 1", len(events))
 	}
-	for _, key := range []string{"app_version", "os_name", "os_version", "cpu_abi"} {
+	for _, key := range []string{"app_version", "app_version_minor", "os_name", "os_version", "cpu_abi"} {
 		if _, exists := events[0].Params[key]; exists {
 			t.Fatalf("normalized event contains protected preset key %q", key)
 		}

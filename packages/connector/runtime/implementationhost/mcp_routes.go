@@ -126,7 +126,8 @@ func listMCPToolsWithProtocol(ctx context.Context, client mcpCaller, requireComp
 			Tools      []mcpTool `json:"tools"`
 			NextCursor *string   `json:"nextCursor"`
 		}
-		if err := json.Unmarshal(raw, &listing); err != nil || (requireComplete && listing.ResultType != "complete") {
+		if err := json.Unmarshal(raw, &listing); err != nil ||
+			(requireComplete && listing.ResultType != "" && listing.ResultType != "complete") {
 			return nil, errors.New("connector MCP tools/list response is invalid")
 		}
 		result = append(result, listing.Tools...)

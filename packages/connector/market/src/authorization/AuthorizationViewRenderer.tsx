@@ -278,7 +278,7 @@ function AuthorizationActionFooter({
   onEvent(event: AuthorizationEventEnvelopeV1): void;
 }) {
   return (
-    <DialogFooter>
+    <DialogFooter className="sm:justify-center">
       <Button
         disabled={busy}
         size="dialog"

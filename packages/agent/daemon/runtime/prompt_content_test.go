@@ -359,3 +359,32 @@ func TestUserPromptActivityPayloadExtraFromExecMetadataPreservesExplicitMessageI
 		t.Fatalf("extra = %#v, want explicit messageId preserved", extra)
 	}
 }
+
+func TestNewUserPromptActivityEventUsesStableTurnMessageID(t *testing.T) {
+	t.Parallel()
+
+	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderCodex}
+	want := newTurnUserPromptActivityMessageID()
+	ctx := withPromptActivityMessageID(context.Background(), want)
+	first := newUserPromptActivityEvent(ctx, session, textPrompt("hello"), "", "hello", "turn-1", nil)
+	second := newUserPromptActivityEvent(ctx, session, textPrompt("hello"), "", "hello", "turn-1", nil)
+
+	if first.EventID != want || second.EventID != want {
+		t.Fatalf("event IDs = %q and %q, want %q", first.EventID, second.EventID, want)
+	}
+	if first.Payload.Metadata["messageId"] != want || second.Payload.Metadata["messageId"] != want {
+		t.Fatalf("message IDs = %#v and %#v, want %q", first.Payload.Metadata, second.Payload.Metadata, want)
+	}
+}
+
+func TestNewUserPromptActivityEventUsesCanonicalPromptContent(t *testing.T) {
+	t.Parallel()
+
+	session := Session{RoomID: "room-1", AgentSessionID: "agent-1", Provider: ProviderCodex}
+	ctx := withCanonicalPromptContent(context.Background(), textPrompt("user content"))
+	event := newUserPromptActivityEvent(ctx, session, textPrompt("provider-only connector instruction"), "", "provider-only connector instruction", "turn-1", nil)
+
+	if event.Payload.Content != "user content" || event.Payload.Metadata["content"].([]map[string]any)[0]["text"] != "user content" {
+		t.Fatalf("prompt event = %#v, want canonical user content", event)
+	}
+}

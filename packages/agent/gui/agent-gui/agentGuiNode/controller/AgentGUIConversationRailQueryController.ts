@@ -45,6 +45,7 @@ import type {
 } from "./agentGuiConversationRailQueryTypes";
 import { resolveConversationRailQueryScope } from "./agentGuiConversationRailQueryTypes";
 import { AgentGUIConversationRailTargetedPageRefresher } from "./AgentGUIConversationRailTargetedPageRefresher";
+import { requestConversationRailWithRetry } from "./agentGuiConversationRailRequestRetry";
 import { AgentGUIConversationRailSearchController } from "./AgentGUIConversationRailSearchController";
 import {
   createAgentGUIConversationActivityController,
@@ -66,7 +67,8 @@ export class AgentGUIConversationRailQueryController {
   readonly getSnapshot = (): AgentGUIConversationRailQuerySnapshot =>
     this.snapshot;
   readonly isInteractionLocked = (): boolean =>
-    this.publicationBlocked() ||
+    this.sectionPublicationState === "pending" ||
+    this.searchController.publicationBlocked ||
     (this.queryState.pending &&
       this.queryState.resolvedScopeKey !== this.railSectionQueryKey &&
       !(this.searchController.searchQuery && this.snapshot.railSearch.enabled));
@@ -176,15 +178,14 @@ export class AgentGUIConversationRailQueryController {
           this.publishIfReady(undefined, true);
         },
         onFailed: () => {
-          this.queryFailed = true;
-          this.sectionPublicationState = "failed";
-          if (this.railSectionQueryKey) {
-            this.sessionSectionsQueryCache.invalidate(this.railSectionQueryKey);
-          }
-          this.publishFailure();
+          this.failTargetedPageRefresh();
+        },
+        onRetryScheduled: (mode) => {
+          if (mode === "background") this.failTargetedPageRefresh();
         },
         pageSize: this.sectionPageSize,
         runtime: this.runtime,
+        scheduler: this.scheduler,
         workspaceId: this.workspaceId
       });
     this.previousMembershipRecords =
@@ -481,11 +482,29 @@ export class AgentGUIConversationRailQueryController {
     this.firstPageAbortController?.abort();
     const abortController = new AbortController();
     this.firstPageAbortController = abortController;
-    const request = listSections({
+    const requestInput = {
       agentTargetId: agentTargetId || undefined,
       limitPerSection,
       signal: abortController.signal,
       workspaceId: this.workspaceId
+    };
+    const request = requestConversationRailWithRetry({
+      onRetryScheduled: ({ mode }) => {
+        if (
+          mode !== "background" ||
+          abortController.signal.aborted ||
+          requestSequence !== this.pagingRequestSequence ||
+          scopeKey !== this.railSectionQueryKey ||
+          !this.attached
+        ) {
+          return;
+        }
+        this.failFirstPageRefresh({ scopeKey, wasResolvedForScope });
+      },
+      request: () => listSections(requestInput),
+      retryKey: `${scopeKey}:first-pages`,
+      scheduler: this.scheduler,
+      signal: abortController.signal
     })
       .then((page) => {
         if (
@@ -505,7 +524,10 @@ export class AgentGUIConversationRailQueryController {
           cachedConversationRailQueryFromFirstPages(
             page,
             scopeKey,
-            queryStateForScope
+            this.queryState.resolvedScopeKey === scopeKey &&
+              this.queryState.sections !== null
+              ? this.queryState
+              : queryStateForScope
           )
         );
         const requestResolvedAt = this.diagnosticNow();
@@ -545,24 +567,7 @@ export class AgentGUIConversationRailQueryController {
           requestId: requestSequence,
           requestStartedAt
         });
-        this.queryState = wasResolvedForScope
-          ? {
-              ...this.queryState,
-              pending: false,
-              reconcilingSessionIds: []
-            }
-          : {
-              pending: false,
-              reconcilingSessionIds: [],
-              resolvedScopeKey: scopeKey,
-              sectionPageStates: new Map(),
-              sections: []
-            };
-        if (this.publicationBlocked()) {
-          this.sectionPublicationState = "failed";
-        } else {
-          this.publish(undefined, true);
-        }
+        this.failFirstPageRefresh({ scopeKey, wasResolvedForScope });
       })
       .finally(() => {
         if (this.firstPageAbortController === abortController) {
@@ -621,6 +626,7 @@ export class AgentGUIConversationRailQueryController {
   ): void {
     const snapshot = this.selectSnapshot(
       {
+        agentTargetId: this.sectionAgentTargetId,
         queryState: this.queryState,
         runtimeRailFailed: this.queryFailed,
         runtimeSectionsEnabled: this.runtimeSectionsEnabled(),
@@ -634,6 +640,49 @@ export class AgentGUIConversationRailQueryController {
     );
     if (snapshot === this.snapshot) return;
     this.commitSnapshot(snapshot);
+  }
+
+  private failTargetedPageRefresh(): void {
+    const alreadyPublished =
+      this.queryFailed && this.sectionPublicationState === "failed";
+    this.queryFailed = true;
+    this.sectionPublicationState = "failed";
+    if (this.railSectionQueryKey) {
+      this.sessionSectionsQueryCache.invalidate(this.railSectionQueryKey);
+    }
+    if (!alreadyPublished) this.publishFailure();
+  }
+
+  private failFirstPageRefresh(input: {
+    scopeKey: string;
+    wasResolvedForScope: boolean;
+  }): void {
+    const alreadyPublished =
+      this.queryFailed &&
+      !this.queryState.pending &&
+      this.queryState.resolvedScopeKey === input.scopeKey;
+    const publicationWasBlocked = this.publicationBlocked();
+    this.queryFailed = true;
+    this.queryState = input.wasResolvedForScope
+      ? {
+          ...this.queryState,
+          pending: false,
+          reconcilingSessionIds: []
+        }
+      : {
+          pending: false,
+          reconcilingSessionIds: [],
+          resolvedScopeKey: input.scopeKey,
+          sectionPageStates: new Map(),
+          sections: []
+        };
+    if (publicationWasBlocked) this.sectionPublicationState = "failed";
+    if (alreadyPublished) return;
+    if (publicationWasBlocked) {
+      this.publishFailure();
+    } else {
+      this.publish(undefined, true);
+    }
   }
 
   private publishFailure(): void {

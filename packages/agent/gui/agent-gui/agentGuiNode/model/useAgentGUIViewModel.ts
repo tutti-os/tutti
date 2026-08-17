@@ -58,6 +58,7 @@ export function useAgentGUIViewModel(
       candidate.composer.drainingQueuedPromptId,
       candidate.composer.goalPauseSupported,
       candidate.composer.gate,
+      candidate.composer.hasPendingSubmitStopTarget,
       candidate.composer.handoffAgentTargets,
       candidate.composer.isCancelPending,
       candidate.composer.isCreatingConversation,

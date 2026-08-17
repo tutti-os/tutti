@@ -10,6 +10,8 @@ interface Props {
   isTuttiModeActive: boolean;
   isTuttiModeUpdating: boolean;
   labels: AgentComposerProps["labels"];
+  loading: boolean;
+  onRetryComposerOptions?: AgentComposerProps["onRetryComposerOptions"];
   onCapabilitySettingsRequest: AgentComposerProps["onCapabilitySettingsRequest"];
   onTuttiModeChange?: (active: boolean) => void;
   tuttiModeSupported: boolean;
@@ -27,6 +29,8 @@ export function ComposerPrimaryCapabilityControl({
   isTuttiModeActive,
   isTuttiModeUpdating,
   labels,
+  loading,
+  onRetryComposerOptions,
   onCapabilitySettingsRequest,
   onTuttiModeChange,
   tuttiModeSupported
@@ -54,7 +58,14 @@ export function ComposerPrimaryCapabilityControl({
         connectorConnect: labels.addContentConnectorConnect,
         connectorAuthorize: labels.addContentConnectorAuthorize,
         connectorEmpty: labels.addContentConnectorEmpty,
+        connectorLoading: labels.addContentConnectorLoading,
         connectorMore: labels.addContentConnectorMore
+      }}
+      loading={loading}
+      onOpenChange={(open) => {
+        if (open) {
+          onRetryComposerOptions?.({ section: "connectors" });
+        }
       }}
       onOpenConnector={(connectorKey) =>
         onCapabilitySettingsRequest?.({

@@ -295,6 +295,7 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 	rawOutput, _ := firstInt64Value(usageSource, "output_tokens", "outputTokens")
 	rawCacheRead, _ := firstInt64Value(usageSource, "cache_read_input_tokens", "cacheReadInputTokens")
 	rawCacheCreate, _ := firstInt64Value(usageSource, "cache_creation_input_tokens", "cacheCreationInputTokens")
+	rawReportedTotal := claudeSDKReportedUsageTokens(usageSource)
 	normalizedUsed, _ := firstInt64Value(normalizedContext, "usedTokens", "used_tokens")
 	normalizedTotal, _ := firstInt64Value(normalizedContext, "totalTokens", "total_tokens")
 	slog.Info("agent session Claude SDK usage update",
@@ -319,6 +320,7 @@ func (s *claudeSDKAdapterSession) logUsageUpdate(
 		"raw_output_tokens", rawOutput,
 		"raw_cache_read_input_tokens", rawCacheRead,
 		"raw_cache_creation_input_tokens", rawCacheCreate,
+		"raw_reported_total_tokens", rawReportedTotal,
 		"normalized_used_tokens", normalizedUsed,
 		"normalized_total_tokens", normalizedTotal,
 		"previous_context_known", previous.contextKnown,
@@ -519,6 +521,25 @@ func claudeSDKUsageTokens(usage map[string]any) int64 {
 				}
 			}
 		}
+	}
+	if total, ok := firstInt64Value(usage, "total_tokens", "totalTokens", "total"); ok && total > 0 {
+		return total
+	}
+	input, _ := firstInt64Value(usage, "input_tokens", "inputTokens")
+	output, _ := firstInt64Value(usage, "output_tokens", "outputTokens")
+	cacheRead, _ := firstInt64Value(usage, "cache_read_input_tokens", "cacheReadInputTokens")
+	cacheCreate, _ := firstInt64Value(usage, "cache_creation_input_tokens", "cacheCreationInputTokens")
+	return input + output + cacheRead + cacheCreate
+}
+
+// claudeSDKReportedUsageTokens preserves the provider-reported aggregate for
+// diagnostics. claudeSDKUsageTokens intentionally prefers the latest
+// iteration because that value represents the current context window; it is
+// not the same as the cumulative input/cache usage that can consume a plan or
+// account quota.
+func claudeSDKReportedUsageTokens(usage map[string]any) int64 {
+	if len(usage) == 0 {
+		return 0
 	}
 	if total, ok := firstInt64Value(usage, "total_tokens", "totalTokens", "total"); ok && total > 0 {
 		return total

@@ -30,11 +30,15 @@ type SkillBundleRenderer interface {
 }
 
 type PrepareInput struct {
-	WorkspaceID            string
-	AgentSessionID         string
-	AgentTargetID          string
-	Provider               string
-	Cwd                    string
+	WorkspaceID    string
+	AgentSessionID string
+	AgentTargetID  string
+	Provider       string
+	Cwd            string
+	// SkipSkills keeps provider preparation limited to the runtime data needed
+	// by a model-only probe. It must not be used when launching a live Agent
+	// Session or when the caller needs the provider's Skill catalog.
+	SkipSkills             bool
 	CLICommand             string
 	CodexSaverMode         bool
 	Title                  string

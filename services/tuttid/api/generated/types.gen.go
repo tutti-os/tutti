@@ -1543,6 +1543,21 @@ func (e ConnectorMarketInstallationState) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketManifestAuthorizationInteractionMode.
+const (
+	Managed ConnectorMarketManifestAuthorizationInteractionMode = "managed"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketManifestAuthorizationInteractionMode enum.
+func (e ConnectorMarketManifestAuthorizationInteractionMode) Valid() bool {
+	switch e {
+	case Managed:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ConnectorMarketManifestSchemaVersion.
 const (
 	ConnectorMarketManifestSchemaVersionN1 ConnectorMarketManifestSchemaVersion = "1"
@@ -1587,15 +1602,17 @@ func (e ConnectorMarketOperationKind) Valid() bool {
 
 // Defines values for ConnectorMarketOperationStage.
 const (
-	ConnectorMarketOperationStageAccepted      ConnectorMarketOperationStage = "accepted"
-	ConnectorMarketOperationStageAuthorizing   ConnectorMarketOperationStage = "authorizing"
-	ConnectorMarketOperationStageCompleted     ConnectorMarketOperationStage = "completed"
-	ConnectorMarketOperationStageDeactivating  ConnectorMarketOperationStage = "deactivating"
-	ConnectorMarketOperationStageDisconnecting ConnectorMarketOperationStage = "disconnecting"
-	ConnectorMarketOperationStageFailed        ConnectorMarketOperationStage = "failed"
-	ConnectorMarketOperationStageInstalled     ConnectorMarketOperationStage = "installed"
-	ConnectorMarketOperationStageInstalling    ConnectorMarketOperationStage = "installing"
-	ConnectorMarketOperationStageRefreshing    ConnectorMarketOperationStage = "refreshing"
+	ConnectorMarketOperationStageAccepted       ConnectorMarketOperationStage = "accepted"
+	ConnectorMarketOperationStageAuthorizing    ConnectorMarketOperationStage = "authorizing"
+	ConnectorMarketOperationStageCompleted      ConnectorMarketOperationStage = "completed"
+	ConnectorMarketOperationStageDeactivating   ConnectorMarketOperationStage = "deactivating"
+	ConnectorMarketOperationStageDisconnecting  ConnectorMarketOperationStage = "disconnecting"
+	ConnectorMarketOperationStageFailed         ConnectorMarketOperationStage = "failed"
+	ConnectorMarketOperationStageInstalled      ConnectorMarketOperationStage = "installed"
+	ConnectorMarketOperationStageInstalling     ConnectorMarketOperationStage = "installing"
+	ConnectorMarketOperationStageRefreshing     ConnectorMarketOperationStage = "refreshing"
+	ConnectorMarketOperationStageRemoving       ConnectorMarketOperationStage = "removing"
+	ConnectorMarketOperationStageRuntimePending ConnectorMarketOperationStage = "runtime_pending"
 )
 
 // Valid indicates whether the value is a known member of the ConnectorMarketOperationStage enum.
@@ -1618,6 +1635,10 @@ func (e ConnectorMarketOperationStage) Valid() bool {
 	case ConnectorMarketOperationStageInstalling:
 		return true
 	case ConnectorMarketOperationStageRefreshing:
+		return true
+	case ConnectorMarketOperationStageRemoving:
+		return true
+	case ConnectorMarketOperationStageRuntimePending:
 		return true
 	default:
 		return false
@@ -2314,6 +2335,54 @@ func (e ExternalAgentImportArchiveKind) Valid() bool {
 	case Chatgpt:
 		return true
 	case Claude:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetAgentProviderComposerOptionsRequestSection.
+const (
+	GetAgentProviderComposerOptionsRequestSectionCapabilities GetAgentProviderComposerOptionsRequestSection = "capabilities"
+	GetAgentProviderComposerOptionsRequestSectionConnectors   GetAgentProviderComposerOptionsRequestSection = "connectors"
+	GetAgentProviderComposerOptionsRequestSectionCore         GetAgentProviderComposerOptionsRequestSection = "core"
+	GetAgentProviderComposerOptionsRequestSectionFull         GetAgentProviderComposerOptionsRequestSection = "full"
+)
+
+// Valid indicates whether the value is a known member of the GetAgentProviderComposerOptionsRequestSection enum.
+func (e GetAgentProviderComposerOptionsRequestSection) Valid() bool {
+	switch e {
+	case GetAgentProviderComposerOptionsRequestSectionCapabilities:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionConnectors:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionCore:
+		return true
+	case GetAgentProviderComposerOptionsRequestSectionFull:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection.
+const (
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCapabilities GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "capabilities"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionConnectors   GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "connectors"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCore         GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "core"
+	GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionFull         GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection = "full"
+)
+
+// Valid indicates whether the value is a known member of the GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection enum.
+func (e GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection) Valid() bool {
+	switch e {
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCapabilities:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionConnectors:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionCore:
+		return true
+	case GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSectionFull:
 		return true
 	default:
 		return false
@@ -4645,6 +4714,36 @@ func (e AgentCommandOrigin) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketInstallationFilter.
+const (
+	ConnectorMarketInstallationFilterNotInstalled ConnectorMarketInstallationFilter = "not_installed"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketInstallationFilter enum.
+func (e ConnectorMarketInstallationFilter) Valid() bool {
+	switch e {
+	case ConnectorMarketInstallationFilterNotInstalled:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ListConnectorMarketCatalogParamsInstallation.
+const (
+	ListConnectorMarketCatalogParamsInstallationNotInstalled ListConnectorMarketCatalogParamsInstallation = "not_installed"
+)
+
+// Valid indicates whether the value is a known member of the ListConnectorMarketCatalogParamsInstallation enum.
+func (e ListConnectorMarketCatalogParamsInstallation) Valid() bool {
+	switch e {
+	case ListConnectorMarketCatalogParamsInstallationNotInstalled:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateWorkspaceAgentSessionParamsXTuttiAgentCommandOrigin.
 const (
 	CreateWorkspaceAgentSessionParamsXTuttiAgentCommandOriginRendererEngine CreateWorkspaceAgentSessionParamsXTuttiAgentCommandOrigin = "renderer-engine"
@@ -5982,6 +6081,12 @@ type CliCommandWarning struct {
 
 // CliInvokeContext Client-supplied invocation context. These fields are hints for routing and audit only; authorization and workspace validation remain daemon-owned.
 type CliInvokeContext struct {
+	// AgentCwd Host-injected caller Agent working directory inherited by nested Agent starts that omit an explicit cwd. This is not an authorization boundary.
+	AgentCwd *string `json:"agentCwd,omitempty"`
+
+	// AgentRailPlacementJSON Host-injected versioned RailPlacement JSON inherited together with agentCwd. The Agent command provider validates this value before use.
+	AgentRailPlacementJSON *string `json:"agentRailPlacementJSON,omitempty"`
+
 	// AgentSessionId Caller agent session id hint. This is not an authorization boundary.
 	AgentSessionId *string `json:"agentSessionId,omitempty"`
 
@@ -6123,17 +6228,22 @@ type ConnectorMarketAuthorization struct {
 
 // ConnectorMarketAuthorizationRequest defines model for ConnectorMarketAuthorizationRequest.
 type ConnectorMarketAuthorizationRequest struct {
-	ClientRequestId  string  `json:"clientRequestId"`
-	ExpectedRevision int64   `json:"expectedRevision"`
-	Secret           *string `json:"secret,omitempty"`
+	ClientRequestId           string  `json:"clientRequestId"`
+	ExpectedConnectorRevision *int64  `json:"expectedConnectorRevision,omitempty"`
+	ExpectedRevision          int64   `json:"expectedRevision"`
+	Secret                    *string `json:"secret,omitempty"`
 }
 
 // ConnectorMarketAuthorizationResponse defines model for ConnectorMarketAuthorizationResponse.
 type ConnectorMarketAuthorizationResponse struct {
-	AuthorizationUrl *string                  `json:"authorizationUrl,omitempty"`
-	Connector        ConnectorMarketConnector `json:"connector"`
-	Operation        ConnectorMarketOperation `json:"operation"`
-	Revision         int64                    `json:"revision"`
+	AuthorizationExpiresAt time.Time `json:"authorizationExpiresAt"`
+	AuthorizationUrl       *string   `json:"authorizationUrl,omitempty"`
+
+	// AuthorizationView Opaque runtime Authorization View V1 envelope. Clients must validate it with the shared authorization protocol before rendering.
+	AuthorizationView *map[string]interface{}  `json:"authorizationView,omitempty"`
+	Connector         ConnectorMarketConnector `json:"connector"`
+	Operation         ConnectorMarketOperation `json:"operation"`
+	Revision          int64                    `json:"revision"`
 }
 
 // ConnectorMarketAuthorizationState defines model for ConnectorMarketAuthorizationState.
@@ -6242,12 +6352,15 @@ type ConnectorMarketManifest struct {
 	AgentRouting *ConnectorMarketAgentRouting `json:"agentRouting,omitempty"`
 
 	// AuthorizationInteraction Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
-	AuthorizationInteraction *map[string]interface{}                   `json:"authorizationInteraction,omitempty"`
-	AuthorizationKind        string                                    `json:"authorizationKind"`
-	Compatibility            *ConnectorMarketCompatibilityRequirements `json:"compatibility,omitempty"`
-	Description              *string                                   `json:"description,omitempty"`
-	DisplayName              string                                    `json:"displayName"`
-	IconUrl                  string                                    `json:"iconUrl"`
+	AuthorizationInteraction *map[string]interface{} `json:"authorizationInteraction,omitempty"`
+
+	// AuthorizationInteractionMode Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
+	AuthorizationInteractionMode *ConnectorMarketManifestAuthorizationInteractionMode `json:"authorizationInteractionMode,omitempty"`
+	AuthorizationKind            string                                               `json:"authorizationKind"`
+	Compatibility                *ConnectorMarketCompatibilityRequirements            `json:"compatibility,omitempty"`
+	Description                  *string                                              `json:"description,omitempty"`
+	DisplayName                  string                                               `json:"displayName"`
+	IconUrl                      string                                               `json:"iconUrl"`
 
 	// Implementation Public implementation discriminator; sensitive host configuration is never returned.
 	Implementation ConnectorMarketImplementation        `json:"implementation"`
@@ -6255,13 +6368,17 @@ type ConnectorMarketManifest struct {
 	SchemaVersion  ConnectorMarketManifestSchemaVersion `json:"schemaVersion"`
 }
 
+// ConnectorMarketManifestAuthorizationInteractionMode Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
+type ConnectorMarketManifestAuthorizationInteractionMode string
+
 // ConnectorMarketManifestSchemaVersion defines model for ConnectorMarketManifest.SchemaVersion.
 type ConnectorMarketManifestSchemaVersion string
 
 // ConnectorMarketMutationRequest defines model for ConnectorMarketMutationRequest.
 type ConnectorMarketMutationRequest struct {
-	ClientRequestId  string `json:"clientRequestId"`
-	ExpectedRevision int64  `json:"expectedRevision"`
+	ClientRequestId           string `json:"clientRequestId"`
+	ExpectedConnectorRevision *int64 `json:"expectedConnectorRevision,omitempty"`
+	ExpectedRevision          int64  `json:"expectedRevision"`
 }
 
 // ConnectorMarketMutationResponse defines model for ConnectorMarketMutationResponse.
@@ -6328,6 +6445,7 @@ type ConnectorMarketReleaseStatus string
 type ConnectorMarketSnapshot struct {
 	CatalogState   ConnectorMarketCatalogState `json:"catalogState"`
 	Connectors     []ConnectorMarketConnector  `json:"connectors"`
+	EventCursor    int64                       `json:"eventCursor"`
 	Operations     []ConnectorMarketOperation  `json:"operations"`
 	Revision       int64                       `json:"revision"`
 	SourceRevision *string                     `json:"sourceRevision,omitempty"`
@@ -6504,12 +6622,18 @@ type CreateWorkspaceAgentSessionRequest struct {
 	Isolation *WorkspaceAgentSessionIsolationMode `json:"isolation,omitempty"`
 	Model     *string                             `json:"model,omitempty"`
 
+	// ModelExplicit True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
+	ModelExplicit *bool `json:"modelExplicit,omitempty"`
+
 	// NoProject Classifies a session that is intentionally not attached to a workspace project.
 	NoProject        *bool                        `json:"noProject,omitempty"`
 	PermissionModeId *string                      `json:"permissionModeId,omitempty"`
 	PlanMode         *bool                        `json:"planMode,omitempty"`
 	RailPlacement    *WorkspaceAgentRailPlacement `json:"railPlacement,omitempty"`
 	ReasoningEffort  *string                      `json:"reasoningEffort,omitempty"`
+
+	// ReasoningEffortExplicit True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
+	ReasoningEffortExplicit *bool `json:"reasoningEffortExplicit,omitempty"`
 
 	// RecordingId Developer create-session scenario waiting for this root Session.
 	RecordingId       *openapi_types.UUID     `json:"recordingId,omitempty"`
@@ -7082,20 +7206,35 @@ type ForkWorkspaceAgentSessionRequest struct {
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
-	AgentTargetId *string                       `json:"agentTargetId,omitempty"`
-	Cwd           *string                       `json:"cwd,omitempty"`
-	Locale        *DesktopLocale                `json:"locale,omitempty"`
-	Settings      *AgentSessionComposerSettings `json:"settings,omitempty"`
+	AgentTargetId *string        `json:"agentTargetId,omitempty"`
+	Cwd           *string        `json:"cwd,omitempty"`
+	Locale        *DesktopLocale `json:"locale,omitempty"`
+
+	// Section Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data; connectors contains only the local Connector Market projection. Full is retained for callers that need the combined legacy response.
+	Section  *GetAgentProviderComposerOptionsRequestSection `json:"section,omitempty"`
+	Settings *AgentSessionComposerSettings                  `json:"settings,omitempty"`
+
+	// WaitForFreshModelCatalog Waits for an authoritative model catalog when the cached result is stale. Use only for an explicit model-picker request; ordinary composer loads should render the last successful catalog first.
+	WaitForFreshModelCatalog *bool `json:"waitForFreshModelCatalog,omitempty"`
 
 	// WorkspaceId Workspace used for Claude Code live model discovery.
 	WorkspaceId *string `json:"workspaceId,omitempty"`
 }
 
+// GetAgentProviderComposerOptionsRequestSection Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data; connectors contains only the local Connector Market projection. Full is retained for callers that need the combined legacy response.
+type GetAgentProviderComposerOptionsRequestSection string
+
 // GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest defines model for GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest.
 type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
-	Locale   *DesktopLocale                `json:"locale,omitempty"`
-	Settings *AgentSessionComposerSettings `json:"settings,omitempty"`
+	Locale *DesktopLocale `json:"locale,omitempty"`
+
+	// Section Independently loadable composer section.
+	Section  *GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection `json:"section,omitempty"`
+	Settings *AgentSessionComposerSettings                                   `json:"settings,omitempty"`
 }
+
+// GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection Independently loadable composer section.
+type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection string
 
 // HealthStatusResponse defines model for HealthStatusResponse.
 type HealthStatusResponse struct {
@@ -9967,6 +10106,9 @@ type CollaborationRunID = string
 // ConnectorMarketConnectorKey defines model for ConnectorMarketConnectorKey.
 type ConnectorMarketConnectorKey = string
 
+// ConnectorMarketInstallationFilter defines model for ConnectorMarketInstallationFilter.
+type ConnectorMarketInstallationFilter string
+
 // ConnectorMarketOperationID defines model for ConnectorMarketOperationID.
 type ConnectorMarketOperationID = string
 
@@ -10071,6 +10213,9 @@ type WorkspaceFileSearchWithin = string
 
 // WorkspaceID defines model for WorkspaceID.
 type WorkspaceID = string
+
+// AgentInteractiveConflictError defines model for AgentInteractiveConflictError.
+type AgentInteractiveConflictError = ApiErrorResponse
 
 // AgentQuickPromptConflictError defines model for AgentQuickPromptConflictError.
 type AgentQuickPromptConflictError = ApiErrorResponse
@@ -10201,10 +10346,16 @@ type ListCliCapabilitiesParams struct {
 
 // ListConnectorMarketCatalogParams defines parameters for ListConnectorMarketCatalog.
 type ListConnectorMarketCatalogParams struct {
-	SectionId ConnectorMarketSectionID  `form:"sectionId" json:"sectionId"`
-	PageSize  *ConnectorMarketPageSize  `form:"pageSize,omitempty" json:"pageSize,omitempty"`
-	PageToken *ConnectorMarketPageToken `form:"pageToken,omitempty" json:"pageToken,omitempty"`
+	SectionId ConnectorMarketSectionID `form:"sectionId" json:"sectionId"`
+
+	// Installation Filters connector installation projections before page boundaries and next-page calculation.
+	Installation *ListConnectorMarketCatalogParamsInstallation `form:"installation,omitempty" json:"installation,omitempty"`
+	PageSize     *ConnectorMarketPageSize                      `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+	PageToken    *ConnectorMarketPageToken                     `form:"pageToken,omitempty" json:"pageToken,omitempty"`
 }
+
+// ListConnectorMarketCatalogParamsInstallation defines parameters for ListConnectorMarketCatalog.
+type ListConnectorMarketCatalogParamsInstallation string
 
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
 type ListWorkspaceAgentGeneratedFilesParams struct {

@@ -46,6 +46,35 @@ func TestApplicationInstallIsDurableAndIdempotent(t *testing.T) {
 	}
 }
 
+func TestApplicationConnectorRevisionFenceAllowsIndependentConcurrentCommands(t *testing.T) {
+	alpha := testConnector("alpha")
+	beta := testConnector("beta")
+	repository := newMemoryRepository(alpha, beta)
+	scheduler := &memoryScheduler{}
+	application := newTestApplication(t, repository, scheduler, &memoryInstallRuntime{}, CatalogSnapshot{})
+	alphaRevision := alpha.Revision
+	betaRevision := beta.Revision
+
+	first, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "install-alpha", ExpectedRevision: 0}, ConnectorKey: alpha.Key,
+		ExpectedConnectorRevision: &alphaRevision,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := application.Install(context.Background(), ConnectorMutation{
+		// The global revision is intentionally stale after alpha was accepted.
+		Mutation: Mutation{ClientRequestID: "install-beta", ExpectedRevision: 0}, ConnectorKey: beta.Key,
+		ExpectedConnectorRevision: &betaRevision,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.Operation.OperationID == second.Operation.OperationID || len(scheduler.operationIDs) != 2 {
+		t.Fatalf("independent operations = %#v, %#v; scheduled = %#v", first.Operation, second.Operation, scheduler.operationIDs)
+	}
+}
+
 func TestApplicationRepairInstallClearsInvalidInstalledEvidence(t *testing.T) {
 	for _, failureCode := range []string{
 		InstallationFailureCodePhysicallyAbsent,
@@ -179,8 +208,18 @@ func TestApplicationExecutesAcceptedInstall(t *testing.T) {
 	if installed.Installation.State != InstallationStateInstalled || installed.Installation.InstalledVersion != "1.0.0" {
 		t.Fatalf("installation = %#v", installed.Installation)
 	}
-	if operation.State != OperationStateCompleted || installationHost.prepares != 1 || installationHost.activations != 0 {
-		t.Fatalf("operation = %#v, prepares = %d, activations = %d", operation, installationHost.prepares, installationHost.activations)
+	if operation.State != OperationStateCompleted || installationHost.prepares != 1 || installationHost.reconciles != 1 {
+		t.Fatalf("operation = %#v, prepares = %d, reconciles = %d", operation, installationHost.prepares, installationHost.reconciles)
+	}
+	convergence, err := repository.RuntimeConvergence(context.Background(), OperationScope{}, "github")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if convergence.Desired.Generation == 0 || !convergence.Desired.Enabled ||
+		convergence.Desired.ReleaseDigest != installed.Installation.InstalledReleaseDigest ||
+		convergence.Observed.DesiredGeneration != convergence.Desired.Generation ||
+		convergence.Observed.BootEpoch != application.config.BootEpoch {
+		t.Fatalf("post-install runtime convergence = %#v", convergence)
 	}
 }
 
@@ -213,6 +252,7 @@ func TestApplicationExecutesTypedCLIInstallationBeforeCompletion(t *testing.T) {
 	connector.Release.Manifest.SchemaVersion = "1"
 	connector.Release.Manifest.Implementation.ManagedStdio.MCP = nil
 	connector.Release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=22.0.0 <23.0.0"
+	connector.Release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=22.0.0 <23.0.0"
 	connector.Release.Manifest.Implementation.ManagedStdio.CLI = &ManagedCLIInterface{Entrypoint: "lark-cli", TimeoutMS: 120_000,
 		Install: &CLIInstallation{Kind: "node_package", NodePackage: &NodePackageInstallation{Package: "@larksuite/cli",
 			Version: "1.0.83", Integrity: "sha512-qbJYoJtNch6dV8RvYBO2wpcKO9+6Io3Cuf5alYFzvLbtkSntOKqoc+xHI7p6wRq4oH4F9fydgNJbTGy79ibPdg==",
@@ -243,7 +283,8 @@ func TestApplicationLocalUninstallRemovesDeviceReleaseWithoutDisconnectingAuthor
 	connector := testConnector("lark")
 	connector.Release.Manifest.AuthorizationKind = "oauth2"
 	connector.Release.Manifest.Implementation.ManagedStdio.MCP = nil
-	connector.Release.Manifest.Implementation.ManagedStdio.CLI = &ManagedCLIInterface{Entrypoint: "lark-cli",
+	connector.Release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=22.0.0 <23.0.0"
+	connector.Release.Manifest.Implementation.ManagedStdio.CLI = &ManagedCLIInterface{Entrypoint: "lark-cli", TimeoutMS: 120_000,
 		Install: &CLIInstallation{Kind: "node_package", NodePackage: &NodePackageInstallation{
 			Package: "@larksuite/cli", Version: "1.0.83",
 			Integrity: "sha512-qbJYoJtNch6dV8RvYBO2wpcKO9+6Io3Cuf5alYFzvLbtkSntOKqoc+xHI7p6wRq4oH4F9fydgNJbTGy79ibPdg==",
@@ -278,8 +319,9 @@ func TestApplicationLocalUninstallRemovesDeviceReleaseWithoutDisconnectingAuthor
 	if stored.Authorization.State != AuthorizationStateConnected {
 		t.Fatalf("local uninstall changed authorization = %#v", stored.Authorization)
 	}
-	if runtime.deactivations != 1 || !runtime.lastDeactivation.AllConnections || runtime.removes != 1 || runtime.cliRemoves != 1 {
-		t.Fatalf("cleanup counts: deactivate=%d artifact=%d cli=%d", runtime.deactivations, runtime.removes, runtime.cliRemoves)
+	if runtime.reconciles != 1 || runtime.lastReconcile.Enabled || runtime.removes != 1 || runtime.cliRemoves != 1 {
+		t.Fatalf("cleanup counts: reconcile=%d enabled=%t artifact=%d cli=%d",
+			runtime.reconciles, runtime.lastReconcile.Enabled, runtime.removes, runtime.cliRemoves)
 	}
 	if provider.disconnects != 0 {
 		t.Fatalf("authorization disconnects = %d, want 0", provider.disconnects)
@@ -335,15 +377,19 @@ func TestApplicationReconcilesInstalledRuntimeAtStartup(t *testing.T) {
 		host.lastReconcile.Generation.Generation != 8 || host.lastReconcile.Generation.BootEpoch == "" {
 		t.Fatalf("startup reconcile = %#v, count=%d", host.lastReconcile, host.reconciles)
 	}
-	operationID := "reconcile/" + application.config.BootEpoch + "/" + connector.Key
-	operation, err := repository.Operation(context.Background(), operationID)
+	convergence, err := repository.RuntimeConvergence(context.Background(), OperationScope{}, connector.Key)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.Kind != OperationKindReconcileRuntime || operation.State != OperationStateCompleted ||
-		operation.Stage != OperationStageCompleted || operation.Scope != (OperationScope{}) ||
-		operation.HostGeneration != host.lastReconcile.Generation {
-		t.Fatalf("startup reconcile operation = %#v", operation)
+	if convergence.Desired.Generation != 8 || convergence.Observed.DesiredGeneration != 8 ||
+		convergence.Observed.BootEpoch != application.config.BootEpoch ||
+		host.lastReconcile.Generation.Generation != convergence.Desired.Generation {
+		t.Fatalf("startup runtime convergence = %#v, request = %#v", convergence, host.lastReconcile)
+	}
+	for _, operation := range repository.operations {
+		if operation.Kind == OperationKindReconcileRuntime {
+			t.Fatalf("startup leaked private runtime operation: %#v", operation)
+		}
 	}
 }
 
@@ -443,7 +489,7 @@ func TestValidateRuntimeReceiptRequiresExactDisabledReadiness(t *testing.T) {
 	}
 }
 
-func TestApplicationInstallKeepsRuntimeReconcileSeparate(t *testing.T) {
+func TestApplicationInstallCompletesAfterRuntimeIsObserved(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	host := &memoryInstallRuntime{}
 	resolver := &runtimeBindingResolverStub{binding: RuntimeBinding{ConnectionID: "account-connection", Enabled: false}}
@@ -462,7 +508,8 @@ func TestApplicationInstallKeepsRuntimeReconcileSeparate(t *testing.T) {
 	}
 	operation := repository.operations[accepted.Operation.OperationID]
 	if operation.Scope.AccountID != "account-1" || host.lastPrepare.Scope.AccountID != "account-1" ||
-		host.lastPrepare.Generation != operation.HostGeneration || host.reconciles != 0 {
+		host.lastPrepare.Generation != operation.HostGeneration || host.reconciles != 1 ||
+		host.lastReconcile.Generation.BootEpoch != application.config.BootEpoch {
 		t.Fatalf("operation=%#v prepare=%#v reconcile=%#v", operation, host.lastPrepare, host.lastReconcile)
 	}
 	if repository.connectors["github"].Installation.State != InstallationStateInstalled {
@@ -476,9 +523,13 @@ func TestApplicationCredentialGrantIsNotPersistedAndIsCleared(t *testing.T) {
 	grant := []byte("one-shot-grant")
 	scheduler := &memoryScheduler{}
 	application := newTestApplication(t, repository, scheduler, host, CatalogSnapshot{})
-	application.config.RuntimeBindings = &runtimeBindingResolverStub{binding: RuntimeBinding{
-		ConnectionID: "account-connection", Enabled: true, CredentialBrokerGrant: grant,
-	}}
+	application.config.RuntimeBindings = runtimeBindingResolverFunc(func(_ context.Context, request RuntimeBindingRequest) (RuntimeBinding, error) {
+		binding := RuntimeBinding{ConnectionID: "account-connection", Enabled: true}
+		if request.Purpose == RuntimeBindingPurposeReconcile {
+			binding.CredentialBrokerGrant = grant
+		}
+		return binding, nil
+	})
 	accepted, err := application.Install(context.Background(), ConnectorMutation{
 		Mutation: Mutation{ClientRequestID: "install-grant"}, ConnectorKey: "github", AccountID: "account-1",
 	})
@@ -488,7 +539,7 @@ func TestApplicationCredentialGrantIsNotPersistedAndIsCleared(t *testing.T) {
 	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err != nil {
 		t.Fatal(err)
 	}
-	if err := application.ExecuteOperation(context.Background(), scheduler.operationIDs[len(scheduler.operationIDs)-1]); err != nil {
+	if err := application.ConvergeRuntime(context.Background(), OperationScope{AccountID: "account-1"}, "github"); err != nil {
 		t.Fatal(err)
 	}
 	if host.lastCredentialGrant != "one-shot-grant" {
@@ -592,7 +643,8 @@ func TestApplicationStartupReconcileAdvancesPastFence(t *testing.T) {
 		t.Fatal(err)
 	}
 	if host.lastDeactivation.Generation.Generation != 7 || host.lastReconcile.Generation.Generation != 8 || repository.connectors["github"].Revision < 8 {
-		t.Fatalf("startup generations: fence=%#v reconcile=%#v", host.lastDeactivation.Generation, host.lastReconcile.Generation)
+		t.Fatalf("startup generations: fence=%#v reconcile=%#v connectorRevision=%d",
+			host.lastDeactivation.Generation, host.lastReconcile.Generation, repository.connectors["github"].Revision)
 	}
 	firstReconcileGeneration := host.lastReconcile.Generation.Generation
 	if err := application.FenceInstalledRuntimes(context.Background()); err != nil {
@@ -604,6 +656,31 @@ func TestApplicationStartupReconcileAdvancesPastFence(t *testing.T) {
 	if host.lastDeactivation.Generation.Generation < firstReconcileGeneration ||
 		host.lastReconcile.Generation.Generation <= host.lastDeactivation.Generation.Generation {
 		t.Fatalf("repeated startup generations: fence=%#v reconcile=%#v", host.lastDeactivation.Generation, host.lastReconcile.Generation)
+	}
+}
+
+func TestApplicationStartupFenceFallsBackToConnectorIdentityWhenReleaseEvidenceIsMissing(t *testing.T) {
+	connector := testConnector("lark-cli")
+	installedRelease := connector.Release
+	connector.Installation = Installation{
+		State: InstallationStateInstalled, InstalledVersion: installedRelease.Version,
+		InstalledReleaseID: installedRelease.ReleaseID, InstalledReleaseDigest: installedRelease.ReleaseDigest,
+	}
+	connector.Release.Version = "2.0.0"
+	connector.Release.ReleaseID = connector.Key + "@2.0.0"
+	connector.Release.ReleaseDigest = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+	connector.Release.ManifestDigest = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+	repository := newMemoryRepository(connector)
+	host := &memoryInstallRuntime{}
+	application := newTestApplication(t, repository, &memoryScheduler{}, host, CatalogSnapshot{})
+
+	if err := application.FenceInstalledRuntimes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if host.deactivations != 1 || !host.lastDeactivation.AllConnections ||
+		host.lastDeactivation.ConnectorKey != connector.Key ||
+		host.lastDeactivation.ReleaseDigest != installedRelease.ReleaseDigest {
+		t.Fatalf("fallback deactivation = %#v", host.lastDeactivation)
 	}
 }
 
@@ -680,8 +757,8 @@ func TestApplicationLocalUninstallKeepsRemoteProjectionAndReusesItAfterReinstall
 	if err := application.ExecuteOperation(context.Background(), uninstall.Operation.OperationID); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.lastDeactivation.ConnectionID != AccountRuntimeConnectionID("account-1", connector.Key) {
-		t.Fatalf("deactivation = %#v", runtime.lastDeactivation)
+	if runtime.lastReconcile.ConnectionID != AccountRuntimeConnectionID("account-1", connector.Key) || runtime.lastReconcile.Enabled {
+		t.Fatalf("disabled runtime reconcile = %#v", runtime.lastReconcile)
 	}
 	if projectionStore.projection != projection {
 		t.Fatalf("authorization projection changed = %#v, want %#v", projectionStore.projection, projection)
@@ -692,8 +769,8 @@ func TestApplicationLocalUninstallKeepsRemoteProjectionAndReusesItAfterReinstall
 	if err := application.ReconcileRemoteAuthorizedRuntimesForScope(context.Background(), OperationScope{AccountID: "account-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.reconciles != 0 {
-		t.Fatalf("uninstalled connector reconciles = %d, want 0", runtime.reconciles)
+	if runtime.reconciles != 1 {
+		t.Fatalf("uninstalled connector reconciles = %d, want only durable disable", runtime.reconciles)
 	}
 
 	snapshot, err := application.Snapshot(context.Background())
@@ -713,13 +790,13 @@ func TestApplicationLocalUninstallKeepsRemoteProjectionAndReusesItAfterReinstall
 	if err := application.ReconcileInstalledRuntimesForScope(context.Background(), OperationScope{AccountID: "account-1"}); err != nil {
 		t.Fatal(err)
 	}
-	if runtime.reconciles != 1 || !runtime.lastReconcile.Enabled ||
+	if runtime.reconciles != 3 || !runtime.lastReconcile.Enabled ||
 		runtime.lastReconcile.Connector.Authorization.State != AuthorizationStateConnected {
 		t.Fatalf("reinstalled runtime reconcile = %#v, count=%d", runtime.lastReconcile, runtime.reconciles)
 	}
 }
 
-func TestApplicationRemoteAuthorizationStartUsesAccountProjectionInsteadOfDeviceState(t *testing.T) {
+func TestApplicationRemoteAuthorizationStartPreservesPendingBeforeProjectionConverges(t *testing.T) {
 	connector := testConnector("tencent-docs")
 	connector.Release.Manifest.AuthorizationKind = "oauth2"
 	connector.Release.Manifest.RequiredCapabilities = []string{"tools"}
@@ -746,12 +823,189 @@ func TestApplicationRemoteAuthorizationStartUsesAccountProjectionInsteadOfDevice
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.AuthorizationURL == "" || repository.connectors[connector.Key].Authorization.State != AuthorizationStateConnected {
+	if result.AuthorizationURL == "" || result.Connector.Authorization.State != AuthorizationStatePending ||
+		repository.connectors[connector.Key].Authorization.State != AuthorizationStateConnected {
 		t.Fatalf("result=%#v device authorization=%#v", result, repository.connectors[connector.Key].Authorization)
 	}
 	receipt := repository.operations[result.Operation.OperationID].Execution.AuthorizationSession
 	if receipt == nil || receipt.Resolution != AuthorizationSessionResolutionUnresolved {
 		t.Fatalf("receipt = %#v", receipt)
+	}
+	wantExpiry := application.config.Now().UTC().Add(10 * time.Minute)
+	if !result.AuthorizationExpiresAt.Equal(wantExpiry) || !receipt.ExpiresAt.Equal(wantExpiry) {
+		t.Fatalf("authorization expiry result=%s receipt=%s want=%s", result.AuthorizationExpiresAt, receipt.ExpiresAt, wantExpiry)
+	}
+	operationCount := len(repository.operations)
+	_, err = application.BeginAuthorization(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "authorization-after-renderer-reload"},
+		ConnectorKey: connector.Key, AccountID: "account-new",
+	}, nil)
+	var domainError *DomainError
+	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeOperationInProgress {
+		t.Fatalf("second unresolved authorization error = %v", err)
+	}
+	if len(repository.operations) != operationCount {
+		t.Fatalf("second unresolved authorization created another receipt: %#v", repository.operations)
+	}
+	if err := application.CancelAuthorization(context.Background(), OperationScope{AccountID: "account-new"}, connector.Key); err != nil {
+		t.Fatal(err)
+	}
+	if receipt.Resolution != AuthorizationSessionResolutionSuperseded {
+		t.Fatalf("canceled receipt = %#v", receipt)
+	}
+	if _, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "authorization-after-cancel", ExpectedRevision: repository.revision},
+		ConnectorKey: connector.Key, AccountID: "account-new",
+	}, nil); err != nil {
+		t.Fatalf("authorization retry after cancel: %v", err)
+	}
+}
+
+func TestApplicationAuthorizationStartProviderFailureIsTerminal(t *testing.T) {
+	connector := testConnector("notion")
+	connector.Release.Manifest.AuthorizationKind = "oauth2"
+	connector.Release.Manifest.RequiredCapabilities = []string{"tools"}
+	connector.Release.Manifest.Implementation = Implementation{
+		Kind: ImplementationKindRemoteStreamableHTTP,
+		RemoteStreamableHTTP: &RemoteStreamableHTTPImplementation{
+			ProtocolVersion: "2026-07-28", BindingRef: "notion.nango", ContractVersion: 1,
+			BindingContractHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+	}
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	provider := &failingAuthorizationProvider{err: errors.New("status 503")}
+	application.config.Authorization = provider
+	application.config.AuthorizationProjections = &authorizationProjectionStoreStub{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, State: AuthorizationStateDisconnected,
+		ServerSynchronized: true,
+	}}
+
+	_, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "authorization-provider-unavailable"},
+		ConnectorKey: connector.Key, AccountID: "account-1",
+	}, nil)
+	var domainError *DomainError
+	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeAuthorizationFailed || !domainError.Retryable {
+		t.Fatalf("authorization error = %#v", err)
+	}
+	var operation *Operation
+	for _, candidate := range repository.operations {
+		if candidate.ClientRequestID == "authorization-provider-unavailable" {
+			copy := candidate
+			operation = &copy
+			break
+		}
+	}
+	if operation == nil || operation.State != OperationStateFailed || operation.Stage != OperationStageFailed {
+		t.Fatalf("authorization operation = %#v", operation)
+	}
+	if err := application.ExecuteOperation(context.Background(), operation.OperationID); err != nil {
+		t.Fatalf("terminal authorization recovery = %v", err)
+	}
+	if provider.begins.Load() != 1 {
+		t.Fatalf("authorization provider calls = %d, want 1", provider.begins.Load())
+	}
+}
+
+func TestApplicationSerializesConcurrentAuthorizationReceiptCreation(t *testing.T) {
+	connector := testConnector("tencent-docs")
+	connector.Release.Manifest.AuthorizationKind = "oauth2"
+	connector.Release.Manifest.RequiredCapabilities = []string{"tools"}
+	connector.Release.Manifest.Implementation = Implementation{
+		Kind: ImplementationKindRemoteStreamableHTTP,
+		RemoteStreamableHTTP: &RemoteStreamableHTTPImplementation{
+			ProtocolVersion: "2026-07-28", BindingRef: "tencent-docs.primary", ContractVersion: 1,
+			BindingContractHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+	}
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	provider := &blockingAuthorizationProvider{started: make(chan struct{}), release: make(chan struct{})}
+	application.config.Authorization = provider
+	application.config.AuthorizationProjections = &authorizationProjectionStoreStub{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, State: AuthorizationStateDisconnected,
+		ServerSynchronized: true,
+	}}
+
+	type result struct {
+		err error
+	}
+	results := make(chan result, 2)
+	start := func(requestID string) {
+		_, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+			Mutation: Mutation{ClientRequestID: requestID}, ConnectorKey: connector.Key, AccountID: "account-1",
+		}, nil)
+		results <- result{err: err}
+	}
+	go start("authorization-1")
+	<-provider.started
+	go start("authorization-2")
+	close(provider.release)
+	first, second := <-results, <-results
+	var successCount, busyCount int
+	for _, result := range []result{first, second} {
+		if result.err == nil {
+			successCount++
+			continue
+		}
+		var domainError *DomainError
+		if errors.As(result.err, &domainError) && domainError.Code == ErrorCodeOperationInProgress {
+			busyCount++
+		}
+	}
+	if successCount != 1 || busyCount != 1 || provider.begins.Load() != 1 {
+		t.Fatalf("authorization results = %#v, %#v; provider begins = %d", first, second, provider.begins.Load())
+	}
+}
+
+func TestApplicationDisconnectAuthorizationCompletesOnlyAfterRuntimeIsDisabled(t *testing.T) {
+	connector := testManagedAuthorizedConnector("lark-cli")
+	connector.Authorization = Authorization{State: AuthorizationStateConnected}
+	repository := newMemoryRepository(connector)
+	runtimeFailure := errors.New("runtime temporarily unavailable")
+	runtime := &memoryInstallRuntime{reconcileErrors: map[string]error{connector.Key: runtimeFailure}}
+	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
+	provider := &countingAuthorizationProvider{}
+	projections := &recordingAuthorizationProjectionStore{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, ConnectionID: "connection-1",
+		State: AuthorizationStateConnected,
+	}}
+	application.config.Authorization = provider
+	application.config.AuthorizationProjections = projections
+	application.config.RuntimeBindings = AccountRuntimeBindingResolver{Projections: projections}
+
+	accepted, err := application.DisconnectAuthorization(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "disconnect-lark"}, ConnectorKey: connector.Key, AccountID: "account-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); !errors.Is(err, runtimeFailure) {
+		t.Fatalf("first disconnect error = %v", err)
+	}
+	operation, err := application.GetOperation(context.Background(), accepted.Operation.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != OperationStateRunning || operation.Stage != OperationStageDisconnecting {
+		t.Fatalf("disconnect completed before runtime was disabled: %#v", operation)
+	}
+
+	delete(runtime.reconcileErrors, connector.Key)
+	application.config.Now = func() time.Time { return time.Date(2026, 8, 3, 0, 1, 0, 0, time.UTC) }
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	operation, err = application.GetOperation(context.Background(), accepted.Operation.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if operation.State != OperationStateCompleted || runtime.lastReconcile.Enabled {
+		t.Fatalf("completed disconnect = %#v, runtime request = %#v", operation, runtime.lastReconcile)
+	}
+	if provider.disconnects != 2 {
+		t.Fatalf("idempotent disconnect attempts = %d, want 2", provider.disconnects)
 	}
 }
 
@@ -779,6 +1033,79 @@ func TestApplicationManagedAuthorizationStartRepairsMissingAccountProjection(t *
 	}
 	if repository.connectors[connector.Key].Authorization.State != AuthorizationStateConnected {
 		t.Fatalf("device authorization = %#v", repository.connectors[connector.Key].Authorization)
+	}
+}
+
+func TestApplicationScopesPublicOperationReadsToOwnerAccount(t *testing.T) {
+	repository := newMemoryRepository()
+	now := time.Unix(1, 0).UTC()
+	repository.operations["operation-a"] = Operation{
+		OperationID: "operation-a", ClientRequestID: "request-a", ConnectorKey: "github",
+		Kind: OperationKindInstall, Scope: OperationScope{AccountID: "account-a"},
+		State: OperationStateFailed, CreatedAt: now, UpdatedAt: now,
+	}
+	repository.operations["operation-private"] = Operation{
+		OperationID: "operation-private", ClientRequestID: "request-private", ConnectorKey: "github",
+		Kind: OperationKindReconcileRuntime, Scope: OperationScope{AccountID: "account-a"},
+		State: OperationStateFailed, CreatedAt: now, UpdatedAt: now,
+	}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	operation, err := application.GetOperationForScope(context.Background(), OperationScope{AccountID: "account-a"}, "operation-a")
+	if err != nil || operation.OperationID != "operation-a" {
+		t.Fatalf("owner operation = %#v, error = %v", operation, err)
+	}
+	for _, test := range []struct {
+		name, accountID, operationID string
+	}{
+		{name: "different account", accountID: "account-b", operationID: "operation-a"},
+		{name: "private operation", accountID: "account-a", operationID: "operation-private"},
+		{name: "missing account", operationID: "operation-a"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := application.GetOperationForScope(context.Background(), OperationScope{AccountID: test.accountID}, test.operationID)
+			if !errors.Is(err, ErrNotFound) {
+				t.Fatalf("GetOperationForScope error = %v, want ErrNotFound", err)
+			}
+		})
+	}
+}
+
+func TestApplicationScopesIdempotencyByAccountButKeepsConnectorLifecycleGlobal(t *testing.T) {
+	connector := testConnector("github")
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	first, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "shared-request"}, ConnectorKey: connector.Key, AccountID: "account-a",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = application.Install(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "different-request", ExpectedRevision: repository.revision},
+		ConnectorKey: connector.Key, AccountID: "account-b",
+	})
+	var domainError *DomainError
+	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeOperationInProgress {
+		t.Fatalf("cross-account active operation error = %v", err)
+	}
+
+	finished := repository.operations[first.Operation.OperationID]
+	finished.State = OperationStateFailed
+	repository.operations[finished.OperationID] = finished
+	connector = repository.connectors[connector.Key]
+	connector.Installation = Installation{State: InstallationStateNotInstalled}
+	repository.connectors[connector.Key] = connector
+	second, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "shared-request", ExpectedRevision: repository.revision},
+		ConnectorKey: connector.Key, AccountID: "account-b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.Operation.OperationID == first.Operation.OperationID || second.Operation.OwnerAccountID != "account-b" {
+		t.Fatalf("cross-account request reuse joined wrong operation: first=%#v second=%#v", first.Operation, second.Operation)
 	}
 }
 
@@ -854,6 +1181,45 @@ func TestApplicationManagedAuthorizationContinuationReplaysBeforeProjectionTrans
 	var domainError *DomainError
 	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeOperationInProgress {
 		t.Fatalf("different authorization error = %#v, want operation in progress", err)
+	}
+}
+
+func TestApplicationResolvedAuthorizationReplayDoesNotRestartProvider(t *testing.T) {
+	connector := testManagedAuthorizedConnector("lark-cli")
+	connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
+	repository := newMemoryRepository(connector)
+	projections := &recordingAuthorizationProjectionStore{}
+	provider := &continuingAuthorizationProviderStub{}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	application.config.Authorization = provider
+	application.config.AuthorizationProjections = projections
+	mutation := ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "resolved-authorization-request", ExpectedRevision: 0},
+		ConnectorKey: connector.Key,
+		AccountID:    "account-1",
+	}
+
+	first, err := application.BeginAuthorization(context.Background(), mutation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := repository.operations[first.Operation.OperationID]
+	operation.Execution.AuthorizationSession.Resolution = AuthorizationSessionResolutionProviderConnected
+	repository.operations[operation.OperationID] = operation
+	projections.projection = AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, ConnectionID: "connection-1",
+		State: AuthorizationStateConnected, ServerSynchronized: true,
+	}
+
+	replayed, err := application.BeginAuthorization(context.Background(), mutation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.begins != 1 {
+		t.Fatalf("provider begins = %d, want 1", provider.begins)
+	}
+	if replayed.AuthorizationURL != "" || replayed.Connector.Authorization.State != AuthorizationStateConnected {
+		t.Fatalf("replayed result = %#v", replayed)
 	}
 }
 
@@ -1174,11 +1540,11 @@ func TestApplicationSharesConcurrentOperationFailureAndClearsFlight(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.State != OperationStateFailed {
-		t.Fatalf("operation state = %q, want failed", operation.State)
+	if operation.State != OperationStateRunning {
+		t.Fatalf("operation state = %q, want retryable running debt", operation.State)
 	}
-	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err != nil {
-		t.Fatalf("terminal operation after flight cleanup = %v", err)
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err == nil {
+		t.Fatal("retryable operation unexpectedly completed")
 	}
 }
 
@@ -1202,7 +1568,7 @@ func TestApplicationRecordsFailureAfterLeaseRenewalCancelsExecution(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if operation.State != OperationStateFailed || operation.Stage != OperationStageFailed {
+	if operation.State != OperationStateRunning || operation.Stage != OperationStageInstalling {
 		t.Fatalf("operation after canceled execution = %#v", operation)
 	}
 }
@@ -1469,6 +1835,43 @@ func TestApplicationReconcilesCompletedAuthorizationSession(t *testing.T) {
 	}
 	if updated.Authorization.State != AuthorizationStateConnected || len(repository.events) != 1 {
 		t.Fatalf("connector=%#v events=%#v", updated, repository.events)
+	}
+}
+
+func TestApplicationAuthorizationObservationExpiresAfterTenMinutes(t *testing.T) {
+	connector := testConnector("gmail-timeout")
+	connector.Authorization = Authorization{State: AuthorizationStatePending}
+	repository := newMemoryRepository(connector)
+	repository.operations["authorization-timeout"] = Operation{
+		OperationID: "authorization-timeout", ConnectorKey: connector.Key,
+		Kind: OperationKindStartAuthorization, State: OperationStateCompleted,
+		Target:    operationTarget(OperationKindStartAuthorization, connector),
+		UpdatedAt: time.Date(2026, 8, 2, 23, 49, 59, 0, time.UTC),
+		Execution: OperationExecution{AuthorizationSession: &AuthorizationSession{
+			OperationID: "authorization-timeout", ConnectorKey: connector.Key,
+			SessionID: "session-timeout", State: AuthorizationStatePending,
+		}},
+	}
+	provider := &countingAuthorizationObserver{}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	application.config.Authorization = provider
+
+	intents, err := application.ReconcileAuthorizations(context.Background(), OperationScope{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.observations != 0 {
+		t.Fatalf("expired authorization was observed %d times", provider.observations)
+	}
+	if len(intents) != 1 || intents[0].Resolution != AuthorizationSessionResolutionProviderFailed {
+		t.Fatalf("expiry intents = %#v", intents)
+	}
+	updated, err := repository.Connector(context.Background(), connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Authorization.State != AuthorizationStateFailed || updated.Authorization.FailureCode != "connector_authorization_timeout" {
+		t.Fatalf("expired authorization = %#v", updated.Authorization)
 	}
 }
 
@@ -1922,8 +2325,40 @@ func (authorizationProviderStub) Disconnect(context.Context, AuthorizationDiscon
 	return nil
 }
 
+type failingAuthorizationProvider struct {
+	err    error
+	begins atomic.Int32
+}
+
+func (provider *failingAuthorizationProvider) Begin(context.Context, AuthorizationStartRequest) (AuthorizationSession, error) {
+	provider.begins.Add(1)
+	return AuthorizationSession{}, provider.err
+}
+
+func (*failingAuthorizationProvider) Disconnect(context.Context, AuthorizationDisconnectRequest) error {
+	return nil
+}
+
 type connectedAuthorizationProviderStub struct {
 	authorizationProviderStub
+}
+
+type blockingAuthorizationProvider struct {
+	authorizationProviderStub
+	started chan struct{}
+	release chan struct{}
+	begins  atomic.Int32
+}
+
+func (provider *blockingAuthorizationProvider) Begin(
+	_ context.Context,
+	request AuthorizationStartRequest,
+) (AuthorizationSession, error) {
+	if provider.begins.Add(1) == 1 {
+		close(provider.started)
+	}
+	<-provider.release
+	return provider.authorizationProviderStub.Begin(context.Background(), request)
 }
 
 func (connectedAuthorizationProviderStub) Begin(_ context.Context, request AuthorizationStartRequest) (AuthorizationSession, error) {
@@ -2001,6 +2436,7 @@ type memoryRepository struct {
 	sourceRevision                   string
 	connectors                       map[string]Connector
 	operations                       map[string]Operation
+	runtimeConvergences              map[string]RuntimeConvergence
 	events                           []ChangedEvent
 	transactionErr                   error
 	transactionCalls                 int
@@ -2012,9 +2448,10 @@ type memoryRepository struct {
 
 func newMemoryRepository(connectors ...Connector) *memoryRepository {
 	repository := &memoryRepository{
-		catalogState: CatalogStateStale,
-		connectors:   map[string]Connector{},
-		operations:   map[string]Operation{},
+		catalogState:        CatalogStateStale,
+		connectors:          map[string]Connector{},
+		operations:          map[string]Operation{},
+		runtimeConvergences: map[string]RuntimeConvergence{},
 	}
 	for _, connector := range connectors {
 		repository.connectors[connector.Key] = connector
@@ -2030,6 +2467,9 @@ func (repository *memoryRepository) Snapshot(_ context.Context) (Snapshot, error
 	sort.Slice(connectors, func(left, right int) bool { return connectors[left].Key < connectors[right].Key })
 	operations := make([]Operation, 0, len(repository.operations))
 	for _, operation := range repository.operations {
+		if operation.Kind == OperationKindReconcileRuntime {
+			continue
+		}
 		operation.Execution = OperationExecution{}
 		operations = append(operations, operation)
 	}
@@ -2086,6 +2526,18 @@ func (repository *memoryRepository) Operation(_ context.Context, operationID str
 	return operation, nil
 }
 
+func (repository *memoryRepository) OperationForScope(
+	_ context.Context,
+	scope OperationScope,
+	operationID string,
+) (Operation, error) {
+	operation, ok := repository.operations[operationID]
+	if !ok || !OperationVisibleToScope(operation, scope) {
+		return Operation{}, ErrNotFound
+	}
+	return operation, nil
+}
+
 func (repository *memoryRepository) ClaimOperation(
 	_ context.Context,
 	operationID string,
@@ -2100,8 +2552,7 @@ func (repository *memoryRepository) ClaimOperation(
 	if operation.State == OperationStateCompleted || operation.State == OperationStateFailed {
 		return operation, false, nil
 	}
-	if operation.LeaseOwner != "" && operation.LeaseOwner != owner &&
-		operation.LeaseExpiresAt != nil && operation.LeaseExpiresAt.After(now) {
+	if operation.LeaseOwner != "" && operation.LeaseExpiresAt != nil && operation.LeaseExpiresAt.After(now) {
 		return operation, false, nil
 	}
 	expiresAt := leaseExpiresAt
@@ -2144,7 +2595,8 @@ func (repository *memoryRepository) ReleaseOperationLease(_ context.Context, ope
 
 func (repository *memoryRepository) InstalledRelease(_ context.Context, connectorKey, releaseDigest string) (Release, error) {
 	for _, operation := range repository.operations {
-		if operation.Kind == OperationKindInstall && operation.State == OperationStateCompleted && operation.ConnectorKey == connectorKey &&
+		if operation.Kind == OperationKindInstall &&
+			(operation.State == OperationStateCompleted || operation.Execution.ReleaseInstallation != nil) && operation.ConnectorKey == connectorKey &&
 			operation.Target != nil && operation.Target.Release != nil && operation.Target.ReleaseDigest == releaseDigest {
 			return *operation.Target.Release, nil
 		}
@@ -2154,6 +2606,164 @@ func (repository *memoryRepository) InstalledRelease(_ context.Context, connecto
 		return connector.Release, nil
 	}
 	return Release{}, ErrNotFound
+}
+
+func (repository *memoryRepository) RuntimeConvergence(
+	_ context.Context,
+	scope OperationScope,
+	connectorKey string,
+) (RuntimeConvergence, error) {
+	convergence, ok := repository.runtimeConvergences[memoryRuntimeConvergenceKey(scope, connectorKey)]
+	if !ok {
+		return RuntimeConvergence{}, ErrNotFound
+	}
+	return convergence, nil
+}
+
+func (repository *memoryRepository) DueRuntimeConvergences(
+	_ context.Context,
+	scope OperationScope,
+	bootEpoch string,
+	now time.Time,
+	limit int,
+) ([]RuntimeConvergence, error) {
+	var result []RuntimeConvergence
+	for _, convergence := range repository.runtimeConvergences {
+		if convergence.Desired.Scope != scope ||
+			(convergence.Desired.Generation == convergence.Observed.DesiredGeneration && convergence.Observed.BootEpoch == bootEpoch) ||
+			convergence.NextAttemptAt.After(now) ||
+			(convergence.LeaseOwner != "" && convergence.LeaseExpiresAt != nil && convergence.LeaseExpiresAt.After(now)) {
+			continue
+		}
+		result = append(result, convergence)
+		if limit > 0 && len(result) == limit {
+			break
+		}
+	}
+	return result, nil
+}
+
+func (repository *memoryRepository) ClaimRuntimeConvergence(
+	_ context.Context,
+	scope OperationScope,
+	connectorKey, bootEpoch, owner string,
+	now, leaseExpiresAt time.Time,
+) (RuntimeConvergence, bool, error) {
+	key := memoryRuntimeConvergenceKey(scope, connectorKey)
+	convergence, ok := repository.runtimeConvergences[key]
+	if !ok {
+		return RuntimeConvergence{}, false, ErrNotFound
+	}
+	if convergence.Desired.Generation == convergence.Observed.DesiredGeneration && convergence.Observed.BootEpoch == bootEpoch ||
+		convergence.NextAttemptAt.After(now) ||
+		(convergence.LeaseOwner != "" && convergence.LeaseOwner != owner && convergence.LeaseExpiresAt != nil && convergence.LeaseExpiresAt.After(now)) {
+		return convergence, false, nil
+	}
+	expiresAt := leaseExpiresAt
+	convergence.LeaseOwner = owner
+	convergence.LeaseToken++
+	convergence.LeaseExpiresAt = &expiresAt
+	repository.runtimeConvergences[key] = convergence
+	return convergence, true, nil
+}
+
+func (repository *memoryRepository) RenewRuntimeConvergenceLease(
+	_ context.Context,
+	scope OperationScope,
+	connectorKey, owner string,
+	token uint64,
+	now, leaseExpiresAt time.Time,
+) error {
+	key := memoryRuntimeConvergenceKey(scope, connectorKey)
+	convergence, ok := repository.runtimeConvergences[key]
+	if !ok {
+		return ErrNotFound
+	}
+	if convergence.LeaseOwner != owner || convergence.LeaseToken != token ||
+		convergence.LeaseExpiresAt == nil || !convergence.LeaseExpiresAt.After(now) {
+		return ErrOperationLeaseLost
+	}
+	expiresAt := leaseExpiresAt
+	convergence.LeaseExpiresAt = &expiresAt
+	repository.runtimeConvergences[key] = convergence
+	return nil
+}
+
+func (repository *memoryRepository) ReleaseRuntimeConvergenceLease(
+	_ context.Context,
+	scope OperationScope,
+	connectorKey, owner string,
+	token uint64,
+) error {
+	key := memoryRuntimeConvergenceKey(scope, connectorKey)
+	convergence, ok := repository.runtimeConvergences[key]
+	if !ok {
+		return ErrNotFound
+	}
+	if convergence.LeaseOwner == owner && convergence.LeaseToken == token {
+		convergence.LeaseOwner = ""
+		convergence.LeaseExpiresAt = nil
+		repository.runtimeConvergences[key] = convergence
+	}
+	return nil
+}
+
+func (repository *memoryRepository) CompleteRuntimeConvergence(
+	_ context.Context,
+	scope OperationScope,
+	connectorKey, owner string,
+	token, desiredGeneration uint64,
+	observed RuntimeObserved,
+	now time.Time,
+) error {
+	key := memoryRuntimeConvergenceKey(scope, connectorKey)
+	convergence, ok := repository.runtimeConvergences[key]
+	if !ok {
+		return ErrNotFound
+	}
+	if convergence.Desired.Generation != desiredGeneration || convergence.LeaseOwner != owner || convergence.LeaseToken != token ||
+		convergence.LeaseExpiresAt == nil || !convergence.LeaseExpiresAt.After(now) {
+		return ErrOperationLeaseLost
+	}
+	convergence.Observed = observed
+	convergence.Attempt = 0
+	convergence.NextAttemptAt = time.Time{}
+	convergence.LeaseOwner = ""
+	convergence.LeaseExpiresAt = nil
+	convergence.LastErrorCode = ""
+	convergence.LastError = ""
+	convergence.UpdatedAt = now
+	repository.runtimeConvergences[key] = convergence
+	return nil
+}
+
+func (repository *memoryRepository) RetryRuntimeConvergence(
+	_ context.Context,
+	scope OperationScope,
+	connectorKey, owner string,
+	token, desiredGeneration uint64,
+	nextAttemptAt time.Time,
+	errorCode, errorMessage string,
+	now time.Time,
+) error {
+	key := memoryRuntimeConvergenceKey(scope, connectorKey)
+	convergence, ok := repository.runtimeConvergences[key]
+	if !ok {
+		return ErrNotFound
+	}
+	if convergence.Desired.Generation != desiredGeneration || convergence.LeaseOwner != owner || convergence.LeaseToken != token ||
+		convergence.LeaseExpiresAt == nil || !convergence.LeaseExpiresAt.After(now) {
+		return ErrOperationLeaseLost
+	}
+	convergence.Attempt++
+	convergence.NextAttemptAt = nextAttemptAt
+	convergence.LeaseOwner = ""
+	convergence.LeaseExpiresAt = nil
+	convergence.LastErrorCode = errorCode
+	convergence.LastError = errorMessage
+	convergence.UpdatedAt = now
+	repository.runtimeConvergences[key] = convergence
+	return nil
 }
 
 func (repository *memoryRepository) Transaction(ctx context.Context, fn func(Transaction) error) error {
@@ -2173,12 +2783,13 @@ func (repository *memoryRepository) Transaction(ctx context.Context, fn func(Tra
 		return err
 	}
 	transaction := &memoryTransaction{
-		revision:       repository.revision,
-		catalogState:   repository.catalogState,
-		sourceRevision: repository.sourceRevision,
-		connectors:     cloneConnectors(repository.connectors),
-		operations:     cloneOperations(repository.operations),
-		events:         append([]ChangedEvent(nil), repository.events...),
+		revision:            repository.revision,
+		catalogState:        repository.catalogState,
+		sourceRevision:      repository.sourceRevision,
+		connectors:          cloneConnectors(repository.connectors),
+		operations:          cloneOperations(repository.operations),
+		runtimeConvergences: cloneRuntimeConvergences(repository.runtimeConvergences),
+		events:              append([]ChangedEvent(nil), repository.events...),
 	}
 	if err := fn(transaction); err != nil {
 		return err
@@ -2188,6 +2799,7 @@ func (repository *memoryRepository) Transaction(ctx context.Context, fn func(Tra
 	repository.sourceRevision = transaction.sourceRevision
 	repository.connectors = transaction.connectors
 	repository.operations = transaction.operations
+	repository.runtimeConvergences = transaction.runtimeConvergences
 	repository.events = transaction.events
 	return nil
 }
@@ -2203,12 +2815,13 @@ func (repository *memoryRepository) RecoverableOperations(context.Context) ([]Op
 }
 
 type memoryTransaction struct {
-	revision       uint64
-	catalogState   CatalogState
-	sourceRevision string
-	connectors     map[string]Connector
-	operations     map[string]Operation
-	events         []ChangedEvent
+	revision            uint64
+	catalogState        CatalogState
+	sourceRevision      string
+	connectors          map[string]Connector
+	operations          map[string]Operation
+	runtimeConvergences map[string]RuntimeConvergence
+	events              []ChangedEvent
 }
 
 func (transaction *memoryTransaction) Revision() uint64 { return transaction.revision }
@@ -2242,9 +2855,10 @@ func (transaction *memoryTransaction) Operation(operationID string) (Operation, 
 	return operation, nil
 }
 
-func (transaction *memoryTransaction) OperationByClientRequestID(clientRequestID string) (*Operation, error) {
+func (transaction *memoryTransaction) OperationByClientRequestID(ownerAccountID, clientRequestID string) (*Operation, error) {
 	for _, operation := range transaction.operations {
-		if operation.ClientRequestID == clientRequestID {
+		operation = NormalizeOperationOwnership(operation)
+		if operation.OwnerAccountID == ownerAccountID && operation.ClientRequestID == clientRequestID {
 			copy := operation
 			return &copy, nil
 		}
@@ -2284,7 +2898,26 @@ func (transaction *memoryTransaction) DeleteConnector(connectorKey string) error
 }
 
 func (transaction *memoryTransaction) SaveOperation(operation Operation) error {
+	operation = NormalizeOperationOwnership(operation)
 	transaction.operations[operation.OperationID] = operation
+	return nil
+}
+
+func (transaction *memoryTransaction) RuntimeConvergence(scope OperationScope, connectorKey string) (RuntimeConvergence, error) {
+	convergence, ok := transaction.runtimeConvergences[memoryRuntimeConvergenceKey(scope, connectorKey)]
+	if !ok {
+		return RuntimeConvergence{}, ErrNotFound
+	}
+	return convergence, nil
+}
+
+func (transaction *memoryTransaction) SaveRuntimeConvergence(convergence RuntimeConvergence) error {
+	transaction.runtimeConvergences[memoryRuntimeConvergenceKey(convergence.Desired.Scope, convergence.Desired.ConnectorKey)] = convergence
+	return nil
+}
+
+func (transaction *memoryTransaction) DeleteRuntimeConvergence(scope OperationScope, connectorKey string) error {
+	delete(transaction.runtimeConvergences, memoryRuntimeConvergenceKey(scope, connectorKey))
 	return nil
 }
 
@@ -2307,4 +2940,16 @@ func cloneOperations(source map[string]Operation) map[string]Operation {
 		cloned[key] = operation
 	}
 	return cloned
+}
+
+func cloneRuntimeConvergences(source map[string]RuntimeConvergence) map[string]RuntimeConvergence {
+	cloned := make(map[string]RuntimeConvergence, len(source))
+	for key, convergence := range source {
+		cloned[key] = convergence
+	}
+	return cloned
+}
+
+func memoryRuntimeConvergenceKey(scope OperationScope, connectorKey string) string {
+	return strings.TrimSpace(scope.AccountID) + "\x00" + strings.TrimSpace(connectorKey)
 }

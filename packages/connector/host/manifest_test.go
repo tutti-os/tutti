@@ -124,6 +124,19 @@ func TestManagedCredentialBrokerRequiresConnectorOwnedEntrypointAndAllowedHosts(
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationQRCode
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = CredentialBrokerPresentationEmbeddedPage
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = "inline"
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "presentation") {
+		t.Fatalf("unsupported credential broker presentation error = %v", err)
+	}
+	manifest.Implementation.ManagedStdio.CredentialBroker.Presentation = ""
 	manifest.Implementation.ManagedStdio.CredentialBroker.Entrypoint = "../broker.mjs"
 	if err := ValidateManifestShape(manifest); err == nil {
 		t.Fatal("unsafe credential broker entrypoint was accepted")
@@ -193,6 +206,40 @@ func TestRuntimeReleaseValidationDoesNotRequirePresentationIcon(t *testing.T) {
 	}
 }
 
+func TestReleaseValidationRestrictsLegacyEmbeddedPagePresentation(t *testing.T) {
+	release := testReleaseWithImplementation("wecom-cli", "0.1.4", ImplementationKindManagedStdio)
+	release.Manifest.AuthorizationKind = "oauth2"
+	release.Manifest.Implementation.ManagedStdio.Runtime.VersionRange = ">=20.0.0 <21.0.0"
+	release.Manifest.Implementation.ManagedStdio.CLI = &ManagedCLIInterface{
+		Entrypoint: "wecom-cli",
+		TimeoutMS:  120_000,
+	}
+	release.Manifest.Implementation.ManagedStdio.CredentialBroker = &ManagedCredentialBroker{
+		Protocol:     CredentialBrokerProtocolV1,
+		Entrypoint:   "authorization/broker.mjs",
+		TimeoutMS:    300_000,
+		AllowedHosts: []string{"work.weixin.qq.com"},
+		Presentation: CredentialBrokerPresentationEmbeddedPage,
+	}
+
+	if err := ValidateReleaseShape(release); err != nil {
+		t.Fatalf("legacy wecom-cli 0.1.4 release was rejected: %v", err)
+	}
+
+	release.Version = "0.1.5"
+	release.ReleaseID = "wecom-cli@0.1.5"
+	if err := ValidateReleaseShape(release); err == nil || !strings.Contains(err.Error(), "embedded_page") {
+		t.Fatalf("new wecom-cli embedded_page release error = %v", err)
+	}
+
+	release.ConnectorKey = "example"
+	release.Version = "0.1.4"
+	release.ReleaseID = "example@0.1.4"
+	if err := ValidateReleaseShape(release); err == nil || !strings.Contains(err.Error(), "embedded_page") {
+		t.Fatalf("non-WeCom embedded_page release error = %v", err)
+	}
+}
+
 func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	manifest := Manifest{SchemaVersion: "1", DisplayName: "Lark", IconURL: testConnectorIconURL, AuthorizationKind: "none",
 		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
@@ -213,6 +260,19 @@ func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	}
 	if len(manifest.Implementation.ManagedStdio.CLI.Commands) != 0 {
 		t.Fatal("typed CLI install unexpectedly requires command mappings")
+	}
+}
+
+func TestManagedCLIRejectsUnsafePublicCommand(t *testing.T) {
+	manifest := Manifest{SchemaVersion: "1", DisplayName: "Lark CLI", IconURL: testConnectorIconURL,
+		AuthorizationKind: "none", Implementation: Implementation{Kind: ImplementationKindManagedStdio,
+			ManagedStdio: &ManagedStdioImplementation{
+				Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node20-linux-arm64", VersionRange: ">=20.0.0 <21.0.0"},
+				CLI:     &ManagedCLIInterface{Entrypoint: "bin/lark-cli", Command: "../../lark-cli", TimeoutMS: 30_000},
+			}},
+	}
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "managed CLI command") {
+		t.Fatalf("ValidateManifestShape() error = %v", err)
 	}
 }
 

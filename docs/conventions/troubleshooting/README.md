@@ -46,7 +46,9 @@ Use the focused runtime index or open one area directly:
   empty query never creates a durable provider child. It also covers a Claude
   Query that keeps returning connection errors after the machine network recovers.
   Also covers inactive Claude Resume timing out the queue send and leaving later
-  prompts stuck as 排队中 behind `uncertainDelivery`.
+  prompts stuck as 排队中 behind `uncertainDelivery`, and Standard ACP process
+  cleanup failures that stop a send before provider dispatch while preserving
+  the composer draft.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.
@@ -132,6 +134,13 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 - [Agent generated files under system temp do not open](./workspace-apps-files.md#agent-generated-files-under-system-temp-do-not-open)
 - [FileManager home-relative paths break only the list pane](./workspace-apps-files.md#filemanager-home-relative-paths-break-only-the-list-pane)
 - [Windows FileManager paths exist but fail validation or selection](./workspace-apps-files.md#windows-filemanager-paths-exist-but-fail-validation-or-selection)
+
+## [Connector Market](./connector-market.md)
+
+Connector catalog, installation, account authorization, and runtime convergence.
+
+- [OAuth opens once, then the desktop stays disconnected or a second attempt supersedes the first](./connector-market.md#oauth-opens-once-then-the-desktop-stays-disconnected-or-a-second-attempt-supersedes-the-first)
+- [OAuth finishes in the browser but does not return to the initiating desktop build](./connector-market.md#oauth-finishes-in-the-browser-but-does-not-return-to-the-initiating-desktop-build)
 
 ## [Toolchain, Browser, And Terminal](./toolchain-browser-terminal.md)
 
