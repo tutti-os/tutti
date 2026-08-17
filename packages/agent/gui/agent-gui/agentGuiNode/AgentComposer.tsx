@@ -138,7 +138,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     labels,
     onDraftContentChange,
     onSettingsChange,
-    onRetryComposerOptions,
     onTuttiModeChange = () => {},
     onTuttiModeEffectChange = () => {},
     onTuttiModeSpeedChange = () => {},

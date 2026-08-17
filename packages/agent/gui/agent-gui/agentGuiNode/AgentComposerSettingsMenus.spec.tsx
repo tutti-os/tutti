@@ -8,6 +8,10 @@ import {
 } from "./AgentComposerSettingsMenus";
 import type { AgentGUIComposerSettingsVM } from "./model/agentGuiNodeTypes";
 import type { AgentComposerSettingsMenuLabels } from "./model/composerSettingsMenuModel";
+import {
+  CODEX_FULL_ACCESS_WARNING_ACKNOWLEDGEMENT_STORAGE_KEY,
+  isCodexFullAccessWarningAcknowledged
+} from "./view/agentFullAccessWarningPreference";
 
 beforeAll(() => {
   Object.defineProperties(HTMLElement.prototype, {
@@ -287,6 +291,11 @@ describe("AgentPermissionModeDropdown", () => {
       planMode: false
     });
     expect(isCodexFullAccessWarningAcknowledged()).toBe(true);
+    expect(
+      globalThis.localStorage.getItem(
+        CODEX_FULL_ACCESS_WARNING_ACKNOWLEDGEMENT_STORAGE_KEY
+      )
+    ).toBe("1");
   });
 
   it("keeps full access selected after confirmation", async () => {
