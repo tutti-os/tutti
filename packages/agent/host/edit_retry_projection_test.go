@@ -19,4 +19,8 @@ func TestEditRetryReplacementInputPreservesSubmissionMetadata(t *testing.T) {
 	if input.Metadata["uiMode"] != "agent" {
 		t.Fatalf("metadata=%#v, want submission uiMode", input.Metadata)
 	}
+	claimMetadata, err := submitClaimMetadataJSON(input.Metadata)
+	if err != nil || claimMetadata != `{"uiMode":"agent"}` {
+		t.Fatalf("replacement claim metadata=%q err=%v", claimMetadata, err)
+	}
 }

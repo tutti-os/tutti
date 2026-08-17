@@ -6,6 +6,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	agentturnanalyticsbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentturnanalytics"
 )
 
 func TestActivityProjectionReportsCanonicalUserTurnOutcomes(t *testing.T) {
@@ -54,6 +55,7 @@ func TestActivityProjectionReportsCanonicalUserTurnOutcomes(t *testing.T) {
 			for key, want := range map[string]any{
 				"agent_session_id": "session-1",
 				"client_submit_id": "submit-1",
+				"event_id":         agentturnanalyticsbiz.StableEventID("ws-1", "session-1", "turn-1"),
 				"mode":             "agent",
 				"provider":         "codex",
 				"turn_id":          "turn-1",

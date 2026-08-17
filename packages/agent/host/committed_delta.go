@@ -122,7 +122,7 @@ func ActivityStateDelta(input canonical.ReportSessionStateInput, reply canonical
 		delta.RootTurnsSettled = append(delta.RootTurnsSettled, RootTurnSettled{
 			WorkspaceID: result.RootTurn.WorkspaceID, AgentSessionID: result.RootTurn.AgentSessionID, Turn: result.RootTurn,
 			Provider:       firstNonEmptyTrimmed(result.State.Session.Provider, input.State.Provider, input.Source.Provider),
-			IsChildSession: sessionStateIsChild(input.State),
+			IsChildSession: rootTurnOwnerIsChild(input, result),
 		})
 	}
 	if goalOp := goalOperationFromActivityState(input, result); goalOp != nil {
@@ -133,6 +133,27 @@ func ActivityStateDelta(input canonical.ReportSessionStateInput, reply canonical
 		delta.addView(input.WorkspaceID, result.RootTurn.AgentSessionID)
 	}
 	return delta
+}
+
+func rootTurnOwnerIsChild(
+	input canonical.ReportSessionStateInput,
+	result storesqlite.ActivityStateReportResult,
+) bool {
+	ownerSessionID := strings.TrimSpace(result.RootTurn.AgentSessionID)
+	reportingSessionID := strings.TrimSpace(result.State.Session.ID)
+	if reportingSessionID == "" {
+		reportingSessionID = strings.TrimSpace(input.AgentSessionID)
+	}
+	if ownerSessionID == "" || ownerSessionID != reportingSessionID {
+		// A child terminal report may settle its canonical root Turn. The
+		// persisted Session in this result still belongs to the reporting child,
+		// so its kind must not be projected onto the root owner.
+		return false
+	}
+	if strings.TrimSpace(result.State.Session.ID) != "" {
+		return canonicalSessionIsChild(result.State.Session)
+	}
+	return sessionStateIsChild(input.State)
 }
 
 func sessionStateIsChild(state canonical.WorkspaceAgentSessionStateUpdate) bool {
@@ -216,16 +237,17 @@ func StaleTurnSettlementDelta(settlements []storesqlite.StaleTurnSettlement) Com
 	}
 	for _, settlement := range settlements {
 		delta.addView(settlement.WorkspaceID, settlement.AgentSessionID)
-		turnID := strings.TrimSpace(settlement.TurnID)
+		turn := settlement.Turn
+		turnID := firstNonEmptyTrimmed(turn.TurnID, settlement.TurnID)
 		if turnID == "" {
 			continue
 		}
-		workspaceID := strings.TrimSpace(settlement.WorkspaceID)
-		agentSessionID := strings.TrimSpace(settlement.AgentSessionID)
-		delta.RootTurnsSettled = append(delta.RootTurnsSettled, RootTurnSettled{
-			WorkspaceID:    workspaceID,
-			AgentSessionID: agentSessionID,
-			Turn: storesqlite.Turn{
+		workspaceID := firstNonEmptyTrimmed(turn.WorkspaceID, settlement.WorkspaceID)
+		agentSessionID := firstNonEmptyTrimmed(turn.AgentSessionID, settlement.AgentSessionID)
+		if strings.TrimSpace(turn.TurnID) == "" {
+			// Compatibility for callers that construct the legacy scalar-only
+			// settlement value. The SQLite startup path always supplies Turn.
+			turn = storesqlite.Turn{
 				WorkspaceID:     workspaceID,
 				AgentSessionID:  agentSessionID,
 				TurnID:          turnID,
@@ -234,7 +256,12 @@ func StaleTurnSettlementDelta(settlements []storesqlite.StaleTurnSettlement) Com
 				ErrorMessage:    "stale turn settled on daemon startup",
 				StartedAtUnixMS: settlement.StartedAtUnixMS,
 				SettledAtUnixMS: settlement.SettledAtUnixMS,
-			},
+			}
+		}
+		delta.RootTurnsSettled = append(delta.RootTurnsSettled, RootTurnSettled{
+			WorkspaceID:       workspaceID,
+			AgentSessionID:    agentSessionID,
+			Turn:              turn,
 			Provider:          strings.TrimSpace(settlement.Provider),
 			IsChildSession:    settlement.IsChildSession,
 			StartupReconciled: true,

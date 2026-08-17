@@ -121,10 +121,11 @@ func (s *Store) DeleteSessionWithCommit(
 	if err != nil {
 		return DeleteSessionResult{}, err
 	}
-	removedMessages, removedSessions, removedSessionIDs, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
+	removedMessages, removedSessions, removedSessionIDs, terminalMutations, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
 	if err != nil {
 		return DeleteSessionResult{}, err
 	}
+	mutations = append(mutations, terminalMutations...)
 	delta, err := s.commitTransaction(ctx, tx, workspaceID, mutations)
 	if err != nil {
 		return DeleteSessionResult{}, fmt.Errorf("commit delete workspace agent session: %w", err)
@@ -197,10 +198,11 @@ func (s *Store) DeleteSessionsBatchTx(ctx context.Context, tx *sql.Tx, input Del
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
-	removedMessages, removedSessions, removedSessionIDs, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
+	removedMessages, removedSessions, removedSessionIDs, terminalMutations, err := deleteSessionTreeRowsTx(ctx, tx, workspaceID, sessionClosureIDs, now)
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
+	mutations = append(mutations, terminalMutations...)
 	delta, err := s.participateTransaction(ctx, tx, workspaceID, mutations)
 	if err != nil {
 		return DeleteSessionsBatchResult{}, fmt.Errorf("participate in delete workspace agent sessions batch: %w", err)

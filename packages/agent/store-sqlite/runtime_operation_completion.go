@@ -66,6 +66,7 @@ func (s *Store) CompleteCancelRuntimeOperation(ctx context.Context, input Comple
 			}
 			result := RuntimeOperationResultAlreadySettled
 			eventTargets := make([]any, 0, len(targets))
+			settledTargets := make([]any, 0, len(targets))
 			rootAgentSessionID := payloadString(op.Payload, "rootAgentSessionId")
 			rootTargeted := false
 			for _, target := range targets {
@@ -84,7 +85,8 @@ func (s *Store) CompleteCancelRuntimeOperation(ctx context.Context, input Comple
 					return "", "", nil, ErrRuntimeOperationSubjectState
 				}
 				outcome := turn.Outcome
-				if turn.Phase != TurnPhaseSettled {
+				settledByCompletion := turn.Phase != TurnPhaseSettled
+				if settledByCompletion {
 					outcome = requestedOutcomes[cancelTargetKey(target.AgentSessionID, target.TurnID)]
 					var activeTurnID sql.NullString
 					if err := tx.QueryRowContext(ctx, `
@@ -147,14 +149,19 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND status = ?
 					target.TurnID, InteractionStatusPending); err != nil {
 					return "", "", nil, fmt.Errorf("supersede canceled runtime operation interactions: %w", err)
 				}
-				eventTargets = append(eventTargets, map[string]any{
+				eventTarget := map[string]any{
 					"agentSessionId": target.AgentSessionID,
 					"turnId":         target.TurnID,
 					"outcome":        outcome,
-				})
+				}
+				eventTargets = append(eventTargets, eventTarget)
+				if settledByCompletion {
+					settledTargets = append(settledTargets, eventTarget)
+				}
 			}
 			eventPayload := map[string]any{
-				"turnId": op.TurnID, "result": result, "rootAgentSessionId": rootAgentSessionID, "targets": eventTargets,
+				"turnId": op.TurnID, "result": result, "rootAgentSessionId": rootAgentSessionID,
+				"targets": eventTargets, "settledTargets": settledTargets,
 			}
 			if reconciledRoot.TurnID != "" {
 				eventPayload["reconciledRoot"] = map[string]any{
@@ -386,12 +393,24 @@ func runtimeOperationCompletionMutations(ctx context.Context, tx *sql.Tx, op Run
 			interactionMutationEntityID(op.TurnID, op.RequestID), "upsert", op.UpdatedAtUnixMS,
 		))
 	case RuntimeOperationEventTurnCanceled:
+		settledTargetKeys := make(map[string]struct{})
+		if settledTargets, ok := event.Payload["settledTargets"].([]any); ok {
+			for _, raw := range settledTargets {
+				target, _ := raw.(map[string]any)
+				key := payloadString(target, "agentSessionId") + "\x00" + payloadString(target, "turnId")
+				settledTargetKeys[key] = struct{}{}
+			}
+		}
 		if targets, ok := event.Payload["targets"].([]any); ok {
 			for _, raw := range targets {
 				target, _ := raw.(map[string]any)
 				sessionID, turnID := payloadString(target, "agentSessionId"), payloadString(target, "turnId")
+				turnMutation := transactionMutation(op.WorkspaceID, sessionID, MutationEntityTurn, turnID, "upsert", op.UpdatedAtUnixMS)
+				if _, settled := settledTargetKeys[sessionID+"\x00"+turnID]; settled {
+					turnMutation = terminalTurnMutation(op.WorkspaceID, sessionID, turnID, "upsert", op.UpdatedAtUnixMS, false)
+				}
 				mutations = append(mutations,
-					transactionMutation(op.WorkspaceID, sessionID, MutationEntityTurn, turnID, "upsert", op.UpdatedAtUnixMS),
+					turnMutation,
 					transactionMutation(op.WorkspaceID, sessionID, MutationEntitySession, sessionID, "upsert", op.UpdatedAtUnixMS),
 				)
 				interactionMutations, err := canceledInteractionMutations(ctx, tx, op.WorkspaceID, sessionID, turnID, op.UpdatedAtUnixMS)
@@ -404,7 +423,7 @@ func runtimeOperationCompletionMutations(ctx context.Context, tx *sql.Tx, op Run
 		if root, ok := event.Payload["reconciledRoot"].(map[string]any); ok {
 			sessionID, turnID := payloadString(root, "agentSessionId"), payloadString(root, "turnId")
 			mutations = append(mutations,
-				transactionMutation(op.WorkspaceID, sessionID, MutationEntityTurn, turnID, "upsert", op.UpdatedAtUnixMS),
+				terminalTurnMutation(op.WorkspaceID, sessionID, turnID, "upsert", op.UpdatedAtUnixMS, false),
 				transactionMutation(op.WorkspaceID, sessionID, MutationEntitySession, sessionID, "upsert", op.UpdatedAtUnixMS),
 			)
 		}

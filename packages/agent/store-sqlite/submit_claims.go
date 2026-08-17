@@ -3,6 +3,7 @@ package storesqlite
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -17,6 +18,7 @@ type SubmitClaim struct {
 	Status          string
 	CanonicalTurnID string
 	TurnID          string
+	MetadataJSON    string
 	CreatedAtUnixMS int64
 	UpdatedAtUnixMS int64
 }
@@ -26,6 +28,7 @@ type SubmitClaimPrepare struct {
 	AgentSessionID  string
 	ClientSubmitID  string
 	CanonicalTurnID string
+	MetadataJSON    string
 	NowUnixMS       int64
 }
 
@@ -34,9 +37,29 @@ func (s *Store) PrepareSubmitClaim(ctx context.Context, input SubmitClaimPrepare
 	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
 	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
 	input.CanonicalTurnID = strings.TrimSpace(input.CanonicalTurnID)
+	if strings.TrimSpace(input.MetadataJSON) == "" {
+		input.MetadataJSON = "{}"
+	}
+	var metadata map[string]any
+	metadataErr := json.Unmarshal([]byte(input.MetadataJSON), &metadata)
 	if input.WorkspaceID == "" || input.AgentSessionID == "" || input.ClientSubmitID == "" || input.CanonicalTurnID == "" || input.NowUnixMS <= 0 {
 		return SubmitClaim{}, false, fmt.Errorf("invalid workspace agent submit claim")
 	}
+	if metadataErr != nil || metadata == nil {
+		return SubmitClaim{}, false, fmt.Errorf("invalid workspace agent submit claim metadata")
+	}
+	// Enforce the privacy boundary at the durable API as well as at Host call
+	// sites: claims retain only the closed provenance needed before the full
+	// submission envelope is available.
+	claimMetadata := make(map[string]any, 1)
+	if mode, ok := metadata["uiMode"].(string); ok && (mode == "os" || mode == "agent") {
+		claimMetadata["uiMode"] = mode
+	}
+	encodedMetadata, err := json.Marshal(claimMetadata)
+	if err != nil {
+		return SubmitClaim{}, false, fmt.Errorf("encode workspace agent submit claim metadata: %w", err)
+	}
+	input.MetadataJSON = string(encodedMetadata)
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return SubmitClaim{}, false, fmt.Errorf("begin prepare submit claim: %w", err)
@@ -65,8 +88,8 @@ func (s *Store) PrepareSubmitClaim(ctx context.Context, input SubmitClaimPrepare
 		return SubmitClaim{}, false, err
 	}
 	result, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO workspace_agent_submit_claims
-		(workspace_id, agent_session_id, client_submit_id, status, turn_id, created_at_unix_ms, updated_at_unix_ms, canonical_turn_id)
-		VALUES (?, ?, ?, 'prepared', NULL, ?, ?, ?)`, input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.NowUnixMS, input.NowUnixMS, input.CanonicalTurnID)
+		(workspace_id, agent_session_id, client_submit_id, status, turn_id, created_at_unix_ms, updated_at_unix_ms, canonical_turn_id, metadata_json)
+		VALUES (?, ?, ?, 'prepared', NULL, ?, ?, ?, ?)`, input.WorkspaceID, input.AgentSessionID, input.ClientSubmitID, input.NowUnixMS, input.NowUnixMS, input.CanonicalTurnID, input.MetadataJSON)
 	if err != nil {
 		return SubmitClaim{}, false, fmt.Errorf("prepare submit claim: %w", err)
 	}
@@ -284,7 +307,7 @@ func (s *Store) FindSubmitClaimByCanonicalTurn(
 	}
 	rows, err := s.db.QueryContext(ctx, `
 SELECT workspace_id, agent_session_id, client_submit_id, status,
-       canonical_turn_id, turn_id, created_at_unix_ms, updated_at_unix_ms
+	       canonical_turn_id, turn_id, metadata_json, created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_submit_claims
 WHERE workspace_id = ? AND agent_session_id = ? AND canonical_turn_id = ?
   AND status IN ('prepared', 'accepted')
@@ -323,7 +346,7 @@ LIMIT 2
 func (s *Store) getSubmitClaim(ctx context.Context, workspaceID, agentSessionID, clientSubmitID string) (SubmitClaim, bool, error) {
 	return scanSubmitClaim(s.db.QueryRowContext(
 		ctx,
-		`SELECT workspace_id, agent_session_id, client_submit_id, status, canonical_turn_id, turn_id, created_at_unix_ms, updated_at_unix_ms
+		`SELECT workspace_id, agent_session_id, client_submit_id, status, canonical_turn_id, turn_id, metadata_json, created_at_unix_ms, updated_at_unix_ms
 		FROM workspace_agent_submit_claims WHERE workspace_id=? AND agent_session_id=? AND client_submit_id=?`,
 		workspaceID,
 		agentSessionID,
@@ -338,7 +361,7 @@ func getSubmitClaimTx(
 ) (SubmitClaim, bool, error) {
 	return scanSubmitClaim(tx.QueryRowContext(
 		ctx,
-		`SELECT workspace_id, agent_session_id, client_submit_id, status, canonical_turn_id, turn_id, created_at_unix_ms, updated_at_unix_ms
+		`SELECT workspace_id, agent_session_id, client_submit_id, status, canonical_turn_id, turn_id, metadata_json, created_at_unix_ms, updated_at_unix_ms
 		FROM workspace_agent_submit_claims WHERE workspace_id=? AND agent_session_id=? AND client_submit_id=?`,
 		workspaceID,
 		agentSessionID,
@@ -357,6 +380,7 @@ func scanSubmitClaim(row rowScanner) (SubmitClaim, bool, error) {
 		&claim.Status,
 		&canonicalTurnID,
 		&turnID,
+		&claim.MetadataJSON,
 		&claim.CreatedAtUnixMS,
 		&claim.UpdatedAtUnixMS,
 	)

@@ -114,6 +114,8 @@ func (s *Store) reportActivityStateOnce(
 		LastEventUnixMS: lastEventUnixMS,
 		Session:         session,
 	}}
+	turnTerminalTransition := false
+	rootTurnTerminalTransition := false
 	result.Messages.LatestVersion = session.MessageVersion
 	if !accepted && len(input.Messages) > 0 {
 		return ActivityStateReportResult{}, errors.New("workspace agent activity session rejected atomic messages")
@@ -130,6 +132,8 @@ func (s *Store) reportActivityStateOnce(
 		if !result.TurnAccepted && !turnTransitionAlreadyApplied(result.Turn, *input.Turn) {
 			return ActivityStateReportResult{}, errors.New("workspace agent activity turn transition was rejected")
 		}
+		turnTerminalTransition = result.TurnAccepted &&
+			strings.TrimSpace(input.Turn.Phase) == TurnPhaseSettled
 	}
 	// RootProviderTurn may arrive on an exact-replay session envelope after Exec
 	// already set CurrentPhase (Claude Code identity_resolved). Apply whenever the
@@ -140,8 +144,10 @@ func (s *Store) reportActivityStateOnce(
 		if err != nil {
 			return ActivityStateReportResult{}, err
 		}
+		rootTurnTerminalTransition = result.RootTurnAccepted &&
+			result.RootTurn.Phase == TurnPhaseSettled
 	}
-	if result.TurnAccepted && result.Turn.Phase == TurnPhaseSettled {
+	if turnTerminalTransition {
 		rootTurn, rootAccepted, err := s.reconcileRootTurnAfterChildTerminalTx(ctx, tx, result.Turn, now)
 		if err != nil {
 			return ActivityStateReportResult{}, err
@@ -149,6 +155,7 @@ func (s *Store) reportActivityStateOnce(
 		if rootTurn.TurnID != "" {
 			result.RootTurn = rootTurn
 			result.RootTurnAccepted = rootAccepted
+			rootTurnTerminalTransition = rootAccepted && rootTurn.Phase == TurnPhaseSettled
 		}
 	}
 	// Interaction transitions have their own monotonic identity/state machine.
@@ -193,7 +200,7 @@ func (s *Store) reportActivityStateOnce(
 			result.Messages.Messages = append(result.Messages.Messages, acceptedMessage)
 		}
 	}
-	mutations := activityStateMutations(result)
+	mutations := activityStateMutations(result, turnTerminalTransition, rootTurnTerminalTransition)
 	goalMutations, err := sessionGoalMutationsTx(ctx, tx, input.Session, goalBefore)
 	if err != nil {
 		return ActivityStateReportResult{}, err
@@ -213,17 +220,29 @@ func (s *Store) reportActivityStateOnce(
 	return result, nil
 }
 
-func activityStateMutations(result ActivityStateReportResult) []TransactionMutation {
+func activityStateMutations(
+	result ActivityStateReportResult,
+	turnTerminalTransition bool,
+	rootTurnTerminalTransition bool,
+) []TransactionMutation {
 	mutations := make([]TransactionMutation, 0, 4+len(result.Messages.Messages))
 	if result.State.Accepted {
 		session := result.State.Session
 		mutations = append(mutations, transactionMutation(session.WorkspaceID, session.ID, MutationEntitySession, session.ID, "upsert", session.UpdatedAtUnixMS))
 	}
 	if result.TurnAccepted {
-		mutations = append(mutations, transactionMutation(result.Turn.WorkspaceID, result.Turn.AgentSessionID, MutationEntityTurn, result.Turn.TurnID, "upsert", result.Turn.UpdatedAtUnixMS))
+		turnMutation := transactionMutation(result.Turn.WorkspaceID, result.Turn.AgentSessionID, MutationEntityTurn, result.Turn.TurnID, "upsert", result.Turn.UpdatedAtUnixMS)
+		if turnTerminalTransition {
+			turnMutation = terminalTurnMutation(result.Turn.WorkspaceID, result.Turn.AgentSessionID, result.Turn.TurnID, "upsert", result.Turn.UpdatedAtUnixMS, false)
+		}
+		mutations = append(mutations, turnMutation)
 	}
 	if result.RootTurnAccepted || result.RootProviderTurnAccepted {
-		mutations = append(mutations, transactionMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, MutationEntityTurn, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS))
+		rootMutation := transactionMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, MutationEntityTurn, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS)
+		if rootTurnTerminalTransition {
+			rootMutation = terminalTurnMutation(result.RootTurn.WorkspaceID, result.RootTurn.AgentSessionID, result.RootTurn.TurnID, "upsert", result.RootTurn.UpdatedAtUnixMS, false)
+		}
+		mutations = append(mutations, rootMutation)
 	}
 	if result.InteractionResult == InteractionTransitionApplied {
 		mutations = append(mutations, transactionMutation(

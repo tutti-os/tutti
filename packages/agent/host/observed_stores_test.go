@@ -2,9 +2,12 @@ package agenthost
 
 import (
 	"context"
+	"database/sql"
+	"path/filepath"
 	"testing"
 
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	_ "modernc.org/sqlite"
 )
 
 type goalCommitStageStore struct {
@@ -116,7 +119,7 @@ func TestObservedCancelCompletionReportsRootSettlementOnce(t *testing.T) {
 			Kind: storesqlite.RuntimeOperationEventTurnCanceled,
 			Payload: map[string]any{
 				"rootAgentSessionId": "root-session",
-				"targets": []any{map[string]any{
+				"settledTargets": []any{map[string]any{
 					"agentSessionId": "root-session", "turnId": "root-turn",
 				}},
 				"reconciledRoot": map[string]any{
@@ -138,5 +141,86 @@ func TestObservedCancelCompletionReportsRootSettlementOnce(t *testing.T) {
 	settled := recorder.deltas[0].RootTurnsSettled[0]
 	if settled.Provider != "codex" || !settled.IsChildSession {
 		t.Fatalf("root settlement identity=%#v, want canonical provider and child marker", settled)
+	}
+}
+
+func TestObservedCancelCompletionDoesNotRepeatAlreadySettledRoot(t *testing.T) {
+	db, err := sql.Open("sqlite", filepath.Join(t.TempDir(), "cancel-already-settled.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	db.SetMaxOpenConns(1)
+	store := storesqlite.New(db, storesqlite.Options{})
+	if err := store.Migrate(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
+		Session: storesqlite.SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root-session", Kind: storesqlite.SessionKindRoot,
+			Provider: "codex", OccurredAtUnixMS: 10,
+		},
+		Turn: &storesqlite.TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "root-session", TurnID: "root-turn",
+			Phase: storesqlite.TurnPhaseRunning, Origin: storesqlite.TurnOriginUserPrompt,
+			OccurredAtUnixMS: 10,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, created, err := store.PrepareRuntimeOperation(t.Context(), storesqlite.RuntimeOperationPrepare{
+		OperationID: "cancel-1", WorkspaceID: "ws-1", AgentSessionID: "root-session",
+		Kind: storesqlite.RuntimeOperationKindCancelTurn, TurnID: "root-turn", OccurredAtMS: 20,
+		Payload: map[string]any{
+			"rootAgentSessionId": "root-session",
+			"targets": []any{map[string]any{
+				"agentSessionId": "root-session", "turnId": "root-turn",
+			}},
+		},
+	}); err != nil || !created {
+		t.Fatalf("prepare cancel created=%v err=%v", created, err)
+	}
+	if _, claimed, err := store.ClaimRuntimeOperationLease(t.Context(), storesqlite.ClaimRuntimeOperationLeaseInput{
+		WorkspaceID: "ws-1", OperationID: "cancel-1", LeaseOwner: "worker-a",
+		NowUnixMS: 21, LeaseExpiresAtMS: 100,
+	}); err != nil || !claimed {
+		t.Fatalf("claim cancel claimed=%v err=%v", claimed, err)
+	}
+	if _, err := store.ReportActivityState(t.Context(), storesqlite.ActivityStateReport{
+		Session: storesqlite.SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root-session", Kind: storesqlite.SessionKindRoot,
+			Provider: "codex", OccurredAtUnixMS: 25,
+		},
+		Turn: &storesqlite.TurnTransition{
+			WorkspaceID: "ws-1", AgentSessionID: "root-session", TurnID: "root-turn",
+			Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeCanceled,
+			Origin: storesqlite.TurnOriginUserPrompt, OccurredAtUnixMS: 25,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	recorder := &committedDeltaRecorder{}
+	canonicalStore := &SQLiteWorkspaceStore{StoreForWorkspace: func(workspaceID string) *storesqlite.Store {
+		if workspaceID != "ws-1" {
+			return nil
+		}
+		return store
+	}}
+	host := New(Config{CanonicalStore: canonicalStore, RuntimeOperations: store, CommitObserver: recorder})
+	if _, changed, err := host.operations.CompleteCancelRuntimeOperation(t.Context(), storesqlite.CompleteCancelRuntimeOperationInput{
+		WorkspaceID: "ws-1", OperationID: "cancel-1", LeaseOwner: "worker-a",
+		TargetOutcomes: []storesqlite.CancelRuntimeOperationTargetOutcome{{
+			AgentSessionID: "root-session", TurnID: "root-turn", Outcome: storesqlite.TurnOutcomeCanceled,
+		}},
+		NowUnixMS: 30,
+	}); err != nil || !changed {
+		t.Fatalf("complete cancel changed=%v err=%v", changed, err)
+	}
+	if len(recorder.deltas) != 1 {
+		t.Fatalf("committed deltas=%#v, want the runtime-operation completion", recorder.deltas)
+	}
+	if settlements := recorder.deltas[0].RootTurnsSettled; len(settlements) != 0 {
+		t.Fatalf("root settlements=%#v, want no repeat for the already-settled root", settlements)
 	}
 }
