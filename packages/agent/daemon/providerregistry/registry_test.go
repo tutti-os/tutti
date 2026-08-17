@@ -423,9 +423,14 @@ func TestMigratedOpenCodeDescriptorIsComplete(t *testing.T) {
 		descriptor.ComposerProfile.ConfigOptionIDs.Reasoning != "effort" {
 		t.Fatalf("ComposerProfile = %#v", descriptor.ComposerProfile)
 	}
-	if !slices.Equal(descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands, []string{"compact", "goal", "review"}) ||
-		len(descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects) != 4 {
+	if !slices.Equal(descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands, []string{"compact", "review"}) ||
+		len(descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects) != 3 {
 		t.Fatalf("SlashCommandPolicy = %#v", descriptor.ComposerProfile.SlashCommandPolicy)
+	}
+	for _, effect := range descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects {
+		if effect.Command == "goal" || effect.Effect == SlashCommandEffectActivateGoalMode {
+			t.Fatalf("OpenCode must not advertise unsupported goal control: %#v", effect)
+		}
 	}
 	if descriptor.Target.ID != OpenCodeTargetID || descriptor.Events.TurnLifecycleProjection != TurnLifecycleProjectionExplicit {
 		t.Fatalf("target/events = %#v %#v", descriptor.Target, descriptor.Events)

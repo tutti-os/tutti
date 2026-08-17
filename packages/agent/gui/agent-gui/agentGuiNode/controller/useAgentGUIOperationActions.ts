@@ -125,6 +125,10 @@ export function useAgentGUIOperationActions(
 
   const submitActions = useAgentGUISubmitInteractionActions({
     ...input,
+    goalControlSupported:
+      input.providerComposerOptions?.slashCommandPolicy?.commandEffects.some(
+        ({ effect }) => effect === "activateGoalMode"
+      ) === true,
     isSessionMarkedNonResumable,
     startConversation
   });
