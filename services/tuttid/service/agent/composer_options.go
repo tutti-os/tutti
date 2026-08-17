@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/composercatalog"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
@@ -89,13 +88,7 @@ type ComposerOptionsInput struct {
 	// discovery for internal probes and subscription checks that must not
 	// inherit the workspace target binding. It is daemon-only and must not be
 	// exposed as a user-facing session setting.
-	IgnoreModelPlanBinding bool
-	// PreloadedModelOptions carries an authoritative catalog already obtained
-	// by the Agent Extension setup probe. It is daemon-internal and lets app
-	// composer discovery reuse that session/new result instead of opening a
-	// second hidden Agent session.
-	PreloadedModelOptions    []ComposerConfigOptionValue
-	PreloadedDefaultModelID  string
+	IgnoreModelPlanBinding   bool
 	providerTargetRef        map[string]any
 	extensionComposerProfile ExtensionComposerProfile
 }
@@ -212,9 +205,6 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			return ComposerOptions{}, fmt.Errorf("get agent composer defaults for options: %w", err)
 		}
 		input.Settings = mergeComposerSettingsWithDefaults(input.Settings, defaults)
-	}
-	if strings.TrimSpace(input.Settings.Model) == "" && len(input.PreloadedModelOptions) > 0 {
-		input.Settings.Model = strings.TrimSpace(input.PreloadedDefaultModelID)
 	}
 	if input.CodexSaverMode != nil {
 		input.Settings.CodexSaverMode = *input.CodexSaverMode
@@ -515,13 +505,6 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 		CapabilityCatalog:       capabilityCatalog,
 		Behavior:                composerProfileFor(provider).Behavior,
 		SlashCommandPolicy:      slashCommandPolicy,
-	}
-	if providerTargetRefKind(input.providerTargetRef) == "agent_extension" && len(input.PreloadedModelOptions) > 0 {
-		s.setLiveComposerModelOptionsForScope(
-			newComposerLiveModelScopeForInput(input, effectiveSettings),
-			time.Now().UTC(),
-			input.PreloadedModelOptions,
-		)
 	}
 	if composerOptionsSectionIncludesCore(section) && planEndpoint == nil && !s.ReplayMode && (composerProfileFor(provider).LiveModelDiscovery ||
 		providerTargetRefKind(input.providerTargetRef) == "agent_extension") {

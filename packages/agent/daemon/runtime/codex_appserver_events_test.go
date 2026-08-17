@@ -172,6 +172,11 @@ func TestCodexAppServerFinalFileCitationsBecomePortableFileMentions(t *testing.T
 			want: `Created [@output.docx](<C:/Users/local%20user/output.docx>)`,
 		},
 		{
+			name: "Windows UNC remains provider text",
+			text: `Created :codex-file-citation{path="\\server\share\output.docx" purpose="output"}`,
+			want: `Created :codex-file-citation{path="\\server\share\output.docx" purpose="output"}`,
+		},
+		{
 			name: "POSIX output with reordered attributes",
 			text: `Created :codex-file-citation{purpose="output" path="/Users/local user/output.docx"}`,
 			want: `Created [@output.docx](</Users/local%20user/output.docx>)`,

@@ -2,12 +2,8 @@ package agentcontext
 
 import (
 	"context"
-	"strings"
-	"time"
 
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
-	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
 )
@@ -64,9 +60,6 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	if locale == "" {
 		locale = p.composerDefaultLocale(ctx)
 	}
-	preloadedModels, preloadedDefaultModelID := p.cachedExtensionComposerModels(
-		ctx, invoke.WorkspaceID, target,
-	)
 	// The app-facing composer facade does not return CapabilityCatalog. Keep
 	// discovery off here so a catalog scan is never paid for and discarded.
 	includeCapabilityCatalog := false
@@ -77,8 +70,6 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 		Provider:                 canonicalProvider,
 		WorkspaceID:              invoke.WorkspaceID,
 		IncludeCapabilityCatalog: &includeCapabilityCatalog,
-		PreloadedModelOptions:    preloadedModels,
-		PreloadedDefaultModelID:  preloadedDefaultModelID,
 		Settings: agentservice.ComposerSettings{
 			Model:            input.Model,
 			PermissionModeID: input.PermissionMode,
@@ -89,54 +80,6 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 		return nil, err
 	}
 	return composerOptionsResult{AgentTargetID: target.ID, Legacy: legacy, Options: options}, nil
-}
-
-func (p Provider) cachedExtensionComposerModels(
-	ctx context.Context,
-	requestedWorkspaceID string,
-	target agenttargetbiz.Target,
-) ([]agentservice.ComposerConfigOptionValue, string) {
-	if p.extensionAvailabilityCache == nil || !isExtensionAgentTarget(target) {
-		return nil, ""
-	}
-	workspaceID, err := cliservice.ResolveWorkspaceID(ctx, p.workspaces, requestedWorkspaceID)
-	if err != nil {
-		return nil, ""
-	}
-	key := strings.TrimSpace(workspaceID) + "\x00" + strings.TrimSpace(target.ID)
-	snapshot, ok := p.extensionAvailabilityCache.get(key, time.Now())
-	if !ok || snapshot.Status != agentextensionservice.SetupReady || len(snapshot.Models) == 0 {
-		return nil, ""
-	}
-	models := make([]agentservice.ComposerConfigOptionValue, 0, len(snapshot.Models))
-	for _, model := range snapshot.Models {
-		id := strings.TrimSpace(model.ID)
-		if id == "" {
-			continue
-		}
-		label := strings.TrimSpace(model.Name)
-		if label == "" {
-			label = id
-		}
-		models = append(models, agentservice.ComposerConfigOptionValue{
-			ID: id, Value: id, Label: label, Description: strings.TrimSpace(model.Description),
-		})
-	}
-	if len(models) == 0 {
-		return nil, ""
-	}
-	defaultModelID := strings.TrimSpace(snapshot.DefaultModelID)
-	defaultFound := false
-	for _, model := range models {
-		if model.Value == defaultModelID {
-			defaultFound = true
-			break
-		}
-	}
-	if !defaultFound {
-		defaultModelID = models[0].Value
-	}
-	return models, defaultModelID
 }
 
 func (p Provider) composerDefaultLocale(ctx context.Context) string {

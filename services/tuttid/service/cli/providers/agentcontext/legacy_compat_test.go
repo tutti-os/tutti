@@ -87,11 +87,7 @@ func TestAgentListUsesExtensionSetupAuthenticationStateForBroadAndExactCatalogs(
 	sessions := &fakeAgentSessions{availabilityErr: errors.New("extensions must not use built-in provider availability")}
 	setup := &fakeAgentTargetSetupReader{snapshots: map[string]agentextensionservice.SetupSnapshot{
 		hermes.ID: {Status: agentextensionservice.SetupAuthRequired, Reason: "runtime_auth_invalidated"},
-		kimi.ID: {
-			Status:         agentextensionservice.SetupReady,
-			Models:         []agentextensionservice.RuntimeModel{{ID: "kimi-current", Name: "Kimi Current"}},
-			DefaultModelID: "kimi-current",
-		},
+		kimi.ID:   {Status: agentextensionservice.SetupReady},
 	}}
 	provider := NewProviderWithAgentTargets(
 		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
@@ -114,15 +110,6 @@ func TestAgentListUsesExtensionSetupAuthenticationStateForBroadAndExactCatalogs(
 	}
 	if got := byID[kimi.ID]; got["status"] != "available" || got["reasonCode"] != "" {
 		t.Fatalf("broad Kimi availability = %#v", got)
-	}
-	if _, err := provider.newComposerOptionsCommand().Handler(context.Background(), cliservice.InvokeRequest{
-		Input: map[string]any{"agent-id": kimi.ID}, OutputMode: cliservice.OutputModeJSON,
-	}); err != nil {
-		t.Fatalf("composer Handler: %v", err)
-	}
-	if models := sessions.composerInput.PreloadedModelOptions; len(models) != 1 ||
-		models[0].Value != "kimi-current" || sessions.composerInput.PreloadedDefaultModelID != "kimi-current" {
-		t.Fatalf("preloaded composer models = %#v default = %q", models, sessions.composerInput.PreloadedDefaultModelID)
 	}
 
 	byID = map[string]map[string]any{}

@@ -58,17 +58,9 @@ type StandardACPAuthMethod struct {
 }
 
 type StandardACPSetupResult struct {
-	Status         StandardACPSetupStatus
-	AuthMethods    []StandardACPAuthMethod
-	Account        *StandardACPAuthenticatedAccount
-	Models         []StandardACPModel
-	DefaultModelID string
-}
-
-type StandardACPModel struct {
-	ID          string
-	Name        string
-	Description string
+	Status      StandardACPSetupStatus
+	AuthMethods []StandardACPAuthMethod
+	Account     *StandardACPAuthenticatedAccount
 }
 
 type StandardACPAuthenticatedAccount struct {
@@ -101,10 +93,7 @@ func RunStandardACPSetup(
 	methodID = strings.TrimSpace(methodID)
 	var methods []StandardACPAuthMethod
 	var account *StandardACPAuthenticatedAccount
-	var models []StandardACPModel
-	var defaultModelID string
 	adapter.config.validateNewSessionResult = func(newSessionResult json.RawMessage) error {
-		models, defaultModelID = parseStandardACPSetupModels(newSessionResult)
 		if acpSessionHasNoUsableModel(newSessionResult) {
 			return ErrACPSetupNoUsableModel
 		}
@@ -179,71 +168,7 @@ func RunStandardACPSetup(
 	if err := adapter.Close(closeCtx, session); err != nil {
 		return StandardACPSetupResult{}, fmt.Errorf("close ACP setup session: %w", err)
 	}
-	return StandardACPSetupResult{
-		Status: StandardACPSetupReady, AuthMethods: methods, Account: account,
-		Models: models, DefaultModelID: defaultModelID,
-	}, nil
-}
-
-func parseStandardACPSetupModels(raw json.RawMessage) ([]StandardACPModel, string) {
-	state := newACPLiveState()
-	var payload map[string]any
-	if json.Unmarshal(raw, &payload) != nil {
-		return nil, ""
-	}
-	for _, key := range []string{"configOptions", "config_options"} {
-		if descriptors := configOptionDescriptors(payload[key]); len(descriptors) > 0 {
-			applyACPConfigOptionDescriptors(&state, descriptors)
-			break
-		}
-	}
-	applyACPModelsResult(&state, raw)
-
-	var descriptor map[string]any
-	for _, candidate := range state.configOptionDescriptors {
-		if strings.EqualFold(strings.TrimSpace(asString(candidate["id"])), "model") ||
-			strings.EqualFold(strings.TrimSpace(asString(candidate["category"])), "model") {
-			descriptor = candidate
-			break
-		}
-	}
-	if descriptor == nil {
-		return nil, ""
-	}
-
-	models := make([]StandardACPModel, 0)
-	seen := map[string]struct{}{}
-	if options, ok := descriptor["options"].([]any); ok {
-		for _, rawOption := range options {
-			option, ok := rawOption.(map[string]any)
-			if !ok {
-				continue
-			}
-			id := strings.TrimSpace(firstNonEmptyString(
-				asString(option["value"]), asString(option["id"]), asString(option["modelId"]),
-			))
-			if id == "" {
-				continue
-			}
-			if _, exists := seen[id]; exists {
-				continue
-			}
-			seen[id] = struct{}{}
-			name := strings.TrimSpace(firstNonEmptyString(asString(option["label"]), asString(option["name"]), id))
-			models = append(models, StandardACPModel{
-				ID: id, Name: name, Description: strings.TrimSpace(asString(option["description"])),
-			})
-		}
-	}
-	currentValue, _ := configOptionCurrentValue(descriptor)
-	defaultModelID := strings.TrimSpace(asString(currentValue))
-	if _, ok := seen[defaultModelID]; !ok {
-		defaultModelID = ""
-	}
-	if defaultModelID == "" && len(models) > 0 {
-		defaultModelID = models[0].ID
-	}
-	return models, defaultModelID
+	return StandardACPSetupResult{Status: StandardACPSetupReady, AuthMethods: methods, Account: account}, nil
 }
 
 func standardACPSetupHasInteractiveAuth(methods []StandardACPAuthMethod) bool {

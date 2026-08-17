@@ -310,10 +310,6 @@ func TestRunStandardACPSetupReadyWithSeededModels(t *testing.T) {
 	if result.Status != StandardACPSetupReady {
 		t.Fatalf("setup result = %#v", result)
 	}
-	if result.DefaultModelID != "example-model" || len(result.Models) != 1 ||
-		result.Models[0].ID != "example-model" || result.Models[0].Name != "Example Model" {
-		t.Fatalf("setup models = %#v default = %q", result.Models, result.DefaultModelID)
-	}
 }
 
 func TestACPSessionHasNoUsableModel(t *testing.T) {

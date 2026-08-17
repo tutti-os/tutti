@@ -41,14 +41,10 @@ type RuntimeTerminalStartupAction struct {
 }
 
 type RuntimeProbeResult struct {
-	Status         RuntimeProbeStatus
-	AuthMethods    []RuntimeAuthMethod
-	Account        *RuntimeAuthenticatedAccount
-	Models         []RuntimeModel
-	DefaultModelID string
+	Status      RuntimeProbeStatus
+	AuthMethods []RuntimeAuthMethod
+	Account     *RuntimeAuthenticatedAccount
 }
-
-type RuntimeModel = agentruntime.StandardACPModel
 
 type RuntimeAuthenticatedAccount = agentextensionbiz.AuthenticatedAccount
 
@@ -132,10 +128,7 @@ func runRuntimeSetup(
 			AuthMethodID: result.Account.AuthMethodID, Organization: result.Account.Organization,
 		}
 	}
-	return RuntimeProbeResult{
-		Status: RuntimeProbeStatus(result.Status), AuthMethods: methods, Account: account,
-		Models: result.Models, DefaultModelID: result.DefaultModelID,
-	}, nil
+	return RuntimeProbeResult{Status: RuntimeProbeStatus(result.Status), AuthMethods: methods, Account: account}, nil
 }
 
 type terminalAuthLaunch struct {

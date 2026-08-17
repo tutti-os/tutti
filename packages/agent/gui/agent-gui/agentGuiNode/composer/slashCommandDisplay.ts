@@ -11,19 +11,13 @@ export function slashCommandDescriptionForDisplay(
     | "slashCommandContextDescription"
     | "slashCommandFastDescription"
     | "slashCommandGoalDescription"
-    | "slashCommandHelpDescription"
     | "slashCommandInitDescription"
-    | "slashCommandMcpDescription"
     | "slashCommandPlanDescription"
     | "slashCommandReviewDescription"
     | "slashCommandStatusDescription"
-    | "slashCommandTasksDescription"
     | "slashCommandUsageDescription"
   >
 ): string | undefined {
-  const providerDescription = command.description?.trim()
-    ? command.description
-    : undefined;
   switch (command.name.trim().toLowerCase()) {
     case "compact":
       return labels.slashCommandCompactDescription;
@@ -33,24 +27,18 @@ export function slashCommandDescriptionForDisplay(
       return labels.slashCommandFastDescription;
     case "goal":
       return labels.slashCommandGoalDescription;
-    case "help":
-      return providerDescription ?? labels.slashCommandHelpDescription;
     case "init":
       return labels.slashCommandInitDescription;
-    case "mcp":
-      return providerDescription ?? labels.slashCommandMcpDescription;
     case "plan":
       return labels.slashCommandPlanDescription;
     case "review":
       return labels.slashCommandReviewDescription;
     case "status":
       return labels.slashCommandStatusDescription;
-    case "tasks":
-      return providerDescription ?? labels.slashCommandTasksDescription;
     case "usage":
       return labels.slashCommandUsageDescription;
     default:
-      return providerDescription;
+      return command.description;
   }
 }
 
@@ -62,13 +50,10 @@ export function slashCommandLabelForDisplay(
     | "slashCommandContextLabel"
     | "slashCommandFastLabel"
     | "slashCommandGoalLabel"
-    | "slashCommandHelpLabel"
     | "slashCommandInitLabel"
-    | "slashCommandMcpLabel"
     | "slashCommandPlanLabel"
     | "slashCommandReviewLabel"
     | "slashCommandStatusLabel"
-    | "slashCommandTasksLabel"
     | "slashCommandUsageLabel"
   >,
   uiLanguage: UiLanguage
@@ -88,13 +73,10 @@ function localizedSlashCommandLabel(
     | "slashCommandContextLabel"
     | "slashCommandFastLabel"
     | "slashCommandGoalLabel"
-    | "slashCommandHelpLabel"
     | "slashCommandInitLabel"
-    | "slashCommandMcpLabel"
     | "slashCommandPlanLabel"
     | "slashCommandReviewLabel"
     | "slashCommandStatusLabel"
-    | "slashCommandTasksLabel"
     | "slashCommandUsageLabel"
   >
 ): string {
@@ -107,20 +89,14 @@ function localizedSlashCommandLabel(
       return labels.slashCommandFastLabel;
     case "goal":
       return labels.slashCommandGoalLabel;
-    case "help":
-      return labels.slashCommandHelpLabel ?? labelForSlashCommand(command);
     case "init":
       return labels.slashCommandInitLabel;
-    case "mcp":
-      return labels.slashCommandMcpLabel ?? labelForSlashCommand(command);
     case "plan":
       return labels.slashCommandPlanLabel;
     case "review":
       return labels.slashCommandReviewLabel;
     case "status":
       return labels.slashCommandStatusLabel;
-    case "tasks":
-      return labels.slashCommandTasksLabel ?? labelForSlashCommand(command);
     case "usage":
       return labels.slashCommandUsageLabel;
     default:

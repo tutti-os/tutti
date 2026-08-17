@@ -661,13 +661,10 @@ export function useAgentGUIViewLabels(input: {
       ),
       slashCommandFastLabel: t("agentHost.agentGui.slashCommandFastLabel"),
       slashCommandGoalLabel: t("agentHost.agentGui.slashCommandGoalLabel"),
-      slashCommandHelpLabel: t("agentHost.agentGui.slashCommandHelpLabel"),
       slashCommandInitLabel: t("agentHost.agentGui.slashCommandInitLabel"),
-      slashCommandMcpLabel: t("agentHost.agentGui.slashCommandMcpLabel"),
       slashCommandPlanLabel: t("agentHost.agentGui.slashCommandPlanLabel"),
       slashCommandReviewLabel: t("agentHost.agentGui.slashCommandReviewLabel"),
       slashCommandStatusLabel: t("agentHost.agentGui.slashCommandStatusLabel"),
-      slashCommandTasksLabel: t("agentHost.agentGui.slashCommandTasksLabel"),
       slashCommandUsageLabel: t("agentHost.agentGui.slashCommandUsageLabel"),
       slashCommandCompactDescription: t(
         "agentHost.agentGui.slashCommandCompactDescription"
@@ -681,14 +678,8 @@ export function useAgentGUIViewLabels(input: {
       slashCommandGoalDescription: t(
         "agentHost.agentGui.slashCommandGoalDescription"
       ),
-      slashCommandHelpDescription: t(
-        "agentHost.agentGui.slashCommandHelpDescription"
-      ),
       slashCommandInitDescription: t(
         "agentHost.agentGui.slashCommandInitDescription"
-      ),
-      slashCommandMcpDescription: t(
-        "agentHost.agentGui.slashCommandMcpDescription"
       ),
       slashCommandPlanDescription: t(
         "agentHost.agentGui.slashCommandPlanDescription"
@@ -698,9 +689,6 @@ export function useAgentGUIViewLabels(input: {
       ),
       slashCommandStatusDescription: t(
         "agentHost.agentGui.slashCommandStatusDescription"
-      ),
-      slashCommandTasksDescription: t(
-        "agentHost.agentGui.slashCommandTasksDescription"
       ),
       slashCommandUsageDescription: t(
         "agentHost.agentGui.slashCommandUsageDescription"
