@@ -534,11 +534,10 @@ function AgentSystemNoticeMessage({
   message
 }: {
   message: AgentMessageContentVM;
-}): JSX.Element {
+}): JSX.Element | null {
   "use memo";
   const notice = message.systemNotice;
   const detail = notice?.detail?.trim() ?? "";
-  const title = systemNoticeTitle(message);
   if (notice?.noticeKind === "transport_retry") {
     const retryText = transportRetryNoticeText(message);
     return (
@@ -549,6 +548,19 @@ function AgentSystemNoticeMessage({
         {retryText}
       </div>
     );
+  }
+  if (
+    notice?.noticeKind === "transport_fallback" ||
+    isTransportFallbackNotice(message)
+  ) {
+    const diagnosticDetail =
+      detail || notice?.title?.trim() || message.body.trim();
+    return diagnosticDetail ? (
+      <AgentMessageDetailsDisclosure
+        detail={diagnosticDetail}
+        className="[&>button]:!text-[var(--text-primary)] [&>button>svg]:!text-[var(--text-primary)]"
+      />
+    ) : null;
   }
   if (isContextCompactionProgressNotice(message)) {
     return (
@@ -590,6 +602,7 @@ function AgentSystemNoticeMessage({
       />
     );
   }
+  const title = systemNoticeTitle(message);
   const isStatusNotice = systemNoticeIsStatus(message);
   return (
     <section

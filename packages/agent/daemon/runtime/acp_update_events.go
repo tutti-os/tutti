@@ -491,8 +491,7 @@ func acpSystemNoticeFromAgentText(text string) (map[string]any, bool) {
 			"source":     "agent_text",
 		}, true
 	}
-	if strings.Contains(normalized, "falling back from websockets to https transport") ||
-		strings.Contains(normalized, "switched to https transport") {
+	if acpAgentTextLooksLikeTransportFallback(normalized) {
 		return map[string]any{
 			"kind":       "agent_system_notice",
 			"noticeKind": "transport_fallback",
@@ -503,6 +502,11 @@ func acpSystemNoticeFromAgentText(text string) (map[string]any, bool) {
 		}, true
 	}
 	return nil, false
+}
+
+func acpAgentTextLooksLikeTransportFallback(normalized string) bool {
+	return strings.Contains(normalized, "falling back from websockets to https transport") ||
+		strings.Contains(normalized, "switched to https transport")
 }
 
 func acpAgentTextLooksLikeTransportRetry(normalized string) bool {

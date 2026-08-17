@@ -270,7 +270,11 @@ func (r codexAppServerReducer) reduceNotification(
 		if normalizer.HasCompactionNotice() && message == appServerCompactionAdvisoryMessage {
 			return emit(nil)
 		}
-		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning", "", message)})
+		noticeKind := "warning"
+		if acpAgentTextLooksLikeTransportFallback(strings.ToLower(strings.TrimSpace(message))) {
+			noticeKind = "transport_fallback"
+		}
+		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, noticeKind, "", message)})
 	case appServerNotifyDeprecation:
 		return emit([]activityshared.Event{appServerSystemNoticeEvent(session, turnID, "warning",
 			asString(params["summary"]), asString(params["details"]))})

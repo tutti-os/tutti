@@ -158,6 +158,39 @@ func TestCodexAppServerCompactionKeepsUnrelatedWarnings(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerNormalizesTransportFallbackWarning(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	session.ProviderSessionID = "thread-1"
+	detail := "Falling back from WebSockets to HTTPS transport. request timed out"
+	reduction := newCodexAppServerReducer(&CodexAppServerAdapter{}).ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		acpMessage{
+			Method: appServerNotifyWarning,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId": "thread-1",
+				"turnId":   "provider-turn-1",
+				"message":  detail,
+			}),
+		},
+		newACPTurnNormalizer(),
+		nil,
+	)
+	if len(reduction.Events) != 1 {
+		t.Fatalf("transport fallback events = %#v, want one system notice", reduction.Events)
+	}
+	metadata := reduction.Events[0].Payload.Metadata
+	if got := asString(metadata["noticeKind"]); got != "transport_fallback" {
+		t.Fatalf("noticeKind = %q, want transport_fallback", got)
+	}
+	if got := asString(metadata["detail"]); got != detail {
+		t.Fatalf("detail = %q, want %q", got, detail)
+	}
+}
+
 func TestCodexAppServerCommandOutputDeltaUsesToolOutputFastLane(t *testing.T) {
 	t.Parallel()
 	session := reportTestSession()
