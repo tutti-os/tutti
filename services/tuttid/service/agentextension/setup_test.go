@@ -13,11 +13,13 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	runtimecmd "github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
+	agentextensionbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentextension"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	agentextensiondata "github.com/tutti-os/tutti/services/tuttid/data/agentextension"
@@ -153,8 +155,24 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	if ready.RuntimeSource != "managed" || runner.callCount() < 2 {
 		t.Fatalf("setup after companion failure = %#v, install calls = %d", ready, runner.callCount())
 	}
+	failureScope := accountUsageCompanionFailureScope(targetID, installation.ID)
+	var failure *agentextensionbiz.AccountUsageCompanionFailure
+	for failure == nil {
+		failure, err = service.AccountUsageFailures.Read(context.Background(), failureScope)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("account usage companion failure was not persisted")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if failure == nil || failure.ErrorCode != "install_failed" || failure.RuntimeIdentity == "" ||
+		failure.ConsecutiveFailures < 1 || failure.NextAttemptAtUnixMS <= failure.LastAttemptAtUnixMS {
+		t.Fatalf("persisted account usage failure = %#v", failure)
 	}
 	retryRunner := &fixtureInstallRunner{
 		binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3",
@@ -163,8 +181,12 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	restarted.Plans = service.Plans
 	restarted.Transport = service.Transport
 	restarted.Actions = service.Actions
+	restarted.AccountUsageFailures = service.AccountUsageFailures
 	restarted.Discovery = service.Discovery
 	restarted.Runner = retryRunner
+	var retryClock atomic.Int64
+	retryClock.Store(failure.LastAttemptAtUnixMS)
+	restarted.accountUsageNow = func() time.Time { return time.UnixMilli(retryClock.Load()) }
 	if err := restarted.StartAccountUsageCompanionReconciler(); err != nil {
 		t.Fatal(err)
 	}
@@ -175,6 +197,12 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	if err != nil || companionPlan.AccountUsage == nil {
 		t.Fatalf("account usage retry plan = %#v, error = %v", companionPlan.AccountUsage, err)
 	}
+	time.Sleep(100 * time.Millisecond)
+	if retryRunner.callCount() != 0 {
+		t.Fatalf("account usage retry ignored persisted backoff: calls=%d", retryRunner.callCount())
+	}
+	retryClock.Store(failure.NextAttemptAtUnixMS + 1)
+	restarted.WakeAccountUsageCompanionReconciler()
 	activationPath := filepath.Join(companionPlan.AccountUsage.InstallRoot, "activation.json")
 	deadline = time.Now().Add(5 * time.Second)
 	for {
@@ -189,6 +217,9 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	}
 	if retryRunner.callCount() != 1 {
 		t.Fatalf("account usage restart retry calls = %d, want 1", retryRunner.callCount())
+	}
+	if persisted, err := restarted.AccountUsageFailures.Read(context.Background(), failureScope); err != nil || persisted != nil {
+		t.Fatalf("recovered account usage failure = %#v, error = %v", persisted, err)
 	}
 	usage, err := (AccountUsageService{Manager: service.Plans.Manager, Targets: store}).Probe(context.Background(), targetID)
 	if err != nil {
@@ -1024,9 +1055,10 @@ func setupFixture(
 	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
 	manager := &Manager{
 		RuntimeInstallDir: runtimeInstallDir, RuntimeBinDir: runtimeBinDir, Store: store,
-		Installations:   agentextensiondata.NewFileInstallationStore(stateDir),
-		Discovery:       agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir),
-		RuntimeResolver: setupFixtureRuntimeResolver(t),
+		AccountUsageNodeSnapshotDir: filepath.Join(stateDir, "agent", "account-usage-node-snapshots"),
+		Installations:               agentextensiondata.NewFileInstallationStore(stateDir),
+		Discovery:                   agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir),
+		RuntimeResolver:             setupFixtureRuntimeResolver(t),
 	}
 	installation, err := installTestPackage(t, manager, Release{AgentKey: key, Version: "1.0.0"}, testPackageZIPFor(t, manifest, discovery))
 	if err != nil {
@@ -1050,6 +1082,7 @@ func setupFixture(
 	service.Plans = plans
 	service.Transport = transport
 	service.Actions = agentextensiondata.NewFileSetupActionStore(stateDir)
+	service.AccountUsageFailures = agentextensiondata.NewFileAccountUsageCompanionFailureStore(stateDir)
 	service.Discovery = agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir)
 	service.Runner = runner
 	if err := service.StartAccountUsageCompanionReconciler(); err != nil {

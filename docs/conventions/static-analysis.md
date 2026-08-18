@@ -71,6 +71,10 @@ prepares the builtin Onboarding package before its Go tests. Each lane invokes
 its selected Go packages together so independent packages can build and test in
 parallel. The Agent process lane also crosses a native Windows child-process
 boundary to verify case-insensitive environment-key precedence.
+It also proves that the account-usage Node boundary reuses a read-locked,
+content-addressed snapshot across calls and runner recreation, and that
+snapshot construction observes cancellation. The daemon lane covers durable
+companion failure backoff and recovery through a real restart.
 
 Both adapter workflows also run for matching pushes to `main`. Those trusted
 runs maintain default-branch Go and pnpm caches that new pull requests can

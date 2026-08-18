@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	agentextensionbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentextension"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 )
 
@@ -20,7 +21,7 @@ const (
 // It is independent from setup actions: failures retry with bounded backoff and
 // never alter the ACP runtime's ready state.
 func (s *SetupService) StartAccountUsageCompanionReconciler() error {
-	if s == nil || s.Plans.Manager == nil || s.Plans.Manager.Store == nil {
+	if s == nil || s.Plans.Manager == nil || s.Plans.Manager.Store == nil || s.AccountUsageFailures == nil {
 		return errors.New("account usage companion reconciler is not configured")
 	}
 	s.mu.Lock()
@@ -65,11 +66,16 @@ func (s *SetupService) runAccountUsageCompanionReconciler(ctx context.Context) {
 		if !waitForAccountUsageReconcile(ctx, s.accountUsageReconcileWake, delay) {
 			return
 		}
-		errs := s.ReconcileAccountUsageCompanions(ctx)
+		outcome := s.reconcileAccountUsageCompanions(ctx)
 		if ctx.Err() != nil {
 			return
 		}
-		if len(errs) == 0 {
+		if outcome.retryAfter > 0 {
+			delay = min(outcome.retryAfter, accountUsageReconcileInterval)
+			backoff = accountUsageReconcileMinBackoff
+			continue
+		}
+		if len(outcome.errs) == 0 {
 			delay = accountUsageReconcileInterval
 			backoff = accountUsageReconcileMinBackoff
 			continue
@@ -98,24 +104,44 @@ func waitForAccountUsageReconcile(ctx context.Context, wake <-chan struct{}, del
 // ReconcileAccountUsageCompanions ensures every enabled extension target with
 // a compatible ACP runtime has its independently activated helper runtime.
 func (s *SetupService) ReconcileAccountUsageCompanions(ctx context.Context) []error {
-	if s == nil || s.Plans.Manager == nil || s.Plans.Manager.Store == nil {
-		return []error{errors.New("account usage companion reconciler is not configured")}
+	return s.reconcileAccountUsageCompanions(ctx).errs
+}
+
+type accountUsageReconcileOutcome struct {
+	errs       []error
+	retryAfter time.Duration
+}
+
+func (outcome *accountUsageReconcileOutcome) addRetryAfter(delay time.Duration) {
+	if delay <= 0 {
+		return
+	}
+	if outcome.retryAfter <= 0 || delay < outcome.retryAfter {
+		outcome.retryAfter = delay
+	}
+}
+
+func (s *SetupService) reconcileAccountUsageCompanions(ctx context.Context) accountUsageReconcileOutcome {
+	if s == nil || s.Plans.Manager == nil || s.Plans.Manager.Store == nil || s.AccountUsageFailures == nil {
+		return accountUsageReconcileOutcome{errs: []error{errors.New("account usage companion reconciler is not configured")}}
 	}
 	s.accountUsageReconcileMu.Lock()
 	defer s.accountUsageReconcileMu.Unlock()
 
 	discoveryRoot, err := s.ensureDiscoveryRoot(ctx)
 	if err != nil {
-		return []error{fmt.Errorf("prepare account usage discovery root: %w", err)}
+		return accountUsageReconcileOutcome{errs: []error{fmt.Errorf("prepare account usage discovery root: %w", err)}}
 	}
 	targets, err := s.Plans.Manager.Store.ListAgentTargets(ctx)
 	if err != nil {
-		return []error{fmt.Errorf("list account usage targets: %w", err)}
+		return accountUsageReconcileOutcome{errs: []error{fmt.Errorf("list account usage targets: %w", err)}}
 	}
-	var errs []error
+	now := s.accountUsageReconcileTime()
+	outcome := accountUsageReconcileOutcome{}
 	for _, rawTarget := range targets {
 		if ctx.Err() != nil {
-			return append(errs, ctx.Err())
+			outcome.errs = append(outcome.errs, ctx.Err())
+			return outcome
 		}
 		target, normalizeErr := agenttargetbiz.NormalizeTarget(rawTarget)
 		if normalizeErr != nil || !target.Enabled {
@@ -132,15 +158,21 @@ func (s *SetupService) ReconcileAccountUsageCompanions(ctx context.Context) []er
 		}
 		profile, profileErr := loadAccountUsageProfile(installation)
 		if profileErr != nil {
-			errs = append(errs, fmt.Errorf("load account usage profile for %s: %w", target.ID, profileErr))
+			outcome.errs = append(outcome.errs, fmt.Errorf("load account usage profile for %s: %w", target.ID, profileErr))
 			continue
 		}
+		failureScope := accountUsageCompanionFailureScope(target.ID, installation.ID)
 		if profile == nil {
+			if clearErr := s.AccountUsageFailures.Delete(ctx, failureScope); clearErr != nil {
+				outcome.errs = append(outcome.errs, fmt.Errorf("clear obsolete account usage helper failure for %s: %w", target.ID, clearErr))
+			}
 			continue
 		}
 		if localExecutable := s.Plans.Manager.localAccountUsageExecutable(installation); localExecutable != "" {
-			if _, bindingErr := s.Plans.Manager.resolvedLocalAccountUsageRuntimeBinding(localExecutable, profile); bindingErr != nil {
-				errs = append(errs, fmt.Errorf("resolve local account usage helper for %s: %w", target.ID, bindingErr))
+			if _, bindingErr := s.Plans.Manager.resolvedLocalAccountUsageRuntimeBindingContext(ctx, localExecutable, profile); bindingErr != nil {
+				outcome.errs = append(outcome.errs, fmt.Errorf("resolve local account usage helper for %s: %w", target.ID, bindingErr))
+			} else if clearErr := s.AccountUsageFailures.Delete(ctx, failureScope); clearErr != nil {
+				outcome.errs = append(outcome.errs, fmt.Errorf("clear recovered account usage helper failure for %s: %w", target.ID, clearErr))
 			}
 			continue
 		}
@@ -156,14 +188,74 @@ func (s *SetupService) ReconcileAccountUsageCompanions(ctx context.Context) []er
 			runtimePlatform(),
 		)
 		if planErr != nil {
-			errs = append(errs, fmt.Errorf("plan account usage helper for %s: %w", target.ID, planErr))
+			outcome.errs = append(outcome.errs, fmt.Errorf("plan account usage helper for %s: %w", target.ID, planErr))
 			continue
 		}
+		failure, readErr := s.AccountUsageFailures.Read(ctx, failureScope)
+		if readErr != nil {
+			outcome.errs = append(outcome.errs, fmt.Errorf("read account usage helper failure for %s: %w", target.ID, readErr))
+			continue
+		}
+		if failure != nil && failure.RuntimeIdentity != companion.RuntimeIdentity {
+			if clearErr := s.AccountUsageFailures.Delete(ctx, failureScope); clearErr != nil {
+				outcome.errs = append(outcome.errs, fmt.Errorf("clear stale account usage helper failure for %s: %w", target.ID, clearErr))
+				continue
+			}
+			failure = nil
+		}
+		if failure != nil {
+			retryAfter := time.UnixMilli(failure.NextAttemptAtUnixMS).Sub(now)
+			if retryAfter > 0 {
+				outcome.addRetryAfter(retryAfter)
+				continue
+			}
+		}
 		if installErr := s.installAccountUsageCompanion(ctx, installation, InstallPlan{AccountUsage: companion}); installErr != nil {
-			errs = append(errs, fmt.Errorf("install account usage helper for %s: %w", target.ID, installErr))
+			if ctx.Err() != nil {
+				outcome.errs = append(outcome.errs, ctx.Err())
+				return outcome
+			}
+			failureCount := 1
+			if failure != nil {
+				failureCount = failure.ConsecutiveFailures + 1
+			}
+			attemptedAt := s.accountUsageReconcileTime()
+			retryAfter := accountUsageCompanionRetryBackoff(failureCount)
+			record := agentextensionbiz.AccountUsageCompanionFailure{
+				SchemaVersion: agentextensionbiz.AccountUsageCompanionFailureSchemaVersion,
+				AgentTargetID: target.ID, ExtensionInstallationID: installation.ID,
+				RuntimeIdentity: companion.RuntimeIdentity, ErrorCode: "install_failed",
+				ConsecutiveFailures: failureCount, LastAttemptAtUnixMS: attemptedAt.UnixMilli(),
+				NextAttemptAtUnixMS: attemptedAt.Add(retryAfter).UnixMilli(),
+			}
+			if persistErr := s.AccountUsageFailures.Put(ctx, failureScope, record); persistErr != nil {
+				outcome.errs = append(outcome.errs, fmt.Errorf("persist account usage helper failure for %s: %w", target.ID, persistErr))
+			} else {
+				outcome.addRetryAfter(retryAfter)
+			}
+			outcome.errs = append(outcome.errs, fmt.Errorf("install account usage helper for %s: %w", target.ID, installErr))
+			continue
+		}
+		if clearErr := s.AccountUsageFailures.Delete(ctx, failureScope); clearErr != nil {
+			outcome.errs = append(outcome.errs, fmt.Errorf("clear recovered account usage helper failure for %s: %w", target.ID, clearErr))
 			continue
 		}
 		s.Plans.Manager.clearAccountUsageProbeResults()
 	}
-	return errs
+	return outcome
+}
+
+func accountUsageCompanionRetryBackoff(consecutiveFailures int) time.Duration {
+	delay := accountUsageReconcileMinBackoff
+	for attempt := 1; attempt < consecutiveFailures && delay < accountUsageReconcileMaxBackoff; attempt++ {
+		delay = min(delay*2, accountUsageReconcileMaxBackoff)
+	}
+	return delay
+}
+
+func (s *SetupService) accountUsageReconcileTime() time.Time {
+	if s.accountUsageNow != nil {
+		return s.accountUsageNow().UTC()
+	}
+	return time.Now().UTC()
 }

@@ -234,8 +234,11 @@ then feeds the verified script bytes to Node. Windows CI must exercise an
 actual npm pack/install and account-usage probe in addition to native Go
 executable verification; a companion failure may produce only
 `runtime_unavailable`, never a not-installed Agent. Companion installation is a
-daemon-owned reconciler with restart recovery and bounded retry backoff; setup
+daemon-owned reconciler with durable restart recovery and bounded retry backoff; setup
 status reads never initiate its package download.
+The first probe builds a content-addressed Node snapshot with context-aware
+copy/hash. Later probes reuse the read-locked snapshot without copying or
+hashing `node.exe` again; a restarted daemon verifies it once before reuse.
 
 Extension session-home preparation keeps its source declaration portable. An
 explicit source environment variable wins; otherwise the Windows adapter maps a

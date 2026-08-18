@@ -42,15 +42,23 @@ func (m *Manager) resolvedLocalAccountUsageRuntimeBinding(
 	script string,
 	profile *AccountUsageProfile,
 ) (*AccountUsageRuntimeBinding, error) {
+	return m.resolvedLocalAccountUsageRuntimeBindingContext(context.Background(), script, profile)
+}
+
+func (m *Manager) resolvedLocalAccountUsageRuntimeBindingContext(
+	ctx context.Context,
+	script string,
+	profile *AccountUsageProfile,
+) (*AccountUsageRuntimeBinding, error) {
 	script = strings.TrimSpace(script)
 	if script == "" || !filepath.IsAbs(script) || profile == nil {
 		return nil, errors.New("local account usage companion is invalid")
 	}
-	scriptFingerprint, err := fingerprintAccountUsageScript(script)
+	scriptFingerprint, err := fingerprintAccountUsageScriptContext(ctx, script)
 	if err != nil {
 		return nil, fmt.Errorf("fingerprint local account usage companion: %w", err)
 	}
-	return m.accountUsageNodeBinding(script, scriptFingerprint, profile)
+	return m.accountUsageNodeBinding(ctx, script, scriptFingerprint, profile)
 }
 
 func (s *SetupService) installAccountUsageCompanion(ctx context.Context, installation Installation, plan InstallPlan) error {
@@ -77,7 +85,7 @@ func (s *SetupService) installAccountUsageCompanion(ctx context.Context, install
 	}
 	defer workspace.Close()
 	if present, presentErr := managedRuntimeEntryPresent(workspace, companion.RuntimeIdentity); presentErr == nil && present {
-		if _, resolveErr := s.Plans.Manager.resolveInstalledAccountUsageRuntimeBinding(installation, profile); resolveErr == nil {
+		if _, resolveErr := s.Plans.Manager.resolveInstalledAccountUsageRuntimeBindingContext(ctx, installation, profile); resolveErr == nil {
 			return nil
 		}
 	}
@@ -198,7 +206,8 @@ func activateAccountUsageCompanion(
 	return nil
 }
 
-func (m *Manager) resolveInstalledAccountUsageRuntimeBinding(
+func (m *Manager) resolveInstalledAccountUsageRuntimeBindingContext(
+	ctx context.Context,
 	installation Installation,
 	profile *AccountUsageProfile,
 ) (*AccountUsageRuntimeBinding, error) {
@@ -242,15 +251,20 @@ func (m *Manager) resolveInstalledAccountUsageRuntimeBinding(
 	if err != nil {
 		return nil, fmt.Errorf("%w: account usage companion script is not an ordinary file", ErrManagedRuntimeIntegrity)
 	}
-	fingerprint, fingerprintErr := fingerprintAccountUsageScriptFile(scriptFile)
+	fingerprint, fingerprintErr := fingerprintAccountUsageScriptFileContext(ctx, scriptFile)
 	closeErr := scriptFile.Close()
 	if fingerprintErr != nil || closeErr != nil || fingerprint != activation.ScriptFingerprint || fingerprint.SHA256 == "" {
 		return nil, fmt.Errorf("%w: account usage companion script fingerprint changed", ErrManagedRuntimeIntegrity)
 	}
-	return m.accountUsageNodeBinding(filepath.Join(root, relativeScript), fingerprint, profile)
+	return m.accountUsageNodeBinding(ctx, filepath.Join(root, relativeScript), fingerprint, profile)
 }
 
-func (m *Manager) accountUsageNodeBinding(script string, fingerprint runtimeExecutableFingerprint, profile *AccountUsageProfile) (*AccountUsageRuntimeBinding, error) {
+func (m *Manager) accountUsageNodeBinding(
+	ctx context.Context,
+	script string,
+	fingerprint runtimeExecutableFingerprint,
+	profile *AccountUsageProfile,
+) (*AccountUsageRuntimeBinding, error) {
 	nodePath := strings.TrimSpace(environmentValue(m.RuntimeResolver.Env(nil), "TUTTI_APP_NODE"))
 	if nodePath == "" {
 		names := []string{"node"}
@@ -266,7 +280,7 @@ func (m *Manager) accountUsageNodeBinding(script string, fingerprint runtimeExec
 	if err != nil {
 		return nil, err
 	}
-	nodeIdentity, err := m.accountUsageNodeIdentity(realNode)
+	nodeIdentity, err := m.accountUsageNodeIdentity(ctx, realNode)
 	if err != nil {
 		return nil, fmt.Errorf("fingerprint Node interpreter: %w", err)
 	}
@@ -282,6 +296,13 @@ func resolveAccountUsageScript(declaration, root string) string {
 }
 
 func fingerprintAccountUsageScript(path string) (runtimeExecutableFingerprint, error) {
+	return fingerprintAccountUsageScriptContext(context.Background(), path)
+}
+
+func fingerprintAccountUsageScriptContext(ctx context.Context, path string) (runtimeExecutableFingerprint, error) {
+	if err := ctx.Err(); err != nil {
+		return runtimeExecutableFingerprint{}, err
+	}
 	info, err := os.Lstat(path)
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
 		return runtimeExecutableFingerprint{}, errors.New("account usage companion script is not an ordinary file")
@@ -295,10 +316,10 @@ func fingerprintAccountUsageScript(path string) (runtimeExecutableFingerprint, e
 	if err != nil || !os.SameFile(info, fileInfo) {
 		return runtimeExecutableFingerprint{}, errors.New("account usage companion script changed while opening")
 	}
-	return fingerprintAccountUsageScriptFile(file)
+	return fingerprintAccountUsageScriptFileContext(ctx, file)
 }
 
-func fingerprintAccountUsageScriptFile(file *os.File) (runtimeExecutableFingerprint, error) {
+func fingerprintAccountUsageScriptFileContext(ctx context.Context, file *os.File) (runtimeExecutableFingerprint, error) {
 	if file == nil {
 		return runtimeExecutableFingerprint{}, errors.New("account usage companion script descriptor is required")
 	}
@@ -310,7 +331,7 @@ func fingerprintAccountUsageScriptFile(file *os.File) (runtimeExecutableFingerpr
 		return runtimeExecutableFingerprint{}, errors.New("account usage companion script is invalid")
 	}
 	hash := sha256.New()
-	if _, err := io.Copy(hash, file); err != nil {
+	if _, err := io.Copy(hash, &contextCheckingReader{ctx: ctx, reader: file}); err != nil {
 		return runtimeExecutableFingerprint{}, err
 	}
 	return runtimeExecutableFingerprint{SHA256: hex.EncodeToString(hash.Sum(nil)), Size: info.Size()}, nil

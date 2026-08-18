@@ -139,13 +139,20 @@ install root, activation, and verification lifecycle. It is never part of the
 primary ACP install command, runtime identity, activation, resolution, or
 adoption. A companion download, install, verification, or activation failure
 therefore leaves the Agent ready and only makes the account-usage endpoint
-return `runtime_unavailable`; a status read never downloads code.
+return `runtime_unavailable`; a status read never downloads code. The
+independent reconciler persists a diagnostic-light failure record and its next
+bounded retry time, so daemon restart preserves backoff. Recovery deletes the
+record.
 
 Before every probe, tuttid verifies the fixed host Node interpreter and the
 ordinary in-root CommonJS script independently. The script is supplied to Node
 as the already verified bytes instead of executing an npm `.cmd`/shell shim or
 reopening the mutable script pathname. This is the same contract on Windows,
-macOS, and Linux.
+macOS, and Linux. Fingerprinting and snapshot construction observe the probe
+context. Windows keeps one content-addressed, verified `node.exe` snapshot in
+daemon-private state and holds it against writes while probes reuse it; after a
+daemon restart the snapshot is verified once instead of copying the source
+interpreter again.
 
 Local Extension development may replace that managed companion with one
 explicit executable through

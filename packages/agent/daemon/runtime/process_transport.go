@@ -85,17 +85,58 @@ func RunVerifiedNodeScriptBounded(
 	scriptIdentity *ExecutableIdentity,
 	maxBytes int,
 ) ([]byte, error) {
+	return NewVerifiedNodeScriptRunner("").Run(
+		ctx, nodePath, scriptPath, args, nodeIdentity, scriptIdentity, maxBytes,
+	)
+}
+
+// VerifiedNodeScriptRunner reuses verified Node snapshots when the platform
+// cannot safely execute an already-open interpreter descriptor. snapshotRoot
+// must be daemon-owned private state when reuse across probes is required.
+type VerifiedNodeScriptRunner struct {
+	snapshotRoot      string
+	snapshotMu        sync.Mutex
+	verifiedSnapshots map[string]*os.File
+}
+
+func NewVerifiedNodeScriptRunner(snapshotRoot string) *VerifiedNodeScriptRunner {
+	return &VerifiedNodeScriptRunner{snapshotRoot: strings.TrimSpace(snapshotRoot)}
+}
+
+func (runner *VerifiedNodeScriptRunner) Close() error {
+	if runner == nil {
+		return nil
+	}
+	runner.snapshotMu.Lock()
+	defer runner.snapshotMu.Unlock()
+	var closeErr error
+	for identity, file := range runner.verifiedSnapshots {
+		closeErr = errors.Join(closeErr, file.Close())
+		delete(runner.verifiedSnapshots, identity)
+	}
+	return closeErr
+}
+
+func (runner *VerifiedNodeScriptRunner) Run(
+	ctx context.Context,
+	nodePath string,
+	scriptPath string,
+	args []string,
+	nodeIdentity *ExecutableIdentity,
+	scriptIdentity *ExecutableIdentity,
+	maxBytes int,
+) ([]byte, error) {
 	if nodeIdentity == nil || scriptIdentity == nil {
 		return nil, errors.New("verified Node interpreter and script identities are required")
 	}
 	if maxBytes <= 0 {
 		return nil, errors.New("verified process output limit is required")
 	}
-	script, err := readVerifiedProcessInput(scriptPath, scriptIdentity, 16<<20)
+	script, err := readVerifiedProcessInput(ctx, scriptPath, scriptIdentity, 16<<20)
 	if err != nil {
 		return nil, err
 	}
-	preparedNode, err := prepareNodeInterpreter(nodePath, nodeIdentity)
+	preparedNode, err := prepareReusableNodeInterpreter(ctx, runner, nodePath, nodeIdentity)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +159,10 @@ func RunVerifiedNodeScriptBounded(
 	return output.bytes, nil
 }
 
-func readVerifiedProcessInput(path string, expected *ExecutableIdentity, maxBytes int64) ([]byte, error) {
+func readVerifiedProcessInput(ctx context.Context, path string, expected *ExecutableIdentity, maxBytes int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if !validProcessInputIdentity(expected) || maxBytes <= 0 || expected.SizeBytes > maxBytes {
 		return nil, errors.New("verified process input identity is invalid")
 	}
@@ -135,7 +179,7 @@ func readVerifiedProcessInput(path string, expected *ExecutableIdentity, maxByte
 	if err != nil || !fileInfo.Mode().IsRegular() || !os.SameFile(pathInfo, fileInfo) {
 		return nil, errors.New("verified process input changed while opening")
 	}
-	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	data, err := io.ReadAll(io.LimitReader(&contextReader{ctx: ctx, reader: file}, maxBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("read verified process input: %w", err)
 	}
@@ -147,6 +191,24 @@ func readVerifiedProcessInput(path string, expected *ExecutableIdentity, maxByte
 		return nil, errors.New("verified process input does not match expected identity")
 	}
 	return data, nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader *contextReader) Read(value []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	count, err := reader.reader.Read(value)
+	if err == nil {
+		if contextErr := reader.ctx.Err(); contextErr != nil {
+			return count, contextErr
+		}
+	}
+	return count, err
 }
 
 func validProcessInputIdentity(identity *ExecutableIdentity) bool {

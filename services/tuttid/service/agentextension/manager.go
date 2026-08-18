@@ -35,23 +35,37 @@ var safeKey = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$`)
 const runtimeVersionProbeTimeout = 90 * time.Second
 
 type Manager struct {
-	Sources           []tuttitypes.AgentExtensionSource
-	RuntimeInstallDir string
-	RuntimeBinDir     string
-	Store             workspacedata.AgentTargetStore
-	Installations     InstallationStore
-	Discovery         SetupDiscoveryDirectory
-	Preferences       workspacedata.PreferencesStore
-	Client            *http.Client
-	RuntimeResolver   runtimecmd.Resolver
-	UserPathAdapter   UserPathAdapter
-	reconcileMu       sync.Mutex
-	versionCacheOnce  sync.Once
-	runtimeVersions   *runtimeVersionCache
-	accountUsageOnce  sync.Once
-	accountUsageCache *accountUsageProbeCache
-	nodeIdentityOnce  sync.Once
-	nodeIdentities    *runtimeExecutableIdentityCache
+	Sources                     []tuttitypes.AgentExtensionSource
+	RuntimeInstallDir           string
+	RuntimeBinDir               string
+	AccountUsageNodeSnapshotDir string
+	Store                       workspacedata.AgentTargetStore
+	Installations               InstallationStore
+	Discovery                   SetupDiscoveryDirectory
+	Preferences                 workspacedata.PreferencesStore
+	Client                      *http.Client
+	RuntimeResolver             runtimecmd.Resolver
+	UserPathAdapter             UserPathAdapter
+	reconcileMu                 sync.Mutex
+	versionCacheOnce            sync.Once
+	runtimeVersions             *runtimeVersionCache
+	accountUsageOnce            sync.Once
+	accountUsageCache           *accountUsageProbeCache
+	nodeIdentityOnce            sync.Once
+	nodeIdentities              *runtimeExecutableIdentityCache
+	nodeRunnerOnce              sync.Once
+	nodeRunner                  *agentruntime.VerifiedNodeScriptRunner
+}
+
+func (m *Manager) accountUsageNodeScriptRunner() *agentruntime.VerifiedNodeScriptRunner {
+	m.nodeRunnerOnce.Do(func() {
+		m.nodeRunner = agentruntime.NewVerifiedNodeScriptRunner(m.AccountUsageNodeSnapshotDir)
+	})
+	return m.nodeRunner
+}
+
+func (m *Manager) closeAccountUsageNodeScriptRunner() error {
+	return m.accountUsageNodeScriptRunner().Close()
 }
 
 type UserPathAdapter interface {

@@ -3,6 +3,7 @@
 package agentruntime
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -105,7 +106,19 @@ func prepareProcessExecutable(path string, expected *ExecutableIdentity) (prepar
 // installed path, so relocating the executable can make a valid interpreter
 // unloadable. Keep a verified no-follow descriptor open across process start
 // and execute the fixed host-owned path.
-func prepareNodeInterpreter(path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+func prepareReusableNodeInterpreter(
+	ctx context.Context,
+	_ *VerifiedNodeScriptRunner,
+	path string,
+	expected *ExecutableIdentity,
+) (preparedProcessExecutable, error) {
+	return prepareDarwinNodeInterpreter(ctx, path, expected)
+}
+
+func prepareDarwinNodeInterpreter(ctx context.Context, path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+	if err := ctx.Err(); err != nil {
+		return preparedProcessExecutable{}, err
+	}
 	if !validExecutableIdentity(expected) {
 		return preparedProcessExecutable{}, errors.New("node interpreter identity is invalid")
 	}
@@ -114,11 +127,27 @@ func prepareNodeInterpreter(path string, expected *ExecutableIdentity) (prepared
 		return preparedProcessExecutable{}, fmt.Errorf("open verified Node interpreter: %w", err)
 	}
 	file := os.NewFile(uintptr(fd), "verified-node-interpreter")
-	if err := verifyExecutableDescriptor(file, expected); err != nil {
+	if err := verifyExecutableDescriptorContext(ctx, file, expected); err != nil {
 		_ = file.Close()
 		return preparedProcessExecutable{}, err
 	}
 	return preparedProcessExecutable{path: path, file: file}, nil
+}
+
+func verifyExecutableDescriptorContext(ctx context.Context, file *os.File, expected *ExecutableIdentity) error {
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return errors.New("verified process executable is not an executable ordinary file")
+	}
+	hash := sha256.New()
+	size, err := io.Copy(hash, &contextReader{ctx: ctx, reader: file})
+	if err != nil {
+		return fmt.Errorf("fingerprint process executable descriptor: %w", err)
+	}
+	if size != expected.SizeBytes || hex.EncodeToString(hash.Sum(nil)) != expected.SHA256 {
+		return errors.New("process executable does not match expected identity")
+	}
+	return nil
 }
 
 func verifyExecutableDescriptor(file *os.File, expected *ExecutableIdentity) error {

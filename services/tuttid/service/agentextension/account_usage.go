@@ -118,7 +118,7 @@ func (service AccountUsageService) probe(ctx context.Context, targetID string) (
 	defer cancel()
 	run := service.run
 	if run == nil {
-		run = agentruntime.RunVerifiedNodeScriptBounded
+		run = service.Manager.accountUsageNodeScriptRunner().Run
 	}
 	output, err := run(
 		probeCtx,
@@ -153,15 +153,15 @@ func (service AccountUsageService) probe(ctx context.Context, targetID string) (
 }
 
 func (service AccountUsageService) accountUsageRuntimeBinding(
-	_ context.Context,
+	ctx context.Context,
 	installation Installation,
 	provider string,
 	profile *AccountUsageProfile,
 ) (*AccountUsageRuntimeBinding, error) {
 	if localExecutable := service.Manager.localAccountUsageExecutable(installation); localExecutable != "" {
-		return service.Manager.resolvedLocalAccountUsageRuntimeBinding(localExecutable, profile)
+		return service.Manager.resolvedLocalAccountUsageRuntimeBindingContext(ctx, localExecutable, profile)
 	}
-	binding, err := service.Manager.resolveInstalledAccountUsageRuntimeBinding(installation, profile)
+	binding, err := service.Manager.resolveInstalledAccountUsageRuntimeBindingContext(ctx, installation, profile)
 	if err != nil {
 		return nil, err
 	}

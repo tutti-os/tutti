@@ -447,8 +447,16 @@ Agent Extension setup uses these daemon-owned state paths:
 
 ```text
 <state-dir>/agent/extension-runtime-actions/<scope-sha256>.json
+<state-dir>/agent/extension-account-usage-companion-failures/<scope-sha256>.json
+<state-dir>/agent/account-usage-node-snapshots/<node-sha256>.exe
 <state-dir>/agent/discovery/agent-extensions/
 ```
+
+Account-usage companion failure records contain only stable identities, an
+error code, a failure count, and retry timestamps. Raw installer/provider
+errors, paths, output, and credentials are never persisted. Recovery deletes
+the record. Windows stores content-addressed Node snapshots here and keeps each
+verified snapshot read-locked while it is reusable.
 
 Connector CLI packages use daemon-owned state rather than the user's global
 npm prefix. All CLI Connector installations bind to the one signed

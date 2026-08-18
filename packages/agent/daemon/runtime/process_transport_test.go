@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -129,6 +130,32 @@ func TestRunVerifiedNodeScriptBoundedExecutesVerifiedScript(t *testing.T) {
 	); err == nil || !strings.Contains(err.Error(), "expected identity") {
 		t.Fatalf("changed script error = %v", err)
 	}
+}
+
+func TestContextReaderStopsAfterCancellationDuringRead(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := &contextReader{
+		ctx: ctx,
+		reader: cancelingReader{
+			cancel: cancel,
+			data:   []byte("partial"),
+		},
+	}
+	data, err := io.ReadAll(reader)
+	if !errors.Is(err, context.Canceled) || string(data) != "partial" {
+		t.Fatalf("canceled read = %q, error = %v", data, err)
+	}
+}
+
+type cancelingReader struct {
+	cancel context.CancelFunc
+	data   []byte
+}
+
+func (reader cancelingReader) Read(value []byte) (int, error) {
+	count := copy(value, reader.data)
+	reader.cancel()
+	return count, nil
 }
 
 func TestLocalProcessTransportRejectsChangedExpectedExecutable(t *testing.T) {

@@ -3,6 +3,7 @@
 package agentruntime
 
 import (
+	"context"
 	"errors"
 	"os"
 )
@@ -19,7 +20,15 @@ func prepareProcessExecutable(path string, expected *ExecutableIdentity) (prepar
 	return preparedProcessExecutable{path: path}, nil
 }
 
-func prepareNodeInterpreter(path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+func prepareReusableNodeInterpreter(
+	ctx context.Context,
+	_ *VerifiedNodeScriptRunner,
+	path string,
+	expected *ExecutableIdentity,
+) (preparedProcessExecutable, error) {
+	if err := ctx.Err(); err != nil {
+		return preparedProcessExecutable{}, err
+	}
 	return prepareProcessExecutable(path, expected)
 }
 

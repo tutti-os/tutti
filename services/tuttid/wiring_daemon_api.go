@@ -116,14 +116,15 @@ func buildDaemonAPI(
 	agentExtensionStateDir := tuttitypes.DefaultStateDir()
 	agentSetupDiscovery := agentextensiondata.NewFileSetupDiscoveryDirectory(agentExtensionStateDir)
 	agentExtensionManager := &agentextensionservice.Manager{
-		Sources:           tuttitypes.ResolveAgentExtensionSources(),
-		RuntimeInstallDir: agentRuntimeDir,
-		RuntimeBinDir:     agentExtensionBinDir,
-		Store:             agentTargetStore,
-		Installations:     agentextensiondata.NewFileInstallationStore(agentExtensionStateDir),
-		Discovery:         agentSetupDiscovery,
-		Preferences:       preferencesStore,
-		UserPathAdapter:   agentstatusservice.NewUserPathAdapter(),
+		Sources:                     tuttitypes.ResolveAgentExtensionSources(),
+		RuntimeInstallDir:           agentRuntimeDir,
+		RuntimeBinDir:               agentExtensionBinDir,
+		AccountUsageNodeSnapshotDir: filepath.Join(agentExtensionStateDir, "agent", "account-usage-node-snapshots"),
+		Store:                       agentTargetStore,
+		Installations:               agentextensiondata.NewFileInstallationStore(agentExtensionStateDir),
+		Discovery:                   agentSetupDiscovery,
+		Preferences:                 preferencesStore,
+		UserPathAdapter:             agentstatusservice.NewUserPathAdapter(),
 	}
 	agentTargetInstallPlans := agentextensionservice.InstallPlanService{
 		Manager: agentExtensionManager, Workspaces: store, Targets: agentTargetStore,
@@ -241,6 +242,7 @@ func buildDaemonAPI(
 	agentTargetSetup.Transport = agentProcessComposition.transport
 	agentTargetSetup.Host = agentHostMetadata
 	agentTargetSetup.Actions = agentextensiondata.NewFileSetupActionStore(agentExtensionStateDir)
+	agentTargetSetup.AccountUsageFailures = agentextensiondata.NewFileAccountUsageCompanionFailureStore(agentExtensionStateDir)
 	agentTargetSetup.Discovery = agentSetupDiscovery
 	agentTargetSetup.AuthInvalidation = runOutcomes
 	preferences.RegisterChangeObserver(func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
