@@ -339,7 +339,12 @@ func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.
 		t.Fatal(err)
 	}
 	if snapshot.Status != SetupReady || snapshot.RuntimeSource != "managed" || snapshot.RuntimeVersion != "1.2.3" {
-		t.Fatalf("reused runtime setup = %#v", snapshot)
+		var updatedProfile DiscoveryProfile
+		profileErr := readJSON(filepath.Join(next.PackageDir, next.Manifest.Profiles.Discovery), &updatedProfile)
+		_, resolveErr := service.Plans.Manager.resolveInstalledManagedRuntime(
+			context.Background(), next, updatedProfile, t.TempDir(),
+		)
+		t.Fatalf("reused runtime setup = %#v; profile error = %v; managed resolve error = %v", snapshot, profileErr, resolveErr)
 	}
 	if _, err := os.Stat(filepath.Join(initial.Plan.InstallRoot, "activation.json")); err != nil {
 		t.Fatalf("adopted runtime root is unavailable: %v", err)
