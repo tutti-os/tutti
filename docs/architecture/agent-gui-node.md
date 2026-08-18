@@ -2489,6 +2489,15 @@ login/logout, external navigation, reward receipt persistence, clipboard
 writes, notifications, localization, feature gating, and menu lifecycle.
 Neither AgentGUI nor the frontend Commerce package may receive a Cookie or
 start a Commerce request.
+For a shared Agent conversation, the Host sets the presentation-only
+`hostCapabilities.visibleErrorPresentationScope` to `shared_caller`.
+AgentGUI preserves the canonical structured reason and existing diagnostic
+disclosure, substitutes caller-safe contact guidance only when the structured
+code identifies an Owner-remediable failure, and suppresses current-device and
+current-account remediation actions. Transport and ambiguous failure copy stays
+neutral and retry-oriented. Omitting the scope preserves `local_owner`
+behavior. The scope must not enter Turn, activity, Engine, event, persistence,
+or provider contracts.
 The optional `renderSlots.agentConfigAccount` is a presentation-only Host
 chrome seam for the exact selected Agent Target. Its paired
 `hostActions.onAgentConfigMenuOpen` notification lets the Host refresh account

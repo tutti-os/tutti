@@ -8,7 +8,10 @@ import type {
 } from "../contracts/agentMessageRowVM";
 import { AgentEnvPanelActionProvider } from "../../agentEnv";
 import { AgentVisibleErrorPresentationProvider } from "../../visibleError/AgentVisibleErrorPresentationContext";
-import type { AgentVisibleErrorOverrides } from "../../agentEnv/agentErrorPresentation";
+import type {
+  AgentVisibleErrorOverrides,
+  AgentVisibleErrorPresentationScope
+} from "../../agentEnv/agentErrorPresentation";
 
 function buildRow(
   visibleError: AgentMessageContentVM["visibleError"],
@@ -39,13 +42,15 @@ function renderBlock(
   row: AgentMessageRowVM,
   provider?: string,
   onLinkAction?: ComponentProps<typeof AgentMessageBlock>["onLinkAction"],
-  visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null
+  visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null,
+  visibleErrorPresentationScope?: AgentVisibleErrorPresentationScope
 ) {
   const onOpenAgentEnvPanel = vi.fn();
   return {
     ...render(
       <AgentEnvPanelActionProvider openPanel={onOpenAgentEnvPanel}>
         <AgentVisibleErrorPresentationProvider
+          scope={visibleErrorPresentationScope}
           value={visibleErrorPresentationOverrides}
         >
           <AgentMessageBlock
@@ -296,6 +301,98 @@ describe("AgentVisibleErrorMessage", () => {
         url: "https://example.test/credits"
       })
     );
+  });
+
+  it("shows sharer guidance instead of local authentication recovery", () => {
+    const { getByRole, getByText, queryByText, onOpenAgentEnvPanel } =
+      renderBlock(
+        buildRow({
+          code: "auth_required",
+          phase: "turn",
+          provider: "codex",
+          detail: "owner diagnostic: local Codex login is required",
+          detailAvailable: true,
+          retryable: false
+        }),
+        "codex",
+        undefined,
+        undefined,
+        "shared_caller"
+      );
+
+    expect(
+      getByText("Codex needs authentication or configuration")
+    ).toBeTruthy();
+    expect(
+      getByText("Contact the person who shared this Agent, then try again.")
+    ).toBeTruthy();
+    expect(queryByText("Sign in")).toBeNull();
+    expect(onOpenAgentEnvPanel).not.toHaveBeenCalled();
+
+    fireEvent.click(getByRole("button", { name: "Raw error" }));
+    expect(
+      getByText("owner diagnostic: local Codex login is required")
+    ).toBeTruthy();
+  });
+
+  it("does not expose a caller Commerce action for an Owner credit failure", () => {
+    const onLinkAction = vi.fn();
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "insufficient_credits",
+        phase: "turn",
+        provider: "tutti-agent",
+        detail: "owner balance is insufficient",
+        retryable: false
+      }),
+      "tutti-agent",
+      onLinkAction,
+      {
+        insufficient_credits: {
+          message: "Recharge credits to continue",
+          providers: ["tutti-agent"],
+          action: {
+            label: "Recharge credits",
+            url: "https://example.test/credits"
+          }
+        }
+      },
+      "shared_caller"
+    );
+
+    expect(
+      getByText("Tutti has insufficient credits or account balance to continue")
+    ).toBeTruthy();
+    expect(
+      getByText("Contact the person who shared this Agent, then try again.")
+    ).toBeTruthy();
+    expect(queryByText("Recharge credits to continue")).toBeNull();
+    expect(queryByText("Recharge credits")).toBeNull();
+    expect(onLinkAction).not.toHaveBeenCalled();
+  });
+
+  it("preserves neutral transient copy while suppressing local setup actions", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "network_error",
+        phase: "turn",
+        provider: "codex",
+        detail: null,
+        retryable: true
+      }),
+      "codex",
+      undefined,
+      undefined,
+      "shared_caller"
+    );
+
+    expect(
+      getByText("Codex couldn't reach the network to complete this request.")
+    ).toBeTruthy();
+    expect(
+      queryByText("Contact the person who shared this Agent, then try again.")
+    ).toBeNull();
+    expect(queryByText("Check network")).toBeNull();
   });
 
   it("does not apply a Tutti Commerce override to another provider", () => {

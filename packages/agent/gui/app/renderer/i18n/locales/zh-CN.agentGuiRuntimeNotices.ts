@@ -4,6 +4,7 @@ export const zhCNAgentGuiRuntimeNotices = {
   visibleErrorAuthRequired: "{{provider}} 需要认证或配置",
   visibleErrorAuthRequiredLocalAgentHint:
     "请在本地登录 {{provider}}，然后重试。",
+  visibleErrorSharedCallerHint: "请联系分享者完成处理后再试。",
   visibleErrorRequestTimedOut: "{{provider}} 请求超时",
   visibleErrorRuntimeUnavailable: "{{provider}} 因运行环境不可用而无法启动",
   visibleErrorQuotaOrRateLimit: "{{provider}} 请求失败：额度或频率限制已触发",

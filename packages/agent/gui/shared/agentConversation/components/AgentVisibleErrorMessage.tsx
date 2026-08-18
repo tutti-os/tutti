@@ -6,9 +6,10 @@ import { useOpenAgentEnvPanel } from "../../agentEnv";
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
 import {
   classifyRecoverableAgentMessage,
+  isSharedCallerOwnerRemediableError,
   resolveAgentErrorPresentation
 } from "../../agentEnv/agentErrorPresentation";
-import { useAgentVisibleErrorPresentationOverrides } from "../../visibleError/AgentVisibleErrorPresentationContext";
+import { useAgentVisibleErrorPresentation } from "../../visibleError/AgentVisibleErrorPresentationContext";
 import type { AgentMessageContentVM } from "../contracts/agentMessageRowVM";
 
 // All error banners use the light-red danger surface. Yellow/warning surfaces
@@ -52,7 +53,8 @@ export function AgentVisibleErrorMessage({
 }): JSX.Element {
   "use memo";
   const openAgentEnvPanel = useOpenAgentEnvPanel();
-  const presentationOverrides = useAgentVisibleErrorPresentationOverrides();
+  const { overrides: presentationOverrides, scope } =
+    useAgentVisibleErrorPresentation();
   const error = message.visibleError;
 
   // One card for every run-failure code. The presentation (keyed on the codes
@@ -63,10 +65,11 @@ export function AgentVisibleErrorMessage({
   const providerLabel = workspaceAgentProviderLabel(
     error?.provider ?? "unknown"
   );
-  const presentation = resolveAgentErrorPresentation(error?.code);
+  const presentation = resolveAgentErrorPresentation(error?.code, scope);
   const insufficientCreditsOverride =
     presentationOverrides?.insufficient_credits;
   const presentationOverride =
+    scope !== "shared_caller" &&
     error?.code === "insufficient_credits" &&
     insufficientCreditsOverride?.providers.includes(error.provider ?? "")
       ? insufficientCreditsOverride
@@ -79,7 +82,7 @@ export function AgentVisibleErrorMessage({
   const focus = presentation?.focus ?? null;
   const actionKey = presentation?.actionKey ?? null;
   const externalAction = presentationOverride?.action ?? null;
-  const hint = visibleErrorHint(message);
+  const hint = visibleErrorHint(message, scope);
   const rawDetail = error?.detail ?? "";
   const showRawDetail = error?.detailAvailable === true && rawDetail !== "";
   // Account limits are status notices, not process crashes. Provider payloads
@@ -173,8 +176,17 @@ function visibleErrorTitle(message: AgentMessageContentVM): string {
   }
 }
 
-function visibleErrorHint(message: AgentMessageContentVM): string | null {
+function visibleErrorHint(
+  message: AgentMessageContentVM,
+  scope: "local_owner" | "shared_caller"
+): string | null {
   const error = message.visibleError;
+  if (
+    scope === "shared_caller" &&
+    isSharedCallerOwnerRemediableError(error?.code)
+  ) {
+    return translate("agentHost.agentGui.visibleErrorSharedCallerHint");
+  }
   if (error?.code !== "auth_required") {
     return null;
   }
