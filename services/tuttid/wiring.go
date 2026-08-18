@@ -679,6 +679,9 @@ func attachAnalyticsReporter(api *tuttiapi.DaemonAPI, analyticsReporter reporter
 	if service, ok := api.AccountService.(*accountservice.Service); ok {
 		service.SetAnalyticsReporter(analyticsReporter)
 	}
+	if service, ok := api.PreferencesService.(*preferencesservice.Service); ok {
+		service.AnalyticsReporter = analyticsReporter
+	}
 }
 
 func openWorkspaceStore(ctx context.Context) (*workspacedata.SQLiteStore, error) {

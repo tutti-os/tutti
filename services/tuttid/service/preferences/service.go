@@ -8,6 +8,8 @@ import (
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	reporterevents "github.com/tutti-os/tutti/services/tuttid/service/reporter/events"
 )
 
 type DesktopPreferencesPublisher interface {
@@ -33,6 +35,7 @@ type Service struct {
 	Publisher                      DesktopPreferencesPublisher
 	AgentComposerDefaultsPublisher AgentComposerDefaultsPublisher
 	AgentComposerDefaultsValidator AgentComposerDefaultsPatchValidator
+	AnalyticsReporter              reporterservice.Reporter
 	changeObservers                []ChangeObserver
 }
 
@@ -273,6 +276,12 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		if !created {
 			return preferences, nil
 		}
+		// Every fresh-profile row is created through this branch (the field
+		// patch writers refuse to materialize a missing row), so this is the
+		// single spot that can attribute the assigned initial workspace mode.
+		reporterevents.Track(ctx, s.AnalyticsReporter, "settings.workspace_ui_mode_initialized", map[string]any{
+			"workspace_ui_mode": workspaceUiModeAnalyticsValue(preferences),
+		})
 	} else {
 		preferences, err = s.Store.PutDesktopPreferences(ctx, candidate)
 	}
@@ -286,6 +295,13 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
 	}
 	return preferences, nil
+}
+
+func workspaceUiModeAnalyticsValue(preferences preferencesbiz.DesktopPreferences) string {
+	if preferences.FeatureFlags[preferencesbiz.DesktopStandaloneAgentModeFeatureFlag] {
+		return "agent"
+	}
+	return "os"
 }
 
 func normalizeAgentComposerDefaultsPatch(
