@@ -146,9 +146,9 @@ describe("AgentMessageMarkdown", () => {
 
     expect(onLinkAction).toHaveBeenCalledWith({
       type: "open-workspace-file",
-      path: "C:/Users/local user/.tutti/apps/output.docx",
-      directoryPath: "C:/Users/local user/.tutti/apps",
-      workspaceRoot: "C:/Users/local user/project",
+      path: "/C:/Users/local user/.tutti/apps/output.docx",
+      directoryPath: "/C:/Users/local user/.tutti/apps",
+      workspaceRoot: "/C:/Users/local user/project",
       source: "agent-markdown"
     });
   });
