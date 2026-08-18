@@ -11,17 +11,14 @@ import type {
   AttentionReadState
 } from "./attentionReadState.types.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
+import { latestTurnForSession } from "./sessionTurnOrdering.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 
 interface AttentionReadStateContext {
-  previousSessionsById: Readonly<
-    Record<string, { userId?: string; latestTurn?: AgentActivityTurn | null }>
-  >;
+  previousSessionsById: Readonly<Record<string, { userId?: string }>>;
   previousTurnsById: Readonly<Record<string, AgentActivityTurn>>;
-  sessionsById: Readonly<
-    Record<string, { userId?: string; latestTurn?: AgentActivityTurn | null }>
-  >;
+  sessionsById: Readonly<Record<string, { userId?: string }>>;
   turnsById: Readonly<Record<string, AgentActivityTurn>>;
 }
 
@@ -77,7 +74,8 @@ export function attentionReadStateReducer(
         return unchanged(state);
       }
       const turn = acceptedCanonicalTurn(intent.turn, context);
-      const userId = context.sessionsById[turn?.agentSessionId ?? ""]?.userId;
+      const sessionId = turn?.agentSessionId.trim() ?? "";
+      const userId = context.sessionsById[sessionId]?.userId;
       const replayAcceptedLiveCompletion =
         intent.type === "turn/upserted" &&
         intent.replayAcceptedLiveCompletion === true;
@@ -177,8 +175,8 @@ function requestUnread(
     );
   }
 
-  const latestTurn = context.sessionsById[id]?.latestTurn;
-  const turn = latestTurn ? acceptedCanonicalTurn(latestTurn, context) : null;
+  if (!context.sessionsById[id]) return unchanged(state);
+  const turn = latestTurnForSession(context.turnsById, id);
   const parts = turn ? completionKeyParts(turn) : null;
   if (!parts) return unchanged(state);
   return upsertUnread(state, userId, parts, true);
@@ -387,6 +385,8 @@ function hydrate(
     recordsBySessionId
   );
   const firstHydration = partition.hydrated === null;
+  const hasPreHydrationRecords =
+    Object.keys(partition.recordsBySessionId).length > 0;
   const hydratedChanged =
     !firstHydration &&
     (partition.hydrated?.completedReadIds.length !== 0 ||
@@ -408,9 +408,10 @@ function hydrate(
   if (!recordsChanged && !firstHydration && !hydratedChanged) {
     return unchanged(state);
   }
-  const persistence = hydratedChanged
-    ? queuePersistence(nextPartition, userId)
-    : { commands: NO_COMMANDS, partition: nextPartition };
+  const persistence =
+    hydratedChanged || (firstHydration && hasPreHydrationRecords)
+      ? queuePersistence(nextPartition, userId)
+      : { commands: NO_COMMANDS, partition: nextPartition };
   return changed(
     replacePartition(state, userId, persistence.partition),
     persistence.commands

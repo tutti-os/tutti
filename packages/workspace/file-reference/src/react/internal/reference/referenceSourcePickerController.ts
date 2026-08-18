@@ -91,6 +91,8 @@ export interface ReferenceSourceTabState {
 
 export interface ReferenceSourcePickerSnapshot {
   isLoadingTabs: boolean;
+  /** 本次打开是否已成功刷新 Source Catalog；缓存 Tab 不代表路由已就绪。 */
+  tabsValidated: boolean;
   tabsError: Error | null;
   tabs: ReferenceSourceTab[];
   activeSourceId: string | null;
@@ -123,7 +125,7 @@ export interface ReferenceSourcePickerController {
   getSnapshot(): ReferenceSourcePickerSnapshot;
   open(): void;
   close(): void;
-  reset(): void;
+  reset(cachedTabs?: readonly ReferenceSourceTab[]): void;
   setActiveSource(sourceId: string, scopeNodeId?: string | null): void;
   /**
    * 把「定位目标」解析为从源根到目标的真实 ReferenceNode 路径(root → leaf)。
@@ -202,6 +204,7 @@ export interface CreateReferenceSourcePickerControllerInput {
   /** 关键词搜索允许返回的节点类型。 */
   searchResultKind?: ReferenceNode["kind"];
   searchDebounceMs?: number;
+  onTabsLoaded?: (tabs: readonly ReferenceSourceTab[]) => void;
 }
 
 /** 源根 children 的 key(node===null 时)。 */
@@ -218,6 +221,54 @@ export const SEARCH_PAGE_SIZE = 30;
  * Legacy 增长式分页的兼容上限。Cursor search 不受 controller 总量上限约束。
  */
 export const SEARCH_MAX_LIMIT = 200;
+
+function sameStringArray(
+  left: readonly string[] | undefined,
+  right: readonly string[] | undefined
+): boolean {
+  if (left === right) return true;
+  if (!left || !right || left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function sameReferenceSourceTab(
+  left: ReferenceSourceTab,
+  right: ReferenceSourceTab
+): boolean {
+  const leftCapabilities = left.capabilities;
+  const rightCapabilities = right.capabilities;
+  return (
+    left.sourceId === right.sourceId &&
+    left.label === right.label &&
+    left.icon === right.icon &&
+    leftCapabilities.searchable === rightCapabilities.searchable &&
+    leftCapabilities.previewable === rightCapabilities.previewable &&
+    leftCapabilities.paginated === rightCapabilities.paginated &&
+    leftCapabilities.navigable === rightCapabilities.navigable &&
+    leftCapabilities.filterable === rightCapabilities.filterable &&
+    leftCapabilities.directoryCreatable ===
+      rightCapabilities.directoryCreatable &&
+    sameStringArray(
+      leftCapabilities.provenanceDimensions,
+      rightCapabilities.provenanceDimensions
+    )
+  );
+}
+
+function reconcileReferenceSourceTabs(
+  current: readonly ReferenceSourceTab[],
+  loaded: readonly ReferenceSourceTab[]
+): ReferenceSourceTab[] {
+  const currentById = new Map(current.map((tab) => [tab.sourceId, tab]));
+  const next = loaded.map((tab) => {
+    const existing = currentById.get(tab.sourceId);
+    return existing && sameReferenceSourceTab(existing, tab) ? existing : tab;
+  });
+  return next.length === current.length &&
+    next.every((tab, index) => tab === current[index])
+    ? (current as ReferenceSourceTab[])
+    : next;
+}
 
 function emptyTabState(sourceId: string): ReferenceSourceTabState {
   return {
@@ -265,6 +316,7 @@ export function createReferenceSourcePickerController(
   // tabs 加载完成的 promise(供 revealTarget 等到 setActiveSource 可生效)。
   let tabsReady: Promise<void> = Promise.resolve();
   let tabsSequence = 0;
+  let tabsAbortController: AbortController | null = null;
   // 浏览取数的「按 key 隔离」失效计数:全局单调 ticket(nextBrowseSeq,永不回退/复用)
   // 派发,latestBrowseSeqByKey 记录每个 (source, children-key) 的最新 ticket。
   // 取数 resolve 时凭自身 ticket 是否仍为该 key 的最新值判定是否落库 —— 这样不同
@@ -283,6 +335,7 @@ export function createReferenceSourcePickerController(
 
   let snapshot: ReferenceSourcePickerSnapshot = {
     isLoadingTabs: false,
+    tabsValidated: false,
     tabsError: null,
     tabs: [],
     activeSourceId: null,
@@ -425,12 +478,22 @@ export function createReferenceSourcePickerController(
       return;
     }
     const sequence = ++tabsSequence;
-    setSnapshot({ isLoadingTabs: true, tabsError: null });
+    tabsAbortController?.abort();
+    const abortController = new AbortController();
+    tabsAbortController = abortController;
+    setSnapshot({
+      isLoadingTabs: true,
+      tabsValidated: false,
+      tabsError: null
+    });
     try {
-      const tabs = await aggregator.listSources(scope);
+      const loadedTabs = await aggregator.listSources(scope, {
+        signal: abortController.signal
+      });
       if (!retained || sequence !== tabsSequence) {
         return;
       }
+      const tabs = reconcileReferenceSourceTabs(snapshot.tabs, loadedTabs);
       const activeSourceId =
         snapshot.activeSourceId &&
         tabs.some((tab) => tab.sourceId === snapshot.activeSourceId)
@@ -439,6 +502,7 @@ export function createReferenceSourcePickerController(
       setSnapshot((current) => ({
         ...current,
         isLoadingTabs: false,
+        tabsValidated: true,
         tabs,
         activeSourceId,
         bySource: Object.fromEntries(
@@ -448,17 +512,20 @@ export function createReferenceSourcePickerController(
           ])
         )
       }));
-      if (activeSourceId) {
-        ensureRootLoaded(activeSourceId);
-      }
+      input.onTabsLoaded?.(tabs);
     } catch (error) {
-      if (!retained || sequence !== tabsSequence) {
+      if (isAbortError(error) || !retained || sequence !== tabsSequence) {
         return;
       }
       setSnapshot({
         isLoadingTabs: false,
+        tabsValidated: false,
         tabsError: normalizeError(error, "load reference sources failed")
       });
+    } finally {
+      if (sequence === tabsSequence) {
+        tabsAbortController = null;
+      }
     }
   };
 
@@ -785,6 +852,12 @@ export function createReferenceSourcePickerController(
     },
     close() {
       retained = false;
+      tabsAbortController?.abort();
+      tabsAbortController = null;
+      setSnapshot({
+        isLoadingTabs: false,
+        tabsValidated: false
+      });
       cancelSearch();
       searchSeenKeysBySource.clear();
       searchRequestedCursorsBySource.clear();
@@ -792,7 +865,9 @@ export function createReferenceSourcePickerController(
       latestBrowseSeqByKey.clear();
       tabsSequence += 1;
     },
-    reset() {
+    reset(cachedTabs = []) {
+      tabsAbortController?.abort();
+      tabsAbortController = null;
       cancelSearch();
       searchSeenKeysBySource.clear();
       searchRequestedCursorsBySource.clear();
@@ -800,10 +875,13 @@ export function createReferenceSourcePickerController(
       tabsSequence += 1;
       setSnapshot({
         isLoadingTabs: false,
+        tabsValidated: false,
         tabsError: null,
-        tabs: [],
-        activeSourceId: null,
-        bySource: {},
+        tabs: [...cachedTabs],
+        activeSourceId: cachedTabs[0]?.sourceId ?? null,
+        bySource: Object.fromEntries(
+          cachedTabs.map((tab) => [tab.sourceId, emptyTabState(tab.sourceId)])
+        ),
         selection: []
       });
     },
@@ -813,7 +891,8 @@ export function createReferenceSourcePickerController(
       }
       // 跨源切换时把「当前查询」(切换前 active 源的关键词+筛选)带到目标源:
       // 有查询则在目标源已选分组范围内用同一查询重搜(切到对应 tab 即重搜),
-      // 无查询则回浏览态加载源根。query 随 tab 走,搜索框/筛选在切源后仍可见。
+      // 无查询则只切回浏览态，目录由视图在实际进入根/分组时读取。
+      // query 随 tab 走,搜索框/筛选在切源后仍可见。
       const prevTab = snapshot.activeSourceId
         ? snapshot.bySource[snapshot.activeSourceId]
         : undefined;
@@ -853,7 +932,6 @@ export function createReferenceSourcePickerController(
                 searchError: null
               }
         );
-        ensureRootLoaded(sourceId);
         return;
       }
       // 范围用目标源自身已选分组(尚未进过分组则 null=跨整源);随后左栏自动/手动

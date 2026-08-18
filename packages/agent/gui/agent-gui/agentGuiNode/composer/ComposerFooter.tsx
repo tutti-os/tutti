@@ -52,6 +52,8 @@ interface Props {
   isGoalModeActive: boolean;
   isPlanModeActive: boolean;
   connectorsVisible: boolean;
+  connectorsReadOnly?: boolean;
+  showConnectorViewMore?: boolean;
   composerAction: ReactNode;
   projectControl?: ReactNode;
   quickPromptControl?: ReactNode;
@@ -105,6 +107,8 @@ export function ComposerFooter({
   isGoalModeActive,
   isPlanModeActive,
   connectorsVisible,
+  connectorsReadOnly = false,
+  showConnectorViewMore = true,
   composerAction,
   projectControl,
   quickPromptControl,
@@ -216,6 +220,7 @@ export function ComposerFooter({
           <ComposerPrimaryCapabilityControl
             availableSkills={availableSkills}
             connectorsVisible={connectorsVisible}
+            connectorsReadOnly={connectorsReadOnly}
             disabled={composerControlsHardDisabled}
             labels={labels}
             loading={composerSettings.isConnectorOptionsLoading === true}
@@ -223,6 +228,7 @@ export function ComposerFooter({
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onConnectorSelected={onConnectorSelected}
             selectedConnectorKeys={selectedConnectorKeys}
+            showConnectorViewMore={showConnectorViewMore}
           />
           {showHandoffSelect ? (
             <AgentHandoffMenu

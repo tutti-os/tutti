@@ -393,16 +393,19 @@ func TestDaemonAPIConnectorMarketOperationUsesScopedRead(t *testing.T) {
 func TestDaemonAPIConnectorMarketServesCategoriesAndCursorPage(t *testing.T) {
 	service := stubConnectorMarketService{
 		categoriesFn: func(context.Context) ([]market.CatalogCategory, error) {
-			return []market.CatalogCategory{{CategoryID: "development", Kind: "category", SortOrder: 20, ItemCount: 1}}, nil
+			return []market.CatalogCategory{{
+				CategoryID: "developer-tools", Kind: "category", SortOrder: 40, ItemCount: 1,
+				DisplayNameZH: "开发者工具", DisplayNameEN: "Developer Tools",
+			}}, nil
 		},
 		pageFn: func(_ context.Context, query market.CatalogPageQuery) (market.CatalogPage, error) {
-			if query.SectionID != "development" || query.PageSize != 20 || query.PageToken != "cursor-1" ||
+			if query.SectionID != "developer-tools" || query.PageSize != 20 || query.PageToken != "cursor-1" ||
 				query.InstallationFilter != market.CatalogInstallationFilterNotInstalled {
 				t.Fatalf("query = %#v", query)
 			}
 			return market.CatalogPage{
-				SectionID:     "development",
-				Items:         []market.CatalogListing{{CategoryID: "development", Connector: connectorMarketTestConnector()}},
+				SectionID:     "developer-tools",
+				Items:         []market.CatalogListing{{CategoryID: "developer-tools", Connector: connectorMarketTestConnector()}},
 				NextPageToken: "cursor-2",
 				Revision:      8,
 			}, nil
@@ -415,13 +418,20 @@ func TestDaemonAPIConnectorMarketServesCategoriesAndCursorPage(t *testing.T) {
 	if categories.Code != http.StatusOK {
 		t.Fatalf("categories status = %d; body: %s", categories.Code, categories.Body.String())
 	}
-	page := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market/catalog?sectionId=development&installation=not_installed&pageSize=20&pageToken=cursor-1", nil)
+	var categoryResponse tuttigenerated.ConnectorMarketCategoriesResponse
+	decodeGeneratedRouteResponse(t, categories, &categoryResponse)
+	if len(categoryResponse.Categories) != 1 || categoryResponse.Categories[0].CategoryId != "developer-tools" ||
+		categoryResponse.Categories[0].DisplayNameZh == nil || *categoryResponse.Categories[0].DisplayNameZh != "开发者工具" ||
+		categoryResponse.Categories[0].DisplayNameEn == nil || *categoryResponse.Categories[0].DisplayNameEn != "Developer Tools" {
+		t.Fatalf("categories response = %#v", categoryResponse)
+	}
+	page := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market/catalog?sectionId=developer-tools&installation=not_installed&pageSize=20&pageToken=cursor-1", nil)
 	if page.Code != http.StatusOK {
 		t.Fatalf("page status = %d; body: %s", page.Code, page.Body.String())
 	}
 	var response tuttigenerated.ConnectorMarketCatalogPage
 	decodeGeneratedRouteResponse(t, page, &response)
-	if response.SectionId != "development" || response.Revision != 8 || len(response.Items) != 1 || response.Items[0].Connector.Key != "notion" {
+	if response.SectionId != "developer-tools" || response.Revision != 8 || len(response.Items) != 1 || response.Items[0].Connector.Key != "notion" {
 		t.Fatalf("response = %#v", response)
 	}
 }

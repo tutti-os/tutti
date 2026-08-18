@@ -65,6 +65,7 @@ const connectorMarketEn = {
   categoryInstalled: "Installed",
   categoryOther: "Other",
   categoryProductivity: "Productivity",
+  categoryUnnamed: "Category",
   close: "Close",
   connectedStatus: "Connected",
   connectorAuthorizationFailed:
@@ -189,6 +190,7 @@ const connectorMarketZhCN = {
   categoryInstalled: "已安装",
   categoryOther: "其他",
   categoryProductivity: "生产力",
+  categoryUnnamed: "分类",
   close: "关闭",
   connectedStatus: "已连接",
   connectorAuthorizationFailed: "无法启动授权，请重试",

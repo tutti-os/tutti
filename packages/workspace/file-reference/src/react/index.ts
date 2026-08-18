@@ -28,6 +28,10 @@ export type {
   ReferenceSearchResultIndex
 } from "./internal/reference/referenceSearchResultIndex.ts";
 export {
+  invalidateReferenceSourcePickerRuntimeCache,
+  invalidateReferenceSourceTabRuntimeCache
+} from "./internal/reference/referenceSourceTabRuntimeCache.ts";
+export {
   createReferenceProvenanceFilterController,
   type ReferenceProvenanceFilterController,
   type ReferenceProvenanceFilterSnapshot

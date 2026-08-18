@@ -28,6 +28,7 @@ import {
   serializeAgentGUIProviderRailPreferences
 } from "../model/agentGuiProviderRailOrder.ts";
 import { AgentTargetSetupGate } from "./AgentTargetSetupGate.tsx";
+import { AgentVisibleErrorPresentationProvider } from "../../../shared/visibleError/AgentVisibleErrorPresentationContext.tsx";
 import {
   AgentTargetSetupRoot,
   useAgentTargetSetupRoot
@@ -53,6 +54,25 @@ const codebuddyTarget = target("codebuddy", "CodeBuddy Code");
 const geminiTarget = target("gemini", "Gemini CLI");
 
 describe("AgentTargetSetupGate", () => {
+  it("does not expose this device's setup workflow to a shared caller", () => {
+    const install = vi.fn<AgentHostAgentTargetSetupWatch["install"]>();
+    const setup = createWatch(notInstalled("extension:codebuddy"), {
+      install
+    });
+    installHost(new Map([["extension:codebuddy", setup.watch]]));
+
+    render(
+      <AgentVisibleErrorPresentationProvider scope="shared_caller">
+        <Harness target={codebuddyTarget} />
+      </AgentVisibleErrorPresentationProvider>
+    );
+
+    expect(screen.getByText("composer ready")).toBeTruthy();
+    expect(screen.queryByTestId("agent-target-setup-gate")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Open setup" })).toBeNull();
+    expect(install).not.toHaveBeenCalled();
+  });
+
   it("gates while checking, then reveals the composer when ready", async () => {
     const setup = createWatch({ snapshot: null, loading: true, failed: false });
     installHost(new Map([["extension:codebuddy", setup.watch]]));

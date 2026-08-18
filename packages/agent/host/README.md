@@ -186,6 +186,14 @@ that durable operation exists, even when immediate runtime readiness or
 delivery returns an error; `GoalState` then distinguishes pending delivery
 from terminal failure. A provider-accepted or applied Goal is also canonical
 resume evidence for a turnless Goal session after the live runtime disappears.
+
+An exact-provider cancel response can be delivery-unconfirmed: the provider
+received the request but could not prove it stopped the requested Turn. Host
+retains that exact durable operation for retry and canonical reconciliation; it
+does not infer either `canceled` or `failed` from the response. If the canonical
+Turn reaches a terminal state first, the operation completes as a no-op and
+preserves that existing outcome.
+
 `AdoptProviderGoal` is the narrow
 reverse boundary for a Goal created by a provider tool during an already
 accepted Turn. It atomically records the active provider generation as a

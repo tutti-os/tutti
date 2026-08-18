@@ -19,12 +19,16 @@ const CONNECTOR_PREVIEW_LIMIT = 3;
 export type ConnectorComposerItemStatus =
   | "authorization_required"
   | "connected"
-  | "setup_required";
+  | "setup_required"
+  | "disabled"
+  | "unsupported";
 
 export interface ConnectorComposerItem {
   connectorKey: string;
   iconUrl?: string;
   name: string;
+  /** Caller-localized, credential-free presentation detail or disabled reason. */
+  description?: string;
   /** Composer-local selection; authorization remains represented by status. */
   selected?: boolean;
   status: ConnectorComposerItemStatus;
@@ -47,9 +51,11 @@ export interface ConnectorComposerMenuProps {
   labels: ConnectorComposerMenuLabels;
   loading?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onOpenConnector: (connectorKey: string) => void;
-  onOpenMarket: () => void;
+  onOpenConnector?: (connectorKey: string) => void;
+  onOpenMarket?: () => void;
   onSelectConnector?: (connectorKey: string, selected: boolean) => void;
+  /** Keeps the catalog inspectable while suppressing every mutation intent. */
+  readOnly?: boolean;
 }
 
 /**
@@ -64,7 +70,8 @@ export function ConnectorComposerMenu({
   onOpenChange,
   onOpenConnector,
   onOpenMarket,
-  onSelectConnector
+  onSelectConnector,
+  readOnly = false
 }: ConnectorComposerMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
   const normalizedItems = normalizeConnectorItems(items);
@@ -149,7 +156,10 @@ export function ConnectorComposerMenu({
                 className="min-h-9 gap-2.5 px-2.5"
                 data-testid={`connector-market-composer-item-${item.connectorKey}`}
                 data-selected={selected ? "true" : undefined}
-                disabled={connected && !onSelectConnector}
+                disabled={
+                  readOnly ||
+                  (connected ? !onSelectConnector : !onOpenConnector)
+                }
                 onPointerDown={(event) => {
                   if (event.button !== 0 || event.ctrlKey) {
                     return;
@@ -160,7 +170,7 @@ export function ConnectorComposerMenu({
                       onSelectConnector?.(item.connectorKey, !selected);
                       return;
                     }
-                    onOpenConnector(item.connectorKey);
+                    onOpenConnector?.(item.connectorKey);
                   });
                 }}
                 onSelect={(event) => {
@@ -170,7 +180,7 @@ export function ConnectorComposerMenu({
                       onSelectConnector?.(item.connectorKey, !selected);
                       return;
                     }
-                    onOpenConnector(item.connectorKey);
+                    onOpenConnector?.(item.connectorKey);
                   });
                 }}
               >
@@ -178,7 +188,14 @@ export function ConnectorComposerMenu({
                   iconUrl={item.iconUrl}
                   label={item.name}
                 />
-                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{item.name}</span>
+                  {item.description ? (
+                    <span className="block truncate text-xs text-[var(--text-tertiary)]">
+                      {item.description}
+                    </span>
+                  ) : null}
+                </span>
                 {connected ? (
                   <span
                     className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--success)]"
@@ -189,12 +206,12 @@ export function ConnectorComposerMenu({
                       ? (labels.selected ?? labels.connected)
                       : labels.connected}
                   </span>
-                ) : (
+                ) : !readOnly ? (
                   <span className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
                     <LinkIcon aria-hidden className="size-4" />
                     {actionLabel}
                   </span>
-                )}
+                ) : null}
               </DropdownMenuItem>
             );
           })
@@ -210,25 +227,27 @@ export function ConnectorComposerMenu({
             {labels.empty}
           </div>
         )}
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          className="min-h-9 gap-2.5 px-2.5"
-          data-testid="connector-market-composer-more"
-          onPointerDown={(event) => {
-            if (event.button !== 0 || event.ctrlKey) {
-              return;
-            }
-            event.preventDefault();
-            closeAndRun(onOpenMarket);
-          }}
-          onSelect={(event) => {
-            event.preventDefault();
-            closeAndRun(onOpenMarket);
-          }}
-        >
-          <OpenLinkLinedIcon aria-hidden className="size-4" />
-          <span>{labels.more}</span>
-        </DropdownMenuItem>
+        {onOpenMarket ? <DropdownMenuSeparator /> : null}
+        {onOpenMarket ? (
+          <DropdownMenuItem
+            className="min-h-9 gap-2.5 px-2.5"
+            data-testid="connector-market-composer-more"
+            onPointerDown={(event) => {
+              if (event.button !== 0 || event.ctrlKey) {
+                return;
+              }
+              event.preventDefault();
+              closeAndRun(onOpenMarket);
+            }}
+            onSelect={(event) => {
+              event.preventDefault();
+              closeAndRun(onOpenMarket);
+            }}
+          >
+            <OpenLinkLinedIcon aria-hidden className="size-4" />
+            <span>{labels.more}</span>
+          </DropdownMenuItem>
+        ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -53,6 +53,12 @@ export function buildConnectorMarketView(
         ]
       : market.catalogSections.map((section) => ({
           id: section.categoryId,
+          ...(section.displayNameZh === undefined
+            ? {}
+            : { displayNameZh: section.displayNameZh }),
+          ...(section.displayNameEn === undefined
+            ? {}
+            : { displayNameEn: section.displayNameEn }),
           connectorKeys: section.connectorKeys.filter((key) => {
             const connector = market.connectorsByKey[key];
             return (

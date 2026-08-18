@@ -2976,9 +2976,13 @@ export type WorkspaceAgentSessionGoal = {
 export type WorkspaceAgentTurnCancelResult = {
   canceled: boolean;
   /**
-   * turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+   * turn_canceled reports an active turn was stopped. cancel_requested reports accepted cancellation whose exact provider delivery still needs canonical reconciliation. already_settled and not_found are idempotent no-op successes, not errors.
    */
-  reason: "turn_canceled" | "already_settled" | "not_found";
+  reason:
+    | "turn_canceled"
+    | "cancel_requested"
+    | "already_settled"
+    | "not_found";
 };
 
 export type WorkspaceAgentTurnCancelResponse = {
@@ -4874,6 +4878,14 @@ export type ConnectorMarketCategory = {
   kind: "category" | "featured";
   sortOrder: number;
   itemCount: number;
+  /**
+   * Server-managed Simplified Chinese category name.
+   */
+  displayNameZh?: string;
+  /**
+   * Server-managed English category name.
+   */
+  displayNameEn?: string;
 };
 
 export type ConnectorMarketCategoriesResponse = {

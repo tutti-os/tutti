@@ -73,6 +73,27 @@ export interface ListChildrenResult {
   ordered?: boolean;
 }
 
+export interface LoadSidebarGroupsInput {
+  /** 续页游标；二级分组不与目录 children 共享分页状态。 */
+  cursor?: string | null;
+  signal?: AbortSignal;
+}
+
+/**
+ * 左栏二级分组的独立读取结果。
+ *
+ * 二级分组是导航目录，不是目录内容缓存。Picker 每次打开都重新读取，
+ * 并把结果保存在本次打开的临时状态中。
+ */
+export interface LoadSidebarGroupsResult {
+  entries: ReferenceNode[];
+  nextCursor?: string | null;
+  /** 源已自行排序时置 true，Picker 不再按名称重排。 */
+  ordered?: boolean;
+  /** 非 navigable 源是否应在本次打开时自动进入第一个固定位置。 */
+  autoSelectFirst?: boolean;
+}
+
 export interface SearchInput {
   query: string;
   /**
@@ -208,14 +229,19 @@ export interface ReferenceSourceService {
   readonly capabilities: ReferenceSourceCapabilities;
 
   /** 动态可用性。如:无支持 references 的 app 时应用产物源返回 false。 */
-  isAvailable(scope: ReferenceScope): boolean | Promise<boolean>;
+  isAvailable(
+    scope: ReferenceScope,
+    signal?: AbortSignal
+  ): boolean | Promise<boolean>;
 
   /**
-   * 可选:源自带的左栏二级分组(固定「位置」),返回顺序即展示顺序。
-   * 返回时 picker 直接用这些节点作为二级分组,不再从源根推导。
-   * 缺省:picker 取源根下的 folder 作为分组(navigable 源默认行为)。
+   * 独立读取左栏二级分组。Picker 不再从 listChildren(source-root) 推导左栏，
+   * 避免把导航数据写入目录缓存。结果只在本次 Picker 打开期间保留。
    */
-  listSidebarGroups?(scope: ReferenceScope): ReferenceNode[];
+  loadSidebarGroups(
+    scope: ReferenceScope,
+    input: LoadSidebarGroupsInput
+  ): Promise<LoadSidebarGroupsResult>;
 
   listChildren(
     scope: ReferenceScope,
@@ -287,5 +313,8 @@ export interface ReferenceSourceService {
 
 export interface ReferenceSourceRegistry {
   /** 已按 isAvailable 过滤、按 metadata.order 排序。 */
-  getSources(scope: ReferenceScope): Promise<ReferenceSourceService[]>;
+  getSources(
+    scope: ReferenceScope,
+    input?: { signal?: AbortSignal }
+  ): Promise<ReferenceSourceService[]>;
 }

@@ -154,6 +154,77 @@ func TestDurableWorkspaceRuntimeDisconnectFenceRunsSweepWithExclusiveContext(t *
 	}
 }
 
+func TestWorkspaceRuntimeAdmissionSnapshotReportsOperationAndFenceHolders(t *testing.T) {
+	t.Parallel()
+	host := New(Config{Runtime: &workspaceDisconnectRuntime{disconnected: make(map[string]bool)}})
+	operationEntered := make(chan struct{})
+	releaseOperation := make(chan struct{})
+	operationDone := make(chan error, 1)
+	go func() {
+		operationDone <- host.WithWorkspaceRuntimeOperationInfo(
+			context.Background(),
+			WorkspaceRuntimeOperationInfo{
+				WorkspaceID:    "workspace-1",
+				OperationID:    "operation-1",
+				Kind:           "prompt_turn",
+				AgentSessionID: "session-1",
+				Source:         "test.operation",
+			},
+			func(context.Context) error {
+				close(operationEntered)
+				<-releaseOperation
+				return nil
+			},
+		)
+	}()
+	<-operationEntered
+
+	fence, err := host.AcquireWorkspaceRuntimeDisconnectFence(context.Background(), "workspace-1")
+	if err != nil {
+		t.Fatalf("AcquireWorkspaceRuntimeDisconnectFence: %v", err)
+	}
+
+	snapshot := host.SnapshotWorkspaceRuntimeAdmission("workspace-1")
+	if snapshot.Operations != 1 || snapshot.Disconnectors != 1 || snapshot.Exclusive || !snapshot.Disconnecting {
+		t.Fatalf("initial admission snapshot = %#v", snapshot)
+	}
+	if len(snapshot.OperationHolders) != 1 || snapshot.OperationHolders[0].OperationID != "operation-1" ||
+		snapshot.OperationHolders[0].Kind != "prompt_turn" ||
+		snapshot.OperationHolders[0].AgentSessionID != "session-1" ||
+		snapshot.OperationHolders[0].Source != "test.operation" || snapshot.OperationHolders[0].StartedAt.IsZero() {
+		t.Fatalf("operation holder snapshot = %#v", snapshot.OperationHolders)
+	}
+	if len(snapshot.DisconnectHolders) != 1 || snapshot.DisconnectHolders[0].FenceID == "" ||
+		snapshot.DisconnectHolders[0].Exclusive || snapshot.DisconnectHolders[0].AcquiredAt.IsZero() {
+		t.Fatalf("disconnect holder snapshot = %#v", snapshot.DisconnectHolders)
+	}
+
+	waitCtx, cancelWait := context.WithCancel(context.Background())
+	cancelWait()
+	if _, err := fence.Wait(waitCtx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled fence wait error = %v", err)
+	}
+	if got := host.SnapshotWorkspaceRuntimeAdmission("workspace-1"); got.Operations != 1 || got.Disconnectors != 1 {
+		t.Fatalf("snapshot after canceled wait = %#v", got)
+	}
+
+	close(releaseOperation)
+	if err := <-operationDone; err != nil {
+		t.Fatalf("runtime operation: %v", err)
+	}
+	if _, err := fence.Wait(context.Background()); err != nil {
+		t.Fatalf("retry fence wait: %v", err)
+	}
+	snapshot = host.SnapshotWorkspaceRuntimeAdmission("workspace-1")
+	if !snapshot.Exclusive || len(snapshot.DisconnectHolders) != 1 || !snapshot.DisconnectHolders[0].Exclusive {
+		t.Fatalf("exclusive admission snapshot = %#v", snapshot)
+	}
+	fence.Release()
+	if got := host.SnapshotWorkspaceRuntimeAdmission("workspace-1"); got.Operations != 0 || got.Disconnectors != 0 || got.Exclusive || got.Disconnecting {
+		t.Fatalf("released admission snapshot = %#v", got)
+	}
+}
+
 func TestReentrantAttachmentCleanupDoesNotDisconnectNewConnectionAfterOperationLeaves(t *testing.T) {
 	t.Parallel()
 	runtime := &workspaceDisconnectRuntime{

@@ -310,6 +310,9 @@ type legacyHostConformanceDriver struct {
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
 	d.runtime.guidanceTargetMismatch = fixture.GuidanceTargetMismatch
+	if fixture.CancelDeliveryUnconfirmed {
+		d.runtime.cancelErr = agenthost.ErrRuntimeCancelDeliveryUnconfirmed
+	}
 	d.sessions = &fakeSessionReader{
 		sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}, deletedAt: map[string]int64{},
 		parentByKey: map[string]string{},
@@ -1036,19 +1039,28 @@ func (s *conformanceHistoricalStateStore) CaptureHistoricalSessionGraph(
 func (d *legacyHostConformanceDriver) CancelTurn(ctx context.Context, input agenthost.CancelTurnInput) (hostconformance.CancelObservation, error) {
 	if d.directHost {
 		result, err := d.service.ApplicationHost().CancelTurn(ctx, input)
-		if err != nil {
+		pending := errors.Is(err, agenthost.ErrRuntimeOperationInProgress) && result.IntentAccepted
+		if err != nil && !pending {
 			return hostconformance.CancelObservation{}, err
 		}
-		session, err := d.service.Get(ctx, input.WorkspaceID, input.AgentSessionID)
+		session, getErr := d.service.Get(ctx, input.WorkspaceID, input.AgentSessionID)
+		if getErr != nil {
+			return hostconformance.CancelObservation{}, getErr
+		}
 		turnID := ""
 		if result.Turn != nil {
 			turnID = result.Turn.TurnID
 		}
+		reason := CancelTurnReasonTurnCanceled
+		if pending {
+			reason = CancelTurnReasonCancelRequested
+		}
 		return hostconformance.CancelObservation{
 			Session: legacyHostSessionObservation(session), TurnID: turnID,
 			Canceled: result.Operation.Result == agentactivitybiz.RuntimeOperationResultCanceled,
-			Reason:   string(CancelTurnReasonTurnCanceled),
-		}, err
+			Pending:  pending,
+			Reason:   string(reason),
+		}, nil
 	}
 	result, err := d.service.CancelTurn(ctx, input.WorkspaceID, input.AgentSessionID, input.TurnID)
 	if err != nil {
@@ -1060,7 +1072,7 @@ func (d *legacyHostConformanceDriver) CancelTurn(ctx context.Context, input agen
 	}
 	return hostconformance.CancelObservation{
 		Session: legacyHostSessionObservation(result.Session), TurnID: turnID,
-		Canceled: result.Canceled, Reason: string(result.Reason),
+		Canceled: result.Canceled, Pending: result.Reason == CancelTurnReasonCancelRequested, Reason: string(result.Reason),
 	}, nil
 }
 

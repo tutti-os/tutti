@@ -219,6 +219,8 @@ export interface ConnectorMarketCategory {
   kind: ConnectorMarketCategoryKind;
   sortOrder: number;
   itemCount: number;
+  displayNameZh?: string;
+  displayNameEn?: string;
 }
 
 export interface ConnectorMarketCatalogItem {

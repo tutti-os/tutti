@@ -642,6 +642,14 @@ export function AgentComposerView(
             connectorsVisible={
               input.props.capabilityMenuState?.connectors?.enabled !== false
             }
+            connectorsReadOnly={
+              input.props.capabilityControlsReadOnly === true ||
+              input.props.capabilityMenuState?.connectors?.readOnly === true
+            }
+            showConnectorViewMore={
+              input.props.capabilityMenuState?.connectors?.showViewMore !==
+              false
+            }
             onClearPlanMode={input.onClearPlanMode}
             composerAction={composerActionNode}
             projectControl={

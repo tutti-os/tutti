@@ -8,8 +8,8 @@ import (
 )
 
 // CancelWorkspaceAgentTurn is the protocol v2 turn-scoped cancel. Idempotent
-// by contract: settled or unknown turns return canceled=false with an
-// explanatory reason instead of an error.
+// by contract: settled, unknown, and delivery-unconfirmed turns return
+// canceled=false with an explanatory reason instead of an error.
 func (api DaemonAPI) CancelWorkspaceAgentTurn(ctx context.Context, request tuttigenerated.CancelWorkspaceAgentTurnRequestObject) (tuttigenerated.CancelWorkspaceAgentTurnResponseObject, error) {
 	if api.AgentSessionService == nil {
 		return tuttigenerated.CancelWorkspaceAgentTurn503JSONResponse{

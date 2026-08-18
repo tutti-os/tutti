@@ -1,3 +1,4 @@
+import { formatWorkspaceFilePathForDisplay } from "@tutti-os/workspace-file-manager/services";
 import { fileChangePathsFromChanges } from "./workspaceAgentFileChangePayload.ts";
 import type {
   AgentActivityMessage,
@@ -9,6 +10,10 @@ import type {
 } from "./workspaceAgentActivityListTypes";
 import { workspaceAgentSessionMessageAliases } from "./workspaceAgentSessionMessageAliases.ts";
 import { isImageGenerationToolCall } from "./imageGenerationTool.ts";
+import {
+  isInsideOrEqualWorkspaceFilePath,
+  normalizeWorkspaceFilePath
+} from "../actions/workspaceFilePathCandidate";
 
 export interface WorkspaceAgentGeneratedFilesSource {
   sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>;
@@ -19,7 +24,13 @@ export function collectWorkspaceAgentGeneratedFiles(
   source: WorkspaceAgentGeneratedFilesSource,
   options: CollectWorkspaceAgentGeneratedFilesOptions = {}
 ): WorkspaceAgentChangedFile[] {
-  const sessionCwdFilter = normalizeComparablePath(options.sessionCwd ?? "");
+  const requestedWorkspaceRoot = normalizeComparablePath(
+    options.workspaceRoot ?? ""
+  );
+  const sessionCwdFilter = normalizeComparablePath(
+    options.sessionCwd ?? "",
+    requestedWorkspaceRoot
+  );
   const allowedAgentTargetIds = options.agentTargetIds
     ? new Set(options.agentTargetIds.map((id) => id.trim()).filter(Boolean))
     : null;
@@ -32,19 +43,21 @@ export function collectWorkspaceAgentGeneratedFiles(
     : source.sessions;
   const workspaceRoot =
     sessionCwdFilter ||
-    normalizeComparablePath(options.workspaceRoot ?? "") ||
+    requestedWorkspaceRoot ||
     resolveWorkspaceRootFromSessions(provenanceSessions);
   const sessions = sessionCwdFilter
     ? provenanceSessions.filter(
         (session) =>
-          normalizeComparablePath(session.cwd ?? "") === sessionCwdFilter
+          normalizeComparablePath(session.cwd ?? "", workspaceRoot) ===
+          sessionCwdFilter
       )
     : provenanceSessions;
   const filesByPath = new Map<string, WorkspaceAgentChangedFile>();
 
   for (const session of sessions) {
     const sessionCwd =
-      normalizeComparablePath(session.cwd ?? "") || workspaceRoot;
+      normalizeComparablePath(session.cwd ?? "", workspaceRoot) ||
+      workspaceRoot;
     const normalizePath = createAgentGeneratedFilePathNormalizer({
       sessionCwd,
       workspaceRoot
@@ -215,17 +228,35 @@ function resolveWorkspaceRootFromSessions(
   return "";
 }
 
-function normalizeComparablePath(path: string): string {
-  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+function normalizeComparablePath(path: string, rootPath?: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const normalizedInput = trimmed.replaceAll("\\", "/");
+  const normalized = normalizeWorkspaceFilePath(
+    trimmed,
+    rootPath?.trim().replaceAll("\\", "/")
+  );
+  if (
+    /^\/[A-Za-z]:\//.test(normalized) &&
+    !/^[A-Za-z]:\//.test(normalizedInput)
+  ) {
+    return formatWorkspaceFilePathForDisplay(normalized, "win32")
+      .replaceAll("\\", "/")
+      .replace(/\/+$/, "");
+  }
+  return normalizedInput.replace(/\/+$/, "");
 }
 
 function createAgentGeneratedFilePathNormalizer(input: {
   sessionCwd?: string | null;
   workspaceRoot?: string | null;
 }): ChangedFilePathNormalizer {
-  const workspaceRoot = input.workspaceRoot?.trim().replace(/\/+$/, "") ?? "";
+  const workspaceRoot = normalizeComparablePath(input.workspaceRoot ?? "");
   const sessionCwd =
-    input.sessionCwd?.trim().replace(/\/+$/, "") || workspaceRoot;
+    normalizeComparablePath(input.sessionCwd ?? "", workspaceRoot) ||
+    workspaceRoot;
   return (value: unknown) => {
     if (typeof value !== "string") {
       return null;
@@ -243,7 +274,7 @@ function resolveAgentGeneratedFilePath(
   // separator. Normalize before checking virtual namespaces such as the
   // out-of-workspace generated-image directory; otherwise a Windows path is
   // rejected because its `\\` segments are invisible to the `/`-only check.
-  const path = rawPath.trim().replace(/\\/g, "/");
+  const path = normalizeComparablePath(rawPath, workspaceRoot);
   if (!path || isStructuredPayloadPath(path)) {
     return null;
   }
@@ -256,7 +287,7 @@ function resolveAgentGeneratedFilePath(
   if (isAbsoluteAgentGeneratedFilePath(path)) {
     if (
       workspaceRoot &&
-      !isPathInsideOrEqual(path, workspaceRoot) &&
+      !isInsideOrEqualWorkspaceFilePath(path, workspaceRoot) &&
       !isAgentStateGeneratedImagePath(path)
     ) {
       return null;
@@ -271,7 +302,7 @@ function resolveAgentGeneratedFilePath(
   const resolved = joinAgentGeneratedFilePath(base, path.replace(/^\.?\//, ""));
   if (
     workspaceRoot &&
-    !isPathInsideOrEqual(resolved, workspaceRoot) &&
+    !isInsideOrEqualWorkspaceFilePath(resolved, workspaceRoot) &&
     !isAgentStateGeneratedImagePath(resolved)
   ) {
     return null;
@@ -281,24 +312,6 @@ function resolveAgentGeneratedFilePath(
 
 function isAbsoluteAgentGeneratedFilePath(path: string): boolean {
   return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
-}
-
-function isPathInsideOrEqual(path: string, root: string): boolean {
-  const normalizedPath = path.replace(/\\/g, "/").replace(/\/+$/, "");
-  const normalizedRoot = root.replace(/\\/g, "/").replace(/\/+$/, "");
-  if (!normalizedRoot) {
-    return false;
-  }
-  const comparisonPath = /^[A-Za-z]:\//.test(normalizedPath)
-    ? normalizedPath.toLowerCase()
-    : normalizedPath;
-  const comparisonRoot = /^[A-Za-z]:\//.test(normalizedRoot)
-    ? normalizedRoot.toLowerCase()
-    : normalizedRoot;
-  return (
-    comparisonPath === comparisonRoot ||
-    comparisonPath.startsWith(`${comparisonRoot}/`)
-  );
 }
 
 function joinAgentGeneratedFilePath(

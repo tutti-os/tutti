@@ -112,6 +112,7 @@ function fakeSource(
     },
     capabilities: { searchable: false, previewable: false, paginated: false },
     isAvailable: () => true,
+    loadSidebarGroups: async () => ({ entries: [], nextCursor: null }),
     listChildren: async () => ({ entries: [], nextCursor: null }),
     resolveSelection: (node) => ({ path: node.ref.nodeId, kind: node.kind }),
     ...overrides
@@ -230,6 +231,141 @@ test("aggregator 在确认阶段委派 source preparation 并保留 source ident
     kind: "file",
     sourceId: "host-local-file"
   });
+});
+
+test("aggregator 每次确认都重新执行 prepareSelection", async () => {
+  let preparations = 0;
+  const registry = createStaticReferenceSourceRegistry([
+    fakeSource({
+      id: "host-local-file",
+      prepareSelection: async (_selectionScope, _node, selection) => ({
+        ...selection,
+        path: `/runtime-path/${++preparations}`
+      })
+    })
+  ]);
+  const aggregator = createReferenceSourceAggregator(registry);
+  await aggregator.listSources(scope);
+  const node = fileNode("host-local-file", "opaque-handle");
+
+  const first = await aggregator.prepareSelection(scope, node);
+  const second = await aggregator.prepareSelection(scope, node);
+
+  assert.equal(first.path, "/runtime-path/1");
+  assert.equal(second.path, "/runtime-path/2");
+  assert.equal(preparations, 2);
+});
+
+test("aggregator 独立读取二级分组,不借用目录 children", async () => {
+  let groupCalls = 0;
+  let childrenCalls = 0;
+  const registry = createStaticReferenceSourceRegistry([
+    fakeSource({
+      id: "workspace-file",
+      loadSidebarGroups: async (_groupScope, input) => {
+        groupCalls += 1;
+        assert.equal(input.cursor, "group-page-2");
+        return {
+          entries: [folderNode("workspace-file", "downloads", "Downloads")],
+          nextCursor: null,
+          ordered: true
+        };
+      },
+      listChildren: async () => {
+        childrenCalls += 1;
+        return { entries: [], nextCursor: null };
+      }
+    })
+  ]);
+  const aggregator = createReferenceSourceAggregator(registry);
+  await aggregator.listSources(scope);
+
+  const result = await aggregator.loadSidebarGroups(scope, "workspace-file", {
+    cursor: "group-page-2"
+  });
+
+  assert.equal(groupCalls, 1);
+  assert.equal(childrenCalls, 0);
+  assert.equal(result.entries[0]?.ref.nodeId, "downloads");
+});
+
+test("aggregator 只合并在途的相同目录请求", async () => {
+  let resolvePage!: (value: {
+    entries: ReferenceNode[];
+    nextCursor: null;
+  }) => void;
+  let childrenCalls = 0;
+  const pendingPage = new Promise<{
+    entries: ReferenceNode[];
+    nextCursor: null;
+  }>((resolve) => {
+    resolvePage = resolve;
+  });
+  const registry = createStaticReferenceSourceRegistry([
+    fakeSource({
+      id: "workspace-file",
+      listChildren: async () => {
+        childrenCalls += 1;
+        return pendingPage;
+      }
+    })
+  ]);
+  const aggregator = createReferenceSourceAggregator(registry);
+  await aggregator.listSources(scope);
+  const root = {
+    sourceId: "workspace-file",
+    nodeId: SOURCE_ROOT_NODE_ID
+  };
+
+  const first = aggregator.listChildren(scope, root);
+  const second = aggregator.listChildren(scope, root);
+  await Promise.resolve();
+  assert.equal(childrenCalls, 1);
+
+  resolvePage({
+    entries: [fileNode("workspace-file", "notes.md")],
+    nextCursor: null
+  });
+  await Promise.all([first, second]);
+
+  await aggregator.listChildren(scope, root);
+  assert.equal(childrenCalls, 2);
+});
+
+test("aggregator 可在权限变化时按 workspace 取消在途读取", async () => {
+  const shared: { signal: AbortSignal | null } = { signal: null };
+  const registry = createStaticReferenceSourceRegistry([
+    fakeSource({
+      id: "workspace-file",
+      listChildren: async (_childrenScope, input) => {
+        shared.signal = input.signal ?? null;
+        return new Promise((_, reject) => {
+          input.signal?.addEventListener(
+            "abort",
+            () => {
+              const error = new Error("aborted");
+              error.name = "AbortError";
+              reject(error);
+            },
+            { once: true }
+          );
+        });
+      }
+    })
+  ]);
+  const aggregator = createReferenceSourceAggregator(registry);
+  await aggregator.listSources(scope);
+  const reading = aggregator.listChildren(scope, {
+    sourceId: "workspace-file",
+    nodeId: SOURCE_ROOT_NODE_ID
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+
+  aggregator.invalidateRuntimeReads(scope);
+
+  await assert.rejects(reading, { name: "AbortError" });
+  assert.equal(shared.signal?.aborted, true);
 });
 
 test("aggregator only delegates active provenance filters to capable sources", async () => {

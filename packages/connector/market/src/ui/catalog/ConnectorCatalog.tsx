@@ -4,9 +4,10 @@ import { useSnapshot } from "valtio";
 import type { ConnectorMarketI18nRuntime } from "../../i18n/connectorMarketI18n.ts";
 import { useConnectorMarketServices } from "../ConnectorMarketServicesContext.tsx";
 import { ConnectorCard } from "./ConnectorCard.tsx";
+import { resolveConnectorCategoryTitle } from "./connectorCategoryTitle.ts";
 
 export function ConnectorCatalog() {
-  const { i18n, market, view } = useConnectorMarketServices();
+  const { i18n, locale, market, view } = useConnectorMarketServices();
   const snapshot = useSnapshot(view.dataStore);
 
   if (snapshot.status === "loading") {
@@ -58,9 +59,32 @@ export function ConnectorCatalog() {
   return (
     <div className="flex flex-col gap-6" aria-label={i18n.t("catalogSection")}>
       {snapshot.sections.map((section) => (
-        <section key={section.id} aria-label={sectionTitle(section.id, i18n)}>
+        <section
+          key={section.id}
+          aria-label={resolveConnectorCategoryTitle({
+            sectionId: section.id,
+            ...(section.displayNameZh === undefined
+              ? {}
+              : { displayNameZh: section.displayNameZh }),
+            ...(section.displayNameEn === undefined
+              ? {}
+              : { displayNameEn: section.displayNameEn }),
+            locale,
+            i18n
+          })}
+        >
           <h3 className="mb-3 mt-0 text-[13px] font-semibold text-[var(--text-secondary)]">
-            {sectionTitle(section.id, i18n)}
+            {resolveConnectorCategoryTitle({
+              sectionId: section.id,
+              ...(section.displayNameZh === undefined
+                ? {}
+                : { displayNameZh: section.displayNameZh }),
+              ...(section.displayNameEn === undefined
+                ? {}
+                : { displayNameEn: section.displayNameEn }),
+              locale,
+              i18n
+            })}
           </h3>
           <div className="grid grid-cols-2 gap-3 max-[760px]:grid-cols-1">
             {section.connectorKeys.map((connectorKey) => (
@@ -131,25 +155,5 @@ function catalogErrorCopy(
         title: i18n.t("catalogError"),
         description: i18n.t("catalogErrorDescription")
       };
-  }
-}
-
-function sectionTitle(
-  sectionId: string,
-  i18n: ConnectorMarketI18nRuntime
-): string {
-  switch (sectionId) {
-    case "featured":
-      return i18n.t("categoryFeatured");
-    case "productivity":
-      return i18n.t("categoryProductivity");
-    case "development":
-      return i18n.t("categoryDevelopment");
-    case "other":
-      return i18n.t("categoryOther");
-    case "installed":
-      return i18n.t("categoryInstalled");
-    default:
-      return sectionId;
   }
 }

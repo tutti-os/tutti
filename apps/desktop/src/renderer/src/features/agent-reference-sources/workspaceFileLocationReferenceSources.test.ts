@@ -25,15 +25,23 @@ test("location reference sources expose project and local sidebar groups", async
     [true, true]
   );
   assert.deepEqual(
-    sources[0]
-      ?.listSidebarGroups?.({ workspaceId: "workspace-1" })
-      .map((node) => [node.ref.sourceId, node.ref.nodeId, node.displayName]),
+    (
+      await sources[0]?.loadSidebarGroups({ workspaceId: "workspace-1" }, {})
+    )?.entries.map((node) => [
+      node.ref.sourceId,
+      node.ref.nodeId,
+      node.displayName
+    ]),
     [[USER_PROJECT_REFERENCE_SOURCE_ID, "/Users/local/repo", "Repo"]]
   );
   assert.deepEqual(
-    sources[1]
-      ?.listSidebarGroups?.({ workspaceId: "workspace-1" })
-      .map((node) => [node.ref.sourceId, node.ref.nodeId, node.displayName]),
+    (
+      await sources[1]?.loadSidebarGroups({ workspaceId: "workspace-1" }, {})
+    )?.entries.map((node) => [
+      node.ref.sourceId,
+      node.ref.nodeId,
+      node.displayName
+    ]),
     [
       [WORKSPACE_FILE_SOURCE_ID, "__recent__", "Recent"],
       [WORKSPACE_FILE_SOURCE_ID, "Downloads", "Downloads"]

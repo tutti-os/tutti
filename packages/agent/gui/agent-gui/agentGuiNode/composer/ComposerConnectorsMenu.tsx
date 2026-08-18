@@ -21,9 +21,10 @@ interface Props {
   labels: ComposerConnectorsMenuLabels;
   loading?: boolean;
   onOpenChange?: (open: boolean) => void;
-  onOpenConnector: (connectorKey: string) => void;
-  onOpenConnectors: () => void;
+  onOpenConnector?: (connectorKey: string) => void;
+  onOpenConnectors?: () => void;
   onSelectConnector?: (connectorKey: string, selected: boolean) => void;
+  readOnly?: boolean;
   selectedConnectorKeys?: readonly string[];
 }
 
@@ -37,12 +38,17 @@ export function ComposerConnectorsMenu({
   onOpenConnector,
   onOpenConnectors,
   onSelectConnector,
+  readOnly = false,
   selectedConnectorKeys = []
 }: Props): React.JSX.Element {
   return (
     <ConnectorComposerMenu
       disabled={disabled}
-      items={projectConnectorComposerItems(connectors, selectedConnectorKeys)}
+      items={projectConnectorComposerItems(
+        connectors,
+        selectedConnectorKeys,
+        readOnly
+      )}
       labels={{
         authorize: labels.connectorAuthorize,
         connect: labels.connectorConnect,
@@ -58,13 +64,15 @@ export function ComposerConnectorsMenu({
       onOpenConnector={onOpenConnector}
       onOpenMarket={onOpenConnectors}
       onSelectConnector={onSelectConnector}
+      readOnly={readOnly}
     />
   );
 }
 
 export function projectConnectorComposerItems(
   options: readonly AgentGUIProviderSkillOption[],
-  selectedConnectorKeys: readonly string[] = []
+  selectedConnectorKeys: readonly string[] = [],
+  includeDescriptions = false
 ): ConnectorComposerItem[] {
   const items: ConnectorComposerItem[] = [];
   const selectedKeys = new Set(
@@ -84,13 +92,18 @@ export function projectConnectorComposerItems(
       connectorKey,
       iconUrl: option.iconUrl,
       name: option.name,
+      description: includeDescriptions ? option.description : undefined,
       selected: selectedKeys.has(connectorKey),
       status:
         option.status === "available"
           ? "connected"
           : option.status === "authRequired"
             ? "authorization_required"
-            : "setup_required"
+            : option.status === "setupRequired"
+              ? "setup_required"
+              : option.status === "unsupported"
+                ? "unsupported"
+                : "disabled"
     });
   }
   return items;

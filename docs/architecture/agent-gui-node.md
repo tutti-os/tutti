@@ -267,6 +267,13 @@ same authorization overlay as Connector Market management. Connector Market
 change events invalidate retained Composer options, while a menu open may still
 force an authoritative reread as a recovery path.
 
+Hosts may project a Connector catalog as inspectable but read-only. In that
+mode AgentGUI keeps the menu and host-provided readiness descriptions visible,
+but suppresses selection, setup or authorization opens, selected chips, and
+the optional management footer. Read-only presentation never becomes execution
+authority; the Host remains responsible for Connector admission at submit or
+runtime preparation.
+
 Settings that affect provider preparation are immutable after launch. The
 daemon validates them against current product policy and resolved provider
 capability before runtime preparation; an active Session cannot reinterpret
@@ -2493,6 +2500,15 @@ login/logout, external navigation, reward receipt persistence, clipboard
 writes, notifications, localization, feature gating, and menu lifecycle.
 Neither AgentGUI nor the frontend Commerce package may receive a Cookie or
 start a Commerce request.
+For a shared Agent conversation, the Host sets the presentation-only
+`hostCapabilities.visibleErrorPresentationScope` to `shared_caller`.
+AgentGUI preserves the canonical structured reason and existing diagnostic
+disclosure, substitutes caller-safe contact guidance only when the structured
+code identifies an Owner-remediable failure, and suppresses current-device and
+current-account remediation actions. Transport and ambiguous failure copy stays
+neutral and retry-oriented. Omitting the scope preserves `local_owner`
+behavior. The scope must not enter Turn, activity, Engine, event, persistence,
+or provider contracts.
 The optional `renderSlots.agentConfigAccount` is a presentation-only Host
 chrome seam for the exact selected Agent Target. Its paired
 `hostActions.onAgentConfigMenuOpen` notification lets the Host refresh account

@@ -4095,15 +4095,18 @@ func (e WorkspaceAgentTurnProviderForkBindingState) Valid() bool {
 
 // Defines values for WorkspaceAgentTurnCancelResultReason.
 const (
-	AlreadySettled WorkspaceAgentTurnCancelResultReason = "already_settled"
-	NotFound       WorkspaceAgentTurnCancelResultReason = "not_found"
-	TurnCanceled   WorkspaceAgentTurnCancelResultReason = "turn_canceled"
+	AlreadySettled  WorkspaceAgentTurnCancelResultReason = "already_settled"
+	CancelRequested WorkspaceAgentTurnCancelResultReason = "cancel_requested"
+	NotFound        WorkspaceAgentTurnCancelResultReason = "not_found"
+	TurnCanceled    WorkspaceAgentTurnCancelResultReason = "turn_canceled"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentTurnCancelResultReason enum.
 func (e WorkspaceAgentTurnCancelResultReason) Valid() bool {
 	switch e {
 	case AlreadySettled:
+		return true
+	case CancelRequested:
 		return true
 	case NotFound:
 		return true
@@ -6564,10 +6567,16 @@ type ConnectorMarketCategoriesResponse struct {
 
 // ConnectorMarketCategory defines model for ConnectorMarketCategory.
 type ConnectorMarketCategory struct {
-	CategoryId string                      `json:"categoryId"`
-	ItemCount  int64                       `json:"itemCount"`
-	Kind       ConnectorMarketCategoryKind `json:"kind"`
-	SortOrder  int32                       `json:"sortOrder"`
+	CategoryId string `json:"categoryId"`
+
+	// DisplayNameEn Server-managed English category name.
+	DisplayNameEn *string `json:"displayNameEn,omitempty"`
+
+	// DisplayNameZh Server-managed Simplified Chinese category name.
+	DisplayNameZh *string                     `json:"displayNameZh,omitempty"`
+	ItemCount     int64                       `json:"itemCount"`
+	Kind          ConnectorMarketCategoryKind `json:"kind"`
+	SortOrder     int32                       `json:"sortOrder"`
 }
 
 // ConnectorMarketCategoryKind defines model for ConnectorMarketCategory.Kind.
@@ -9648,11 +9657,11 @@ type WorkspaceAgentTurnCancelResponse struct {
 type WorkspaceAgentTurnCancelResult struct {
 	Canceled bool `json:"canceled"`
 
-	// Reason turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+	// Reason turn_canceled reports an active turn was stopped. cancel_requested reports accepted cancellation whose exact provider delivery still needs canonical reconciliation. already_settled and not_found are idempotent no-op successes, not errors.
 	Reason WorkspaceAgentTurnCancelResultReason `json:"reason"`
 }
 
-// WorkspaceAgentTurnCancelResultReason turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+// WorkspaceAgentTurnCancelResultReason turn_canceled reports an active turn was stopped. cancel_requested reports accepted cancellation whose exact provider delivery still needs canonical reconciliation. already_settled and not_found are idempotent no-op successes, not errors.
 type WorkspaceAgentTurnCancelResultReason string
 
 // WorkspaceAgentTurnError Protocol v2 turn-scoped error; never pollutes session state.

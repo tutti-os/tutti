@@ -29,6 +29,28 @@ func runExactTurnCancel(ctx context.Context, driver Driver) error {
 	return nil
 }
 
+func runUnconfirmedTurnCancel(ctx context.Context, driver Driver) error {
+	fixture := liveSessionFixture("session-cancel-unconfirmed", "turn-cancel-unconfirmed")
+	fixture.Turn = &TurnSeed{TurnID: "turn-cancel-unconfirmed", Phase: canonical.TurnPhaseRunning}
+	fixture.CancelDeliveryUnconfirmed = true
+	if err := driver.Reset(ctx, fixture); err != nil {
+		return err
+	}
+	result, err := driver.CancelTurn(ctx, agenthost.CancelTurnInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-cancel-unconfirmed", TurnID: "turn-cancel-unconfirmed", Reason: "user_requested",
+	})
+	if err != nil {
+		return fmt.Errorf("delivery-unconfirmed cancel: %w", err)
+	}
+	metrics := driver.Metrics()
+	if !result.Pending || result.Canceled || result.TurnID != "turn-cancel-unconfirmed" || metrics.CancelCalls != 1 ||
+		len(metrics.LastCancelTargets) != 1 || metrics.LastCancelTargets[0].AgentSessionID != "session-cancel-unconfirmed" ||
+		metrics.LastCancelTargets[0].TurnID != "turn-cancel-unconfirmed" {
+		return fmt.Errorf("delivery-unconfirmed cancel result=%#v metrics=%#v", result, metrics)
+	}
+	return nil
+}
+
 func runPlanDecision(ctx context.Context, driver Driver) error {
 	fixture := liveSessionFixture("session-plan", "plan-turn")
 	fixture.Turn = &TurnSeed{TurnID: "plan-turn", Phase: canonical.TurnPhaseWaiting}

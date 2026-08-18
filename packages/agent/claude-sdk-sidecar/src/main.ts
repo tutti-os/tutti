@@ -161,7 +161,7 @@ export async function handleRequest(
                 ...stagePayload
               })
           });
-          logClaudeCodeCancellation("cancel_succeeded", {
+          logClaudeCodeCancellation("cancel_responded", {
             ...diagnosticContext,
             durationMs: Date.now() - startedAt,
             canceled: result.canceled,

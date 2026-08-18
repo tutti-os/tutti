@@ -1,5 +1,13 @@
 import { memo, useState, type ComponentType, type SVGProps } from "react";
-import { ArrowLeftRight, Code, Compass, Import, Pencil, X } from "lucide-react";
+import {
+  ArrowLeftRight,
+  Code,
+  Compass,
+  Github,
+  Import,
+  Pencil,
+  X
+} from "lucide-react";
 import styles from "./AgentGUINode.styles";
 import type {
   AgentHomeSuggestionAction,
@@ -92,6 +100,7 @@ const CATEGORY_ICON = {
   breakdown: TaskBreakdownIcon,
   review: QualityReviewIcon,
   interaction: BattleIcon,
+  github: Github,
   about: TuttiIcon,
   import: Import
 } as const satisfies Record<

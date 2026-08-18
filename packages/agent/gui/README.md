@@ -17,6 +17,16 @@ and are rendered only behind an explicit disclosure, never in the product error
 headline. Environment, authentication,
 network, and runtime errors are not overridable and remain AgentGUI policy.
 
+Hosts that render an Agent owned by somebody else must pass
+`hostCapabilities.visibleErrorPresentationScope: "shared_caller"`. AgentGUI
+then preserves structured failure reasons and diagnostic disclosure, replaces
+Owner-remediable guidance with caller-safe contact guidance, and suppresses
+current-device and current-account recovery actions. Omission defaults to
+`"local_owner"` for backward compatibility. The scope is presentation-only;
+it never changes a Turn, activity event, persistence, or provider error.
+Hosts that inject an application i18n runtime must also provide
+`agentHost.agentGui.visibleErrorSharedCallerHint` in every supported locale.
+
 This is an intentional public API break. The former `accountMenuState`,
 `commercePresentation`, `AgentGUIAccountMenu*`, and
 `AgentGUIAccountRewardToast` surfaces were removed instead of being retained as
@@ -424,7 +434,7 @@ both properties keeps the filter off. An explicitly supplied catalog (including
 
 ## Home Suggestions
 
-The five starter entries below the empty new-session composer are enabled by
+The six starter entries below the empty new-session composer are enabled by
 default. External hosts can hide individual entries with the public
 `AgentGUI.disabled` array:
 
@@ -432,9 +442,9 @@ default. External hosts can hide individual entries with the public
 <AgentGUI disabled={["meet-tutti", "import-session"]} {...props} />
 ```
 
-The supported stable IDs are `meet-tutti`, `task-breakdown`, `quality-review`,
-`agent-interaction`, and `import-session`. Omitting `disabled` (or passing an
-empty array) renders all five entries.
+The supported stable IDs are `meet-tutti`, `clone-github-repository`,
+`task-breakdown`, `quality-review`, `agent-interaction`, and `import-session`.
+Omitting `disabled` (or passing an empty array) renders all six entries.
 
 ## Tutti Mode capability
 

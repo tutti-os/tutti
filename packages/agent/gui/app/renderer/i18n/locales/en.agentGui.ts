@@ -11,6 +11,7 @@ import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
 import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
 import { enAgentGuiComposer } from "./en.agentGuiComposer.ts";
 import { enAgentGuiProjectLaunch } from "./en.agentGuiProjectLaunch.ts";
+import { enAgentGuiHomeSuggestions } from "./en.agentGuiHomeSuggestions.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
@@ -395,31 +396,7 @@ export const enAgentGui = {
     }
   },
   empty: "What can {{provider}} help you with?",
-  homeSuggestionsClose: "Close suggestions",
-  homeSuggestions: {
-    about: {
-      title: "Meet Tutti",
-      prompt: "Tell me what Tutti can help me do"
-    },
-    breakdown: {
-      title: "Task breakdown",
-      taskCenterLabel: "Task management",
-      prompt:
-        "Use {{taskCenterMention}} to help me break down the task, topic { enter here }"
-    },
-    review: {
-      title: "Quality review",
-      prompt: "Have { @agent } review the output quality of { @agent session }"
-    },
-    interaction: {
-      title: "Agent interaction",
-      prompt:
-        "Have { @agent } and { @agent } work together to { do something }, topic { enter here }"
-    },
-    import: {
-      title: "Import session"
-    }
-  },
+  ...enAgentGuiHomeSuggestions,
   conversations: "Sessions",
   newConversation: "New session",
   agentConfig: "Check & Settings",

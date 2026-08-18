@@ -16,6 +16,7 @@ const goModuleRoots = [
   "packages/agent/session-replay",
   "packages/agent/store-sqlite",
   "packages/agent/store-sqlite/canonical",
+  "packages/clients/market-go",
   "packages/connector/daemon",
   "packages/connector/host",
   "packages/connector/runtime",
@@ -76,6 +77,13 @@ describe("resolveGoModuleRoot", () => {
         goModuleRoots
       ),
       "packages/connector/host"
+    );
+    assert.equal(
+      resolveGoModuleRoot(
+        "packages/clients/market-go/client.go",
+        goModuleRoots
+      ),
+      "packages/clients/market-go"
     );
     assert.equal(
       resolveGoModuleRoot(

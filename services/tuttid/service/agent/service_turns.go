@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -39,9 +40,10 @@ type TurnCancelObserver interface {
 type CancelTurnReason string
 
 const (
-	CancelTurnReasonTurnCanceled   CancelTurnReason = "turn_canceled"
-	CancelTurnReasonAlreadySettled CancelTurnReason = "already_settled"
-	CancelTurnReasonNotFound       CancelTurnReason = "not_found"
+	CancelTurnReasonTurnCanceled    CancelTurnReason = "turn_canceled"
+	CancelTurnReasonCancelRequested CancelTurnReason = "cancel_requested"
+	CancelTurnReasonAlreadySettled  CancelTurnReason = "already_settled"
+	CancelTurnReasonNotFound        CancelTurnReason = "not_found"
 )
 
 type CancelTurnResult struct {
@@ -115,8 +117,8 @@ func (s *Service) ListTurns(ctx context.Context, workspaceID string, agentSessio
 
 // CancelTurn stops one specific turn (protocol v2). It is idempotent: a
 // settled or unknown turn is a no-op success (already_settled / not_found),
-// never an error. An active turn goes through the runtime cancel and its
-// persisted record settles with outcome=canceled.
+// never an error. An exact cancel whose provider delivery is unconfirmed is
+// accepted as cancel_requested; canonical terminal evidence determines its outcome.
 func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (CancelTurnResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
@@ -134,7 +136,8 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 	hostResult, err := s.ApplicationHost().CancelTurn(ctx, agenthost.CancelTurnInput{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
 	})
-	if err != nil {
+	pending := errors.Is(err, agenthost.ErrRuntimeOperationInProgress) && hostResult.IntentAccepted
+	if err != nil && !pending {
 		return CancelTurnResult{}, normalizeRuntimeError(err)
 	}
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
@@ -145,6 +148,9 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 		Session:  session,
 		Canceled: hostResult.Operation.Status == agentactivitybiz.RuntimeOperationStatusCompleted && hostResult.Operation.Result == agentactivitybiz.RuntimeOperationResultCanceled,
 		Reason:   CancelTurnReasonAlreadySettled,
+	}
+	if pending {
+		result.Reason = CancelTurnReasonCancelRequested
 	}
 	switch hostResult.State {
 	case agenthost.CancelStateNotFound:
@@ -369,15 +375,30 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 	if err != nil {
 		return nil, err
 	}
+	forkabilityByTurn := make(map[string]bool)
 	result := make([]Session, len(sessions))
 	for i, session := range sessions {
 		sessionID := strings.TrimSpace(session.ID)
 		if latest, ok := latestBySessionID[sessionID]; ok {
 			value := latest
+			if strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindChild {
+				value = s.withProviderTurnForkabilityCached(
+					ctx, workspaceID, sessionID, latest, forkabilityByTurn,
+				)
+			} else {
+				value.ProviderForkBindingAvailable = false
+			}
 			session.LatestTurn = &value
 		}
 		if active, ok := activeBySessionID[sessionID]; ok {
 			value := active
+			if strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindChild {
+				value = s.withProviderTurnForkabilityCached(
+					ctx, workspaceID, sessionID, active, forkabilityByTurn,
+				)
+			} else {
+				value.ProviderForkBindingAvailable = false
+			}
 			session.ActiveTurn = &value
 		}
 		session.PendingInteractions = pendingBySessionID[sessionID]
@@ -393,6 +414,35 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		return nil, err
 	}
 	return s.withSessionGoalStates(ctx, workspaceID, result)
+}
+
+func (s *Service) withProviderTurnForkabilityCached(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turn agentactivitybiz.Turn,
+	forkabilityByTurn map[string]bool,
+) agentactivitybiz.Turn {
+	turn.ProviderForkBindingAvailable = false
+	if strings.TrimSpace(turn.Phase) != agentactivitybiz.TurnPhaseSettled {
+		return turn
+	}
+	key := strings.Join([]string{
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(agentSessionID),
+		strings.TrimSpace(turn.TurnID),
+		strings.TrimSpace(turn.RootProviderTurnID),
+		string(turn.ProviderTurnBindingJSON),
+	}, "\x00")
+	if forkable, ok := forkabilityByTurn[key]; ok {
+		turn.ProviderForkBindingAvailable = forkable
+		return turn
+	}
+	projected := s.withProviderTurnForkability(
+		ctx, workspaceID, agentSessionID, turn,
+	)
+	forkabilityByTurn[key] = projected.ProviderForkBindingAvailable
+	return projected
 }
 
 func (s *Service) withSessionGoalState(

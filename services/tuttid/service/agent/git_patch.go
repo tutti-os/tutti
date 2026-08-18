@@ -13,6 +13,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"slices"
 	"strings"
 	"syscall"
@@ -88,7 +89,7 @@ type gitPatchRepo struct {
 
 func (*Service) ApplyGitPatchForPath(ctx context.Context, workspaceID string, input ApplyGitPatchInput) (ApplyGitPatchResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	input.Cwd = strings.TrimSpace(input.Cwd)
+	input.Cwd = normalizeGitPatchCwd(input.Cwd)
 	logAgentGitPatch("requested", map[string]any{
 		"workspaceId": workspaceID,
 		"cwd":         input.Cwd,
@@ -137,7 +138,7 @@ func logAgentGitPatch(event string, payload map[string]any) {
 
 func (*Service) ResolveGitPatchSupportForPath(ctx context.Context, workspaceID string, cwd string) (GitPatchSupport, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
-	cwd = strings.TrimSpace(cwd)
+	cwd = normalizeGitPatchCwd(cwd)
 	if workspaceID == "" || cwd == "" {
 		return GitPatchSupport{}, ErrInvalidArgument
 	}
@@ -273,6 +274,28 @@ func resolveGitPatchRepo(ctx context.Context, cwd string) (gitPatchRepo, bool) {
 		prefix = filepath.ToSlash(rel)
 	}
 	return gitPatchRepo{Root: absRoot, DirectoryPrefix: prefix}, true
+}
+
+func normalizeGitPatchCwd(value string) string {
+	return normalizeGitPatchCwdForPlatform(value, runtime.GOOS == "windows")
+}
+
+func normalizeGitPatchCwdForPlatform(value string, windows bool) string {
+	normalized := strings.TrimSpace(strings.ReplaceAll(value, "\\", "/"))
+	if !windows {
+		return normalized
+	}
+	if len(normalized) < 2 || normalized[0] != '/' || !isASCIIPathLetter(normalized[1]) {
+		return normalized
+	}
+	if len(normalized) == 2 || normalized[2] == '/' {
+		return strings.ToUpper(string(normalized[1])) + ":" + normalized[2:]
+	}
+	return normalized
+}
+
+func isASCIIPathLetter(value byte) bool {
+	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
 }
 
 func existingGitPatchDirectory(path string) (string, error) {

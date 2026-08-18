@@ -112,10 +112,12 @@ test("loads server categories and appends cursor pages", async () => {
     backend: backendWith({
       listCategories: async () => [
         {
-          categoryId: "development",
+          categoryId: "developer-tools",
           kind: "category",
-          sortOrder: 20,
-          itemCount: 2
+          sortOrder: 40,
+          itemCount: 2,
+          displayNameZh: "开发者工具",
+          displayNameEn: "Developer Tools"
         }
       ],
       listCatalogPage: async ({ installation, pageToken }) => {
@@ -126,9 +128,13 @@ test("loads server categories and appends cursor pages", async () => {
           pageToken ? 2 : 1
         );
         return {
-          sectionId: "development",
+          sectionId: "developer-tools",
           items: [
-            { categoryId: "development", featured: false, connector: item }
+            {
+              categoryId: "developer-tools",
+              featured: false,
+              connector: item
+            }
           ],
           ...(pageToken ? {} : { nextPageToken: "page-2" }),
           revision: pageToken ? 2 : 1
@@ -141,9 +147,13 @@ test("loads server categories and appends cursor pages", async () => {
   assert.deepEqual(service.dataStore.catalogSections[0]?.connectorKeys, [
     "github"
   ]);
+  assert.equal(
+    service.dataStore.catalogSections[0]?.displayNameEn,
+    "Developer Tools"
+  );
   assert.equal(service.dataStore.catalogSections[0]?.nextPageToken, "page-2");
 
-  await service.loadMore("development");
+  await service.loadMore("developer-tools");
   assert.deepEqual(service.dataStore.catalogSections[0]?.connectorKeys, [
     "github",
     "linear"
@@ -152,6 +162,48 @@ test("loads server categories and appends cursor pages", async () => {
   assert.deepEqual(pageTokens, [undefined, "page-2"]);
   assert.deepEqual(installationFilters, ["not_installed", "not_installed"]);
   assert.equal(service.dataStore.revision, 2);
+  service.dispose();
+});
+
+test("orders opaque dynamic categories by server sort order", async () => {
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      listCategories: async () => [
+        {
+          categoryId: "business-operations",
+          kind: "category",
+          sortOrder: 60,
+          itemCount: 0,
+          displayNameZh: "商业与运营",
+          displayNameEn: "Business & Operations"
+        },
+        {
+          categoryId: "communication",
+          kind: "category",
+          sortOrder: 30,
+          itemCount: 0,
+          displayNameZh: "沟通协作",
+          displayNameEn: "Communication"
+        }
+      ]
+    })
+  });
+
+  await service.ensureLoaded();
+
+  assert.deepEqual(
+    service.dataStore.catalogSections.map((section) => ({
+      categoryId: section.categoryId,
+      displayNameEn: section.displayNameEn
+    })),
+    [
+      { categoryId: "communication", displayNameEn: "Communication" },
+      {
+        categoryId: "business-operations",
+        displayNameEn: "Business & Operations"
+      }
+    ]
+  );
   service.dispose();
 });
 

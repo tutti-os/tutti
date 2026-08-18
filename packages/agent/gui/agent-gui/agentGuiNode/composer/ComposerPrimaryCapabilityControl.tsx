@@ -5,6 +5,8 @@ import { ComposerConnectorsMenu } from "./ComposerConnectorsMenu";
 interface Props {
   availableSkills: AgentComposerProps["availableSkills"];
   connectorsVisible: boolean;
+  connectorsReadOnly?: boolean;
+  showConnectorViewMore?: boolean;
   disabled: boolean;
   labels: AgentComposerProps["labels"];
   loading: boolean;
@@ -22,13 +24,15 @@ interface Props {
 export function ComposerPrimaryCapabilityControl({
   availableSkills,
   connectorsVisible,
+  connectorsReadOnly = false,
   disabled,
   labels,
   loading,
   onRetryComposerOptions,
   onCapabilitySettingsRequest,
   onConnectorSelected,
-  selectedConnectorKeys
+  selectedConnectorKeys,
+  showConnectorViewMore = true
 }: Props): React.JSX.Element | null {
   if (!connectorsVisible) {
     return null;
@@ -54,21 +58,28 @@ export function ComposerPrimaryCapabilityControl({
           onRetryComposerOptions?.({ section: "connectors" });
         }
       }}
-      onOpenConnector={(connectorKey) =>
-        onCapabilitySettingsRequest?.({
-          kind: "connector",
-          connectorKey,
-          action: "open"
-        })
+      onOpenConnector={
+        connectorsReadOnly
+          ? undefined
+          : (connectorKey) =>
+              onCapabilitySettingsRequest?.({
+                kind: "connector",
+                connectorKey,
+                action: "open"
+              })
       }
-      onOpenConnectors={() =>
-        openWorkspaceSettingsPanel({
-          section: "agent",
-          pane: "connectors"
-        })
+      onOpenConnectors={
+        !showConnectorViewMore
+          ? undefined
+          : () =>
+              openWorkspaceSettingsPanel({
+                section: "agent",
+                pane: "connectors"
+              })
       }
-      onSelectConnector={onConnectorSelected}
-      selectedConnectorKeys={selectedConnectorKeys}
+      onSelectConnector={connectorsReadOnly ? undefined : onConnectorSelected}
+      readOnly={connectorsReadOnly}
+      selectedConnectorKeys={connectorsReadOnly ? [] : selectedConnectorKeys}
     />
   );
 }

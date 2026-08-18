@@ -728,7 +728,7 @@ jobs:
   notify-feishu:
     name: Notify Feishu
     needs: [resolve, promote]
-    if: ${{ needs.promote.result == 'success' && inputs.notify_feishu == true }}
+    if: ${{ always() && needs.promote.result == 'success' && inputs.notify_feishu == true }}
     runs-on: ubuntu-latest
     env:
       FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_RELEASE_WEBHOOK_URL }}

@@ -378,6 +378,14 @@ components:
           type: integer
           format: int64
           minimum: 0
+        displayNameZh:
+          type: string
+          minLength: 1
+          description: Server-managed Simplified Chinese category name.
+        displayNameEn:
+          type: string
+          minLength: 1
+          description: Server-managed English category name.
     ConnectorMarketCategoriesResponse:
       type: object
       additionalProperties: false

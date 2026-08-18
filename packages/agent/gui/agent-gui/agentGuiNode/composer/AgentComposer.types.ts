@@ -510,6 +510,10 @@ export interface AgentComposerCapabilityMenuState {
    */
   connectors?: {
     enabled?: boolean | null;
+    /** Catalog remains inspectable but cannot select, authorize, install, or manage. */
+    readOnly?: boolean | null;
+    /** Controls the host management footer independently from catalog visibility. */
+    showViewMore?: boolean | null;
   };
   tuttiMode?: {
     enabled?: boolean | null;

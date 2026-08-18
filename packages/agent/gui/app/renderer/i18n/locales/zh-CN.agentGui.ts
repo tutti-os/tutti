@@ -10,6 +10,7 @@ import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 import { zhCNAgentGuiComposer } from "./zh-CN.agentGuiComposer.ts";
 import { zhCNAgentGuiProjectLaunch } from "./zh-CN.agentGuiProjectLaunch.ts";
+import { zhCNAgentGuiHomeSuggestions } from "./zh-CN.agentGuiHomeSuggestions.ts";
 export const zhCNAgentGui = {
   imageDownloaded: "图片已下载",
   imageLoadFailed: "图片加载失败",
@@ -426,29 +427,7 @@ export const zhCNAgentGui = {
     }
   },
   empty: "需要 {{provider}} 帮你做些什么？",
-  homeSuggestionsClose: "收起建议",
-  homeSuggestions: {
-    about: {
-      title: "认识 Tutti",
-      prompt: "介绍一下 Tutti 能帮我做些什么"
-    },
-    breakdown: {
-      title: "任务拆解",
-      taskCenterLabel: "任务管理",
-      prompt: "使用 {{taskCenterMention}} 帮我拆解任务，任务主题 { 请输入 }"
-    },
-    review: {
-      title: "质量审查",
-      prompt: "让 { @agent } 审查 { @agent 会话 } 的产物质量"
-    },
-    interaction: {
-      title: "Agent 互动",
-      prompt: "让 { @agent } 和 { @agent } 一起 { 做些什么 }，主题 { 请输入 }"
-    },
-    import: {
-      title: "导入会话"
-    }
-  },
+  ...zhCNAgentGuiHomeSuggestions,
   conversations: "会话",
   newConversation: "新建会话",
   agentConfig: "检测与设置",

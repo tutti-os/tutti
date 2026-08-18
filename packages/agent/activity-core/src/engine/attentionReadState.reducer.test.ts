@@ -20,7 +20,7 @@ const turn = {
 
 function acceptedTurnContext(
   turns: readonly AgentActivityTurn[],
-  options: { includePrevious?: boolean; latest?: boolean } = {}
+  options: { includePrevious?: boolean } = {}
 ) {
   return {
     previousSessionsById: {},
@@ -32,12 +32,7 @@ function acceptedTurnContext(
             item
           ])
     ),
-    sessionsById: {
-      "session-1": {
-        userId: "user-1",
-        latestTurn: options.latest === false ? null : (turns.at(-1) ?? null)
-      }
-    },
+    sessionsById: { "session-1": { userId: "user-1" } },
     turnsById: Object.fromEntries(
       turns.map((item) => [
         canonicalTurnKey(item.agentSessionId, item.turnId),
@@ -242,6 +237,17 @@ test("a live detail snapshot can replay a completion once identity arrives", () 
   assert.equal(record(state)?.isUnread, true);
 });
 
+test("normalizes canonical turn session ids before looking up the user", () => {
+  const paddedTurn = { ...turn, agentSessionId: " session-1 " };
+  const state = attentionReadStateReducer(
+    createInitialAttentionReadState(),
+    { live: true, type: "turn/upserted", turn: paddedTurn },
+    liveTurn([paddedTurn])
+  ).state;
+
+  assert.equal(record(state)?.completionKey, "turn:session-1:turn-1:completed");
+});
+
 test("an authoritative history live turn marker creates unread atomically", () => {
   const state = attentionReadStateReducer(
     createInitialAttentionReadState(),
@@ -256,7 +262,7 @@ test("an authoritative history live turn marker creates unread atomically", () =
   assert.equal(record(state)?.isUnread, true);
 });
 
-test("a historical session can be manually marked unread", () => {
+test("a historical session can be manually marked unread from canonical turns", () => {
   const state = unread(createInitialAttentionReadState());
   assert.deepEqual(record(state), {
     completionKey: "turn:session-1:turn-1:completed",
@@ -266,6 +272,35 @@ test("a historical session can be manually marked unread", () => {
     observationProvenance: "live",
     readStateProvenance: "durable"
   });
+});
+
+test("manual unread uses the newest canonical turn when latestTurn is omitted", () => {
+  const olderTurn = {
+    ...turn,
+    turnId: "turn-old",
+    startedAtUnixMs: 1,
+    updatedAtUnixMs: 2
+  };
+  const newerTurn = {
+    ...turn,
+    turnId: "turn-new",
+    startedAtUnixMs: 3,
+    updatedAtUnixMs: 4
+  };
+  const state = attentionReadStateReducer(
+    createInitialAttentionReadState(),
+    {
+      type: "attention/unreadRequested",
+      agentSessionId: "session-1",
+      userId: "user-1"
+    },
+    acceptedTurnContext([olderTurn, newerTurn])
+  ).state;
+
+  assert.equal(
+    record(state)?.completionKey,
+    "turn:session-1:turn-new:completed"
+  );
 });
 
 test("a new live completion re-lights an already read session", () => {
@@ -303,9 +338,7 @@ test("a live completion outcome change replaces the unread completion", () => {
       previousTurnsById: {
         [canonicalTurnKey("session-1", turn.turnId)]: turn
       },
-      sessionsById: {
-        "session-1": { userId: "user-1", latestTurn: failedTurn }
-      },
+      sessionsById: { "session-1": { userId: "user-1" } },
       turnsById: { [canonicalTurnKey("session-1", turn.turnId)]: failedTurn }
     }
   ).state;
@@ -381,6 +414,47 @@ test("a completion observed before empty hydration remains unread", () => {
   );
 });
 
+test("manual unread before hydration is persisted after hydration completes", () => {
+  let result = attentionReadStateReducer(createInitialAttentionReadState(), {
+    commandId: "read-1",
+    type: "attention/hydrateRequested",
+    userId: "user-1",
+    workspaceId: "workspace-1"
+  });
+  result = attentionReadStateReducer(
+    result.state,
+    {
+      type: "attention/unreadRequested",
+      agentSessionId: "session-1",
+      userId: "user-1"
+    },
+    acceptedTurnContext([turn])
+  );
+  assert.deepEqual(result.commands, []);
+
+  result = attentionReadStateReducer(result.state, {
+    type: "attention/readStateHydrated",
+    userId: "user-1",
+    completed: { readIds: [], unreadIds: [] },
+    failed: { readIds: [], unreadIds: [] }
+  });
+
+  assert.deepEqual(result.commands, [
+    {
+      type: "attention/readState/write",
+      commandId: "attention-write:user-1:1",
+      correlationId: "user-1",
+      userId: "user-1",
+      workspaceId: "workspace-1",
+      completed: {
+        readIds: [],
+        unreadIds: ["turn:session-1:turn-1:completed"]
+      },
+      failed: { readIds: [], unreadIds: [] }
+    }
+  ]);
+});
+
 test("session removal deletes its durable unread key", () => {
   let state = hydrate(createInitialAttentionReadState(), {
     completed: { unreadIds: ["turn:session-1:turn-1:completed"] },
@@ -416,7 +490,10 @@ test("unread request for a removed session is ignored", () => {
       agentSessionId: "session-1",
       userId: "user-1"
     },
-    acceptedTurnContext([turn], { latest: false })
+    {
+      ...acceptedTurnContext([turn]),
+      sessionsById: {}
+    }
   ).state;
   assert.equal(record(state), undefined);
 });
