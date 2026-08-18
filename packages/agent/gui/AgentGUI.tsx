@@ -116,10 +116,25 @@ export const AgentGUI = memo(function AgentGUI({
     ]
   );
   const handoffAgentTargets = useMemo(
-    () =>
-      normalizedHandoffAgents === normalizedAgents
-        ? agentTargets
-        : projectAgentGUIAgentsToTargets(normalizedHandoffAgents),
+    () => {
+      const targets =
+        normalizedHandoffAgents === normalizedAgents
+          ? agentTargets
+          : projectAgentGUIAgentsToTargets(normalizedHandoffAgents);
+      if (
+        !targets.some(
+          (target) =>
+            target.availability.status !== "ready" && target.disabled !== true
+        )
+      ) {
+        return targets;
+      }
+      return targets.map((target) =>
+        target.availability.status === "ready" || target.disabled === true
+          ? target
+          : { ...target, disabled: true }
+      );
+    },
     [agentTargets, normalizedAgents, normalizedHandoffAgents]
   );
   const hostCapabilities = props.hostCapabilities;
