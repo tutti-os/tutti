@@ -18,6 +18,7 @@ interface AgentGUINodeProbeProps {
     handoffAgentTargets?: readonly {
       agentTargetId?: string;
       availability: unknown;
+      disabled?: boolean;
       ref: unknown;
     }[];
     mentionAgentTargets?: readonly {
@@ -202,6 +203,34 @@ describe("AgentGUI i18n", () => {
     expect(
       screen.getByTestId("agent-gui-handoff-targets-probe")
     ).toHaveTextContent('["local-codex","shared-agent:claude"]');
+  });
+
+  it("disables unavailable setup targets only in the handoff directory", () => {
+    render(
+      <AgentGUI
+        {...createAgentGUIProps("en")}
+        agentDirectory={{
+          agents: [
+            {
+              ...agent("extension-kimi", "kimi-code"),
+              availability: { status: "unavailable", reason: "probe_failed" },
+              setupKind: "target_runtime"
+            }
+          ],
+          capturedAtUnixMs: null,
+          error: null,
+          status: "ready"
+        }}
+      />
+    );
+
+    const props = agentGuiNodeSpy.mock.lastCall?.[0] as
+      | AgentGUINodeProbeProps
+      | undefined;
+    expect(props?.hostCapabilities.agentTargets?.[0]?.disabled).toBeUndefined();
+    expect(props?.hostCapabilities.handoffAgentTargets?.[0]?.disabled).toBe(
+      true
+    );
   });
 
   it("keeps unavailable mention identities outside action directories", () => {
