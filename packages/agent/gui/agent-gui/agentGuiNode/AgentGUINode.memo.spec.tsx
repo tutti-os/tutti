@@ -159,28 +159,6 @@ describe("AgentGUINode memoization", () => {
     );
   });
 
-  it("rerenders when Session fork is enabled", () => {
-    mockViewModel = createViewModel();
-    const props = createProps();
-    const { rerender } = render(<AgentGUINode {...props} />);
-
-    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sessionForkEnabled: false })
-    );
-    agentGuiNodeViewSpy.mockClear();
-
-    rerender(
-      <AgentGUINode
-        {...props}
-        hostCapabilities={{ sessionForkEnabled: true }}
-      />
-    );
-
-    expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sessionForkEnabled: true })
-    );
-  });
-
   it("rerenders when per-target composer overrides change", () => {
     mockViewModel = createViewModel();
     const props = createProps({

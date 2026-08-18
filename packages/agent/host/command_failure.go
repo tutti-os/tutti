@@ -64,7 +64,7 @@ func (h *Host) beginCommand(
 	if h != nil {
 		command.startedAt = h.now()
 	}
-	if h == nil || h.terminalFailure == nil {
+	if h == nil {
 		return ctx, command
 	}
 	return context.WithValue(ctx, commandTerminalFailureKey{}, command), command

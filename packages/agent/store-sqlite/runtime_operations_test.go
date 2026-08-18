@@ -385,6 +385,10 @@ func TestCompleteCancelRuntimeOperationSettlesExactTurnAndSupersedesPending(t *t
 	if err != nil || !changed || completion.Operation.Result != RuntimeOperationResultCanceled {
 		t.Fatalf("cancel completion=%#v changed=%v err=%v", completion, changed, err)
 	}
+	settledTargets, ok := completion.Event.Payload["settledTargets"].([]any)
+	if !ok || len(settledTargets) != 0 {
+		t.Fatalf("settled targets=%#v, want none for an already-settled turn", settledTargets)
+	}
 	turn, found, err := store.GetTurn(context.Background(), "ws-1", "session-1", "turn-1")
 	if err != nil || !found || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeCanceled || turn.ErrorMessage != "" {
 		t.Fatalf("turn=%#v found=%v err=%v", turn, found, err)
@@ -426,15 +430,20 @@ func TestCompleteCancelRuntimeOperationSettlesRootAndUnconfirmedChildAtomically(
 		t.Fatalf("prepare aggregate cancel created=%v err=%v", created, err)
 	}
 	claimRuntimeOperation(t, store, "cancel-tree", "worker-a")
-	if _, changed, err := store.CompleteCancelRuntimeOperation(context.Background(), CompleteCancelRuntimeOperationInput{
+	completion, changed, err := store.CompleteCancelRuntimeOperation(context.Background(), CompleteCancelRuntimeOperationInput{
 		WorkspaceID: "ws-1", OperationID: "cancel-tree", LeaseOwner: "worker-a",
 		TargetOutcomes: []CancelRuntimeOperationTargetOutcome{
 			{AgentSessionID: "child", TurnID: "child-turn", Outcome: TurnOutcomeInterrupted},
 			{AgentSessionID: "root", TurnID: "root-turn", Outcome: TurnOutcomeCanceled},
 		},
 		NowUnixMS: 30,
-	}); err != nil || !changed {
+	})
+	if err != nil || !changed {
 		t.Fatalf("complete aggregate cancel changed=%v err=%v", changed, err)
+	}
+	settledTargets, ok := completion.Event.Payload["settledTargets"].([]any)
+	if !ok || len(settledTargets) != 2 {
+		t.Fatalf("settled targets=%#v, want both targets settled by this transaction", settledTargets)
 	}
 	for sessionID, expected := range map[string]struct {
 		turnID  string

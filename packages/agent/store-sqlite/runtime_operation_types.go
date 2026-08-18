@@ -30,6 +30,11 @@ const (
 	RuntimeOperationEventEditRetryRecovery     = "edit_retry_recovery_required"
 )
 
+// CancelRuntimeOperationDeliveryUnconfirmedPayloadKey records durable evidence
+// that a provider received an exact cancel request but could not confirm it
+// stopped the requested turn. It may only transition from absent to true.
+const CancelRuntimeOperationDeliveryUnconfirmedPayloadKey = "cancelDeliveryUnconfirmed"
+
 var (
 	ErrRuntimeOperationConflict         = errors.New("runtime operation identity conflicts with an existing operation")
 	ErrRuntimeOperationIdentityMismatch = errors.New("runtime operation durable identity does not match its subject")

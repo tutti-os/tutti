@@ -175,10 +175,10 @@ Mobile 使用稳定 Bootstrap container。未登录 child 与登录后 child 互
 
 设备级快捷提示词由登录后的设备 scope 中的独立 service 读取，不进入 workspace
 `AgentSessionEngine`、Session 或移动端持久存储。该 service 通过生成客户端读取电脑端
-`agent.quickPromptLibrary` 开关和 canonical 提示词顺序；开关打开时，Composer 的 `+`
-菜单提供搜索与只读选择，点选后在当前输入位置添加文本，不替换已有草稿，恢复输入焦点且不自动发送。
-新增、编辑、删除和排序仍由电脑端负责。DeviceLink 只为此能力开放精确的桌面偏好和
-快捷提示词列表 GET 路由，不开放 mutation 或单条记录路由。
+canonical 提示词顺序；Composer 的 `+` 菜单提供搜索与只读选择，点选后在当前输入位置
+添加文本，不替换已有草稿，恢复输入焦点且不自动发送。
+新增、编辑、删除和排序仍由电脑端负责。DeviceLink 只为此能力开放精确的快捷提示词
+列表 GET 路由，不开放 mutation 或单条记录路由。
 
 ## 7. DeviceLink 边界
 

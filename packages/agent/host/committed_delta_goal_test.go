@@ -119,6 +119,38 @@ func TestActivityStateDeltaCarriesCanonicalProviderIntoRootSettlement(t *testing
 	}
 }
 
+func TestActivityStateDeltaClassifiesSettledRootByOwnerWhenChildReportsTerminal(t *testing.T) {
+	t.Parallel()
+
+	delta := ActivityStateDelta(
+		canonical.ReportSessionStateInput{
+			WorkspaceID: "ws-1", AgentSessionID: "child-1",
+			State: canonical.WorkspaceAgentSessionStateUpdate{
+				Kind:             storesqlite.SessionKindChild,
+				ParentToolCallID: "call-1",
+			},
+		},
+		canonical.ReportSessionStateReply{Accepted: true, StateApplied: true},
+		storesqlite.ActivityStateReportResult{
+			State: storesqlite.StateReportResult{Session: storesqlite.Session{
+				ID: "child-1", WorkspaceID: "ws-1", Kind: storesqlite.SessionKindChild,
+				ParentToolCallID: "call-1", Provider: "codex",
+			}},
+			RootTurnAccepted: true,
+			RootTurn: storesqlite.Turn{
+				WorkspaceID: "ws-1", AgentSessionID: "root-1", TurnID: "root-turn",
+				Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeCompleted,
+			},
+		},
+	)
+	if len(delta.RootTurnsSettled) != 1 {
+		t.Fatalf("root settlements = %#v, want one", delta.RootTurnsSettled)
+	}
+	if settled := delta.RootTurnsSettled[0]; settled.AgentSessionID != "root-1" || settled.IsChildSession {
+		t.Fatalf("root settlement identity = %#v, want canonical root owner", settled)
+	}
+}
+
 func TestTerminalFailureIdentityEnrichmentSkipsSuccessfulCommits(t *testing.T) {
 	t.Parallel()
 

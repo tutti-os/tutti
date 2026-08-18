@@ -37,10 +37,12 @@ type CatalogPageQuery struct {
 }
 
 type CatalogCategory struct {
-	CategoryID string `json:"categoryId"`
-	Kind       string `json:"kind"`
-	SortOrder  int32  `json:"sortOrder"`
-	ItemCount  int64  `json:"itemCount"`
+	CategoryID    string `json:"categoryId"`
+	Kind          string `json:"kind"`
+	SortOrder     int32  `json:"sortOrder"`
+	ItemCount     int64  `json:"itemCount"`
+	DisplayNameZH string `json:"displayNameZh,omitempty"`
+	DisplayNameEN string `json:"displayNameEn,omitempty"`
 }
 
 type CatalogEntry struct {

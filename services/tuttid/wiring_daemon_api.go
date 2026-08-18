@@ -508,6 +508,7 @@ func buildDaemonAPI(
 	if err := agentHost.Recover(ctx); err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host: %w", err)
 	}
+	go agentActivityProjection.RunTurnTerminalAnalytics(ctx)
 	go func() {
 		if err := agentHost.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.ErrorContext(ctx, "agent Host worker lifecycle stopped", "error", err)

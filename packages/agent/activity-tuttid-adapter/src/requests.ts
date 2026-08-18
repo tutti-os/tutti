@@ -218,7 +218,8 @@ function tuttiSubmitDiagnosticsFromActivity(
     ...(input.source !== undefined ? { source: input.source } : {}),
     ...(input.submittedAtUnixMs !== undefined
       ? { submittedAtUnixMs: input.submittedAtUnixMs }
-      : {})
+      : {}),
+    ...(input.uiMode !== undefined ? { uiMode: input.uiMode } : {})
   };
 }
 

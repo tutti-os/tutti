@@ -2,6 +2,8 @@ package agenthost
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -26,14 +28,35 @@ func submissionMetadata(metadata map[string]any, typedClientSubmitID string) map
 	return result
 }
 
+// submitClaimMetadataJSON deliberately persists only the closed analytics
+// provenance needed before provider dispatch. Submit claims are long-lived;
+// copying the full submission metadata here would expand both storage and the
+// privacy surface of this admission fence.
+func submitClaimMetadataJSON(metadata map[string]any) (string, error) {
+	claimMetadata := make(map[string]any, 1)
+	if mode, ok := metadata["uiMode"].(string); ok && (mode == "os" || mode == "agent") {
+		claimMetadata["uiMode"] = mode
+	}
+	encoded, err := json.Marshal(claimMetadata)
+	if err != nil {
+		return "", fmt.Errorf("encode submit claim metadata: %w", err)
+	}
+	return string(encoded), nil
+}
+
 func (h *Host) prepareSubmitClaim(ctx context.Context, ref SessionRef, metadata map[string]any, canonicalTurnID string) (storesqlite.SubmitClaim, bool, error) {
 	clientID := legacyClientSubmitID(metadata)
 	if h == nil || h.store == nil || clientID == "" {
 		return storesqlite.SubmitClaim{}, false, nil
 	}
+	metadataJSON, err := submitClaimMetadataJSON(metadata)
+	if err != nil {
+		return storesqlite.SubmitClaim{}, false, err
+	}
 	claim, created, err := h.store.PrepareSubmitClaim(ctx, storesqlite.SubmitClaimPrepare{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
-		ClientSubmitID: clientID, CanonicalTurnID: strings.TrimSpace(canonicalTurnID), NowUnixMS: h.now().UnixMilli(),
+		ClientSubmitID: clientID, CanonicalTurnID: strings.TrimSpace(canonicalTurnID),
+		MetadataJSON: metadataJSON, NowUnixMS: h.now().UnixMilli(),
 	})
 	if err != nil || created || claim.Status != "prepared" {
 		return claim, created, err

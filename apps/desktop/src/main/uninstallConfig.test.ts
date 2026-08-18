@@ -49,3 +49,14 @@ test("Windows uninstall removes only marker-owned CLI shims and preserves user s
       include.indexOf('Push "$PROFILE\\.tutti\\bin\\tutti.cmd"'),
   );
 });
+
+test("Windows install rewrites shortcuts to the current installation", async () => {
+  const include = await readFile(
+    new URL("../../build/installer.nsh", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    include,
+    /!macro customInstall[\s\S]*CreateShortCut "\$DESKTOP\\Tutti\.lnk" "\$INSTDIR\\Tutti\.exe"[\s\S]*CreateShortCut "\$SMPROGRAMS\\Tutti\.lnk" "\$INSTDIR\\Tutti\.exe"[\s\S]*!macroend/,
+  );
+});

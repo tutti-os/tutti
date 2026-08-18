@@ -40,6 +40,11 @@ func runtimeOperationPayloadText(payload map[string]any, key string) string {
 	return strings.TrimSpace(value)
 }
 
+func runtimeOperationPayloadBool(payload map[string]any, key string) bool {
+	value, _ := payload[key].(bool)
+	return value
+}
+
 func runtimeOperationPayloadInteractiveDisposition(payload map[string]any, key string) RuntimeInteractiveDisposition {
 	switch RuntimeInteractiveDisposition(runtimeOperationPayloadText(payload, key)) {
 	case RuntimeInteractiveDispositionAnswered,
@@ -160,7 +165,11 @@ func (h *Host) processRuntimeOperation(ctx context.Context, operation storesqlit
 	if operation.Kind == storesqlite.RuntimeOperationKindPlanDecision {
 		var result storesqlite.RuntimeOperation
 		var processErr error
-		err := h.withWorkspaceRuntimeOperation(ctx, operation.WorkspaceID, func(operationCtx context.Context) error {
+		err := h.withWorkspaceRuntimeOperationInfo(ctx, WorkspaceRuntimeOperationInfo{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
+			Kind: operation.Kind, AgentSessionID: operation.AgentSessionID,
+			Source: "host.runtime_operation_worker",
+		}, func(operationCtx context.Context) error {
 			result, processErr = h.processRuntimeOperationAdmitted(operationCtx, operation, recovering)
 			return processErr
 		})
@@ -399,27 +408,122 @@ func (h *Host) executeCancelRuntimeOperation(
 		}
 	}
 	targets := runtimeCancelTargetsFromPayload(operation.Payload)
+	settled, err := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
+	if err != nil {
+		return h.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
+	}
+	if settled {
+		return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, nil)
+	}
 	result, err := h.runtime.Cancel(ctx, RuntimeCancelInput{
 		WorkspaceID: operation.WorkspaceID, RootAgentSessionID: runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"),
 		Targets: targets, Reason: runtimeOperationPayloadText(operation.Payload, "reason"),
 	})
 	if err != nil {
+		if errors.Is(err, ErrRuntimeCancelDeliveryUnconfirmed) {
+			checkpointed, checkpointErr := h.checkpointCancelRuntimeOperationDeliveryUnconfirmed(ctx, operation, owner)
+			if checkpointErr != nil {
+				return h.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("checkpoint cancel delivery-unconfirmed state: %w", checkpointErr), true)
+			}
+			operation = checkpointed
+			settled, settledErr := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
+			if settledErr != nil {
+				return h.releaseRuntimeOperation(ctx, operation, owner, settledErr, !isRetryableRuntimeOperationError(settledErr))
+			}
+			if settled {
+				return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, nil)
+			}
+			slog.Info("agent runtime cancel delivery is unconfirmed; preserving exact target for reconciliation",
+				"event", "agent_runtime_operation.cancel_delivery_unconfirmed",
+				"workspace_id", operation.WorkspaceID,
+				"agent_session_id", operation.AgentSessionID,
+				"operation_id", operation.OperationID,
+				"target_count", len(targets),
+			)
+		}
 		return h.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
 	}
+	if result.TargetAbsent && runtimeOperationPayloadBool(operation.Payload, storesqlite.CancelRuntimeOperationDeliveryUnconfirmedPayloadKey) {
+		settled, settledErr := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
+		if settledErr != nil {
+			return h.releaseRuntimeOperation(ctx, operation, owner, settledErr, !isRetryableRuntimeOperationError(settledErr))
+		}
+		if settled {
+			return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, nil)
+		}
+		slog.Info("agent runtime cancel target is absent after delivery-unconfirmed response; awaiting canonical settlement",
+			"event", "agent_runtime_operation.cancel_delivery_unconfirmed_target_absent",
+			"workspace_id", operation.WorkspaceID,
+			"agent_session_id", operation.AgentSessionID,
+			"operation_id", operation.OperationID,
+			"target_count", len(targets),
+		)
+		return h.releaseRuntimeOperation(ctx, operation, owner, ErrRuntimeCancelDeliveryUnconfirmed, false)
+	}
+	return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, result.ConfirmedTargets)
+}
+
+func (h *Host) checkpointCancelRuntimeOperationDeliveryUnconfirmed(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+) (storesqlite.RuntimeOperation, error) {
+	payload := cloneMap(operation.Payload)
+	payload[storesqlite.CancelRuntimeOperationDeliveryUnconfirmedPayloadKey] = true
+	checkpointed, _, err := h.operations.CheckpointRuntimeOperation(ctx, storesqlite.CheckpointRuntimeOperationInput{
+		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
+		Payload: payload, NowUnixMS: h.now().UnixMilli(),
+	})
+	if err != nil {
+		return operation, err
+	}
+	return checkpointed, nil
+}
+
+func (h *Host) completeCancelRuntimeOperation(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+	targets []RuntimeCancelTarget,
+	confirmed []RuntimeCancelTarget,
+) (storesqlite.RuntimeOperation, error) {
 	completion, _, err := h.operations.CompleteCancelRuntimeOperation(ctx, storesqlite.CompleteCancelRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		TargetOutcomes: runtimeCancelTargetOutcomes(runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), targets, result.ConfirmedTargets),
+		TargetOutcomes: runtimeCancelTargetOutcomes(runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), targets, confirmed),
 		NowUnixMS:      h.now().UnixMilli(),
 	})
 	if err != nil {
 		return operation, err
 	}
 	completion.Operation.Payload = cloneMap(completion.Operation.Payload)
-	completion.Operation.Payload["providerConfirmed"] = len(result.ConfirmedTargets) > 0
+	completion.Operation.Payload["providerConfirmed"] = len(confirmed) > 0
 	if err := h.publishRuntimeOperationEvents(ctx, operation.WorkspaceID); err != nil {
 		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish completed cancel runtime operation: %w", err))
 	}
 	return completion.Operation, nil
+}
+
+func (h *Host) cancelRuntimeOperationTargetsSettled(
+	ctx context.Context,
+	workspaceID string,
+	targets []RuntimeCancelTarget,
+) (bool, error) {
+	if len(targets) == 0 {
+		return false, ErrRuntimeOperationIdentityMismatch
+	}
+	for _, target := range targets {
+		turn, found, err := h.store.GetTurn(ctx, workspaceID, target.AgentSessionID, target.TurnID)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, ErrRuntimeOperationIdentityMismatch
+		}
+		if turn.Phase != storesqlite.TurnPhaseSettled {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // A live Goal revocation may crash after preparing its exact-Turn cancel but
@@ -726,7 +830,7 @@ func logRuntimeOperationFailure(operation storesqlite.RuntimeOperation, err erro
 }
 
 func isRetryableRuntimeOperationError(err error) bool {
-	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrRuntimeSessionDisconnected))
+	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrRuntimeSessionDisconnected) || errors.Is(err, ErrRuntimeCancelDeliveryUnconfirmed))
 }
 
 func runtimeOperationNextAttemptAt(now time.Time, attempt int, failed bool) int64 {

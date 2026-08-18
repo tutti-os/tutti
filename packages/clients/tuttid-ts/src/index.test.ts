@@ -2569,15 +2569,17 @@ test("shared tuttid connector client preserves category and cursor pagination", 
   const categories = {
     categories: [
       {
-        categoryId: "development",
+        categoryId: "business-operations",
         kind: "category" as const,
-        sortOrder: 20,
-        itemCount: 1
+        sortOrder: 60,
+        itemCount: 1,
+        displayNameZh: "商业与运营",
+        displayNameEn: "Business & Operations"
       }
     ]
   };
   const page = {
-    sectionId: "development",
+    sectionId: "business-operations",
     items: [],
     nextPageToken: "next-page",
     revision: 8
@@ -2590,7 +2592,7 @@ test("shared tuttid connector client preserves category and cursor pagination", 
   assert.deepEqual(
     await client.listConnectorMarketCatalog({
       installation: "not_installed",
-      sectionId: "development",
+      sectionId: "business-operations",
       pageSize: 20,
       pageToken: "cursor-1"
     }),
@@ -2612,7 +2614,7 @@ test("shared tuttid connector client preserves category and cursor pagination", 
       installation: "not_installed",
       pageSize: "20",
       pageToken: "cursor-1",
-      sectionId: "development"
+      sectionId: "business-operations"
     }
   });
 });

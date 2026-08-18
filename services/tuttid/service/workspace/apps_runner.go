@@ -26,6 +26,13 @@ import (
 
 const defaultAppHealthcheckTimeout = 30 * time.Second
 
+// A workspace app chooses its own listener after reading TUTTI_APP_PORT. The
+// port allocator cannot hold that listener across exec, so a short-lived
+// bind race is still possible. Retry only when the child proves that its
+// failure was the selected listener, rather than hiding an application
+// startup or healthcheck bug behind a blind restart loop.
+const maxAppPortStartupRetries = 2
+
 type AppRunner struct {
 	ShellAdapter       AppShellAdapter
 	HealthcheckTimeout time.Duration
@@ -160,6 +167,10 @@ func (r *AppRunner) startQueued(ctx context.Context, key string, input AppStartI
 }
 
 func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStartInput, start *appStart) {
+	r.startProcessAttempt(ctx, key, input, start, 0)
+}
+
+func (r *AppRunner) startProcessAttempt(ctx context.Context, key string, input AppStartInput, start *appStart, attempt int) {
 	port, err := allocateLoopbackPort()
 	if err != nil {
 		logAppRuntimeControl("workspace_app_runtime_start_failed", input, 0, "startup", fmt.Errorf("allocate app port: %w", err))
@@ -199,6 +210,10 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "startup", fmt.Errorf("open app runtime log: %w", err))
 		r.setFailedForStart(key, start, "startup", fmt.Errorf("open app runtime log: %w", err))
 		return
+	}
+	logStartOffset := int64(0)
+	if info, statErr := logFile.Stat(); statErr == nil {
+		logStartOffset = info.Size()
 	}
 
 	bootstrap := strings.TrimSpace(input.Bootstrap)
@@ -300,13 +315,18 @@ func (r *AppRunner) startProcess(ctx context.Context, key string, input AppStart
 
 	go r.waitForProcess(key, process)
 
-	healthErr := r.waitForHealth(ctx, launchURL, input.HealthcheckPath)
+	healthErr := r.waitForHealth(ctx, key, process, launchURL, input.HealthcheckPath)
 	if healthErr != nil {
 		if errors.Is(healthErr, context.Canceled) {
 			_, _ = r.stopProcess(context.Background(), key, process)
 			return
 		}
 		_, _ = r.stopProcess(context.Background(), key, process)
+		if attempt < maxAppPortStartupRetries && appRuntimeLogHasPortBindFailure(filepath.Join(input.LogDir, "runtime.log"), logStartOffset) {
+			logAppRuntimeControl("workspace_app_runtime_retrying_port", input, port, "port_bind", healthErr)
+			r.startProcessAttempt(ctx, key, input, start, attempt+1)
+			return
+		}
 		logAppRuntimeControl("workspace_app_runtime_healthcheck_failed", input, port, "healthcheck", healthErr)
 		r.setFailedForStart(key, start, "healthcheck", healthErr)
 		return
@@ -625,7 +645,7 @@ func logAppRuntimeControl(event string, input AppStartInput, port int, failureRe
 	slog.Info(event, fields...)
 }
 
-func (r *AppRunner) waitForHealth(ctx context.Context, launchURL string, healthcheckPath string) error {
+func (r *AppRunner) waitForHealth(ctx context.Context, key string, process *appProcess, launchURL string, healthcheckPath string) error {
 	timeout := r.HealthcheckTimeout
 	if timeout <= 0 {
 		timeout = defaultAppHealthcheckTimeout
@@ -639,6 +659,9 @@ func (r *AppRunner) waitForHealth(ctx context.Context, launchURL string, healthc
 		}
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if !r.isCurrentProcess(key, process) {
+			return errors.New("app process exited before healthcheck")
 		}
 
 		request, err := http.NewRequestWithContext(ctx, http.MethodGet, launchURL+healthcheckPath, nil)
@@ -659,6 +682,15 @@ func (r *AppRunner) waitForHealth(ctx context.Context, launchURL string, healthc
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+}
+
+func (r *AppRunner) isCurrentProcess(key string, process *appProcess) bool {
+	if r == nil || process == nil {
+		return false
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.processes[key] == process
 }
 
 func (r *AppRunner) httpClient() *http.Client {
@@ -734,6 +766,32 @@ func allocateLoopbackPort() (int, error) {
 		return 0, fmt.Errorf("unexpected listener address %q", listener.Addr().String())
 	}
 	return tcpAddr.Port, nil
+}
+
+func appRuntimeLogHasPortBindFailure(logPath string, startOffset int64) bool {
+	body, err := os.ReadFile(logPath)
+	if err != nil {
+		return false
+	}
+	if startOffset < 0 {
+		startOffset = 0
+	}
+	if startOffset > 0 {
+		if startOffset >= int64(len(body)) {
+			return false
+		}
+		body = body[startOffset:]
+	}
+	message := strings.ToLower(string(body))
+	if !strings.Contains(message, "listen") && !strings.Contains(message, "bind") {
+		return false
+	}
+	for _, marker := range []string{"eacces", "eaddrinuse", "address already in use", "permission denied"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func tuttiAppToolchainRoot() string {

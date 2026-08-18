@@ -100,11 +100,15 @@ export function normalizeWorkspaceFilePath(
   rootPath?: string | null
 ): string {
   const normalizedPath = path.trim().replaceAll("\\", "/");
+  const normalizedRootPath = rootPath?.trim().replaceAll("\\", "/");
   if (
     isWindowsAbsolutePath(normalizedPath) ||
-    isGitBashWindowsAbsolutePath(normalizedPath, rootPath)
+    isGitBashWindowsAbsolutePath(normalizedPath, normalizedRootPath)
   ) {
-    return normalizeLogicalWorkspaceFilePath(normalizedPath, rootPath);
+    return normalizeLogicalWorkspaceFilePath(
+      normalizedPath,
+      normalizedRootPath
+    );
   }
 
   const drive = /^[A-Za-z]:/.exec(normalizedPath)?.[0] ?? "";

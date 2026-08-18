@@ -107,6 +107,29 @@ func TestExactCancelCompletesFromTypedRuntimeTargetAbsentEvidence(t *testing.T) 
 	}
 }
 
+func TestCancelTurnReturnsCancelRequestedWhenCancelDeliveryIsUnconfirmed(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "claude-code", Status: "working",
+	}
+	runtime.cancelErr = agenthost.ErrRuntimeCancelDeliveryUnconfirmed
+	store := &runtimeOperationMemoryStore{}
+	service := newIsolatedAgentService(runtime)
+	service.RuntimeOperationStore = store
+	service.RuntimeOperationOwner = "worker-a"
+	service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1000) }
+	service.TurnStore = runtimeOperationTurnStore("turn-1", "")
+
+	result, err := service.CancelTurn(context.Background(), "ws-1", "session-1", "turn-1")
+	if err != nil {
+		t.Fatalf("CancelTurn() error = %v", err)
+	}
+	if result.Canceled || result.Reason != CancelTurnReasonCancelRequested ||
+		store.operation.Status != agentactivitybiz.RuntimeOperationStatusPrepared || len(runtime.cancelCalls) != 1 {
+		t.Fatalf("CancelTurn() result=%#v operation=%#v calls=%d", result, store.operation, len(runtime.cancelCalls))
+	}
+}
+
 func TestRootCancelRoutesDurableChildTargetsThroughRootRuntime(t *testing.T) {
 	runtime := newFakeRuntime()
 	runtime.sessions["ws-1:root"] = ProviderRuntimeSession{ID: "root", WorkspaceID: "ws-1", Provider: "codex", Status: "working"}

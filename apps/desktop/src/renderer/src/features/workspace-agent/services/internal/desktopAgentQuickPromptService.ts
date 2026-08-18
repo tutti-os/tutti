@@ -6,15 +6,7 @@ import type {
   TuttidClient,
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
-import { subscribe as subscribeValtio } from "valtio";
-import {
-  AGENT_QUICK_PROMPT_LIBRARY_FLAG,
-  isFeatureEnabled
-} from "../../../../../../shared/featureFlags/catalog.ts";
-import type { IDesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import type { IAgentQuickPromptService } from "../agentQuickPromptService.interface.ts";
-
-const disabledErrorCode = "quick_prompts.disabled";
 
 export class DesktopAgentQuickPromptService implements IAgentQuickPromptService {
   readonly _serviceBrand = undefined;
@@ -24,7 +16,6 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
   >();
   private readonly pendingMutationCounts = new Map<string, number>();
   private readonly locallyAppliedEvents = new Set<string>();
-  private readonly disposePreferencesSubscription: () => void;
   private readonly disposeEventSubscription: (() => void) | null;
   private snapshot: AgentHostQuickPromptSnapshot;
   private loadPromise: Promise<void> | null = null;
@@ -34,19 +25,17 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
   private disposed = false;
   private mutationSequence = 0;
   private readonly input: {
-    desktopPreferencesService: IDesktopPreferencesService;
     eventStreamClient?: TuttidEventStreamClient;
     tuttidClient: TuttidClient;
   };
 
   constructor(input: {
-    desktopPreferencesService: IDesktopPreferencesService;
     eventStreamClient?: TuttidEventStreamClient;
     tuttidClient: TuttidClient;
   }) {
     this.input = input;
     this.snapshot = {
-      enabled: this.readEnabled(),
+      enabled: true,
       error: null,
       pendingMutationIds: [],
       orderMutationPending: false,
@@ -54,10 +43,6 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
       revision: 0,
       status: "idle"
     };
-    this.disposePreferencesSubscription = subscribeValtio(
-      input.desktopPreferencesService.store,
-      () => this.handlePreferencesChanged()
-    );
     this.disposeEventSubscription = input.eventStreamClient
       ? input.eventStreamClient.subscribe(
           "agent.quickprompt.updated",
@@ -83,7 +68,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
   };
 
   async ensureLoaded(input?: { force?: boolean }): Promise<void> {
-    this.assertEnabled();
+    this.assertAvailable();
     if (!input?.force && this.snapshot.status === "ready") return;
     if (this.loadPromise) {
       if (input?.force || this.snapshot.status === "idle") {
@@ -105,7 +90,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
     title: string;
     content: string;
   }): Promise<AgentHostQuickPrompt> {
-    this.assertEnabled();
+    this.assertAvailable();
     const mutationId = `create:${++this.mutationSequence}`;
     return this.runMutation(mutationId, "create", async () => {
       const response = await this.input.tuttidClient.createAgentQuickPrompt({
@@ -122,7 +107,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
     content: string;
     expectedVersion: number;
   }): Promise<AgentHostQuickPrompt> {
-    this.assertEnabled();
+    this.assertAvailable();
     return this.runMutation(input.id, "update", async () => {
       const response = await this.input.tuttidClient.updateAgentQuickPrompt(
         input.id,
@@ -137,7 +122,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
   }
 
   async remove(input: { id: string; expectedVersion: number }): Promise<void> {
-    this.assertEnabled();
+    this.assertAvailable();
     await this.runMutation(input.id, "delete", async () => {
       await this.input.tuttidClient.deleteAgentQuickPrompt(input.id, {
         expectedVersion: input.expectedVersion
@@ -150,7 +135,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
     beforePromptId: string | null;
     expectedVersion: number;
   }): Promise<readonly AgentHostQuickPrompt[]> {
-    this.assertEnabled();
+    this.assertAvailable();
     if (this.snapshot.orderMutationPending) {
       throw new Error("quick_prompts.move_pending");
     }
@@ -182,12 +167,12 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
           movedPrompt.version
         );
       }
-      if (!this.disposed && this.readEnabled()) {
+      if (!this.disposed) {
         this.publish({ error: null, prompts, status: "ready" });
       }
       return prompts;
     } catch (error) {
-      if (!this.disposed && this.readEnabled()) {
+      if (!this.disposed) {
         if (promptSnapshotsEqual(this.snapshot.prompts, optimisticPrompts)) {
           this.publish({
             error: "quick_prompts.move_failed",
@@ -211,19 +196,18 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.disposePreferencesSubscription();
     this.disposeEventSubscription?.();
     this.listeners.clear();
   }
 
   private async load(): Promise<void> {
     this.publish({ error: null, status: "loading" });
-    while (!this.disposed && this.readEnabled()) {
+    while (!this.disposed) {
       this.refreshRequestedDuringLoad = false;
       const generation = this.loadGeneration;
       try {
         const response = await this.input.tuttidClient.listAgentQuickPrompts();
-        if (this.disposed || !this.readEnabled()) return;
+        if (this.disposed) return;
         if (
           this.refreshRequestedDuringLoad ||
           generation !== this.loadGeneration
@@ -235,7 +219,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
         this.publish({ error: null, prompts, status: "ready" });
         return;
       } catch (error) {
-        if (!this.disposed && this.readEnabled()) {
+        if (!this.disposed) {
           this.publish({
             error: "quick_prompts.load_failed",
             status: "error"
@@ -256,7 +240,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
     try {
       const result = await operation();
       this.markDataChangedDuringLoad();
-      if (this.disposed || !this.readEnabled()) return result;
+      if (this.disposed) return result;
       if (kind === "delete") {
         this.rememberLocallyAppliedEvent(mutationId, kind, null);
         this.publish({
@@ -295,7 +279,6 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
   private scheduleEventRefresh(): void {
     if (
       this.disposed ||
-      !this.readEnabled() ||
       this.snapshot.status === "idle" ||
       this.eventRefreshQueued
     ) {
@@ -304,7 +287,7 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
     this.eventRefreshQueued = true;
     queueMicrotask(() => {
       this.eventRefreshQueued = false;
-      if (this.disposed || !this.readEnabled()) return;
+      if (this.disposed) return;
       void this.ensureLoaded({ force: true }).catch(() => {});
     });
   }
@@ -343,36 +326,8 @@ export class DesktopAgentQuickPromptService implements IAgentQuickPromptService 
     }
   }
 
-  private handlePreferencesChanged(): void {
-    const enabled = this.readEnabled();
-    if (enabled === this.snapshot.enabled) return;
-    if (!enabled) {
-      this.loadGeneration++;
-      this.refreshRequestedDuringLoad = false;
-      this.pendingMutationCounts.clear();
-      this.locallyAppliedEvents.clear();
-      this.publish({
-        enabled: false,
-        error: null,
-        pendingMutationIds: [],
-        orderMutationPending: false,
-        status: "idle"
-      });
-      return;
-    }
-    this.publish({ enabled: true, error: null, status: "idle" });
-  }
-
-  private readEnabled(): boolean {
-    const store = this.input.desktopPreferencesService.store;
-    const flags = store.changingFeatureFlags ?? store.featureFlags;
-    return isFeatureEnabled(flags, AGENT_QUICK_PROMPT_LIBRARY_FLAG);
-  }
-
-  private assertEnabled(): void {
-    if (this.disposed || !this.readEnabled()) {
-      throw new Error(disabledErrorCode);
-    }
+  private assertAvailable(): void {
+    if (this.disposed) throw new Error("quick_prompts.disposed");
   }
 
   private publishPendingMutations(): void {

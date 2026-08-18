@@ -165,10 +165,16 @@ func (h *Host) dispatchEditRetryReplacement(
 			ctx, operation, owner, storesqlite.EditRetryReasonRecoveryRequired, err,
 		)
 	}
+	claimMetadataJSON, err := submitClaimMetadataJSON(input.Metadata)
+	if err != nil {
+		return h.failEditRetryRecovery(
+			ctx, operation, owner, storesqlite.EditRetryReasonOperationConflict, err,
+		)
+	}
 	claim, created, err := h.store.PrepareSubmitClaim(ctx, storesqlite.SubmitClaimPrepare{
 		WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID,
 		ClientSubmitID: payload.ClientSubmitID, CanonicalTurnID: payload.ReplacementTurnID,
-		NowUnixMS: h.now().UnixMilli(),
+		MetadataJSON: claimMetadataJSON, NowUnixMS: h.now().UnixMilli(),
 	})
 	if err != nil {
 		return h.failEditRetryRecovery(
@@ -362,7 +368,7 @@ func (h *Host) recordEditRetryReplacementSubmission(
 		ctx,
 		SessionRef{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID},
 		payload.ReplacementTurnID, payload.ClientSubmitID, input.Content,
-		input.DisplayPrompt, input.CapabilityRefs, input.TuttiModeSnapshot,
+		input.DisplayPrompt, input.CapabilityRefs, input.Metadata, input.TuttiModeSnapshot,
 	); err != nil {
 		return err
 	}

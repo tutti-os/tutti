@@ -10,19 +10,17 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"path"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
+	marketclient "github.com/tutti-os/tutti/packages/clients/market-go"
+	marketv1 "github.com/tutti-os/tutti/packages/clients/market-go/generated/sandbox/v1"
 	market "github.com/tutti-os/tutti/packages/connector/host"
 )
 
-const connectorCatalogPath = "/v1/market/items"
-const connectorCategoriesPath = "/v1/market/categories"
-const maxCatalogResponseBytes = 8 << 20
+const maxCatalogResponseBytes = marketclient.MaxResponseBodyBytes
 
 type RequestAuthorizer func(*http.Request) error
 
@@ -37,30 +35,25 @@ type CatalogSourceConfig struct {
 }
 
 type CatalogSource struct {
-	baseURL            *url.URL
 	expectedMarketType string
-	httpClient         *http.Client
-	authorizeRequest   RequestAuthorizer
+	marketClient       marketv1.MarketServiceHTTPClient
 	executionTarget    string
 }
 
 var _ market.CatalogSource = (*CatalogSource)(nil)
 
 func NewCatalogSource(config CatalogSourceConfig) (*CatalogSource, error) {
-	baseURL, err := url.Parse(strings.TrimSpace(config.BaseURL))
-	if err != nil || baseURL.Scheme == "" || baseURL.Host == "" {
-		return nil, errors.New("connector market base URL must be an absolute URL")
-	}
-	if baseURL.Scheme != "https" && (baseURL.Scheme != "http" || !isLoopbackHost(baseURL.Hostname())) {
-		return nil, errors.New("connector market base URL must use https (http is allowed only for loopback tests)")
-	}
 	expectedMarketType := strings.ToLower(strings.TrimSpace(config.ExpectedMarketType))
 	if expectedMarketType != "domestic" && expectedMarketType != "overseas" {
 		return nil, errors.New("connector market type must be domestic or overseas")
 	}
-	client := config.HTTPClient
-	if client == nil {
-		return nil, errors.New("connector market HTTP client is required")
+	client, err := marketclient.New(marketclient.Config{
+		BaseURL:        config.BaseURL,
+		HTTPClient:     config.HTTPClient,
+		PrepareRequest: marketclient.PrepareRequestFunc(config.AuthorizeRequest),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("configure connector market client: %w", err)
 	}
 	executionTarget := strings.TrimSpace(config.ExecutionTarget)
 	var executionTargetErr error
@@ -72,8 +65,7 @@ func NewCatalogSource(config CatalogSourceConfig) (*CatalogSource, error) {
 	if executionTargetErr != nil {
 		return nil, executionTargetErr
 	}
-	return &CatalogSource{baseURL: baseURL, expectedMarketType: expectedMarketType,
-		httpClient: client, authorizeRequest: config.AuthorizeRequest, executionTarget: executionTarget}, nil
+	return &CatalogSource{expectedMarketType: expectedMarketType, marketClient: client, executionTarget: executionTarget}, nil
 }
 
 func (source *CatalogSource) Refresh(ctx context.Context) (market.CatalogSnapshot, error) {
@@ -127,112 +119,62 @@ func (source *CatalogSource) Refresh(ctx context.Context) (market.CatalogSnapsho
 }
 
 func (source *CatalogSource) ListCategories(ctx context.Context) ([]market.CatalogCategory, error) {
-	var payload wireMarketCategoriesResponse
-	if _, err := source.getJSON(ctx, connectorCategoriesPath, url.Values{"itemType": {"connector"}}, &payload); err != nil {
-		return nil, err
+	payload, err := source.marketClient.ListMarketCategories(ctx, &marketv1.ListMarketCategoriesRequest{ItemType: "connector"})
+	if err != nil {
+		return nil, fmt.Errorf("request connector market catalog: %w", err)
 	}
-	if payload.MarketType != source.expectedMarketType {
+	if payload.GetMarketType() != source.expectedMarketType {
 		return nil, errors.New("connector market type does not match configured market")
 	}
-	categories := make([]market.CatalogCategory, 0, len(payload.Categories))
-	seen := make(map[string]struct{}, len(payload.Categories))
-	for _, category := range payload.Categories {
-		if strings.TrimSpace(category.CategoryID) == "" || (category.Kind != "category" && category.Kind != "featured") || category.ItemCount < 0 {
+	categories := make([]market.CatalogCategory, 0, len(payload.GetCategories()))
+	seen := make(map[string]struct{}, len(payload.GetCategories()))
+	for _, category := range payload.GetCategories() {
+		if category == nil || strings.TrimSpace(category.GetCategoryId()) == "" ||
+			(category.GetKind() != "category" && category.GetKind() != "featured") || category.GetItemCount() < 0 ||
+			!categoryHasDisplayName(category) {
 			return nil, errors.New("connector market category is invalid")
 		}
-		if _, exists := seen[category.CategoryID]; exists {
+		if _, exists := seen[category.GetCategoryId()]; exists {
 			return nil, errors.New("connector market category is duplicated")
 		}
-		seen[category.CategoryID] = struct{}{}
-		categories = append(categories, market.CatalogCategory{CategoryID: category.CategoryID, Kind: category.Kind, SortOrder: category.SortOrder, ItemCount: int64(category.ItemCount)})
+		seen[category.GetCategoryId()] = struct{}{}
+		categories = append(categories, market.CatalogCategory{
+			CategoryID: category.GetCategoryId(), Kind: category.GetKind(), SortOrder: category.GetSortOrder(), ItemCount: category.GetItemCount(),
+			DisplayNameZH: category.GetDisplayNameZh(), DisplayNameEN: category.GetDisplayNameEn(),
+		})
 	}
 	return categories, nil
 }
 
 func (source *CatalogSource) ListPage(ctx context.Context, input market.CatalogSourcePageQuery) (market.CatalogSourcePage, error) {
-	query := url.Values{
-		"itemType":  {"connector"},
-		"sectionId": {strings.TrimSpace(input.SectionID)},
-		"pageSize":  {strconv.Itoa(input.PageSize)},
+	payload, err := source.marketClient.ListMarketItems(ctx, &marketv1.ListMarketItemsRequest{
+		ItemType: "connector", SectionId: strings.TrimSpace(input.SectionID), PageSize: int32(input.PageSize), PageToken: strings.TrimSpace(input.PageToken),
+	})
+	if err != nil {
+		return market.CatalogSourcePage{}, fmt.Errorf("request connector market catalog: %w", err)
 	}
-	if token := strings.TrimSpace(input.PageToken); token != "" {
-		query.Set("pageToken", token)
-	}
-	var payload wireMarketResponse
-	if _, err := source.getJSON(ctx, connectorCatalogPath, query, &payload); err != nil {
-		return market.CatalogSourcePage{}, err
-	}
-	if payload.MarketType != source.expectedMarketType {
+	if payload.GetMarketType() != source.expectedMarketType {
 		return market.CatalogSourcePage{}, errors.New("connector market type does not match configured market")
 	}
-	entries := make([]market.CatalogEntry, 0, len(payload.Items))
-	for _, item := range payload.Items {
+	entries := make([]market.CatalogEntry, 0, len(payload.GetItems()))
+	for _, item := range payload.GetItems() {
 		release, err := source.mapItem(item)
 		if err != nil {
 			return market.CatalogSourcePage{}, err
 		}
-		if strings.TrimSpace(item.CategoryID) == "" {
+		if strings.TrimSpace(item.GetCategoryId()) == "" {
 			return market.CatalogSourcePage{}, errors.New("connector market item category is missing")
 		}
-		entries = append(entries, market.CatalogEntry{CategoryID: item.CategoryID, Featured: item.Featured, Release: release})
+		entries = append(entries, market.CatalogEntry{CategoryID: item.GetCategoryId(), Featured: item.GetFeatured(), Release: release})
 	}
-	return market.CatalogSourcePage{SectionID: strings.TrimSpace(input.SectionID), Entries: entries, NextPageToken: payload.NextPageToken}, nil
+	return market.CatalogSourcePage{SectionID: strings.TrimSpace(input.SectionID), Entries: entries, NextPageToken: payload.GetNextPageToken()}, nil
 }
 
-func (source *CatalogSource) getJSON(ctx context.Context, requestPath string, query url.Values, target any) ([]byte, error) {
-	joined, err := url.JoinPath(source.baseURL.String(), requestPath)
-	if err != nil {
-		return nil, fmt.Errorf("build connector market catalog URL: %w", err)
-	}
-	endpoint, err := url.Parse(joined)
-	if err != nil {
-		return nil, fmt.Errorf("parse connector market catalog URL: %w", err)
-	}
-	endpoint.RawQuery = query.Encode()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-	request.Header.Set("Accept", "application/json")
-	if source.authorizeRequest != nil {
-		if err := source.authorizeRequest(request); err != nil {
-			return nil, err
-		}
-	}
-	response, err := source.httpClient.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("request connector market catalog: %w", err)
-	}
-	defer func() { _ = response.Body.Close() }()
-	if response.StatusCode != http.StatusOK {
-		message, _ := io.ReadAll(io.LimitReader(response.Body, 4<<10))
-		return nil, fmt.Errorf("request connector market catalog: status %d: %s", response.StatusCode, strings.TrimSpace(string(message)))
-	}
-	payloadBytes, err := io.ReadAll(io.LimitReader(response.Body, maxCatalogResponseBytes+1))
-	if err != nil {
-		return nil, err
-	}
-	if len(payloadBytes) > maxCatalogResponseBytes {
-		return nil, errors.New("decode connector market catalog: response exceeds size limit")
-	}
-	// This is a remote API client boundary. Ignore additive response fields and
-	// validate only the values the client consumes; manifest major versions
-	// remain the compatibility boundary for semantic changes.
-	decoder := json.NewDecoder(bytes.NewReader(payloadBytes))
-	if err := decoder.Decode(target); err != nil {
-		return nil, fmt.Errorf("decode connector market catalog: %w", err)
-	}
-	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
-		return nil, errors.New("decode connector market catalog: trailing JSON value")
-	}
-	return payloadBytes, nil
-}
-
-func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error) {
-	if item.ItemType != "connector" || item.ItemKey == "" || item.Version == "" || item.Artifact == nil || !safeArtifactKey(item.Artifact.Key) {
+func (source *CatalogSource) mapItem(item *marketv1.PublicMarketItem) (market.Release, error) {
+	if item == nil || item.GetItemType() != "connector" || item.GetItemKey() == "" || item.GetVersion() == "" || item.GetArtifact() == nil || !safeArtifactKey(item.GetArtifact().GetKey()) || item.GetManifest() == nil {
 		return market.Release{}, errors.New("connector market item identity is incomplete")
 	}
-	manifestBytes, err := json.Marshal(item.Manifest)
+	manifestBytes, err := json.Marshal(item.GetManifest().AsMap())
 	if err != nil {
 		return market.Release{}, err
 	}
@@ -243,7 +185,7 @@ func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error
 	if err := decoder.Decode(&connectorManifest); err != nil {
 		return market.Release{}, fmt.Errorf("decode connector market manifest: %w", err)
 	}
-	if connectorManifest.ItemType != "connector" || connectorManifest.ItemKey != item.ItemKey || connectorManifest.Version != item.Version {
+	if connectorManifest.ItemType != "connector" || connectorManifest.ItemKey != item.GetItemKey() || connectorManifest.Version != item.GetVersion() {
 		return market.Release{}, errors.New("connector manifest identity does not match item")
 	}
 	if !isSHA256Hex(connectorManifest.Payload.PackageManifestSHA256) {
@@ -257,7 +199,7 @@ func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error
 	if err != nil {
 		return market.Release{}, err
 	}
-	releaseDigest := sha256.Sum256([]byte(item.ItemKey + "\x00" + item.Version + "\x00" + item.Artifact.SHA256))
+	releaseDigest := sha256.Sum256([]byte(item.GetItemKey() + "\x00" + item.GetVersion() + "\x00" + item.GetArtifact().GetSha256()))
 	iconURL := connectorManifest.Display.IconURL
 	if strings.TrimSpace(iconURL) == "" {
 		iconURL = legacyConnectorIconURL
@@ -272,12 +214,12 @@ func (source *CatalogSource) mapItem(item wireMarketItem) (market.Release, error
 		Implementation:       implementation, AuthorizationKind: connectorManifest.Payload.Authorization.Kind,
 		AuthorizationInteraction: authorizationInteraction,
 		Compatibility:            connectorManifest.Payload.Compatibility}
-	release := market.Release{SchemaVersion: "1", ReleaseID: item.ItemKey + "@" + item.Version,
-		ConnectorKey: item.ItemKey, Version: item.Version,
+	release := market.Release{SchemaVersion: "1", ReleaseID: item.GetItemKey() + "@" + item.GetVersion(),
+		ConnectorKey: item.GetItemKey(), Version: item.GetVersion(),
 		ReleaseDigest: hex.EncodeToString(releaseDigest[:]), ManifestDigest: connectorManifest.Payload.PackageManifestSHA256,
-		Manifest: manifest, Artifact: market.Artifact{Key: item.Artifact.Key, SHA256: item.Artifact.SHA256,
-			SizeBytes: int64(item.Artifact.SizeBytes), MediaType: artifactMediaType(item.Artifact.Key)},
-		PublishedAt: time.UnixMilli(int64(item.PublishedAtMS)).UTC(), Status: market.ReleaseStatusAvailable}
+		Manifest: manifest, Artifact: market.Artifact{Key: item.GetArtifact().GetKey(), SHA256: item.GetArtifact().GetSha256(),
+			SizeBytes: item.GetArtifact().GetSizeBytes(), MediaType: artifactMediaType(item.GetArtifact().GetKey())},
+		PublishedAt: time.UnixMilli(item.GetPublishedAtMs()).UTC(), Status: market.ReleaseStatusAvailable}
 	if err := market.ValidateReleaseShape(release); err != nil {
 		return market.Release{}, err
 	}
@@ -300,59 +242,6 @@ func (source *CatalogSource) resolveManifestImplementation(manifest wireConnecto
 	default:
 		return market.Implementation{}, fmt.Errorf("connector manifest schemaVersion %q is unsupported", manifest.SchemaVersion)
 	}
-}
-
-type wireMarketResponse struct {
-	MarketType    string           `json:"marketType"`
-	Items         []wireMarketItem `json:"items"`
-	NextPageToken string           `json:"nextPageToken"`
-}
-
-type wireMarketCategoriesResponse struct {
-	MarketType string               `json:"marketType"`
-	Categories []wireMarketCategory `json:"categories"`
-}
-
-type wireMarketCategory struct {
-	CategoryID string    `json:"categoryId"`
-	Kind       string    `json:"kind"`
-	SortOrder  int32     `json:"sortOrder"`
-	ItemCount  wireInt64 `json:"itemCount"`
-}
-
-type wireMarketItem struct {
-	ItemType      string         `json:"itemType"`
-	ItemKey       string         `json:"itemKey"`
-	Version       string         `json:"version"`
-	CommitSHA     string         `json:"commitSha"`
-	Artifact      *wireArtifact  `json:"artifact"`
-	Manifest      map[string]any `json:"manifest"`
-	PublishedAtMS wireInt64      `json:"publishedAtMs"`
-	CategoryID    string         `json:"categoryId"`
-	Featured      bool           `json:"featured"`
-}
-
-type wireArtifact struct {
-	Key       string    `json:"key"`
-	SHA256    string    `json:"sha256"`
-	SizeBytes wireInt64 `json:"sizeBytes"`
-}
-
-// Kratos/protojson encodes int64 fields as JSON strings. Accepting numeric
-// literals too keeps local tests and non-protobuf adapters straightforward.
-type wireInt64 int64
-
-func (value *wireInt64) UnmarshalJSON(payload []byte) error {
-	text := strings.TrimSpace(string(payload))
-	if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
-		text = text[1 : len(text)-1]
-	}
-	parsed, err := strconv.ParseInt(text, 10, 64)
-	if err != nil {
-		return fmt.Errorf("decode market int64: %w", err)
-	}
-	*value = wireInt64(parsed)
-	return nil
 }
 
 type wireConnectorMarketManifest struct {
@@ -417,14 +306,23 @@ func artifactMediaType(key string) string {
 	}
 }
 
-func isLoopbackHost(host string) bool {
-	host = strings.ToLower(strings.TrimSpace(host))
-	return host == "localhost" || host == "127.0.0.1" || host == "::1"
-}
-
 func safeArtifactKey(key string) bool {
 	cleaned := path.Clean(strings.TrimSpace(key))
 	return cleaned != "." && cleaned != ".." && cleaned == key && !path.IsAbs(cleaned) && !strings.HasPrefix(cleaned, "../") && !strings.Contains(cleaned, "\\")
+}
+
+func categoryHasDisplayName(category *marketv1.MarketCategory) bool {
+	if strings.TrimSpace(category.GetDisplayNameZh()) != "" || strings.TrimSpace(category.GetDisplayNameEn()) != "" {
+		return true
+	}
+	// Compatibility window for the released category response that preceded
+	// display names. New dynamic IDs must always carry a server-owned name.
+	switch category.GetCategoryId() {
+	case "featured", "productivity", "development", "other":
+		return true
+	default:
+		return false
+	}
 }
 
 func isSHA256Hex(value string) bool {

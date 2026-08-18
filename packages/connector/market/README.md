@@ -39,6 +39,11 @@ same protocol with its UI System-based default renderer. A missing interaction
 on a legacy `api_key` Connector uses the centralized one-secret compatibility
 adapter; an explicitly invalid interaction fails closed.
 
+When a newly received Authorization View is an `external_link` or
+`device_code`, Connector Market opens its activation or verification URL once.
+The `device_code` View stays visible so the user can copy its code, and the
+dialog action remains available if the browser must be opened again manually.
+
 ## Renderer usage
 
 ```ts

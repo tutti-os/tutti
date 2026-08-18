@@ -85,8 +85,13 @@ type Fixture struct {
 	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
 	// target race without exposing a runtime/provider API to scenarios.
 	GuidanceTargetMismatch bool
-	DeleteAdmissionErr     error
-	DeleteSessionPlans     [][]string
+	// CancelDeliveryUnconfirmed makes the test runtime acknowledge the exact
+	// cancel delivery without being able to confirm that it stopped that turn.
+	// The Host must retain the durable operation instead of inventing a
+	// terminal outcome.
+	CancelDeliveryUnconfirmed bool
+	DeleteAdmissionErr        error
+	DeleteSessionPlans        [][]string
 }
 
 type SessionObservation struct {
@@ -123,6 +128,7 @@ type CancelObservation struct {
 	Session  SessionObservation
 	TurnID   string
 	Canceled bool
+	Pending  bool
 	Reason   string
 }
 

@@ -51,11 +51,7 @@ interface Props {
   showComposerAction: boolean;
   isGoalModeActive: boolean;
   isPlanModeActive: boolean;
-  isTuttiModeActive: boolean;
-  isTuttiModeUpdating: boolean;
-  tuttiModeSupported: boolean;
   connectorsVisible: boolean;
-  onTuttiModeChange?: (active: boolean) => void;
   composerAction: ReactNode;
   projectControl?: ReactNode;
   quickPromptControl?: ReactNode;
@@ -108,11 +104,7 @@ export function ComposerFooter({
   showComposerAction,
   isGoalModeActive,
   isPlanModeActive,
-  isTuttiModeActive,
-  isTuttiModeUpdating,
-  tuttiModeSupported,
   connectorsVisible,
-  onTuttiModeChange,
   composerAction,
   projectControl,
   quickPromptControl,
@@ -225,16 +217,12 @@ export function ComposerFooter({
             availableSkills={availableSkills}
             connectorsVisible={connectorsVisible}
             disabled={composerControlsHardDisabled}
-            isTuttiModeActive={isTuttiModeActive}
-            isTuttiModeUpdating={isTuttiModeUpdating}
             labels={labels}
             loading={composerSettings.isConnectorOptionsLoading === true}
             onRetryComposerOptions={onRetryComposerOptions}
             onCapabilitySettingsRequest={onCapabilitySettingsRequest}
             onConnectorSelected={onConnectorSelected}
-            onTuttiModeChange={onTuttiModeChange}
             selectedConnectorKeys={selectedConnectorKeys}
-            tuttiModeSupported={tuttiModeSupported}
           />
           {showHandoffSelect ? (
             <AgentHandoffMenu

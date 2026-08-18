@@ -29,6 +29,7 @@ export function registerAppUpdateServices(
     undefined,
     desktopApi.runtime,
     {
+      hostFilesApi: desktopApi.host?.files,
       supportsReleaseChannels: desktopApi.platform?.distribution !== "store"
     }
   );

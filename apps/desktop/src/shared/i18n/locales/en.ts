@@ -78,6 +78,7 @@ export const en = {
     errorTitle: "Unable to check for updates",
     restartAction: "Restart & install",
     retryAction: "Retry",
+    releaseNotesAction: "What's new",
     storeManaged: "Updates are managed by Microsoft Store."
   },
   desktop: {
@@ -1329,9 +1330,6 @@ export const en = {
         agentSessionRecordingDescription:
           "Show the developer entry for recording and replaying sessions on Agent Home.",
         agentSessionRecordingLabel: "Agent session recording",
-        agentSessionForkDescription:
-          "Allow creating a new Agent conversation from a supported completed turn.",
-        agentSessionForkLabel: "Session Fork",
         codexSaverModeDescription:
           "Show a remembered Codex composer switch that delegates suitable subtasks to Luna Max.",
         codexSaverModeLabel: "Codex saver mode",
@@ -1342,11 +1340,6 @@ export const en = {
         referenceProvenanceFilterDescription:
           "Enable Agent source filtering in Agent conversation reference pickers.",
         referenceProvenanceFilterLabel: "Agent source filter",
-        quickPromptLibraryDescription:
-          "Show a personal quick-prompt library in the Agent composer.",
-        quickPromptLibraryLabel: "Quick-prompt library",
-        quickPromptLibrarySaveFailed:
-          "We couldn't update quick-prompt library availability.",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"

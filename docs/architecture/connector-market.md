@@ -15,14 +15,24 @@ Connector market uses two independent APIs:
   authorization, compatibility, and durable operation state
   owned by one desktop host
 
-The remote market service owns its versioned API schema and generated client.
-It exposes the reusable `/v1/market/categories`, `/v1/market/items`, and
+The remote market service owns its versioned API schema and generated
+protobuf/HTTP artifacts. Tutti pins those artifacts by provider commit and
+SHA-256 under `packages/clients/market-go`; it does not import the
+`tsh-server` application module or redefine the remote schema in the local
+daemon OpenAPI. Updates require a source checkout at the exact pinned commit and
+digest-match every copied file. The client exposes the reusable
+`/v1/market/categories`, `/v1/market/items`, and
 `/v1/market/items/{item_type}/{item_key}` read boundary for both connectors and
 Skills. Connector catalog requests always use `itemType=connector`; Skill
 consumers use `itemType=skill`. The shared connector package may provide a
 default `CatalogSource` adapter over that generated client, but must not copy or
 redefine the remote schema. Remote transport DTOs and local daemon DTOs remain
 separate.
+
+The generated client adapter applies host authorization only to the initial
+Market request. It preserves the host redirect policy and rejects any redirect
+that leaves the configured scheme and host, including HTTPS downgrades, before
+another credential-bearing request can be sent.
 
 Published connectors use the remote market manifest v2 envelope: one
 market-neutral `payload.implementation` and no `supportedMarkets` field. The
@@ -33,6 +43,18 @@ schema versions belong to different APIs and do not imply compatibility.
 
 The renderer never calls the remote market. The local daemon is authoritative
 for every state rendered by the desktop application.
+
+Category identifiers are opaque routing values. The Connector adapter sends
+the exact server `categoryId` back as `sectionId` and never rewrites legacy or
+new IDs. The daemon projects both `displayNameZh` and `displayNameEn` through
+the local OpenAPI; the renderer selects the Chinese name for `zh*` locales and
+the English name otherwise without another network request. During the bounded
+compatibility window, only `featured`, `productivity`, `development`, and
+`other` may use their released local i18n labels when an older daemon omits
+both names. Unknown dynamic categories without a server name fail closed
+instead of displaying their slug as product copy. The local `installed`
+section remains a renderer-owned virtual category and keeps its local i18n
+label.
 
 Installation is a device fact. Authorization is an account projection. A
 Connector may therefore be installed while inactive for the current account;

@@ -17,7 +17,14 @@ func (o *recordingStaleTurnFailureObserver) ObserveTerminalFailure(_ context.Con
 
 func TestStaleTurnSettlementDeltaDoesNotReportInterruptedAsFailure(t *testing.T) {
 	delta := StaleTurnSettlementDelta([]storesqlite.StaleTurnSettlement{
-		{WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-stale"},
+		{
+			WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-stale",
+			Turn: storesqlite.Turn{
+				WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-stale",
+				Phase: storesqlite.TurnPhaseSettled, Outcome: storesqlite.TurnOutcomeInterrupted,
+				Origin: storesqlite.TurnOriginUserPrompt, Backfilled: true,
+			},
+		},
 		{WorkspaceID: "ws-1", AgentSessionID: "session-2", TurnID: ""},
 	})
 	if len(delta.RootTurnsSettled) != 1 {
@@ -29,6 +36,9 @@ func TestStaleTurnSettlementDeltaDoesNotReportInterruptedAsFailure(t *testing.T)
 	}
 	if !settled.StartupReconciled {
 		t.Fatalf("settled turn = %#v, want the startup reconciliation marker", settled)
+	}
+	if settled.Turn.Origin != storesqlite.TurnOriginUserPrompt || !settled.Turn.Backfilled {
+		t.Fatalf("settled turn provenance = %#v, want canonical origin and backfilled marker", settled.Turn)
 	}
 
 	observer := &recordingStaleTurnFailureObserver{}

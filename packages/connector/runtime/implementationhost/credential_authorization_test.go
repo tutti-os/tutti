@@ -159,6 +159,35 @@ func TestManagedCredentialAuthorizationContinuesConnectorOwnedBroker(t *testing.
 	}
 }
 
+func TestManagedCredentialAuthorizationReturnsDeviceCodeFromBroker(t *testing.T) {
+	connection := newCredentialBrokerConnection()
+	host := &credentialAuthorizationHostStub{
+		route: &connectorRoute{id: "default\x00github-cli", credentialBrokerLaunch: &managedCredentialBrokerLaunch{
+			timeout: 5 * time.Minute, allowedHosts: map[string]struct{}{"github.com": {}},
+		}},
+		connections: []agentruntime.ProcessConnection{connection},
+	}
+	provider := newManagedCredentialAuthorizationProvider(host)
+	result := make(chan market.AuthorizationSession, 1)
+	resultErr := make(chan error, 1)
+	go func() {
+		session, err := provider.Begin(context.Background(), market.AuthorizationStartRequest{
+			OperationID: "authorize-github", Connector: market.Connector{Key: "github-cli"},
+		})
+		result <- session
+		resultErr <- err
+	}()
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://github.com/login/device","code":"ABCD-EFGH"}` + "\n")}
+
+	if err := <-resultErr; err != nil {
+		t.Fatal(err)
+	}
+	session := <-result
+	if session.AuthorizationURL != "https://github.com/login/device" || session.UserCode != "ABCD-EFGH" {
+		t.Fatalf("authorization session = %#v", session)
+	}
+}
+
 func TestManagedCredentialAuthorizationDisconnectUsesBrokerProtocol(t *testing.T) {
 	exitCode := 0
 	connection := newCredentialBrokerConnection()
@@ -417,7 +446,7 @@ func awaitCachedAuthorizationFailure(t *testing.T, provider *managedCredentialAu
 		session := provider.sessions[operationID]
 		provider.mu.Unlock()
 		if session != nil {
-			_, _, err := session.snapshot()
+			_, _, _, err := session.snapshot()
 			if err != nil {
 				return
 			}

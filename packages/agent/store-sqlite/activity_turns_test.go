@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -231,6 +232,44 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	message := page.Messages[0]
 	if message.MessageID != "system-stale-turn-turn-1" || message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
 		t.Fatalf("startup system message = %#v", message)
+	}
+}
+
+func TestSettleStaleTurnsReturnsCanonicalSettledTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-1")
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, Origin: TurnOriginUserPrompt, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_turns
+SET backfilled = 1
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND turn_id = 'turn-1'
+`); err != nil {
+		t.Fatalf("mark turn backfilled: %v", err)
+	}
+
+	settlements, err := store.SettleStaleTurns(ctx)
+	if err != nil {
+		t.Fatalf("SettleStaleTurns() error = %v", err)
+	}
+	if len(settlements) != 1 {
+		t.Fatalf("settlements = %#v, want one", settlements)
+	}
+	persisted, found, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
+	if err != nil || !found {
+		t.Fatalf("GetTurn() found=%v error=%v turn=%#v", found, err, persisted)
+	}
+	if !reflect.DeepEqual(settlements[0].Turn, persisted) {
+		t.Fatalf("settlement turn = %#v, want canonical persisted turn %#v", settlements[0].Turn, persisted)
+	}
+	if settlements[0].Turn.Origin != TurnOriginUserPrompt || !settlements[0].Turn.Backfilled {
+		t.Fatalf("settlement turn provenance = %#v, want user_prompt/backfilled", settlements[0].Turn)
 	}
 }
 

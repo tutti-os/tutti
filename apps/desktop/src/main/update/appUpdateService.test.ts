@@ -180,6 +180,7 @@ test("createAppUpdateService configures the static RC feed before checking", asy
         return {
           feedUrl: "https://updates.example.test/v0.0.1-rc.17",
           releasedAt: "2026-06-15T00:00:00.000Z",
+          releaseNotesUrl: null,
           tag: "v0.0.1-rc.17",
           updaterChannel: "rc",
           version: "0.0.1-rc.17"
@@ -200,6 +201,44 @@ test("createAppUpdateService configures the static RC feed before checking", asy
     ]);
   } finally {
     service?.dispose();
+  }
+});
+
+test("createAppUpdateService exposes release notes for the resolved update", async () => {
+  let notifyAvailable: ((info: UpdateInfo) => void) | null = null;
+  const releaseNotesUrl =
+    "https://github.com/tutti-os/tutti/releases/tag/v1.2.3";
+  const driver = createFakeDriver({
+    async checkForUpdates() {
+      notifyAvailable?.(createUpdateInfoFixture("1.2.3"));
+    },
+    onUpdateAvailable(listener) {
+      notifyAvailable = listener;
+      return noop;
+    }
+  });
+  const service = createAppUpdateService(driver, {
+    currentVersion: "1.2.2",
+    releaseFeedResolver: async () => ({
+      feedUrl: "https://updates.example.test/v1.2.3",
+      releasedAt: "2026-08-17T00:00:00.000Z",
+      releaseNotesUrl,
+      tag: "v1.2.3",
+      updaterChannel: "latest",
+      version: "1.2.3"
+    }),
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({ channel: "stable", policy: "prompt" });
+    await waitFor(
+      () => service.getState().status === "available",
+      "update did not become available"
+    );
+    assert.equal(service.getState().releaseNotesUrl, releaseNotesUrl);
+  } finally {
+    service.dispose();
   }
 });
 
@@ -289,6 +328,7 @@ test("createAppUpdateService shares static feed resolution across concurrent che
   const deferredFeed = createDeferred<{
     feedUrl: string;
     releasedAt: string;
+    releaseNotesUrl: string | null;
     tag: string;
     updaterChannel: "latest" | "rc";
     version: string;
@@ -311,6 +351,7 @@ test("createAppUpdateService shares static feed resolution across concurrent che
     deferredFeed.resolve({
       feedUrl: "https://updates.example.test/v0.0.1-rc.17",
       releasedAt: "2026-06-15T00:00:00.000Z",
+      releaseNotesUrl: null,
       tag: "v0.0.1-rc.17",
       updaterChannel: "rc",
       version: "0.0.1-rc.17"

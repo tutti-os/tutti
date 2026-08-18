@@ -22,6 +22,12 @@ HTTP client/proxy policy, request authorization, event publication,
 persistence, and execution ports. Product account policy and generated HTTP
 handlers remain in the consuming daemon.
 
+The catalog projection consumes the market-neutral generated protocol from
+`packages/clients/market-go` and fixes `itemType=connector` only at this
+adapter boundary. Category IDs remain opaque and are returned unchanged as
+pagination section IDs; future Skill consumers reuse the client without
+importing this Connector daemon module.
+
 Hosts with an account-scoped runtime call `BootstrapForScope`; the daemon
 reuses that explicit scope for recovery retries. The legacy `Bootstrap` method
 retains Tutti's device-global behavior through the default runtime-binding

@@ -50,6 +50,7 @@ export class TurnLifecycle {
   private readonly turns: RuntimeTurn[] = [];
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private readonly onActivate: () => void;
+  private readonly onSyntheticActivate: (turnId: string) => void;
   private readonly onSettled: (turnId: string) => void;
   private readonly onContinuationStartTimeout: () => void;
   private readonly continuationStartTimeoutMs: number;
@@ -66,12 +67,14 @@ export class TurnLifecycle {
   constructor(options: {
     emit: ClaudeSDKSidecarEventEmitter;
     onActivate: () => void;
+    onSyntheticActivate?: (turnId: string) => void;
     onSettled: (turnId: string) => void;
     onContinuationStartTimeout?: () => void;
     continuationStartTimeoutMs?: number;
   }) {
     this.emit = options.emit;
     this.onActivate = options.onActivate;
+    this.onSyntheticActivate = options.onSyntheticActivate ?? (() => {});
     this.onSettled = options.onSettled;
     this.onContinuationStartTimeout =
       options.onContinuationStartTimeout ?? (() => {});
@@ -255,6 +258,7 @@ export class TurnLifecycle {
       settled: false
     };
     this.turns.push(turn);
+    this.onSyntheticActivate(turn.turnId);
     this.activate(turn);
     return turn;
   }

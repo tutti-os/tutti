@@ -54,10 +54,20 @@ export function replaceCanonicalSessionSnapshot(
         sessionVersion(incomingSession);
     }
     if (useIncoming && source.activeTurn?.agentSessionId === id) {
-      mergeTurnInto(turnsById, state.turnsById, source.activeTurn);
+      mergeTurnInto(
+        turnsById,
+        state.turnsById,
+        source.activeTurn,
+        source.lifecycleCapabilitiesProjected !== true
+      );
     }
     if (useIncoming && source.latestTurn?.agentSessionId === id) {
-      mergeTurnInto(turnsById, state.turnsById, source.latestTurn);
+      mergeTurnInto(
+        turnsById,
+        state.turnsById,
+        source.latestTurn,
+        source.lifecycleCapabilitiesProjected !== true
+      );
     }
     for (const interaction of [
       ...source.latestTurnInteractions,
@@ -554,17 +564,43 @@ function canonicalSession(
 function mergeTurnInto(
   target: Record<string, AgentActivityTurn>,
   existing: Readonly<Record<string, AgentActivityTurn>>,
-  turn: AgentActivityTurn
+  turn: AgentActivityTurn,
+  preserveProjectedForkBinding: boolean
 ): void {
   const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const current = target[key] ?? existing[key];
   if (!current || shouldUseIncomingTurn(current, turn)) {
-    const candidate = current ? preserveTurnProvenance(current, turn) : turn;
+    const candidate = current
+      ? preserveTurnProjectionState(
+          current,
+          preserveTurnProvenance(current, turn),
+          preserveProjectedForkBinding
+        )
+      : turn;
     target[key] =
       current && areJsonLikeValuesEqual(current, candidate)
         ? current
         : { ...candidate };
   }
+}
+
+function preserveTurnProjectionState(
+  current: AgentActivityTurn,
+  incoming: AgentActivityTurn,
+  preserveProjectedForkBinding: boolean
+): AgentActivityTurn {
+  if (
+    !preserveProjectedForkBinding ||
+    current.providerForkBindingAvailable !== true ||
+    incoming.providerForkBindingAvailable === true
+  ) {
+    return incoming;
+  }
+  return {
+    ...incoming,
+    providerForkBindingAvailable: true,
+    providerForkBindingState: current.providerForkBindingState
+  };
 }
 
 function reuseRecordIfShallowEqual<T>(
@@ -699,25 +735,41 @@ function preserveProjectedSessionState(
   current: CanonicalAgentSession | undefined,
   incoming: CanonicalAgentSession
 ): CanonicalAgentSession {
+  const messageVersion = Math.max(
+    current?.messageVersion ?? 0,
+    incoming.messageVersion ?? 0
+  );
   const goalSyncState =
     current?.goalSyncState !== undefined &&
     !Object.prototype.hasOwnProperty.call(incoming, "goalSyncState")
       ? current.goalSyncState
       : undefined;
+  const tuttiModeActivation =
+    current?.tuttiModeActivation &&
+    (!incoming.tuttiModeActivation ||
+      incoming.tuttiModeActivation.currentRevision.revision <
+        current.tuttiModeActivation.currentRevision.revision)
+      ? current.tuttiModeActivation
+      : undefined;
+  const preserved = {
+    ...incoming,
+    ...(messageVersion === (incoming.messageVersion ?? 0)
+      ? {}
+      : { messageVersion }),
+    ...(goalSyncState === undefined ? {} : { goalSyncState }),
+    ...(tuttiModeActivation === undefined ? {} : { tuttiModeActivation })
+  };
   if (
     current?.lifecycleCapabilitiesProjected === true &&
     incoming.lifecycleCapabilitiesProjected !== true
   ) {
     return {
-      ...incoming,
-      ...(goalSyncState === undefined ? {} : { goalSyncState }),
+      ...preserved,
       lifecycleCapabilities: current.lifecycleCapabilities,
       lifecycleCapabilitiesProjected: true
     };
   }
-  return goalSyncState === undefined
-    ? incoming
-    : { ...incoming, goalSyncState };
+  return preserved;
 }
 
 function sessionVersion(session: CanonicalAgentSession): number {

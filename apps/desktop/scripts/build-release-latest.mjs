@@ -168,6 +168,7 @@ async function buildDesktopReleaseLatest(options) {
   );
   const gitSha = String(options.gitSha ?? "").trim();
   const sourceRef = String(options.sourceRef ?? "").trim();
+  const releaseNotesUrl = String(options.releaseNotesUrl ?? "").trim();
   const releasedAt =
     options.releasedAt instanceof Date
       ? options.releasedAt.toISOString()
@@ -203,6 +204,7 @@ async function buildDesktopReleaseLatest(options) {
     releasedAt,
     gitSha: gitSha || null,
     sourceRef: sourceRef || null,
+    releaseNotesUrl: releaseNotesUrl || null,
     baseUrl,
     preferredDownloads: {
       macosUniversalDmg,
@@ -220,6 +222,7 @@ async function main() {
     gitSha: process.env.RELEASE_GIT_SHA,
     releaseAssetBaseUrl: process.env.RELEASE_ASSET_BASE_URL,
     releaseTag: process.env.RELEASE_TAG,
+    releaseNotesUrl: process.env.RELEASE_NOTES_URL,
     releasedAt: process.env.RELEASED_AT,
     sourceRef: process.env.RELEASE_SOURCE_REF
   });

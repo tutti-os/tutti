@@ -38,10 +38,21 @@ func (s *Store) RecordTurnTransition(ctx context.Context, transition TurnTransit
 	}
 	mutations := []TransactionMutation{}
 	if accepted {
-		mutations = append(mutations,
-			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntityTurn, turn.TurnID, "upsert", turn.UpdatedAtUnixMS),
-			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntitySession, turn.AgentSessionID, "upsert", turn.UpdatedAtUnixMS),
+		turnMutation := transactionMutation(
+			turn.WorkspaceID, turn.AgentSessionID, MutationEntityTurn,
+			turn.TurnID, "upsert", turn.UpdatedAtUnixMS,
 		)
+		// The persisted row may already be settled when a late capability-only
+		// merge is accepted. Only the incoming lifecycle fact can identify a
+		// terminal transition; the final row shape cannot.
+		if strings.TrimSpace(transition.Phase) == TurnPhaseSettled {
+			turnMutation = terminalTurnMutation(
+				turn.WorkspaceID, turn.AgentSessionID, turn.TurnID,
+				"upsert", turn.UpdatedAtUnixMS, false,
+			)
+		}
+		mutations = append(mutations, turnMutation,
+			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntitySession, turn.AgentSessionID, "upsert", turn.UpdatedAtUnixMS))
 	}
 	if _, err := s.commitTransaction(ctx, tx, transition.WorkspaceID, mutations); err != nil {
 		return Turn{}, false, fmt.Errorf("commit workspace agent turn transition: %w", err)
@@ -534,6 +545,22 @@ WHERE phase != ?
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("settle stale workspace agent turns: %w", err)
 	}
+	for index := range settlements {
+		turn, found, err := getAgentTurnTx(
+			ctx,
+			tx,
+			settlements[index].WorkspaceID,
+			settlements[index].AgentSessionID,
+			settlements[index].TurnID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("read settled stale workspace agent turn: %w", err)
+		}
+		if !found {
+			return nil, errors.New("settled stale workspace agent turn disappeared")
+		}
+		settlements[index].Turn = turn
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions AS s
 SET active_turn_id = NULL, updated_at_unix_ms = ?
@@ -597,7 +624,7 @@ WHERE status = ?
 	mutations := make([]TransactionMutation, 0, len(settlements)*3+len(pendingInteractions))
 	for _, settlement := range settlements {
 		mutations = append(mutations,
-			transactionMutation(settlement.WorkspaceID, settlement.AgentSessionID, MutationEntityTurn, settlement.TurnID, "settle", now),
+			terminalTurnMutation(settlement.WorkspaceID, settlement.AgentSessionID, settlement.TurnID, "settle", now, true),
 			transactionMutation(settlement.WorkspaceID, settlement.AgentSessionID, MutationEntitySession, settlement.AgentSessionID, "upsert", now),
 		)
 	}

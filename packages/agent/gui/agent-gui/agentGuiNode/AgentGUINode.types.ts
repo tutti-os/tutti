@@ -128,8 +128,6 @@ export interface AgentGUINodeHostCapabilities {
   referenceProvenanceFilterEnabled?: boolean;
   /** Host-owned experimental opt-in for current-Session composer history. */
   sessionInputHistoryEnabled?: boolean;
-  /** Host-owned experimental opt-in for creating Session forks. */
-  sessionForkEnabled?: boolean;
   /** Host-owned opt-in for launching self-owned local Sessions in git worktrees. */
   sessionWorktreeEnabled?: boolean;
   /** Host-owned durable launch preference projection for this workspace. */
@@ -427,7 +425,6 @@ export function areAgentGUINodePropsEqual(
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
-    pc.sessionForkEnabled === nc.sessionForkEnabled &&
     pc.sessionWorktreeEnabled === nc.sessionWorktreeEnabled &&
     pc.sessionLaunchModesByProjectSectionKey ===
       nc.sessionLaunchModesByProjectSectionKey &&

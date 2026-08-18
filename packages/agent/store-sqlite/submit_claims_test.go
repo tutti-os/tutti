@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"sync"
 	"testing"
@@ -12,16 +13,17 @@ func TestSubmitClaimIsDurableAndIdempotent(t *testing.T) {
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	input := SubmitClaimPrepare{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", ClientSubmitID: "submit-1",
-		CanonicalTurnID: "turn-1", NowUnixMS: 10,
+		CanonicalTurnID: "turn-1", MetadataJSON: `{"uiMode":"agent","trace":"private"}`, NowUnixMS: 10,
 	}
 	first, created, err := store.PrepareSubmitClaim(context.Background(), input)
-	if err != nil || !created || first.Status != "prepared" || first.CanonicalTurnID != "turn-1" || first.TurnID != "" {
+	if err != nil || !created || first.Status != "prepared" || first.CanonicalTurnID != "turn-1" || first.TurnID != "" || first.MetadataJSON != `{"uiMode":"agent"}` {
 		t.Fatalf("first = %#v created=%v err=%v", first, created, err)
 	}
 	input.CanonicalTurnID = "turn-retry-must-be-ignored"
+	input.MetadataJSON = `{"uiMode":"os"}`
 	input.NowUnixMS = 99
 	duplicate, created, err := store.PrepareSubmitClaim(context.Background(), input)
-	if err != nil || created || duplicate.Status != "prepared" || duplicate.CanonicalTurnID != "turn-1" || duplicate.CreatedAtUnixMS != 10 {
+	if err != nil || created || duplicate.Status != "prepared" || duplicate.CanonicalTurnID != "turn-1" || duplicate.MetadataJSON != `{"uiMode":"agent"}` || duplicate.CreatedAtUnixMS != 10 {
 		t.Fatalf("duplicate = %#v created=%v err=%v", duplicate, created, err)
 	}
 	accepted, updated, err := store.AcceptSubmitClaim(context.Background(), "ws-1", "session-1", "submit-1", "turn-1", 20)
@@ -117,15 +119,27 @@ VALUES
 	if err := store.applyWorkspaceAgentSubmitClaimsV2(ctx); err != nil {
 		t.Fatal(err)
 	}
-	accepted, ok, err := store.getSubmitClaim(ctx, "ws-1", "session-1", "accepted-legacy")
-	if err != nil || !ok || accepted.CanonicalTurnID != "turn-accepted" {
-		t.Fatalf("accepted legacy claim=%#v ok=%v err=%v", accepted, ok, err)
+	var acceptedCanonical sql.NullString
+	if err := store.db.QueryRowContext(ctx, `
+SELECT canonical_turn_id FROM workspace_agent_submit_claims
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1'
+  AND client_submit_id = 'accepted-legacy'
+`).Scan(&acceptedCanonical); err != nil || !acceptedCanonical.Valid || acceptedCanonical.String != "turn-accepted" {
+		t.Fatalf("accepted legacy canonical=%#v err=%v", acceptedCanonical, err)
 	}
-	prepared, ok, err := store.getSubmitClaim(ctx, "ws-1", "session-1", "prepared-legacy")
-	if err != nil || !ok || prepared.CanonicalTurnID != "" || prepared.Status != "prepared" {
-		t.Fatalf("prepared legacy claim=%#v ok=%v err=%v", prepared, ok, err)
+	var preparedCanonical sql.NullString
+	var preparedStatus string
+	if err := store.db.QueryRowContext(ctx, `
+SELECT canonical_turn_id, status FROM workspace_agent_submit_claims
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1'
+  AND client_submit_id = 'prepared-legacy'
+`).Scan(&preparedCanonical, &preparedStatus); err != nil || preparedCanonical.Valid || preparedStatus != "prepared" {
+		t.Fatalf("prepared legacy canonical=%#v status=%q err=%v", preparedCanonical, preparedStatus, err)
 	}
 	if err := store.applyWorkspaceAgentSubmitClaimsV3(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSubmitClaimsV4(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := store.db.ExecContext(ctx, `
@@ -138,6 +152,49 @@ VALUES ('ws-1', 'session-1', 'rejected-v3', 'rejected', 'turn-rejected', 3, 4, '
 	rejected, ok, err := store.getSubmitClaim(ctx, "ws-1", "session-1", "rejected-v3")
 	if err != nil || !ok || rejected.Status != "rejected" || rejected.TurnID != "turn-rejected" {
 		t.Fatalf("rejected v3 claim=%#v ok=%v err=%v", rejected, ok, err)
+	}
+}
+
+func TestSubmitClaimV4RepairsMissingMigrationMarkerWhenColumnAlreadyExists(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	store := New(openTestDB(t), testOptions(&staticProjectPaths{}))
+	if _, err := store.db.ExecContext(ctx, `
+CREATE TABLE agent_store_schema_migrations (
+  id TEXT PRIMARY KEY,
+  applied_at_unix_ms INTEGER NOT NULL
+);`); err != nil {
+		t.Fatal(err)
+	}
+	for _, migrate := range []func(context.Context) error{
+		store.applyWorkspaceAgentSubmitClaimsV1,
+		store.applyWorkspaceAgentSubmitClaimsV2,
+		store.applyWorkspaceAgentSubmitClaimsV3,
+	} {
+		if err := migrate(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Simulate a process that committed the old non-transactional ALTER but
+	// crashed before recording the migration marker.
+	if _, err := store.db.ExecContext(ctx, `
+ALTER TABLE workspace_agent_submit_claims
+  ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'
+  CHECK (json_valid(metadata_json) AND json_type(metadata_json) = 'object');
+`); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.applyWorkspaceAgentSubmitClaimsV4(ctx); err != nil {
+		t.Fatalf("first V4 repair: %v", err)
+	}
+	if err := store.applyWorkspaceAgentSubmitClaimsV4(ctx); err != nil {
+		t.Fatalf("idempotent V4 rerun: %v", err)
+	}
+	var migrationCount int
+	if err := store.db.QueryRowContext(ctx, `
+SELECT COUNT(*) FROM agent_store_schema_migrations WHERE id = ?
+`, schemaMigrationWorkspaceAgentSubmitClaimsV4).Scan(&migrationCount); err != nil || migrationCount != 1 {
+		t.Fatalf("V4 migration count=%d err=%v", migrationCount, err)
 	}
 }
 

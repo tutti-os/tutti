@@ -34,6 +34,19 @@ type closeRuntimeBackend struct {
 	input agentruntime.CloseInput
 }
 
+type mismatchCancelRuntimeBackend struct {
+	RuntimeBackend
+	input agentruntime.CancelInput
+}
+
+func (b *mismatchCancelRuntimeBackend) Cancel(
+	_ context.Context,
+	input agentruntime.CancelInput,
+) (agentruntime.CancelResult, error) {
+	b.input = input
+	return agentruntime.CancelResult{AgentSessionID: input.RootAgentSessionID}, agentruntime.ErrCancelTargetMismatch
+}
+
 type workspaceDisconnectBackend struct {
 	RuntimeBackend
 	sessions  []agentruntime.Session
@@ -103,6 +116,24 @@ func TestRuntimeControllerBridgesWorkspaceRuntimeDisconnect(t *testing.T) {
 	disconnected, err = controller.DisconnectRuntimeSessionTarget(t.Context(), targets[0])
 	if err != nil || !disconnected || backend.target.ConnectionGeneration != 7 {
 		t.Fatalf("target disconnect=%v err=%v backend=%#v", disconnected, err, backend.target)
+	}
+}
+
+func TestRuntimeControllerMapsExactCancelMismatchToDeliveryUnconfirmed(t *testing.T) {
+	t.Parallel()
+	backend := &mismatchCancelRuntimeBackend{}
+	controller := &RuntimeController{Backend: backend}
+
+	result, err := controller.Cancel(t.Context(), host.RuntimeCancelInput{
+		WorkspaceID: "workspace-1", RootAgentSessionID: "root-session", Reason: "user_requested",
+		Targets: []host.RuntimeCancelTarget{{AgentSessionID: "child-session", TurnID: "child-turn"}},
+	})
+	if !errors.Is(err, host.ErrRuntimeCancelDeliveryUnconfirmed) {
+		t.Fatalf("Cancel() error = %v, want delivery-unconfirmed", err)
+	}
+	if result.TargetAbsent || result.Canceled || backend.input.RootAgentSessionID != "root-session" || len(backend.input.Targets) != 1 ||
+		backend.input.Targets[0].AgentSessionID != "child-session" || backend.input.Targets[0].TurnID != "child-turn" {
+		t.Fatalf("Cancel() result=%#v backend input=%#v", result, backend.input)
 	}
 }
 

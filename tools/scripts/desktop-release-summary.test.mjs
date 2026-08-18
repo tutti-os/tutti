@@ -14,8 +14,12 @@ import {
 } from "../../apps/desktop/scripts/lib/githubReleaseBody.mjs";
 import { resolvePreviousReleaseTag } from "../../apps/desktop/scripts/lib/previousReleaseTag.mjs";
 import {
+  REVIEW_END,
+  REVIEW_START,
   SECTION_END,
   SECTION_START,
+  SUGGESTION_START,
+  buildApprovedReleaseSummary,
   buildUpdatedReleaseBody
 } from "../../apps/desktop/scripts/upsert-release-summary.mjs";
 import { validateReleaseSummary } from "../../apps/desktop/scripts/validate-release-summary.mjs";
@@ -120,7 +124,7 @@ test("desktop release summary fallback emits zh and en sections", () => {
   assert.ok(summary.en.sections.length >= 2);
 });
 
-test("desktop release summary upserts a managed GitHub release section", () => {
+test("desktop release summary creates editable review and replaceable suggestion sections", () => {
   const nextBody = buildUpdatedReleaseBody({
     existingBody: [
       "## What's Changed",
@@ -151,14 +155,59 @@ test("desktop release summary upserts a managed GitHub release section", () => {
     }
   });
 
-  assert.equal(nextBody.match(new RegExp(SECTION_START, "g"))?.length, 1);
-  assert.doesNotMatch(nextBody, /本次版本聚焦发布链路稳定性/);
+  assert.equal(nextBody.match(new RegExp(REVIEW_START, "g"))?.length, 1);
+  assert.equal(nextBody.match(new RegExp(SUGGESTION_START, "g"))?.length, 1);
+  assert.match(nextBody, /本次版本聚焦发布链路稳定性/);
   assert.match(nextBody, /Stable downloads only point to official releases/);
-  assert.match(nextBody, /Highlights/);
+  assert.match(nextBody, /Release Notes/);
   assert.doesNotMatch(nextBody, /QA Focus/);
   assert.doesNotMatch(nextBody, /Verify the download entry/);
   assert.match(nextBody, /Raw GitHub note/);
   assert.doesNotMatch(nextBody, /old summary/);
+});
+
+test("desktop release summary preserves human review when a candidate is rebuilt", () => {
+  const humanReview = [
+    REVIEW_START,
+    "## Release Notes",
+    "### 中文",
+    "人工确认标题",
+    "#### 问题修复",
+    "- 人工确认内容",
+    "### English",
+    "Reviewed headline",
+    "#### Bug Fixes",
+    "- Reviewed item",
+    REVIEW_END
+  ].join("\n");
+  const nextBody = buildUpdatedReleaseBody({
+    existingBody: `${humanReview}\n\n## What's Changed\n- keep me`,
+    summary: validReleaseSummary({
+      zh: {
+        headline: "新的机器建议",
+        sections: [{ title: "功能变更", items: ["机器内容"] }],
+        qaFocus: []
+      }
+    })
+  });
+  assert.match(nextBody, /人工确认内容/);
+  assert.match(nextBody, /新的机器建议/);
+  assert.match(nextBody, /keep me/);
+});
+
+test("approved summary is parsed from the human review instead of generated suggestions", () => {
+  const body = buildUpdatedReleaseBody({
+    existingBody: "",
+    summary: validReleaseSummary()
+  }).replace("验证候选版本。", "人工筛选后的更新内容");
+  const approved = buildApprovedReleaseSummary({
+    body,
+    generatedSummary: validReleaseSummary(),
+    reviewedAt: "2026-08-17T01:00:00.000Z"
+  });
+  assert.equal(approved.summarySource, "human-reviewed");
+  assert.deepEqual(approved.zh.sections[0].items, ["人工筛选后的更新内容"]);
+  assert.equal(approved.generatedAt, "2026-08-17T01:00:00.000Z");
 });
 
 test("desktop release summary trims only generated notes at GitHub's body limit", () => {
@@ -171,12 +220,13 @@ test("desktop release summary trims only generated notes at GitHub's body limit"
   ].join("\n");
   const nextBody = buildUpdatedReleaseBody({
     existingBody: oversizedNotes,
-    summary: {
+    summary: validReleaseSummary({
       en: {
         headline: "A concise release summary.",
-        sections: [{ title: "Bug Fixes", items: ["Kept releases reliable."] }]
+        sections: [{ title: "Bug Fixes", items: ["Kept releases reliable."] }],
+        qaFocus: []
       }
-    }
+    })
   });
 
   assert.ok(nextBody.length <= GITHUB_RELEASE_BODY_MAX_LENGTH);
@@ -195,6 +245,14 @@ test("desktop release summary validator accepts a complete staged summary", () =
       targetCommit: summary.targetCommit
     }),
     summary
+  );
+});
+
+test("desktop release summary validator accepts a human-reviewed summary", () => {
+  assert.doesNotThrow(() =>
+    validateReleaseSummary(
+      validReleaseSummary({ summarySource: "human-reviewed" })
+    )
   );
 });
 

@@ -13670,10 +13670,13 @@ components:
         reason:
           type: string
           description: >-
-            turn_canceled reports an active turn was stopped. already_settled
-            and not_found are idempotent no-op successes, not errors.
+            turn_canceled reports an active turn was stopped. cancel_requested
+            reports accepted cancellation whose exact provider delivery still
+            needs canonical reconciliation. already_settled and not_found are
+            idempotent no-op successes, not errors.
           enum:
             - turn_canceled
+            - cancel_requested
             - already_settled
             - not_found
     WorkspaceAgentTurnCancelResponse:
@@ -15173,6 +15176,11 @@ components:
           type: boolean
         source:
           type: string
+        uiMode:
+          type: string
+          enum:
+            - os
+            - agent
     AgentPromptContentBlock:
       type: object
       additionalProperties: false

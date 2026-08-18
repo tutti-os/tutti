@@ -4,8 +4,6 @@ import type {
 } from "@tutti-os/client-tuttid-ts";
 import { ObservableService } from "./observableService";
 
-const AGENT_QUICK_PROMPT_LIBRARY_FLAG = "agent.quickPromptLibrary";
-
 export interface MobileQuickPromptLibrarySnapshot {
   enabled: boolean;
   errorCode: "request_failed" | null;
@@ -14,7 +12,7 @@ export interface MobileQuickPromptLibrarySnapshot {
 }
 
 const initialSnapshot: MobileQuickPromptLibrarySnapshot = {
-  enabled: false,
+  enabled: true,
   errorCode: null,
   prompts: [],
   status: "idle"
@@ -38,27 +36,14 @@ export class MobileQuickPromptLibraryService extends ObservableService<MobileQui
     if (this.disposed) return Promise.resolve();
     this.publish({
       ...this.snapshot,
+      enabled: true,
       errorCode: null,
       status: "loading"
     });
     const generation = ++this.refreshGeneration;
-    let enabled = false;
     const refreshPromise = this.client
-      .getDesktopPreferences()
-      .then(async ({ preferences }) => {
-        if (this.disposed || generation !== this.refreshGeneration) return;
-        enabled =
-          preferences.featureFlags[AGENT_QUICK_PROMPT_LIBRARY_FLAG] === true;
-        if (!enabled) {
-          this.publish({
-            enabled: false,
-            errorCode: null,
-            prompts: [],
-            status: "ready"
-          });
-          return;
-        }
-        const { prompts } = await this.client.listAgentQuickPrompts();
+      .listAgentQuickPrompts()
+      .then(({ prompts }) => {
         if (this.disposed || generation !== this.refreshGeneration) return;
         this.publish({
           enabled: true,
@@ -70,9 +55,9 @@ export class MobileQuickPromptLibraryService extends ObservableService<MobileQui
       .catch(() => {
         if (this.disposed || generation !== this.refreshGeneration) return;
         this.publish({
-          enabled,
+          enabled: true,
           errorCode: "request_failed",
-          prompts: enabled ? this.snapshot.prompts : [],
+          prompts: this.snapshot.prompts,
           status: "error"
         });
       })

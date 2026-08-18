@@ -10,6 +10,16 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
+type standardACPProviderMessageHandler func(
+	context.Context,
+	*acpClient,
+	Session,
+	string,
+	acpMessage,
+	*acpTurnNormalizer,
+	EventSink,
+) ([]activityshared.Event, bool, error)
+
 type standardACPConfig struct {
 	provider            string
 	adapterName         string
@@ -82,6 +92,7 @@ type standardACPConfig struct {
 	launchPermission               *StandardACPLaunchPermissionSetting
 	setModelReasoningEffortMeta    bool
 	messageDiagnostics             *standardACPMessageDiagnostics
+	providerMessageHandler         standardACPProviderMessageHandler
 	capabilities                   []string
 	agentTargetID                  string
 	installationID                 string

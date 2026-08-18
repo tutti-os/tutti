@@ -7,6 +7,7 @@ export interface IAppUpdateService {
 
   load(): Promise<void>;
   checkForUpdates(): Promise<void>;
+  openReleaseNotes(): Promise<void>;
   runPrimaryAction(): Promise<void>;
 }
 

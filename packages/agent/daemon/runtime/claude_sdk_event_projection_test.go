@@ -703,6 +703,27 @@ func TestClaudeCodeSDKAdapterScopesChildApprovalBySDKAgentID(t *testing.T) {
 			t.Fatalf("approval resolution scope = %#v, want child session=%q turn=%q", event, child.AgentSessionID, child.TurnID)
 		}
 	}
+
+	replayed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "provider-turn-task", claudeSDKSidecarEvent{
+		Type: "approval_requested",
+		Payload: map[string]any{
+			"turnId":     "provider-turn-task",
+			"requestId":  "approval-child-write",
+			"toolCallId": "toolu-child-write",
+			"toolName":   "Write",
+			"agentId":    "agent-1",
+			"input":      map[string]any{"file_path": "/repo/permission-probe.txt", "content": "hello"},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("replayed child approval terminal=%v err=%v", terminal, err)
+	}
+	if len(replayed) != 0 {
+		t.Fatalf("replayed child approval events=%#v, want none", replayed)
+	}
+	if got := adapter.InteractiveDispositionForTarget(session, child.AgentSessionID, child.TurnID, "approval-child-write"); got != InteractiveDispositionAnswered {
+		t.Fatalf("child disposition after replay=%q, want answered", got)
+	}
 }
 
 func TestClaudeCodeSDKAdapterScopesChildApprovalAckEventsToChild(t *testing.T) {

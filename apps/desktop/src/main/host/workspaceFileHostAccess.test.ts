@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -250,6 +250,45 @@ test("workspace file host access resolves terminal links for workspace, relative
   } finally {
     restoreHome();
   }
+});
+
+test("workspace file host access normalizes Git Bash paths at the native boundary", async () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const openedPaths: string[] = [];
+  const revealedPaths: string[] = [];
+  const hostAccess = createWorkspaceFileHostAccess({
+    openPath: async (targetPath) => {
+      openedPaths.push(targetPath);
+      return "";
+    },
+    showItemInFolder(targetPath) {
+      revealedPaths.push(targetPath);
+    },
+    stat: (async () => ({
+      isDirectory: () => false
+    })) as unknown as typeof stat
+  });
+
+  await hostAccess.openFile({
+    path: "/c/Users/test/project/notes.txt",
+    workspaceID: "workspace-1"
+  });
+  await hostAccess.revealWorkspaceFile({
+    path: "/c/Users/test/project/notes.txt",
+    workspaceID: "workspace-1"
+  });
+  await hostAccess.openTerminalLink({
+    cwd: "C:\\Users\\test\\project",
+    path: "/c/Users/test/project/notes.txt",
+    workspaceID: "workspace-1"
+  });
+
+  const expectedPath = path.resolve("C:/Users/test/project/notes.txt");
+  assert.deepEqual(openedPaths, [expectedPath, expectedPath]);
+  assert.deepEqual(revealedPaths, [expectedPath]);
 });
 
 test("workspace file host access reveals workspace files and directories", async () => {

@@ -76,17 +76,14 @@ Supported manual modes:
 - `explicit_version_release`: publish an explicit release semver such as `0.1.0`, `0.1.0-beta.0`, `0.1.0-rc.0`, `1.13.0-rc.0`, or `2.0.0`
 - `unsigned_dry_run`: build unsigned artifacts without publishing a GitHub Release
 
-Manual runs also expose `publication_mode`:
+RC and beta releases promote automatically after staging. Stable releases
+always stop as a candidate and require the separate Promotion workflow and its
+protected Environment approval before publication. There is no manual
+publication-mode switch.
 
-- `publish` keeps the existing end-to-end behavior. The workflow stages a GitHub Draft Release, uploads immutable assets, then calls the promotion workflow to update public channel metadata and publish the stable GitHub Release.
-- `draft_only` builds the same signed and notarized artifacts, keeps the GitHub Release as a draft, uploads immutable assets under the versioned S3/CloudFront `<tag>/` directory, and stops before changing any public channel pointer, changelog, stable alias, or GitHub visibility.
-
-For an RC draft, dispatch `patch_rc_release` from `main` or `release/*` and
-select `draft_only`; Windows is included by default. Windows is intentionally
-unsigned for now. A Windows build or artifact validation failure blocks staging
-so an RC or stable release cannot silently publish only macOS assets.
-
-Draft-only assets are unlisted, not private. Anyone who knows the immutable CloudFront URL can download them. This is intentional so internal release notifications can carry working QA download links. Do not use the desktop release asset prefix for confidential artifacts.
+Windows is included by default and is intentionally unsigned for now. A
+Windows build or artifact validation failure blocks staging so an RC or stable
+release cannot silently publish only macOS assets.
 
 Manual RC and stable release modes (`patch_rc_release`, `patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
 
@@ -227,11 +224,11 @@ TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED=true
 ```
 
 It always selects the protected `microsoft-store-production` Environment and
-accepts only plain stable tags. It runs only for `publication_mode=publish` and
-starts after Direct promotion succeeds. RC, beta, and draft-only runs continue
-through the existing Direct NSIS/CDN flow without a production Store
-submission. The Store job is downstream from Direct promotion, so Store
-certification delay or failure cannot block or roll back Direct promotion.
+accepts only plain stable tags and starts after Direct promotion succeeds. RC
+and beta runs continue through the existing Direct NSIS/CDN flow without a
+production Store submission. The Store job is downstream from Direct
+promotion, so Store certification delay or failure cannot block or roll back
+Direct promotion.
 
 The release workflow builds macOS x64, arm64, and universal packages as a
 three-entry GitHub Actions matrix. Each architecture uploads an isolated
@@ -315,9 +312,9 @@ After a successful stage or promotion, the workflow sends a Feishu card when:
 
 If the webhook secret is missing, the workflow skips notification instead of failing the release.
 
-For `draft_only`, the card links to the authorized GitHub Draft Release and uses the immutable AWS/CloudFront asset URLs. Sending the card does not update `latest.json`, a prerelease channel pointer, `changelog.json`, or the floating `stable` release.
+For a stable candidate, the card shows up to six user-facing Chinese changes, links to candidate downloads and the editable Draft Release, and opens the Promotion workflow for review submission. It deliberately omits commit IDs, candidate IDs, compare ranges, branches, and QA-only notes. Sending the card does not update `latest.json`, `changelog.json`, or the floating `stable` release.
 
-The card links to available macOS, Windows, Linux, GitHub Release, and workflow run URLs.
+The card links to available macOS and Windows downloads, the GitHub Release, the workflow run, and—for stable candidates—the Promotion workflow.
 
 When `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is configured, the download buttons prefer the mirrored release asset base URL instead of GitHub asset URLs. If the explicit base URL is absent but S3 mirroring is configured, the workflow falls back to the S3 accelerate base URL.
 
@@ -424,15 +421,19 @@ https://<asset-base-url>/changelog.json
 
 ## Draft Promotion
 
-External publication is owned by `.github/workflows/desktop-release-promote.yml`. It can be called by the normal desktop release workflow for `publication_mode=publish`, or run manually with an existing Draft Release tag after a `draft_only` build has been approved.
+External publication is owned by `.github/workflows/desktop-release-promote.yml`. RC and beta builds may call it automatically. A stable candidate must be submitted manually from the Feishu link and then pass the `desktop-stable-release` GitHub Environment approval.
+
+Configure that Environment with only `SingleMai`, `jomeswang`, and `vorshen` as required reviewers, with self-review allowed. This reviewer policy is repository configuration rather than workflow YAML; keep it synchronized with this convention.
 
 Promotion performs these checks before changing public state:
 
 - the GitHub Release exists and its stable, RC, or beta shape matches the tag
-- the tag still points to the staged commit
+- for stable candidates, the formal tag is absent or already points to the candidate commit after an interrupted promotion
 - the production managed app runtime catalog publishes at least the target
   commit's locked `runtimeVersion` for every supported platform
+- `release-candidate.json` binds the planned tag, target commit, source ref, generated summary, checksums, and candidate asset path
 - `SHA256SUMS.txt` exists and the downloaded draft assets match it
+- the reviewed bilingual notes still produce the approval digest captured before the Environment gate
 - the target version does not move the selected public channel backwards
 
 When `config/tutti.app-runtime.lock.json` changes, run `Publish Tutti App
@@ -440,7 +441,13 @@ Runtime` and verify the production catalog before promoting the desktop release.
 The promotion gate reads the lock from the exact release target, so a later
 manual promotion cannot bypass this ordering.
 
-It then consumes the checksummed `release-summary.json` staged with the Draft Release, repairs or uploads the immutable AWS objects, updates release notes, publishes a stable GitHub Release when applicable, writes the selected stable/RC/beta pointer, refreshes the stable alias, verifies the public CloudFront pointer, and sends the promoted release notification. Promotion never regenerates the summary or calls the summary model. GitHub Draft assets remain mutable until promotion, so any restage or asset replacement invalidates the prior human approval and requires another review of the current `SHA256SUMS.txt`; cryptographic binding to an external approval record or immutable candidate ID is not implemented. Promotion is serialized with the `desktop-release-promotion` concurrency group because stable and prerelease pointers are mutable shared state.
+It then extracts the human-reviewed summary, copies stable candidate objects from `candidates/<candidate-id>/` to the immutable `<tag>/` path, creates the formal stable tag, updates release notes and assets, publishes the GitHub Release, writes the channel pointer and changelog, refreshes the stable alias, verifies the public pointer, and sends the published card. Promotion never rebuilds installers or calls the summary model. Editing notes or replacing assets after submission changes the approval digest and forces a new approval run. Promotion is serialized because channel pointers are shared mutable state.
+
+The internal candidate manifest remains attached until every fallible promotion
+check succeeds. If a run stops after the stable GitHub Release becomes public,
+the next Promotion run may select that same published release, revalidate the
+candidate and reviewed notes, and resume the idempotent remaining steps. The
+manifest is removed only as the final successful promotion action.
 
 RC and beta promotions preserve the existing GitHub policy: their GitHub Releases remain drafts while their AWS channel pointers become available. Stable promotion changes the GitHub Release from draft to public and marks it Latest.
 
@@ -453,13 +460,9 @@ Summary generation is best-effort:
 - if `AGNES_API_KEY` is configured, the workflow asks Agnes to summarize commits and diff stats
 - if the key is missing, the API fails, or the response is invalid, the workflow falls back to a deterministic commit-based summary
 
-The Stage job adds the summary to the Draft Release assets before generating
-`SHA256SUMS.txt`. The summary and installable archives are therefore in the
-same checksummed candidate set. Electron updater `.yml` and `.blockmap` files
-remain outside `SHA256SUMS.txt` under the existing checksum policy. The summary
-is used to:
+The Stage job adds the generated summary before checksums and seeds a clearly marked bilingual review section in the Draft Release body. Operators edit only that review section; rebuilding the same unpublished version refreshes generated suggestions while preserving the edited review. Promotion converts the review section to a `human-reviewed` `release-summary.json` and removes machine suggestions from the public Release body. The summary is used to:
 
-- upsert a managed English `Release Summary` section into the GitHub Release body
+- maintain editable Chinese and English release notes in the GitHub Release body
 - enrich the Feishu release card with the Chinese summary when Feishu notification is enabled
 - update `changelog.json` for stable releases
 
@@ -475,6 +478,8 @@ notes approach GitHub's 125,000-character body limit. Trim only the generated
 detail entries and leave a visible truncation notice.
 
 Do not commit real model API keys. Configure `AGNES_API_KEY` as a GitHub secret.
+
+Stable drafts use a mutable internal `candidate-vX.Y.Z` tag; the formal `vX.Y.Z` tag is created only after approval. Before that point, dispatching the same explicit version moves the internal candidate tag, replaces the Draft's exact asset set, and writes a new candidate path without invalidating public caches. Once the formal stable tag exists, do not rebuild different code under that version; retry the same promotion or use a new patch version.
 
 ## Required Secrets
 
@@ -530,6 +535,7 @@ Recommended setup:
 
 - set `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` to the CloudFront distribution path, such as `https://d111111abcdef8.cloudfront.net/desktop-release-assets`
 - keep the S3 bucket and prefix configured so the workflow can upload mirrored assets
+- apply a 30-day lifecycle expiration to objects under `<prefix>/candidates/`; never apply that rule to formal `<tag>/` paths
 
 If `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is omitted, the workflow falls back to:
 

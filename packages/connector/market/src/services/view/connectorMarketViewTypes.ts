@@ -46,6 +46,8 @@ export interface ConnectorCardView {
 
 export interface ConnectorSectionView {
   id: string;
+  displayNameZh?: string;
+  displayNameEn?: string;
   connectorKeys: string[];
   error: boolean;
   hasMore: boolean;

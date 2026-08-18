@@ -18,30 +18,21 @@ const labels = {
 } as AgentComposerProps["labels"];
 
 describe("ComposerPrimaryCapabilityControl", () => {
-  it("shows Tutti Mode when connectors are disabled", () => {
-    render(
+  it("hides the capability slot when connectors are disabled", () => {
+    const { container } = render(
       <ComposerPrimaryCapabilityControl
         availableSkills={[]}
         connectorsVisible={false}
         disabled={false}
-        isTuttiModeActive={false}
-        isTuttiModeUpdating={false}
         labels={labels}
         loading={false}
         onCapabilitySettingsRequest={vi.fn()}
         onConnectorSelected={vi.fn()}
-        onTuttiModeChange={vi.fn()}
         selectedConnectorKeys={[]}
-        tuttiModeSupported={true}
       />
     );
 
-    expect(
-      screen.getByTestId("agent-gui-composer-tutti-mode-toggle")
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("connector-market-composer-trigger")
-    ).not.toBeInTheDocument();
+    expect(container).toBeEmptyDOMElement();
   });
 
   it("shows only connectors when connectors are enabled", () => {
@@ -51,25 +42,18 @@ describe("ComposerPrimaryCapabilityControl", () => {
         availableSkills={[]}
         connectorsVisible
         disabled={false}
-        isTuttiModeActive={false}
-        isTuttiModeUpdating={false}
         labels={labels}
         loading
         onRetryComposerOptions={onRetryComposerOptions}
         onCapabilitySettingsRequest={vi.fn()}
         onConnectorSelected={vi.fn()}
-        onTuttiModeChange={vi.fn()}
         selectedConnectorKeys={[]}
-        tuttiModeSupported={true}
       />
     );
 
     expect(
       screen.getByTestId("connector-market-composer-trigger")
     ).toBeInTheDocument();
-    expect(
-      screen.queryByTestId("agent-gui-composer-tutti-mode-toggle")
-    ).not.toBeInTheDocument();
     fireEvent.pointerDown(
       screen.getByTestId("connector-market-composer-trigger"),
       { button: 0, ctrlKey: false, pointerType: "mouse" }

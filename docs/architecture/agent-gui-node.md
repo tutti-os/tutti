@@ -51,15 +51,14 @@ bodies, while the action keeps picker exposure distinct from successful use.
 
 The native Mobile composer consumes the same device-global list through its
 authenticated Desktop connection rather than creating Mobile-owned prompt
-state. Its authenticated-device service reads the stored
-`agent.quickPromptLibrary` desktop feature gate and the canonical quick-prompt
-list through the generated tuttid client. When enabled, the Mobile `+` menu
+state. Its authenticated-device service reads the canonical quick-prompt list
+through the generated tuttid client. The Mobile `+` menu
 offers a searchable, read-only selector; choosing a prompt adds its text at the
 current plain-text input position without replacing the existing draft,
 restores input focus, and never sends automatically. Create, edit, delete, and
 reorder remain Desktop management actions. DeviceLink permits only exact
-`GET /v1/preferences/desktop` and `GET /v1/agent-quick-prompts` reads for this
-flow; mutation and per-prompt routes remain blocked.
+`GET /v1/agent-quick-prompts` reads for this flow; mutation and per-prompt
+routes remain blocked.
 
 The native Mobile new-conversation Composer presents Agent Target and working
 directory as peer context selectors directly above the input. The Agent Target
@@ -708,12 +707,10 @@ descendants, and historical prefix provenance do not hide Fork actions for
 earlier settled Turns. Only an in-flight Fork for that exact canonical Turn
 disables its button.
 
-Session Fork is also a default-off Developer capability. Desktop exposes its
-persisted `lab.agentSessionFork` switch in Developer settings and maps it to an
-explicit AgentGUI host opt-in, so provider support alone does not expose the
-action. Tuttid independently enforces the same flag on new Fork writes;
-disabling it leaves existing lineage, operation reads, and operation
-acknowledgements available.
+Session Fork is available whenever the exact provider/runtime and selected Turn
+project the capabilities described above. Desktop exposes that capability
+directly, and tuttid verifies the same provider and Turn facts when executing a
+new Fork write; no separate feature preference gates the action.
 
 Execution accepts a worktree-isolated source. A provider-native Fork retains
 the provider cwd, and Tutti freezes the same cwd and isolation coordinates into
@@ -1907,10 +1904,11 @@ does not uninstall connectors, stop their runtimes, or reject an already
 structured connector prompt.
 
 Desktop also projects the flag through AgentGUI's existing host-owned
-capability-menu state. The primary footer capability slot is mutually
-exclusive: when `lab.connectors` is off it renders Tutti Mode, and when the
-flag is on it renders only the Connectors menu. The same footer serves both the
-home hero and existing-session dock, so the two AgentGUI contexts cannot drift.
+capability-menu state. The primary footer capability slot renders the
+Connectors menu only when `lab.connectors` is on; otherwise it is omitted.
+Tutti Mode remains available through the slash-command surface, but has no
+dedicated footer entry. The same footer serves both the home hero and
+existing-session dock, so the two AgentGUI contexts cannot drift.
 The menu implementation and its host-neutral connector item contract belong to
 `@tutti-os/connector-market/ui`. AgentGUI owns only the capability-option
 mapping, Composer placement, canonical option refresh request, and Tutti Mode
@@ -2604,11 +2602,10 @@ The optional quick-prompt library follows that host-capability boundary. Tutti
 Desktop projects the device-global `tuttid` quick-prompt CRUD service through
 `AgentHostApi.quickPrompts`; AgentGUI owns only the picker/editor presentation
 and inserts a selected prompt into the current TipTap selection without
-submitting it. The library snapshot, developer feature gate, and cross-window
-invalidation are not Session or Turn state and must not enter
-`AgentGUIRuntime` or the workspace engine. Hosts that omit the capability,
-and hosts whose capability reports the developer gate disabled, render no
-quick-prompt composer entry. AgentGUI may also present a small, localized set
+submitting it. The library snapshot and cross-window invalidation are not
+Session or Turn state and must not enter `AgentGUIRuntime` or the workspace
+engine. Hosts that omit the capability render no quick-prompt composer entry.
+AgentGUI may also present a small, localized set
 of recommended templates; those only prefill the existing editor and remain
 client-local until the user explicitly saves them through the CRUD capability.
 

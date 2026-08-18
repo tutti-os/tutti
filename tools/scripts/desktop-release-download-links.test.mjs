@@ -77,6 +77,20 @@ test("desktop release notes replace the managed direct download section in place
   );
 });
 
+test("desktop release notes support immutable candidate paths", () => {
+  const nextBody = buildUpdatedReleaseBody({
+    assetNames: ["Tutti-1.2.3-mac-universal.dmg"],
+    existingBody: "",
+    releaseAssetBaseUrl: "https://downloads.example.com/desktop",
+    releaseAssetPath: "candidates/v1.2.3-abcdef0-run42",
+    releaseTag: "v1.2.3"
+  });
+  assert.match(
+    nextBody,
+    /desktop\/candidates\/v1\.2\.3-abcdef0-run42\/Tutti-1\.2\.3-mac-universal\.dmg/
+  );
+});
+
 test("desktop release notes remove the managed section when no mirrored base URL is configured", () => {
   const existingBody = [
     "## What's Changed",

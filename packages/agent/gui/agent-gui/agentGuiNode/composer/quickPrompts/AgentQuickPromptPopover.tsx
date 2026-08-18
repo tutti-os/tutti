@@ -265,7 +265,7 @@ export function AgentQuickPromptPopover({
               </div>
             )}
           </div>
-          {!isTemplateView ? (
+          {!isTemplateView && !isSorting ? (
             <div className="relative shrink-0 px-3 py-2.5">
               <SearchIcon
                 aria-hidden
@@ -275,7 +275,7 @@ export function AgentQuickPromptPopover({
                 ref={searchRef}
                 aria-label={labels.searchPlaceholder}
                 className="pl-8"
-                disabled={controller.isInteractionLocked || isSorting}
+                disabled={controller.isInteractionLocked}
                 placeholder={labels.searchPlaceholder}
                 value={controller.searchQuery}
                 onChange={(event) =>

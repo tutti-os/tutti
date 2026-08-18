@@ -525,6 +525,7 @@ type AuthorizationSession struct {
 	SessionID        string                         `json:"sessionId"`
 	ActionType       string                         `json:"actionType"`
 	AuthorizationURL string                         `json:"-"`
+	UserCode         string                         `json:"-"`
 	ExpiresAt        time.Time                      `json:"expiresAt"`
 	State            AuthorizationState             `json:"-"`
 	Resolution       AuthorizationSessionResolution `json:"resolution"`

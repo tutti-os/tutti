@@ -23,7 +23,6 @@ export type DesktopAgentGUIHostProps = {
     AgentGUIProps["hostCapabilities"],
     | "referenceProvenanceFilterEnabled"
     | "sessionInputHistoryEnabled"
-    | "sessionForkEnabled"
     | "sessionWorktreeEnabled"
     | "sessionLaunchModesByProjectSectionKey"
     | "codexSaverModeEntryEnabled"
@@ -108,7 +107,6 @@ export function useStableDesktopAgentGUIHostProps({
         nextHostCapabilities.referenceProvenanceFilterEnabled,
       sessionInputHistoryEnabled:
         nextHostCapabilities.sessionInputHistoryEnabled,
-      sessionForkEnabled: nextHostCapabilities.sessionForkEnabled,
       sessionWorktreeEnabled: nextHostCapabilities.sessionWorktreeEnabled,
       sessionLaunchModesByProjectSectionKey:
         nextHostCapabilities.sessionLaunchModesByProjectSectionKey,

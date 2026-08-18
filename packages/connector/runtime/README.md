@@ -100,6 +100,13 @@ credentials and configuration remain in the Connector-private state directory;
 the CLI itself is installed only in Tutti's private managed directory and is
 never added to the system `PATH`.
 
+An `authorization_url` event may include the V1 event's existing `code` field
+when the provider requires a short-lived user-facing device code. The runtime
+keeps that code only in the in-memory broker session and projects it into the
+existing V1 `device_code` Authorization View. It is never persisted or written
+to diagnostics. Brokers without a code and older hosts retain the external-link
+fallback.
+
 Credential-broker sessions are owned by the durable authorization operation,
 not only by the Connector route. Repeating that operation may resume its
 session; a different operation must first cancel the previous session and wait

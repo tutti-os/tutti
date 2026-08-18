@@ -204,7 +204,7 @@ describe("AgentQuickPromptPopover", () => {
     expect(
       screen.getByRole("button", { name: "Reorder Review" })
     ).toBeEnabled();
-    expect(screen.getByPlaceholderText("Search quick prompts")).toBeDisabled();
+    expect(screen.queryByPlaceholderText("Search quick prompts")).toBeNull();
     expect(screen.queryByRole("button", { name: "Edit" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
     expect(
@@ -280,11 +280,18 @@ describe("AgentQuickPromptPopover", () => {
     const done = screen.getByRole("button", { name: "Done" });
     fireEvent.pointerDown(done, { button: 0 });
     expect(screen.getByRole("button", { name: "Reorder" })).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("Search quick prompts")
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Reorder" }));
     expect(screen.getByRole("button", { name: "Done" })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText("Search quick prompts")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Done" }));
     expect(screen.getByRole("button", { name: "Reorder" })).toBeInTheDocument();
+    expect(
+      screen.getByPlaceholderText("Search quick prompts")
+    ).toBeInTheDocument();
   });
 
   it("reports a Composer insertion failure without reporting a save failure", () => {

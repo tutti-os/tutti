@@ -754,6 +754,24 @@ func (e AgentSlashCommandEffect) Valid() bool {
 	}
 }
 
+// Defines values for AgentSubmitDiagnosticsUiMode.
+const (
+	AgentSubmitDiagnosticsUiModeAgent AgentSubmitDiagnosticsUiMode = "agent"
+	AgentSubmitDiagnosticsUiModeOs    AgentSubmitDiagnosticsUiMode = "os"
+)
+
+// Valid indicates whether the value is a known member of the AgentSubmitDiagnosticsUiMode enum.
+func (e AgentSubmitDiagnosticsUiMode) Valid() bool {
+	switch e {
+	case AgentSubmitDiagnosticsUiModeAgent:
+		return true
+	case AgentSubmitDiagnosticsUiModeOs:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentTargetBuiltinLocalLaunchRefType.
 const (
 	AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal AgentTargetBuiltinLocalLaunchRefType = "builtin_local"
@@ -3834,16 +3852,16 @@ func (e WorkspaceAgentSessionWorktreeSupportErrorCode) Valid() bool {
 
 // Defines values for WorkspaceAgentSource.
 const (
-	LegacyBinding WorkspaceAgentSource = "legacy_binding"
-	User          WorkspaceAgentSource = "user"
+	WorkspaceAgentSourceLegacyBinding WorkspaceAgentSource = "legacy_binding"
+	WorkspaceAgentSourceUser          WorkspaceAgentSource = "user"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentSource enum.
 func (e WorkspaceAgentSource) Valid() bool {
 	switch e {
-	case LegacyBinding:
+	case WorkspaceAgentSourceLegacyBinding:
 		return true
-	case User:
+	case WorkspaceAgentSourceUser:
 		return true
 	default:
 		return false
@@ -3900,15 +3918,18 @@ func (e WorkspaceAgentTurnProviderForkBindingState) Valid() bool {
 
 // Defines values for WorkspaceAgentTurnCancelResultReason.
 const (
-	AlreadySettled WorkspaceAgentTurnCancelResultReason = "already_settled"
-	NotFound       WorkspaceAgentTurnCancelResultReason = "not_found"
-	TurnCanceled   WorkspaceAgentTurnCancelResultReason = "turn_canceled"
+	AlreadySettled  WorkspaceAgentTurnCancelResultReason = "already_settled"
+	CancelRequested WorkspaceAgentTurnCancelResultReason = "cancel_requested"
+	NotFound        WorkspaceAgentTurnCancelResultReason = "not_found"
+	TurnCanceled    WorkspaceAgentTurnCancelResultReason = "turn_canceled"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceAgentTurnCancelResultReason enum.
 func (e WorkspaceAgentTurnCancelResultReason) Valid() bool {
 	switch e {
 	case AlreadySettled:
+		return true
+	case CancelRequested:
 		return true
 	case NotFound:
 		return true
@@ -5622,13 +5643,17 @@ type AgentSlashCommandPolicy struct {
 
 // AgentSubmitDiagnostics defines model for AgentSubmitDiagnostics.
 type AgentSubmitDiagnostics struct {
-	BlockCount        *int    `json:"blockCount,omitempty"`
-	HasImage          *bool   `json:"hasImage,omitempty"`
-	PromptLength      *int    `json:"promptLength,omitempty"`
-	Queued            *bool   `json:"queued,omitempty"`
-	Source            *string `json:"source,omitempty"`
-	SubmittedAtUnixMs *int64  `json:"submittedAtUnixMs,omitempty"`
+	BlockCount        *int                          `json:"blockCount,omitempty"`
+	HasImage          *bool                         `json:"hasImage,omitempty"`
+	PromptLength      *int                          `json:"promptLength,omitempty"`
+	Queued            *bool                         `json:"queued,omitempty"`
+	Source            *string                       `json:"source,omitempty"`
+	SubmittedAtUnixMs *int64                        `json:"submittedAtUnixMs,omitempty"`
+	UiMode            *AgentSubmitDiagnosticsUiMode `json:"uiMode,omitempty"`
 }
+
+// AgentSubmitDiagnosticsUiMode defines model for AgentSubmitDiagnostics.UiMode.
+type AgentSubmitDiagnosticsUiMode string
 
 // AgentTarget defines model for AgentTarget.
 type AgentTarget struct {
@@ -6295,10 +6320,16 @@ type ConnectorMarketCategoriesResponse struct {
 
 // ConnectorMarketCategory defines model for ConnectorMarketCategory.
 type ConnectorMarketCategory struct {
-	CategoryId string                      `json:"categoryId"`
-	ItemCount  int64                       `json:"itemCount"`
-	Kind       ConnectorMarketCategoryKind `json:"kind"`
-	SortOrder  int32                       `json:"sortOrder"`
+	CategoryId string `json:"categoryId"`
+
+	// DisplayNameEn Server-managed English category name.
+	DisplayNameEn *string `json:"displayNameEn,omitempty"`
+
+	// DisplayNameZh Server-managed Simplified Chinese category name.
+	DisplayNameZh *string                     `json:"displayNameZh,omitempty"`
+	ItemCount     int64                       `json:"itemCount"`
+	Kind          ConnectorMarketCategoryKind `json:"kind"`
+	SortOrder     int32                       `json:"sortOrder"`
 }
 
 // ConnectorMarketCategoryKind defines model for ConnectorMarketCategory.Kind.
@@ -9382,11 +9413,11 @@ type WorkspaceAgentTurnCancelResponse struct {
 type WorkspaceAgentTurnCancelResult struct {
 	Canceled bool `json:"canceled"`
 
-	// Reason turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+	// Reason turn_canceled reports an active turn was stopped. cancel_requested reports accepted cancellation whose exact provider delivery still needs canonical reconciliation. already_settled and not_found are idempotent no-op successes, not errors.
 	Reason WorkspaceAgentTurnCancelResultReason `json:"reason"`
 }
 
-// WorkspaceAgentTurnCancelResultReason turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+// WorkspaceAgentTurnCancelResultReason turn_canceled reports an active turn was stopped. cancel_requested reports accepted cancellation whose exact provider delivery still needs canonical reconciliation. already_settled and not_found are idempotent no-op successes, not errors.
 type WorkspaceAgentTurnCancelResultReason string
 
 // WorkspaceAgentTurnError Protocol v2 turn-scoped error; never pollutes session state.

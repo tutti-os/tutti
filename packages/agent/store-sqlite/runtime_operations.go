@@ -430,6 +430,10 @@ func (s *Store) CheckpointRuntimeOperation(ctx context.Context, input Checkpoint
 		if !interactiveResponseCheckpointIdentityEqual(current.Payload, input.Payload) {
 			return current, false, ErrRuntimeOperationSubjectState
 		}
+	case RuntimeOperationKindCancelTurn:
+		if !cancelRuntimeOperationCheckpointIdentityEqual(current.Payload, input.Payload) {
+			return current, false, ErrRuntimeOperationSubjectState
+		}
 	case RuntimeOperationKindPlanDecision:
 		if err := validatePlanDecisionOperationPayload(input.OperationID, input.Payload); err != nil {
 			return current, false, err
@@ -790,5 +794,23 @@ func interactiveResponseCheckpointIdentityEqual(previous, next map[string]any) b
 		delete(previousIdentity, key)
 		delete(nextIdentity, key)
 	}
+	return jsonMapsEqual(previousIdentity, nextIdentity)
+}
+
+func cancelRuntimeOperationCheckpointIdentityEqual(previous, next map[string]any) bool {
+	nextDeliveryUnconfirmed, ok := next[CancelRuntimeOperationDeliveryUnconfirmedPayloadKey].(bool)
+	if !ok || !nextDeliveryUnconfirmed {
+		return false
+	}
+	if existing, exists := previous[CancelRuntimeOperationDeliveryUnconfirmedPayloadKey]; exists {
+		deliveryUnconfirmed, ok := existing.(bool)
+		if !ok || !deliveryUnconfirmed {
+			return false
+		}
+	}
+	previousIdentity := cloneJSONMap(previous)
+	nextIdentity := cloneJSONMap(next)
+	delete(previousIdentity, CancelRuntimeOperationDeliveryUnconfirmedPayloadKey)
+	delete(nextIdentity, CancelRuntimeOperationDeliveryUnconfirmedPayloadKey)
 	return jsonMapsEqual(previousIdentity, nextIdentity)
 }

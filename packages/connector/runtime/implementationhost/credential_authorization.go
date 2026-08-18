@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	market "github.com/tutti-os/tutti/packages/connector/host"
@@ -81,12 +82,13 @@ type credentialBrokerSession struct {
 	cancel      context.CancelFunc
 	done        chan struct{}
 
-	mu      sync.Mutex
-	state   market.AuthorizationState
-	url     string
-	err     error
-	version uint64
-	changed chan struct{}
+	mu       sync.Mutex
+	state    market.AuthorizationState
+	url      string
+	userCode string
+	err      error
+	version  uint64
+	changed  chan struct{}
 }
 
 func newManagedCredentialAuthorizationProvider(host managedCredentialAuthorizationHost) *managedCredentialAuthorizationProvider {
@@ -143,7 +145,7 @@ func (provider *managedCredentialAuthorizationProvider) Begin(
 		cancelCleanup()
 		return market.AuthorizationSession{}, errors.Join(err, cleanupErr)
 	}
-	state, authorizationURL, sessionErr := session.snapshot()
+	state, authorizationURL, userCode, sessionErr := session.snapshot()
 	if sessionErr != nil {
 		provider.clearAuthorizationSession(request.OperationID, session)
 		provider.host.releaseAuthorizationRoute(route)
@@ -155,6 +157,7 @@ func (provider *managedCredentialAuthorizationProvider) Begin(
 		ConnectionID:     route.connectionID,
 		SessionID:        request.OperationID + "/credential-broker",
 		AuthorizationURL: authorizationURL,
+		UserCode:         userCode,
 		State:            state,
 	}
 	if state == market.AuthorizationStateConnected {
@@ -266,7 +269,7 @@ func (provider *managedCredentialAuthorizationProvider) authorizationSessionOrSt
 	operationID = strings.TrimSpace(operationID)
 	provider.mu.Lock()
 	if session := provider.sessions[operationID]; session != nil {
-		_, _, sessionErr := session.snapshot()
+		_, _, _, sessionErr := session.snapshot()
 		if sessionErr == nil {
 			provider.mu.Unlock()
 			return session, nil
@@ -282,7 +285,7 @@ func (provider *managedCredentialAuthorizationProvider) authorizationSessionOrSt
 	if activeOperationID := provider.activeByRoute[route.id]; activeOperationID != "" {
 		active := provider.sessions[activeOperationID]
 		if active != nil {
-			_, _, activeErr := active.snapshot()
+			_, _, _, activeErr := active.snapshot()
 			if activeErr != nil {
 				select {
 				case <-active.done:
@@ -388,10 +391,14 @@ func applyCredentialBrokerEvent(host managedCredentialAuthorizationHost, route *
 		if !safeCredentialBrokerURL(event.URL, route.credentialBrokerLaunch.allowedHosts) {
 			return errors.New("connector credential broker returned an unauthorized URL")
 		}
-		session.update(market.AuthorizationStatePending, event.URL, nil)
+		userCode, err := normalizeCredentialBrokerUserCode(event.Code)
+		if err != nil {
+			return err
+		}
+		session.update(market.AuthorizationStatePending, event.URL, userCode, nil)
 		host.observeAuthorization(route, market.AuthorizationStatePending)
 	case "connected":
-		session.update(market.AuthorizationStateConnected, "", nil)
+		session.update(market.AuthorizationStateConnected, "", "", nil)
 		host.observeAuthorization(route, market.AuthorizationStateConnected)
 	case "error":
 		return credentialBrokerEventError(event, "authorize")
@@ -709,6 +716,14 @@ func boundedBrokerMessage(message string) string {
 	return message
 }
 
+func normalizeCredentialBrokerUserCode(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if utf8.RuneCountInString(value) > 128 {
+		return "", errors.New("connector credential broker returned an oversized device code")
+	}
+	return value, nil
+}
+
 func (session *credentialBrokerSession) awaitInitialEvent(ctx context.Context) error {
 	session.mu.Lock()
 	version := session.version
@@ -729,10 +744,11 @@ func (session *credentialBrokerSession) awaitInitialEvent(ctx context.Context) e
 	}
 }
 
-func (session *credentialBrokerSession) update(state market.AuthorizationState, authorizationURL string, err error) {
+func (session *credentialBrokerSession) update(state market.AuthorizationState, authorizationURL, userCode string, err error) {
 	session.mu.Lock()
 	session.state = state
 	session.url = authorizationURL
+	session.userCode = userCode
 	session.err = err
 	session.version++
 	close(session.changed)
@@ -741,13 +757,13 @@ func (session *credentialBrokerSession) update(state market.AuthorizationState, 
 }
 
 func (session *credentialBrokerSession) fail(err error) {
-	session.update(market.AuthorizationStateFailed, "", err)
+	session.update(market.AuthorizationStateFailed, "", "", err)
 }
 
-func (session *credentialBrokerSession) snapshot() (market.AuthorizationState, string, error) {
+func (session *credentialBrokerSession) snapshot() (market.AuthorizationState, string, string, error) {
 	session.mu.Lock()
 	defer session.mu.Unlock()
-	return session.state, session.url, session.err
+	return session.state, session.url, session.userCode, session.err
 }
 
 func (session *credentialBrokerSession) terminal() bool {

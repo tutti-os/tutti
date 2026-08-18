@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	replay "github.com/tutti-os/tutti/packages/agent/session-replay"
@@ -30,6 +32,9 @@ type ActivityProjection struct {
 	turnForkabilityResolver      TurnForkabilityResolver
 	replayCommitObserver         ReplayCommitObserver
 	terminalFailureObserver      agenthost.TerminalFailureObserver
+	terminalAnalyticsOwner       string
+	terminalAnalyticsWake        chan struct{}
+	terminalAnalyticsDrainMu     sync.Mutex
 	// rootTurnSettleStateObserver is the dedicated, opt-in consumer list for
 	// synthesized canonical root-turn settlement states. It is deliberately
 	// separate from sessionStateObserver: the general observers historically
@@ -46,7 +51,11 @@ var (
 )
 
 func NewActivityProjection(repo agentactivitybiz.Repository) *ActivityProjection {
-	return &ActivityProjection{repo: repo}
+	return &ActivityProjection{
+		repo:                   repo,
+		terminalAnalyticsOwner: uuid.NewString(),
+		terminalAnalyticsWake:  make(chan struct{}, 1),
+	}
 }
 
 type ActivityUpdatePublisher interface {

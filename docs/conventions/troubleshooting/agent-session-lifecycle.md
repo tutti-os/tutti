@@ -2883,6 +2883,46 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
   [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
 
+### A completed Turn loses its Fork entry after a rail refresh
+
+- Symptom:
+  A selected Session detail initially offers Fork on its latest completed Turn,
+  but switching provider scope, refreshing the conversation rail, or receiving
+  a section page removes the action. The canonical Turn still has
+  `root_provider_turn_id` and `provider_turn_binding_json`; a full Session
+  detail reports `providerForkBindingState=bound`, while the list projection
+  reports `recovery_required` for the same Turn and timestamp.
+- Quick checks:
+  Compare the list and full-detail payloads for the exact Session and Turn.
+  Then inspect the activity-engine Turn before and after
+  `session/snapshotReceived`. An image attachment is unrelated unless the
+  provider binding itself is absent.
+- Root cause:
+  Session list and section responses batch-project the latest Turn. Treating a
+  non-persisted provider-binding availability flag as canonical without
+  resolving it returns a fail-closed value. The rail then merges that
+  lightweight latest-Turn entity into the same canonical Turn as the
+  authoritative detail. Equal timestamps and outcomes permit the whole Turn
+  replacement, so the fail-closed list value overwrites `bound`.
+- Fix:
+  Resolve settled latest/active Turn forkability in the shared batch response
+  projector and cache duplicate probes within the request. Keep list Session
+  capabilities lightweight, but mark full capability projections explicitly.
+  In Activity Core, a lightweight Session snapshot may upgrade a provider Turn
+  binding but must not downgrade an already bound Turn. Keep message and
+  TuttiMode revisions monotonic for the same reason; Goal synchronization needs
+  its own update version because one Goal revision has multiple sync states.
+- Validation:
+  Cover the list entry point and duplicate active/latest projections through
+  the shared batch projector used by list and section reads, asserting one
+  cached provider probe per exact Turn and fail-closed provider errors.
+  Apply a lightweight `recovery_required` snapshot after an authoritative
+  `bound` snapshot and assert the canonical Turn remains bound. Also verify an
+  actual full projection can still supply authoritative lifecycle state.
+- References:
+  [service_turns.go](../../../services/tuttid/service/agent/service_turns.go)
+  [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+
 ### Claude Code Fork fails after the action is clicked
 
 - Symptom:
