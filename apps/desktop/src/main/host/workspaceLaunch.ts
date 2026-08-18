@@ -1,6 +1,7 @@
 import type { TrackEvent, TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { DesktopAgentDirectorySnapshot } from "../../shared/contracts/agentDirectory.ts";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc.ts";
+import type { DesktopWorkspaceUiMode } from "../../shared/preferences/index.ts";
 
 export interface WorkspaceLaunchOwnerWindow {
   close(): void;
@@ -8,17 +9,22 @@ export interface WorkspaceLaunchOwnerWindow {
 }
 
 export interface WorkspaceLaunchAdapters {
-  ensureAgentBrowserHost(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
-  showAgentWindow(input: WorkspaceLaunchAgentWindowInput): Promise<void>;
+  ensureAgentBrowserHost(
+    input: WorkspaceLaunchResolvedAgentWindowInput
+  ): Promise<void>;
+  showAgentWindow(
+    input: WorkspaceLaunchResolvedAgentWindowInput
+  ): Promise<void>;
   showWorkspaceWindow(
     workspaceID: string,
-    options?: WorkspaceLaunchWorkspaceWindowOptions
+    options: WorkspaceLaunchWorkspaceWindowOptions
   ): Promise<WorkspaceLaunchOwnerWindow | null | void>;
   warnStartupWindowResolutionFailure(error: unknown): void;
 }
 
 export interface WorkspaceLaunchWorkspaceWindowOptions {
-  windowKind?: "agent" | "workspace";
+  windowKind: "agent" | "workspace";
+  workspaceUiMode: DesktopWorkspaceUiMode;
 }
 
 export interface WorkspaceLaunchAgentWindowInput {
@@ -34,6 +40,10 @@ export interface WorkspaceLaunchAgentWindowInput {
   provider?: string | null;
   userProjectPath?: string | null;
   workspaceID: string;
+}
+
+export interface WorkspaceLaunchResolvedAgentWindowInput extends WorkspaceLaunchAgentWindowInput {
+  workspaceUiMode: DesktopWorkspaceUiMode;
 }
 
 export interface WorkspaceLaunch {
@@ -60,6 +70,7 @@ export interface WorkspaceLaunchReplacementInput {
 
 export interface WorkspaceLaunchDependencies {
   adapters: WorkspaceLaunchAdapters;
+  getPrimaryWorkspaceWindowOptions: () => WorkspaceLaunchWorkspaceWindowOptions;
   onAnalyticsError?: (error: unknown) => void;
   tuttidClient: Pick<TuttidClient, "getStartupWorkspace" | "trackEvents">;
 }
@@ -69,17 +80,25 @@ export function createWorkspaceLaunch(
 ): WorkspaceLaunch {
   return {
     ensureAgentBrowserHost(input) {
-      return deps.adapters.ensureAgentBrowserHost(input);
+      return deps.adapters.ensureAgentBrowserHost({
+        ...input,
+        workspaceUiMode: deps.getPrimaryWorkspaceWindowOptions().workspaceUiMode
+      });
     },
     async ensureUserBrowserHost(workspaceID) {
+      const { workspaceUiMode } = deps.getPrimaryWorkspaceWindowOptions();
       await deps.adapters.showWorkspaceWindow(workspaceID, {
-        windowKind: "workspace"
+        windowKind: "workspace",
+        workspaceUiMode
       });
     },
     async openStartupWindow() {
       try {
         const workspaceID = await resolveStartupWorkspaceID();
-        await deps.adapters.showWorkspaceWindow(workspaceID);
+        await deps.adapters.showWorkspaceWindow(
+          workspaceID,
+          deps.getPrimaryWorkspaceWindowOptions()
+        );
       } catch (error) {
         deps.adapters.warnStartupWindowResolutionFailure(error);
         throw error;
@@ -87,7 +106,10 @@ export function createWorkspaceLaunch(
     },
 
     showAgentWindow(input) {
-      return deps.adapters.showAgentWindow(input);
+      return deps.adapters.showAgentWindow({
+        ...input,
+        workspaceUiMode: deps.getPrimaryWorkspaceWindowOptions().workspaceUiMode
+      });
     },
     showWorkspace,
     replaceWorkspaceWindow
@@ -105,8 +127,10 @@ export function createWorkspaceLaunch(
     ownerWindow: WorkspaceLaunchOwnerWindow | null,
     workspaceID: string
   ): Promise<void> {
-    const workspaceWindow =
-      await deps.adapters.showWorkspaceWindow(workspaceID);
+    const workspaceWindow = await deps.adapters.showWorkspaceWindow(
+      workspaceID,
+      deps.getPrimaryWorkspaceWindowOptions()
+    );
     if (workspaceWindow === ownerWindow) {
       return;
     }
@@ -122,7 +146,8 @@ export function createWorkspaceLaunch(
       workspaceWindow = await deps.adapters.showWorkspaceWindow(
         input.workspaceID,
         {
-          windowKind: input.mode === "agent" ? "agent" : "workspace"
+          windowKind: input.mode === "agent" ? "agent" : "workspace",
+          workspaceUiMode: input.mode
         }
       );
     } catch (error) {

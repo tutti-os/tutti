@@ -129,6 +129,22 @@ Device-global desktop preferences are durable daemon state in the
 must be changed through the preferences service/API so the daemon can persist,
 normalize, and publish the authoritative preferences event.
 
+Fresh-profile creation is daemon-owned. A client uses the desktop preferences
+`initializeIfAbsent` write mode. Before the atomic write, the preferences
+service applies the daemon's fresh-profile workspace-mode default to the
+normalized client candidate, so the Agent default cannot vary by caller while
+other candidate fields and feature flags are preserved. The store writes that
+complete row with a single `INSERT ... ON CONFLICT DO NOTHING` and returns the
+authoritative stored row. If a concurrent initializer created the row first,
+that stored row wins without being overwritten. Only `initializeIfAbsent` may
+create this identity row. Field-specific writers fail without side effects when
+the row is missing, so a partial patch can never decide whether the identity is
+new or accidentally replace the complete initialization contract. The normal
+omitted/`replace` write mode remains the full preference update. The daemon-owned
+complete default uses the stable desktop update channel; packaged RC builds may
+subsequently align that preference from their installed version. Existing rows
+are never backfilled by initialization.
+
 `agent_cli_update_check_enabled` stores the
 `agentCliUpdateCheckEnabled` preference as a non-null SQLite boolean and
 defaults to `true`, including for existing databases upgraded by migration. It

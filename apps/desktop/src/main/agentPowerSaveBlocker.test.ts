@@ -323,6 +323,9 @@ function createFakePreferences(
   let mode = initialMode;
 
   return {
+    async ensureInitialized() {
+      throw new Error("not used");
+    },
     getAgentCliUpdateCheckEnabled() {
       return true;
     },
@@ -394,6 +397,11 @@ function createFakePreferences(
       return () => {
         listeners.delete(listener);
       };
+    },
+    syncAuthoritative(input) {
+      if (input.sleepPreventionMode !== undefined) {
+        mode = input.sleepPreventionMode;
+      }
     },
     sync(input) {
       if (input.sleepPreventionMode !== undefined) {

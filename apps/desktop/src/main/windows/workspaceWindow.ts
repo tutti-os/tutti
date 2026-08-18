@@ -13,7 +13,10 @@ import { resolveDesktopWindowBackgroundColor } from "../desktopTheme";
 import { resolveDesktopPerformanceHeadless } from "../defaults.ts";
 import { getDesktopLogger } from "../logging";
 import type { DesktopLocale } from "../../shared/i18n";
-import type { DesktopDockPlacement } from "../../shared/preferences/index.ts";
+import type {
+  DesktopDockPlacement,
+  DesktopWorkspaceUiMode
+} from "../../shared/preferences/index.ts";
 import type { DesktopThemeState } from "../../shared/theme/index.ts";
 import {
   applyDesktopWindowIntent,
@@ -402,6 +405,7 @@ export function loadAgentWindowContent(
     provider?: string | null;
     theme: DesktopThemeState;
     userProjectPath?: string | null;
+    workspaceUiMode: DesktopWorkspaceUiMode;
   }
 ): void {
   const windowIntentSearchOptions = {
@@ -410,7 +414,8 @@ export function loadAgentWindowContent(
     reportPredefinePageview:
       reportPredefinePageviewByWindow.get(agentWindow) === true,
     themeAppearance: options.theme.appearance,
-    themeSource: options.theme.source
+    themeSource: options.theme.source,
+    workspaceUiMode: options.workspaceUiMode
   };
   const intent = createAgentWindowIntent({
     agentDirectorySnapshot: options.agentDirectorySnapshot,
@@ -450,6 +455,7 @@ export function loadWorkspaceWindowContent(
   > & {
     dockPlacement: DesktopDockPlacement;
     theme: DesktopThemeState;
+    workspaceUiMode: DesktopWorkspaceUiMode;
   }
 ): void {
   const windowIntentSearchOptions = {
@@ -458,7 +464,8 @@ export function loadWorkspaceWindowContent(
     reportPredefinePageview:
       reportPredefinePageviewByWindow.get(workspaceWindow) === true,
     themeAppearance: options.theme.appearance,
-    themeSource: options.theme.source
+    themeSource: options.theme.source,
+    workspaceUiMode: options.workspaceUiMode
   };
   if (options.rendererUrl) {
     void workspaceWindow.loadURL(

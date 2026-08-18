@@ -619,8 +619,14 @@ export type WorkspaceAppAgentPreferencesResponse = {
 };
 
 export type PutDesktopPreferencesRequest = {
+  writeMode?: DesktopPreferencesWriteMode;
   preferences: DesktopPreferences;
 };
+
+/**
+ * replace performs the normal full preference update, and omitting writeMode is equivalent to replace. initializeIfAbsent atomically creates the preference row only when it does not exist after applying the daemon-owned Agent workspace-mode default to the supplied preferences. If the row already exists, it returns the authoritative stored preferences unchanged.
+ */
+export type DesktopPreferencesWriteMode = "replace" | "initializeIfAbsent";
 
 export type DesktopUpdateAdmissionProduct = "tsh-desktop" | "tutti-desktop";
 

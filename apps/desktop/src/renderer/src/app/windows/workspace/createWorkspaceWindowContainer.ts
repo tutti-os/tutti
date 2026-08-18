@@ -15,6 +15,7 @@ import {
 } from "@renderer/features/connector-market";
 import { addTuttiDesktopClientToConnectorAuthorizationUrl } from "@renderer/features/connector-market/services/connectorAuthorizationClientUrl.ts";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
@@ -107,6 +108,7 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
   const activeWorkspaceID =
     routeWorkspaceID || environment.startupWorkspaceID || "__default__";
   const routeView = routeParameters.get("view") || "workspace";
+  const initialWorkspaceUiMode = readInitialWorkspaceUiMode(routeParameters);
   const runtimeInstanceId =
     createWorkspaceWindowInstanceId("workspace-runtime");
   const tuttidClient = createDesktopTuttidClient(desktopApi.runtime);
@@ -152,10 +154,19 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     "workspace-renderer",
     reporterService
   );
+  const hostPreferences = desktopApi.host.preferences;
   const desktopPreferencesService = await registerDesktopPreferencesServices(
     registry,
     tuttidClient,
-    tuttidEventStreamClient
+    tuttidEventStreamClient,
+    {
+      ...(hostPreferences
+        ? {
+            ensureInitialized: () => hostPreferences.ensureInitialized()
+          }
+        : {}),
+      ...(initialWorkspaceUiMode ? { initialWorkspaceUiMode } : {})
+    }
   );
   const daemonConnectionAnalytics = startDesktopDaemonConnectionAnalytics({
     eventStreamClient: tuttidEventStreamClient,
@@ -505,6 +516,13 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     dispose,
     markCommitted
   };
+}
+
+function readInitialWorkspaceUiMode(
+  parameters: URLSearchParams
+): DesktopWorkspaceUiMode | undefined {
+  const mode = parameters.get("workspaceUiMode");
+  return mode === "agent" || mode === "os" ? mode : undefined;
 }
 
 function createWorkspaceWindowInstanceId(prefix: string): string {

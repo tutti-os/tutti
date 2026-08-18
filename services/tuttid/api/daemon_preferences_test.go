@@ -133,6 +133,7 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	}))
 
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
+		"writeMode": "initializeIfAbsent",
 		"preferences": map[string]any{
 			"agentCliUpdateCheckEnabled":      false,
 			"agentComposerDefaultsByProvider": map[string]any{},
@@ -156,6 +157,9 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	})
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if captured.WriteMode != preferencesservice.DesktopPreferencesWriteModeInitializeIfAbsent {
+		t.Fatalf("captured write mode = %q, want initializeIfAbsent", captured.WriteMode)
 	}
 	if captured.AgentCLIUpdateCheckEnabled {
 		t.Fatal("captured agent CLI update check = true, want false")
@@ -194,6 +198,34 @@ func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesPersistsAgentGUIConversati
 	if response.Preferences.AppCatalogChannel != tuttigenerated.Staging {
 		t.Fatalf("response appCatalogChannel = %q, want staging", response.Preferences.AppCatalogChannel)
 	}
+}
+
+func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesRejectsUnsupportedWriteMode(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		PreferencesService: stubPreferencesService{
+			putFn: func(context.Context, preferencesservice.PutInput) (preferencesbiz.DesktopPreferences, error) {
+				t.Fatal("Put should not be called when write mode is invalid")
+				return preferencesbiz.DesktopPreferences{}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/preferences/desktop", map[string]any{
+		"writeMode":   "merge",
+		"preferences": map[string]any{},
+	})
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusBadRequest, recorder.Body.String())
+	}
+
+	assertGeneratedRouteError(
+		t,
+		recorder,
+		tuttigenerated.InvalidRequest,
+		"unsupported_desktop_preferences_write_mode",
+		"desktop preferences write mode is unsupported",
+	)
 }
 
 func TestDaemonAPIGeneratedRoutesPutDesktopPreferencesRequiresAgentConversationDetailMode(t *testing.T) {

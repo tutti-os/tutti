@@ -187,6 +187,14 @@ Current acceptable preload bootstrap helpers include:
 - resolved terminal stream URL helpers for terminal-specific WebSocket routes
 - resolved business-event stream URL helpers for `/v1/events/ws`
 
+Desktop preference recovery is a typed host capability rather than renderer
+transport policy. `host.preferences.ensureInitialized` crosses
+renderer -> preload -> main without input; main owns the single-flight recovery
+state and returns the generated `DesktopPreferencesStateResponse`. The daemon's
+`initializeIfAbsent` API and SQLite transaction remain the authoritative
+creation boundary. Web development, where Electron host IPC is absent, invokes
+the same daemon API directly with the renderer's complete bootstrapped candidate.
+
 ## Daemon-Side Rules
 
 In `services/tuttid`:

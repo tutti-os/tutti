@@ -176,6 +176,22 @@ It does not set the renderer-owned common `mode` field: after an earlier
 replacement failure, the durable preference and the actual native owner-window
 route can temporarily differ, and the main process must not guess that route.
 
+tuttid makes a best-effort report of
+`settings.workspace_ui_mode_initialized` only when the `initializeIfAbsent`
+write actually creates a desktop preference row (the dedicated field patch
+writers refuse to materialize a missing row). The creation result limits the
+daemon invocation to at most once per row; disabled analytics or a transport
+failure can drop the event, and there is no replay. This event therefore marks
+first preference initialization, not account registration.
+
+The `workspace_ui_mode` param carries the assigned initial mode derived from
+the authoritative stored row, so cohort analysis can separate "assigned by
+default" from "explicitly chosen" and from later escapes measured by
+`settings.workspace_ui_mode_changed`. The param is deliberately not named
+`mode` to avoid colliding with the renderer-owned window-mode common param. As
+a daemon-side event it usually fires before login, so it attributes to the
+device identity like early `account.login` stages.
+
 ## API Contract
 
 ### Renderer → tuttid

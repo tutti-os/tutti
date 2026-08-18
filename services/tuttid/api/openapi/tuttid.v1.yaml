@@ -8394,8 +8394,26 @@ components:
       required:
         - preferences
       properties:
+        writeMode:
+          $ref: "#/components/schemas/DesktopPreferencesWriteMode"
         preferences:
           $ref: "#/components/schemas/DesktopPreferences"
+    DesktopPreferencesWriteMode:
+      type: string
+      description: >-
+        replace performs the normal full preference update, and omitting
+        writeMode is equivalent to replace. initializeIfAbsent atomically
+        creates the preference row only when it does not exist after applying
+        the daemon-owned Agent workspace-mode default to the supplied
+        preferences. If the row already exists, it returns the authoritative
+        stored preferences unchanged.
+      default: replace
+      enum:
+        - replace
+        - initializeIfAbsent
+      x-enum-varnames:
+        - DesktopPreferencesWriteModeReplace
+        - DesktopPreferencesWriteModeInitializeIfAbsent
     DesktopUpdateAdmissionProduct:
       type: string
       enum:

@@ -91,6 +91,7 @@ export async function registerIpcHandlers(
   registerHostIpc({
     fileDialogs: deps.fileDialogs,
     openWorkspaceAppFolder: deps.openWorkspaceAppFolder,
+    preferences: deps.preferences,
     workspaceFileIconCache: deps.workspaceFileIconCache,
     workspaceLaunch: deps.workspaceLaunch
   });

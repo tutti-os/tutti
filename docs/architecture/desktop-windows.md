@@ -8,7 +8,8 @@ The desktop app currently has three user-facing shells:
 
 - a launcher-style dashboard window for no-context startup
 - a workspace window for an opened workspace
-- an Agent-only window used as an optional focused Agent experience
+- an Agent-only window used as the focused Agent experience and fresh-profile
+  default
 
 The window model is intentionally simple:
 
@@ -73,8 +74,9 @@ The current renderer content is intentionally minimal. The shell exists so the s
 
 ### Agent-Only Window
 
-The Agent-only window is the focused product shell for users who select Agent
-mode and want AgentGUI without the full workspace desktop around it.
+The Agent-only window is the focused product shell for fresh profiles and for
+users who select Agent mode and want AgentGUI without the full workspace desktop
+around it.
 
 It is responsible for:
 
@@ -101,11 +103,41 @@ It is not responsible for:
 Desktop startup currently follows this sequence:
 
 1. start or reconnect to `tuttid`
-2. ask `tuttid` for the daemon-selected startup workspace
-3. if a startup workspace exists, read the desktop startup-interface preference
-4. create the OS workspace window by default, or the Agent-only window when the
-   user explicitly selected Agent mode
-5. otherwise open the dashboard window
+2. read the desktop startup-interface preference
+3. when no preference row exists, atomically initialize a complete row with
+   Agent mode; if another writer already created the row, use that stored value
+   unchanged
+4. ask `tuttid` for the daemon-selected startup workspace
+5. when a startup workspace exists, create the Agent-only window for a freshly initialized desktop profile or an
+   explicit Agent selection; an initialized profile with an explicit OS
+   selection or the legacy absent preference creates the OS workspace window
+6. otherwise open the dashboard window
+
+For every workspace or Agent window open, main resolves the current global
+workspace UI mode once and includes it as the narrow `workspaceUiMode` URL
+bootstrap. This value is separate from `view`, which selects the native window
+content: for example, a secondary Agent window can use `view=agent` while the
+global preference remains `workspaceUiMode=os`. The renderer seeds its
+in-memory preference state from this bootstrap until an initialized daemon row
+is available. An initialized row always overrides the bootstrap; an absent row
+or hydration failure retains it so an unrelated full preference write cannot
+silently invert the mode already selected by main.
+
+An initial preference read failure does not prove that the identity is fresh,
+so startup keeps the legacy OS fallback and does not initialize. If a confirmed
+fresh identity's initialization response is lost, Desktop reads the preference
+row again and uses the authoritative result. If the write failed before commit
+and the row is still absent, the current process keeps the fresh Agent default
+in memory. Main retains the startup identity as `initialized`, `missing`, or
+`unknown`; before any renderer preference mutation, a typed host capability
+recovers unknown state or atomically retries a confirmed missing initialization.
+The renderer applies the returned authoritative complete row before constructing
+or publishing the requested mutation. Recovery is single-flight in each
+renderer and in main, while SQLite `INSERT ... ON CONFLICT DO NOTHING` remains
+the cross-window and cross-process arbiter. Failed recovery blocks the mutation
+without optimistic state changes or partial daemon writes. Update-channel
+migrations and installed-version markers run only after a durable row is
+confirmed.
 
 On macOS activation with no open windows, the app follows the same startup resolution instead of always forcing the dashboard.
 
@@ -149,10 +181,30 @@ preference and immediately replaces the current native window with the selected
 Agent-only or OS workspace window. The replacement request carries the selected
 window kind explicitly, so it does not depend on asynchronous preference-event
 delivery in the main process. Desktop waits until the replacement is ready
-before closing the source window. An absent preference resolves to OS mode;
-manual selections persist `true` for Agent mode and `false` for OS mode.
+before closing the source window. Initializing a fresh desktop preference
+profile persists `true` for Agent mode. Existing initialized profiles are not
+backfilled: an absent preference remains the legacy OS mode, while manual
+selections persist `true` for Agent mode and `false` for OS mode.
 If the requested OS window already exists, desktop reuses it and does not close
 that same window as the handoff owner.
+
+### Startup Mode Acceptance Gates
+
+The preference decision is platform-neutral, but acceptance must exercise the
+native Electron startup path because window creation and restoration differ by
+platform. A release containing this behavior must pass all of these gates:
+
+- on Windows, launch a packaged build with an isolated empty state root and
+  verify that the first workspace opens an Agent window; then select OS mode,
+  relaunch, and verify that the workspace window is restored
+- on Linux under the supported X11/Xwayland path, repeat the isolated-state and
+  persisted-OS relaunch checks
+- on macOS, repeat the same checks and also verify app activation with no open
+  windows follows the persisted mode
+
+Unit and integration tests remain required for the true, false, legacy-missing,
+initial-read-error, initialization-failure, and lost-response branches, but they
+do not replace these native startup gates.
 
 ## Current Renderer Shell Mapping
 

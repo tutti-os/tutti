@@ -13,6 +13,7 @@ const (
 
 	DesktopAgentConversationDetailModeCoding  = "coding"
 	DesktopAgentConversationDetailModeGeneral = "general"
+	DesktopStandaloneAgentModeFeatureFlag     = "workspace.standaloneAgentMode"
 
 	DefaultDesktopAppCatalogChannel              = "production"
 	DefaultDesktopAgentDockLayout                = DesktopAgentDockLayoutUnified
@@ -27,7 +28,7 @@ const (
 	DefaultDesktopSleepPreventionMode            = "never"
 	DefaultDesktopShowAppDeveloperSources        = false
 	DefaultDesktopThemeSource                    = "dark"
-	DefaultDesktopUpdateChannel                  = "rc"
+	DefaultDesktopUpdateChannel                  = "stable"
 	DefaultDesktopUpdatePolicy                   = "prompt"
 	DefaultDesktopWindowSnappingEnabled          = false
 	DefaultDesktopWindowSnappingShortcut         = "commandArrows"
@@ -138,7 +139,9 @@ func DefaultDesktopPreferences() DesktopPreferences {
 		DockIconStyle:                               DefaultDesktopDockIconStyle,
 		DockPlacement:                               DefaultDesktopDockPlacement,
 		DeletedAgentConversationRetentionDays:       DefaultDeletedAgentConversationRetentionDays,
-		FeatureFlags:                                map[string]bool{},
+		FeatureFlags: map[string]bool{
+			DesktopStandaloneAgentModeFeatureFlag: true,
+		},
 		FileDefaultOpenersByExtension: map[string]string{
 			"htm":   "appBrowser",
 			"html":  "appBrowser",

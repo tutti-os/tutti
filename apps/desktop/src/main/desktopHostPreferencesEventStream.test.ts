@@ -227,6 +227,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
   };
 
   return {
+    async ensureInitialized() {
+      throw new Error("not used");
+    },
     getAgentCliUpdateCheckEnabled() {
       return agentCliUpdateCheckEnabled;
     },
@@ -286,6 +289,9 @@ function createHostPreferencesState(): DesktopHostPreferencesState {
     },
     subscribe() {
       return () => undefined;
+    },
+    syncAuthoritative(input) {
+      this.sync(input);
     },
     sync(input) {
       if (input.agentCliUpdateCheckEnabled !== undefined) {
