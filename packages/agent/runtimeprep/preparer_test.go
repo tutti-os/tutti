@@ -279,7 +279,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
 		!strings.Contains(string(skill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(skill), "mention://agent-target") ||
-		!strings.Contains(string(skill), "handed off, not absorbed") {
+		!strings.Contains(string(skill), "handed off, not absorbed") ||
+		!strings.Contains(string(skill), "render the session as a descriptive Markdown link") ||
+		!strings.Contains(string(skill), "keep the raw `agentSessionId` only as secondary data") {
 		t.Fatalf("skill content = %q", string(skill))
 	}
 	commandGuideReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", commandGuideReferencePath))

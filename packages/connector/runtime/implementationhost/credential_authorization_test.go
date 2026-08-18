@@ -159,6 +159,35 @@ func TestManagedCredentialAuthorizationContinuesConnectorOwnedBroker(t *testing.
 	}
 }
 
+func TestManagedCredentialAuthorizationReturnsDeviceCodeFromBroker(t *testing.T) {
+	connection := newCredentialBrokerConnection()
+	host := &credentialAuthorizationHostStub{
+		route: &connectorRoute{id: "default\x00github-cli", credentialBrokerLaunch: &managedCredentialBrokerLaunch{
+			timeout: 5 * time.Minute, allowedHosts: map[string]struct{}{"github.com": {}},
+		}},
+		connections: []agentruntime.ProcessConnection{connection},
+	}
+	provider := newManagedCredentialAuthorizationProvider(host)
+	result := make(chan market.AuthorizationSession, 1)
+	resultErr := make(chan error, 1)
+	go func() {
+		session, err := provider.Begin(context.Background(), market.AuthorizationStartRequest{
+			OperationID: "authorize-github", Connector: market.Connector{Key: "github-cli"},
+		})
+		result <- session
+		resultErr <- err
+	}()
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://github.com/login/device","code":"ABCD-EFGH"}` + "\n")}
+
+	if err := <-resultErr; err != nil {
+		t.Fatal(err)
+	}
+	session := <-result
+	if session.AuthorizationURL != "https://github.com/login/device" || session.UserCode != "ABCD-EFGH" {
+		t.Fatalf("authorization session = %#v", session)
+	}
+}
+
 func TestManagedCredentialAuthorizationDisconnectUsesBrokerProtocol(t *testing.T) {
 	exitCode := 0
 	connection := newCredentialBrokerConnection()
@@ -344,7 +373,7 @@ func TestManagedCredentialAuthorizationRestartsFailedBrokerOnFirstRetry(t *testi
 	}
 	exitCode := 1
 	failedConnection.frames <- agentruntime.ProcessFrame{Stderr: []byte("broker failed"), ExitCode: &exitCode}
-	awaitCachedAuthorizationFailure(t, provider, route.id)
+	awaitCachedAuthorizationFailure(t, provider, firstRequest.OperationID)
 
 	retryConnection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://accounts.example.com/retry"}` + "\n")}
 	retry, err := provider.Begin(context.Background(), market.AuthorizationStartRequest{
@@ -361,15 +390,63 @@ func TestManagedCredentialAuthorizationRestartsFailedBrokerOnFirstRetry(t *testi
 	}
 }
 
-func awaitCachedAuthorizationFailure(t *testing.T, provider *managedCredentialAuthorizationProvider, routeID string) {
+func TestManagedCredentialAuthorizationCancelWaitsForBrokerExit(t *testing.T) {
+	connection := newCredentialBrokerConnection()
+	route := &connectorRoute{id: "default\x00dingtalk-cli", credentialBrokerLaunch: &managedCredentialBrokerLaunch{
+		timeout: 5 * time.Minute, allowedHosts: map[string]struct{}{"login.dingtalk.com": {}},
+	}}
+	host := &credentialAuthorizationHostStub{route: route, connections: []agentruntime.ProcessConnection{connection}}
+	provider := newManagedCredentialAuthorizationProvider(host)
+	request := market.AuthorizationStartRequest{OperationID: "authorize-a", Connector: market.Connector{Key: "dingtalk-cli"}}
+	beginDone := make(chan error, 1)
+	go func() {
+		_, err := provider.Begin(context.Background(), request)
+		beginDone <- err
+	}()
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://login.dingtalk.com/oauth"}` + "\n")}
+	if err := <-beginDone; err != nil {
+		t.Fatal(err)
+	}
+
+	provider.mu.Lock()
+	session := provider.sessions[request.OperationID]
+	originalCancel := session.cancel
+	cancelRequested := make(chan struct{})
+	session.cancel = func() {
+		close(cancelRequested)
+		originalCancel()
+	}
+	provider.mu.Unlock()
+	cancelDone := make(chan error, 1)
+	go func() {
+		cancelDone <- provider.Cancel(context.Background(), market.AuthorizationCancelRequest{OperationID: request.OperationID})
+	}()
+	<-cancelRequested
+	select {
+	case err := <-cancelDone:
+		t.Fatalf("cancel returned before broker exit: %v", err)
+	default:
+	}
+	close(connection.frames)
+	if err := <-cancelDone; err != nil {
+		t.Fatal(err)
+	}
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.sessions[request.OperationID] != nil || provider.activeByRoute[route.id] != "" {
+		t.Fatalf("canceled session remained active: sessions=%#v routes=%#v", provider.sessions, provider.activeByRoute)
+	}
+}
+
+func awaitCachedAuthorizationFailure(t *testing.T, provider *managedCredentialAuthorizationProvider, operationID string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for {
 		provider.mu.Lock()
-		session := provider.sessions[routeID]
+		session := provider.sessions[operationID]
 		provider.mu.Unlock()
 		if session != nil {
-			_, _, err := session.snapshot()
+			_, _, _, err := session.snapshot()
 			if err != nil {
 				return
 			}

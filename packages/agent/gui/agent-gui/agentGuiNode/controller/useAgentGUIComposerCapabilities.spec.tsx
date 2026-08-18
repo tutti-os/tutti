@@ -2,6 +2,7 @@ import { renderHook } from "@testing-library/react";
 import {
   AGENT_CAPABILITY_KEYS,
   normalizeAgentActivitySession,
+  selectComposerOptions,
   type AgentActivityComposerOptions,
   type AgentActivitySessionCapabilities,
   type CanonicalAgentSession
@@ -266,5 +267,99 @@ describe("useAgentGUIComposerCapabilities", () => {
     );
 
     expect(result.current.composerSupport.browser).toBe(true);
+  });
+
+  it("reuses the target-scoped Composer Options reference across session creation", () => {
+    const data = {
+      provider: "codex" as const,
+      agentTargetId: "local:codex",
+      lastActiveAgentSessionId: null
+    };
+    const selectedComposerTargetData = {
+      agentTargetId: "local:codex",
+      data,
+      provider: "codex" as const,
+      targetId: "local:codex"
+    };
+    const sessionEngine = createTestAgentSessionEngine("workspace-1");
+    sessionEngine.dispatch({
+      type: "composerOptions/loadRequested",
+      commandId: "composer-options-creation",
+      targetKey: "local:codex",
+      provider: "codex",
+      workspaceId: "workspace-1"
+    });
+    sessionEngine.dispatch({
+      type: "engine/commandResult",
+      commandId: "composer-options-creation",
+      commandType: "composerOptions/load",
+      correlationId: "local:codex",
+      outcome: "succeeded",
+      value: composerOptions({ provider: "codex" })
+    });
+    const cachedOptions = selectComposerOptions(
+      sessionEngine.getSnapshot(),
+      "local:codex"
+    );
+    expect(cachedOptions).not.toBeNull();
+
+    type CreationProps = {
+      activeConversationId: string | null;
+      activeEngineSession: CanonicalAgentSession | null;
+      optimisticComposerTarget: {
+        agentSessionId: string;
+        target: typeof selectedComposerTargetData;
+      } | null;
+    };
+    const initialProps: CreationProps = {
+      activeConversationId: null,
+      activeEngineSession: null,
+      optimisticComposerTarget: null
+    };
+    const { result, rerender } = renderHook(
+      ({
+        activeConversationId,
+        activeEngineSession,
+        optimisticComposerTarget
+      }: CreationProps) =>
+        useAgentGUIComposerCapabilities({
+          activeConversationId,
+          activeEngineSession,
+          activeSessionState: null,
+          data,
+          draftSettingsBySessionId: {},
+          optimisticComposerTarget,
+          selectedComposerTargetData,
+          sessionEngine
+        }),
+      { initialProps }
+    );
+
+    expect(result.current.providerComposerOptions).toBe(cachedOptions);
+
+    rerender({
+      activeConversationId: "session-new",
+      activeEngineSession: null,
+      optimisticComposerTarget: {
+        agentSessionId: "session-new",
+        target: selectedComposerTargetData
+      }
+    });
+
+    expect(result.current.composerTargetData).toBe(selectedComposerTargetData);
+    expect(result.current.providerComposerOptions).toBe(cachedOptions);
+
+    rerender({
+      activeConversationId: "session-new",
+      activeEngineSession: engineSession({
+        agentSessionId: "session-new",
+        agentTargetId: "local:codex",
+        provider: "codex",
+        usage: null
+      }),
+      optimisticComposerTarget: null
+    });
+
+    expect(result.current.providerComposerOptions).toBe(cachedOptions);
   });
 });

@@ -348,12 +348,16 @@ func (a *RuntimeController) Cancel(ctx context.Context, input host.RuntimeCancel
 	for _, target := range result.ConfirmedTargets {
 		confirmed = append(confirmed, host.RuntimeCancelTarget{AgentSessionID: target.AgentSessionID, TurnID: target.TurnID})
 	}
-	return host.RuntimeCancelResult{
+	hostResult := host.RuntimeCancelResult{
 		AgentSessionID:   result.AgentSessionID,
 		Canceled:         result.Canceled,
 		TargetAbsent:     result.TargetAbsent,
 		ConfirmedTargets: confirmed,
-	}, mapRuntimeError(err)
+	}
+	if errors.Is(err, agentruntime.ErrCancelTargetMismatch) {
+		return hostResult, host.ErrRuntimeCancelDeliveryUnconfirmed
+	}
+	return hostResult, mapRuntimeError(err)
 }
 
 func (a *RuntimeController) SubmitInteractive(ctx context.Context, input host.RuntimeSubmitInteractiveInput) (host.RuntimeSubmitInteractiveResult, error) {

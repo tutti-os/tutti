@@ -126,6 +126,73 @@ func TestRunCodexCLILatestInstallerRepairsInPlace(t *testing.T) {
 	}
 }
 
+func TestManagedNPMResultHasReplacementLock(t *testing.T) {
+	if !managedNPMResultHasReplacementLock(InstallCommandResult{
+		ExitCode: 0,
+		Stderr:   "npm warn cleanup EPERM: operation not permitted, unlink 'tutti-agent.exe'",
+	}) {
+		t.Fatal("EPERM executable replacement warning was not classified as a partial install")
+	}
+	if managedNPMResultHasReplacementLock(InstallCommandResult{
+		ExitCode: 0,
+		Stderr:   "npm WARN deprecated package@1.0.0: this package is deprecated",
+	}) {
+		t.Fatal("unrelated npm warning was classified as a replacement lock")
+	}
+}
+
+func TestRunManagedNPMPackageInstallerRejectsPersistentLockedExecutableReplacement(t *testing.T) {
+	home := t.TempDir()
+	runtimeRoot := fakeManagedRuntimeRoot(t)
+	managedNPM := filepath.Join(runtimeRoot, "node", "bin", npmBinaryNameForTest())
+	managedNode := filepath.Join(runtimeRoot, "node", "bin", nodeBinaryNameForTest())
+	managedNodeBinDir := filepath.Dir(managedNode)
+
+	service := probeTestService(home)
+	service.HTTPClient = agentNPMRegistryProbeHTTPClient(nil)
+	service.Environ = func() []string {
+		return []string{"PATH=/usr/bin:/bin", agentNPMRegistryEnv + "=https://registry.example.test"}
+	}
+	service.ManagedRuntime = staticManagedRuntimeResolver{
+		runtime: managedruntime.ResolvedRuntime{
+			Root:    runtimeRoot,
+			Node:    managedNode,
+			NPM:     managedNPM,
+			BinDirs: []string{managedNodeBinDir},
+			EnvOverrides: []string{
+				"TUTTI_APP_RUNTIME_ROOT=" + runtimeRoot,
+				"TUTTI_APP_NODE=" + managedNode,
+				"TUTTI_APP_NPM=" + managedNPM,
+				"PATH=" + managedNodeBinDir + string(os.PathListSeparator) + "/usr/bin" + string(os.PathListSeparator) + "/bin",
+			},
+		},
+	}
+	service.IsExecutableFile = isTestExecutableUnderHome(home)
+	installCalls := 0
+	service.InstallCommand = func(_ context.Context, _ InstallCommandInput) (InstallCommandResult, error) {
+		installCalls++
+		return InstallCommandResult{
+			ExitCode: 0,
+			Stderr:   "npm warn cleanup EPERM: operation not permitted, unlink 'tutti-agent.exe'",
+		}, nil
+	}
+
+	result, err := service.runManagedNPMPackageInstaller(context.Background(), "tutti-agent", ManagedNPMPackageInstallerSpec{
+		PackageName:     "@tutti-os/tutti-agent",
+		BinaryName:      "tutti-agent",
+		IncludeOptional: true,
+	}, "")
+	if err != nil {
+		t.Fatalf("runManagedNPMPackageInstaller() error = %v", err)
+	}
+	if installCalls != 2 {
+		t.Fatalf("install command calls = %d, want one retry after locked replacement", installCalls)
+	}
+	if result.ExitCode == 0 {
+		t.Fatalf("result = %#v, want persistent locked replacement to fail", result)
+	}
+}
+
 // TestRunCodexCLILatestInstallerFallsBackToLocalBin verifies that when the
 // existing codex binary is not from an npm global install (no package layout to
 // derive a prefix from), the installer falls back to a fresh install in ~/.local.

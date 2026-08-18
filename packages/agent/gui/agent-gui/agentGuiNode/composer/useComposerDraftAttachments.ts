@@ -66,7 +66,7 @@ function useStableEventCallback<Args extends unknown[], Result>(
   callbackRef.current = callback;
   return useCallback((...args: Args) => callbackRef.current(...args), []);
 }
-interface UseComposerDraftAttachmentsInput {
+export interface UseComposerDraftAttachmentsInput {
   workspaceId: string;
   workspacePath?: string | null;
   draftContent: AgentComposerDraft;
@@ -792,6 +792,7 @@ export function useComposerDraftAttachments({
     handlePastedLargeText,
     handleWorkspaceReferencePicker,
     removeDraftImage,
-    removeDraftLargeText
+    removeDraftLargeText,
+    _updateScopedDraft: updateScopedDraft
   };
 }

@@ -50,7 +50,6 @@ func TestValidateManifestShapeValidatesAgentRoutingAliases(t *testing.T) {
 	if err := ValidateManifestShape(manifest); err != nil {
 		t.Fatal(err)
 	}
-
 	for name, aliases := range map[string][]string{
 		"empty":       {},
 		"duplicate":   {"Feishu", "feishu"},
@@ -260,6 +259,25 @@ func TestManagedCLIAllowsTypedNodePackageWithoutActionMappings(t *testing.T) {
 	}
 	if len(manifest.Implementation.ManagedStdio.CLI.Commands) != 0 {
 		t.Fatal("typed CLI install unexpectedly requires command mappings")
+	}
+}
+
+func TestManagedCLIAllowsArtifactNativeLaunch(t *testing.T) {
+	manifest := Manifest{SchemaVersion: "1", DisplayName: "GitHub CLI", IconURL: testConnectorIconURL, AuthorizationKind: "oauth2",
+		Implementation: Implementation{Kind: ImplementationKindManagedStdio, ManagedStdio: &ManagedStdioImplementation{
+			Runtime: RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node22-windows-amd64",
+				VersionRange: ">=22.0.0 <23.0.0"},
+			CLI: &ManagedCLIInterface{Entrypoint: "runtime/windows-amd64/gh.exe", Command: "gh", TimeoutMS: 120_000,
+				Launch: &CLIArtifactLaunch{Kind: CLIArtifactLaunchKindNative, SHA256: strings.Repeat("a", 64), SizeBytes: 1024}},
+			CredentialBroker: &ManagedCredentialBroker{Protocol: CredentialBrokerProtocolV1,
+				Entrypoint: "implementation/credential-broker.mjs", TimeoutMS: 300_000, AllowedHosts: []string{"github.com"}},
+		}}}
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatal(err)
+	}
+	manifest.Implementation.ManagedStdio.CLI.Install = &CLIInstallation{Kind: "node_package"}
+	if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "cannot declare install") {
+		t.Fatalf("artifact-native launch with install error = %v", err)
 	}
 }
 

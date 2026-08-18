@@ -72,6 +72,7 @@ type respondInput struct {
 
 type sessionActionResult struct {
 	Session          agentservice.Session
+	WorkspaceID      string
 	TurnID           string
 	LaunchRequested  bool
 	WaitAfterVersion *uint64
@@ -184,7 +185,7 @@ func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, 
 	}
 	return sessionActionResult{
 		Session: session, TurnID: strings.TrimSpace(created.TurnID),
-		LaunchRequested: launchRequested, Warnings: warnings,
+		LaunchRequested: launchRequested, Warnings: warnings, WorkspaceID: invoke.WorkspaceID,
 	}, nil
 }
 
@@ -270,7 +271,7 @@ func (p Provider) runOpen(ctx context.Context, invoke framework.InvokeContext, i
 	if err := p.publishLaunchRequested(ctx, invoke.WorkspaceID, session, "open", invoke.Request.Context.Source); err != nil {
 		return nil, err
 	}
-	return sessionActionResult{Session: session, LaunchRequested: true}, nil
+	return sessionActionResult{Session: session, LaunchRequested: true, WorkspaceID: invoke.WorkspaceID}, nil
 }
 
 func (p Provider) newGetCommand() cliservice.Command {
@@ -351,6 +352,7 @@ func (p Provider) runSend(ctx context.Context, invoke framework.InvokeContext, i
 	session := result.Session
 	return sessionActionResult{
 		Session: session, TurnID: strings.TrimSpace(result.TurnID), WaitAfterVersion: &waitAfterVersion,
+		WorkspaceID: invoke.WorkspaceID,
 	}, nil
 }
 
@@ -575,7 +577,7 @@ func (p Provider) runLegacyCancel(ctx context.Context, invoke framework.InvokeCo
 		}
 	}
 	return sessionActionResult{
-		Session: session,
+		Session: session, WorkspaceID: invoke.WorkspaceID,
 		Warnings: []cliservice.CommandWarning{{
 			Code:    "deprecated_agent_cancel",
 			Message: "agent cancel is deprecated; use agent cancel-turn --session-id <id> --turn-id <id>",
@@ -605,8 +607,9 @@ func sessionActionOutputSpec() framework.OutputSpec {
 				action := result.(sessionActionResult)
 				value := map[string]any{
 					"launchRequested": action.LaunchRequested,
-					"session":         sessionActionValue(action.Session),
+					"session":         sessionActionValue(action.WorkspaceID, action.Session),
 				}
+				addAgentSessionReference(value, action.WorkspaceID, action.Session.ID)
 				if turnID := strings.TrimSpace(action.TurnID); turnID != "" {
 					value["turnId"] = turnID
 				}

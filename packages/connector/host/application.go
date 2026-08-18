@@ -46,11 +46,20 @@ type Application struct {
 	catalogAppliedSequence uint64
 	authorizationMu        sync.Mutex
 	authorizationLanes     map[string]*sync.Mutex
+	authorizationRequests  map[string]*authorizationRequestExecution
 }
 
 type operationExecution struct {
 	done chan struct{}
 	err  error
+}
+
+type authorizationRequestExecution struct {
+	clientRequestID string
+	context         context.Context
+	cancel          context.CancelFunc
+	references      int
+	replacedLive    bool
 }
 
 var _ Service = (*Application)(nil)
@@ -104,7 +113,8 @@ func NewApplication(config ApplicationConfig) (*Application, error) {
 		config.LeaseDuration = 30 * time.Second
 	}
 	return &Application{config: config, inFlight: make(map[string]*operationExecution),
-		authorizationLanes: make(map[string]*sync.Mutex)}, nil
+		authorizationLanes:    make(map[string]*sync.Mutex),
+		authorizationRequests: make(map[string]*authorizationRequestExecution)}, nil
 }
 
 func (application *Application) Snapshot(ctx context.Context) (Snapshot, error) {
@@ -492,12 +502,17 @@ func (application *Application) BeginAuthorization(
 	secret []byte,
 ) (AuthorizationResult, error) {
 	defer clear(secret)
-	if err := validateConnectorMutation(mutation); err != nil {
+	if err := validateAuthorizationMutation(mutation); err != nil {
 		return AuthorizationResult{}, err
 	}
+	requestExecution := application.acquireAuthorizationRequest(ctx, mutation)
+	defer application.releaseAuthorizationRequest(mutation.AccountID, mutation.ConnectorKey, requestExecution)
 	unlock := application.lockAuthorization(mutation.AccountID, mutation.ConnectorKey)
 	defer unlock()
-	current, err := application.config.Repository.Connector(ctx, mutation.ConnectorKey)
+	if err := requestExecution.context.Err(); err != nil {
+		return AuthorizationResult{}, err
+	}
+	current, err := application.config.Repository.Connector(requestExecution.context, mutation.ConnectorKey)
 	if err != nil {
 		return AuthorizationResult{}, err
 	}
@@ -508,7 +523,7 @@ func (application *Application) BeginAuthorization(
 		return AuthorizationResult{}, invalidRequest("accountId is required for remote connector authorization")
 	}
 	idempotentReplay, err := application.isIdempotentConnectorOperation(
-		ctx,
+		requestExecution.context,
 		mutation,
 		OperationKindStartAuthorization,
 	)
@@ -516,22 +531,50 @@ func (application *Application) BeginAuthorization(
 		return AuthorizationResult{}, err
 	}
 	if !idempotentReplay {
+		if mutation.ReplacementPolicy == AuthorizationReplacementPolicyReplaceActive && !requestExecution.replacedLive {
+			if err := application.verifyConnectorMutationRevision(requestExecution.context, mutation); err != nil {
+				return AuthorizationResult{}, err
+			}
+		}
 		unresolved, unresolvedErr := application.config.Repository.UnresolvedAuthorizationSessionOperations(
-			ctx, OperationScope{AccountID: accountID},
+			requestExecution.context, OperationScope{AccountID: accountID},
 		)
 		if unresolvedErr != nil {
 			return AuthorizationResult{}, unresolvedErr
 		}
 		for _, receipt := range unresolved {
 			if receipt.ConnectorKey == mutation.ConnectorKey {
+				if mutation.ReplacementPolicy == AuthorizationReplacementPolicyReplaceActive {
+					if replaceErr := application.cancelAuthorizationAttempt(
+						requestExecution.context, current, receipt, true,
+					); replaceErr != nil {
+						return AuthorizationResult{}, replaceErr
+					}
+					continue
+				}
 				return AuthorizationResult{}, NewDomainError(
 					ErrorCodeOperationInProgress, "connector authorization is already pending", true, nil,
 				)
 			}
 		}
+		if mutation.ReplacementPolicy == AuthorizationReplacementPolicyReplaceActive {
+			if err := application.resetPendingAuthorizationState(
+				requestExecution.context,
+				OperationScope{AccountID: accountID},
+				mutation.ConnectorKey,
+			); err != nil {
+				return AuthorizationResult{}, err
+			}
+			current, err = application.config.Repository.Connector(requestExecution.context, mutation.ConnectorKey)
+			if err != nil {
+				return AuthorizationResult{}, err
+			}
+			currentRevision := current.Revision
+			mutation.ExpectedConnectorRevision = &currentRevision
+		}
 	}
 	if accountScoped && !idempotentReplay {
-		projection, projectionErr := application.GetAuthorizationProjection(ctx, accountID, mutation.ConnectorKey)
+		projection, projectionErr := application.GetAuthorizationProjection(requestExecution.context, accountID, mutation.ConnectorKey)
 		if projectionErr != nil && !errors.Is(projectionErr, ErrNotFound) {
 			return AuthorizationResult{}, projectionErr
 		}
@@ -543,7 +586,7 @@ func (application *Application) BeginAuthorization(
 		}
 	}
 	accepted, err := application.acceptConnectorOperation(
-		ctx,
+		requestExecution.context,
 		mutation,
 		OperationKindStartAuthorization,
 		func(connector Connector) (Connector, error) {
@@ -579,26 +622,30 @@ func (application *Application) BeginAuthorization(
 		)
 	}
 
-	session, err := application.beginAuthorizationSession(ctx, accepted.Operation, secret)
+	session, err := application.beginAuthorizationSession(
+		requestExecution.context, accepted.Operation, secret, mutation.ReplacementPolicy,
+	)
 	if err != nil {
 		// Starting authorization has no durable provider receipt yet. Keep retry
 		// under explicit user control instead of leaving a running operation for
 		// the recovery worker to replay continuously.
 		if accepted.Operation.State != OperationStateCompleted {
-			_ = application.failOperation(ctx, accepted.Operation.OperationID, ErrorCodeAuthorizationFailed)
+			terminalContext, cancelTerminal := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+			_ = application.failOperation(terminalContext, accepted.Operation.OperationID, ErrorCodeAuthorizationFailed)
+			cancelTerminal()
 		}
 		return AuthorizationResult{}, err
 	}
-	operation, err := application.config.Repository.Operation(ctx, accepted.Operation.OperationID)
+	operation, err := application.config.Repository.Operation(requestExecution.context, accepted.Operation.OperationID)
 	if err != nil {
 		return AuthorizationResult{}, err
 	}
-	connector, err := application.config.Repository.Connector(ctx, mutation.ConnectorKey)
+	connector, err := application.config.Repository.Connector(requestExecution.context, mutation.ConnectorKey)
 	if err != nil {
 		return AuthorizationResult{}, err
 	}
 	if accountScoped {
-		projection, projectionErr := application.GetAuthorizationProjection(ctx, accountID, mutation.ConnectorKey)
+		projection, projectionErr := application.GetAuthorizationProjection(requestExecution.context, accountID, mutation.ConnectorKey)
 		if errors.Is(projectionErr, ErrNotFound) {
 			connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
 		} else if projectionErr != nil {
@@ -637,6 +684,7 @@ func (application *Application) CancelAuthorization(
 	if connectorKey == "" {
 		return invalidRequest("connectorKey is required")
 	}
+	application.interruptAuthorizationRequest(scope.AccountID, connectorKey)
 	unlock := application.lockAuthorization(scope.AccountID, connectorKey)
 	defer unlock()
 	connector, err := application.config.Repository.Connector(ctx, connectorKey)
@@ -651,52 +699,15 @@ func (application *Application) CancelAuthorization(
 		if operation.ConnectorKey != connectorKey {
 			continue
 		}
-		if err := application.config.Repository.ResolveAuthorizationSession(
-			ctx,
-			operation.OperationID,
-			AuthorizationSessionResolutionSuperseded,
-		); err != nil {
+		if err := application.cancelAuthorizationAttempt(ctx, connector, operation, false); err != nil {
 			return err
 		}
 	}
-	if connector.Authorization.State == AuthorizationStatePending {
-		if err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-			stored, txErr := tx.Connector(connectorKey)
-			if txErr != nil || stored.Authorization.State != AuthorizationStatePending {
-				return txErr
-			}
-			revision := tx.AdvanceRevision()
-			stored.Authorization = Authorization{State: AuthorizationStateDisconnected}
-			stored.Revision = revision
-			if txErr := tx.SaveConnector(stored); txErr != nil {
-				return txErr
-			}
-			return tx.EnqueueConnectorMarketChanged(ChangedEvent{ConnectorKey: connectorKey, Revision: revision})
-		}); err != nil {
-			return err
-		}
-	}
-	if scope.AccountID != "" && application.config.AuthorizationProjections != nil {
-		projection, projectionErr := application.GetAuthorizationProjection(ctx, scope.AccountID, connectorKey)
-		if projectionErr == nil && projection.State == AuthorizationStatePending {
-			projection.State = AuthorizationStateDisconnected
-			projection.ConnectionID = ""
-			projection.FailureCode = ""
-			projection.UpdatedAt = application.config.Now().UTC()
-			if err := application.saveAuthorizationProjection(ctx, ConnectorMutation{
-				ConnectorKey: connectorKey, AccountID: scope.AccountID,
-			}, projection); err != nil {
-				return err
-			}
-		} else if projectionErr != nil && !errors.Is(projectionErr, ErrNotFound) {
-			return projectionErr
-		}
-	}
-	return nil
+	return application.resetPendingAuthorizationState(ctx, scope, connectorKey)
 }
 
 func (application *Application) lockAuthorization(accountID, connectorKey string) func() {
-	key := strings.TrimSpace(accountID) + "\x00" + strings.TrimSpace(connectorKey)
+	key := authorizationLaneKey(accountID, connectorKey)
 	application.authorizationMu.Lock()
 	lane := application.authorizationLanes[key]
 	if lane == nil {
@@ -708,15 +719,175 @@ func (application *Application) lockAuthorization(accountID, connectorKey string
 	return lane.Unlock
 }
 
+func authorizationLaneKey(accountID, connectorKey string) string {
+	return strings.TrimSpace(accountID) + "\x00" + strings.TrimSpace(connectorKey)
+}
+
+func (application *Application) acquireAuthorizationRequest(
+	ctx context.Context,
+	mutation ConnectorMutation,
+) *authorizationRequestExecution {
+	key := authorizationLaneKey(mutation.AccountID, mutation.ConnectorKey)
+	clientRequestID := strings.TrimSpace(mutation.ClientRequestID)
+	application.authorizationMu.Lock()
+	defer application.authorizationMu.Unlock()
+	if current := application.authorizationRequests[key]; current != nil {
+		if current.clientRequestID == clientRequestID {
+			current.references++
+			return current
+		}
+		if mutation.ReplacementPolicy != AuthorizationReplacementPolicyReplaceActive {
+			requestContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
+			return &authorizationRequestExecution{
+				clientRequestID: clientRequestID, context: requestContext, cancel: cancel, references: 1,
+			}
+		}
+		current.cancel()
+		requestContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
+		execution := &authorizationRequestExecution{
+			clientRequestID: clientRequestID, context: requestContext, cancel: cancel, references: 1, replacedLive: true,
+		}
+		application.authorizationRequests[key] = execution
+		return execution
+	}
+	requestContext, cancel := context.WithCancel(context.WithoutCancel(ctx))
+	execution := &authorizationRequestExecution{
+		clientRequestID: clientRequestID, context: requestContext, cancel: cancel, references: 1,
+	}
+	application.authorizationRequests[key] = execution
+	return execution
+}
+
+func (application *Application) releaseAuthorizationRequest(
+	accountID, connectorKey string,
+	execution *authorizationRequestExecution,
+) {
+	if execution == nil {
+		return
+	}
+	key := authorizationLaneKey(accountID, connectorKey)
+	application.authorizationMu.Lock()
+	if application.authorizationRequests[key] == execution {
+		execution.references--
+		if execution.references == 0 {
+			delete(application.authorizationRequests, key)
+			execution.cancel()
+		}
+	} else {
+		execution.cancel()
+	}
+	application.authorizationMu.Unlock()
+}
+
+func (application *Application) interruptAuthorizationRequest(accountID, connectorKey string) {
+	key := authorizationLaneKey(accountID, connectorKey)
+	application.authorizationMu.Lock()
+	if execution := application.authorizationRequests[key]; execution != nil {
+		execution.cancel()
+	}
+	application.authorizationMu.Unlock()
+}
+
+func (application *Application) cancelAuthorizationAttempt(
+	ctx context.Context,
+	connector Connector,
+	operation Operation,
+	requireProviderTermination bool,
+) error {
+	session := operation.Execution.AuthorizationSession
+	if session == nil || session.IsResolved() {
+		return nil
+	}
+	canceler, ok := application.config.Authorization.(AuthorizationAttemptCanceler)
+	if !ok {
+		if requireProviderTermination {
+			return NewDomainError(
+				ErrorCodeUnavailable,
+				"connector authorization provider cannot safely replace an active attempt",
+				false,
+				nil,
+			)
+		}
+		return application.config.Repository.ResolveAuthorizationSession(
+			ctx, operation.OperationID, AuthorizationSessionResolutionSuperseded,
+		)
+	}
+	if session.Resolution != AuthorizationSessionResolutionCanceling {
+		if err := application.config.Repository.ResolveAuthorizationSession(
+			ctx, operation.OperationID, AuthorizationSessionResolutionCanceling,
+		); err != nil {
+			return err
+		}
+	}
+	release, err := frozenRelease(operation)
+	if err != nil {
+		return err
+	}
+	connector.Release = release
+	if err := canceler.Cancel(ctx, AuthorizationCancelRequest{
+		OperationID: operation.OperationID,
+		Scope:       operation.Scope,
+		Connector:   connector,
+		Release:     release,
+		Session:     *session,
+	}); err != nil {
+		return NewDomainError(
+			ErrorCodeUnavailable,
+			"connector authorization attempt could not be terminated",
+			true,
+			err,
+		)
+	}
+	return application.config.Repository.ResolveAuthorizationSession(
+		ctx, operation.OperationID, AuthorizationSessionResolutionSuperseded,
+	)
+}
+
+func (application *Application) resetPendingAuthorizationState(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey string,
+) error {
+	if err := application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		stored, err := tx.Connector(connectorKey)
+		if err != nil || stored.Authorization.State != AuthorizationStatePending {
+			return err
+		}
+		revision := tx.AdvanceRevision()
+		stored.Authorization = Authorization{State: AuthorizationStateDisconnected}
+		stored.Revision = revision
+		if err := tx.SaveConnector(stored); err != nil {
+			return err
+		}
+		return tx.EnqueueConnectorMarketChanged(ChangedEvent{ConnectorKey: connectorKey, Revision: revision})
+	}); err != nil {
+		return err
+	}
+	if scope.AccountID == "" || application.config.AuthorizationProjections == nil {
+		return nil
+	}
+	projection, err := application.GetAuthorizationProjection(ctx, scope.AccountID, connectorKey)
+	if errors.Is(err, ErrNotFound) || err == nil && projection.State != AuthorizationStatePending {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	projection.State = AuthorizationStateDisconnected
+	projection.ConnectionID = ""
+	projection.FailureCode = ""
+	projection.UpdatedAt = application.config.Now().UTC()
+	return application.saveAuthorizationProjection(ctx, ConnectorMutation{
+		ConnectorKey: connectorKey, AccountID: scope.AccountID,
+	}, projection)
+}
+
 // ReconcileAuthorizations observes unresolved private start receipts for one
 // explicit account. Remote Connector truth comes from the account projection;
 // the device-scoped Connector authorization field is only used by local
 // Connectors. It is safe to call repeatedly and after a daemon restart.
 func (application *Application) ReconcileAuthorizations(ctx context.Context, scope OperationScope) ([]AuthorizationReconcileIntent, error) {
-	observer, ok := application.config.Authorization.(AuthorizationObserver)
-	if !ok {
-		return nil, nil
-	}
+	observer, canObserve := application.config.Authorization.(AuthorizationObserver)
 	operations, err := application.config.Repository.UnresolvedAuthorizationSessionOperations(ctx, scope)
 	if err != nil {
 		return nil, err
@@ -737,6 +908,16 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context, sco
 			reconcileErr = errors.Join(reconcileErr, releaseErr)
 			continue
 		}
+		session := *operation.Execution.AuthorizationSession
+		if session.Resolution == AuthorizationSessionResolutionCanceling {
+			if cancelErr := application.cancelAuthorizationAttempt(ctx, connector, operation, true); cancelErr != nil {
+				reconcileErr = errors.Join(reconcileErr, cancelErr)
+			}
+			continue
+		}
+		if !canObserve {
+			continue
+		}
 		remote := release.Manifest.Implementation.RemoteStreamableHTTP != nil
 		if remote {
 			projection, projectionErr := application.GetAuthorizationProjection(ctx, scope.AccountID, connector.Key)
@@ -752,7 +933,6 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context, sco
 		} else if connector.Authorization.State != AuthorizationStatePending {
 			continue
 		}
-		session := *operation.Execution.AuthorizationSession
 		observation := AuthorizationObservation{}
 		expiresAt := session.ExpiresAt
 		if expiresAt.IsZero() {
@@ -784,6 +964,16 @@ func (application *Application) ReconcileAuthorizations(ctx context.Context, sco
 		}
 		if observation.State != AuthorizationObservationConnected && observation.State != AuthorizationObservationFailed {
 			reconcileErr = errors.Join(reconcileErr, errors.New("authorization observer returned an invalid state"))
+			continue
+		}
+		currentOperation, currentErr := application.config.Repository.Operation(ctx, operation.OperationID)
+		if currentErr != nil {
+			reconcileErr = errors.Join(reconcileErr, currentErr)
+			continue
+		}
+		currentSession := currentOperation.Execution.AuthorizationSession
+		if currentSession == nil || currentSession.SessionID != session.SessionID ||
+			currentSession.Resolution == AuthorizationSessionResolutionCanceling || currentSession.IsResolved() {
 			continue
 		}
 		resolution := authorizationSessionResolutionForObservation(observation)
@@ -944,7 +1134,7 @@ func (application *Application) executeOperation(ctx context.Context, operationI
 	case OperationKindDisconnectAuthorization:
 		executeErr = application.executeDisconnectAuthorization(executionContext, operation)
 	case OperationKindStartAuthorization:
-		_, executeErr = application.beginAuthorizationSession(executionContext, operation, nil)
+		_, executeErr = application.beginAuthorizationSession(executionContext, operation, nil, "")
 	default:
 		executeErr = invalidRequest(fmt.Sprintf("operation kind %q is not executable", operation.Kind))
 	}
@@ -1292,6 +1482,41 @@ func validateConnectorMutation(mutation ConnectorMutation) error {
 		return invalidRequest("connectorKey is required")
 	}
 	return nil
+}
+
+func validateAuthorizationMutation(mutation ConnectorMutation) error {
+	if err := validateConnectorMutation(mutation); err != nil {
+		return err
+	}
+	if mutation.ReplacementPolicy != "" &&
+		mutation.ReplacementPolicy != AuthorizationReplacementPolicyReplaceActive {
+		return invalidRequest("authorization replacementPolicy is invalid")
+	}
+	return nil
+}
+
+func (application *Application) verifyConnectorMutationRevision(
+	ctx context.Context,
+	mutation ConnectorMutation,
+) error {
+	return application.config.Repository.Transaction(ctx, func(tx Transaction) error {
+		connector, err := tx.Connector(mutation.ConnectorKey)
+		if err != nil {
+			return err
+		}
+		if mutation.ExpectedConnectorRevision != nil {
+			if connector.Revision != *mutation.ExpectedConnectorRevision {
+				return NewDomainError(
+					ErrorCodeRevisionConflict,
+					fmt.Sprintf("expected connector revision %d but current connector revision is %d", *mutation.ExpectedConnectorRevision, connector.Revision),
+					true,
+					nil,
+				)
+			}
+			return nil
+		}
+		return verifyRevision(tx, mutation.ExpectedRevision)
+	})
 }
 
 func verifyRevision(tx Transaction, expected uint64) error {

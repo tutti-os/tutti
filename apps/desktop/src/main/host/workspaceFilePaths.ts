@@ -1,4 +1,5 @@
 import path from "node:path";
+import { formatWorkspaceFilePathForDisplay } from "@tutti-os/workspace-file-manager/services";
 
 export const workspaceLogicalRoot = "/workspace" as const;
 
@@ -37,9 +38,7 @@ export function resolveWorkspaceFileAbsolutePath(input: {
     throw new Error("root directory is required");
   }
   const rootDirectory = path.resolve(rootDirectoryInput);
-  const rawPath = normalizeWindowsDriveAbsolutePath(
-    input.logicalPath.trim().replaceAll("\\", "/")
-  );
+  const rawPath = normalizeWorkspaceHostPath(input.logicalPath);
 
   const absolutePath = path.isAbsolute(rawPath)
     ? path.resolve(rawPath)
@@ -54,16 +53,11 @@ export function resolveWorkspaceFileAbsolutePath(input: {
   return absolutePath;
 }
 
-function normalizeWindowsDriveAbsolutePath(value: string): string {
-  if (path.sep !== "\\") {
-    return value;
-  }
-
-  // The daemon exposes Windows absolute paths in POSIX form (`/C:/...`) so
-  // they can travel through the logical workspace API. Node's win32 resolver
-  // treats that leading slash as the current drive root and produces
-  // `C:\\C:\\...`, which then looks like an escape from the workspace root.
-  return value.replace(/^\/([A-Za-z]:)(?=\/|$)/, "$1");
+function normalizeWorkspaceHostPath(value: string): string {
+  return formatWorkspaceFilePathForDisplay(value, process.platform).replaceAll(
+    "\\",
+    "/"
+  );
 }
 
 export function resolveTerminalLinkAbsolutePath(input: {
@@ -82,12 +76,12 @@ export function resolveTerminalLinkAbsolutePath(input: {
     return path.resolve(input.homeDirectory, relativeHomePath);
   }
 
-  const normalized = rawPath.replaceAll("\\", "/");
+  const cwd = input.cwd?.trim();
+  const normalized = normalizeWorkspaceHostPath(rawPath);
   if (path.isAbsolute(normalized)) {
     return path.resolve(normalized);
   }
 
-  const cwd = input.cwd?.trim();
   if (cwd) {
     return path.resolve(cwd, normalized);
   }

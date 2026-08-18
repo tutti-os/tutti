@@ -15,14 +15,24 @@ Connector market uses two independent APIs:
   authorization, compatibility, and durable operation state
   owned by one desktop host
 
-The remote market service owns its versioned API schema and generated client.
-It exposes the reusable `/v1/market/categories`, `/v1/market/items`, and
+The remote market service owns its versioned API schema and generated
+protobuf/HTTP artifacts. Tutti pins those artifacts by provider commit and
+SHA-256 under `packages/clients/market-go`; it does not import the
+`tsh-server` application module or redefine the remote schema in the local
+daemon OpenAPI. Updates require a source checkout at the exact pinned commit and
+digest-match every copied file. The client exposes the reusable
+`/v1/market/categories`, `/v1/market/items`, and
 `/v1/market/items/{item_type}/{item_key}` read boundary for both connectors and
 Skills. Connector catalog requests always use `itemType=connector`; Skill
 consumers use `itemType=skill`. The shared connector package may provide a
 default `CatalogSource` adapter over that generated client, but must not copy or
 redefine the remote schema. Remote transport DTOs and local daemon DTOs remain
 separate.
+
+The generated client adapter applies host authorization only to the initial
+Market request. It preserves the host redirect policy and rejects any redirect
+that leaves the configured scheme and host, including HTTPS downgrades, before
+another credential-bearing request can be sent.
 
 Published connectors use the remote market manifest v2 envelope: one
 market-neutral `payload.implementation` and no `supportedMarkets` field. The
@@ -33,6 +43,18 @@ schema versions belong to different APIs and do not imply compatibility.
 
 The renderer never calls the remote market. The local daemon is authoritative
 for every state rendered by the desktop application.
+
+Category identifiers are opaque routing values. The Connector adapter sends
+the exact server `categoryId` back as `sectionId` and never rewrites legacy or
+new IDs. The daemon projects both `displayNameZh` and `displayNameEn` through
+the local OpenAPI; the renderer selects the Chinese name for `zh*` locales and
+the English name otherwise without another network request. During the bounded
+compatibility window, only `featured`, `productivity`, `development`, and
+`other` may use their released local i18n labels when an older daemon omits
+both names. Unknown dynamic categories without a server name fail closed
+instead of displaying their slug as product copy. The local `installed`
+section remains a renderer-owned virtual category and keeps its local i18n
+label.
 
 Installation is a device fact. Authorization is an account projection. A
 Connector may therefore be installed while inactive for the current account;
@@ -120,6 +142,21 @@ For a CLI declared with a typed `node_package` installation, the prepared
 artifact contains connector metadata and skills, not the CLI npm package. CLI
 installation remains part of the physical release install receipt, while route
 reconciliation is a separate operation:
+
+A CLI may instead declare `artifact_native` when its platform executable was
+acquired and verified by the Connector publication pipeline and is already
+inside the signed install artifact. The host does not receive an upstream URL
+or add another installer. It verifies the prepared artifact inventory, copies
+the declared entrypoint into the read-only execution snapshot with executable
+permission only for that entry, then verifies its exact size and SHA-256 at
+every launch. Windows executes the declared `.exe` directly; `.cmd` remains a
+user-facing PATH projection rather than the native launch boundary.
+
+One portable install artifact may contain binaries for multiple exact targets.
+The signed v3 manifest selects one target implementation without OS or
+architecture fallback; unused target files remain inert data in that release.
+Per-target artifacts are a distribution-size optimization and do not change
+the runtime trust or launch contract.
 
 The local daemon connector-manifest v1 contract includes required icons, typed
 package installation, explicit Node ranges, and mapping-free generic CLI. It is
@@ -364,12 +401,19 @@ preserves the projection. Runtime reconcile then performs interface readiness
 checks before any route is published.
 
 Authorization operations follow the same recovery rule. Authorization creation
-is serialized per account and Connector, and an unresolved durable session
-receipt rejects a different request identity, so renderer reload cannot create
-a second external session. Managed runtimes are inspected during convergence;
-restart no longer fabricates a permanently pending observation. Disconnect is
-completed only after the disconnected projection and exact disabled Runtime
-Observed state are durable.
+is serialized per account and Connector. A repeated `clientRequestId` resumes
+the same external session. A different request retains the compatibility
+conflict unless it explicitly sends `replacementPolicy=replace_active`. Replace
+is Host-owned: it interrupts an in-progress initial Begin, moves an existing
+receipt through durable `canceling`, asks the provider to terminate the exact
+attempt, waits until that attempt can no longer publish credentials or events,
+then resolves it as `superseded` before accepting the new operation. A provider
+without confirmed attempt cancellation rejects replacement rather than running
+two sessions against shared credential state. Managed runtimes are inspected
+during convergence; restart finishes `canceling` receipts and no longer
+fabricates a permanently pending observation. Disconnect is completed only
+after the disconnected projection and exact disabled Runtime Observed state are
+durable.
 
 For account-scoped runtimes, `AccountRuntimeBindingResolver` maps `none`
 authorization to an always-active device connection. OAuth/API-key connectors
@@ -425,6 +469,10 @@ authentication only through a host-supplied request authorizer. Neither an API
 key submitted by the user nor the product account session is copied into the
 runtime VM. Remote MCP execution follows the product host's authenticated
 relay, while the VM receives only the non-credential runtime route identity.
+Remote authorization replacement propagates the explicit replacement policy to
+Start and uses the session-scoped control-plane Cancel endpoint when a receipt
+already exists. This covers both a returned session and an interrupted initial
+Begin without relying on a device-local process handle.
 
 ## Event Consistency
 
@@ -512,6 +560,10 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
   host keeps the mutation request open until runtime work completes; the local
   projection is cleared on both success and failure and never replaces daemon
   installation truth
+- every new user authorization action creates a new `clientRequestId` and sends
+  `replacementPolicy=replace_active`; continuation polling within that action
+  reuses the same identity, while a superseded renderer Promise cannot retain
+  the Connector mutation token
 - event refreshes are coalesced, daemon reconnect performs a full reload, and
   accepted commands are followed through the operation endpoint or events
 - hosts gate connector-market transport through `canRequest`; Tutti binds it to
@@ -542,8 +594,10 @@ authoritative market view, rejects invalid or unknown keys, and then advances
 the package-owned dialog state machine. Before applying the bounded quick-list
 limit, the shared menu stably groups connected connectors ahead of connectors
 that still require authorization or setup; each group preserves host catalog
-order. Selecting “more” remains host navigation because settings/workbench
-location is product-owned.
+order. Its compact trigger previews the installed and authorized group without
+requiring those connectors to be selected in the current draft; draft selection
+continues to control only structured prompt content. Selecting “more” remains
+host navigation because settings/workbench location is product-owned.
 
 Every renderer window mounts exactly one `ConnectorMarketDialogHost` alongside
 its other window-level panel hosts. Composer entries and catalog cards never
@@ -558,6 +612,11 @@ authorized connector opens the management dialog. Blocked releases open the
 blocked-state dialog. Only one dialog host is mounted at a time, so
 the catalog keeps the full settings content width and never leaves an empty
 right column.
+
+Closing an authorization dialog only dismisses presentation. The explicit
+Cancel action calls the Host cancellation command. Reopening an unconnected
+Connector starts a new replace-active attempt, so a hidden or stuck renderer
+request cannot lock later authorization actions.
 
 ## Local OpenAPI Reuse
 

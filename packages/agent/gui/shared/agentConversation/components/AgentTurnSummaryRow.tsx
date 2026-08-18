@@ -654,7 +654,8 @@ function buildExecutablePatchBatches(
   return sourceBatches.flatMap((batch) => {
     const sourceCwd = patchBatchDirectoryCwd(
       batch.cwd ?? workspaceRoot ?? null,
-      batch.changes
+      batch.changes,
+      workspaceRoot
     );
     const executionCwd = resolvePatchExecutionCwd(sourceCwd, workspaceRoot);
     const diffCwd = resolvePatchDiffCwd({

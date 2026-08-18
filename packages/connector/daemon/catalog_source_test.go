@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	marketv1 "github.com/tutti-os/tutti/packages/clients/market-go/generated/sandbox/v1"
 	market "github.com/tutti-os/tutti/packages/connector/host"
+	"google.golang.org/protobuf/types/known/structpb"
 )
 
 func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T) {
@@ -21,18 +23,18 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
 			t.Fatalf("request path=%q query=%q", request.URL.Path, request.URL.RawQuery)
 		}
 		writer.Header().Set("Content-Type", "application/json")
-		if request.URL.Path == connectorCategoriesPath {
+		if request.URL.Path == "/v1/market/categories" {
 			_, _ = writer.Write([]byte(`{
   "marketType": "overseas",
   "categories": [
-    {"categoryId": "featured", "kind": "featured", "sortOrder": 10, "itemCount": "1"},
-    {"categoryId": "development", "kind": "category", "sortOrder": 20, "itemCount": "1"}
+    {"categoryId": "featured", "kind": "featured", "sortOrder": 10, "itemCount": "1", "displayNameZh": "精选", "displayNameEn": "Featured"},
+    {"categoryId": "developer-tools", "kind": "category", "sortOrder": 40, "itemCount": "1", "displayNameZh": "开发者工具", "displayNameEn": "Developer Tools"}
   ]
 }`))
 			return
 		}
 		itemCalls++
-		if request.URL.Path != connectorCatalogPath || request.URL.Query().Get("sectionId") != "development" || request.URL.Query().Get("pageSize") != "100" {
+		if request.URL.Path != "/v1/market/items" || request.URL.Query().Get("sectionId") != "developer-tools" || request.URL.Query().Get("pageSize") != "100" {
 			t.Fatalf("request path=%q query=%q", request.URL.Path, request.URL.RawQuery)
 		}
 		_, _ = writer.Write([]byte(`{
@@ -75,7 +77,7 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
       }
     },
     "publishedAtMs": "1785801600000",
-    "categoryId": "development",
+    "categoryId": "developer-tools",
     "featured": true
   }],
   "nextPageToken": ""
@@ -110,7 +112,12 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
 		got.Manifest.Implementation.ManagedStdio.MCP.Entrypoint != "bin/github.js" {
 		t.Fatalf("release = %#v", got)
 	}
-	page, err := source.ListPage(context.Background(), market.CatalogSourcePageQuery{SectionID: "development", PageSize: 100})
+	categories, err := source.ListCategories(context.Background())
+	if err != nil || len(categories) != 2 || categories[1].CategoryID != "developer-tools" ||
+		categories[1].DisplayNameZH != "开发者工具" || categories[1].DisplayNameEN != "Developer Tools" {
+		t.Fatalf("categories = %#v; error = %v", categories, err)
+	}
+	page, err := source.ListPage(context.Background(), market.CatalogSourcePageQuery{SectionID: "developer-tools", PageSize: 100})
 	if err != nil || len(page.Entries) != 1 || page.Entries[0].Release.ConnectorKey != "github" ||
 		page.Entries[0].Release.Version != "1.0.0" || page.Entries[0].Release.Artifact.SHA256 != strings.Repeat("c", 64) {
 		t.Fatalf("page=%#v error=%v", page, err)
@@ -169,11 +176,7 @@ func TestCatalogSourcePreservesRemoteRequiredCapabilities(t *testing.T) {
 	}
 
 	source := &CatalogSource{executionTarget: "darwin-arm64"}
-	release, err := source.mapItem(wireMarketItem{
-		ItemType: "connector", ItemKey: "tencent-docs", Version: "0.2.0", Manifest: manifest,
-		Artifact:      &wireArtifact{Key: "tencent-docs/0.2.0/tencent-docs-0.2.0-any.tgz", SHA256: strings.Repeat("c", 64), SizeBytes: 123},
-		PublishedAtMS: 1785801600000,
-	})
+	release, err := source.mapItem(generatedMarketItem(t, manifest, "tencent-docs", "0.2.0", "tencent-docs/0.2.0/tencent-docs-0.2.0-any.tgz"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -205,11 +208,7 @@ func TestCatalogSourceRejectsLegacyConnectorManifestV1(t *testing.T) {
 		t.Fatal(err)
 	}
 	source := &CatalogSource{executionTarget: "darwin-arm64"}
-	_, err := source.mapItem(wireMarketItem{
-		ItemType: "connector", ItemKey: "github", Version: "1.0.0", Manifest: manifest,
-		Artifact:      &wireArtifact{Key: "connectors/github/1.0.0.zip", SHA256: strings.Repeat("c", 64), SizeBytes: 123},
-		PublishedAtMS: 1785801600000,
-	})
+	_, err := source.mapItem(generatedMarketItem(t, manifest, "github", "1.0.0", "connectors/github/1.0.0.zip"))
 	if err == nil {
 		t.Fatal("legacy connector manifest v1 was accepted")
 	}
@@ -290,6 +289,39 @@ func TestCatalogSourcePreservesGatewayBasePath(t *testing.T) {
 	}
 }
 
+func TestCatalogSourceRequiresServerNamesForDynamicCategories(t *testing.T) {
+	tests := []struct {
+		name      string
+		category  string
+		wantError bool
+	}{
+		{name: "released legacy response", category: `{"categoryId":"development","kind":"category","sortOrder":20,"itemCount":"1"}`},
+		{name: "unnamed dynamic category", category: `{"categoryId":"future-category","kind":"category","sortOrder":80,"itemCount":"1"}`, wantError: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+				response.Header().Set("Content-Type", "application/json")
+				_, _ = response.Write([]byte(`{"marketType":"overseas","categories":[` + test.category + `]}`))
+			}))
+			defer server.Close()
+			source, err := NewCatalogSource(CatalogSourceConfig{
+				BaseURL: server.URL, ExpectedMarketType: "overseas", HTTPClient: server.Client(),
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = source.ListCategories(context.Background())
+			if test.wantError && err == nil {
+				t.Fatal("expected unnamed dynamic category error")
+			}
+			if !test.wantError && err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestCatalogSourceRejectsOversizedResponse(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
 		_, _ = response.Write([]byte(strings.Repeat(" ", maxCatalogResponseBytes+1)))
@@ -305,5 +337,18 @@ func TestCatalogSourceRejectsOversizedResponse(t *testing.T) {
 	}
 	if _, err := source.Refresh(context.Background()); err == nil || !strings.Contains(err.Error(), "size limit") {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func generatedMarketItem(t *testing.T, manifest map[string]any, itemKey, version, artifactKey string) *marketv1.PublicMarketItem {
+	t.Helper()
+	manifestValue, err := structpb.NewStruct(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &marketv1.PublicMarketItem{
+		ItemType: "connector", ItemKey: itemKey, Version: version, Manifest: manifestValue,
+		Artifact:      &marketv1.MarketArtifact{Key: artifactKey, Sha256: strings.Repeat("c", 64), SizeBytes: 123},
+		PublishedAtMs: 1785801600000,
 	}
 }

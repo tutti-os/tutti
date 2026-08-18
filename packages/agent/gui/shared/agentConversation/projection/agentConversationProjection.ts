@@ -24,8 +24,10 @@ export interface AgentConversationProjectionOptions {
 }
 
 const RENDER_IRRELEVANT_TRANSCRIPT_ROW_FIELDS = new Set(["occurredAtUnixMs"]);
-const CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT =
-  "skill descriptions were shortened to fit the 2% skills context budget";
+// Codex has emitted both the older "2%" wording and the current wording
+// without a percentage; the percentage is diagnostic context, not identity.
+const CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_PATTERN =
+  /skill descriptions were shortened to fit the(?:\s+\d+(?:\.\d+)?%)?\s+skills context budget/i;
 const CODEX_MODEL_METADATA_FALLBACK_NOTICE_FRAGMENT =
   "defaulting to fallback metadata";
 const MARKDOWN_IMAGE_PATTERN =
@@ -55,7 +57,7 @@ export function projectAgentConversationVM(
     if (summary) rows.push(summary);
   });
 
-  const normalizedRows = dropCodexRuntimeDiagnosticNotices(
+  const normalizedRows = dropCodexDiagnosticNotices(
     dropRedundantErrorWarningNotices(
       mergeAdjacentAssistantMessageRows(
         dropRedundantCompactFailureEchoRows(
@@ -320,7 +322,7 @@ function mergeAdjacentAssistantMessageRows(
   return merged;
 }
 
-function dropCodexRuntimeDiagnosticNotices(
+function dropCodexDiagnosticNotices(
   rows: readonly AgentTranscriptRowVM[]
 ): AgentTranscriptRowVM[] {
   const filteredRows: AgentTranscriptRowVM[] = [];
@@ -330,7 +332,7 @@ function dropCodexRuntimeDiagnosticNotices(
       continue;
     }
     const messages = row.messages.filter(
-      (message) => !isCodexSkillsContextBudgetNotice(message)
+      (message) => !isCodexDiagnosticNotice(message)
     );
     if (messages.length === 0 && row.thinking.length === 0) {
       continue;
@@ -344,22 +346,22 @@ function dropCodexRuntimeDiagnosticNotices(
   return filteredRows;
 }
 
-function isCodexSkillsContextBudgetNotice(
-  message: AgentMessageContentVM
-): boolean {
+function isCodexDiagnosticNotice(message: AgentMessageContentVM): boolean {
   const notice = message.systemNotice;
   if (!notice || notice.noticeKind !== "warning") {
-    return false;
-  }
-  if (notice.source !== "runtime") {
     return false;
   }
   const text = [notice.title, notice.detail, message.body]
     .filter(Boolean)
     .join("\n")
     .toLowerCase();
+  if (CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_PATTERN.test(text)) {
+    // Persisted skill notices may omit source, but an explicitly non-runtime
+    // notice must remain visible even when its text matches this diagnostic.
+    return !notice.source || notice.source === "runtime";
+  }
   return (
-    text.includes(CODEX_SKILLS_CONTEXT_BUDGET_NOTICE_FRAGMENT) ||
+    notice.source === "runtime" &&
     text.includes(CODEX_MODEL_METADATA_FALLBACK_NOTICE_FRAGMENT)
   );
 }

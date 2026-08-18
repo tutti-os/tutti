@@ -1,34 +1,43 @@
 # Connector Market Troubleshooting
 
-### OAuth opens once, then the desktop stays disconnected or a second attempt supersedes the first
+### Authorization stays loading and reopening cannot start a new attempt
 
 **Symptoms**
 
-- the browser receives a valid OAuth redirect on the first authorization click
+- the authorization button may remain on its initial loading state before a URL
+  is returned
 - the local Start operation is already `completed` while its private session
   receipt is still unresolved
 - the account authorization projection remains `disconnected` until the OAuth
   callback is observed
-- the renderer stops waiting, and a later click creates a new session that may
-  supersede the first one
+- closing and reopening the dialog appears to reuse the old request or reports
+  that another Connector operation is in progress
 
 **Check**
 
-Trace the three states separately: the durable Start operation, its private
-authorization-session receipt, and the account authorization projection. A
+Trace four states separately: the renderer request identity, the durable Start
+operation, its private authorization-session receipt, and the provider process.
+A
 completed Start operation means the external session was created; it does not
 mean the provider authorization is terminal. Confirm that a redirect session
 returns `pending` to the caller even when the durable projection has not changed
-yet, then confirm the same client request identity is reused until the projection
-becomes connected or failed.
+yet. Within one action, confirm that continuation uses one `clientRequestId`.
+For a new user action, confirm that the request carries
+`replacementPolicy=replace_active`, the prior receipt moves through `canceling`
+to `superseded`, and the old Broker/DWS process exits before the replacement is
+launched. If no initial event is returned, verify that the new request cancels
+the active Host-owned Begin instead of waiting behind its authorization lane.
 
 **Rule**
 
 Keep the account projection as durable authorization truth. Preserve the
 current session's `pending` state only in the Start command result so shared
-clients continue that idempotent session. Do not persist a synthetic connected
-projection, infer success from the Start operation's terminal state, or create a
-second external session to refresh the UI.
+clients continue that idempotent session. A new user action is different from a
+continuation: it must use Host-owned replace-active semantics. Fence late
+observations by the durable receipt, require provider cancellation and process
+exit confirmation, then create the replacement. Do not persist a synthetic
+connected projection, infer success from the Start operation's terminal state,
+or let the renderer race separate cancel and start calls.
 
 ### OAuth finishes in the browser but does not return to the initiating desktop build
 

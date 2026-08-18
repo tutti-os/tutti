@@ -434,6 +434,7 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   addContentConnectorEmpty: string;
   addContentConnectorLoading: string;
   addContentConnectorMore: string;
+  addContentConnectorSelected: string;
   referenceWorkspaceFiles: string;
   handoffConversation: string;
   handoffConversationTooltip: string;
@@ -574,7 +575,6 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
-  sessionForkEnabled?: boolean;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>

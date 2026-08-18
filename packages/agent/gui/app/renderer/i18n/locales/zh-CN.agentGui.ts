@@ -13,6 +13,7 @@ import { zhCNAgentGuiProjectLaunch } from "./zh-CN.agentGuiProjectLaunch.ts";
 export const zhCNAgentGui = {
   imageDownloaded: "图片已下载",
   imageLoadFailed: "图片加载失败",
+  imageTemporarilyUnavailable: "图片暂时无法查看",
   retryImage: "重试",
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:

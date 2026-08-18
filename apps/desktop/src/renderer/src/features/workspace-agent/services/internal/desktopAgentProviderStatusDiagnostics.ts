@@ -128,6 +128,15 @@ export class DesktopAgentProviderStatusDiagnostics {
         continue;
       }
       this.lastEnvSignatures.set(status.provider, signature);
+      // Desktop discovers every managed provider so the picker can show its
+      // local readiness. A missing CLI is therefore an expected inventory
+      // state for an optional provider, not an environment failure. Keep it in
+      // the status snapshot, but do not send it through the automatic failure
+      // telemetry path. Explicit, consent-gated problem reports remain
+      // available from the provider management surface.
+      if (isExpectedOptionalProviderAbsence(status)) {
+        continue;
+      }
       void this.reportEnvDetected(status);
     }
   }
@@ -230,6 +239,16 @@ export class DesktopAgentProviderStatusDiagnostics {
   private now(): number {
     return this.dependencies.now?.() ?? Date.now();
   }
+}
+
+function isExpectedOptionalProviderAbsence(
+  status: AgentProviderStatus
+): boolean {
+  return (
+    status.availability.status === "not_installed" &&
+    status.availability.reasonCode === "cli_not_found" &&
+    !status.cli.installed
+  );
 }
 
 function statusRequestDetails(input: AgentProviderStatusRequestInput) {

@@ -505,6 +505,28 @@ func optionalTestString(value *string) string {
 	return *value
 }
 
+func requireAgentSessionReference(t *testing.T, value map[string]any, workspaceID string, sessionID string) {
+	t.Helper()
+	if value["workspaceId"] != workspaceID || value["mentionUri"] != agentSessionMentionURI(workspaceID, sessionID) {
+		t.Fatalf("session reference = %#v", value)
+	}
+}
+
+func TestSessionsCommandReturnsMentionReferences(t *testing.T) {
+	sessions := &fakeAgentSessions{}
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionsCommand([]string{"agent", "sessions"}, "agent-context.agent.sessions")
+	output, err := command.Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	items := output.Value["sessions"].([]any)
+	if len(items) != 2 || sessions.workspaceID != "workspace-1" {
+		t.Fatalf("output = %#v sessions = %#v", output.Value, sessions)
+	}
+	requireAgentSessionReference(t, items[0].(map[string]any), "workspace-1", "SESSION-1")
+	requireAgentSessionReference(t, items[1].(map[string]any), "workspace-1", "SESSION-2")
+}
+
 func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
 	sessions := &fakeAgentSessions{}
 	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).newSessionSummaryCommand()
@@ -531,6 +553,8 @@ func TestSessionSummaryCommandUsesLimitAndAfterVersion(t *testing.T) {
 	if !ok || session["agentSessionId"] != "SESSION-1" {
 		t.Fatalf("output = %#v", output.Value)
 	}
+	requireAgentSessionReference(t, output.Value, "workspace-1", "SESSION-1")
+	requireAgentSessionReference(t, session, "workspace-1", "SESSION-1")
 	messages := output.Value["messages"].([]any)
 	if len(messages) != 1 {
 		t.Fatalf("messages = %#v", messages)
@@ -785,6 +809,8 @@ func TestWaitCommandReturnsStopPointWithoutMessages(t *testing.T) {
 		t.Fatalf("output = %#v", output.Value)
 	}
 	session := output.Value["session"].(map[string]any)
+	requireAgentSessionReference(t, output.Value, "workspace-1", "SESSION-1")
+	requireAgentSessionReference(t, session, "workspace-1", "SESSION-1")
 	if _, ok := session["settings"]; ok {
 		t.Fatalf("wait session should stay compact: %#v", session)
 	}
@@ -1062,6 +1088,8 @@ func TestStartCommandPassesDisplayPrompt(t *testing.T) {
 	if output.Value["turnId"] != "turn-new" {
 		t.Fatalf("output turnId = %#v, want turn-new", output.Value["turnId"])
 	}
+	requireAgentSessionReference(t, output.Value["session"].(map[string]any), "workspace-1", "SESSION-NEW")
+	requireAgentSessionReference(t, output.Value, "workspace-1", "SESSION-NEW")
 }
 
 func TestStartCommandRequiresOneSelectorAndPrompt(t *testing.T) {
@@ -2028,6 +2056,8 @@ func TestGetCommandReturnsEmptyConversationWithSession(t *testing.T) {
 	if session["agentSessionId"] != "SESSION-1" || sessions.workspaceID != "workspace-1" {
 		t.Fatalf("output = %#v sessions = %#v", output.Value, sessions)
 	}
+	requireAgentSessionReference(t, output.Value, "workspace-1", "SESSION-1")
+	requireAgentSessionReference(t, session, "workspace-1", "SESSION-1")
 	if output.Value["view"] != getViewConversation || output.Value["hasMoreTurns"] != false {
 		t.Fatalf("output = %#v", output.Value)
 	}

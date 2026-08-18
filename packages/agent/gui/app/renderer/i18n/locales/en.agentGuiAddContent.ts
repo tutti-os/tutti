@@ -1,7 +1,8 @@
 export const enAgentGuiAddContent = {
   addContentResourcePanel: "Resource panel",
   addContentConnectors: "Connectors",
-  addContentConnectorConnected: "Connected",
+  addContentConnectorConnected: "Authorized",
+  addContentConnectorSelected: "Selected",
   addContentConnectorConnect: "Connect",
   addContentConnectorAuthorize: "Authorize",
   addContentConnectorEmpty: "No connectors available",

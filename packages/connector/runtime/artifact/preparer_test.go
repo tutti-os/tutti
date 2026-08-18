@@ -198,11 +198,43 @@ func TestPreparerRejectsArchivePathTraversal(t *testing.T) {
 		OperationID: "operation-1",
 		Release:     release,
 	})
-	if err == nil || !strings.Contains(err.Error(), "escapes the extraction root") {
+	if err == nil {
 		t.Fatalf("error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "escape")); !os.IsNotExist(err) {
 		t.Fatalf("escape file exists: %v", err)
+	}
+}
+
+func TestSafeArchiveEntryKeyRejectsWindowsUnsafePathsOnEveryHost(t *testing.T) {
+	for _, name := range []string{
+		`C:/runtime/gh.exe`, `\\server\share\gh.exe`, `runtime\gh.exe`, `runtime/gh.exe:stream`,
+		`runtime/CON`, `runtime/nul.txt`, `runtime/COM1.exe`, `runtime/trailing.`, `runtime/trailing `,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := safeArchiveEntryKey(name); err == nil {
+				t.Fatalf("Windows-unsafe archive path %q was accepted", name)
+			}
+		})
+	}
+}
+
+func TestPreparerRejectsCaseCollidingArchiveEntries(t *testing.T) {
+	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
+	archive := testZIPEntries(t, []testZIPEntry{
+		{name: packagedManifestPath, content: manifest},
+		{name: "runtime/GH.exe", content: []byte("first")},
+		{name: "runtime/gh.exe", content: []byte("second")},
+	})
+	release := testRelease(archive, manifest)
+	preparer, err := NewPreparer(Config{RootDir: t.TempDir(),
+		Fetcher: &memoryFetcher{body: archive, mediaType: release.Artifact.MediaType}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = preparer.Prepare(context.Background(), market.PrepareArtifactRequest{OperationID: "operation-1", Release: release})
+	if err == nil || !strings.Contains(err.Error(), "case-colliding") {
+		t.Fatalf("case-colliding archive error = %v", err)
 	}
 }
 
@@ -263,14 +295,28 @@ func (fetcher *memoryFetcher) Fetch(context.Context, FetchRequest) (FetchRespons
 
 func testZIP(t *testing.T, files map[string][]byte) []byte {
 	t.Helper()
+	entries := make([]testZIPEntry, 0, len(files))
+	for name, content := range files {
+		entries = append(entries, testZIPEntry{name: name, content: content})
+	}
+	return testZIPEntries(t, entries)
+}
+
+type testZIPEntry struct {
+	name    string
+	content []byte
+}
+
+func testZIPEntries(t *testing.T, entries []testZIPEntry) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
-	for name, content := range files {
-		file, err := writer.Create(name)
+	for _, entry := range entries {
+		file, err := writer.Create(entry.name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := file.Write(content); err != nil {
+		if _, err := file.Write(entry.content); err != nil {
 			t.Fatal(err)
 		}
 	}

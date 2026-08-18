@@ -6,13 +6,13 @@ import {
   type ConnectorComposerItem
 } from "./ConnectorComposerMenu.tsx";
 
-test("prioritizes connected connectors while preserving group order and first identity", () => {
+test("prioritizes selected then authorized connectors while preserving first identity", () => {
   const items: ConnectorComposerItem[] = [
     item(" github "),
-    item("notion", "connected"),
+    item("figma", "connected"),
+    item("notion", "connected", true),
     item("github"),
     item("lark"),
-    item("figma", "connected"),
     item("   ")
   ];
 
@@ -24,11 +24,13 @@ test("prioritizes connected connectors while preserving group order and first id
 
 function item(
   connectorKey: string,
-  status: ConnectorComposerItem["status"] = "setup_required"
+  status: ConnectorComposerItem["status"] = "setup_required",
+  selected = false
 ): ConnectorComposerItem {
   return {
     connectorKey,
     name: connectorKey,
+    selected,
     status
   };
 }

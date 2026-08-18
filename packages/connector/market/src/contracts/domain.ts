@@ -219,6 +219,8 @@ export interface ConnectorMarketCategory {
   kind: ConnectorMarketCategoryKind;
   sortOrder: number;
   itemCount: number;
+  displayNameZh?: string;
+  displayNameEn?: string;
 }
 
 export interface ConnectorMarketCatalogItem {
@@ -245,6 +247,7 @@ export interface ConnectorMutationInput extends ConnectorMarketMutationInput {
 }
 
 export interface ConnectorAuthorizationInput extends ConnectorMutationInput {
+  replacementPolicy?: "replace_active";
   secret?: string;
 }
 

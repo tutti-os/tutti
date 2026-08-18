@@ -6,7 +6,7 @@ import {
   ToastTitle,
   ToastViewport
 } from "@tutti-os/ui-system/components";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useSnapshot } from "valtio";
 import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-authorization-protocol/v1";
 
@@ -41,8 +41,6 @@ export function ConnectorMarketDialogs() {
   const [uninstallSubmitting, setUninstallSubmitting] = useState(false);
   const [uninstallSuccess, setUninstallSuccess] =
     useState<UninstallSuccessToast | null>(null);
-  const autoStartedAuthorizationRef = useRef<string | null>(null);
-
   const authorizeConnector = useCallback(
     (connectorKey: string, secret?: string) => {
       setShowSuccessToast(null);
@@ -75,25 +73,6 @@ export function ConnectorMarketDialogs() {
     },
     [i18n, market, onError, uiState]
   );
-
-  const brokeredAuthorizationConnectorKey =
-    dialog?.kind === "authorization" && dialog.brokeredAuthorization
-      ? dialog.connectorKey
-      : null;
-
-  useEffect(() => {
-    if (!brokeredAuthorizationConnectorKey) {
-      autoStartedAuthorizationRef.current = null;
-      return;
-    }
-    if (
-      autoStartedAuthorizationRef.current === brokeredAuthorizationConnectorKey
-    ) {
-      return;
-    }
-    autoStartedAuthorizationRef.current = brokeredAuthorizationConnectorKey;
-    void authorizeConnector(brokeredAuthorizationConnectorKey);
-  }, [authorizeConnector, brokeredAuthorizationConnectorKey]);
 
   useEffect(() => {
     for (const tracked of Object.values(
@@ -137,6 +116,10 @@ export function ConnectorMarketDialogs() {
 
   const cancelAuthorizationDialog = () => {
     if (dialog?.kind !== "authorization") {
+      uiState.closeDialog();
+      return;
+    }
+    if (!dialog.authorizing && !dialog.pending) {
       uiState.closeDialog();
       return;
     }
@@ -191,10 +174,6 @@ export function ConnectorMarketDialogs() {
           open
           onOpenChange={(open) => {
             if (open || (dialog.kind === "installation" && dialog.installing)) {
-              return;
-            }
-            if (dialog.kind === "authorization") {
-              cancelAuthorizationDialog();
               return;
             }
             uiState.closeDialog();

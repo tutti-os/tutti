@@ -1,9 +1,38 @@
 package host
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestAuthorizationViewForSessionProjectsDeviceCodeWithV1Protocol(t *testing.T) {
+	session := AuthorizationSession{
+		SessionID:        "session-device-code",
+		AuthorizationURL: "https://github.com/login/device",
+		UserCode:         "ABCD-EFGH",
+		State:            AuthorizationStatePending,
+	}
+
+	view := authorizationViewForSession(Release{}, session)
+	if view == nil || view.Protocol != AuthorizationViewProtocolV1 || view.View.Type != AuthorizationViewTypeDeviceCode {
+		t.Fatalf("authorization view = %#v, want V1 device-code view", view)
+	}
+	if view.View.VerificationURL != session.AuthorizationURL || view.View.UserCode != session.UserCode || view.View.URL != "" {
+		t.Fatalf("device-code view = %#v", view.View)
+	}
+}
+
+func TestAuthorizationSessionDoesNotPersistDeviceCode(t *testing.T) {
+	payload, err := json.Marshal(AuthorizationSession{UserCode: "ABCD-EFGH"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(payload), "ABCD-EFGH") {
+		t.Fatalf("authorization session persisted device code: %s", payload)
+	}
+}
 
 func TestAuthorizationViewForSessionProjectsQRCodeWithV1Protocol(t *testing.T) {
 	release := Release{Manifest: Manifest{Implementation: Implementation{

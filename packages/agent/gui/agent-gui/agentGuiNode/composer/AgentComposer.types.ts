@@ -370,6 +370,7 @@ export interface AgentComposerProps {
     addContentConnectorEmpty: string;
     addContentConnectorLoading: string;
     addContentConnectorMore: string;
+    addContentConnectorSelected: string;
     referenceWorkspaceFiles: string;
     handoffConversation: string;
     handoffConversationTooltip: string;

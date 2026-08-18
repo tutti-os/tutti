@@ -369,7 +369,7 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 
 func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 	want := map[string]DesktopIntegrationDescriptor{
-		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
+		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, AuthProbeAfterCredentialSync: true, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
 		ClaudeCodeProviderID: {Managed: true, ManagedOrder: 1, StatusProbePriority: 2, UsageProbeKind: DesktopUsageProbeClaudeCode, AuthProbeAfterCredentialSync: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 3},
 		CursorProviderID:     {Managed: true, ManagedOrder: 3, StatusProbePriority: 3, RuntimeProbeFallback: DesktopRuntimeProbeFallbackDirect, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 4},
 		TuttiAgentProviderID: {Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, CommandNetworkAccess: true, InstallBootstrap: true, RefreshOnAccountChange: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},

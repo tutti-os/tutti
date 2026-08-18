@@ -2,7 +2,7 @@ name: Desktop Release
 
 run-name: >-
   ${{ github.event_name == 'workflow_dispatch'
-      && format('Desktop Release · {0} · {1} · {2}', inputs.release_mode, inputs.publication_mode, github.ref_name)
+      && format('Desktop Release · {0} · {1}', inputs.release_mode, github.ref_name)
       || format('Desktop Release · {0} · {1}', github.event_name, github.ref_name) }}
 
 on:
@@ -34,14 +34,6 @@ on:
         description: Optional commit-ish override
         required: false
         type: string
-      publication_mode:
-        description: Publish externally now or keep the signed build as a GitHub draft
-        required: true
-        type: choice
-        default: publish
-        options:
-          - publish
-          - draft_only
       notify_feishu:
         description: Send a Feishu card after publishing
         required: false
@@ -51,6 +43,10 @@ on:
 permissions:
   contents: write
   id-token: write
+
+concurrency:
+  group: desktop-release-${{ github.event_name }}-${{ inputs.release_mode || github.ref_name }}-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -64,10 +60,13 @@ jobs:
       release_make_latest: ${{ steps.release.outputs.release_make_latest }}
       release_prerelease: ${{ steps.release.outputs.release_prerelease }}
       release_tag: ${{ steps.release.outputs.release_tag }}
-      release_target: ${{ steps.target.outputs.release_target }}
+      release_target: ${{ steps.release.outputs.release_target }}
       release_version: ${{ steps.release.outputs.release_version }}
       release_channel: ${{ steps.release.outputs.release_channel }}
-      publication_mode: ${{ steps.publication.outputs.publication_mode }}
+      release_candidate: ${{ steps.release.outputs.release_candidate }}
+      release_candidate_id: ${{ steps.release.outputs.release_candidate_id }}
+      release_candidate_tag: ${{ steps.release.outputs.release_candidate_tag }}
+      source_ref: ${{ steps.target.outputs.source_ref }}
       notify_feishu: ${{ steps.notify.outputs.notify_feishu }}
 
     steps:
@@ -95,6 +94,7 @@ jobs:
         run: |
           release_target="${{ inputs.target_commitish || github.sha }}"
           echo "release_target=${release_target}" >> "$GITHUB_OUTPUT"
+          echo "source_ref=${{ github.ref_type == 'branch' && github.ref_name || '' }}" >> "$GITHUB_OUTPUT"
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -230,12 +230,7 @@ jobs:
               version="${INPUT_VERSION:-0.1.0}"
               args+=(--version "${version}")
             fi
-            if [[ "${RELEASE_DRY_RUN}" == "true" ]]; then
-              args=(node apps/desktop/scripts/resolve-release-tag.mjs "${args[@]}")
-            else
-              args+=(--target "${{ steps.target.outputs.release_target }}")
-              args=(node apps/desktop/scripts/reserve-release-tag.mjs "${args[@]}")
-            fi
+            args=(node apps/desktop/scripts/resolve-release-tag.mjs "${args[@]}")
           fi
 
           if [[ "${{ github.event_name }}" == "push" ]]; then
@@ -248,37 +243,34 @@ jobs:
           release_tag="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).tag)" "${release_json}")"
           release_version="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).version)" "${release_json}")"
           release_channel="$(node -e "process.stdout.write(JSON.parse(process.argv[1]).channel)" "${release_json}")"
+          release_candidate=false
+          if [[ "${release_channel}" == "stable" && "${RELEASE_DRY_RUN}" != "true" && "${{ github.event_name }}" != "push" ]]; then
+            release_candidate=true
+            if git ls-remote --exit-code --tags origin "refs/tags/${release_tag}" >/dev/null 2>&1; then
+              echo "Stable tag ${release_tag} already exists; retry promotion or choose a new version." >&2
+              exit 1
+            fi
+          elif [[ "${{ github.event_name }}" != "push" && "${RELEASE_DRY_RUN}" != "true" ]]; then
+            reserve_args=(--strategy explicit_tag --tag "${release_tag}" --target "$(git rev-parse HEAD)" --json)
+            node apps/desktop/scripts/reserve-release-tag.mjs "${reserve_args[@]}" >/dev/null
+          fi
+          release_target="$(git rev-parse HEAD)"
+          release_candidate_id="${release_tag}-$(git rev-parse --short=7 HEAD)-run${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          release_candidate_tag="candidate-${release_tag}"
           echo "release_make_latest=${release_make_latest}" >> "$GITHUB_OUTPUT"
           echo "release_prerelease=${release_prerelease}" >> "$GITHUB_OUTPUT"
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
           echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
           echo "release_channel=${release_channel}" >> "$GITHUB_OUTPUT"
+          echo "release_candidate=${release_candidate}" >> "$GITHUB_OUTPUT"
+          echo "release_candidate_id=${release_candidate_id}" >> "$GITHUB_OUTPUT"
+          echo "release_candidate_tag=${release_candidate_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_target=${release_target}" >> "$GITHUB_OUTPUT"
 
       - name: Resolve Feishu notification
         id: notify
         shell: bash
         run: echo "notify_feishu=${{ github.event_name != 'workflow_dispatch' || inputs.notify_feishu != false }}" >> "$GITHUB_OUTPUT"
-
-      - name: Resolve publication mode
-        id: publication
-        shell: bash
-        env:
-          INPUT_PUBLICATION_MODE: ${{ inputs.publication_mode }}
-          RELEASE_EVENT_NAME: ${{ github.event_name }}
-        run: |
-          publication_mode=publish
-          if [[ "${RELEASE_EVENT_NAME}" == "workflow_dispatch" ]]; then
-            publication_mode="${INPUT_PUBLICATION_MODE:-publish}"
-          fi
-          case "${publication_mode}" in
-            publish|draft_only)
-              ;;
-            *)
-              echo "Unknown publication_mode: ${publication_mode}" >&2
-              exit 1
-              ;;
-          esac
-          echo "publication_mode=${publication_mode}" >> "$GITHUB_OUTPUT"
 
   build-macos:
     name: Build macOS (${{ matrix.arch }})
@@ -294,6 +286,9 @@ jobs:
       TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
       TUTTI_DESKTOP_DRY_RUN: ${{ needs.resolve.outputs.release_dry_run }}
       TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE: ${{ needs.resolve.outputs.release_candidate }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE_ID: ${{ needs.resolve.outputs.release_candidate_id }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG: ${{ needs.resolve.outputs.release_candidate_tag }}
 
     steps:
       - name: Checkout
@@ -520,7 +515,7 @@ jobs:
     if: >-
       ${{ needs.resolve.outputs.release_channel == 'stable' &&
           needs.resolve.outputs.release_dry_run != 'true' &&
-          needs.resolve.outputs.publication_mode == 'publish' &&
+          needs.resolve.outputs.release_candidate != 'true' &&
           vars.TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED == 'true' }}
     uses: ./.github/workflows/desktop-store-submit.yml
     with:
@@ -540,7 +535,7 @@ jobs:
           needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     outputs:
-      release_url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve.outputs.release_tag }}
+      release_url: ${{ needs.resolve.outputs.release_candidate == 'true' && steps.stage-candidate-release.outputs.release_url || steps.stage-release.outputs.url }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
@@ -630,6 +625,21 @@ jobs:
       - name: Generate checksums
         run: node apps/desktop/scripts/generate-checksums.mjs release-assets
 
+      - name: Build stable release candidate manifest
+        if: ${{ needs.resolve.outputs.release_candidate == 'true' }}
+        env:
+          RELEASE_CANDIDATE_ID: ${{ needs.resolve.outputs.release_candidate_id }}
+          RELEASE_SOURCE_REF: ${{ needs.resolve.outputs.source_ref }}
+          RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
+          RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+          RELEASE_VERSION: ${{ env.TUTTI_DESKTOP_RELEASE_VERSION }}
+          RELEASE_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          node apps/desktop/scripts/build-release-candidate-manifest.mjs \
+            release-assets/SHA256SUMS.txt \
+            release-assets/release-summary.json \
+            release-assets/release-candidate.json
+
       - id: previous-release-tag
         name: Resolve previous GitHub release tag
         env:
@@ -641,6 +651,7 @@ jobs:
 
       - id: stage-release
         name: Stage GitHub release assets
+        if: ${{ needs.resolve.outputs.release_candidate != 'true' }}
         uses: softprops/action-gh-release@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -654,6 +665,41 @@ jobs:
           previous_tag: ${{ steps.previous-release-tag.outputs.tag }}
           files: |
             release-assets/*
+
+      - id: stage-candidate-release
+        name: Create or refresh stable GitHub draft
+        if: ${{ needs.resolve.outputs.release_candidate == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          release_id="$(gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+            --paginate \
+            --jq ".[] | select(.draft and .tag_name == \"${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}\") | .id" | head -1)"
+          if [[ -z "${release_id}" ]]; then
+            gh api --method POST "repos/${GITHUB_REPOSITORY}/releases" \
+              -f tag_name="${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}" \
+              -f target_commitish="${TUTTI_DESKTOP_RELEASE_TARGET}" \
+              -f name="${TUTTI_DESKTOP_RELEASE_TAG}" \
+              -F draft=true \
+              -F prerelease=false \
+              -F generate_release_notes=true > staged-release.json
+          else
+            git tag -f "${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}" "${TUTTI_DESKTOP_RELEASE_TARGET}"
+            git push origin "refs/tags/${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}" --force
+            gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${release_id}" \
+              -f target_commitish="${TUTTI_DESKTOP_RELEASE_TARGET}" \
+              -f name="${TUTTI_DESKTOP_RELEASE_TAG}" \
+              -F draft=true \
+              -F prerelease=false > staged-release.json
+            gh api "repos/${GITHUB_REPOSITORY}/releases/${release_id}/assets?per_page=100" \
+              --jq '.[].id' |
+              while IFS= read -r asset_id; do
+                gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
+              done
+          fi
+          gh release upload "${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}" release-assets/*
+          echo "release_url=$(jq -r .html_url staged-release.json)" >> "$GITHUB_OUTPUT"
 
       - name: Install AWS CLI
         run: |
@@ -698,7 +744,11 @@ jobs:
 
       - name: Upload immutable draft assets to AWS S3
         run: |
-          remote_dir="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/${TUTTI_DESKTOP_RELEASE_TAG}"
+          release_asset_path="${TUTTI_DESKTOP_RELEASE_TAG}"
+          if [[ "${TUTTI_DESKTOP_RELEASE_CANDIDATE}" == "true" ]]; then
+            release_asset_path="candidates/${TUTTI_DESKTOP_RELEASE_CANDIDATE_ID}"
+          fi
+          remote_dir="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/${release_asset_path}"
           aws s3 cp release-assets "${remote_dir}" \
             --recursive \
             --cache-control "public, max-age=31536000, immutable"
@@ -715,7 +765,14 @@ jobs:
         run: |
           export RELEASE_TAG="${TUTTI_DESKTOP_RELEASE_TAG}"
           export RELEASE_ASSET_BASE_URL="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL}"
-          gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json body --jq .body > release-body.md
+          if [[ "${TUTTI_DESKTOP_RELEASE_CANDIDATE}" == "true" ]]; then
+            export RELEASE_ASSET_PATH="candidates/${TUTTI_DESKTOP_RELEASE_CANDIDATE_ID}"
+          fi
+          github_release_tag="${TUTTI_DESKTOP_RELEASE_TAG}"
+          if [[ "${TUTTI_DESKTOP_RELEASE_CANDIDATE}" == "true" ]]; then
+            github_release_tag="${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}"
+          fi
+          gh release view "${github_release_tag}" --json body --jq .body > release-body.md
           node apps/desktop/scripts/upsert-release-summary.mjs \
             release-body.md \
             release-assets/release-summary.json \
@@ -724,12 +781,12 @@ jobs:
             release-body-with-summary.md \
             release-assets \
             updated-release-body.md
-          gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --notes-file updated-release-body.md
+          gh release edit "${github_release_tag}" --notes-file updated-release-body.md
 
   promote:
     name: Promote Release
     needs: [resolve, stage]
-    if: ${{ always() && needs.stage.result == 'success' && needs.resolve.outputs.publication_mode == 'publish' }}
+    if: ${{ always() && needs.stage.result == 'success' && needs.resolve.outputs.release_candidate != 'true' }}
     uses: ./.github/workflows/desktop-release-promote.yml
     with:
       release_tag: ${{ needs.resolve.outputs.release_tag }}
@@ -740,10 +797,10 @@ jobs:
     secrets:
       FEISHU_RELEASE_WEBHOOK_URL: ${{ secrets.FEISHU_RELEASE_WEBHOOK_URL }}
 
-  notify-draft-feishu:
-    name: Notify Draft Release
+  notify-candidate-feishu:
+    name: Notify Release Candidate
     needs: [resolve, stage]
-    if: ${{ always() && needs.stage.result == 'success' && needs.resolve.outputs.publication_mode == 'draft_only' && needs.resolve.outputs.notify_feishu == 'true' }}
+    if: ${{ always() && needs.stage.result == 'success' && needs.resolve.outputs.notify_feishu == 'true' && needs.resolve.outputs.release_candidate == 'true' }}
     runs-on: ubuntu-latest
     env:
       FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_RELEASE_WEBHOOK_URL }}
@@ -753,11 +810,15 @@ jobs:
       TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
       RELEASE_ACTOR: ${{ github.actor }}
       RELEASE_BRANCH: ${{ github.ref_type == 'branch' && github.ref_name || '' }}
-      RELEASE_PUBLICATION_STATUS: draft
+      RELEASE_ASSET_PATH: candidates/${{ needs.resolve.outputs.release_candidate_id }}
+      RELEASE_CANDIDATE_ID: ${{ needs.resolve.outputs.release_candidate_id }}
+      RELEASE_LOOKUP_TAG: ${{ needs.resolve.outputs.release_candidate_tag }}
+      RELEASE_PUBLICATION_STATUS: candidate
       RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
       RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
       RELEASE_URL: ${{ needs.stage.outputs.release_url }}
       RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+      PROMOTION_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/desktop-release-promote.yml
 
     steps:
       - name: Checkout notification script
@@ -779,7 +840,7 @@ jobs:
           name: tutti-desktop-release-summary
           path: release-summary
 
-      - name: Send draft release card
+      - name: Send candidate release card
         if: env.FEISHU_WEBHOOK_URL != ''
         env:
           RELEASE_SUMMARY_PATH: release-summary/release-summary.json
@@ -787,4 +848,4 @@ jobs:
 
       - name: Skip Feishu card
         if: env.FEISHU_WEBHOOK_URL == ''
-        run: echo "FEISHU_RELEASE_WEBHOOK_URL is not configured; skipping draft notification."
+        run: echo "FEISHU_RELEASE_WEBHOOK_URL is not configured; skipping candidate notification."

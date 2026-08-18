@@ -39,6 +39,11 @@ same protocol with its UI System-based default renderer. A missing interaction
 on a legacy `api_key` Connector uses the centralized one-secret compatibility
 adapter; an explicitly invalid interaction fails closed.
 
+When a newly received Authorization View is an `external_link` or
+`device_code`, Connector Market opens its activation or verification URL once.
+The `device_code` View stays visible so the user can copy its code, and the
+dialog action remains available if the browser must be opened again manually.
+
 ## Renderer usage
 
 ```ts
@@ -141,8 +146,10 @@ must be routed through `openConnectorMarketDialog` from
 `@tutti-os/connector-market/services`, which loads the authoritative View before
 opening the package-owned installation, authorization, management, or blocked
 dialog. The bounded quick list places connected connectors first while
-preserving the host order within connected and remaining groups. “More
-connectors” is a separate host navigation callback.
+preserving the host order within connected and remaining groups. The compact
+trigger previews authorized connected connectors independently from the current
+draft selection; selection continues to control only structured prompt content.
+“More connectors” is a separate host navigation callback.
 
 Mount one `ConnectorMarketDialogHost` per renderer window/application
 container, not per composer entry or settings page. Multiple entries share the

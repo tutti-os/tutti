@@ -102,6 +102,13 @@ func (host *ImplementationHost) Disconnect(ctx context.Context, request market.A
 	return host.runtime.DisconnectAuthorization(ctx, request)
 }
 
+func (host *ImplementationHost) Cancel(ctx context.Context, request market.AuthorizationCancelRequest) error {
+	if host == nil || host.runtime == nil {
+		return errors.New("connector authorization provider is unavailable")
+	}
+	return host.runtime.CancelAuthorization(ctx, request)
+}
+
 func (host *ImplementationHost) InspectAuthorization(ctx context.Context, request market.AuthorizationInspectRequest) (market.AuthorizationObservation, error) {
 	if host == nil || host.runtime == nil {
 		return market.AuthorizationObservation{}, errors.New("connector authorization inspector is unavailable")

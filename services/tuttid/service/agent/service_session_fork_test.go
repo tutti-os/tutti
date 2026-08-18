@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -73,8 +74,11 @@ func (s *sessionForkCapabilityStore) ListSessionForkTurnIdentities(
 
 type sessionForkCapabilityRuntime struct {
 	agenthost.SessionForkRuntime
-	source agenthost.ProviderRuntimeSession
-	calls  int
+	source           agenthost.ProviderRuntimeSession
+	calls            int
+	forkabilityCalls int
+	forkable         bool
+	forkabilityErr   error
 }
 
 func (r *sessionForkCapabilityRuntime) ResolveSessionFork(
@@ -89,6 +93,15 @@ func (r *sessionForkCapabilityRuntime) ResolveSessionFork(
 		StateBindingMode: agenthost.SessionForkStateBindingProviderOwned,
 		ThroughTurn:      true,
 	}, nil
+}
+
+func (r *sessionForkCapabilityRuntime) CanForkProviderTurn(
+	_ context.Context,
+	input agenthost.RuntimeProviderTurnForkabilityInput,
+) (bool, error) {
+	r.forkabilityCalls++
+	r.source = input.Source
+	return r.forkable, r.forkabilityErr
 }
 
 func TestWithSessionForkCapabilitiesUsesProviderSessionCapability(t *testing.T) {
@@ -132,6 +145,7 @@ type sessionForkListProjectionStore struct {
 	agenthost.SessionForkStore
 	sourceReads  int
 	lineageReads int
+	source       storesqlite.Session
 }
 
 func (s *sessionForkListProjectionStore) GetSessionForkSource(
@@ -139,7 +153,7 @@ func (s *sessionForkListProjectionStore) GetSessionForkSource(
 	_, _ string,
 ) (storesqlite.Session, bool, error) {
 	s.sourceReads++
-	return storesqlite.Session{}, false, nil
+	return s.source, strings.TrimSpace(s.source.ID) != "", nil
 }
 
 func (s *sessionForkListProjectionStore) GetSessionForkLineage(
@@ -180,6 +194,178 @@ func TestProtocolV2BatchProjectionDoesNotProbeSessionForkCapabilities(t *testing
 	}
 	if store.lineageReads != 1 {
 		t.Fatalf("lineage reads=%d, want 1 canonical read", store.lineageReads)
+	}
+}
+
+func TestProtocolV2BatchProjectionCachesProviderTurnForkability(t *testing.T) {
+	store := &sessionForkListProjectionStore{source: storesqlite.Session{
+		ID: "source-1", WorkspaceID: "workspace-1",
+		Kind: storesqlite.SessionKindRoot, Provider: "codex",
+		ProviderSessionID: "provider-session-1",
+	}}
+	runtime := &sessionForkCapabilityRuntime{forkable: true}
+	turn := storesqlite.Turn{
+		AgentSessionID:          "source-1",
+		TurnID:                  "turn-7",
+		Phase:                   storesqlite.TurnPhaseSettled,
+		RootProviderTurnID:      "provider-turn-7",
+		ProviderTurnBindingJSON: []byte(`{"schemaVersion":1}`),
+	}
+	service := &Service{TurnStore: failingTurnStore{
+		latestTurn: turn,
+		turn:       turn,
+	}}
+	service.SetApplicationHost(agenthost.New(agenthost.Config{
+		SessionForks: store, SessionForkRuntime: runtime,
+	}))
+
+	projected, err := service.withProtocolV2TurnStates(
+		t.Context(),
+		"workspace-1",
+		[]Session{{
+			ID: "source-1", Kind: storesqlite.SessionKindRoot,
+			ActiveTurnID: "turn-7",
+		}},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(projected) != 1 || projected[0].LatestTurn == nil ||
+		projected[0].ActiveTurn == nil {
+		t.Fatalf("projected sessions=%#v, want active and latest Turn", projected)
+	}
+	if !projected[0].LatestTurn.ProviderForkBindingAvailable ||
+		!projected[0].ActiveTurn.ProviderForkBindingAvailable {
+		t.Fatalf("projected session=%#v, want bound active/latest Turn", projected[0])
+	}
+	if runtime.forkabilityCalls != 1 {
+		t.Fatalf(
+			"provider forkability calls=%d, want one request-cached probe",
+			runtime.forkabilityCalls,
+		)
+	}
+	if store.sourceReads != 1 {
+		t.Fatalf("source reads=%d, want one request-cached read", store.sourceReads)
+	}
+}
+
+func TestProtocolV2BatchProjectionForkabilityIsTurnScopedAndFailClosed(t *testing.T) {
+	newService := func(runtime *sessionForkCapabilityRuntime) (*Service, *sessionForkListProjectionStore) {
+		store := &sessionForkListProjectionStore{source: storesqlite.Session{
+			ID: "source-1", WorkspaceID: "workspace-1",
+			Kind: storesqlite.SessionKindRoot, Provider: "codex",
+			ProviderSessionID: "provider-session-1",
+		}}
+		service := &Service{TurnStore: failingTurnStore{
+			latestTurn: storesqlite.Turn{
+				AgentSessionID: "source-1", TurnID: "turn-latest",
+				Phase:                   storesqlite.TurnPhaseSettled,
+				RootProviderTurnID:      "provider-turn-latest",
+				ProviderTurnBindingJSON: []byte(`{"schemaVersion":1}`),
+			},
+			turn: storesqlite.Turn{
+				AgentSessionID: "source-1", TurnID: "turn-active",
+				Phase:                   storesqlite.TurnPhaseSettled,
+				RootProviderTurnID:      "provider-turn-active",
+				ProviderTurnBindingJSON: []byte(`{"schemaVersion":1}`),
+			},
+		}}
+		service.SetApplicationHost(agenthost.New(agenthost.Config{
+			SessionForks: store, SessionForkRuntime: runtime,
+		}))
+		return service, store
+	}
+
+	t.Run("distinct Turns use distinct cache entries", func(t *testing.T) {
+		runtime := &sessionForkCapabilityRuntime{forkable: true}
+		service, store := newService(runtime)
+		projected, err := service.withProtocolV2TurnStates(
+			t.Context(), "workspace-1", []Session{{
+				ID: "source-1", Kind: storesqlite.SessionKindRoot,
+				ActiveTurnID: "turn-active",
+			}},
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if runtime.forkabilityCalls != 2 || store.sourceReads != 2 {
+			t.Fatalf(
+				"forkability calls=%d source reads=%d, want 2/2 for distinct Turns",
+				runtime.forkabilityCalls, store.sourceReads,
+			)
+		}
+		if !projected[0].LatestTurn.ProviderForkBindingAvailable ||
+			!projected[0].ActiveTurn.ProviderForkBindingAvailable {
+			t.Fatalf("projected session=%#v, want both Turns bound", projected[0])
+		}
+	})
+
+	for _, test := range []struct {
+		name string
+		err  error
+	}{
+		{name: "provider rejects binding"},
+		{name: "provider probe fails", err: errors.New("probe unavailable")},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			runtime := &sessionForkCapabilityRuntime{forkabilityErr: test.err}
+			service, _ := newService(runtime)
+			projected, err := service.withProtocolV2TurnStates(
+				t.Context(), "workspace-1", []Session{{
+					ID: "source-1", Kind: storesqlite.SessionKindRoot,
+					ActiveTurnID: "turn-active",
+				}},
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if projected[0].LatestTurn.ProviderForkBindingAvailable ||
+				projected[0].ActiveTurn.ProviderForkBindingAvailable {
+				t.Fatalf("projected session=%#v, want fail-closed Turns", projected[0])
+			}
+		})
+	}
+}
+
+func TestListPageProjectsLatestTurnForkability(t *testing.T) {
+	store := &sessionForkListProjectionStore{source: storesqlite.Session{
+		ID: "source-1", WorkspaceID: "workspace-1",
+		Kind: storesqlite.SessionKindRoot, Provider: "codex",
+		ProviderSessionID: "provider-session-1",
+	}}
+	runtime := &sessionForkCapabilityRuntime{forkable: true}
+	turn := storesqlite.Turn{
+		AgentSessionID: "source-1", TurnID: "turn-7",
+		Phase:                   storesqlite.TurnPhaseSettled,
+		RootProviderTurnID:      "provider-turn-7",
+		ProviderTurnBindingJSON: []byte(`{"schemaVersion":1}`),
+	}
+	service := newUnconfiguredIsolatedAgentService(newFakeRuntime())
+	service.SessionReader = &recordingSessionPageReader{
+		pages: map[string]PersistedSessionListPage{"": {
+			Sessions: []PersistedSession{{
+				ID: "source-1", WorkspaceID: "workspace-1",
+				Kind: storesqlite.SessionKindRoot, Provider: "codex",
+				ProviderSessionID: "provider-session-1",
+				RailSectionKey:    "conversations",
+				Metadata:          storesqlite.SessionMetadata{Visible: true},
+			}},
+		}},
+	}
+	service.TurnStore = failingTurnStore{latestTurn: turn}
+	service.SetApplicationHost(agenthost.New(agenthost.Config{
+		SessionForks: store, SessionForkRuntime: runtime,
+	}))
+
+	page, err := service.ListPage(
+		t.Context(), "workspace-1", ListSessionsInput{Limit: 100},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Sessions) != 1 || page.Sessions[0].LatestTurn == nil ||
+		!page.Sessions[0].LatestTurn.ProviderForkBindingAvailable {
+		t.Fatalf("page=%#v, want bound latest Turn", page)
 	}
 }
 

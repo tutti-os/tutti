@@ -34,11 +34,9 @@ import {
   type DesktopUpdateChannel
 } from "@shared/preferences";
 import {
-  AGENT_QUICK_PROMPT_LIBRARY_FLAG,
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   AGENT_SESSION_RECORDING_FLAG,
   isFeatureEnabled,
-  LAB_AGENT_SESSION_FORK_FLAG,
   LAB_CODEX_SAVER_MODE_FLAG,
   LAB_ENABLED_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -89,17 +87,9 @@ export function WorkspaceDeveloperSettingsSection() {
     pendingFeatureFlags,
     AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
   );
-  const quickPromptLibraryEnabled = isFeatureEnabled(
-    pendingFeatureFlags,
-    AGENT_QUICK_PROMPT_LIBRARY_FLAG
-  );
   const agentSessionRecordingEnabled = isFeatureEnabled(
     pendingFeatureFlags,
     AGENT_SESSION_RECORDING_FLAG
-  );
-  const agentSessionForkEnabled = isFeatureEnabled(
-    pendingFeatureFlags,
-    LAB_AGENT_SESSION_FORK_FLAG
   );
   const codexSaverModeEnabled = isFeatureEnabled(
     pendingFeatureFlags,
@@ -159,22 +149,10 @@ export function WorkspaceDeveloperSettingsSection() {
       [AGENT_REFERENCE_PROVENANCE_FILTER_FLAG]: enabled
     });
   };
-  const onQuickPromptLibraryEnabledChange = (enabled: boolean) => {
-    void settingsService.changeFeatureFlags({
-      ...pendingFeatureFlags,
-      [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: enabled
-    });
-  };
   const onAgentSessionRecordingEnabledChange = (enabled: boolean) => {
     void settingsService.changeFeatureFlags({
       ...pendingFeatureFlags,
       [AGENT_SESSION_RECORDING_FLAG]: enabled
-    });
-  };
-  const onAgentSessionForkEnabledChange = (enabled: boolean) => {
-    void settingsService.changeFeatureFlags({
-      ...pendingFeatureFlags,
-      [LAB_AGENT_SESSION_FORK_FLAG]: enabled
     });
   };
   const onShowAppDeveloperSourcesChange = (show: boolean) => {
@@ -336,40 +314,6 @@ export function WorkspaceDeveloperSettingsSection() {
           checked={agentSessionRecordingEnabled}
           disabled={featureFlagsUpdating}
           onCheckedChange={onAgentSessionRecordingEnabledChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.agentSessionForkLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.agentSessionForkDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.agentSessionForkLabel")}
-          checked={agentSessionForkEnabled}
-          disabled={featureFlagsUpdating}
-          onCheckedChange={onAgentSessionForkEnabledChange}
-        />
-      </div>
-
-      <div className="flex w-full items-center justify-between gap-4 max-[560px]:flex-col max-[560px]:items-stretch">
-        <div className="flex min-w-0 flex-1 flex-col gap-1 max-[560px]:w-full">
-          <strong className="text-[13px] font-semibold text-[var(--text-primary)]">
-            {t("workspace.settings.developer.quickPromptLibraryLabel")}
-          </strong>
-          <p className="m-0 text-[13px] leading-[1.3] text-[var(--text-secondary)]">
-            {t("workspace.settings.developer.quickPromptLibraryDescription")}
-          </p>
-        </div>
-        <Switch
-          aria-label={t("workspace.settings.developer.quickPromptLibraryLabel")}
-          checked={quickPromptLibraryEnabled}
-          disabled={featureFlagsUpdating}
-          onCheckedChange={onQuickPromptLibraryEnabledChange}
         />
       </div>
 

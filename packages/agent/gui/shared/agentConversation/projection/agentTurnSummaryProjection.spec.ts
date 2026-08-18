@@ -11,6 +11,26 @@ import {
 } from "./agentTurnSummaryProjection";
 
 describe("agent turn summary canonical projection", () => {
+  it("canonicalizes Windows drive aliases in changed-file paths", () => {
+    const rows = projectAgentTurnSummaryRowForTurn(
+      turn("turn-windows"),
+      {
+        files: [
+          {
+            path: "/c/Users/demo/project/0817.txt",
+            change: "added"
+          }
+        ]
+      },
+      {
+        workspaceRoot: "C:\\Users\\demo\\project",
+        defaultCwd: "C:\\Users\\demo\\project"
+      }
+    );
+
+    expect(rows[0]?.files[0]?.path).toBe("/C:/Users/demo/project/0817.txt");
+  });
+
   it("projects create, modify, and delete semantics from turn.fileChanges", () => {
     const rows = projectAgentTurnSummaryRowForTurn(
       turn("turn-1"),

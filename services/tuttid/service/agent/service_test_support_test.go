@@ -25,23 +25,26 @@ func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (age
 }
 
 type activityProjectionRepoStub struct {
-	clearResult    agentactivitybiz.ClearSessionsResult
-	settleStaleErr error
-	settlements    []agentactivitybiz.StaleTurnSettlement
-	stateResult    agentactivitybiz.StateReportResult
-	stateInput     agentactivitybiz.SessionStateReport
-	messageInput   agentactivitybiz.SessionMessageReport
-	messageResult  agentactivitybiz.MessageReportResult
-	messagePage    agentactivitybiz.MessagePage
-	messagePageOK  bool
-	messagePageErr error
-	turnResult     agentactivitybiz.Turn
-	turnResults    map[string]agentactivitybiz.Turn
-	turnFound      bool
-	turnErr        error
-	sectionsPage   agentactivitybiz.SessionSectionsPage
-	sectionsOK     bool
-	sectionsErr    error
+	clearResult     agentactivitybiz.ClearSessionsResult
+	settleStaleErr  error
+	settlements     []agentactivitybiz.StaleTurnSettlement
+	stateResult     agentactivitybiz.StateReportResult
+	stateInput      agentactivitybiz.SessionStateReport
+	messageInput    agentactivitybiz.SessionMessageReport
+	messageResult   agentactivitybiz.MessageReportResult
+	messagePage     agentactivitybiz.MessagePage
+	messagePageOK   bool
+	messagePageErr  error
+	turnResult      agentactivitybiz.Turn
+	turnResults     map[string]agentactivitybiz.Turn
+	turnFound       bool
+	turnErr         error
+	sectionsPage    agentactivitybiz.SessionSectionsPage
+	sectionsOK      bool
+	sectionsErr     error
+	submission      agentactivitybiz.TurnSubmission
+	submissionFound bool
+	submissionErr   error
 }
 
 func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (agentactivitybiz.ClearSessionsResult, error) {
@@ -171,6 +174,10 @@ func (r *activityProjectionRepoStub) GetTurn(_ context.Context, _ string, agentS
 		return turn, ok, r.turnErr
 	}
 	return r.turnResult, r.turnFound, r.turnErr
+}
+
+func (r *activityProjectionRepoStub) GetTurnSubmission(context.Context, string, string, string) (agentactivitybiz.TurnSubmission, bool, error) {
+	return r.submission, r.submissionFound, r.submissionErr
 }
 
 func (*activityProjectionRepoStub) GetLatestTurn(context.Context, string, string) (agentactivitybiz.Turn, bool, error) {

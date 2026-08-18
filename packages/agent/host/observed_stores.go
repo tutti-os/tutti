@@ -172,7 +172,10 @@ func (s *observedRuntimeOperationStore) settledRootTurns(ctx context.Context, co
 	}
 	rootSessionID := metadataString(completion.Event.Payload, "rootAgentSessionId")
 	candidates := make([]map[string]any, 0)
-	if targets, ok := completion.Event.Payload["targets"].([]any); ok {
+	// The full targets list also contains Turns settled by a concurrent provider
+	// terminal commit. Only targets transitioned by this completion belong in
+	// this transaction's RootTurnsSettled delta.
+	if targets, ok := completion.Event.Payload["settledTargets"].([]any); ok {
 		for _, raw := range targets {
 			candidate, _ := raw.(map[string]any)
 			if metadataString(candidate, "agentSessionId") == rootSessionID {

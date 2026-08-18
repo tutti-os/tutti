@@ -103,6 +103,115 @@ func TestStandardACPAdapterSessionStateExposesPendingAskUserPrompt(t *testing.T)
 	}
 }
 
+func TestCursorACPAskQuestionUsesNativeBlockingRequest(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-native-question")
+	transport.conn.promptKind = "cursor-ask-question"
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-native-question"
+
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("choose a renderer"), "", "turn-cursor-question", func([]activityshared.Event) {}, nil)
+		execDone <- err
+	}()
+	waitForCondition(t, func() bool {
+		snapshot := adapter.SessionState(session)
+		return snapshot.PendingInteractive != nil && snapshot.PendingInteractive.Kind == "ask-user"
+	})
+
+	snapshot := adapter.SessionState(session)
+	if snapshot.PendingInteractive == nil || snapshot.PendingInteractive.ToolName != "AskUserQuestion" {
+		t.Fatalf("pending interactive = %#v, want canonical AskUserQuestion", snapshot.PendingInteractive)
+	}
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-cursor-question",
+		RequestID:      "cursor-ask-1",
+		Action:         "submit",
+		Payload: map[string]any{
+			"answersByQuestionId": map[string]any{"renderer": "Modern"},
+		},
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	select {
+	case err := <-execDone:
+		if err != nil {
+			t.Fatalf("Exec after native question response: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		transport.conn.mu.Lock()
+		pendingPromptID := string(transport.conn.pendingPermissionCallID)
+		selected := clonePayload(transport.conn.selectedInteractiveResult)
+		transport.conn.mu.Unlock()
+		t.Fatalf("Exec did not finish after native question response; pendingPromptID=%q selected=%#v", pendingPromptID, selected)
+	}
+	outcome := transport.conn.interactiveOutcome()
+	if got := asString(outcome["outcome"]); got != "answered" {
+		t.Fatalf("native question outcome = %#v, want answered", outcome)
+	}
+	answers := payloadArray(outcome["answers"])
+	if len(answers) != 1 || asString(payloadObject(answers[0])["questionId"]) != "renderer" {
+		t.Fatalf("native question answers = %#v, want renderer answer", outcome)
+	}
+	selected, ok := payloadObject(answers[0])["selectedOptionIds"].([]any)
+	if !ok || len(selected) != 1 || asString(selected[0]) != "modern" {
+		t.Fatalf("native question selected ids = %#v, want modern", outcome)
+	}
+}
+
+func TestCursorACPCreatePlanUsesNativeBlockingRequest(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-native-plan")
+	transport.conn.promptKind = "cursor-create-plan"
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-native-plan"
+
+	execDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("make a plan"), "", "turn-cursor-plan", func([]activityshared.Event) {}, nil)
+		execDone <- err
+	}()
+	waitForCondition(t, func() bool {
+		snapshot := adapter.SessionState(session)
+		return snapshot.PendingInteractive != nil && snapshot.PendingInteractive.Kind == "exit-plan"
+	})
+
+	snapshot := adapter.SessionState(session)
+	if snapshot.PendingInteractive == nil || snapshot.PendingInteractive.ToolName != "CreatePlan" {
+		t.Fatalf("pending interactive = %#v, want native CreatePlan", snapshot.PendingInteractive)
+	}
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-cursor-plan",
+		RequestID:      "cursor-plan-1",
+		Action:         "allow",
+		OptionID:       "accept",
+	}); err != nil {
+		t.Fatalf("SubmitInteractive: %v", err)
+	}
+	if err := <-execDone; err != nil {
+		t.Fatalf("Exec after native plan response: %v", err)
+	}
+	outcome := transport.conn.interactiveOutcome()
+	if got := asString(outcome["outcome"]); got != "accepted" {
+		t.Fatalf("native plan outcome = %#v, want accepted", outcome)
+	}
+}
+
 // Kimi Code sends session/request_permission before the matching tool_call
 // update. The first frame identifies AskUserQuestion and its selectable
 // outcomes; the next frame carries the question body. AgentGUI reads canonical

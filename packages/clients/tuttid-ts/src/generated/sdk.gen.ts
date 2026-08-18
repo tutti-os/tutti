@@ -5575,7 +5575,7 @@ export const uninstallConnectorMarketConnector = <
   });
 
 /**
- * Start connector authorization
+ * Start or replace connector authorization
  */
 export const startConnectorMarketAuthorization = <
   ThrowOnError extends boolean = false

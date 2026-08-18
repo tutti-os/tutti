@@ -1911,6 +1911,53 @@ describe("buildWorkspaceAgentActivityListViewModel", () => {
     ]);
   });
 
+  it("treats Git Bash drive paths as Windows workspace paths", () => {
+    const gitBashPath = "/c/Users/demo/project/src/report.md";
+    const snapshot = {
+      workspaceId: "workspace-1",
+      presences: [],
+      sessions: [
+        {
+          agentSessionId: "session-23",
+          cwd: "C:\\Users\\demo\\project",
+          provider: "codex",
+          status: "completed",
+          title: "Write a Git Bash path",
+          workspaceId: "workspace-1"
+        }
+      ],
+      sessionMessagesById: {
+        "session-23": [
+          {
+            agentSessionId: "session-23",
+            kind: "tool_call",
+            messageId: "message-git-bash-file",
+            payload: {
+              toolName: "Write",
+              input: { file_path: gitBashPath }
+            },
+            role: "assistant",
+            status: "completed",
+            turnId: "turn-git-bash-file",
+            occurredAtUnixMs: 1,
+            version: 1
+          }
+        ]
+      }
+    };
+
+    expect(
+      collectWorkspaceAgentGeneratedFiles(canonicalSource(snapshot), {
+        workspaceRoot: "C:\\Users\\demo\\project"
+      })
+    ).toEqual([
+      {
+        path: "C:/Users/demo/project/src/report.md",
+        label: "report.md"
+      }
+    ]);
+  });
+
   it("collects agent-generated files from lightweight change maps", () => {
     const snapshot = {
       workspaceId: "workspace-1",

@@ -183,7 +183,7 @@ paths:
     post:
       operationId: startConnectorMarketAuthorization
       tags: [connector-market]
-      summary: Start connector authorization
+      summary: Start or replace connector authorization
       requestBody:
         required: true
         content:
@@ -378,6 +378,14 @@ components:
           type: integer
           format: int64
           minimum: 0
+        displayNameZh:
+          type: string
+          minLength: 1
+          description: Server-managed Simplified Chinese category name.
+        displayNameEn:
+          type: string
+          minLength: 1
+          description: Server-managed English category name.
     ConnectorMarketCategoriesResponse:
       type: object
       additionalProperties: false
@@ -731,11 +739,20 @@ components:
           type: integer
           format: int64
           minimum: 0
+        replacementPolicy:
+          $ref: "#/components/schemas/ConnectorMarketAuthorizationReplacementPolicy"
         secret:
           type: string
           minLength: 1
           maxLength: 16384
           writeOnly: true
+    ConnectorMarketAuthorizationReplacementPolicy:
+      type: string
+      description: >-
+        When set to replace_active, the Host fences and terminates a different
+        unresolved authorization attempt before starting this request. Omission
+        preserves the legacy resume-or-conflict behavior.
+      enum: [replace_active]
     ConnectorMarketMutationResponse:
       type: object
       additionalProperties: false

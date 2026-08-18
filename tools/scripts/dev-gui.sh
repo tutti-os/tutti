@@ -563,6 +563,21 @@ resolve_tuttid_binary_name() {
   esac
 }
 
+resolve_node_process_path() {
+  local candidate_path="$1"
+
+  if [[ "$(node -p 'process.platform')" != "win32" ]]; then
+    printf '%s\n' "${candidate_path}"
+    return
+  fi
+
+  if ! command_exists cygpath; then
+    fail "cygpath is required to launch Windows processes from the managed POSIX shell."
+  fi
+
+  cygpath -w -- "${candidate_path}"
+}
+
 ensure_workspace_dependencies() {
   local installed_lockfile="${ROOT_DIR}/node_modules/.pnpm/lock.yaml"
   local workspace_lockfile="${ROOT_DIR}/pnpm-lock.yaml"
@@ -621,6 +636,7 @@ install_dev_cli() {
 
 start_desktop_dev() {
   local tuttid_bin_path="$1"
+  local node_tuttid_bin_path
   local status
   # why-did-you-render instruments every React component and hook. On a real
   # workspace that work can block the renderer for seconds while AgentGUI
@@ -629,6 +645,7 @@ start_desktop_dev() {
   # normal development path has production-like scheduling characteristics.
   local why_did_you_render="${VITE_TUTTI_WHY_DID_YOU_RENDER:-0}"
 
+  node_tuttid_bin_path="$(resolve_node_process_path "${tuttid_bin_path}")"
   log "starting desktop dev with prebuilt tuttid"
   if [[ "${why_did_you_render}" == "1" ]]; then
     log "why-did-you-render diagnostics enabled"
@@ -637,7 +654,7 @@ start_desktop_dev() {
   DEV_GUI_DESKTOP_STARTED=1
   (
     cd "${ROOT_DIR}"
-    TUTTID_BIN="${tuttid_bin_path}" \
+    TUTTID_BIN="${node_tuttid_bin_path}" \
       TUTTID_LOG_OUTPUT="${TUTTID_LOG_OUTPUT:-tee}" \
       VITE_TUTTI_WHY_DID_YOU_RENDER="${why_did_you_render}" \
       pnpm dev:desktop < /dev/null

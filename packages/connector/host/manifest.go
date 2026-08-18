@@ -18,6 +18,7 @@ const (
 	ImplementationKindManagedStdio           = "managed_stdio"
 	ImplementationKindRemoteStreamableHTTP   = "remote_streamable_http"
 	CredentialBrokerProtocolV1               = "tutti.connector.credentials.v1"
+	CLIArtifactLaunchKindNative              = "artifact_native"
 	CredentialBrokerPresentationEmbeddedPage = "embedded_page"
 	CredentialBrokerPresentationQRCode       = "qr_code"
 	AuthorizationInteractionModeManaged      = "managed"
@@ -300,6 +301,16 @@ func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind 
 		if err := validateCLIReadinessProbe(managed.CLI.ReadinessProbe); err != nil {
 			return err
 		}
+		if managed.CLI.Launch != nil {
+			if managed.CLI.Install != nil || len(managed.CLI.Commands) != 0 {
+				return invalidManifest("artifact-native CLI launch cannot declare install or command mappings", nil)
+			}
+			if strings.TrimSpace(managed.CLI.Command) == "" || managed.CLI.Launch.Kind != CLIArtifactLaunchKindNative ||
+				!artifactSHA256Pattern.MatchString(managed.CLI.Launch.SHA256) || managed.CLI.Launch.SizeBytes <= 0 ||
+				managed.CLI.Launch.SizeBytes > 64*1024*1024 {
+				return invalidManifest("artifact-native CLI launch requires an explicit command and bounded executable identity", nil)
+			}
+		}
 		if managed.CLI.Install != nil {
 			if err := validateCLIInstallation(*managed.CLI.Install, managed.Runtime, managed.CLI.Entrypoint); err != nil {
 				return err
@@ -495,11 +506,22 @@ func validateUniquePermissions(values []string) error {
 
 func safeRelativeEntrypoint(value string) bool {
 	value = strings.TrimSpace(value)
-	if value == "" || filepath.IsAbs(value) || strings.Contains(value, "\\") {
+	if value == "" || filepath.IsAbs(value) || strings.ContainsAny(value, "\\:") {
 		return false
 	}
 	cleaned := filepath.ToSlash(filepath.Clean(value))
-	return cleaned == value && cleaned != "." && cleaned != ".." && !strings.HasPrefix(cleaned, "../")
+	if cleaned != value || cleaned == "." || cleaned == ".." || strings.HasPrefix(cleaned, "../") {
+		return false
+	}
+	for _, segment := range strings.Split(cleaned, "/") {
+		trimmed := strings.TrimRight(segment, ". ")
+		base := strings.ToLower(strings.SplitN(trimmed, ".", 2)[0])
+		if trimmed != segment || base == "con" || base == "prn" || base == "aux" || base == "nul" ||
+			(len(base) == 4 && (strings.HasPrefix(base, "com") || strings.HasPrefix(base, "lpt")) && base[3] >= '1' && base[3] <= '9') {
+			return false
+		}
+	}
+	return true
 }
 
 func invalidManifest(message string, cause error) error {

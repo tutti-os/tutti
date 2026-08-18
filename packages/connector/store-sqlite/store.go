@@ -425,8 +425,8 @@ func (store *Store) ResolveAuthorizationSession(
 	operationID string,
 	resolution market.AuthorizationSessionResolution,
 ) error {
-	if !terminalAuthorizationSessionResolution(resolution) {
-		return errors.New("terminal authorization session resolution is required")
+	if !validAuthorizationSessionResolutionTransition(resolution) {
+		return errors.New("valid authorization session resolution is required")
 	}
 	tx, err := store.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -448,9 +448,10 @@ func (store *Store) ResolveAuthorizationSession(
 	return tx.Commit()
 }
 
-func terminalAuthorizationSessionResolution(resolution market.AuthorizationSessionResolution) bool {
+func validAuthorizationSessionResolutionTransition(resolution market.AuthorizationSessionResolution) bool {
 	switch resolution {
-	case market.AuthorizationSessionResolutionProviderConnected,
+	case market.AuthorizationSessionResolutionCanceling,
+		market.AuthorizationSessionResolutionProviderConnected,
 		market.AuthorizationSessionResolutionProviderFailed,
 		market.AuthorizationSessionResolutionAccountStateConverged,
 		market.AuthorizationSessionResolutionSuperseded:

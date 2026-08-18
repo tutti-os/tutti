@@ -12,6 +12,7 @@ export interface ComposerConnectorsMenuLabels {
   connectorEmpty: string;
   connectorLoading: string;
   connectorMore: string;
+  connectorSelected: string;
 }
 
 interface Props {
@@ -22,6 +23,8 @@ interface Props {
   onOpenChange?: (open: boolean) => void;
   onOpenConnector: (connectorKey: string) => void;
   onOpenConnectors: () => void;
+  onSelectConnector?: (connectorKey: string, selected: boolean) => void;
+  selectedConnectorKeys?: readonly string[];
 }
 
 /** Maps AgentGUI composer capability options into Connector Market semantics. */
@@ -32,12 +35,14 @@ export function ComposerConnectorsMenu({
   loading = false,
   onOpenChange,
   onOpenConnector,
-  onOpenConnectors
+  onOpenConnectors,
+  onSelectConnector,
+  selectedConnectorKeys = []
 }: Props): React.JSX.Element {
   return (
     <ConnectorComposerMenu
       disabled={disabled}
-      items={projectConnectorComposerItems(connectors)}
+      items={projectConnectorComposerItems(connectors, selectedConnectorKeys)}
       labels={{
         authorize: labels.connectorAuthorize,
         connect: labels.connectorConnect,
@@ -45,20 +50,28 @@ export function ComposerConnectorsMenu({
         connectors: labels.connectors,
         empty: labels.connectorEmpty,
         loading: labels.connectorLoading,
-        more: labels.connectorMore
+        more: labels.connectorMore,
+        selected: labels.connectorSelected
       }}
       loading={loading}
       onOpenChange={onOpenChange}
       onOpenConnector={onOpenConnector}
       onOpenMarket={onOpenConnectors}
+      onSelectConnector={onSelectConnector}
     />
   );
 }
 
 export function projectConnectorComposerItems(
-  options: readonly AgentGUIProviderSkillOption[]
+  options: readonly AgentGUIProviderSkillOption[],
+  selectedConnectorKeys: readonly string[] = []
 ): ConnectorComposerItem[] {
   const items: ConnectorComposerItem[] = [];
+  const selectedKeys = new Set(
+    selectedConnectorKeys
+      .map((connectorKey) => connectorKey.trim())
+      .filter(Boolean)
+  );
   for (const option of options) {
     if (option.sourceKind !== "connector" && option.kind !== "connector") {
       continue;
@@ -71,6 +84,7 @@ export function projectConnectorComposerItems(
       connectorKey,
       iconUrl: option.iconUrl,
       name: option.name,
+      selected: selectedKeys.has(connectorKey),
       status:
         option.status === "available"
           ? "connected"

@@ -16,19 +16,21 @@ const (
 	gitTerminalPromptEnv = "GIT_TERMINAL_PROMPT=0"
 	// Workspace snapshots are read-only; avoid waiting on optional Git index
 	// locks held by another desktop/runtime process.
-	gitOptionalLocksEnv   = "GIT_OPTIONAL_LOCKS=0"
-	acpMethodInitialize   = "initialize"
-	acpMethodAuthenticate = "authenticate"
-	acpMethodNewSession   = "session/new"
-	acpMethodLoadSession  = "session/load"
-	acpMethodResume       = "session/resume"
-	acpMethodPrompt       = "session/prompt"
-	acpMethodCancel       = "session/cancel"
-	acpMethodUpdate       = "session/update"
-	acpMethodPermission   = "session/request_permission"
-	acpMethodSetMode      = "session/set_mode"
-	acpProtocolVersion    = 1
-	acpStartCallTimeout   = 30 * time.Second
+	gitOptionalLocksEnv        = "GIT_OPTIONAL_LOCKS=0"
+	acpMethodInitialize        = "initialize"
+	acpMethodAuthenticate      = "authenticate"
+	acpMethodNewSession        = "session/new"
+	acpMethodLoadSession       = "session/load"
+	acpMethodResume            = "session/resume"
+	acpMethodPrompt            = "session/prompt"
+	acpMethodCancel            = "session/cancel"
+	acpMethodUpdate            = "session/update"
+	acpMethodPermission        = "session/request_permission"
+	acpMethodSetMode           = "session/set_mode"
+	cursorACPMethodAskQuestion = "cursor/ask_question"
+	cursorACPMethodCreatePlan  = "cursor/create_plan"
+	acpProtocolVersion         = 1
+	acpStartCallTimeout        = 30 * time.Second
 )
 
 var acpPermissionModeTimeout = 10 * time.Second

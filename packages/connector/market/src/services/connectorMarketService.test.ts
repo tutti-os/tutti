@@ -3,6 +3,7 @@ import test from "node:test";
 
 import type {
   Connector,
+  ConnectorAuthorizationInput,
   ConnectorAuthorizationResult,
   ConnectorMarketBackend,
   ConnectorMarketChangedEvent,
@@ -111,10 +112,12 @@ test("loads server categories and appends cursor pages", async () => {
     backend: backendWith({
       listCategories: async () => [
         {
-          categoryId: "development",
+          categoryId: "developer-tools",
           kind: "category",
-          sortOrder: 20,
-          itemCount: 2
+          sortOrder: 40,
+          itemCount: 2,
+          displayNameZh: "开发者工具",
+          displayNameEn: "Developer Tools"
         }
       ],
       listCatalogPage: async ({ installation, pageToken }) => {
@@ -125,9 +128,13 @@ test("loads server categories and appends cursor pages", async () => {
           pageToken ? 2 : 1
         );
         return {
-          sectionId: "development",
+          sectionId: "developer-tools",
           items: [
-            { categoryId: "development", featured: false, connector: item }
+            {
+              categoryId: "developer-tools",
+              featured: false,
+              connector: item
+            }
           ],
           ...(pageToken ? {} : { nextPageToken: "page-2" }),
           revision: pageToken ? 2 : 1
@@ -140,9 +147,13 @@ test("loads server categories and appends cursor pages", async () => {
   assert.deepEqual(service.dataStore.catalogSections[0]?.connectorKeys, [
     "github"
   ]);
+  assert.equal(
+    service.dataStore.catalogSections[0]?.displayNameEn,
+    "Developer Tools"
+  );
   assert.equal(service.dataStore.catalogSections[0]?.nextPageToken, "page-2");
 
-  await service.loadMore("development");
+  await service.loadMore("developer-tools");
   assert.deepEqual(service.dataStore.catalogSections[0]?.connectorKeys, [
     "github",
     "linear"
@@ -151,6 +162,48 @@ test("loads server categories and appends cursor pages", async () => {
   assert.deepEqual(pageTokens, [undefined, "page-2"]);
   assert.deepEqual(installationFilters, ["not_installed", "not_installed"]);
   assert.equal(service.dataStore.revision, 2);
+  service.dispose();
+});
+
+test("orders opaque dynamic categories by server sort order", async () => {
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      listCategories: async () => [
+        {
+          categoryId: "business-operations",
+          kind: "category",
+          sortOrder: 60,
+          itemCount: 0,
+          displayNameZh: "商业与运营",
+          displayNameEn: "Business & Operations"
+        },
+        {
+          categoryId: "communication",
+          kind: "category",
+          sortOrder: 30,
+          itemCount: 0,
+          displayNameZh: "沟通协作",
+          displayNameEn: "Communication"
+        }
+      ]
+    })
+  });
+
+  await service.ensureLoaded();
+
+  assert.deepEqual(
+    service.dataStore.catalogSections.map((section) => ({
+      categoryId: section.categoryId,
+      displayNameEn: section.displayNameEn
+    })),
+    [
+      { categoryId: "communication", displayNameEn: "Communication" },
+      {
+        categoryId: "business-operations",
+        displayNameEn: "Business & Operations"
+      }
+    ]
+  );
   service.dispose();
 });
 
@@ -1107,21 +1160,29 @@ test("forwards a user-provided secret only to the authorization mutation", async
   service.dispose();
 });
 
-test("shares one authorization command across concurrent callers", async () => {
-  const authorization =
+test("a new authorization command supersedes the previous caller", async () => {
+  const firstAuthorization =
+    deferred<
+      Awaited<ReturnType<ConnectorMarketBackend["beginAuthorization"]>>
+    >();
+  const secondAuthorization =
     deferred<
       Awaited<ReturnType<ConnectorMarketBackend["beginAuthorization"]>>
     >();
   let authorizationAttempts = 0;
   let requestIds = 0;
+  const requests: ConnectorAuthorizationInput[] = [];
   const initial = connector("notion", 1);
   initial.authorization = { state: "disconnected" };
   const service = new ConnectorMarketService({
     backend: backendWith({
       getSnapshot: async () => snapshot(1, [initial]),
-      beginAuthorization: async () => {
+      beginAuthorization: async (request) => {
+        requests.push(request);
         authorizationAttempts += 1;
-        return authorization.promise;
+        return authorizationAttempts === 1
+          ? firstAuthorization.promise
+          : secondAuthorization.promise;
       }
     }),
     createRequestId: () => `authorization-${++requestIds}`
@@ -1132,7 +1193,7 @@ test("shares one authorization command across concurrent callers", async () => {
   const second = service.beginAuthorization("notion");
   const connected = connector("notion", 2);
   connected.authorization = { state: "connected" };
-  authorization.resolve({
+  secondAuthorization.resolve({
     connector: connected,
     operation: {
       ...operation("start_authorization", 2),
@@ -1141,10 +1202,43 @@ test("shares one authorization command across concurrent callers", async () => {
     },
     revision: 2
   });
-  await Promise.all([first, second]);
+  await second;
+  firstAuthorization.resolve({
+    connector: connected,
+    operation: {
+      ...operation("start_authorization", 2),
+      connectorKey: "notion",
+      state: "completed"
+    },
+    revision: 2
+  });
+  await assert.rejects(first, (error: unknown) =>
+    Boolean(
+      error &&
+      typeof error === "object" &&
+      "code" in error &&
+      error.code === "connector_authorization_canceled"
+    )
+  );
 
-  assert.equal(authorizationAttempts, 1);
-  assert.equal(requestIds, 1);
+  assert.equal(authorizationAttempts, 2);
+  assert.equal(requestIds, 2);
+  assert.deepEqual(
+    requests.map(({ clientRequestId, replacementPolicy }) => ({
+      clientRequestId,
+      replacementPolicy
+    })),
+    [
+      {
+        clientRequestId: "authorization-1",
+        replacementPolicy: "replace_active"
+      },
+      {
+        clientRequestId: "authorization-2",
+        replacementPolicy: "replace_active"
+      }
+    ]
+  );
   assert.deepEqual(service.dataStore.authorizingConnectorKeys, {});
   service.dispose();
 });
@@ -1205,12 +1299,14 @@ test("converges a busy authorization continuation from a connected snapshot", as
     {
       connectorKey: "notion",
       clientRequestId: "one-notion-authorization",
+      replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 1
     },
     {
       connectorKey: "notion",
       clientRequestId: "one-notion-authorization",
+      replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 2
     }
@@ -1280,6 +1376,7 @@ test("recovers one stale authorization revision without dropping the secret", as
     {
       connectorKey: "token-mail",
       clientRequestId: "one-secret-request",
+      replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 1,
       secret: "secret-value"
@@ -1287,6 +1384,7 @@ test("recovers one stale authorization revision without dropping the secret", as
     {
       connectorKey: "token-mail",
       clientRequestId: "one-secret-request",
+      replacementPolicy: "replace_active",
       expectedRevision: 4,
       expectedConnectorRevision: 4,
       secret: "secret-value"
@@ -1381,18 +1479,21 @@ test("continues one authorization session, opens each URL once, and clears loadi
     {
       connectorKey: "lark-cli",
       clientRequestId: "one-authorization-request",
+      replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 1
     },
     {
       connectorKey: "lark-cli",
       clientRequestId: "one-authorization-request",
+      replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 2
     },
     {
       connectorKey: "lark-cli",
       clientRequestId: "one-authorization-request",
+      replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 3
     }
@@ -1586,6 +1687,74 @@ test("keeps QR authorization in app state without opening its payload", async ()
   continueAuthorization.resolve();
   await authorization;
   assert.deepEqual(service.dataStore.authorizationViewsByConnectorKey, {});
+  service.dispose();
+});
+
+test("opens a device-code verification page once while keeping the code visible", async () => {
+  const continueAuthorization = deferred<void>();
+  const openedUrls: string[] = [];
+  let step = 0;
+  const initial = connector("github-cli", 1);
+  initial.authorization = { state: "disconnected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      beginAuthorization: async () => {
+        step += 1;
+        if (step > 1) {
+          await continueAuthorization.promise;
+        }
+        const next = connector("github-cli", step + 1);
+        next.authorization = { state: step === 1 ? "pending" : "connected" };
+        return {
+          connector: next,
+          operation: {
+            ...operation("start_authorization", step + 1),
+            connectorKey: "github-cli",
+            state: "completed" as const
+          },
+          ...(step === 1
+            ? {
+                authorizationView: {
+                  protocol: "tutti.connector.authorization.view.v1" as const,
+                  viewId: "github-device-code-1",
+                  view: {
+                    type: "device_code" as const,
+                    verificationUrl: "https://github.com/login/device",
+                    userCode: "ABCD-EFGH"
+                  }
+                }
+              }
+            : {}),
+          revision: step + 1
+        };
+      }
+    }),
+    openAuthorizationUrl: async (url) => {
+      openedUrls.push(url);
+    }
+  });
+  await service.ensureLoaded();
+
+  const authorization = service.beginAuthorization("github-cli");
+  await waitFor(
+    () =>
+      service.dataStore.authorizationViewsByConnectorKey["github-cli"]?.view
+        .type === "device_code"
+  );
+  assert.deepEqual(openedUrls, ["https://github.com/login/device"]);
+  assert.equal(
+    service.dataStore.authorizationViewsByConnectorKey["github-cli"]?.view
+      .type === "device_code"
+      ? service.dataStore.authorizationViewsByConnectorKey["github-cli"]?.view
+          .userCode
+      : undefined,
+    "ABCD-EFGH"
+  );
+
+  continueAuthorization.resolve();
+  await authorization;
+  assert.deepEqual(openedUrls, ["https://github.com/login/device"]);
   service.dispose();
 });
 

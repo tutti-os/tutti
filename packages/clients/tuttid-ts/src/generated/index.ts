@@ -548,6 +548,7 @@ export type {
   ConnectorMarketAgentRouting,
   ConnectorMarketArtifact,
   ConnectorMarketAuthorization,
+  ConnectorMarketAuthorizationReplacementPolicy,
   ConnectorMarketAuthorizationRequest,
   ConnectorMarketAuthorizationRequestWritable,
   ConnectorMarketAuthorizationResponse,

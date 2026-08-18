@@ -10,6 +10,8 @@ use ./packages/clients/device-authority-go
 
 use ./packages/clients/connector-controlplane
 
+use ./packages/clients/market-go
+
 use ./packages/analytics/reporter-go
 
 use ./packages/device-link

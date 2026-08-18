@@ -394,9 +394,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
     if (this.disposed || !this.canRequest()) {
       return Promise.resolve();
     }
-    const existing = this.authorizationInFlight.get(connectorKey);
-    if (existing) {
-      return existing;
+    const previousAttempt = this.authorizationAttempts.get(connectorKey);
+    if (previousAttempt) {
+      previousAttempt.canceled = true;
     }
     let authorization!: Promise<void>;
     authorization = this.runAuthorization(connectorKey, secret).finally(() => {
@@ -410,6 +410,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
 
   async cancelAuthorization(connectorKey: string): Promise<void> {
     const attempt = this.authorizationAttempts.get(connectorKey);
+    const mutationToken = this.connectorMutations.get(connectorKey);
     if (attempt) {
       attempt.canceled = true;
     }
@@ -420,6 +421,13 @@ export class ConnectorMarketService implements IConnectorMarketService {
     } finally {
       if (this.authorizationAttempts.get(connectorKey) === attempt) {
         this.authorizationAttempts.delete(connectorKey);
+      }
+      if (
+        mutationToken &&
+        this.connectorMutations.get(connectorKey) === mutationToken
+      ) {
+        this.connectorMutations.delete(connectorKey);
+        delete this.dataStore.authorizingConnectorKeys[connectorKey];
       }
     }
   }
@@ -432,7 +440,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
     connectorKey: string,
     secret?: string
   ): Promise<void> {
-    const token = this.acquireConnectorMutation(connectorKey);
+    const token = this.authorizationAttempts.has(connectorKey)
+      ? this.replaceConnectorMutation(connectorKey)
+      : this.acquireConnectorMutation(connectorKey);
     this.dataStore.authorizingConnectorKeys[connectorKey] = true;
     delete this.dataStore.pendingAuthorizationsByConnectorKey[connectorKey];
     delete this.dataStore.authorizationViewsByConnectorKey[connectorKey];
@@ -446,6 +456,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
     const request = {
       connectorKey,
       clientRequestId: attempt.requestId,
+      replacementPolicy: "replace_active" as const,
       ...(secret ? { secret } : {})
     };
     let expectedRevision = this.dataStore.revision;
@@ -485,6 +496,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
             recoveredRevisionConflict || canRecoverRevision;
           const next = await this.dependencies.backend.getSnapshot();
           if (!this.isCurrentMutation(connectorKey, token, generation)) {
+            if (attempt.canceled) {
+              throw new ConnectorAuthorizationCanceledError(connectorKey);
+            }
             return;
           }
           applyConnectorMarketSnapshot(this.dataStore, next);
@@ -500,6 +514,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
           continue;
         }
         if (!this.isCurrentMutation(connectorKey, token, generation)) {
+          if (attempt.canceled) {
+            throw new ConnectorAuthorizationCanceledError(connectorKey);
+          }
           return;
         }
         if (attempt.canceled) {
@@ -528,8 +545,14 @@ export class ConnectorMarketService implements IConnectorMarketService {
           seenAuthorizationViewIds.add(authorizationView.viewId);
           this.dataStore.authorizationViewsByConnectorKey[connectorKey] =
             authorizationView;
-          if (authorizationView.view.type === "external_link") {
-            await this.openAuthorizationUrl(authorizationView.view.url);
+          const activationUrl =
+            authorizationView.view.type === "external_link"
+              ? authorizationView.view.url
+              : authorizationView.view.type === "device_code"
+                ? authorizationView.view.verificationUrl
+                : null;
+          if (activationUrl) {
+            await this.openAuthorizationUrl(activationUrl);
           }
         }
         if (this.authorizationState(connectorKey) === "connected") {
@@ -551,6 +574,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
           );
           return;
         }
+      }
+      if (attempt.canceled) {
+        throw new ConnectorAuthorizationCanceledError(connectorKey);
       }
     } catch (error) {
       if (this.isCurrentMutation(connectorKey, token, generation)) {
@@ -1232,12 +1258,21 @@ export class ConnectorMarketService implements IConnectorMarketService {
       }
       await this.waitForAuthorizationContinuation();
     }
+    if (attempt.canceled) {
+      throw new ConnectorAuthorizationCanceledError(connectorKey);
+    }
   }
 
   private acquireConnectorMutation(connectorKey: string): symbol {
     if (this.connectorMutations.has(connectorKey)) {
       throw new ConnectorMarketBusyError(connectorKey);
     }
+    const token = Symbol(connectorKey);
+    this.connectorMutations.set(connectorKey, token);
+    return token;
+  }
+
+  private replaceConnectorMutation(connectorKey: string): symbol {
     const token = Symbol(connectorKey);
     this.connectorMutations.set(connectorKey, token);
     return token;

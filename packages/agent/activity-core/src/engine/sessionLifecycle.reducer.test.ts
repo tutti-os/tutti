@@ -137,6 +137,125 @@ test("lightweight session snapshots cannot downgrade projected lifecycle capabil
   );
 });
 
+test("lightweight session snapshots cannot downgrade a bound provider Turn", () => {
+  const boundTurn: AgentActivityTurn = {
+    ...activeTurn(2),
+    outcome: "completed",
+    phase: "settled",
+    providerForkBindingAvailable: true,
+    providerForkBindingState: "bound"
+  };
+  const authoritative = {
+    ...session(boundTurn, 2),
+    lifecycleCapabilitiesProjected: true
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [authoritative]
+  }).state;
+
+  const lightweight = {
+    ...authoritative,
+    lifecycleCapabilitiesProjected: undefined,
+    latestTurn: {
+      ...boundTurn,
+      providerForkBindingAvailable: false,
+      providerForkBindingState: "recovery_required" as const
+    }
+  };
+  state = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [lightweight]
+  }).state;
+
+  assert.deepEqual(
+    state.turnsById[canonicalTurnKey("session-1", "turn-1")],
+    boundTurn
+  );
+});
+
+test("full session snapshots may authoritatively downgrade a provider Turn binding", () => {
+  const boundTurn: AgentActivityTurn = {
+    ...activeTurn(2),
+    outcome: "completed",
+    phase: "settled",
+    providerForkBindingAvailable: true,
+    providerForkBindingState: "bound"
+  };
+  const authoritative = {
+    ...session(boundTurn, 2),
+    lifecycleCapabilitiesProjected: true
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [authoritative]
+  }).state;
+
+  state = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        ...authoritative,
+        latestTurn: {
+          ...boundTurn,
+          providerForkBindingAvailable: false,
+          providerForkBindingState: "recovery_required"
+        }
+      }
+    ]
+  }).state;
+
+  const turn = state.turnsById[canonicalTurnKey("session-1", "turn-1")];
+  assert.equal(turn?.providerForkBindingAvailable, false);
+  assert.equal(turn?.providerForkBindingState, "recovery_required");
+});
+
+test("session snapshots preserve monotonic message and TuttiMode revisions", () => {
+  const activation = {
+    agentSessionId: "session-1",
+    createdAtUnixMs: 1,
+    currentRevision: {
+      activationId: "activation-1",
+      createdAtUnixMs: 2,
+      orchestrationIntensity: 50,
+      revision: 2,
+      source: "slash_command" as const,
+      status: "active" as const
+    },
+    id: "activation-1",
+    status: "active" as const,
+    updatedAtUnixMs: 2,
+    workspaceId: "workspace-1"
+  };
+  const current = {
+    ...session(null, 2),
+    messageVersion: 5,
+    tuttiModeActivation: activation
+  };
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [current]
+  }).state;
+
+  state = reduce(state, {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        ...current,
+        messageVersion: 4,
+        tuttiModeActivation: {
+          ...activation,
+          currentRevision: { ...activation.currentRevision, revision: 1 }
+        }
+      }
+    ]
+  }).state;
+
+  const projected = state.sessionsById["session-1"];
+  assert.equal(projected?.messageVersion, 5);
+  assert.equal(projected?.tuttiModeActivation?.currentRevision.revision, 2);
+});
+
 test("equal-version sessions still merge changed pending interactions", () => {
   const source = session(activeTurn(2), 2);
   source.latestTurnInteractions = [interaction("pending", 2)];

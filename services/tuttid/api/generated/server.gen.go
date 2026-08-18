@@ -116,7 +116,7 @@ type ServerInterface interface {
 	// Disconnect connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:disconnect)
 	DisconnectConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
-	// Start connector authorization
+	// Start or replace connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:start)
 	StartConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
 	// Install or update one connector
@@ -39616,7 +39616,7 @@ type StrictServerInterface interface {
 	// Disconnect connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:disconnect)
 	DisconnectConnectorMarketAuthorization(ctx context.Context, request DisconnectConnectorMarketAuthorizationRequestObject) (DisconnectConnectorMarketAuthorizationResponseObject, error)
-	// Start connector authorization
+	// Start or replace connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:start)
 	StartConnectorMarketAuthorization(ctx context.Context, request StartConnectorMarketAuthorizationRequestObject) (StartConnectorMarketAuthorizationResponseObject, error)
 	// Install or update one connector

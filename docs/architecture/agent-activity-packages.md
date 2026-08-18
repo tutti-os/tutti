@@ -604,8 +604,8 @@ for a remote pasted-text asset carries only its safe preview mention; short-
 lived URLs and object-store locators remain in structured prompt content and
 must not enter caller-visible transcript projections.
 Device-global quick prompts are also an optional host capability rather than
-activity data. The desktop adapter combines the developer-gated preference,
-the generated `tuttid` client, and global invalidation events behind
+activity data. The desktop adapter combines the generated `tuttid` client and
+global invalidation events behind
 `AgentHostApi.quickPrompts`. AgentGUI may subscribe to that capability to render
 the composer picker and management dialogs, but quick-prompt entities must not
 be copied into `AgentGUIRuntime`, a workspace engine, a Session, or a Turn.
@@ -618,8 +618,8 @@ project the resulting order optimistically, but it must replace that projection
 with the daemon's authoritative list. AgentGUI only renders and requests moves;
 hosts that omit the optional move capability keep the library read/write-only.
 The v2 prompt-order schema is a forward-only daemon migration. After it is
-applied, rollback means disabling the quick-prompt feature flag or reverting
-the renderer surface; do not run an older daemon writer against that database.
+applied, rollback means reverting the renderer surface; do not run an older
+daemon writer against that database.
 Older writers do not maintain `sort_order`, so binary daemon downgrade followed
 by create/delete is not a supported recovery path.
 Conversation rail sections are also an `AgentGUIRuntime` contract:

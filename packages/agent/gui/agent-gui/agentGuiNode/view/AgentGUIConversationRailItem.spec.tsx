@@ -448,6 +448,26 @@ describe("AgentGUIConversationRailItem interaction lock", () => {
     );
     expect(screen.queryByRole("menuitem")).toBeNull();
   });
+
+  it("runs the manual unread action with the selected session id", async () => {
+    const onMarkConversationUnread = vi.fn();
+    renderRailItem({
+      isRailInteractionLocked: () => false,
+      onMarkConversationUnread
+    });
+
+    fireEvent.contextMenu(
+      screen.getByTestId("agent-gui-conversation-item-session-1")
+    );
+    const markUnreadItem = await screen.findByRole("menuitem", {
+      name: "Mark as unread"
+    });
+    fireEvent.pointerUp(markUnreadItem, { button: 0 });
+
+    await waitFor(() =>
+      expect(onMarkConversationUnread).toHaveBeenCalledWith("session-1")
+    );
+  });
 });
 
 function renderRailItem(overrides: {
@@ -457,6 +477,7 @@ function renderRailItem(overrides: {
   onRequestRenameConversation?: (
     conversation: AgentGUIConversationSummary
   ) => void;
+  onMarkConversationUnread?: (agentSessionId: string) => void;
   onSelectConversation?: (agentSessionId: string) => void;
   presentation?: React.ComponentProps<
     typeof AgentGUIConversationRailItem
@@ -492,7 +513,7 @@ function renderRailItem(overrides: {
       }
       onSelectConversation={overrides.onSelectConversation ?? vi.fn()}
       onToggleConversationPinned={() => {}}
-      onMarkConversationUnread={() => {}}
+      onMarkConversationUnread={overrides.onMarkConversationUnread ?? vi.fn()}
     />
   );
   const withTargetPresentation = overrides.agentTargets ? (

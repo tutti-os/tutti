@@ -9,16 +9,21 @@ import (
 )
 
 var (
-	ErrInvalidArgument                    = errors.New("invalid agent session request")
-	ErrRailPlacementConflict              = errors.New("agent session rail placement conflicts with canonical state")
-	ErrSessionNotFound                    = errors.New("workspace agent session not found")
-	ErrTurnNotFound                       = errors.New("workspace agent turn not found")
-	ErrProviderSessionNotEstablished      = errors.New("provider session was never established")
-	ErrSubmitDeliveryUnknown              = errors.New("agent submit delivery is still being confirmed")
-	ErrActiveTurnTargetRequired           = errors.New("active-turn guidance requires an exact target turn")
-	ErrActiveTurnTargetMismatch           = errors.New("active-turn guidance target is no longer active")
-	ErrSessionTitleTooLong                = errors.New("agent session title is too long")
-	ErrRuntimeSessionDisconnected         = errors.New("agent runtime session is disconnected")
+	ErrInvalidArgument               = errors.New("invalid agent session request")
+	ErrRailPlacementConflict         = errors.New("agent session rail placement conflicts with canonical state")
+	ErrSessionNotFound               = errors.New("workspace agent session not found")
+	ErrTurnNotFound                  = errors.New("workspace agent turn not found")
+	ErrProviderSessionNotEstablished = errors.New("provider session was never established")
+	ErrSubmitDeliveryUnknown         = errors.New("agent submit delivery is still being confirmed")
+	ErrActiveTurnTargetRequired      = errors.New("active-turn guidance requires an exact target turn")
+	ErrActiveTurnTargetMismatch      = errors.New("active-turn guidance target is no longer active")
+	ErrSessionTitleTooLong           = errors.New("agent session title is too long")
+	ErrRuntimeSessionDisconnected    = errors.New("agent runtime session is disconnected")
+	// ErrRuntimeCancelDeliveryUnconfirmed means the runtime received an exact
+	// cancel request but could not confirm that the requested provider turn was
+	// the one it stopped. Host keeps the durable cancel operation retryable and
+	// waits for canonical terminal evidence instead of fabricating a terminal.
+	ErrRuntimeCancelDeliveryUnconfirmed   = errors.New("agent runtime cancellation delivery is unconfirmed")
 	ErrRuntimeSessionActive               = errors.New("agent runtime session has an active turn")
 	ErrRuntimeSessionReprepareUnavailable = errors.New("agent runtime session reprepare is unavailable")
 	ErrRuntimeSessionPublishUnavailable   = errors.New("agent runtime session initialization publication is unavailable")

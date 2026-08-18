@@ -171,6 +171,8 @@ export class SessionRuntime {
     this.turns = new TurnLifecycle({
       emit,
       onActivate: () => this.resetTurnScratch(),
+      onSyntheticActivate: (turnId) =>
+        this.queryGeneration?.registerTurn(turnId),
       onSettled: (turnId) => {
         this.providerTurnAcceptance.terminal(turnId);
         this.emitSessionState();
@@ -489,6 +491,7 @@ export class SessionRuntime {
         ) {
           return;
         }
+        generation.registerTurn(turn.turnId);
         const sdkContent = sdkContentFromPromptBlocks(
           content,
           prompt
@@ -664,11 +667,19 @@ export class SessionRuntime {
       );
     }
 
+    const generation = this.queryGeneration;
     const preparation = this.turns.prepareExactCancellation(expectedTurnId);
-    if (preparation.disposition === "absent") {
+    // The canonical root Turn and a provider-native synthetic continuation
+    // have different Turn ids but can still be live members of one Query
+    // generation. The synthetic id may be the current active Turn, so an
+    // exact root cancellation can look absent/mismatched to TurnLifecycle.
+    // Generation ownership is the narrow proof that permits retiring that
+    // Query; it never retargets a stop request to an unrelated newer Query.
+    const ownsExpectedTurn = generation?.ownsTurn(expectedTurnId) === true;
+    if (preparation.disposition === "absent" && !ownsExpectedTurn) {
       return cancelResult(false, "absent", expectedTurnId);
     }
-    if (preparation.disposition === "mismatch") {
+    if (preparation.disposition === "mismatch" && !ownsExpectedTurn) {
       return cancelResult(false, "mismatch", expectedTurnId);
     }
     if (preparation.disposition === "unresolved") {
@@ -679,7 +690,11 @@ export class SessionRuntime {
 
     const phase =
       this.providerTurnAcceptance.phase(expectedTurnId) ?? "unknown";
-    if (preparation.differentActiveTurn && phase !== "queued") {
+    if (
+      preparation.differentActiveTurn &&
+      phase !== "queued" &&
+      !ownsExpectedTurn
+    ) {
       this.turns.releaseExactCancellation(expectedTurnId);
       return cancelResult(false, "mismatch", expectedTurnId, "", phase);
     }
@@ -693,7 +708,6 @@ export class SessionRuntime {
       return cancelResult(true, "pre_accept", expectedTurnId, "", phase);
     }
 
-    const generation = this.queryGeneration;
     if (!generation) {
       this.turns.discardExactAbsent(expectedTurnId);
       this.turns.clearCancelled();

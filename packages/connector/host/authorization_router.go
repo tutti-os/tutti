@@ -62,6 +62,21 @@ func (router *ImplementationAuthorizationRouter) Disconnect(
 	return provider.Disconnect(ctx, request)
 }
 
+func (router *ImplementationAuthorizationRouter) Cancel(
+	ctx context.Context,
+	request AuthorizationCancelRequest,
+) error {
+	provider, err := router.provider(request.Release)
+	if err != nil {
+		return err
+	}
+	canceler, ok := provider.(AuthorizationAttemptCanceler)
+	if !ok {
+		return errors.New("connector authorization provider does not support attempt cancellation")
+	}
+	return canceler.Cancel(ctx, request)
+}
+
 func (router *ImplementationAuthorizationRouter) Observe(
 	ctx context.Context,
 	request AuthorizationObserveRequest,
@@ -121,5 +136,6 @@ func (router *ImplementationAuthorizationRouter) InspectAuthorization(
 }
 
 var _ AuthorizationProvider = (*ImplementationAuthorizationRouter)(nil)
+var _ AuthorizationAttemptCanceler = (*ImplementationAuthorizationRouter)(nil)
 var _ AuthorizationObserver = (*ImplementationAuthorizationRouter)(nil)
 var _ AuthorizationInspector = (*ImplementationAuthorizationRouter)(nil)

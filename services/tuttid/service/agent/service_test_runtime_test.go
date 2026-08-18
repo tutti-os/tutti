@@ -29,6 +29,7 @@ type fakeRuntime struct {
 	canResumeCalls          []RuntimeResumeInput
 	canResumeHook           func(RuntimeResumeInput) bool
 	cancelCalls             []RuntimeCancelInput
+	cancelErr               error
 	cancelResult            RuntimeCancelResult
 	cancelResultSet         bool
 	closeErr                error
@@ -503,6 +504,9 @@ func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (Runti
 	targetAgentSessionID := input.RootAgentSessionID
 	if len(input.Targets) > 0 {
 		targetAgentSessionID = input.Targets[len(input.Targets)-1].AgentSessionID
+	}
+	if f.cancelErr != nil {
+		return RuntimeCancelResult{AgentSessionID: targetAgentSessionID}, f.cancelErr
 	}
 	if f.cancelResultSet {
 		if f.cancelResult.AgentSessionID == "" {

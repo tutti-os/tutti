@@ -194,6 +194,7 @@ export function WorkspaceFileManagerPane({
     <WorkspaceFileManager
       className={className}
       dateLocale={locale}
+      pathDisplayPlatform={featureService.hostOs}
       i18n={i18n}
       locationSidebarLayout={locationSidebarLayout}
       onCopyEntry={notifyEntryCopied}

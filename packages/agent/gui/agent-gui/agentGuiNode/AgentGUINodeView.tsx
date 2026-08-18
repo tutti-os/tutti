@@ -79,7 +79,6 @@ export function AgentGUINodeView({
   mentionAgentTargets,
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
-  sessionForkEnabled = false,
   sessionWorktreeEnabled = false,
   sessionLaunchModesByProjectSectionKey,
   onSessionLaunchModePreferenceChange,
@@ -690,7 +689,6 @@ export function AgentGUINodeView({
                 homeTargetProjection={homeTargetProjection}
                 referenceProvenanceFilters={referenceProvenanceFilters}
                 sessionInputHistoryEnabled={sessionInputHistoryEnabled}
-                sessionForkEnabled={sessionForkEnabled}
                 sessionWorktreeEnabled={sessionWorktreeEnabled}
                 sessionLaunchModesByProjectSectionKey={
                   sessionLaunchModesByProjectSectionKey

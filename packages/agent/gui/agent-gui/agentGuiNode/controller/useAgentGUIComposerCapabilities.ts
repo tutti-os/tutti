@@ -19,7 +19,8 @@ import { composerSettingsSupportFromOptions } from "../model/composerSettingsSup
 import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 import {
   composerTargetDataForConversation,
-  type AgentGUIComposerTargetData
+  type AgentGUIComposerTargetData,
+  type OptimisticComposerTarget
 } from "./agentGuiController.composerPresentation";
 import { resolvePromptImageSelectedModel } from "./agentGuiController.draftMessageHelpers";
 import { useEngineSelector } from "../../../shared/engine/useEngineSelector";
@@ -30,6 +31,7 @@ interface UseAgentGUIComposerCapabilitiesInput {
   activeSessionState: AgentSessionState | null;
   data: AgentGUINodeData;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
+  optimisticComposerTarget?: OptimisticComposerTarget | null;
   selectedComposerTargetData: AgentGUIComposerTargetData;
   sessionEngine: AgentSessionEngine;
 }
@@ -44,7 +46,7 @@ export function useAgentGUIComposerCapabilities(
     activeConversationId: input.activeConversationId,
     activeSessionTarget: input.activeEngineSession,
     data: input.data,
-    optimisticTarget: null,
+    optimisticTarget: input.optimisticComposerTarget ?? null,
     selectedTarget: input.selectedComposerTargetData
   });
   const composerTargetKey = composerTargetData.agentTargetId?.trim() ?? "";

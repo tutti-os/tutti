@@ -59,6 +59,8 @@ func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProvider
 	}
 	if !strings.Contains(codexPolicy, "rendered directly from `imageGeneration` tool output") ||
 		!strings.Contains(codexPolicy, "do not repeat generated images as Markdown image tags") ||
+		!strings.Contains(codexPolicy, "[title](mentionUri)") ||
+		!strings.Contains(codexPolicy, "never return only `agentSessionId`") ||
 		strings.Contains(codexPolicy, "final response must include Markdown image tag") {
 		t.Fatalf("codex host policy = %q, want native generated-image artifact contract", codexPolicy)
 	}

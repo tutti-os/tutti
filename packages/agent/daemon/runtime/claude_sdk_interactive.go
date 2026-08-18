@@ -414,7 +414,12 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 		options:         options,
 		response:        make(chan pendingInteractiveResponse, 1),
 	}
-	a.storeClaudeSDKPendingRequest(adapterSession, pending)
+	if !a.storeClaudeSDKPendingRequest(adapterSession, pending) {
+		// The SDK sidecar assigns one request ID to one interaction. A repeated
+		// identity is a replay, not a new approval: do not re-open the turn by
+		// emitting another waiting transition after the original has settled.
+		return nil, nil
+	}
 	events := []activityshared.Event{
 		newTurnActivityEvent(eventSession, EventTurnUpdated, eventTurnID, SessionStatusWaiting, "", "", map[string]any{
 			"phase":     string(activityshared.TurnPhaseWaitingApproval),
@@ -586,17 +591,28 @@ func claudeSDKInteractiveOptions(payload map[string]any, toolCall map[string]any
 	}
 }
 
-func (a *ClaudeCodeSDKAdapter) storeClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, pending *pendingInteractiveRequest) {
+// storeClaudeSDKPendingRequest records one provider interaction exactly once.
+// The caller must not publish its waiting events when this returns false.
+func (a *ClaudeCodeSDKAdapter) storeClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, pending *pendingInteractiveRequest) bool {
 	if a == nil || adapterSession == nil || pending == nil {
-		return
+		return false
 	}
-	pending.onTerminal = a.recordTerminalInteractiveRequest
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if adapterSession.pendingRequests == nil {
 		adapterSession.pendingRequests = make(map[string]*pendingInteractiveRequest)
 	}
-	adapterSession.pendingRequests[claudeSDKPendingRequestKey(pending.turnID, pending.requestID)] = pending
+	key := claudeSDKPendingRequestKey(pending.turnID, pending.requestID)
+	if _, exists := adapterSession.pendingRequests[key]; exists {
+		return false
+	}
+	terminalKey := newInteractiveRequestKey(pending.agentSessionID, pending.turnID, pending.requestID)
+	if a.terminalInteractions.get(terminalKey) != InteractiveDispositionUnknown {
+		return false
+	}
+	pending.onTerminal = a.recordTerminalInteractiveRequest
+	adapterSession.pendingRequests[key] = pending
+	return true
 }
 
 func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string, turnID string, requestID string) *pendingInteractiveRequest {

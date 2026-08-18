@@ -68,7 +68,9 @@ func (h *Host) withSessionMutationActor(ctx context.Context, workspaceID, agentS
 	if h == nil || h.sessionMutationActor == nil {
 		return ErrInvalidArgument
 	}
-	return h.withWorkspaceRuntimeOperation(ctx, workspaceID, func(operationCtx context.Context) error {
+	return h.withWorkspaceRuntimeOperationInfo(ctx, WorkspaceRuntimeOperationInfo{
+		WorkspaceID: workspaceID, AgentSessionID: agentSessionID,
+	}, func(operationCtx context.Context) error {
 		return h.sessionMutationActor.Do(operationCtx, SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}, fn)
 	})
 }

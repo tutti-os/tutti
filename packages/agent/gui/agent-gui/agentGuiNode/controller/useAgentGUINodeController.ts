@@ -66,6 +66,7 @@ export {
   permissionModeOptions
 } from "./agentGuiController.composerHelpers";
 import { trackAgentGUISettingsProjectChange } from "./agentGuiProjectAnalytics";
+import type { OptimisticComposerTarget } from "./agentGuiController.composerPresentation";
 export * from "./agentGuiController.conversationHelpers";
 export {
   agentGUIConversationDiagnosticDetails,
@@ -286,6 +287,27 @@ export function useAgentGUINodeController({
         )
       )
   );
+  const optimisticComposerTarget =
+    useMemo<OptimisticComposerTarget | null>(() => {
+      if (
+        !isCreatingConversation ||
+        activePendingActivation?.mode !== "new" ||
+        activePendingActivation.agentSessionId !== activeConversationId ||
+        activePendingActivation.agentTargetId !==
+          selectedComposerTargetData.agentTargetId
+      ) {
+        return null;
+      }
+      return {
+        agentSessionId: activePendingActivation.agentSessionId,
+        target: selectedComposerTargetData
+      };
+    }, [
+      activeConversationId,
+      activePendingActivation,
+      isCreatingConversation,
+      selectedComposerTargetData
+    ]);
   // Bridges submitInteractivePrompt
   // updateComposerSettings (defined later); assigned right after the
   // callback's definition.
@@ -305,6 +327,7 @@ export function useAgentGUINodeController({
     activeSessionState,
     data,
     draftSettingsBySessionId,
+    optimisticComposerTarget,
     selectedComposerTargetData,
     sessionEngine
   });
@@ -627,6 +650,7 @@ export function useAgentGUINodeController({
       loadDraftComposerOptionsRef,
       loadSessionState,
       onComposerDefaultsAuthorityReloadedRef,
+      optimisticComposerTarget,
       providerComposerOptions,
       selectedComposerTargetDataRef,
       selectedProjectPath,

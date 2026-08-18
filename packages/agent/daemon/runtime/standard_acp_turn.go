@@ -465,6 +465,38 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	optionID := strings.TrimSpace(input.OptionID)
 	action := strings.TrimSpace(input.Action)
 	payload := clonePayload(input.Payload)
+	if pending.providerMethod != "" {
+		result, resolvedOptionID, err := cursorNativeInteractiveResult(pending, action, optionID, payload)
+		if err != nil {
+			pending.supersede(err)
+			return SubmitInteractiveResult{
+				AgentSessionID: session.AgentSessionID,
+				RequestID:      requestID,
+				Disposition:    InteractiveDispositionSuperseded,
+			}, err
+		}
+		optionID = resolvedOptionID
+		if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
+			optionID: optionID,
+			action:   action,
+			payload:  payload,
+			result:   result,
+		}); err != nil {
+			return SubmitInteractiveResult{}, err
+		}
+		if state, err := pending.waitForDisposition(ctx); err != nil {
+			return SubmitInteractiveResult{}, err
+		} else if state != pendingInteractiveRequestStateAnswered {
+			return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
+		}
+		return SubmitInteractiveResult{
+			AgentSessionID: session.AgentSessionID,
+			RequestID:      requestID,
+			Accepted:       true,
+			OptionID:       optionID,
+			Disposition:    InteractiveDispositionAnswered,
+		}, nil
+	}
 	result := acpInteractiveResponseResult(action, optionID, payload)
 	if err := ctx.Err(); err != nil {
 		return SubmitInteractiveResult{}, err

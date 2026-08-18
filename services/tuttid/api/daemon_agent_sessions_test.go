@@ -48,6 +48,37 @@ func TestDaemonAPIGeneratedRoutesCancelExactAgentTurn(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIGeneratedRoutesKeepsUnconfirmedCancelRequested(t *testing.T) {
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		AgentSessionService: stubAgentSessionService{
+			cancelTurnFn: func(_ context.Context, workspaceID string, agentSessionID string, turnID string) (agentservice.CancelTurnResult, error) {
+				if workspaceID != "ws-1" || agentSessionID != "session-1" || turnID != "turn-1" {
+					t.Fatalf("workspace/session/turn = %q/%q/%q", workspaceID, agentSessionID, turnID)
+				}
+				return agentservice.CancelTurnResult{Reason: agentservice.CancelTurnReasonCancelRequested}, nil
+			},
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(
+		t,
+		mux,
+		http.MethodPost,
+		"/v1/workspaces/ws-1/agent-sessions/session-1/turns/turn-1/cancel",
+		nil,
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	var response tuttigenerated.WorkspaceAgentTurnCancelResponse
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Cancel.Canceled || response.Cancel.Reason != tuttigenerated.CancelRequested {
+		t.Fatalf("cancel = %#v", response.Cancel)
+	}
+}
+
 func TestDaemonAPIGeneratedRoutesSendAgentSessionInputForwardsGuidance(t *testing.T) {
 	mux := http.NewServeMux()
 	updatedAt := time.UnixMilli(1000)

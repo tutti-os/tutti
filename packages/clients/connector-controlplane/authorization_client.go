@@ -106,11 +106,19 @@ func (client *AuthorizationClient) Begin(ctx context.Context, request market.Aut
 	defer clear(request.Secret)
 	connectorID := strings.TrimSpace(request.Connector.Key)
 	connectorVersion := strings.TrimSpace(request.Release.Version)
-	var response connectorAuthorizationSessionReply
-	err := client.doJSONForAccount(ctx, request.Scope.AccountID, http.MethodPost, "/connectors/"+url.PathEscape(connectorID)+"/authorization-sessions", nil, map[string]any{
+	body := map[string]any{
 		"clientRequestId":  strings.TrimSpace(request.ClientRequestID),
 		"connectorVersion": connectorVersion,
-	}, &response)
+	}
+	switch request.ReplacementPolicy {
+	case "":
+	case market.AuthorizationReplacementPolicyReplaceActive:
+		body["replacementPolicy"] = "CONNECTOR_AUTHORIZATION_REPLACEMENT_POLICY_REPLACE_ACTIVE"
+	default:
+		return market.AuthorizationSession{}, errors.New("connector authorization replacement policy is invalid")
+	}
+	var response connectorAuthorizationSessionReply
+	err := client.doJSONForAccount(ctx, request.Scope.AccountID, http.MethodPost, "/connectors/"+url.PathEscape(connectorID)+"/authorization-sessions", nil, body, &response)
 	if err != nil {
 		return market.AuthorizationSession{}, err
 	}
@@ -177,6 +185,24 @@ func (client *AuthorizationClient) Begin(ctx context.Context, request market.Aut
 	return session, nil
 }
 
+func (client *AuthorizationClient) Cancel(ctx context.Context, request market.AuthorizationCancelRequest) error {
+	sessionID := strings.TrimSpace(request.Session.SessionID)
+	if sessionID == "" {
+		return errors.New("connector authorization cancellation requires a session id")
+	}
+	var response connectorAuthorizationSessionReply
+	if err := client.doJSONForAccount(ctx, request.Scope.AccountID, http.MethodDelete,
+		"/connector-authorization-sessions/"+url.PathEscape(sessionID), nil, nil, &response); err != nil {
+		return err
+	}
+	if strings.TrimSpace(response.Session.SessionID) != sessionID ||
+		(!authorizationSessionCanceled(response.Session.Status) && !authorizationSessionFailed(response.Session.Status)) {
+		return errors.New("connector authorization cancellation returned a non-terminal session")
+	}
+	client.notifyChanged()
+	return nil
+}
+
 func (client *AuthorizationClient) Disconnect(ctx context.Context, request market.AuthorizationDisconnectRequest) error {
 	connectorID := strings.TrimSpace(request.Connector.Key)
 	if err := client.doJSONForAccount(ctx, request.Scope.AccountID, http.MethodDelete,
@@ -215,6 +241,8 @@ func (client *AuthorizationClient) Observe(ctx context.Context, request market.A
 		return market.AuthorizationObservation{State: market.AuthorizationObservationConnected, ConnectionID: connectionID}, nil
 	case strings.HasSuffix(status, "_FAILED") || status == "FAILED":
 		return market.AuthorizationObservation{State: market.AuthorizationObservationFailed, FailureCode: strings.TrimSpace(response.Session.ErrorCode)}, nil
+	case strings.HasSuffix(status, "_CANCELED") || status == "CANCELED":
+		return market.AuthorizationObservation{State: market.AuthorizationObservationFailed, FailureCode: "authorization_canceled"}, nil
 	case strings.HasSuffix(status, "_CREATED"), strings.HasSuffix(status, "_AWAITING_USER"), strings.HasSuffix(status, "_PROCESSING"),
 		status == "CREATED", status == "AWAITING_USER", status == "PROCESSING":
 		return market.AuthorizationObservation{State: market.AuthorizationObservationPending}, nil
@@ -323,11 +351,22 @@ func authorizationSessionSucceeded(status string) bool {
 	return status == "SUCCEEDED" || strings.HasSuffix(status, "_SUCCEEDED")
 }
 
+func authorizationSessionFailed(status string) bool {
+	status = strings.ToUpper(strings.TrimSpace(status))
+	return status == "FAILED" || strings.HasSuffix(status, "_FAILED")
+}
+
+func authorizationSessionCanceled(status string) bool {
+	status = strings.ToUpper(strings.TrimSpace(status))
+	return status == "CANCELED" || strings.HasSuffix(status, "_CANCELED")
+}
+
 func isLoopbackConnectorAuthorizationHost(host string) bool {
 	host = strings.ToLower(strings.TrimSpace(host))
 	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 
 var _ market.AuthorizationProvider = (*AuthorizationClient)(nil)
+var _ market.AuthorizationAttemptCanceler = (*AuthorizationClient)(nil)
 var _ market.AuthorizationObserver = (*AuthorizationClient)(nil)
 var _ market.AuthorizationSnapshotSource = (*AuthorizationClient)(nil)

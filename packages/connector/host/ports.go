@@ -37,10 +37,12 @@ type CatalogPageQuery struct {
 }
 
 type CatalogCategory struct {
-	CategoryID string `json:"categoryId"`
-	Kind       string `json:"kind"`
-	SortOrder  int32  `json:"sortOrder"`
-	ItemCount  int64  `json:"itemCount"`
+	CategoryID    string `json:"categoryId"`
+	Kind          string `json:"kind"`
+	SortOrder     int32  `json:"sortOrder"`
+	ItemCount     int64  `json:"itemCount"`
+	DisplayNameZH string `json:"displayNameZh,omitempty"`
+	DisplayNameEN string `json:"displayNameEn,omitempty"`
 }
 
 type CatalogEntry struct {
@@ -351,6 +353,13 @@ type AuthorizationProvider interface {
 	Disconnect(ctx context.Context, request AuthorizationDisconnectRequest) error
 }
 
+// AuthorizationAttemptCanceler terminates one provider authorization attempt
+// and returns only after it can no longer publish credentials or events. A
+// provider that cannot make that guarantee must not implement this interface.
+type AuthorizationAttemptCanceler interface {
+	Cancel(ctx context.Context, request AuthorizationCancelRequest) error
+}
+
 // AuthorizationObserver is an optional asynchronous extension implemented by
 // providers whose user interaction completes outside the daemon process.
 type AuthorizationObserver interface {
@@ -377,12 +386,21 @@ type AuthorizationInspectRequest struct {
 }
 
 type AuthorizationStartRequest struct {
-	OperationID     string
-	ClientRequestID string
-	Scope           OperationScope
-	Connector       Connector
-	Release         Release
-	Secret          []byte
+	OperationID       string
+	ClientRequestID   string
+	ReplacementPolicy AuthorizationReplacementPolicy
+	Scope             OperationScope
+	Connector         Connector
+	Release           Release
+	Secret            []byte
+}
+
+type AuthorizationCancelRequest struct {
+	OperationID string
+	Scope       OperationScope
+	Connector   Connector
+	Release     Release
+	Session     AuthorizationSession
 }
 
 type AuthorizationDisconnectRequest struct {

@@ -15,7 +15,7 @@ import {
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentGUIRuntime } from "../../agentActivityRuntime";
-import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
+import { useComposerDraftAttachmentsWithConnectors } from "./composer/useComposerDraftAttachmentsWithConnectors";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
 import {
   INITIAL_DOCK_COMPOSER_METRICS,
@@ -567,7 +567,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   });
   const { clearActiveFileMentionTrigger } = mentionActions;
 
-  const attachments = useComposerDraftAttachments({
+  const attachments = useComposerDraftAttachmentsWithConnectors({
     workspaceId,
     workspacePath,
     draftContent,

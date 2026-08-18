@@ -20,7 +20,16 @@ type stubConnectorMarketService struct {
 	refreshFn    func(context.Context, market.Mutation) (market.MutationResult, error)
 	operationFn  func(context.Context, market.OperationScope, string) (market.Operation, error)
 	cancelFn     func(context.Context, market.OperationScope, string) error
+	beginFn      func(context.Context, market.ConnectorMutation, []byte) (market.AuthorizationResult, error)
 	projectionFn func(context.Context, string, string) (market.AuthorizationProjection, error)
+}
+
+func (service stubConnectorMarketService) BeginAuthorization(
+	ctx context.Context,
+	mutation market.ConnectorMutation,
+	secret []byte,
+) (market.AuthorizationResult, error) {
+	return service.beginFn(ctx, mutation, secret)
 }
 
 func (service stubConnectorMarketService) CancelAuthorization(ctx context.Context, scope market.OperationScope, connectorKey string) error {
@@ -157,6 +166,48 @@ func TestDaemonAPICancelsConnectorAuthorizationForActiveAccount(t *testing.T) {
 	}
 	if gotScope.AccountID != "account-1" || gotConnectorKey != "supabase" {
 		t.Fatalf("cancel scope=%#v connector=%q", gotScope, gotConnectorKey)
+	}
+}
+
+func TestDaemonAPIForwardsReplaceActiveAuthorizationPolicy(t *testing.T) {
+	var received market.ConnectorMutation
+	service := stubConnectorMarketService{beginFn: func(
+		_ context.Context,
+		mutation market.ConnectorMutation,
+		_ []byte,
+	) (market.AuthorizationResult, error) {
+		received = mutation
+		connector := connectorMarketTestConnector()
+		connector.Authorization = market.Authorization{State: market.AuthorizationStatePending}
+		return market.AuthorizationResult{
+			Connector: connector,
+			Operation: market.Operation{
+				OperationID: "operation-b", ClientRequestID: mutation.ClientRequestID,
+				ConnectorKey: connector.Key, Kind: market.OperationKindStartAuthorization,
+				State: market.OperationStateCompleted, CreatedAt: time.Now(), UpdatedAt: time.Now(),
+			},
+			AuthorizationURL:       "https://accounts.example.com/oauth",
+			AuthorizationExpiresAt: time.Now().Add(time.Minute),
+			Revision:               2,
+		}, nil
+	}}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		ConnectorMarketService: service,
+		ConnectorMarketScope:   func() market.OperationScope { return market.OperationScope{AccountID: "account-1"} },
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost,
+		"/v1/connector-market/connectors/notion/authorization:start", map[string]any{
+			"clientRequestId": "authorization-b", "expectedRevision": 1,
+			"replacementPolicy": "replace_active",
+		})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if received.AccountID != "account-1" || received.ClientRequestID != "authorization-b" ||
+		received.ReplacementPolicy != market.AuthorizationReplacementPolicyReplaceActive {
+		t.Fatalf("authorization mutation = %#v", received)
 	}
 }
 
@@ -342,16 +393,19 @@ func TestDaemonAPIConnectorMarketOperationUsesScopedRead(t *testing.T) {
 func TestDaemonAPIConnectorMarketServesCategoriesAndCursorPage(t *testing.T) {
 	service := stubConnectorMarketService{
 		categoriesFn: func(context.Context) ([]market.CatalogCategory, error) {
-			return []market.CatalogCategory{{CategoryID: "development", Kind: "category", SortOrder: 20, ItemCount: 1}}, nil
+			return []market.CatalogCategory{{
+				CategoryID: "developer-tools", Kind: "category", SortOrder: 40, ItemCount: 1,
+				DisplayNameZH: "开发者工具", DisplayNameEN: "Developer Tools",
+			}}, nil
 		},
 		pageFn: func(_ context.Context, query market.CatalogPageQuery) (market.CatalogPage, error) {
-			if query.SectionID != "development" || query.PageSize != 20 || query.PageToken != "cursor-1" ||
+			if query.SectionID != "developer-tools" || query.PageSize != 20 || query.PageToken != "cursor-1" ||
 				query.InstallationFilter != market.CatalogInstallationFilterNotInstalled {
 				t.Fatalf("query = %#v", query)
 			}
 			return market.CatalogPage{
-				SectionID:     "development",
-				Items:         []market.CatalogListing{{CategoryID: "development", Connector: connectorMarketTestConnector()}},
+				SectionID:     "developer-tools",
+				Items:         []market.CatalogListing{{CategoryID: "developer-tools", Connector: connectorMarketTestConnector()}},
 				NextPageToken: "cursor-2",
 				Revision:      8,
 			}, nil
@@ -364,13 +418,20 @@ func TestDaemonAPIConnectorMarketServesCategoriesAndCursorPage(t *testing.T) {
 	if categories.Code != http.StatusOK {
 		t.Fatalf("categories status = %d; body: %s", categories.Code, categories.Body.String())
 	}
-	page := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market/catalog?sectionId=development&installation=not_installed&pageSize=20&pageToken=cursor-1", nil)
+	var categoryResponse tuttigenerated.ConnectorMarketCategoriesResponse
+	decodeGeneratedRouteResponse(t, categories, &categoryResponse)
+	if len(categoryResponse.Categories) != 1 || categoryResponse.Categories[0].CategoryId != "developer-tools" ||
+		categoryResponse.Categories[0].DisplayNameZh == nil || *categoryResponse.Categories[0].DisplayNameZh != "开发者工具" ||
+		categoryResponse.Categories[0].DisplayNameEn == nil || *categoryResponse.Categories[0].DisplayNameEn != "Developer Tools" {
+		t.Fatalf("categories response = %#v", categoryResponse)
+	}
+	page := performGeneratedRouteRequest(t, mux, http.MethodGet, "/v1/connector-market/catalog?sectionId=developer-tools&installation=not_installed&pageSize=20&pageToken=cursor-1", nil)
 	if page.Code != http.StatusOK {
 		t.Fatalf("page status = %d; body: %s", page.Code, page.Body.String())
 	}
 	var response tuttigenerated.ConnectorMarketCatalogPage
 	decodeGeneratedRouteResponse(t, page, &response)
-	if response.SectionId != "development" || response.Revision != 8 || len(response.Items) != 1 || response.Items[0].Connector.Key != "notion" {
+	if response.SectionId != "developer-tools" || response.Revision != 8 || len(response.Items) != 1 || response.Items[0].Connector.Key != "notion" {
 		t.Fatalf("response = %#v", response)
 	}
 }

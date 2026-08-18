@@ -38,7 +38,6 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
   homeTargetProjection: AgentGUIManagedHomeTargetProjection;
   referenceProvenanceFilters?: AgentComposerProps["referenceProvenanceFilters"];
   sessionInputHistoryEnabled?: boolean;
-  sessionForkEnabled?: boolean;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>

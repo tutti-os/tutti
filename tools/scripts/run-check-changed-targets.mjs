@@ -15,6 +15,7 @@ const GO_LINT_MODULE_ROOTS = new Set([
   "packages/appcli/core",
   "packages/auth/bridge-go",
   "packages/clients/device-authority-go",
+  "packages/clients/market-go",
   "packages/connector/daemon",
   "packages/connector/host",
   "packages/connector/runtime",

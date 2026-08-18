@@ -13,6 +13,7 @@ import {
   consolidatedAssistant,
   testCanUseToolOptions
 } from "./sessionRuntimeTestCommon.ts";
+import { fakeGuidedDelegatedContinuationQuery } from "./sessionRuntimeTestQueries.delegated.ts";
 import { waitForEvent } from "./sessionRuntimeTestQueries.nested.ts";
 
 function cancelTestSession(
@@ -436,6 +437,85 @@ test("same-tick exact cancel removes a deferred Goal command", async () => {
         action: "set",
         reason: "cancel_requested"
       }
+    );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("canonical root cancel retires the generation behind an active synthetic continuation", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  let interrupts = 0;
+  let closes = 0;
+  try {
+    const session = new SessionRuntime(
+      "provider-session-synthetic-cancel",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => {
+        const query = fakeGuidedDelegatedContinuationQuery(prompt);
+        return {
+          ...query,
+          async interrupt() {
+            interrupts += 1;
+            await query.interrupt();
+          },
+          close() {
+            closes += 1;
+            query.close();
+          }
+        };
+      },
+      100
+    );
+
+    await session.start();
+    session.exec("turn-root", "delegate task");
+    await waitForEvent(events, "turn_started");
+
+    const synthetic = events.find(
+      (event) => event.type === "turn_started" && event.payload?.synthetic
+    );
+    assert.match(String(synthetic?.payload?.turnId ?? ""), /^synthetic-/u);
+
+    const result = await session.cancel("turn-root");
+
+    assert.equal(result.canceled, true);
+    assert.equal(result.turnId, "turn-root");
+    assert.equal(interrupts, 1);
+    assert.equal(closes, 1);
+    assert.equal(session.query, undefined);
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "turn_canceled" &&
+          event.payload?.turnId === synthetic?.payload?.turnId
+      ),
+      true
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    assert.equal(
+      events.some(
+        (event) =>
+          event.type === "assistant_completed" &&
+          event.payload?.content === "Guided continuation."
+      ),
+      false
     );
   } finally {
     restoreSink();

@@ -399,6 +399,9 @@ func connectorMarketAuthorizationMutation(
 		Mutation:     market.Mutation{ClientRequestID: body.ClientRequestId, ExpectedRevision: uint64(body.ExpectedRevision)},
 		ConnectorKey: connectorKey,
 	}
+	if body.ReplacementPolicy != nil {
+		result.ReplacementPolicy = market.AuthorizationReplacementPolicy(*body.ReplacementPolicy)
+	}
 	if body.ExpectedConnectorRevision != nil {
 		revision := uint64(*body.ExpectedConnectorRevision)
 		result.ExpectedConnectorRevision = &revision

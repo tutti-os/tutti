@@ -4,7 +4,7 @@ import type { IReporterService } from "../../../analytics/services/reporterServi
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
 import { isSameAppUpdateState } from "../../../../../../shared/contracts/appUpdateState.ts";
 import type { AppUpdateState } from "@shared/contracts/ipc";
-import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IAppUpdateService } from "../appUpdateService.interface";
 import type { DesktopAppUpdateClient } from "./adapters/desktopAppUpdateClient";
 import { createAppUpdateStore } from "./appUpdateStore.ts";
@@ -33,19 +33,24 @@ export class AppUpdateService implements IAppUpdateService {
     "logRendererDiagnostic"
   >;
   private readonly updateClient: DesktopAppUpdateClient;
+  private readonly hostFilesApi?: Pick<DesktopHostFilesApi, "openExternal">;
 
   constructor(
     updateClient: DesktopAppUpdateClient,
     reporterService: Pick<IReporterService, "trackEvents"> | null = null,
     reporterNow?: () => number,
     runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">,
-    options: { supportsReleaseChannels?: boolean } = {}
+    options: {
+      hostFilesApi?: Pick<DesktopHostFilesApi, "openExternal">;
+      supportsReleaseChannels?: boolean;
+    } = {}
   ) {
     this.store = createAppUpdateStore(options.supportsReleaseChannels ?? true);
     this.updateClient = updateClient;
     this.reporterService = reporterService;
     this.reporterNow = reporterNow;
     this.runtimeApi = runtimeApi;
+    this.hostFilesApi = options.hostFilesApi;
   }
 
   async load(): Promise<void> {
@@ -109,6 +114,13 @@ export class AppUpdateService implements IAppUpdateService {
         this.updateView();
         this.recordDiagnostic("app_update.check_finished");
       }
+    }
+  }
+
+  async openReleaseNotes(): Promise<void> {
+    const url = this.store.updateState?.releaseNotesUrl;
+    if (url && this.hostFilesApi) {
+      await this.hostFilesApi.openExternal(url);
     }
   }
 

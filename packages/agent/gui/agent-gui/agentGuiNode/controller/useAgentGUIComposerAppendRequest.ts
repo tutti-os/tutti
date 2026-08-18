@@ -1,4 +1,5 @@
 import {
+  agentComposerDraftConnectors,
   agentComposerDraftFiles,
   agentComposerDraftPrompt,
   emptyAgentComposerDraft,
@@ -13,16 +14,46 @@ import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftSc
 export type AgentGUIComposerAppendRequest =
   | {
       agentSessionId?: string;
+      connectorKey: string;
+      files?: never;
+      prompt?: never;
+      sequence: number;
+    }
+  | {
+      agentSessionId?: string;
+      connectorKey?: never;
       files: readonly AgentComposerDraftFile[];
       prompt?: string;
       sequence: number;
     }
   | {
       agentSessionId?: string;
+      connectorKey?: never;
       files?: never;
       prompt: string;
       sequence: number;
     };
+
+export function appendAgentGUIComposerConnector(
+  draft: AgentComposerDraft,
+  connectorKey: string
+): AgentComposerDraft {
+  const normalizedConnectorKey = connectorKey.trim();
+  if (!normalizedConnectorKey) {
+    return draft;
+  }
+  const connectors = agentComposerDraftConnectors(draft);
+  if (
+    connectors.some(
+      (connector) => connector.connectorKey === normalizedConnectorKey
+    )
+  ) {
+    return draft;
+  }
+  return updateAgentComposerDraft(draft, {
+    connectors: [...connectors, { connectorKey: normalizedConnectorKey }]
+  });
+}
 
 export function appendAgentGUIComposerPrompt(
   draft: AgentComposerDraft,
@@ -86,9 +117,12 @@ export function resolveAgentGUIComposerAppendRequest(input: {
   const currentDraft = draftByScopeKey[draftKey] ?? emptyAgentComposerDraft();
   return {
     draftKey,
-    nextDraft: appendAgentGUIComposerFiles(
-      appendAgentGUIComposerPrompt(currentDraft, request.prompt ?? ""),
-      request.files ?? []
+    nextDraft: appendAgentGUIComposerConnector(
+      appendAgentGUIComposerFiles(
+        appendAgentGUIComposerPrompt(currentDraft, request.prompt ?? ""),
+        request.files ?? []
+      ),
+      request.connectorKey ?? ""
     ),
     sequence: request.sequence
   };

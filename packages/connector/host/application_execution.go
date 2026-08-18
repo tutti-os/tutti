@@ -325,6 +325,7 @@ func (application *Application) beginAuthorizationSession(
 	ctx context.Context,
 	operation Operation,
 	secret []byte,
+	replacementPolicy AuthorizationReplacementPolicy,
 ) (AuthorizationSession, error) {
 	release, err := frozenRelease(operation)
 	if err != nil {
@@ -359,12 +360,13 @@ func (application *Application) beginAuthorizationSession(
 		}
 	}
 	session, err := application.config.Authorization.Begin(ctx, AuthorizationStartRequest{
-		OperationID:     operation.OperationID,
-		ClientRequestID: operation.ClientRequestID,
-		Scope:           operation.Scope,
-		Connector:       connector,
-		Release:         release,
-		Secret:          secret,
+		OperationID:       operation.OperationID,
+		ClientRequestID:   operation.ClientRequestID,
+		ReplacementPolicy: replacementPolicy,
+		Scope:             operation.Scope,
+		Connector:         connector,
+		Release:           release,
+		Secret:            secret,
 	})
 	if err != nil {
 		return AuthorizationSession{}, NewDomainError(

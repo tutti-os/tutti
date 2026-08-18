@@ -30,6 +30,16 @@ Function un.RemoveTuttiUserState
 FunctionEnd
 !endif
 
+!macro customInstall
+  ; Re-write the user-visible shortcuts after every install/update. NSIS can
+  ; replace Tutti.exe in place while Explorer still holds the old shortcut;
+  ; making the target explicit here prevents a stale staged path from
+  ; surviving an update transaction.
+  SetShellVarContext current
+  CreateShortCut "$DESKTOP\Tutti.lnk" "$INSTDIR\Tutti.exe" "" "$INSTDIR\Tutti.exe" 0
+  CreateShortCut "$SMPROGRAMS\Tutti.lnk" "$INSTDIR\Tutti.exe" "" "$INSTDIR\Tutti.exe" 0
+!macroend
+
 !macro customUnInstall
   ; electron-builder already accepts this flag for Electron app data. Extend
   ; the same explicit reset request to all Tutti-owned per-user state.

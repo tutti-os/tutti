@@ -114,6 +114,21 @@ describe("composer target presentation", () => {
     ).toBeNull();
   });
 
+  it("keeps the submitted target reference while the canonical session is pending", () => {
+    expect(
+      composerTargetDataForConversation({
+        activeConversationId: "session-new",
+        activeSessionTarget: null,
+        data: selectedTarget.data,
+        optimisticTarget: {
+          agentSessionId: "session-new",
+          target: selectedTarget
+        },
+        selectedTarget
+      })
+    ).toBe(selectedTarget);
+  });
+
   it("uses the active session agent target when node data lacks the target id", () => {
     const staleNodeData: AgentGUINodeData = {
       provider: "acp:hermes",

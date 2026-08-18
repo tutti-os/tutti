@@ -71,6 +71,29 @@ test("keeps a failed catalog section visible without failing the whole view", ()
   assert.equal(view.catalogError, null);
 });
 
+test("projects server-owned category names into the renderer view", () => {
+  const market = createConnectorMarketStoreState();
+  market.loadState = "ready";
+  market.catalogSections = [
+    {
+      categoryId: "business-operations",
+      kind: "category",
+      sortOrder: 60,
+      itemCount: 1,
+      displayNameZh: "商业与运营",
+      displayNameEn: "Business & Operations",
+      connectorKeys: [],
+      loadState: "loading"
+    }
+  ];
+
+  const view = buildConnectorMarketView(market, uiState);
+
+  assert.equal(view.sections[0]?.id, "business-operations");
+  assert.equal(view.sections[0]?.displayNameZh, "商业与运营");
+  assert.equal(view.sections[0]?.displayNameEn, "Business & Operations");
+});
+
 test("keeps connector details open through installation and advances to authorization", () => {
   const market = createConnectorMarketStoreState();
   const connector = connectorFixture();
@@ -212,7 +235,7 @@ test("preserves the connector authorization interaction for the dialog", () => {
   );
 });
 
-test("marks managed credential brokers for automatic authorization start", () => {
+test("marks managed credential brokers for managed authorization handling", () => {
   const market = createConnectorMarketStoreState();
   const connector = connectorFixture();
   connector.installation = {

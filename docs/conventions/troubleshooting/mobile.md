@@ -188,26 +188,21 @@
 
 ## Mobile quick prompts are missing from the plus menu
 
-- **Symptom:** The Desktop quick-prompt library is enabled and contains
-  prompts, but the connected Mobile composer does not show Quick prompts under
-  `+`.
-- **Quick checks:** Read the host's Desktop preferences and confirm
-  `agent.quickPromptLibrary` is `true`. Then inspect the DeviceLink
-  `agent_http` responses for `GET /v1/preferences/desktop` and
+- **Symptom:** The connected Mobile composer does not show Quick prompts under
+  `+`, or the list is empty despite prompts saved on Desktop.
+- **Quick checks:** Inspect the DeviceLink `agent_http` response for
   `GET /v1/agent-quick-prompts`. A 403 response with `route_not_allowed`
   identifies an allowlist gap.
-- **Root cause:** Mobile deliberately fails closed when it cannot verify the
-  Desktop feature gate. It also loads prompt content only from the canonical
-  device list, so neither the UI nor workspace activity state invents a local
+- **Root cause:** Mobile loads prompt content only from the canonical device
+  list, so neither the UI nor workspace activity state invents a local
   fallback.
-- **Fix:** Keep the two exact GET routes in the DeviceLink allowlist and keep
-  all preference writes, quick-prompt mutations, and per-prompt routes blocked.
-  Refresh the authenticated-device quick-prompt service when the `+` menu
-  opens.
-- **Validation:** Confirm a disabled or missing feature flag hides the row,
-  enabling it exposes the canonical prompt order, search matches title and
-  content, and selecting a prompt adds text at the current input position
-  without replacing the existing draft or sending it.
+- **Fix:** Keep the exact quick-prompt GET route in the DeviceLink allowlist
+  and keep all preference writes, quick-prompt mutations, and per-prompt
+  routes blocked. Refresh the authenticated-device quick-prompt service when
+  the `+` menu opens.
+- **Validation:** Confirm the canonical prompt order is visible, search
+  matches title and content, and selecting a prompt adds text at the current
+  input position without replacing the existing draft or sending it.
 - **References:** `services/tuttid/service/mobileremote/remote_protocol.go`,
   `apps/mobile/src/services/mobileQuickPromptLibraryService.ts`,
   `apps/mobile/src/components/MobileComposerDock.tsx`

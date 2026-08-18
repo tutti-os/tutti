@@ -68,6 +68,7 @@ export class QueryGeneration {
   query: ClaudeQueryRuntime | undefined;
   consumption: Promise<void> | undefined;
   revoked = false;
+  private readonly ownedTurnIds = new Set<string>();
   private quarantineCanceledTail: boolean;
   private expectedPromptUuid = "";
   private currentPromptObserved = false;
@@ -76,6 +77,24 @@ export class QueryGeneration {
   constructor(id: number, quarantineCanceledTail = false) {
     this.id = id;
     this.quarantineCanceledTail = quarantineCanceledTail;
+  }
+
+  /**
+   * A Query generation owns the canonical Turns it has accepted, including
+   * provider-native continuation Turns that are created after the original
+   * root Turn stops being the in-memory active Turn. Keep this association on
+   * the generation so an exact root cancel cannot be confused with a stale
+   * request merely because a synthetic continuation is currently active.
+   */
+  registerTurn(turnId: string): void {
+    turnId = turnId.trim();
+    if (turnId) {
+      this.ownedTurnIds.add(turnId);
+    }
+  }
+
+  ownsTurn(turnId: string): boolean {
+    return this.ownedTurnIds.has(turnId.trim());
   }
 
   static retire(

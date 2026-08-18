@@ -959,6 +959,98 @@ func TestApplicationSerializesConcurrentAuthorizationReceiptCreation(t *testing.
 	}
 }
 
+func TestApplicationReplaceAuthorizationInterruptsStuckInitialBegin(t *testing.T) {
+	connector := testManagedAuthorizedConnector("dingtalk-cli")
+	connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	provider := &interruptibleAuthorizationProvider{
+		started: make(chan struct{}), canceled: make(chan struct{}),
+	}
+	application.config.Authorization = provider
+	application.config.AuthorizationProjections = &authorizationProjectionStoreStub{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, State: AuthorizationStateDisconnected,
+	}}
+
+	firstDone := make(chan error, 1)
+	go func() {
+		_, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+			Mutation: Mutation{ClientRequestID: "authorization-a"}, ConnectorKey: connector.Key, AccountID: "account-1",
+		}, nil)
+		firstDone <- err
+	}()
+	<-provider.started
+
+	second, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "authorization-b"}, ConnectorKey: connector.Key, AccountID: "account-1",
+		ReplacementPolicy: AuthorizationReplacementPolicyReplaceActive,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if firstErr := <-firstDone; !errors.Is(firstErr, context.Canceled) {
+		t.Fatalf("first authorization error = %v, want canceled", firstErr)
+	}
+	select {
+	case <-provider.canceled:
+	default:
+		t.Fatal("stuck initial authorization was not interrupted")
+	}
+	if provider.begins.Load() != 2 || second.Operation.ClientRequestID != "authorization-b" ||
+		second.Connector.Authorization.State != AuthorizationStatePending {
+		t.Fatalf("replacement result=%#v begins=%d", second, provider.begins.Load())
+	}
+	var firstOperation Operation
+	for _, operation := range repository.operations {
+		if operation.ClientRequestID == "authorization-a" {
+			firstOperation = operation
+			break
+		}
+	}
+	if firstOperation.State != OperationStateFailed {
+		t.Fatalf("first operation = %#v, want failed", firstOperation)
+	}
+}
+
+func TestApplicationReplaceAuthorizationCancelsReceiptBeforeStartingNewAttempt(t *testing.T) {
+	connector := testManagedAuthorizedConnector("dingtalk-cli")
+	connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	provider := &cancelingAuthorizationProvider{}
+	application.config.Authorization = provider
+	application.config.AuthorizationProjections = &authorizationProjectionStoreStub{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, State: AuthorizationStateDisconnected,
+	}}
+
+	first, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "authorization-a"}, ConnectorKey: connector.Key, AccountID: "account-1",
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "authorization-b", ExpectedRevision: repository.revision},
+		ConnectorKey: connector.Key, AccountID: "account-1",
+		ReplacementPolicy: AuthorizationReplacementPolicyReplaceActive,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	firstReceipt := repository.operations[first.Operation.OperationID].Execution.AuthorizationSession
+	if firstReceipt == nil || firstReceipt.Resolution != AuthorizationSessionResolutionSuperseded {
+		t.Fatalf("first receipt = %#v, want superseded", firstReceipt)
+	}
+	if len(provider.canceled) != 1 || provider.canceled[0] != first.Operation.OperationID {
+		t.Fatalf("provider cancellations = %#v", provider.canceled)
+	}
+	if provider.begins.Load() != 2 || second.Operation.OperationID == first.Operation.OperationID ||
+		second.Operation.ClientRequestID != "authorization-b" ||
+		provider.lastReplacementPolicy != AuthorizationReplacementPolicyReplaceActive {
+		t.Fatalf("first=%#v second=%#v begins=%d", first.Operation, second.Operation, provider.begins.Load())
+	}
+}
+
 func TestApplicationDisconnectAuthorizationCompletesOnlyAfterRuntimeIsDisabled(t *testing.T) {
 	connector := testManagedAuthorizedConnector("lark-cli")
 	connector.Authorization = Authorization{State: AuthorizationStateConnected}
@@ -1838,6 +1930,39 @@ func TestApplicationReconcilesCompletedAuthorizationSession(t *testing.T) {
 	}
 }
 
+func TestApplicationRecoveryFinishesCancelingAuthorizationReceipt(t *testing.T) {
+	connector := testManagedAuthorizedConnector("dingtalk-cli")
+	connector.Authorization = Authorization{State: AuthorizationStatePending}
+	repository := newMemoryRepository(connector)
+	operation := Operation{
+		OperationID: "authorization-a", ConnectorKey: connector.Key,
+		Kind: OperationKindStartAuthorization, Scope: OperationScope{AccountID: "account-1"},
+		State: OperationStateCompleted, Stage: OperationStageCompleted,
+		Target: operationTarget(OperationKindStartAuthorization, connector),
+		Execution: OperationExecution{AuthorizationSession: &AuthorizationSession{
+			OperationID: "authorization-a", ConnectorKey: connector.Key,
+			SessionID: "session-a", State: AuthorizationStatePending,
+			Resolution: AuthorizationSessionResolutionCanceling,
+		}},
+	}
+	repository.operations[operation.OperationID] = operation
+	provider := &cancelingAuthorizationProvider{}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	application.config.Authorization = provider
+
+	intents, err := application.ReconcileAuthorizations(context.Background(), operation.Scope)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(intents) != 0 || len(provider.canceled) != 1 || provider.canceled[0] != operation.OperationID {
+		t.Fatalf("intents=%#v cancellations=%#v", intents, provider.canceled)
+	}
+	receipt := repository.operations[operation.OperationID].Execution.AuthorizationSession
+	if receipt == nil || receipt.Resolution != AuthorizationSessionResolutionSuperseded {
+		t.Fatalf("recovered receipt = %#v, want superseded", receipt)
+	}
+}
+
 func TestApplicationAuthorizationObservationExpiresAfterTenMinutes(t *testing.T) {
 	connector := testConnector("gmail-timeout")
 	connector.Authorization = Authorization{State: AuthorizationStatePending}
@@ -2348,6 +2473,61 @@ type blockingAuthorizationProvider struct {
 	started chan struct{}
 	release chan struct{}
 	begins  atomic.Int32
+}
+
+type interruptibleAuthorizationProvider struct {
+	authorizationProviderStub
+	started  chan struct{}
+	canceled chan struct{}
+	begins   atomic.Int32
+	cancels  atomic.Int32
+}
+
+func (provider *interruptibleAuthorizationProvider) Begin(
+	ctx context.Context,
+	request AuthorizationStartRequest,
+) (AuthorizationSession, error) {
+	if provider.begins.Add(1) == 1 {
+		close(provider.started)
+		<-ctx.Done()
+		close(provider.canceled)
+		return AuthorizationSession{}, ctx.Err()
+	}
+	return provider.authorizationProviderStub.Begin(ctx, request)
+}
+
+func (provider *interruptibleAuthorizationProvider) Cancel(
+	context.Context,
+	AuthorizationCancelRequest,
+) error {
+	provider.cancels.Add(1)
+	return nil
+}
+
+type cancelingAuthorizationProvider struct {
+	authorizationProviderStub
+	begins                atomic.Int32
+	canceled              []string
+	lastReplacementPolicy AuthorizationReplacementPolicy
+}
+
+func (provider *cancelingAuthorizationProvider) Begin(
+	ctx context.Context,
+	request AuthorizationStartRequest,
+) (AuthorizationSession, error) {
+	provider.begins.Add(1)
+	provider.lastReplacementPolicy = request.ReplacementPolicy
+	session, err := provider.authorizationProviderStub.Begin(ctx, request)
+	session.SessionID = request.OperationID + "/session"
+	return session, err
+}
+
+func (provider *cancelingAuthorizationProvider) Cancel(
+	_ context.Context,
+	request AuthorizationCancelRequest,
+) error {
+	provider.canceled = append(provider.canceled, request.OperationID)
+	return nil
 }
 
 func (provider *blockingAuthorizationProvider) Begin(

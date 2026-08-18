@@ -681,8 +681,12 @@ type ListSessionInteractionsInput struct {
 // StaleTurnSettlement identifies one turn that startup reconciliation
 // force-settled with outcome interrupted.
 type StaleTurnSettlement struct {
-	TransactionID   string           `json:"-"`
-	CommitDelta     TransactionDelta `json:"-"`
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
+	// Turn is the complete canonical row after startup reconciliation commits
+	// its settled/interrupted transition. Consumers must use this copy instead
+	// of reconstructing provenance from the scalar notification identity.
+	Turn            Turn
 	WorkspaceID     string
 	AgentSessionID  string
 	TurnID          string

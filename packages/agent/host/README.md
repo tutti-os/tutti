@@ -186,6 +186,14 @@ that durable operation exists, even when immediate runtime readiness or
 delivery returns an error; `GoalState` then distinguishes pending delivery
 from terminal failure. A provider-accepted or applied Goal is also canonical
 resume evidence for a turnless Goal session after the live runtime disappears.
+
+An exact-provider cancel response can be delivery-unconfirmed: the provider
+received the request but could not prove it stopped the requested Turn. Host
+retains that exact durable operation for retry and canonical reconciliation; it
+does not infer either `canceled` or `failed` from the response. If the canonical
+Turn reaches a terminal state first, the operation completes as a no-op and
+preserves that existing outcome.
+
 `AdoptProviderGoal` is the narrow
 reverse boundary for a Goal created by a provider tool during an already
 accepted Turn. It atomically records the active provider generation as a
@@ -516,10 +524,10 @@ through Host. HTTP adapters may project it as structured diagnostic metadata
 while preserving their existing coarse conflict reason; transcript payloads
 and attachment contents never enter that reason.
 
-Session Fork is default-off behind the `lab.agentSessionFork` product flag.
-Desktop exposes the persisted switch in Developer settings, and Desktop plus
-Tuttid enforce the same opt-in for new Fork writes while retaining read and
-acknowledgement access to existing durable operations.
+Session Fork is exposed directly when the provider/runtime attestation and the
+selected canonical Turn satisfy the capability boundary. Product adapters do
+not add a separate feature-preference gate; execution still revalidates the
+exact provider and Turn facts before dispatch.
 
 Capability projection is preparation-free. It reads either the live runtime
 observation or the persisted runtime/driver attestation and never resolves

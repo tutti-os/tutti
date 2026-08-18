@@ -82,6 +82,40 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
   [agent-provider-status-performance-scenario.mjs](../../../tools/scripts/agent-provider-status-performance-scenario.mjs)
 
+### Missing optional Agent CLIs inflate environment failure analytics
+
+- Symptom:
+  `agent.env_detected` reports many `cli_not_found` outcomes for providers the
+  user never selected, and an analytics view that treats every non-ready status
+  as a failure makes the Agent environment failure rate look much higher than
+  actual launch failures.
+- Quick checks:
+  Group `agent.env_detected` by `provider`, `reason_code`, and `cli_installed`.
+  If the dominant rows are `cli_not_found` with `cli_installed=false` across
+  several managed providers for the same users, compare them with the desktop's
+  background all-provider status request before investigating installation.
+- Root cause:
+  Desktop intentionally discovers every managed provider so Agent pickers and
+  setup surfaces can show local readiness. The automatic environment reporter
+  previously treated every changed status as failure telemetry, so the expected
+  absence of an optional CLI crossed the same reporting boundary as a provider
+  that was installed but failed its runtime probe.
+- Fix:
+  Keep `cli_not_found` in the canonical provider-status snapshot and continue
+  full catalog discovery, but exclude the exact `not_installed` +
+  `cli_not_found` + `cli.installed=false` state from automatic
+  `agent.env_detected` reporting. Preserve explicit consent-gated problem
+  reports and continue reporting installed-provider failures such as
+  `acp_adapter_launch_failed`.
+- Validation:
+  Reconcile one missing optional provider and one installed provider with a
+  runtime launch failure in the same response. Assert both remain visible in
+  the status snapshot while only the launch failure produces
+  `agent.env_detected`.
+- References:
+  [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)
+  [desktopAgentProviderStatusService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.test.ts)
+
 ### Loading Agent Targets repeatedly starts Extension CLIs
 
 - Symptom:
@@ -1051,7 +1085,9 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   boundary and replay the answer again in `turn/completed`, sometimes with
   whitespace polish; treating each report as a new segment creates duplicate
   bubbles. The model-metadata warning is runtime diagnostic noise rather than
-  an actionable user error.
+  an actionable user error. Persisted skill-context warnings may omit their
+  optional `source` metadata, and Codex has emitted both percentage and
+  non-percentage variants of that wording.
 - Fix:
   Treat Codex app-server `model/list` as the authoritative catalog regardless
   of `model_provider`. Preserve the full returned list and reasoning metadata;
@@ -1060,7 +1096,10 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   for whitespace-equivalent item-finalization text and ignore turn-final text
   after an assistant segment has already completed. Filter the metadata
   fallback warning through the same AgentGUI diagnostic-notice projection used
-  for skills-context-budget warnings.
+  for skills-context-budget warnings. Match the optional percentage in the
+  skills warning as diagnostic context rather than as part of its identity;
+  accept a missing source only for that exact warning, preserve explicitly
+  non-runtime notices, and keep the metadata fallback warning runtime-only.
 - Validation:
   Run
   `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestApplyAssistantTurnFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,

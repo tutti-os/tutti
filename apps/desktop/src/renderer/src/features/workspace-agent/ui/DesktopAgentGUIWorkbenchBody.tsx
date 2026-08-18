@@ -89,7 +89,6 @@ import {
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   isFeatureEnabled,
-  LAB_AGENT_SESSION_FORK_FLAG,
   LAB_CODEX_SAVER_MODE_FLAG,
   LAB_CONNECTORS_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -586,10 +585,6 @@ function DesktopAgentGUISurfaceImpl({
     AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
   );
   const sessionInputHistoryEnabled = true;
-  const sessionForkEnabled = isFeatureEnabled(
-    desktopPreferencesState.featureFlags,
-    LAB_AGENT_SESSION_FORK_FLAG
-  );
   const codexSaverModeEntryEnabled = isFeatureEnabled(
     desktopPreferencesState.featureFlags,
     LAB_CODEX_SAVER_MODE_FLAG
@@ -667,7 +662,6 @@ function DesktopAgentGUISurfaceImpl({
     hostCapabilities: {
       referenceProvenanceFilterEnabled,
       sessionInputHistoryEnabled,
-      sessionForkEnabled,
       sessionWorktreeEnabled: true,
       sessionLaunchModesByProjectSectionKey,
       codexSaverModeEntryEnabled,

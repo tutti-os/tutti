@@ -63,6 +63,11 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release_channel: ${{ steps.release.outputs.release_channel }}
+      release_already_published: ${{ steps.release.outputs.release_already_published }}
+      approval_digest: ${{ steps.release.outputs.approval_digest }}
+      release_candidate_id: ${{ steps.release.outputs.release_candidate_id }}
+      release_draft_tag: ${{ steps.release.outputs.release_draft_tag }}
+      release_id: ${{ steps.release.outputs.release_id }}
       release_make_latest: ${{ steps.release.outputs.release_make_latest }}
       release_prerelease: ${{ steps.release.outputs.release_prerelease }}
       release_tag: ${{ steps.release.outputs.release_tag }}
@@ -106,19 +111,28 @@ jobs:
           fi
 
           release_version="${release_tag#v}"
+          release_candidate_tag="candidate-${release_tag}"
           if [[ -n "${EXPECTED_CHANNEL}" && "${EXPECTED_CHANNEL}" != "${release_channel}" ]]; then
             echo "Release channel mismatch: expected ${EXPECTED_CHANNEL}, got ${release_channel}." >&2
             exit 1
           fi
 
-          gh release view "${release_tag}" \
-            --json assets,isDraft,isPrerelease,tagName,targetCommitish,url > release.json
-          actual_tag="$(jq -r .tagName release.json)"
-          is_draft="$(jq -r .isDraft release.json)"
-          actual_prerelease="$(jq -r .isPrerelease release.json)"
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" > releases.json
+          if [[ "${release_channel}" == "stable" ]]; then
+            jq "[.[] | select((.draft and (.tag_name == \"${release_tag}\" or .tag_name == \"${release_candidate_tag}\")) or ((.draft | not) and .tag_name == \"${release_tag}\" and (.prerelease | not)))] | first // empty" releases.json > release.json
+          else
+            jq "[.[] | select(.draft and .tag_name == \"${release_tag}\")] | first // empty" releases.json > release.json
+          fi
+          if ! jq -e . release.json >/dev/null 2>&1; then
+            echo "GitHub release ${release_tag} does not exist." >&2
+            exit 1
+          fi
+          actual_tag="$(jq -r .tag_name release.json)"
+          is_draft="$(jq -r .draft release.json)"
+          actual_prerelease="$(jq -r .prerelease release.json)"
           asset_count="$(jq '.assets | length' release.json)"
-          if [[ "${actual_tag}" != "${release_tag}" ]]; then
-            echo "GitHub release tag mismatch: expected ${release_tag}, got ${actual_tag}." >&2
+          if [[ "${actual_tag}" != "${release_tag}" && "${actual_tag}" != "${release_candidate_tag}" ]]; then
+            echo "GitHub release tag mismatch: expected ${release_candidate_tag}, got ${actual_tag}." >&2
             exit 1
           fi
           if [[ "${actual_prerelease}" != "${release_prerelease}" ]]; then
@@ -129,19 +143,12 @@ jobs:
             echo "GitHub release ${release_tag} has no staged assets." >&2
             exit 1
           fi
+          release_already_published=false
           if [[ "${is_draft}" != "true" ]]; then
-            if [[ "${release_channel}" != "stable" ]]; then
-              echo "Prerelease ${release_tag} must remain a GitHub draft." >&2
-              exit 1
-            fi
-            latest_stable_tag="$(gh release list \
-              --exclude-drafts \
-              --exclude-pre-releases \
-              --limit 200 \
-              --json tagName,isLatest \
-              --jq '[.[] | select(.tagName != "stable")] | (map(select(.isLatest)) | first) // first | .tagName // ""')"
-            if [[ "${latest_stable_tag}" != "${release_tag}" ]]; then
-              echo "Only the current public stable release may be promoted again." >&2
+            if [[ "${release_channel}" == "stable" && "${actual_tag}" == "${release_tag}" ]]; then
+              release_already_published=true
+            else
+              echo "Release ${release_tag} must still be a GitHub draft." >&2
               exit 1
             fi
           fi
@@ -150,8 +157,40 @@ jobs:
             exit 1
           fi
 
-          git fetch --force origin "refs/tags/${release_tag}:refs/tags/${release_tag}"
-          release_target="$(git rev-list -n 1 "${release_tag}")"
+          release_target="$(jq -r '.target_commitish // ""' release.json)"
+          source_ref="${INPUT_SOURCE_REF:-${release_target}}"
+          release_candidate_id=""
+          approval_digest=""
+          if [[ "${release_channel}" == "stable" ]]; then
+            draft_target_sha="$(git rev-parse "${release_target}^{commit}")"
+            RELEASE_TARGET="${draft_target_sha}" gh release download "${actual_tag}" \
+              --pattern release-candidate.json \
+              --pattern release-summary.json \
+              --pattern SHA256SUMS.txt \
+              --dir candidate-validation
+            jq -r .body release.json > candidate-release-body.md
+            node apps/desktop/scripts/extract-approved-release-summary.mjs \
+              candidate-release-body.md \
+              candidate-validation/release-summary.json \
+              approved-release-summary.json
+            verification="$(RELEASE_TAG="${release_tag}" RELEASE_TARGET="${draft_target_sha}" node apps/desktop/scripts/verify-release-candidate.mjs \
+              candidate-validation/release-candidate.json \
+              candidate-validation/SHA256SUMS.txt \
+              candidate-validation/release-summary.json \
+              approved-release-summary.json)"
+            release_target="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).targetCommit)' "${verification}")"
+            release_candidate_id="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).candidateId)' "${verification}")"
+            approval_digest="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).approvalDigest)' "${verification}")"
+            source_ref="$(jq -r .sourceRef candidate-validation/release-candidate.json)"
+            remote_tag_sha="$(git ls-remote --tags origin "refs/tags/${release_tag}" | awk '{print $1}')"
+            if [[ -n "${remote_tag_sha}" && "${remote_tag_sha}" != "${release_target}" ]]; then
+              echo "Stable tag ${release_tag} points to another commit; select a new version." >&2
+              exit 1
+            fi
+          else
+            git fetch --force origin "refs/tags/${release_tag}:refs/tags/${release_tag}"
+            release_target="$(git rev-list -n 1 "${release_tag}")"
+          fi
           if [[ -n "${EXPECTED_TARGET}" ]]; then
             expected_target_sha="$(git rev-parse "${EXPECTED_TARGET}^{commit}")"
             if [[ "${release_target}" != "${expected_target_sha}" ]]; then
@@ -160,8 +199,12 @@ jobs:
             fi
           fi
 
-          source_ref="${INPUT_SOURCE_REF:-$(jq -r '.targetCommitish // ""' release.json)}"
-          release_url="$(jq -r .url release.json)"
+          release_url="$(jq -r .html_url release.json)"
+          echo "approval_digest=${approval_digest}" >> "$GITHUB_OUTPUT"
+          echo "release_already_published=${release_already_published}" >> "$GITHUB_OUTPUT"
+          echo "release_candidate_id=${release_candidate_id}" >> "$GITHUB_OUTPUT"
+          echo "release_draft_tag=${actual_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_id=$(jq -r .id release.json)" >> "$GITHUB_OUTPUT"
           echo "release_channel=${release_channel}" >> "$GITHUB_OUTPUT"
           echo "release_make_latest=${release_make_latest}" >> "$GITHUB_OUTPUT"
           echo "release_prerelease=${release_prerelease}" >> "$GITHUB_OUTPUT"
@@ -171,12 +214,23 @@ jobs:
           echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
           echo "source_ref=${source_ref}" >> "$GITHUB_OUTPUT"
 
+  approve-stable:
+    name: Approve Stable Release
+    needs: resolve
+    if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
+    runs-on: ubuntu-latest
+    environment: desktop-stable-release
+    steps:
+      - name: Record approval
+        run: echo "Stable candidate ${{ needs.resolve.outputs.release_candidate_id }} approved by ${{ github.actor }}."
+
   promote:
     name: Publish External Release
-    needs: resolve
+    needs: [resolve, approve-stable]
+    if: ${{ always() && needs.resolve.result == 'success' && (needs.approve-stable.result == 'success' || needs.approve-stable.result == 'skipped') }}
     runs-on: ubuntu-latest
     outputs:
-      release_url: ${{ steps.release-url.outputs.release_url }}
+      release_url: ${{ needs.resolve.outputs.release_url }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
@@ -184,6 +238,11 @@ jobs:
       TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
       TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
       TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+      TUTTI_DESKTOP_RELEASE_APPROVAL_DIGEST: ${{ needs.resolve.outputs.approval_digest }}
+      TUTTI_DESKTOP_RELEASE_ALREADY_PUBLISHED: ${{ needs.resolve.outputs.release_already_published }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE_ID: ${{ needs.resolve.outputs.release_candidate_id }}
+      TUTTI_DESKTOP_RELEASE_DRAFT_TAG: ${{ needs.resolve.outputs.release_draft_tag }}
+      TUTTI_DESKTOP_RELEASE_ID: ${{ needs.resolve.outputs.release_id }}
       TUTTI_DESKTOP_RELEASE_MAKE_LATEST: ${{ needs.resolve.outputs.release_make_latest }}
       TUTTI_DESKTOP_RELEASE_PRERELEASE: ${{ needs.resolve.outputs.release_prerelease }}
       TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
@@ -208,7 +267,7 @@ jobs:
       - name: Download staged GitHub release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gh release download "${TUTTI_DESKTOP_RELEASE_TAG}" --dir release-assets
+        run: gh release download "${TUTTI_DESKTOP_RELEASE_DRAFT_TAG}" --dir release-assets
 
       - name: Verify staged release assets
         run: |
@@ -248,6 +307,33 @@ jobs:
           RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
           RELEASE_TARGET: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
         run: node apps/desktop/scripts/validate-release-summary.mjs release-assets/release-summary.json
+
+      - name: Freeze approved stable release summary
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/releases/${TUTTI_DESKTOP_RELEASE_ID}" \
+            --jq .body > approved-release-body.md
+          node apps/desktop/scripts/extract-approved-release-summary.mjs \
+            approved-release-body.md \
+            release-assets/release-summary.json \
+            approved-release-summary.json
+          verification="$(RELEASE_TAG="${TUTTI_DESKTOP_RELEASE_TAG}" RELEASE_TARGET="${TUTTI_DESKTOP_RELEASE_TARGET}" node apps/desktop/scripts/verify-release-candidate.mjs \
+            release-assets/release-candidate.json \
+            release-assets/SHA256SUMS.txt \
+            release-assets/release-summary.json \
+            approved-release-summary.json)"
+          actual_digest="$(node -e 'process.stdout.write(JSON.parse(process.argv[1]).approvalDigest)' "${verification}")"
+          if [[ "${actual_digest}" != "${TUTTI_DESKTOP_RELEASE_APPROVAL_DIGEST}" ]]; then
+            echo "Release notes or candidate assets changed after approval; submit approval again." >&2
+            exit 1
+          fi
+          cp release-assets/release-candidate.json promotion-candidate.json
+          mv approved-release-summary.json release-assets/release-summary.json
+          rm release-assets/release-candidate.json
+          node apps/desktop/scripts/generate-checksums.mjs release-assets
+          node apps/desktop/scripts/validate-release-summary.mjs release-assets/release-summary.json
 
       - name: Install AWS CLI
         run: |
@@ -327,12 +413,87 @@ jobs:
             exit 1
           fi
 
+      - name: Protect immutable stable asset path
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/${TUTTI_DESKTOP_RELEASE_TAG}"
+          marker="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}/.promotion-candidate.json"
+          checksum="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}/SHA256SUMS.txt"
+          if aws s3 cp "${marker}" existing-promotion-candidate.json 2>/dev/null; then
+            if ! cmp -s promotion-candidate.json existing-promotion-candidate.json; then
+              echo "Formal asset path belongs to another release candidate." >&2
+              exit 1
+            fi
+          else
+            aws s3 cp promotion-candidate.json "${marker}" \
+              --content-type "application/json" \
+              --cache-control "no-store"
+          fi
+          if aws s3 cp "${checksum}" existing-formal-checksums.txt 2>/dev/null; then
+            if ! cmp -s release-assets/SHA256SUMS.txt existing-formal-checksums.txt; then
+              echo "Published stable asset checksums are immutable and do not match this candidate." >&2
+              exit 1
+            fi
+            echo "TUTTI_DESKTOP_FORMAL_ASSETS_COMPLETE=true" >> "$GITHUB_ENV"
+          else
+            echo "TUTTI_DESKTOP_FORMAL_ASSETS_COMPLETE=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Create stable release tag after approval
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          remote_tag_sha="$(git ls-remote --tags origin "refs/tags/${TUTTI_DESKTOP_RELEASE_TAG}" | awk '{print $1}')"
+          if [[ -z "${remote_tag_sha}" ]]; then
+            node apps/desktop/scripts/reserve-release-tag.mjs \
+              --strategy explicit_tag \
+              --tag "${TUTTI_DESKTOP_RELEASE_TAG}" \
+              --target "${TUTTI_DESKTOP_RELEASE_TARGET}" \
+              --json >/dev/null
+          elif [[ "${remote_tag_sha}" != "${TUTTI_DESKTOP_RELEASE_TARGET}" ]]; then
+            echo "Stable tag ${TUTTI_DESKTOP_RELEASE_TAG} points to another commit." >&2
+            exit 1
+          fi
+
+      - name: Attach approved draft to the stable tag
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' && needs.resolve.outputs.release_already_published != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api --method PATCH "repos/${GITHUB_REPOSITORY}/releases/${TUTTI_DESKTOP_RELEASE_ID}" \
+            -f tag_name="${TUTTI_DESKTOP_RELEASE_TAG}" \
+            -f target_commitish="${TUTTI_DESKTOP_RELEASE_TARGET}" \
+            -f name="${TUTTI_DESKTOP_RELEASE_TAG}" \
+            -F draft=true \
+            -F prerelease=false >/dev/null
+          if [[ "${TUTTI_DESKTOP_RELEASE_DRAFT_TAG}" != "${TUTTI_DESKTOP_RELEASE_TAG}" ]]; then
+            git push origin ":refs/tags/${TUTTI_DESKTOP_RELEASE_DRAFT_TAG}" || true
+          fi
+
       - name: Upload immutable release assets to AWS S3
         run: |
           remote_dir="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/${TUTTI_DESKTOP_RELEASE_TAG}"
-          aws s3 sync release-assets "${remote_dir}" \
-            --size-only \
-            --cache-control "public, max-age=31536000, immutable"
+          if [[ "${TUTTI_DESKTOP_RELEASE_CHANNEL}" == "stable" ]]; then
+            if [[ "${TUTTI_DESKTOP_FORMAL_ASSETS_COMPLETE}" != "true" ]]; then
+              candidate_dir="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}/candidates/${TUTTI_DESKTOP_RELEASE_CANDIDATE_ID}"
+              aws s3 sync "${candidate_dir}" "${remote_dir}" \
+                --exclude "release-summary.json" \
+                --exclude "SHA256SUMS.txt" \
+                --exclude "release-candidate.json" \
+                --copy-props metadata-directive
+              aws s3 cp release-assets/release-summary.json "${remote_dir}/release-summary.json" \
+                --content-type "application/json" \
+                --cache-control "public, max-age=31536000, immutable"
+              aws s3 cp release-assets/SHA256SUMS.txt "${remote_dir}/SHA256SUMS.txt" \
+                --content-type "text/plain" \
+                --cache-control "public, max-age=31536000, immutable"
+            fi
+          else
+            aws s3 sync release-assets "${remote_dir}" \
+              --size-only \
+              --cache-control "public, max-age=31536000, immutable"
+          fi
 
       - name: Verify mirrored Windows release assets
         shell: bash
@@ -381,6 +542,11 @@ jobs:
           RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
         run: |
           export RELEASE_ASSET_BASE_URL="${TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL}"
+          export RELEASE_SUMMARY_MODE=published
+          gh release upload "${RELEASE_TAG}" \
+            release-assets/release-summary.json \
+            release-assets/SHA256SUMS.txt \
+            --clobber
           gh release view "${RELEASE_TAG}" --json body --jq .body > release-body.md
           node apps/desktop/scripts/upsert-release-summary.mjs \
             release-body.md \
@@ -396,6 +562,7 @@ jobs:
         env:
           RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
           RELEASE_GIT_SHA: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+          RELEASE_NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
           RELEASE_SOURCE_REF: ${{ needs.resolve.outputs.source_ref }}
           RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
         run: |
@@ -424,7 +591,7 @@ jobs:
             --cache-control "public, max-age=60"
 
       - name: Publish stable GitHub release
-        if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' && needs.resolve.outputs.release_already_published != 'true' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh release edit "${TUTTI_DESKTOP_RELEASE_TAG}" --draft=false --latest
@@ -552,13 +719,11 @@ jobs:
           echo "Public release pointer did not resolve to ${RELEASE_TAG}: ${pointer_url}" >&2
           exit 1
 
-      - name: Resolve final GitHub release URL
-        id: release-url
+      - name: Remove internal candidate manifest from published release
+        if: ${{ needs.resolve.outputs.release_channel == 'stable' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          release_url="$(gh release view "${TUTTI_DESKTOP_RELEASE_TAG}" --json url --jq .url)"
-          echo "release_url=${release_url}" >> "$GITHUB_OUTPUT"
+        run: gh release delete-asset "${TUTTI_DESKTOP_RELEASE_TAG}" release-candidate.json --yes
 
   notify-feishu:
     name: Notify Feishu
@@ -608,3 +773,15 @@ jobs:
       - name: Skip Feishu card
         if: env.FEISHU_WEBHOOK_URL == ''
         run: echo "FEISHU_RELEASE_WEBHOOK_URL is not configured; skipping Feishu notification."
+
+  submit-store:
+    name: Submit stable package to Microsoft Store
+    needs: [resolve, promote]
+    if: ${{ needs.resolve.outputs.release_channel == 'stable' && needs.promote.result == 'success' && vars.TUTTI_WINDOWS_STORE_SUBMISSION_ENABLED == 'true' }}
+    uses: ./.github/workflows/desktop-store-submit.yml
+    with:
+      release_tag: ${{ needs.resolve.outputs.release_tag }}
+      store_environment: microsoft-store-production
+      submit: true
+      target_commit: ${{ needs.resolve.outputs.release_target }}
+    secrets: inherit

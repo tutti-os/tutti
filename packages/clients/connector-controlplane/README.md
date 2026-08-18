@@ -5,7 +5,8 @@ authorization wire client used by Tutti and TSH.
 
 It owns:
 
-- authorization session start, observation, secret completion, and disconnect;
+- authorization session start, replacement, session cancellation, observation,
+  secret completion, and disconnect;
 - authoritative account authorization snapshots;
 - the `connector.authorization.changed` realtime event protocol;
 - bounded HTTP responses, safe redirect validation, and clearing mutable secret
@@ -34,10 +35,11 @@ client, err := connectorcontrolplane.NewAuthorizationClient(
 ```
 
 The client implements the Connector Host `AuthorizationProvider`,
-`AuthorizationObserver`, and `AuthorizationSnapshotSource` ports. Products
-compose it with `host.NewImplementationAuthorizationRouter`: remote HTTP
-Connectors use this client while managed stdio Connectors keep their
-implementation-owned credential broker.
+`AuthorizationAttemptCanceler`, `AuthorizationObserver`, and
+`AuthorizationSnapshotSource` ports. Products compose it with
+`host.NewImplementationAuthorizationRouter`: remote HTTP Connectors use this
+client while managed stdio Connectors keep their implementation-owned
+credential broker.
 
 ## Validation and releases
 

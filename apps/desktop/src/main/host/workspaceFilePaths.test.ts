@@ -62,6 +62,56 @@ test("resolveWorkspaceFileAbsolutePath normalizes daemon Windows drive paths", (
   );
 });
 
+test("resolveWorkspaceFileAbsolutePath normalizes Git Bash drive paths", () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  assert.equal(
+    resolveWorkspaceFileAbsolutePath({
+      logicalPath: "/c/Users/test/Documents/notes.txt",
+      rootDirectory: "C:\\"
+    }),
+    path.resolve("C:/Users/test/Documents/notes.txt")
+  );
+});
+
+test("resolveWorkspaceFileAbsolutePath keeps Git Bash paths on another drive outside the root", () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  assert.throws(
+    () =>
+      resolveWorkspaceFileAbsolutePath({
+        logicalPath: "/d/Users/test/Documents/notes.txt",
+        rootDirectory: "C:\\"
+      }),
+    /escapes root directory/
+  );
+});
+
+test("resolveWorkspaceFileAbsolutePath preserves native and UNC Windows paths", () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  assert.equal(
+    resolveWorkspaceFileAbsolutePath({
+      logicalPath: "C:\\Users\\test\\Documents\\notes.txt",
+      rootDirectory: "C:\\"
+    }),
+    path.resolve("C:/Users/test/Documents/notes.txt")
+  );
+  assert.equal(
+    resolveWorkspaceFileAbsolutePath({
+      logicalPath: "\\\\server\\share\\Documents\\notes.txt",
+      rootDirectory: "\\\\server\\share"
+    }),
+    path.resolve("\\\\server\\share\\Documents\\notes.txt")
+  );
+});
+
 test("resolveWorkspaceFileAbsolutePath rejects empty workspace roots", () => {
   assert.throws(
     () =>
@@ -119,5 +169,36 @@ test("resolveTerminalLinkAbsolutePath supports home-relative, absolute, and cwd-
       path: "../README.md"
     }),
     path.resolve("/tmp/demo/README.md")
+  );
+});
+
+test("resolveTerminalLinkAbsolutePath preserves POSIX /c paths", () => {
+  if (process.platform === "win32") {
+    return;
+  }
+
+  assert.equal(
+    resolveTerminalLinkAbsolutePath({
+      defaultDirectory: "/Users/example",
+      homeDirectory: "/Users/example",
+      path: "/c/Users/example/notes.txt"
+    }),
+    path.resolve("/c/Users/example/notes.txt")
+  );
+});
+
+test("resolveTerminalLinkAbsolutePath normalizes Git Bash drive paths", () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  assert.equal(
+    resolveTerminalLinkAbsolutePath({
+      cwd: "C:\\Users\\test\\project",
+      defaultDirectory: "C:\\Users\\test",
+      homeDirectory: "C:\\Users\\test",
+      path: "/c/Users/test/project/notes.txt"
+    }),
+    path.resolve("C:/Users/test/project/notes.txt")
   );
 });

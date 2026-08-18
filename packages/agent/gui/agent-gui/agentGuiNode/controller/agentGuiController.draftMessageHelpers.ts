@@ -254,6 +254,49 @@ function areDraftValuesStructurallyEqual(
   );
 }
 
+// Upload completion replaces the local image bytes with a provider locator and
+// updates presentation state. Those transitions do not mean the user edited
+// the submitted image. Keep uploadError and unknown fields comparable so a
+// failed upload or a future user-owned field still prevents clearing.
+const IMAGE_SUBMISSION_TRANSIENT_FIELDS = new Set([
+  "attachmentId",
+  "data",
+  "path",
+  "previewUrl",
+  "uploading",
+  "url"
+]);
+
+function submissionComparableDraftBlock(
+  block: AgentComposerDraft[number]
+): unknown {
+  if (block.type !== "image") {
+    return block;
+  }
+  return Object.fromEntries(
+    Object.entries(block).filter(
+      ([key]) => !IMAGE_SUBMISSION_TRANSIENT_FIELDS.has(key)
+    )
+  );
+}
+
+function areAgentComposerDraftsEquivalentForSubmission(
+  left: AgentComposerDraft,
+  right: AgentComposerDraft
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((block, index) => {
+      const other = right[index];
+      if (!other || block.type !== other.type) return false;
+      return areDraftValuesStructurallyEqual(
+        submissionComparableDraftBlock(block),
+        submissionComparableDraftBlock(other)
+      );
+    })
+  );
+}
+
 export function deleteSubmittedDraftSnapshotsForScopes(input: {
   snapshots: Record<string, SubmittedDraftSnapshot>;
   scopeKeys: ReadonlySet<string>;
@@ -405,7 +448,10 @@ export function shouldClearSubmittedDraft(input: {
 }): boolean {
   return Boolean(
     input.currentDraft &&
-    areAgentComposerDraftsEqual(input.currentDraft, input.submittedDraft)
+    areAgentComposerDraftsEquivalentForSubmission(
+      input.currentDraft,
+      input.submittedDraft
+    )
   );
 }
 

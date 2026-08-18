@@ -14,6 +14,10 @@ import {
   canonicalInteractionKey,
   canonicalTurnKey
 } from "./sessionEntityKeys.ts";
+import {
+  compareTurnsByOccurrence,
+  latestTurnForSession
+} from "./sessionTurnOrdering.ts";
 import { selectLatestActivationForSession } from "./pendingIntents.selectors.ts";
 import { isPendingActivationViable } from "./pendingIntents.types.ts";
 import {
@@ -262,16 +266,7 @@ export function selectEngineLatestTurn(
 ): AgentActivityTurn | null {
   const id = agentSessionId?.trim() ?? "";
   if (!state.sessionLifecycle.sessionsById[id]) return null;
-  let latestTurn: AgentActivityTurn | null = null;
-  for (const turn of Object.values(state.sessionLifecycle.turnsById)) {
-    if (
-      turn.agentSessionId === id &&
-      (!latestTurn || compareTurnsByOccurrence(latestTurn, turn) < 0)
-    ) {
-      latestTurn = turn;
-    }
-  }
-  return latestTurn;
+  return latestTurnForSession(state.sessionLifecycle.turnsById, id);
 }
 
 export function selectEngineInteractionsForSession(
@@ -632,15 +627,5 @@ function compareSessionInteractionsByOccurrence(
   return (
     left.createdAtUnixMs - right.createdAtUnixMs ||
     left.requestId.localeCompare(right.requestId)
-  );
-}
-
-function compareTurnsByOccurrence(
-  left: AgentActivityTurn,
-  right: AgentActivityTurn
-): number {
-  return (
-    left.startedAtUnixMs - right.startedAtUnixMs ||
-    left.turnId.localeCompare(right.turnId)
   );
 }

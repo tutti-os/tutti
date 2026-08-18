@@ -193,7 +193,6 @@ func TestStorePersistsRevisionOperationBindingAndOutboxAtomically(t *testing.T) 
 	}); err != nil {
 		t.Fatal(err)
 	}
-
 	snapshot, err := store.SnapshotForScope(ctx, operation.Scope)
 	if err != nil {
 		t.Fatal(err)
@@ -371,6 +370,11 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 	}); err != nil {
 		t.Fatal(err)
 	}
+	if err := store.ResolveAuthorizationSession(
+		ctx, operation.OperationID, market.AuthorizationSessionResolutionCanceling,
+	); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +396,8 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 		t.Fatal(err)
 	}
 	if len(operations) != 1 || operations[0].Execution.AuthorizationSession == nil ||
-		operations[0].Execution.AuthorizationSession.SessionID != "session-1" {
+		operations[0].Execution.AuthorizationSession.SessionID != "session-1" ||
+		operations[0].Execution.AuthorizationSession.Resolution != market.AuthorizationSessionResolutionCanceling {
 		t.Fatalf("authorization operations = %#v", operations)
 	}
 }

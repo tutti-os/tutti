@@ -61,7 +61,7 @@ func (snapshotter *ExecutionSnapshotter) CleanupOrphans() error {
 	return errors.Join(cleanupErrors...)
 }
 
-func (snapshotter *ExecutionSnapshotter) Create(prepared market.PreparedArtifactReceipt) (string, error) {
+func (snapshotter *ExecutionSnapshotter) Create(prepared market.PreparedArtifactReceipt, executableEntries ...string) (string, error) {
 	if snapshotter == nil || strings.TrimSpace(prepared.InventoryDigest) == "" {
 		return "", errors.New("prepared connector inventory digest is missing")
 	}
@@ -99,12 +99,25 @@ func (snapshotter *ExecutionSnapshotter) Create(prepared market.PreparedArtifact
 	if digest != prepared.InventoryDigest {
 		return "", errors.New("connector execution snapshot does not match verified inventory")
 	}
+	for _, relative := range executableEntries {
+		executable, entryErr := PreparedEntrypoint(staging, relative)
+		if entryErr != nil {
+			return "", fmt.Errorf("prepare connector artifact-native entrypoint: %w", entryErr)
+		}
+		if err := os.Chmod(executable, 0o500); err != nil {
+			return "", err
+		}
+	}
 	target := staging + ".ready"
 	if err := os.Rename(staging, target); err != nil {
 		return "", err
 	}
 	staging = target
-	if err := makeExecutionTreeReadOnly(target); err != nil {
+	readyExecutablePaths := make(map[string]struct{}, len(executableEntries))
+	for _, relative := range executableEntries {
+		readyExecutablePaths[filepath.Join(target, filepath.FromSlash(relative))] = struct{}{}
+	}
+	if err := makeExecutionTreeReadOnly(target, readyExecutablePaths); err != nil {
 		return "", err
 	}
 	cleanup = false
@@ -229,7 +242,7 @@ func ExecutionInventoryDigest(root string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func makeExecutionTreeReadOnly(root string) error {
+func makeExecutionTreeReadOnly(root string, executablePaths map[string]struct{}) error {
 	var directories []string
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -239,7 +252,11 @@ func makeExecutionTreeReadOnly(root string) error {
 			directories = append(directories, path)
 			return nil
 		}
-		return os.Chmod(path, 0o400)
+		mode := os.FileMode(0o400)
+		if _, executable := executablePaths[filepath.Clean(path)]; executable {
+			mode = 0o500
+		}
+		return os.Chmod(path, mode)
 	})
 	if err != nil {
 		return err

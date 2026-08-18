@@ -246,7 +246,7 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 			return market.RuntimeReceipt{}, fmt.Errorf("resolve prepared connector artifact: %w", resolveErr)
 		}
 		installedRoot := prepared.PreparedPath
-		executionRoot, snapshotErr := host.snapshots.Create(prepared)
+		executionRoot, snapshotErr := host.snapshots.Create(prepared, artifactNativeEntrypoints(runtimeRequest.Connector.Release)...)
 		if snapshotErr != nil {
 			return market.RuntimeReceipt{}, fmt.Errorf("create connector execution snapshot: %w", snapshotErr)
 		}
@@ -618,7 +618,11 @@ func (*Host) attachCLI(route *connectorRoute, managed *market.ManagedStdioImplem
 	}
 	launchArguments := []string{entrypoint}
 	launchExecutable := executable
-	if installed != nil && installed.LaunchKind == "native" {
+	if managed.CLI.Launch != nil && managed.CLI.Launch.Kind == market.CLIArtifactLaunchKindNative {
+		launchArguments = nil
+		launchExecutable = connectorruntime.ConnectorExecutable{Path: entrypoint, SHA256: managed.CLI.Launch.SHA256,
+			SizeBytes: managed.CLI.Launch.SizeBytes}
+	} else if installed != nil && installed.LaunchKind == "native" {
 		launchArguments = nil
 		launchExecutable = connectorruntime.ConnectorExecutable{Path: entrypoint, SHA256: installed.EntrypointSHA256,
 			SizeBytes: installed.EntrypointSize}
@@ -631,6 +635,15 @@ func (*Host) attachCLI(route *connectorRoute, managed *market.ManagedStdioImplem
 	route.cliInvocationCommand = market.ManagedCLICommandName(*managed.CLI)
 	route.cliCommands = cloneCLICommands(managed.CLI.Commands)
 	return nil
+}
+
+func artifactNativeEntrypoints(release market.Release) []string {
+	managed := release.Manifest.Implementation.ManagedStdio
+	if managed == nil || managed.CLI == nil || managed.CLI.Launch == nil ||
+		managed.CLI.Launch.Kind != market.CLIArtifactLaunchKindNative {
+		return nil
+	}
+	return []string{managed.CLI.Entrypoint}
 }
 
 func (host *Host) startProcess(ctx context.Context, route *connectorRoute, spec agentruntime.ProcessSpec,

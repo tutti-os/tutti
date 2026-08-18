@@ -19,7 +19,7 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
 		{name: "deletion admission", scenarios: DeletionAdmissionScenarios(), wantCount: 3},
-		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
+		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 8},
 		{name: "goal", scenarios: GoalScenarios(), wantCount: 17},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
@@ -171,6 +171,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 	}
 	wantCoordinator := []string{
 		"exact turn cancel",
+		"exact turn cancel keeps delivery-unconfirmed intent pending",
 		"interactive response",
 		"interactive response reuses provider request id across turns",
 		"interactive response race",
