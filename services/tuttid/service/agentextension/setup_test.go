@@ -57,8 +57,8 @@ func TestAgentTargetSetupInstallsGenericExtensionRuntime(t *testing.T) {
 	if ready.RuntimeSource != "managed" || ready.RuntimeVersion != "1.2.3" || ready.Plan != nil {
 		t.Fatalf("ready setup = %#v", ready)
 	}
-	if runner.calls != 1 {
-		t.Fatalf("install calls = %d, want 1", runner.calls)
+	if runner.callCount() != 1 {
+		t.Fatalf("install calls = %d, want 1", runner.callCount())
 	}
 	userEntry := filepath.Join(service.Plans.Manager.RuntimeBinDir, "generic-agent")
 	resolvedEntry, err := filepath.EvalSymlinks(userEntry)
@@ -150,8 +150,45 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	for runner.callCount() < 2 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if ready.RuntimeSource != "managed" || runner.callCount() != 2 {
+	if ready.RuntimeSource != "managed" || runner.callCount() < 2 {
 		t.Fatalf("setup after companion failure = %#v, install calls = %d", ready, runner.callCount())
+	}
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+	retryRunner := &fixtureInstallRunner{
+		binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3",
+	}
+	restarted := NewSetupService(context.Background())
+	restarted.Plans = service.Plans
+	restarted.Transport = service.Transport
+	restarted.Actions = service.Actions
+	restarted.Discovery = service.Discovery
+	restarted.Runner = retryRunner
+	if err := restarted.StartAccountUsageCompanionReconciler(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = restarted.Close() })
+	companionPlan, err := restarted.Plans.GetInstallPlan(context.Background(), InstallPlanInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+	})
+	if err != nil || companionPlan.AccountUsage == nil {
+		t.Fatalf("account usage retry plan = %#v, error = %v", companionPlan.AccountUsage, err)
+	}
+	activationPath := filepath.Join(companionPlan.AccountUsage.InstallRoot, "activation.json")
+	deadline = time.Now().Add(5 * time.Second)
+	for {
+		_, statErr := os.Stat(activationPath)
+		if statErr == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("account usage companion was not recovered after restart: %v", statErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if retryRunner.callCount() != 1 {
+		t.Fatalf("account usage restart retry calls = %d, want 1", retryRunner.callCount())
 	}
 	usage, err := (AccountUsageService{Manager: service.Plans.Manager, Targets: store}).Probe(context.Background(), targetID)
 	if err != nil {
@@ -310,8 +347,8 @@ func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.
 	if _, err := os.Stat(legacyRoot); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("legacy runtime root was not adopted away: %v", err)
 	}
-	if runner.calls != 1 {
-		t.Fatalf("runtime was reinstalled after extension metadata update: calls=%d", runner.calls)
+	if runner.callCount() != 1 {
+		t.Fatalf("status read installed or reinstalled a runtime: calls=%d", runner.callCount())
 	}
 	nextPlan, err := service.Plans.GetInstallPlan(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
 	if err != nil {
@@ -319,6 +356,25 @@ func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.
 	}
 	if nextPlan.InstallRoot != initial.Plan.InstallRoot || nextPlan.RuntimeIdentity != initial.Plan.RuntimeIdentity {
 		t.Fatalf("runtime identity changed across extension versions: first=%#v next=%#v", initial.Plan, nextPlan)
+	}
+	if nextPlan.AccountUsage == nil {
+		t.Fatal("account usage plan is unavailable after extension metadata update")
+	}
+	service.WakeAccountUsageCompanionReconciler()
+	activationPath := filepath.Join(nextPlan.AccountUsage.InstallRoot, "activation.json")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, statErr := os.Stat(activationPath)
+		if statErr == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("account usage companion was not reconciled for reused runtime: %v", statErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if runner.callCount() != 2 {
+		t.Fatalf("runtime reuse calls = %d, want one ACP install and one companion install", runner.callCount())
 	}
 	usage, err := (AccountUsageService{Manager: service.Plans.Manager, Targets: store}).Probe(context.Background(), targetID)
 	if err != nil {
@@ -508,8 +564,67 @@ func TestAgentTargetSetupPrefersCompatibleLocalCodeBuddy(t *testing.T) {
 	if snapshot.Status != SetupReady || snapshot.RuntimeSource != "local" || snapshot.RuntimeVersion != "2.121.2" || snapshot.Plan != nil {
 		t.Fatalf("local-first setup = %#v", snapshot)
 	}
-	if runner.calls != 0 {
-		t.Fatalf("local-first install calls = %d", runner.calls)
+	if runner.callCount() != 0 {
+		t.Fatalf("local-first install calls = %d", runner.callCount())
+	}
+	manifest := testManifest()
+	manifest.AgentKey = "codebuddy"
+	manifest.Version = "1.0.1"
+	manifest.Name = "CodeBuddy Code"
+	manifest.Runtime.Install.Args = []string{"install", "--prefix", "${installRoot}", "@tencent-ai/codebuddy-code@2.121.2"}
+	manifest.Runtime.Launch.Executable = "${installRoot}/node_modules/.bin/codebuddy"
+	manifest.Profiles.AccountUsage = "profiles/account-usage.json"
+	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["codebuddy"],"version":{"args":["--version"],"constraint":">=2.121.2 <3.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`
+	installation, err := installTestPackage(
+		t,
+		service.Plans.Manager,
+		Release{AgentKey: "codebuddy", Version: "1.0.1"},
+		testPackageZIPFor(t, manifest, discovery),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON(installation.Provider, agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: installation.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := service.Plans.Targets.(*targetStoreStub)
+	target := store.targets[targetID]
+	target.LaunchRefJSON = launchRef
+	store.targets[targetID] = target
+
+	updated, err := service.GetSetup(context.Background(), InstallPlanInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if updated.Status != SetupReady || updated.RuntimeSource != "local" || runner.callCount() != 0 {
+		t.Fatalf("local runtime changed during extension update: snapshot=%#v calls=%d", updated, runner.callCount())
+	}
+	plan, err := service.Plans.GetInstallPlan(context.Background(), InstallPlanInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+	})
+	if err != nil || plan.AccountUsage == nil {
+		t.Fatalf("local account usage plan = %#v, error = %v", plan.AccountUsage, err)
+	}
+	service.WakeAccountUsageCompanionReconciler()
+	activationPath := filepath.Join(plan.AccountUsage.InstallRoot, "activation.json")
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		_, statErr := os.Stat(activationPath)
+		if statErr == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("account usage companion was not reconciled for local runtime: %v", statErr)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if runner.callCount() != 1 {
+		t.Fatalf("local runtime account usage install calls = %d, want 1", runner.callCount())
 	}
 }
 
@@ -932,6 +1047,9 @@ func setupFixture(
 	service.Actions = agentextensiondata.NewFileSetupActionStore(stateDir)
 	service.Discovery = agentextensiondata.NewFileSetupDiscoveryDirectory(stateDir)
 	service.Runner = runner
+	if err := service.StartAccountUsageCompanionReconciler(); err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(func() { _ = service.Close() })
 	return service, targetID
 }
@@ -1092,7 +1210,33 @@ func (r *fixtureInstallRunner) Run(_ context.Context, command []string, cwd stri
 	if root == "" {
 		return errors.New("missing install prefix")
 	}
-	packageRoot := filepath.Join(root, "node_modules", filepath.FromSlash(r.packageName))
+	installedPackage := r.packageName
+	for _, value := range command {
+		if strings.HasPrefix(value, "@") {
+			if versionAt := strings.LastIndex(value, "@"); versionAt > 0 {
+				installedPackage = value[:versionAt]
+			}
+		}
+	}
+	packageRoot := filepath.Join(root, "node_modules", filepath.FromSlash(installedPackage))
+	if installedPackage != r.packageName {
+		script := filepath.Join(packageRoot, "dist", "cli.cjs")
+		if err := os.MkdirAll(filepath.Dir(script), 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(script, []byte("process.stdout.write('{}')\n"), 0o600)
+	}
+	if runtime.GOOS == "windows" {
+		launcher := filepath.Join(root, "node_modules", ".bin", r.binary+".cmd")
+		if err := os.MkdirAll(filepath.Dir(launcher), 0o700); err != nil {
+			return err
+		}
+		return os.WriteFile(
+			launcher,
+			[]byte("@echo off\r\necho "+r.version+"\r\n"),
+			0o600,
+		)
+	}
 	realExecutable := filepath.Join(packageRoot, "bin", r.binary)
 	if err := os.MkdirAll(filepath.Dir(realExecutable), 0o700); err != nil {
 		return err

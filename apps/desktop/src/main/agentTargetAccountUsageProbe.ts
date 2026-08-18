@@ -133,6 +133,7 @@ export function mapProviderOwnedAccountUsageResult(
           resetsAtUnixMs === null ||
           !Number.isSafeInteger(resetsAtUnixMs) ||
           resetsAtUnixMs < 0)) ||
+      (quota.quotaType === "model" && !modelName) ||
       (quota.modelName !== undefined && (!modelName || modelName.length > 128))
     ) {
       return [];

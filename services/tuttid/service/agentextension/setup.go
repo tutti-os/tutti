@@ -110,6 +110,10 @@ type SetupService struct {
 	workers      sync.WaitGroup
 	closed       bool
 
+	accountUsageReconcileMu      sync.Mutex
+	accountUsageReconcilerActive bool
+	accountUsageReconcileWake    chan struct{}
+
 	errMu     sync.Mutex
 	workerErr error
 }

@@ -10,10 +10,9 @@
       "resetsAtUnixMs": 1787270400000
     },
     {
-      "quotaType": "model",
+      "quotaType": "session",
       "percentRemaining": 25,
-      "resetsAtUnixMs": 1770000060000,
-      "modelName": "K2 model"
+      "resetsAtUnixMs": 1770000060000
     }
   ]
 }

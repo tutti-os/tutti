@@ -398,7 +398,12 @@ Helper owns provider config, credentials, trusted origins, private endpoints,
 and response parsing; `tuttid` runs only the exact companion script installed
 and fingerprinted in that Target's independent companion runtime through a
 separately verified Node interpreter. Companion availability never changes ACP
-readiness. The daemon returns the
+readiness. A daemon-owned reconciler installs the companion outside setup
+actions, wakes after runtime or Extension activation, retries failures with
+bounded backoff, and rechecks persisted activation on restart. Account-usage
+requests are joined and cached for a short TTL by exact `agentTargetId`; the TTL
+starts when execution completes, and Node identity derivation is reused while
+the executable file identity is unchanged. The daemon returns the
 provider-neutral `tutti.agent.account-usage.v1` discriminated result. Desktop
 validates the schema and echoed Target/provider identity, then projects quotas
 without changing ACP readiness. Missing profiles and older Extensions are

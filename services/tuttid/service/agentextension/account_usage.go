@@ -19,6 +19,7 @@ import (
 const (
 	AccountUsageSchemaVersion = "tutti.agent.account-usage.v1"
 	accountUsageOutputLimit   = 256 << 10
+	accountUsageProbeTimeout  = 45 * time.Second
 )
 
 var ErrInvalidAccountUsageTarget = errors.New("invalid account usage agent target")
@@ -56,6 +57,14 @@ func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string
 	if service.Manager == nil || service.Targets == nil {
 		return AccountUsageResult{}, errors.New("account usage service is not configured")
 	}
+	return service.Manager.accountUsageProbeResults().load(ctx, targetID, func() (AccountUsageResult, error) {
+		probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accountUsageProbeTimeout)
+		defer cancel()
+		return service.probe(probeCtx, targetID)
+	})
+}
+
+func (service AccountUsageService) probe(ctx context.Context, targetID string) (AccountUsageResult, error) {
 	target, err := service.Targets.GetAgentTarget(ctx, targetID)
 	if err != nil {
 		return AccountUsageResult{}, err
@@ -101,6 +110,9 @@ func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string
 		base.Outcome = "error"
 		base.ErrorCode = "runtime_unavailable"
 		return base, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return AccountUsageResult{}, err
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, accountUsageBinding.Timeout)
 	defer cancel()
@@ -240,7 +252,7 @@ func validateAccountUsageQuota(payload accountUsageQuotaPayload) (AccountUsageQu
 		return AccountUsageQuota{}, errors.New("account usage quota reset is invalid")
 	}
 	modelName := strings.TrimSpace(payload.ModelName)
-	if modelName != payload.ModelName || utf8.RuneCountInString(modelName) > 128 || strings.ContainsFunc(modelName, unicode.IsControl) {
+	if (payload.QuotaType == "model" && modelName == "") || modelName != payload.ModelName || utf8.RuneCountInString(modelName) > 128 || strings.ContainsFunc(modelName, unicode.IsControl) {
 		return AccountUsageQuota{}, errors.New("account usage quota model name is invalid")
 	}
 	return AccountUsageQuota{

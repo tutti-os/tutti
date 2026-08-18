@@ -10,14 +10,14 @@ import (
 	"strings"
 )
 
-func newAgentExtensionInstallCommand(ctx context.Context, executable string, args ...string) *exec.Cmd {
+func newAgentExtensionCommand(ctx context.Context, executable string, args ...string) *exec.Cmd {
 	switch strings.ToLower(filepath.Ext(executable)) {
 	case ".cmd", ".bat":
 		// npm and pnpm are batch launchers on Windows and cannot be passed
 		// directly to CreateProcess. Preserve structured argv through cmd.exe.
 		return exec.CommandContext(
 			ctx,
-			agentExtensionInstallCommandInterpreter(),
+			agentExtensionCommandInterpreter(),
 			append([]string{"/D", "/S", "/C", "call", executable}, args...)...,
 		)
 	default:
@@ -25,7 +25,7 @@ func newAgentExtensionInstallCommand(ctx context.Context, executable string, arg
 	}
 }
 
-func agentExtensionInstallCommandInterpreter() string {
+func agentExtensionCommandInterpreter() string {
 	if value := strings.TrimSpace(os.Getenv("ComSpec")); value != "" {
 		return value
 	}

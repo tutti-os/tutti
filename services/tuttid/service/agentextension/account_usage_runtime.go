@@ -266,14 +266,14 @@ func (m *Manager) accountUsageNodeBinding(script string, fingerprint runtimeExec
 	if err != nil {
 		return nil, err
 	}
-	nodeFingerprint, err := fingerprintRuntimeExecutable(realNode)
+	nodeIdentity, err := m.accountUsageNodeIdentity(realNode)
 	if err != nil {
 		return nil, fmt.Errorf("fingerprint Node interpreter: %w", err)
 	}
 	return &AccountUsageRuntimeBinding{
 		NodePath: realNode, ScriptPath: script, Args: append([]string(nil), profile.Runtime.Args...),
 		Timeout:      time.Duration(profile.Runtime.TimeoutMS) * time.Millisecond,
-		NodeIdentity: executableIdentity(nodeFingerprint), ScriptIdentity: executableIdentity(fingerprint),
+		NodeIdentity: nodeIdentity, ScriptIdentity: executableIdentity(fingerprint),
 	}, nil
 }
 

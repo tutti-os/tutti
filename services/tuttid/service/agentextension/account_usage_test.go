@@ -2,11 +2,15 @@ package agentextension
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
@@ -82,10 +86,17 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 	var node string
 	var script string
 	var args []string
+	var runCalls atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var startedOnce sync.Once
 	service := AccountUsageService{
 		Manager: manager,
 		Targets: store,
 		run: func(_ context.Context, gotNode string, gotScript string, gotArgs []string, nodeIdentity *agentruntime.ExecutableIdentity, scriptIdentity *agentruntime.ExecutableIdentity, _ int) ([]byte, error) {
+			runCalls.Add(1)
+			startedOnce.Do(func() { close(started) })
+			<-release
 			node = gotNode
 			script = gotScript
 			args = append([]string(nil), gotArgs...)
@@ -95,15 +106,107 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 			return []byte(`{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":[]}`), nil
 		},
 	}
-	result, err := service.Probe(context.Background(), targetID)
-	if err != nil {
-		t.Fatal(err)
+	type probeOutcome struct {
+		result AccountUsageResult
+		err    error
+	}
+	outcomes := make(chan probeOutcome, 8)
+	for range 8 {
+		go func() {
+			result, probeErr := service.Probe(context.Background(), targetID)
+			outcomes <- probeOutcome{result: result, err: probeErr}
+		}()
+	}
+	<-started
+	close(release)
+	var result AccountUsageResult
+	for range 8 {
+		outcome := <-outcomes
+		if outcome.err != nil {
+			t.Fatal(outcome.err)
+		}
+		result = outcome.result
 	}
 	if result.Outcome != "available" || result.BillingMode != "api" || len(result.Quotas) != 0 {
 		t.Fatalf("local API billing result = %#v", result)
 	}
 	if node != nodePath || script != helperExecutable || !reflect.DeepEqual(args, []string{"--output", "json"}) {
 		t.Fatalf("local account usage command = %q %q %#v", node, script, args)
+	}
+	if runCalls.Load() != 1 {
+		t.Fatalf("concurrent account usage executions = %d, want 1", runCalls.Load())
+	}
+	if _, err := service.Probe(context.Background(), targetID); err != nil {
+		t.Fatal(err)
+	}
+	if runCalls.Load() != 1 {
+		t.Fatalf("cached account usage executions = %d, want 1", runCalls.Load())
+	}
+}
+
+func TestAccountUsageProbeCacheTTLStartsWhenExecutionCompletes(t *testing.T) {
+	now := time.Unix(1_770_000_000, 0)
+	cache := newAccountUsageProbeCache()
+	cache.now = func() time.Time { return now }
+	cache.ttl = 15 * time.Second
+	loads := 0
+	loader := func() (AccountUsageResult, error) {
+		loads++
+		now = now.Add(10 * time.Second)
+		return AccountUsageResult{Outcome: "available"}, nil
+	}
+	if _, err := cache.load(context.Background(), "extension:kimi-code", loader); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(14 * time.Second)
+	if _, err := cache.load(context.Background(), "extension:kimi-code", loader); err != nil {
+		t.Fatal(err)
+	}
+	if loads != 1 {
+		t.Fatalf("loads before completion-based TTL expires = %d, want 1", loads)
+	}
+	now = now.Add(2 * time.Second)
+	if _, err := cache.load(context.Background(), "extension:kimi-code", loader); err != nil {
+		t.Fatal(err)
+	}
+	if loads != 2 {
+		t.Fatalf("loads after completion-based TTL expires = %d, want 2", loads)
+	}
+}
+
+func TestAccountUsageProbeCacheKeepsSharedWorkAfterCallerCancellation(t *testing.T) {
+	cache := newAccountUsageProbeCache()
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var loads atomic.Int32
+	loader := func() (AccountUsageResult, error) {
+		loads.Add(1)
+		close(started)
+		<-release
+		return AccountUsageResult{Outcome: "available"}, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	first := make(chan error, 1)
+	go func() {
+		_, err := cache.load(ctx, "extension:kimi-code", loader)
+		first <- err
+	}()
+	<-started
+	cancel()
+	if err := <-first; !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled caller error = %v, want context canceled", err)
+	}
+	second := make(chan error, 1)
+	go func() {
+		_, err := cache.load(context.Background(), "extension:kimi-code", loader)
+		second <- err
+	}()
+	close(release)
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	if loads.Load() != 1 {
+		t.Fatalf("shared executions after caller cancellation = %d, want 1", loads.Load())
 	}
 }
 
@@ -166,8 +269,8 @@ func TestDecodeAccountUsagePayloadAcceptsProviderOwnedGoldenResult(t *testing.T)
 	if result.Quotas[0].QuotaType != "weekly" || result.Quotas[0].PercentRemaining != 72 {
 		t.Fatalf("weekly quota = %#v", result.Quotas[0])
 	}
-	if result.Quotas[1].ModelName != "K2 model" || result.Quotas[1].PercentRemaining != 25 {
-		t.Fatalf("model quota = %#v", result.Quotas[1])
+	if result.Quotas[1].QuotaType != "session" || result.Quotas[1].ModelName != "" || result.Quotas[1].PercentRemaining != 25 {
+		t.Fatalf("session quota = %#v", result.Quotas[1])
 	}
 }
 
@@ -181,6 +284,7 @@ func TestDecodeAccountUsagePayloadFailsClosed(t *testing.T) {
 		"null API quotas":       `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":null}`,
 		"API quotas":            `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":[{"quotaType":"weekly","percentRemaining":50}]}`,
 		"unknown quota":         `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"future","percentRemaining":50}]}`,
+		"unnamed model quota":   `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"model","percentRemaining":50}]}`,
 		"invalid percent":       `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"weekly","percentRemaining":101}]}`,
 		"free text error":       `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"error","capturedAtUnixMs":1,"errorCode":"execution_failed","message":"secret path"}`,
 		"unknown error code":    `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"error","capturedAtUnixMs":1,"errorCode":"provider_message"}`,

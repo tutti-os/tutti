@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -49,6 +48,10 @@ type Manager struct {
 	reconcileMu       sync.Mutex
 	versionCacheOnce  sync.Once
 	runtimeVersions   *runtimeVersionCache
+	accountUsageOnce  sync.Once
+	accountUsageCache *accountUsageProbeCache
+	nodeIdentityOnce  sync.Once
+	nodeIdentities    *runtimeExecutableIdentityCache
 }
 
 type UserPathAdapter interface {
@@ -730,7 +733,7 @@ func runtimeVersionWithEnv(ctx context.Context, executable string, args []string
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, runtimeVersionProbeTimeout)
 	defer cancel()
-	command := exec.CommandContext(probeCtx, executable, args...)
+	command := newAgentExtensionCommand(probeCtx, executable, args...)
 	command.Env = env
 	output, err := command.CombinedOutput()
 	if err != nil {
@@ -791,7 +794,7 @@ func runtimeVersionWithIdentity(
 	if identity != nil {
 		output, err = agentruntime.RunVerifiedExecutable(probeCtx, executable, args, identity)
 	} else {
-		output, err = exec.CommandContext(probeCtx, executable, args...).CombinedOutput()
+		output, err = newAgentExtensionCommand(probeCtx, executable, args...).CombinedOutput()
 	}
 	if err != nil {
 		return "", runtimeVersionProbeError(ctx, probeCtx, err)

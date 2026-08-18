@@ -125,12 +125,6 @@ func buildDaemonAPI(
 		Preferences:       preferencesStore,
 		UserPathAdapter:   agentstatusservice.NewUserPathAdapter(),
 	}
-	preferences.RegisterChangeObserver(func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
-		for _, reconcileErr := range agentExtensionManager.ReconcileDesktopPreferencesChange(ctx, previous, current) {
-			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
-			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
-		}
-	})
 	agentTargetInstallPlans := agentextensionservice.InstallPlanService{
 		Manager: agentExtensionManager, Workspaces: store, Targets: agentTargetStore,
 	}
@@ -249,6 +243,13 @@ func buildDaemonAPI(
 	agentTargetSetup.Actions = agentextensiondata.NewFileSetupActionStore(agentExtensionStateDir)
 	agentTargetSetup.Discovery = agentSetupDiscovery
 	agentTargetSetup.AuthInvalidation = runOutcomes
+	preferences.RegisterChangeObserver(func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
+		for _, reconcileErr := range agentExtensionManager.ReconcileDesktopPreferencesChange(ctx, previous, current) {
+			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
+			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
+		}
+		agentTargetSetup.WakeAccountUsageCompanionReconciler()
+	})
 	agentRuntimeConfig := agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			DurableActivityReporter: agentActivityProjection,
@@ -787,8 +788,12 @@ func buildDaemonAPI(
 		replayComposition, agentModelCatalog, agentSessionService, events,
 	)
 
+	if err := agentTargetSetup.StartAccountUsageCompanionReconciler(); err != nil {
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start account usage companion reconciler: %w", err)
+	}
 	if refreshAgentExtensionsInBackground {
-		startAgentExtensionBackgroundRefresh(agentExtensionManager)
+		startAgentExtensionBackgroundRefresh(agentExtensionManager, agentTargetSetup)
 	}
 	agentSessionReplayVerifier := composeAgentReplayVerifier(agentProcessComposition.replay, replaySemanticRuntime)
 

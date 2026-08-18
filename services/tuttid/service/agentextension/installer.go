@@ -35,7 +35,7 @@ func (localInstallCommandRunner) Run(ctx context.Context, command []string, cwd 
 	if resolved, err := exec.LookPath(executable); err == nil {
 		executable = resolved
 	}
-	cmd := newAgentExtensionInstallCommand(ctx, executable, command[1:]...)
+	cmd := newAgentExtensionCommand(ctx, executable, command[1:]...)
 	cmd.Dir = cwd
 	cmd.Env = env
 	output := &boundedBuffer{limit: 128 << 10}
@@ -279,29 +279,11 @@ func (s *SetupService) executeInstall(
 	if err := activateManagedRuntime(installation, workspace, stagingDir, plan, s.Plans.Manager.RuntimeInstallDir, entry, activation); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
 	}
-	// Account usage is an optional provider-owned sidecar. Install it on the
-	// service worker context after the ACP activation commits so its latency or
-	// failure cannot delay or roll back Agent readiness.
-	s.startAccountUsageCompanionInstall(installation, plan)
+	// Account usage is an optional provider-owned sidecar. Wake its independent
+	// reconciler only after ACP activation commits so sidecar latency or failure
+	// cannot delay or roll back Agent readiness.
+	s.WakeAccountUsageCompanionReconciler()
 	return nil
-}
-
-func (s *SetupService) startAccountUsageCompanionInstall(installation Installation, plan InstallPlan) {
-	if plan.AccountUsage == nil {
-		return
-	}
-	s.mu.Lock()
-	if s.closed || s.workerCtx == nil {
-		s.mu.Unlock()
-		return
-	}
-	ctx := s.workerCtx
-	s.workers.Add(1)
-	s.mu.Unlock()
-	go func() {
-		defer s.workers.Done()
-		_ = s.installAccountUsageCompanion(ctx, installation, plan)
-	}()
 }
 
 func stagedRuntimeExecutable(plan InstallPlan, staging string) (string, error) {

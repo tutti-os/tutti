@@ -150,11 +150,16 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 		installCommand = append([]string{manifest.Runtime.Install.Runner}, installArgs...)
 	}
 	executable := filepath.Clean(resolve(manifest.Runtime.Launch.Executable))
-	// uv creates Windows console-script launchers with an .exe suffix. Extension
-	// manifests keep the portable executable name extensionless, so normalize
-	// the managed path before staging and verifying the runtime on Windows.
-	if runtime.GOOS == "windows" && manifest.Runtime.Install.Runner == "uv" && filepath.Ext(executable) == "" {
-		executable += ".exe"
+	// Package managers create platform launchers from the extensionless name in
+	// the portable manifest. Normalize only at the Windows adapter boundary so
+	// verification and launch use the actual native file.
+	if runtime.GOOS == "windows" && filepath.Ext(executable) == "" {
+		switch manifest.Runtime.Install.Runner {
+		case "uv":
+			executable += ".exe"
+		case "npm", "pnpm":
+			executable += ".cmd"
+		}
 	}
 	if !pathWithin(executable, installRoot) {
 		return InstallPlan{}, errors.New("extension runtime executable escapes install root")

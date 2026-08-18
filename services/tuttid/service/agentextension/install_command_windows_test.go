@@ -8,9 +8,9 @@ import (
 	"testing"
 )
 
-func TestAgentExtensionInstallCommandUsesCmdForNPMShim(t *testing.T) {
+func TestAgentExtensionCommandUsesCmdForNPMShim(t *testing.T) {
 	t.Setenv("ComSpec", `C:\Windows\System32\cmd.exe`)
-	command := newAgentExtensionInstallCommand(
+	command := newAgentExtensionCommand(
 		context.Background(),
 		`C:\Program Files\nodejs\npm.cmd`,
 		"install", "--prefix", `C:\runtime root`, "@example/probe@1.0.0",
