@@ -543,6 +543,9 @@ jobs:
       TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
       TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
       TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE: ${{ needs.resolve.outputs.release_candidate }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE_ID: ${{ needs.resolve.outputs.release_candidate_id }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG: ${{ needs.resolve.outputs.release_candidate_tag }}
       TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
       TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
       TUTTI_DESKTOP_RELEASE_VERSION: ${{ needs.resolve.outputs.release_version }}
