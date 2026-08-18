@@ -539,7 +539,10 @@ interface ParsedWorkspaceFileMentionTarget {
 function parseWorkspaceFileMentionTarget(
   href: string
 ): ParsedWorkspaceFileMentionTarget | null {
-  const target = href.trim();
+  const rawTarget = href.trim();
+  const target = /^\/[A-Za-z]:[\\/]/.test(rawTarget)
+    ? rawTarget.slice(1)
+    : rawTarget;
   if (isWindowsAbsolutePath(target)) {
     const path = target.replace(/[\\/]+$/, "");
     if (!path) {

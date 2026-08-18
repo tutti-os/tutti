@@ -26,7 +26,7 @@ type NewConversationInput = Parameters<
 
 type UseAgentGUIOperationActionsInput = Omit<
   SubmitInput,
-  "isSessionMarkedNonResumable" | "startConversation"
+  "goalControlSupported" | "isSessionMarkedNonResumable" | "startConversation"
 > &
   Omit<HomeInput, "submitPrefillPrompt"> &
   Omit<NewConversationInput, "getCachedComposerOptions"> &
