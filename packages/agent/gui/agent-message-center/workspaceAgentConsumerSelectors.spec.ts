@@ -241,6 +241,95 @@ describe("workspaceAgentConsumerSelectors", () => {
     });
   });
 
+  it("projects an eligible completed plan turn as waiting in the message center", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          latestTurn: {
+            turnId: "turn-plan",
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "settled",
+            outcome: "completed",
+            startedAtUnixMs: 10,
+            settledAtUnixMs: 20,
+            updatedAtUnixMs: 20
+          },
+          capabilities: {
+            imageInput: false,
+            modelImageInputRequired: false,
+            modelPlanBinding: false,
+            modelSwitch: false,
+            skills: false,
+            compact: false,
+            tokenUsage: false,
+            rateLimits: false,
+            planMode: true,
+            interrupt: false,
+            activeTurnGuidance: false,
+            browserUse: false,
+            computerUse: false,
+            goalPause: false,
+            planImplementation: true,
+            permissionModeChangeDuringTurn: false,
+            permissionModeChangeDeferred: false,
+            review: false,
+            resumeRunningTurn: false
+          }
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "old-reply",
+              version: 1,
+              turnId: "turn-plan",
+              role: "agent",
+              kind: "message",
+              payload: { text: "Earlier reply" },
+              occurredAtUnixMs: 18
+            },
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "plan-message",
+              version: 1,
+              turnId: "turn-plan",
+              role: "agent",
+              kind: "message",
+              payload: { messageKind: "plan" },
+              occurredAtUnixMs: 19
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]).toMatchObject({
+      status: "waiting",
+      digest: {
+        primary: {
+          kind: "input-required",
+          summary: "Canonical session"
+        }
+      },
+      pendingPrompt: {
+        kind: "plan-implementation",
+        requestId: "turn-plan"
+      }
+    });
+  });
+
   it("tracks Plan feedback through explicit source identity instead of submit-id parsing", () => {
     const engine = createEngine();
     engine.dispatch({

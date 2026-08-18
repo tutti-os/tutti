@@ -3,7 +3,7 @@ import {
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useSyncExternalStore,
   type JSX
 } from "react";
 import { AgentGuiI18nProvider } from "@tutti-os/agent-gui/i18n";
@@ -17,10 +17,7 @@ import {
   useEngineSelector,
   type WorkspaceAgentMessageCenterCardProps
 } from "@tutti-os/agent-gui/agent-message-center";
-import {
-  selectWorkspaceAgentConsumerSession,
-  type AgentActivityMessage
-} from "@tutti-os/agent-activity-core";
+import { selectWorkspaceAgentConsumerSession } from "@tutti-os/agent-activity-core";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopLocale } from "@shared/i18n";
 import type { IssueManagerLatestRunStatusRenderInput } from "@tutti-os/workspace-issue-manager/ui";
@@ -76,10 +73,13 @@ function IssueManagerLatestRunMessageCenterCard({
   workspaceId: string;
 }): JSX.Element {
   const requestedMessageSummarySessionIdsRef = useRef<Set<string>>(new Set());
-  const [sessionMessagesById, setSessionMessagesById] = useState<
-    Record<string, AgentActivityMessage[]>
-  >({});
   const agentSessionId = input.latestRun.agentSessionId?.trim() ?? "";
+  const activitySnapshot = useSyncExternalStore(
+    (listener) =>
+      workspaceAgentActivityService.subscribe(workspaceId, listener),
+    () => workspaceAgentActivityService.getSnapshot(workspaceId),
+    () => workspaceAgentActivityService.getSnapshot(workspaceId)
+  );
   const sessionEngine = useMemo(
     () => workspaceAgentActivityService.getSessionEngine(workspaceId),
     [workspaceAgentActivityService, workspaceId]
@@ -112,7 +112,7 @@ function IssueManagerLatestRunMessageCenterCard({
     () =>
       buildWorkspaceAgentMessageCenterModelFromEngine(
         messageCenterPresentation,
-        { sessionMessagesById, workspaceId },
+        activitySnapshot,
         {
           // Tutti Mode delegate runs are hidden from ambient surfaces; this
           // card's subject IS the delegate session, so keep it in the model
@@ -133,9 +133,9 @@ function IssueManagerLatestRunMessageCenterCard({
       ),
     [
       agentSessionId,
+      activitySnapshot,
       i18n,
       messageCenterPresentation,
-      sessionMessagesById,
       workspaceId
     ]
   );
@@ -168,7 +168,10 @@ function IssueManagerLatestRunMessageCenterCard({
     }
     if (
       targetSession &&
-      hasCachedWorkspaceAgentSessionMessages(sessionMessagesById, targetSession)
+      hasCachedWorkspaceAgentSessionMessages(
+        activitySnapshot.sessionMessagesById,
+        targetSession
+      )
     ) {
       return undefined;
     }
@@ -183,12 +186,10 @@ function IssueManagerLatestRunMessageCenterCard({
         signal: abortController.signal,
         workspaceId
       })
-      .then((page) => {
-        setSessionMessagesById((current) => ({
-          ...current,
-          [sessionId]: page.messages
-        }));
-      })
+      // listSessionMessages caches the page in the canonical activity engine;
+      // the subscribed snapshot above then updates this card and stays current
+      // as later live messages arrive.
+      .then(() => undefined)
       .catch((error: unknown) => {
         requestedMessageSummarySessionIdsRef.current.delete(sessionId);
         console.error(
@@ -206,7 +207,7 @@ function IssueManagerLatestRunMessageCenterCard({
     };
   }, [
     agentSessionId,
-    sessionMessagesById,
+    activitySnapshot.sessionMessagesById,
     targetSession,
     workspaceAgentActivityService,
     workspaceId

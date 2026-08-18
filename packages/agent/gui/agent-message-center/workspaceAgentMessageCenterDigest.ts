@@ -4,6 +4,7 @@ import type {
 } from "@tutti-os/agent-activity-core";
 import type { AgentConversationPromptVM } from "../shared/agentConversation/contracts/agentConversationVM";
 import { extractAgentMcpToolTarget } from "../shared/agentMcpToolTarget";
+import { isWorkspaceAgentSyntheticControlMessage } from "../shared/workspaceAgentSyntheticMessages";
 import type { WorkspaceAgentActivityStatus } from "../shared/workspaceAgentActivityListViewModel";
 
 export type WorkspaceAgentMessageCenterDigestPrimaryKind =
@@ -229,6 +230,9 @@ function meaningfulMessageSummary(message: AgentActivityMessage): string {
     isToolMessage && candidates.some(isToolDigestSignalCandidate);
 
   for (const candidate of candidates) {
+    if (isWorkspaceAgentSyntheticControlMessage(candidate.summary)) {
+      continue;
+    }
     if (
       !isGenericToolLabelSummary(candidate, {
         hasToolDigestSignal,

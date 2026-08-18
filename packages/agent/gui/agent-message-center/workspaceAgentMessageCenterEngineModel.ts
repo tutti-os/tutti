@@ -55,21 +55,27 @@ export function buildWorkspaceAgentMessageCenterModelFromEngine(
         includeHiddenSessionIds.has(consumer.session.agentSessionId.trim())
     )
     .map((consumer) => {
+      const messages = sessionMessages(snapshot.sessionMessagesById, consumer);
       const interaction = latestPendingInteraction(consumer);
+      const planWait = interaction
+        ? null
+        : planImplementationWait(presentation, consumer, messages);
       const needsAttention = interaction
         ? needsAttentionFromInteraction(consumer, interaction)
-        : null;
+        : (planWait?.needsAttention ?? null);
       return buildWorkspaceAgentMessageCenterItem({
         session: consumer.session,
         latestTurn: consumer.latestTurn,
-        messages: sessionMessages(snapshot.sessionMessagesById, consumer),
-        status: consumer.displayStatus,
+        messages,
+        status: planWait ? "waiting" : consumer.displayStatus,
         needsAttention,
         pendingInteractionTarget: interaction
           ? interactionTarget(interaction)
           : null,
-        pendingPrompt: interaction ? promptFromInteraction(interaction) : null,
-        latestTurnOutcome: turnOutcome(consumer),
+        pendingPrompt: interaction
+          ? promptFromInteraction(interaction)
+          : (planWait?.prompt ?? null),
+        latestTurnOutcome: planWait ? null : turnOutcome(consumer),
         options
       });
     });
@@ -254,23 +260,12 @@ export function selectWorkspaceAgentAttentionItems(
       });
     }
 
-    const latestTurn = consumer.latestTurn;
-    const statusKey = promptStatusKey(
-      consumer.session.agentSessionId,
-      latestTurn?.turnId ?? "",
-      latestTurn?.turnId ?? ""
-    );
-    if (
-      !consumerAwaitingPlanImplementation({
-        capabilities: consumer.session.capabilities,
-        dismissed: presentation.dismissedPlanTurnKeys[statusKey] === true,
-        latestTurn,
-        messages
-      }) ||
-      !latestTurn
-    ) {
+    const planWait = planImplementationWait(presentation, consumer, messages);
+    if (!planWait) {
       continue;
     }
+    const latestTurn = consumer.latestTurn;
+    if (!latestTurn) continue;
     const target: WorkspaceAgentAttentionTarget = {
       kind: "plan-implementation",
       workspaceId: consumer.session.workspaceId,
@@ -278,21 +273,7 @@ export function selectWorkspaceAgentAttentionItems(
       turnId: latestTurn.turnId,
       requestId: latestTurn.turnId
     };
-    const prompt = planImplementationPromptFromPlanTurn(
-      latestTurn.turnId,
-      consumer.session.title
-    );
-    const needsAttention: AgentActivityNeedsAttentionItem = {
-      id: `plan-implementation:${latestTurn.turnId}`,
-      workspaceId: consumer.session.workspaceId,
-      agentSessionId: consumer.session.agentSessionId,
-      provider: consumer.session.provider,
-      title: prompt.title,
-      cwd: consumer.session.cwd,
-      kind: "constraint",
-      summary: prompt.title,
-      occurredAtUnixMs: latestTurn.settledAtUnixMs ?? latestTurn.updatedAtUnixMs
-    };
+    const { needsAttention, prompt, statusKey } = planWait;
     const item = buildWorkspaceAgentMessageCenterItem({
       session: consumer.session,
       latestTurn,
@@ -313,6 +294,53 @@ export function selectWorkspaceAgentAttentionItems(
     });
   }
   return result;
+}
+
+function planImplementationWait(
+  presentation: WorkspaceAgentMessageCenterPresentation,
+  consumer: WorkspaceAgentConsumerSession,
+  messages: readonly AgentActivityMessage[]
+): {
+  needsAttention: AgentActivityNeedsAttentionItem;
+  prompt: Extract<AgentConversationPromptVM, { kind: "plan-implementation" }>;
+  statusKey: string;
+} | null {
+  const latestTurn = consumer.latestTurn;
+  if (!latestTurn) return null;
+  const statusKey = promptStatusKey(
+    consumer.session.agentSessionId,
+    latestTurn.turnId,
+    latestTurn.turnId
+  );
+  if (
+    !consumerAwaitingPlanImplementation({
+      capabilities: consumer.session.capabilities,
+      dismissed: presentation.dismissedPlanTurnKeys[statusKey] === true,
+      latestTurn,
+      messages
+    })
+  ) {
+    return null;
+  }
+  const prompt = planImplementationPromptFromPlanTurn(
+    latestTurn.turnId,
+    consumer.session.title
+  );
+  return {
+    prompt,
+    statusKey,
+    needsAttention: {
+      id: `plan-implementation:${latestTurn.turnId}`,
+      workspaceId: consumer.session.workspaceId,
+      agentSessionId: consumer.session.agentSessionId,
+      provider: consumer.session.provider,
+      title: prompt.title,
+      cwd: consumer.session.cwd,
+      kind: "constraint",
+      summary: prompt.title,
+      occurredAtUnixMs: latestTurn.settledAtUnixMs ?? latestTurn.updatedAtUnixMs
+    }
+  };
 }
 
 export function workspaceAgentAttentionItemsEqual(

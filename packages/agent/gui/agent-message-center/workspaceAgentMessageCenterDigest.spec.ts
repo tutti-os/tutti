@@ -362,6 +362,33 @@ describe("buildWorkspaceAgentMessageCenterDigest", () => {
     });
   });
 
+  it("does not let a compaction control message replace the latest reply", () => {
+    const digest = buildWorkspaceAgentMessageCenterDigest({
+      fallbackTitle: "Fallback title",
+      messages: [
+        message({
+          messageId: "reply",
+          occurredAtUnixMs: 10,
+          payload: { text: "The page is open." }
+        }),
+        message({
+          messageId: "compact",
+          occurredAtUnixMs: 20,
+          payload: { text: "Compacting context." }
+        })
+      ],
+      needsAttention: null,
+      pendingPrompt: null,
+      status: "working"
+    });
+
+    expect(digest.primary).toMatchObject({
+      kind: "progress",
+      summary: "The page is open.",
+      occurredAtUnixMs: 10
+    });
+  });
+
   it("falls back to needs-attention summary or title when no agent summary exists", () => {
     expect(
       buildWorkspaceAgentMessageCenterDigest({
