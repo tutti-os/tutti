@@ -582,6 +582,17 @@ test("desktop promotion workflow does not redownload release assets for Feishu",
   assert.match(notifyJobMatch[0], /name:\s+Send release card/);
 });
 
+test("desktop promotion notification tolerates skipped optional approval", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+  const notifyJob = promoteWorkflow.match(
+    /notify-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  )?.[0];
+
+  assert.ok(notifyJob, "promotion notify job should exist");
+  assert.match(notifyJob, /if:\s+\${{\s*always\(\)\s*&&/);
+  assert.match(notifyJob, /needs\.promote\.result\s*==\s*'success'/);
+});
+
 test("desktop release workflow can mirror release assets to S3 and upsert direct download links", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
