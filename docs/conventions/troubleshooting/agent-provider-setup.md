@@ -114,6 +114,38 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
 
+### A managed Extension runtime cannot be reused after an update on Windows
+
+- Symptom:
+  The first managed Extension install reaches `ready`, but after Extension
+  metadata changes the same compatible runtime falls back to `not_installed`
+  only on Windows. Logs or focused tests report that renaming the legacy runtime
+  directory failed because it is being used by another process.
+- Quick checks:
+  Confirm the package version, discovery profile, and runtime identity are still
+  compatible. Then inspect the adoption path around the legacy-directory rename;
+  if the source `managedRuntimeDirectory` is still open, the failure is a Windows
+  sharing violation rather than a package incompatibility.
+- Root cause:
+  POSIX permits renaming a directory while the process retains an open directory
+  handle. Windows does not. Keeping the verified candidate handle open across
+  `rename` made the portability test pass on macOS while the native Windows lane
+  rejected the same adoption.
+- Fix:
+  Verify and fingerprint the candidate, write the new activation, close the
+  source directory handle, rename it, then reopen the promoted directory and
+  repeat the integrity check. Rollback must close the promoted handle before
+  renaming it back and restoring the previous activation.
+- Validation:
+  On native Windows, install a managed npm runtime, move it to a legacy identity,
+  update the Extension without changing its runtime contract, and assert the
+  runtime is adopted without reinstalling. Keep the batch-launcher execution and
+  companion reconciliation assertions in the same Windows workflow.
+- References:
+  [windows-platform-support.md](../../architecture/windows-platform-support.md)
+  [managed_runtime.go](../../../services/tuttid/service/agentextension/managed_runtime.go)
+  [setup_test.go](../../../services/tuttid/service/agentextension/setup_test.go)
+
 ### Workspace Apps repeatedly probe extension authentication
 
 - Symptom:

@@ -220,6 +220,12 @@ launch; the structured command adapter invokes the launcher through `cmd.exe`.
 Product and provider code must not append the suffix or assemble the shell
 command itself.
 
+Managed-runtime adoption must also release the verified source directory handle
+before renaming that directory. After rename, reopen the promoted directory and
+repeat the fingerprint/integrity check; rollback follows the same close-rename-
+reopen order. Unix permits rename with the old handle open, but Windows rejects
+it as a sharing violation.
+
 Provider-owned account-usage helpers do not execute npm `.cmd` launchers or
 copy JavaScript into a fake `.exe`. Their optional package is installed and
 activated separately from the ACP runtime. The process boundary verifies the
