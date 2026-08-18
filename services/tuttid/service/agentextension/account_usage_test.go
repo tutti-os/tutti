@@ -3,6 +3,7 @@ package agentextension
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
 	"testing"
@@ -51,7 +52,16 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := resolvedLocalAccountUsageRuntimeBinding(helperExecutable, profile); err != nil {
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is unavailable")
+	}
+	nodePath, err = filepath.EvalSymlinks(nodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUTTI_APP_NODE", nodePath)
+	if _, err := manager.resolvedLocalAccountUsageRuntimeBinding(helperExecutable, profile); err != nil {
 		t.Fatalf("local account usage binding: %v", err)
 	}
 	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON(
@@ -69,16 +79,18 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 		ID: targetID, Provider: installation.Provider, LaunchRefJSON: launchRef,
 		Name: "Gemini CLI", Enabled: true, Source: agenttargetbiz.SourceSystem,
 	}
-	var command string
+	var node string
+	var script string
 	var args []string
 	service := AccountUsageService{
 		Manager: manager,
 		Targets: store,
-		run: func(_ context.Context, gotCommand string, gotArgs []string, identity *agentruntime.ExecutableIdentity, _ int) ([]byte, error) {
-			command = gotCommand
+		run: func(_ context.Context, gotNode string, gotScript string, gotArgs []string, nodeIdentity *agentruntime.ExecutableIdentity, scriptIdentity *agentruntime.ExecutableIdentity, _ int) ([]byte, error) {
+			node = gotNode
+			script = gotScript
 			args = append([]string(nil), gotArgs...)
-			if identity == nil {
-				t.Fatal("local account usage companion identity = nil")
+			if nodeIdentity == nil || scriptIdentity == nil {
+				t.Fatal("local account usage identities = nil")
 			}
 			return []byte(`{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":[]}`), nil
 		},
@@ -90,8 +102,8 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 	if result.Outcome != "available" || result.BillingMode != "api" || len(result.Quotas) != 0 {
 		t.Fatalf("local API billing result = %#v", result)
 	}
-	if command != helperExecutable || !reflect.DeepEqual(args, []string{"--output", "json"}) {
-		t.Fatalf("local account usage command = %q %#v", command, args)
+	if node != nodePath || script != helperExecutable || !reflect.DeepEqual(args, []string{"--output", "json"}) {
+		t.Fatalf("local account usage command = %q %q %#v", node, script, args)
 	}
 }
 

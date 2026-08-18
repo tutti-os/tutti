@@ -66,10 +66,14 @@ type InstallPlan struct {
 }
 
 type AccountUsageInstall struct {
-	Package    string   `json:"package"`
-	Executable string   `json:"executable"`
-	Args       []string `json:"args"`
-	TimeoutMS  int      `json:"timeoutMs"`
+	RuntimeIdentity string   `json:"runtimeIdentity"`
+	Runner          string   `json:"runner"`
+	Package         string   `json:"package"`
+	InstallRoot     string   `json:"installRoot"`
+	InstallCommand  []string `json:"installCommand"`
+	Script          string   `json:"script"`
+	Args            []string `json:"args"`
+	TimeoutMS       int      `json:"timeoutMs"`
 }
 
 type RuntimeBinaryArtifact = agentextensionbiz.RuntimeBinaryArtifact
@@ -139,16 +143,9 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 	}
 	installCommand := []string{"download", artifactURL(artifact)}
 	if artifact == nil {
-		accountUsage, err := loadAccountUsageProfile(installation)
-		if err != nil {
-			return InstallPlan{}, err
-		}
-		installArgs := make([]string, 0, len(manifest.Runtime.Install.Args)+1)
+		installArgs := make([]string, 0, len(manifest.Runtime.Install.Args))
 		for _, argument := range manifest.Runtime.Install.Args {
 			installArgs = append(installArgs, resolve(argument))
-		}
-		if accountUsage != nil {
-			installArgs = append(installArgs, accountUsage.Runtime.Package)
 		}
 		installCommand = append([]string{manifest.Runtime.Install.Runner}, installArgs...)
 	}
@@ -176,19 +173,10 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 		Artifact: artifact, PublishUserCommand: publishesUserCommand(manifest),
 		PublishUserCommandOption: manifest.Runtime.Launch.PublishUserCommand,
 	}
-	accountUsage, err := loadAccountUsageProfile(installation)
-	if err != nil {
-		return InstallPlan{}, err
-	}
-	if accountUsage != nil {
-		accountUsageExecutable := filepath.Clean(resolve(accountUsage.Runtime.Executable))
-		if !pathWithin(accountUsageExecutable, installRoot) {
-			return InstallPlan{}, errors.New("account usage companion executable escapes install root")
-		}
-		plan.AccountUsage = &AccountUsageInstall{
-			Package: accountUsage.Runtime.Package, Executable: accountUsageExecutable,
-			Args: append([]string(nil), accountUsage.Runtime.Args...), TimeoutMS: accountUsage.Runtime.TimeoutMS,
-		}
+	// The provider-owned companion is optional. Profile or companion-plan
+	// failures must not invalidate an otherwise usable ACP runtime plan.
+	if accountUsage, profileErr := loadAccountUsageProfile(installation); profileErr == nil && accountUsage != nil {
+		plan.AccountUsage, _ = buildAccountUsageInstall(runtimeInstallDir, installation, accountUsage, platform)
 	}
 	encoded, err := json.Marshal(plan)
 	if err != nil {
@@ -199,6 +187,43 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 	return plan, nil
 }
 
+func buildAccountUsageInstall(
+	runtimeInstallDir string,
+	installation Installation,
+	profile *AccountUsageProfile,
+	platform string,
+) (*AccountUsageInstall, error) {
+	companionIdentity, err := accountUsageRuntimeIdentity(installation, profile, platform)
+	if err != nil {
+		return nil, err
+	}
+	companionBase := filepath.Join(runtimeInstallDir, ".account-usage")
+	companionRoot := managedRuntimeRoot(companionBase, installation.AgentKey, companionIdentity)
+	if err := validateManagedRuntimeRoot(companionRoot, companionBase, installation.AgentKey, companionIdentity); err != nil {
+		return nil, err
+	}
+	accountUsageScript := filepath.Clean(resolveAccountUsageScript(profile.Runtime.Script, companionRoot))
+	if !pathWithin(accountUsageScript, companionRoot) {
+		return nil, errors.New("account usage companion script escapes install root")
+	}
+	companionArgs, err := accountUsageInstallArgs(
+		installation.Manifest.Runtime.Install.Runner,
+		installation.Manifest.Runtime.Install.Args,
+		profile.Runtime.Package,
+		companionRoot,
+		platform,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountUsageInstall{
+		RuntimeIdentity: companionIdentity, Runner: installation.Manifest.Runtime.Install.Runner,
+		Package: profile.Runtime.Package, InstallRoot: companionRoot,
+		InstallCommand: append([]string{installation.Manifest.Runtime.Install.Runner}, companionArgs...), Script: accountUsageScript,
+		Args: append([]string(nil), profile.Runtime.Args...), TimeoutMS: profile.Runtime.TimeoutMS,
+	}, nil
+}
+
 func managedRuntimeIdentity(
 	installation Installation,
 	profile DiscoveryProfile,
@@ -206,10 +231,6 @@ func managedRuntimeIdentity(
 	packageVersion string,
 	platform string,
 ) (string, error) {
-	accountUsage, err := loadAccountUsageProfile(installation)
-	if err != nil {
-		return "", err
-	}
 	value := struct {
 		SchemaVersion      string                 `json:"schemaVersion"`
 		AgentKey           string                 `json:"agentKey"`
@@ -223,7 +244,6 @@ func managedRuntimeIdentity(
 		Launch             runtimeLaunchKey       `json:"launch"`
 		PublishUserCommand *bool                  `json:"publishUserCommand,omitempty"`
 		Discovery          DiscoveryProfile       `json:"discovery"`
-		AccountUsage       *AccountUsageProfile   `json:"accountUsage,omitempty"`
 	}{
 		SchemaVersion: "tutti.agent.managed-runtime-identity.v1",
 		AgentKey:      installation.AgentKey, RuntimeKind: installation.Manifest.Runtime.Kind,
@@ -238,7 +258,6 @@ func managedRuntimeIdentity(
 		},
 		PublishUserCommand: installation.Manifest.Runtime.Launch.PublishUserCommand,
 		Discovery:          profile,
-		AccountUsage:       accountUsage,
 	}
 	encoded, err := json.Marshal(value)
 	if err != nil {
@@ -246,6 +265,45 @@ func managedRuntimeIdentity(
 	}
 	digest := sha256.Sum256(encoded)
 	return "runtime-" + hex.EncodeToString(digest[:])[:16], nil
+}
+
+func accountUsageRuntimeIdentity(installation Installation, profile *AccountUsageProfile, platform string) (string, error) {
+	value := struct {
+		SchemaVersion string               `json:"schemaVersion"`
+		AgentKey      string               `json:"agentKey"`
+		Platform      string               `json:"platform"`
+		Runner        string               `json:"runner"`
+		Profile       *AccountUsageProfile `json:"profile"`
+	}{
+		SchemaVersion: "tutti.agent.account-usage-runtime-identity.v1",
+		AgentKey:      installation.AgentKey, Platform: platform,
+		Runner: installation.Manifest.Runtime.Install.Runner, Profile: profile,
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode account usage runtime identity: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	return "runtime-" + hex.EncodeToString(digest[:])[:16], nil
+}
+
+func accountUsageInstallArgs(runner string, declared []string, companionPackage, installRoot, platform string) ([]string, error) {
+	result := make([]string, len(declared))
+	replaced := false
+	for index, argument := range declared {
+		if _, _, ok := exactRuntimePackageArgument(runner, argument); ok {
+			if replaced {
+				return nil, errors.New("extension runtime install names multiple exact packages")
+			}
+			argument = companionPackage
+			replaced = true
+		}
+		result[index] = strings.NewReplacer("${installRoot}", installRoot, "${platform}", platform).Replace(argument)
+	}
+	if !replaced {
+		return nil, errors.New("extension runtime install does not name an exact package")
+	}
+	return result, nil
 }
 
 func runtimeBinaryArtifactForPlatform(manifest Manifest, platform string) (RuntimeBinaryArtifact, error) {

@@ -132,21 +132,27 @@ requires a concrete working directory.
 
 An Extension may declare the optional `accountUsage` profile with schema
 `tutti.agent.account-usage-probe.v1`. The profile pins one exact npm or pnpm
-companion package, an executable path below `${installRoot}`, fixed argv, and a
+companion package, `node-script` entry below `${installRoot}`, fixed argv, and a
 bounded timeout. The Extension ZIP remains data-only: the companion is a
-separately published Provider-owned artifact, installed together with the
-primary ACP package into the same Target-scoped managed runtime. Its resolved
-regular file identity and fingerprint are recorded at activation and verified
-again before every probe. A local discovered ACP runtime may coexist, but the
-probe still executes only the separately verified managed companion; if that
-companion was never installed, the declared capability reports
-`runtime_unavailable` and never downloads code during a status read.
+separately published Provider-owned artifact with its own runtime identity,
+install root, activation, and verification lifecycle. It is never part of the
+primary ACP install command, runtime identity, activation, resolution, or
+adoption. A companion download, install, verification, or activation failure
+therefore leaves the Agent ready and only makes the account-usage endpoint
+return `runtime_unavailable`; a status read never downloads code.
+
+Before every probe, tuttid verifies the fixed host Node interpreter and the
+ordinary in-root CommonJS script independently. The script is supplied to Node
+as the already verified bytes instead of executing an npm `.cmd`/shell shim or
+reopening the mutable script pathname. This is the same contract on Windows,
+macOS, and Linux.
 
 Local Extension development may replace that managed companion with one
 explicit executable through
 `TUTTI_AGENT_EXTENSION_<KEY>_ACCOUNT_USAGE_EXECUTABLE`. This is accepted only
 for a development-mode installation with local-package provenance; the path
-must be absolute, ordinary, executable, non-symlinked, and fingerprint-stable.
+must be an absolute, ordinary, non-symlinked, fingerprint-stable JavaScript
+file. The Node interpreter is still resolved and verified separately.
 Production ignores the override and continues to require the exact companion
 package pinned by the signed profile.
 

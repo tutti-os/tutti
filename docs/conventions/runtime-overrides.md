@@ -135,11 +135,12 @@ the configured signed HTTPS release.
 An Extension account-usage profile normally runs the exact companion package
 pinned by the signed profile. For a local package snapshot only,
 `TUTTI_AGENT_EXTENSION_<KEY>_ACCOUNT_USAGE_EXECUTABLE` may select one explicit
-local companion executable. The daemon accepts it only in development, only
-for an installation with local-package provenance, and only after verifying an
-absolute ordinary non-symlink executable and its fingerprint. Production
-ignores the variable. Result decoding remains bounded and fail-closed, so this
-override changes only where local development finds the Provider-owned Helper.
+local companion CommonJS script. The daemon accepts it only in development,
+only for an installation with local-package provenance, and only after
+verifying an absolute ordinary non-symlink file and its fingerprint. The fixed
+Node interpreter is resolved and verified independently. Production ignores
+the variable. Result decoding remains bounded and fail-closed, so this override
+changes only where local development finds the Provider-owned Helper.
 
 `make dev-gui` clears an inherited
 `TUTTI_AGENT_EXTENSION_KIMI_CODE_PACKAGE_DIR` so a stale shell or launch-agent

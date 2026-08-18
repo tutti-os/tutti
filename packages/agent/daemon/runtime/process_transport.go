@@ -1,8 +1,12 @@
 package agentruntime
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -66,6 +70,91 @@ func RunVerifiedExecutableBounded(ctx context.Context, path string, args []strin
 		return nil, errors.New("verified process output exceeded limit")
 	}
 	return output.bytes, nil
+}
+
+// RunVerifiedNodeScriptBounded verifies a fixed Node interpreter and a
+// provider-owned JavaScript file independently. The verified script bytes are
+// supplied on stdin, so execution never depends on reopening a mutable script
+// pathname or on platform-specific npm shims.
+func RunVerifiedNodeScriptBounded(
+	ctx context.Context,
+	nodePath string,
+	scriptPath string,
+	args []string,
+	nodeIdentity *ExecutableIdentity,
+	scriptIdentity *ExecutableIdentity,
+	maxBytes int,
+) ([]byte, error) {
+	if nodeIdentity == nil || scriptIdentity == nil {
+		return nil, errors.New("verified Node interpreter and script identities are required")
+	}
+	if maxBytes <= 0 {
+		return nil, errors.New("verified process output limit is required")
+	}
+	script, err := readVerifiedProcessInput(scriptPath, scriptIdentity, 16<<20)
+	if err != nil {
+		return nil, err
+	}
+	preparedNode, err := prepareNodeInterpreter(nodePath, nodeIdentity)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = preparedNode.Close() }()
+	nodeArgs := append([]string{"--input-type=commonjs", "-"}, args...)
+	cmd := newManagedProcessCommand(ctx, preparedNode.path, nodeArgs...)
+	if preparedNode.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedNode.file}
+	}
+	cmd.Stdin = bytes.NewReader(script)
+	output := boundedProcessOutput{limit: maxBytes}
+	cmd.Stdout = &output
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	if output.overflow {
+		return nil, errors.New("verified process output exceeded limit")
+	}
+	return output.bytes, nil
+}
+
+func readVerifiedProcessInput(path string, expected *ExecutableIdentity, maxBytes int64) ([]byte, error) {
+	if !validProcessInputIdentity(expected) || maxBytes <= 0 || expected.SizeBytes > maxBytes {
+		return nil, errors.New("verified process input identity is invalid")
+	}
+	pathInfo, err := os.Lstat(path)
+	if err != nil || !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("verified process input is not an ordinary file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open verified process input: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	fileInfo, err := file.Stat()
+	if err != nil || !fileInfo.Mode().IsRegular() || !os.SameFile(pathInfo, fileInfo) {
+		return nil, errors.New("verified process input changed while opening")
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read verified process input: %w", err)
+	}
+	if int64(len(data)) != expected.SizeBytes {
+		return nil, errors.New("verified process input does not match expected identity")
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != expected.SHA256 {
+		return nil, errors.New("verified process input does not match expected identity")
+	}
+	return data, nil
+}
+
+func validProcessInputIdentity(identity *ExecutableIdentity) bool {
+	if identity == nil || identity.SizeBytes <= 0 || len(identity.SHA256) != sha256.Size*2 || identity.SHA256 != strings.ToLower(identity.SHA256) {
+		return false
+	}
+	_, err := hex.DecodeString(identity.SHA256)
+	return err == nil
 }
 
 type boundedProcessOutput struct {

@@ -395,8 +395,10 @@ process remains the cross-window short-lived exact-target cache.
 Account-usage probing for an Agent Extension is an optional, versioned,
 target-scoped capability declared by the signed Extension. The provider-owned
 Helper owns provider config, credentials, trusted origins, private endpoints,
-and response parsing; `tuttid` runs only the exact companion executable installed
-and fingerprinted with that Target's managed runtime. The daemon returns the
+and response parsing; `tuttid` runs only the exact companion script installed
+and fingerprinted in that Target's independent companion runtime through a
+separately verified Node interpreter. Companion availability never changes ACP
+readiness. The daemon returns the
 provider-neutral `tutti.agent.account-usage.v1` discriminated result. Desktop
 validates the schema and echoed Target/provider identity, then projects quotas
 without changing ACP readiness. Missing profiles and older Extensions are

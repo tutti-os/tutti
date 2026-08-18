@@ -99,6 +99,69 @@ func TestAgentTargetSetupInstallsGenericExtensionRuntime(t *testing.T) {
 	}
 }
 
+func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	runner := &fixtureInstallRunner{
+		binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3",
+		failPackage: "@example/gemini-account-usage@1.0.0",
+	}
+	service, targetID := setupFixture(
+		t, "generic", "Generic Agent", "@example/generic-agent", "1.2.3", "generic-agent", ">=1.2.3 <2.0.0",
+		runner, &probeTransport{},
+	)
+	manifest := testManifest()
+	manifest.AgentKey = "generic"
+	manifest.Version = "1.0.1"
+	manifest.Name = "Generic Agent"
+	manifest.Profiles.AccountUsage = "profiles/account-usage.json"
+	manifest.Runtime.Install.Args = []string{"install", "--prefix", "${installRoot}", "@example/generic-agent@1.2.3"}
+	manifest.Runtime.Launch.Executable = "${installRoot}/node_modules/.bin/generic-agent"
+	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["generic-agent"],"version":{"args":["--version"],"constraint":">=1.2.3 <2.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`
+	installation, err := installTestPackage(
+		t, service.Plans.Manager, Release{AgentKey: "generic", Version: "1.0.1"},
+		testPackageZIPFor(t, manifest, discovery),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON(installation.Provider, agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: installation.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	store := service.Plans.Targets.(*targetStoreStub)
+	target := store.targets[targetID]
+	target.LaunchRefJSON = launchRef
+	store.targets[targetID] = target
+
+	initial, err := service.GetSetup(context.Background(), InstallPlanInput{WorkspaceID: "workspace-1", AgentTargetID: targetID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Install(context.Background(), InstallInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		PlanDigest: initial.Plan.PlanDigest, ClientActionID: "optional-companion-failure",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	ready := waitForSetupStatus(t, service, targetID, SetupReady)
+	deadline := time.Now().Add(5 * time.Second)
+	for runner.callCount() < 2 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if ready.RuntimeSource != "managed" || runner.callCount() != 2 {
+		t.Fatalf("setup after companion failure = %#v, install calls = %d", ready, runner.callCount())
+	}
+	usage, err := (AccountUsageService{Manager: service.Plans.Manager, Targets: store}).Probe(context.Background(), targetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Outcome != "error" || usage.ErrorCode != "runtime_unavailable" {
+		t.Fatalf("account usage after companion failure = %#v", usage)
+	}
+}
+
 func TestAgentTargetSetupSurfacesAccountFailureReason(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	transport := &probeTransport{}
@@ -217,6 +280,7 @@ func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.
 	manifest.Name = "Generic Agent"
 	manifest.Runtime.Install.Args = []string{"install", "--prefix", "${installRoot}", "@example/generic-agent@1.2.3"}
 	manifest.Runtime.Launch.Executable = "${installRoot}/node_modules/.bin/generic-agent"
+	manifest.Profiles.AccountUsage = "profiles/account-usage.json"
 	discovery := `{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["generic-agent"],"version":{"args":["--version"],"constraint":">=1.2.3 <2.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`
 	next, err := installTestPackage(t, service.Plans.Manager, Release{AgentKey: "generic", Version: "1.0.1"}, testPackageZIPFor(t, manifest, discovery))
 	if err != nil {
@@ -255,6 +319,13 @@ func TestAgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions(t *testing.
 	}
 	if nextPlan.InstallRoot != initial.Plan.InstallRoot || nextPlan.RuntimeIdentity != initial.Plan.RuntimeIdentity {
 		t.Fatalf("runtime identity changed across extension versions: first=%#v next=%#v", initial.Plan, nextPlan)
+	}
+	usage, err := (AccountUsageService{Manager: service.Plans.Manager, Targets: store}).Probe(context.Background(), targetID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if usage.Outcome != "error" || usage.ErrorCode != "runtime_unavailable" {
+		t.Fatalf("migrated account usage = %#v", usage)
 	}
 }
 
@@ -996,6 +1067,7 @@ type fixtureInstallRunner struct {
 	binary      string
 	packageName string
 	version     string
+	failPackage string
 	cwd         string
 	env         []string
 }
@@ -1006,6 +1078,11 @@ func (r *fixtureInstallRunner) Run(_ context.Context, command []string, cwd stri
 	r.calls++
 	r.cwd = cwd
 	r.env = append([]string(nil), env...)
+	for _, value := range command {
+		if r.failPackage != "" && value == r.failPackage {
+			return errors.New("fixture companion install failed")
+		}
+	}
 	var root string
 	for index, value := range command {
 		if value == "--prefix" && index+1 < len(command) {
@@ -1031,6 +1108,12 @@ func (r *fixtureInstallRunner) Run(_ context.Context, command []string, cwd stri
 		return err
 	}
 	return os.Symlink(relative, filepath.Join(root, "node_modules", ".bin", r.binary))
+}
+
+func (r *fixtureInstallRunner) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.calls
 }
 
 func environmentPathWithin(environment []string, prefix, root string) bool {

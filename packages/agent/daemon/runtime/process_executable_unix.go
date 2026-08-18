@@ -53,6 +53,10 @@ func prepareProcessExecutable(path string, expected *ExecutableIdentity) (prepar
 	return preparedProcessExecutable{path: "/proc/self/fd/3", file: file}, nil
 }
 
+func prepareNodeInterpreter(path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+	return prepareProcessExecutable(path, expected)
+}
+
 func validExecutableIdentity(identity *ExecutableIdentity) bool {
 	if identity == nil || identity.SizeBytes <= 0 || len(identity.SHA256) != sha256.Size*2 || identity.SHA256 != strings.ToLower(identity.SHA256) {
 		return false

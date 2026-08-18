@@ -101,6 +101,26 @@ func prepareProcessExecutable(path string, expected *ExecutableIdentity) (prepar
 	return preparedProcessExecutable{path: snapshotPath, privateDir: privateDir}, nil
 }
 
+// Node distributions on macOS may resolve dynamic libraries relative to their
+// installed path, so relocating the executable can make a valid interpreter
+// unloadable. Keep a verified no-follow descriptor open across process start
+// and execute the fixed host-owned path.
+func prepareNodeInterpreter(path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+	if !validExecutableIdentity(expected) {
+		return preparedProcessExecutable{}, errors.New("node interpreter identity is invalid")
+	}
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return preparedProcessExecutable{}, fmt.Errorf("open verified Node interpreter: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), "verified-node-interpreter")
+	if err := verifyExecutableDescriptor(file, expected); err != nil {
+		_ = file.Close()
+		return preparedProcessExecutable{}, err
+	}
+	return preparedProcessExecutable{path: path, file: file}, nil
+}
+
 func verifyExecutableDescriptor(file *os.File, expected *ExecutableIdentity) error {
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {

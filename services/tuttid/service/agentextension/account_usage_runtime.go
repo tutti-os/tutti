@@ -1,13 +1,30 @@
 package agentextension
 
 import (
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
+
+const managedAccountUsageActivationSchema = "tutti.agent.account-usage-runtime.v1"
+
+type managedAccountUsageActivation struct {
+	SchemaVersion           string                       `json:"schemaVersion"`
+	RuntimeIdentity         string                       `json:"runtimeIdentity"`
+	Package                 string                       `json:"package"`
+	ScriptRelativePath      string                       `json:"scriptRelativePath"`
+	ScriptFingerprint       runtimeExecutableFingerprint `json:"scriptFingerprint"`
+	ExtensionInstallationID string                       `json:"extensionInstallationId"`
+	InstalledAt             time.Time                    `json:"installedAt"`
+}
 
 func (m *Manager) localAccountUsageExecutable(installation Installation) string {
 	if m == nil || !installation.HasLocalPackageProvenance() {
@@ -21,127 +38,282 @@ func (m *Manager) localAccountUsageExecutable(installation Installation) string 
 	return ""
 }
 
-func resolvedLocalAccountUsageRuntimeBinding(
-	executable string,
+func (m *Manager) resolvedLocalAccountUsageRuntimeBinding(
+	script string,
 	profile *AccountUsageProfile,
 ) (*AccountUsageRuntimeBinding, error) {
-	executable = strings.TrimSpace(executable)
-	if executable == "" || !filepath.IsAbs(executable) || profile == nil {
+	script = strings.TrimSpace(script)
+	if script == "" || !filepath.IsAbs(script) || profile == nil {
 		return nil, errors.New("local account usage companion is invalid")
 	}
-	info, err := os.Lstat(executable)
-	if err != nil || info.Mode()&os.ModeSymlink != 0 || !isExecutableFileInfo(info) {
-		return nil, errors.New("local account usage companion is not an ordinary executable")
-	}
-	realExecutable, err := filepath.EvalSymlinks(executable)
-	if err != nil || filepath.Clean(realExecutable) != filepath.Clean(executable) {
-		return nil, errors.New("local account usage companion path is invalid")
-	}
-	fingerprint, err := fingerprintRuntimeExecutable(realExecutable)
+	scriptFingerprint, err := fingerprintAccountUsageScript(script)
 	if err != nil {
 		return nil, fmt.Errorf("fingerprint local account usage companion: %w", err)
 	}
-	if err := verifyRuntimeExecutableUnchanged(realExecutable, fingerprint); err != nil {
-		return nil, err
-	}
-	return &AccountUsageRuntimeBinding{
-		Command:            append([]string{realExecutable}, profile.Runtime.Args...),
-		Timeout:            time.Duration(profile.Runtime.TimeoutMS) * time.Millisecond,
-		ExecutableIdentity: executableIdentity(fingerprint),
-	}, nil
+	return m.accountUsageNodeBinding(script, scriptFingerprint, profile)
 }
 
-func stagedAccountUsageActivation(
-	plan InstallPlan,
-	staging string,
-	realStaging string,
-) (*managedRuntimeCompanionActivation, error) {
-	if plan.AccountUsage == nil {
-		return nil, nil
+func (s *SetupService) installAccountUsageCompanion(ctx context.Context, installation Installation, plan InstallPlan) error {
+	companion := plan.AccountUsage
+	if companion == nil {
+		return nil
 	}
-	stagedExecutable, err := stagedRuntimePath(
-		plan.InstallRoot,
-		plan.AccountUsage.Executable,
-		staging,
-	)
+	profile, err := loadAccountUsageProfile(installation)
 	if err != nil {
-		return nil, fmt.Errorf("resolve account usage companion: %w", err)
+		return err
 	}
-	realExecutable, err := filepath.EvalSymlinks(stagedExecutable)
+	if profile == nil || profile.Runtime.Kind != "node-script" ||
+		profile.Runtime.Package != companion.Package ||
+		installation.Manifest.Runtime.Install.Runner != companion.Runner {
+		return errors.New("account usage companion install contract changed")
+	}
+	base := filepath.Join(s.Plans.Manager.RuntimeInstallDir, ".account-usage")
+	if err := validateManagedRuntimeRoot(companion.InstallRoot, base, installation.AgentKey, companion.RuntimeIdentity); err != nil {
+		return err
+	}
+	workspace, err := openManagedRuntimeWorkspaceForInstall(base, installation.AgentKey, true)
 	if err != nil {
-		return nil, fmt.Errorf("resolve account usage companion executable: %w", err)
+		return err
 	}
-	if !pathWithin(realExecutable, realStaging) {
-		return nil, errors.New("account usage companion executable escapes staging root")
+	defer workspace.Close()
+	if present, presentErr := managedRuntimeEntryPresent(workspace, companion.RuntimeIdentity); presentErr == nil && present {
+		if _, resolveErr := s.Plans.Manager.resolveInstalledAccountUsageRuntimeBinding(installation, profile); resolveErr == nil {
+			return nil
+		}
 	}
-	info, err := os.Lstat(realExecutable)
-	if err != nil || !isExecutableFileInfo(info) || info.Mode()&os.ModeSymlink != 0 {
-		return nil, errors.New("account usage companion executable is not an ordinary file")
-	}
-	fingerprint, err := fingerprintRuntimeExecutable(realExecutable)
+	staging, err := workspace.createTemp(".account-usage-install-")
 	if err != nil {
-		return nil, fmt.Errorf("fingerprint account usage companion executable: %w", err)
+		return err
 	}
-	if err := verifyRuntimeExecutableUnchanged(realExecutable, fingerprint); err != nil {
-		return nil, err
+	defer staging.Close()
+	stagingName := staging.name
+	defer func() { _ = workspace.remove(stagingName) }()
+	scratch, err := workspace.createTemp(".account-usage-work-")
+	if err != nil {
+		return err
 	}
-	relativeExecutable, err := filepath.Rel(realStaging, realExecutable)
-	if err != nil || relativeExecutable == "." || !pathWithin(realExecutable, realStaging) {
-		return nil, errors.New("account usage companion executable path is invalid")
+	defer scratch.Close()
+	scratchName := scratch.name
+	defer func() { _ = workspace.remove(scratchName) }()
+
+	installCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+	defer cancel()
+	command := replaceInstallRoot(companion.InstallCommand, companion.InstallRoot, staging.path)
+	if len(command) == 0 || command[0] != companion.Runner {
+		return errors.New("account usage companion runner identity changed")
 	}
-	return &managedRuntimeCompanionActivation{
-		Package:                plan.AccountUsage.Package,
-		ExecutableRelativePath: filepath.ToSlash(relativeExecutable),
-		ExecutableFingerprint:  fingerprint,
-	}, nil
+	runner := s.Runner
+	if runner == nil {
+		runner = localInstallCommandRunner{}
+	}
+	if err := runner.Run(installCtx, command, scratch.path, cleanInstallEnvironment(scratch.path)); err != nil {
+		return err
+	}
+	stagedScript, err := stagedRuntimePath(companion.InstallRoot, companion.Script, staging.path)
+	if err != nil {
+		return err
+	}
+	realScript, err := filepath.EvalSymlinks(stagedScript)
+	if err != nil {
+		return err
+	}
+	realStaging, err := filepath.EvalSymlinks(staging.path)
+	if err != nil || !pathWithin(realScript, realStaging) {
+		return errors.New("account usage companion script escapes staging root")
+	}
+	fingerprint, err := fingerprintAccountUsageScript(realScript)
+	if err != nil {
+		return err
+	}
+	relativeScript, err := filepath.Rel(realStaging, realScript)
+	if err != nil || relativeScript == "." || !pathWithin(realScript, realStaging) {
+		return errors.New("account usage companion script path is invalid")
+	}
+	activation := managedAccountUsageActivation{
+		SchemaVersion:   managedAccountUsageActivationSchema,
+		RuntimeIdentity: companion.RuntimeIdentity, Package: companion.Package,
+		ScriptRelativePath: filepath.ToSlash(relativeScript), ScriptFingerprint: fingerprint,
+		ExtensionInstallationID: installation.ID, InstalledAt: time.Now().UTC(),
+	}
+	if err := staging.writeJSONAtomic("activation.json", activation); err != nil {
+		return err
+	}
+	return activateAccountUsageCompanion(workspace, staging, companion, activation)
 }
 
-func resolvedAccountUsageRuntimeBinding(
-	active *managedRuntimeDirectory,
-	root string,
-	activation managedRuntimeActivation,
+func activateAccountUsageCompanion(
+	workspace *managedRuntimeWorkspace,
+	staging *managedRuntimeDirectory,
+	plan *AccountUsageInstall,
+	activation managedAccountUsageActivation,
+) error {
+	if workspace == nil || staging == nil || plan == nil || staging.workspace != workspace {
+		return errors.New("account usage activation workspace is invalid")
+	}
+	backupName := plan.RuntimeIdentity + ".previous"
+	_ = workspace.remove(backupName)
+	hadPrevious := false
+	if present, err := managedRuntimeEntryPresent(workspace, plan.RuntimeIdentity); err != nil {
+		return err
+	} else if present {
+		if err := workspace.rename(plan.RuntimeIdentity, backupName); err != nil {
+			return err
+		}
+		hadPrevious = true
+	}
+	rollback := func() {
+		_ = workspace.remove(plan.RuntimeIdentity)
+		if hadPrevious {
+			_ = workspace.rename(backupName, plan.RuntimeIdentity)
+		}
+	}
+	if err := staging.Close(); err != nil {
+		rollback()
+		return err
+	}
+	if err := workspace.rename(staging.name, plan.RuntimeIdentity); err != nil {
+		rollback()
+		return err
+	}
+	staging.name = plan.RuntimeIdentity
+	staging.path = plan.InstallRoot
+	promoted, err := workspace.openDirectoryName(plan.RuntimeIdentity)
+	if err != nil {
+		rollback()
+		return err
+	}
+	staging.file = promoted.file
+	promoted.file = nil
+	script := filepath.Join(plan.InstallRoot, filepath.FromSlash(activation.ScriptRelativePath))
+	fingerprint, err := fingerprintAccountUsageScript(script)
+	if err != nil || fingerprint != activation.ScriptFingerprint {
+		_ = staging.Close()
+		rollback()
+		if err != nil {
+			return fmt.Errorf("account usage companion changed during activation: %w", err)
+		}
+		return errors.New("account usage companion fingerprint changed during activation")
+	}
+	_ = workspace.remove(backupName)
+	return nil
+}
+
+func (m *Manager) resolveInstalledAccountUsageRuntimeBinding(
+	installation Installation,
 	profile *AccountUsageProfile,
 ) (*AccountUsageRuntimeBinding, error) {
-	if profile == nil {
-		if activation.AccountUsage != nil {
-			return nil, fmt.Errorf("%w: unexpected account usage companion activation", ErrManagedRuntimeIntegrity)
-		}
-		return nil, nil
-	}
-	companion := activation.AccountUsage
-	if companion == nil || companion.Package != profile.Runtime.Package {
-		return nil, fmt.Errorf("%w: account usage companion activation identity is invalid", ErrManagedRuntimeIntegrity)
-	}
-	relativeExecutable := filepath.Clean(filepath.FromSlash(companion.ExecutableRelativePath))
-	if relativeExecutable == "." || filepath.IsAbs(relativeExecutable) || relativeExecutable == ".." || !pathWithin(filepath.Join(root, relativeExecutable), root) {
-		return nil, fmt.Errorf("%w: account usage companion executable escapes install root", ErrManagedRuntimeIntegrity)
-	}
-	declaredExecutable := filepath.Clean(resolveAccountUsageExecutable(profile.Runtime.Executable, root))
-	realDeclaredExecutable, err := filepath.EvalSymlinks(declaredExecutable)
-	if err != nil || filepath.Clean(realDeclaredExecutable) != filepath.Join(root, relativeExecutable) {
-		return nil, fmt.Errorf("%w: account usage companion executable does not match the signed profile", ErrManagedRuntimeIntegrity)
-	}
-	executableFile, err := active.openFile(relativeExecutable, os.O_RDONLY)
+	identity, err := accountUsageRuntimeIdentity(installation, profile, runtimePlatform())
 	if err != nil {
-		return nil, fmt.Errorf("%w: account usage companion executable is not an ordinary file", ErrManagedRuntimeIntegrity)
+		return nil, err
 	}
-	fingerprint, fingerprintErr := fingerprintRuntimeExecutableFile(executableFile)
-	closeErr := executableFile.Close()
-	if fingerprintErr != nil || closeErr != nil || fingerprint != companion.ExecutableFingerprint || fingerprint.SHA256 == "" {
-		return nil, fmt.Errorf("%w: account usage companion executable fingerprint changed", ErrManagedRuntimeIntegrity)
+	base := filepath.Join(m.RuntimeInstallDir, ".account-usage")
+	root := managedRuntimeRoot(base, installation.AgentKey, identity)
+	if _, err := os.Lstat(root); err != nil {
+		return nil, err
+	}
+	workspace, err := openManagedRuntimeWorkspaceForInstall(base, installation.AgentKey, true)
+	if err != nil {
+		return nil, err
+	}
+	defer workspace.Close()
+	active, err := workspace.openDirectoryName(identity)
+	if err != nil {
+		return nil, err
+	}
+	defer active.Close()
+	var activation managedAccountUsageActivation
+	if err := active.readJSON("activation.json", &activation); err != nil {
+		return nil, err
+	}
+	if activation.SchemaVersion != managedAccountUsageActivationSchema ||
+		activation.RuntimeIdentity != identity || activation.Package != profile.Runtime.Package {
+		return nil, fmt.Errorf("%w: account usage activation identity is invalid", ErrManagedRuntimeIntegrity)
+	}
+	relativeScript := filepath.Clean(filepath.FromSlash(activation.ScriptRelativePath))
+	if relativeScript == "." || filepath.IsAbs(relativeScript) || !pathWithin(filepath.Join(root, relativeScript), root) {
+		return nil, fmt.Errorf("%w: account usage companion script escapes install root", ErrManagedRuntimeIntegrity)
+	}
+	declaredScript := filepath.Clean(resolveAccountUsageScript(profile.Runtime.Script, root))
+	realDeclaredScript, err := filepath.EvalSymlinks(declaredScript)
+	if err != nil || filepath.Clean(realDeclaredScript) != filepath.Join(root, relativeScript) {
+		return nil, fmt.Errorf("%w: account usage companion script does not match the signed profile", ErrManagedRuntimeIntegrity)
+	}
+	scriptFile, err := active.openFile(relativeScript, os.O_RDONLY)
+	if err != nil {
+		return nil, fmt.Errorf("%w: account usage companion script is not an ordinary file", ErrManagedRuntimeIntegrity)
+	}
+	fingerprint, fingerprintErr := fingerprintAccountUsageScriptFile(scriptFile)
+	closeErr := scriptFile.Close()
+	if fingerprintErr != nil || closeErr != nil || fingerprint != activation.ScriptFingerprint || fingerprint.SHA256 == "" {
+		return nil, fmt.Errorf("%w: account usage companion script fingerprint changed", ErrManagedRuntimeIntegrity)
+	}
+	return m.accountUsageNodeBinding(filepath.Join(root, relativeScript), fingerprint, profile)
+}
+
+func (m *Manager) accountUsageNodeBinding(script string, fingerprint runtimeExecutableFingerprint, profile *AccountUsageProfile) (*AccountUsageRuntimeBinding, error) {
+	nodePath := strings.TrimSpace(environmentValue(m.RuntimeResolver.Env(nil), "TUTTI_APP_NODE"))
+	if nodePath == "" {
+		names := []string{"node"}
+		if runtime.GOOS == "windows" {
+			names = []string{"node.exe", "node"}
+		}
+		nodePath = m.RuntimeResolver.ResolveBinary(names, nil)
+	}
+	if nodePath == "" || !filepath.IsAbs(nodePath) {
+		return nil, errors.New("node interpreter is unavailable")
+	}
+	realNode, err := filepath.EvalSymlinks(nodePath)
+	if err != nil {
+		return nil, err
+	}
+	nodeFingerprint, err := fingerprintRuntimeExecutable(realNode)
+	if err != nil {
+		return nil, fmt.Errorf("fingerprint Node interpreter: %w", err)
 	}
 	return &AccountUsageRuntimeBinding{
-		Command: append(
-			[]string{filepath.Join(root, relativeExecutable)},
-			profile.Runtime.Args...,
-		),
-		Timeout:            time.Duration(profile.Runtime.TimeoutMS) * time.Millisecond,
-		ExecutableIdentity: executableIdentity(fingerprint),
+		NodePath: realNode, ScriptPath: script, Args: append([]string(nil), profile.Runtime.Args...),
+		Timeout:      time.Duration(profile.Runtime.TimeoutMS) * time.Millisecond,
+		NodeIdentity: executableIdentity(nodeFingerprint), ScriptIdentity: executableIdentity(fingerprint),
 	}, nil
 }
 
-func resolveAccountUsageExecutable(declaration, root string) string {
+func resolveAccountUsageScript(declaration, root string) string {
 	return strings.NewReplacer("${installRoot}", root).Replace(declaration)
+}
+
+func fingerprintAccountUsageScript(path string) (runtimeExecutableFingerprint, error) {
+	info, err := os.Lstat(path)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
+		return runtimeExecutableFingerprint{}, errors.New("account usage companion script is not an ordinary file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return runtimeExecutableFingerprint{}, err
+	}
+	defer file.Close()
+	fileInfo, err := file.Stat()
+	if err != nil || !os.SameFile(info, fileInfo) {
+		return runtimeExecutableFingerprint{}, errors.New("account usage companion script changed while opening")
+	}
+	return fingerprintAccountUsageScriptFile(file)
+}
+
+func fingerprintAccountUsageScriptFile(file *os.File) (runtimeExecutableFingerprint, error) {
+	if file == nil {
+		return runtimeExecutableFingerprint{}, errors.New("account usage companion script descriptor is required")
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return runtimeExecutableFingerprint{}, err
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 16<<20 {
+		return runtimeExecutableFingerprint{}, errors.New("account usage companion script is invalid")
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return runtimeExecutableFingerprint{}, err
+	}
+	return runtimeExecutableFingerprint{SHA256: hex.EncodeToString(hash.Sum(nil)), Size: info.Size()}, nil
 }
 
 func stagedRuntimePath(installRoot, installedPath, staging string) (string, error) {

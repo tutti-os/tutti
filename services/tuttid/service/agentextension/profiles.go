@@ -174,10 +174,11 @@ type AuthenticationMethodProfile struct {
 type AccountUsageProfile struct {
 	SchemaVersion string `json:"schemaVersion"`
 	Runtime       struct {
-		Package    string   `json:"package"`
-		Executable string   `json:"executable"`
-		Args       []string `json:"args"`
-		TimeoutMS  int      `json:"timeoutMs"`
+		Package   string   `json:"package"`
+		Kind      string   `json:"kind"`
+		Script    string   `json:"script"`
+		Args      []string `json:"args"`
+		TimeoutMS int      `json:"timeoutMs"`
 	} `json:"runtime"`
 }
 
@@ -630,12 +631,15 @@ func validateAccountUsageProfile(profile AccountUsageProfile) error {
 	if !accountUsagePackage.MatchString(strings.TrimSpace(profile.Runtime.Package)) {
 		return errors.New("account usage companion package must use an exact scoped version")
 	}
-	executable := strings.TrimSpace(profile.Runtime.Executable)
-	if !strings.HasPrefix(executable, "${installRoot}/") || strings.ContainsAny(executable, "|;&`\n\r<>") || strings.Contains(executable, "$(") {
-		return errors.New("account usage companion executable must stay under installRoot")
+	if profile.Runtime.Kind != "node-script" {
+		return errors.New("account usage companion runtime kind must be node-script")
 	}
-	if matches := runtimeArgumentPlaceholderPattern.FindAllString(executable, -1); len(matches) != 1 || matches[0] != "${installRoot}" {
-		return errors.New("account usage companion executable contains unsupported placeholders")
+	script := strings.TrimSpace(profile.Runtime.Script)
+	if !strings.HasPrefix(script, "${installRoot}/") || strings.ContainsAny(script, "|;&`\n\r<>") || strings.Contains(script, "$(") {
+		return errors.New("account usage companion script must stay under installRoot")
+	}
+	if matches := runtimeArgumentPlaceholderPattern.FindAllString(script, -1); len(matches) != 1 || matches[0] != "${installRoot}" {
+		return errors.New("account usage companion script contains unsupported placeholders")
 	}
 	if len(profile.Runtime.Args) == 0 || len(profile.Runtime.Args) > 8 {
 		return errors.New("account usage companion must declare 1..8 arguments")

@@ -74,6 +74,10 @@ func prepareProcessExecutable(path string, expected *ExecutableIdentity) (prepar
 	return preparedProcessExecutable{path: snapshotPath, privateDir: privateDir}, nil
 }
 
+func prepareNodeInterpreter(path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+	return prepareProcessExecutable(path, expected)
+}
+
 func verifyWindowsExecutable(file *os.File, expected *ExecutableIdentity) error {
 	info, err := file.Stat()
 	if err != nil || !info.Mode().IsRegular() {

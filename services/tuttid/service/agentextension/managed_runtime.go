@@ -16,21 +16,14 @@ import (
 const managedRuntimeActivationSchema = "tutti.agent.managed-runtime.v1"
 
 type managedRuntimeActivation struct {
-	SchemaVersion           string                             `json:"schemaVersion"`
-	ExtensionInstallationID string                             `json:"extensionInstallationId"`
-	RuntimeIdentity         string                             `json:"runtimeIdentity"`
-	PackageName             string                             `json:"packageName"`
-	PackageVersion          string                             `json:"packageVersion"`
-	ExecutableRelativePath  string                             `json:"executableRelativePath"`
-	ExecutableFingerprint   runtimeExecutableFingerprint       `json:"executableFingerprint"`
-	AccountUsage            *managedRuntimeCompanionActivation `json:"accountUsage,omitempty"`
-	InstalledAt             time.Time                          `json:"installedAt"`
-}
-
-type managedRuntimeCompanionActivation struct {
-	Package                string                       `json:"package"`
-	ExecutableRelativePath string                       `json:"executableRelativePath"`
-	ExecutableFingerprint  runtimeExecutableFingerprint `json:"executableFingerprint"`
+	SchemaVersion           string                       `json:"schemaVersion"`
+	ExtensionInstallationID string                       `json:"extensionInstallationId"`
+	RuntimeIdentity         string                       `json:"runtimeIdentity"`
+	PackageName             string                       `json:"packageName"`
+	PackageVersion          string                       `json:"packageVersion"`
+	ExecutableRelativePath  string                       `json:"executableRelativePath"`
+	ExecutableFingerprint   runtimeExecutableFingerprint `json:"executableFingerprint"`
+	InstalledAt             time.Time                    `json:"installedAt"`
 }
 
 func (m *Manager) resolveInstalledManagedRuntime(
@@ -125,19 +118,6 @@ func (m *Manager) resolveInstalledManagedRuntime(
 			return RuntimeBinding{}, fmt.Errorf("%w: executable does not match current signed artifact", ErrManagedRuntimeIntegrity)
 		}
 	}
-	accountUsageProfile, err := loadAccountUsageProfile(installation)
-	if err != nil {
-		return RuntimeBinding{}, err
-	}
-	accountUsageBinding, err := resolvedAccountUsageRuntimeBinding(
-		active,
-		root,
-		activation,
-		accountUsageProfile,
-	)
-	if err != nil {
-		return RuntimeBinding{}, err
-	}
 	executable := filepath.Join(root, relativeExecutable)
 	if publishesUserCommand(installation.Manifest) {
 		entry, err := m.managedRuntimeEntry(
@@ -188,7 +168,6 @@ func (m *Manager) resolveInstalledManagedRuntime(
 		if err != nil {
 			return RuntimeBinding{}, err
 		}
-		binding.AccountUsage = accountUsageBinding
 		return binding, nil
 	}
 	return RuntimeBinding{}, errors.New("managed runtime version is incompatible")
@@ -204,13 +183,6 @@ func (m *Manager) adoptCompatibleManagedRuntime(
 	runtimeIdentity string,
 	targetRoot string,
 ) error {
-	accountUsage, err := loadAccountUsageProfile(installation)
-	if err != nil {
-		return err
-	}
-	if accountUsage != nil {
-		return errors.New("account usage companion requires a fresh managed runtime installation")
-	}
 	workspace, err := openManagedRuntimeWorkspaceForInstall(m.RuntimeInstallDir, installation.AgentKey, artifact == nil)
 	if err != nil {
 		return err

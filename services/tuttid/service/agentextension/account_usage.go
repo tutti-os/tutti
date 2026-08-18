@@ -7,7 +7,6 @@ import (
 	"errors"
 	"io"
 	"math"
-	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -46,7 +45,7 @@ type AccountUsageService struct {
 	Manager *Manager
 	Targets AgentTargetLookup
 	Now     func() time.Time
-	run     func(context.Context, string, []string, *agentruntime.ExecutableIdentity, int) ([]byte, error)
+	run     func(context.Context, string, string, []string, *agentruntime.ExecutableIdentity, *agentruntime.ExecutableIdentity, int) ([]byte, error)
 }
 
 func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string) (AccountUsageResult, error) {
@@ -97,7 +96,8 @@ func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string
 		return base, nil
 	}
 	accountUsageBinding, err := service.accountUsageRuntimeBinding(ctx, installation, target.Provider, profile)
-	if err != nil || accountUsageBinding == nil || len(accountUsageBinding.Command) == 0 || accountUsageBinding.ExecutableIdentity == nil {
+	if err != nil || accountUsageBinding == nil || accountUsageBinding.NodePath == "" || accountUsageBinding.ScriptPath == "" ||
+		accountUsageBinding.NodeIdentity == nil || accountUsageBinding.ScriptIdentity == nil {
 		base.Outcome = "error"
 		base.ErrorCode = "runtime_unavailable"
 		return base, nil
@@ -106,13 +106,15 @@ func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string
 	defer cancel()
 	run := service.run
 	if run == nil {
-		run = agentruntime.RunVerifiedExecutableBounded
+		run = agentruntime.RunVerifiedNodeScriptBounded
 	}
 	output, err := run(
 		probeCtx,
-		accountUsageBinding.Command[0],
-		accountUsageBinding.Command[1:],
-		accountUsageBinding.ExecutableIdentity,
+		accountUsageBinding.NodePath,
+		accountUsageBinding.ScriptPath,
+		accountUsageBinding.Args,
+		accountUsageBinding.NodeIdentity,
+		accountUsageBinding.ScriptIdentity,
 		accountUsageOutputLimit,
 	)
 	if err != nil {
@@ -139,29 +141,22 @@ func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string
 }
 
 func (service AccountUsageService) accountUsageRuntimeBinding(
-	ctx context.Context,
+	_ context.Context,
 	installation Installation,
 	provider string,
 	profile *AccountUsageProfile,
 ) (*AccountUsageRuntimeBinding, error) {
 	if localExecutable := service.Manager.localAccountUsageExecutable(installation); localExecutable != "" {
-		return resolvedLocalAccountUsageRuntimeBinding(localExecutable, profile)
+		return service.Manager.resolvedLocalAccountUsageRuntimeBinding(localExecutable, profile)
 	}
-	var discovery DiscoveryProfile
-	if err := readJSON(
-		filepath.Join(installation.PackageDir, installation.Manifest.Profiles.Discovery),
-		&discovery,
-	); err != nil {
-		return nil, err
-	}
-	binding, err := service.Manager.resolveInstalledManagedRuntime(ctx, installation, discovery, "")
+	binding, err := service.Manager.resolveInstalledAccountUsageRuntimeBinding(installation, profile)
 	if err != nil {
 		return nil, err
 	}
-	if binding.Installation.ID != installation.ID || binding.Installation.Provider != provider || binding.AccountUsage == nil {
+	if installation.Provider != provider {
 		return nil, errors.New("account usage runtime binding identity is invalid")
 	}
-	return binding.AccountUsage, nil
+	return binding, nil
 }
 
 func (service AccountUsageService) now() time.Time {

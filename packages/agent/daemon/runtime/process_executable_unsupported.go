@@ -19,4 +19,8 @@ func prepareProcessExecutable(path string, expected *ExecutableIdentity) (prepar
 	return preparedProcessExecutable{path: path}, nil
 }
 
+func prepareNodeInterpreter(path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+	return prepareProcessExecutable(path, expected)
+}
+
 func (p *preparedProcessExecutable) Close() error { return nil }

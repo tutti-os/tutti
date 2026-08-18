@@ -94,6 +94,43 @@ func TestRunVerifiedExecutableBoundedCapturesOnlyBoundedStdout(t *testing.T) {
 	}
 }
 
+func TestRunVerifiedNodeScriptBoundedExecutesVerifiedScript(t *testing.T) {
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is unavailable")
+	}
+	nodePath, err = filepath.EvalSymlinks(nodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeIdentity := fileIdentity(t, nodePath)
+	scriptPath := filepath.Join(t.TempDir(), "probe.cjs")
+	script := []byte("process.stderr.write('secret'); process.stdout.write(JSON.stringify({arg: process.argv[2]}));\n")
+	if err := os.WriteFile(scriptPath, script, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scriptIdentity := fileIdentity(t, scriptPath)
+
+	output, err := RunVerifiedNodeScriptBounded(
+		context.Background(), nodePath, scriptPath, []string{"expected"}, nodeIdentity, scriptIdentity, 128,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(output) != `{"arg":"expected"}` {
+		t.Fatalf("output = %q", output)
+	}
+
+	if err := os.WriteFile(scriptPath, []byte("process.stdout.write('changed')\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunVerifiedNodeScriptBounded(
+		context.Background(), nodePath, scriptPath, nil, nodeIdentity, scriptIdentity, 128,
+	); err == nil || !strings.Contains(err.Error(), "expected identity") {
+		t.Fatalf("changed script error = %v", err)
+	}
+}
+
 func TestLocalProcessTransportRejectsChangedExpectedExecutable(t *testing.T) {
 	path, identity := copyCurrentExecutableWithIdentity(t)
 	if err := os.WriteFile(path, []byte("changed executable"), 0o755); err != nil {
@@ -123,6 +160,16 @@ func copyCurrentExecutableWithIdentity(t *testing.T) (string, *ExecutableIdentit
 	}
 	digest := sha256.Sum256(data)
 	return path, &ExecutableIdentity{SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(data))}
+}
+
+func fileIdentity(t *testing.T, path string) *ExecutableIdentity {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(data)
+	return &ExecutableIdentity{SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(data))}
 }
 
 func TestLocalProcessTransportOutlivesStartContext(t *testing.T) {

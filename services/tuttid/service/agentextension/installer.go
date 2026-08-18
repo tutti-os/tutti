@@ -31,7 +31,11 @@ func (localInstallCommandRunner) Run(ctx context.Context, command []string, cwd 
 	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
 		return errors.New("install command is required")
 	}
-	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	executable := command[0]
+	if resolved, err := exec.LookPath(executable); err == nil {
+		executable = resolved
+	}
+	cmd := newAgentExtensionInstallCommand(ctx, executable, command[1:]...)
 	cmd.Dir = cwd
 	cmd.Env = env
 	output := &boundedBuffer{limit: 128 << 10}
@@ -203,10 +207,6 @@ func (s *SetupService) executeInstall(
 	if err := verifyRuntimeExecutableUnchanged(realExecutable, verifiedFingerprint); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
 	}
-	accountUsageActivation, err := stagedAccountUsageActivation(plan, staging, realStaging)
-	if err != nil {
-		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
-	}
 	var profile DiscoveryProfile
 	if err := readJSON(filepath.Join(installation.PackageDir, installation.Manifest.Profiles.Discovery), &profile); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
@@ -242,12 +242,6 @@ func (s *SetupService) executeInstall(
 	if err := verifyRuntimeExecutableUnchanged(realExecutable, verifiedFingerprint); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeProbeFailed, err)
 	}
-	if accountUsageActivation != nil {
-		companionExecutable := filepath.Join(realStaging, filepath.FromSlash(accountUsageActivation.ExecutableRelativePath))
-		if err := verifyRuntimeExecutableUnchanged(companionExecutable, accountUsageActivation.ExecutableFingerprint); err != nil {
-			return fmt.Errorf("%w: account usage companion changed during runtime probe: %w", ErrRuntimeProbeFailed, err)
-		}
-	}
 
 	if err := update(SetupPhaseActivating); err != nil {
 		return err
@@ -265,7 +259,6 @@ func (s *SetupService) executeInstall(
 		ExecutableRelativePath: filepath.ToSlash(relativeExecutable), InstalledAt: time.Now().UTC(),
 	}
 	activation.ExecutableFingerprint = verifiedFingerprint
-	activation.AccountUsage = accountUsageActivation
 	if err := stagingDir.writeJSONAtomic("activation.json", activation); err != nil {
 		return fmt.Errorf("%w: write activation: %w", ErrRuntimeActivateFailed, err)
 	}
@@ -286,7 +279,29 @@ func (s *SetupService) executeInstall(
 	if err := activateManagedRuntime(installation, workspace, stagingDir, plan, s.Plans.Manager.RuntimeInstallDir, entry, activation); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
 	}
+	// Account usage is an optional provider-owned sidecar. Install it on the
+	// service worker context after the ACP activation commits so its latency or
+	// failure cannot delay or roll back Agent readiness.
+	s.startAccountUsageCompanionInstall(installation, plan)
 	return nil
+}
+
+func (s *SetupService) startAccountUsageCompanionInstall(installation Installation, plan InstallPlan) {
+	if plan.AccountUsage == nil {
+		return
+	}
+	s.mu.Lock()
+	if s.closed || s.workerCtx == nil {
+		s.mu.Unlock()
+		return
+	}
+	ctx := s.workerCtx
+	s.workers.Add(1)
+	s.mu.Unlock()
+	go func() {
+		defer s.workers.Done()
+		_ = s.installAccountUsageCompanion(ctx, installation, plan)
+	}()
 }
 
 func stagedRuntimeExecutable(plan InstallPlan, staging string) (string, error) {
@@ -497,17 +512,6 @@ func activateManagedRuntimeWithCrashInjection(
 			_ = workspace.rename(backupName, plan.RuntimeIdentity)
 		}
 		return err
-	}
-	if activation.AccountUsage != nil {
-		companionExecutable := filepath.Join(finalRoot, filepath.FromSlash(activation.AccountUsage.ExecutableRelativePath))
-		if err := verifyRuntimeExecutableUnchanged(companionExecutable, activation.AccountUsage.ExecutableFingerprint); err != nil {
-			_ = staging.Close()
-			_ = workspace.remove(plan.RuntimeIdentity)
-			if hadPrevious {
-				_ = workspace.rename(backupName, plan.RuntimeIdentity)
-			}
-			return err
-		}
 	}
 	if entry != nil {
 		if err := publishManagedRuntimeEntry(*entry); err != nil {

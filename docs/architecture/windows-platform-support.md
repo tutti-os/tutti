@@ -213,6 +213,15 @@ write failures, while status-time adoption repairs PATH on a best-effort basis.
 Registry changes affect new processes only, so an already-open terminal must be
 restarted before it can resolve a newly published command.
 
+Provider-owned account-usage helpers do not execute npm `.cmd` launchers or
+copy JavaScript into a fake `.exe`. Their optional package is installed and
+activated separately from the ACP runtime. The process boundary verifies the
+fixed `node.exe` interpreter and the declared CommonJS script independently,
+then feeds the verified script bytes to Node. Windows CI must exercise an
+actual npm pack/install and account-usage probe in addition to native Go
+executable verification; a companion failure may produce only
+`runtime_unavailable`, never a not-installed Agent.
+
 Extension session-home preparation keeps its source declaration portable. An
 explicit source environment variable wins; otherwise the Windows adapter maps a
 leading-dot top-level directory to the native user cache root

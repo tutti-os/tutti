@@ -13,7 +13,8 @@ func TestValidateAccountUsageProfileRejectsUnsafeDeclarations(t *testing.T) {
 		var profile AccountUsageProfile
 		profile.SchemaVersion = "tutti.agent.account-usage-probe.v1"
 		profile.Runtime.Package = "@example/agent-account-usage@1.2.3"
-		profile.Runtime.Executable = "${installRoot}/node_modules/.bin/agent-account-usage"
+		profile.Runtime.Kind = "node-script"
+		profile.Runtime.Script = "${installRoot}/node_modules/@example/agent-account-usage/dist/cli.cjs"
 		profile.Runtime.Args = []string{"--output", "json"}
 		profile.Runtime.TimeoutMS = 10_000
 		return profile
@@ -28,11 +29,11 @@ func TestValidateAccountUsageProfileRejectsUnsafeDeclarations(t *testing.T) {
 		"version range": func(profile *AccountUsageProfile) {
 			profile.Runtime.Package = "@example/agent-account-usage@^1.2.3"
 		},
-		"foreign executable": func(profile *AccountUsageProfile) {
-			profile.Runtime.Executable = "/tmp/agent-account-usage"
+		"foreign script": func(profile *AccountUsageProfile) {
+			profile.Runtime.Script = "/tmp/agent-account-usage"
 		},
 		"extra placeholder": func(profile *AccountUsageProfile) {
-			profile.Runtime.Executable = "${installRoot}/${projectRoot}/agent-account-usage"
+			profile.Runtime.Script = "${installRoot}/${projectRoot}/agent-account-usage"
 		},
 		"shell argument": func(profile *AccountUsageProfile) {
 			profile.Runtime.Args = []string{"json;curl"}

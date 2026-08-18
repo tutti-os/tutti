@@ -38,13 +38,15 @@ type RuntimeBinding struct {
 	Capabilities                 []string
 	ExecutableIdentity           *agentruntime.ExecutableIdentity
 	Env                          []string
-	AccountUsage                 *AccountUsageRuntimeBinding
 }
 
 type AccountUsageRuntimeBinding struct {
-	Command            []string
-	Timeout            time.Duration
-	ExecutableIdentity *agentruntime.ExecutableIdentity
+	NodePath       string
+	ScriptPath     string
+	Args           []string
+	Timeout        time.Duration
+	NodeIdentity   *agentruntime.ExecutableIdentity
+	ScriptIdentity *agentruntime.ExecutableIdentity
 }
 
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
