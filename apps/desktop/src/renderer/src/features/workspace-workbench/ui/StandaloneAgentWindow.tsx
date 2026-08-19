@@ -572,7 +572,7 @@ export function StandaloneAgentWindow({
   const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const minimumAgentGuiViewportWidthPx =
     resolveStandaloneAgentGUIViewportMinimumWidthPx({
-      conversationRailCollapsed: nodeState.conversationRailCollapsed === true,
+      conversationRailCollapsed: isConversationRailCollapsed,
       conversationRailWidthPx: nodeState.conversationRailWidthPx
     });
   const host = useMemo(
