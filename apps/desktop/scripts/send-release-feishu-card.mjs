@@ -288,8 +288,36 @@ function buildSummaryElements(summary) {
   ];
 }
 
+function buildCandidatePromotionElements({ branch, promotionUrl, tag }) {
+  if (!promotionUrl) {
+    return [];
+  }
+
+  const branchInstruction = branch
+    ? `- Branch 选择 \`${branch}\``
+    : "- Branch 选择本次候选版本的 release 分支";
+  return [
+    {
+      tag: "div",
+      text: {
+        content: [
+          "**发布审核操作**",
+          "1. 点击下方「打开发布审核流水线」",
+          "2. 点击 `Run workflow`",
+          branchInstruction,
+          `- \`release_tag\` 填写 \`${tag}\``,
+          "3. 启动后在 `Approve Stable Release` 完成审核"
+        ].join("\n"),
+        tag: "lark_md"
+      }
+    },
+    { tag: "hr" }
+  ];
+}
+
 function buildCardPayload({
   actor,
+  branch,
   macUrl,
   winUrl,
   publicationStatus = "published",
@@ -311,7 +339,9 @@ function buildCardPayload({
       label: candidate ? "编辑更新说明" : "查看完整更新日志",
       url: releaseUrl
     },
-    ...(candidate ? [{ label: "提交发布审核", url: promotionUrl }] : []),
+    ...(candidate
+      ? [{ label: "打开发布审核流水线", url: promotionUrl }]
+      : []),
     { label: "查看技术详情", url: runUrl }
   ]
     .filter((action) => action.url)
@@ -335,6 +365,9 @@ function buildCardPayload({
         },
         { tag: "hr" },
         ...buildSummaryElements(summary),
+        ...(candidate
+          ? buildCandidatePromotionElements({ branch, promotionUrl, tag })
+          : []),
         {
           fields: [
             {
@@ -522,6 +555,7 @@ if (
 
 export {
   buildCardPayload,
+  buildCandidatePromotionElements,
   buildSummaryElements,
   findPreferredAssetName,
   loadRelease,

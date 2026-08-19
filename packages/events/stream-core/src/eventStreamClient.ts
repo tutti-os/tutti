@@ -127,6 +127,7 @@ export interface EventStreamInvalidFrameSummary {
 export interface EventStreamClient<TServerEvent, TScope> {
   connect(): Promise<void>;
   dispose(): void;
+  getConnectionState(): EventStreamConnectionState;
   publishIntent(topic: string, payload: unknown): Promise<void>;
   subscribe(
     topic: string,
@@ -223,6 +224,7 @@ export function createEventStreamClient<
   let connectPromise: Promise<void> | null = null;
   let ready = false;
   let disposed = false;
+  let connectionState: EventStreamConnectionState = "disconnected";
   let nextRequestID = 1;
   let heartbeatIntervalCleanup: TimerCleanup | null = null;
   let pongTimeoutCleanup: TimerCleanup | null = null;
@@ -233,6 +235,9 @@ export function createEventStreamClient<
   return {
     connect() {
       return connectInternal();
+    },
+    getConnectionState() {
+      return connectionState;
     },
     dispose() {
       disposed = true;
@@ -669,6 +674,7 @@ export function createEventStreamClient<
   }
 
   function notifyConnectionState(state: EventStreamConnectionState): void {
+    connectionState = state;
     for (const listener of connectionStateListeners) {
       listener(state);
     }

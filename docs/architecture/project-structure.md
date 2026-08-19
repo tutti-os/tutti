@@ -191,17 +191,21 @@ the consuming desktop app.
 Connector packages own host-neutral connector domain boundaries shared across
 desktop daemons.
 
-Current packages:
+Current owners:
 
-- `packages/connector/market`: TypeScript contracts, renderer state, reusable
-  UI, i18n, and local OpenAPI fragment
-- `packages/connector/host`: connector catalog, installation, authorization,
+- `packages/connector/contracts`: versioned authorization wire contracts and
+  the local OpenAPI fragment
+- `packages/connector/daemon/core`: connector catalog, installation, authorization,
   compatibility, operation, and recovery application core
-- `packages/connector/daemon`: reusable daemon lifecycle and workers
-- `packages/connector/store-sqlite`: canonical local persistence and outbox
+- `packages/connector/daemon/application`: reusable daemon lifecycle and workers
+- `packages/connector/daemon/adapters/sqlite`: canonical local persistence and outbox
+- `packages/connector/daemon/adapters/controlplane`: account-scoped authorization
+  HTTP and realtime protocol adapter
 - `packages/connector/runtime`: latest-only artifact caching, no-network archive
   import, same-machine composition, managed-runtime installation primitives,
   Connector route/MCP registries, and the session-bound loopback MCP server
+- `packages/connector/renderer`: React-free frontend application services plus
+  the only shared Connector-specific React and i18n owner
 
 Remote endpoint authentication, credentials, state-root selection, generated
 daemon clients, product command publication, and OS process integration remain
@@ -224,12 +228,12 @@ Client packages provide domain-specific access helpers for consumers.
 
 They should remain focused, named by responsibility, and free of hidden business rules.
 
-`packages/clients/connector-controlplane` is the shared Go protocol client for
+`packages/connector/daemon/adapters/controlplane` is the shared Go protocol client for
 account-scoped Connector authorization. It owns authorization session,
 snapshot, and realtime-event decoding plus bounded HTTPS transport. A product
 host supplies the API prefix, HTTP client, and per-account request authorizer;
 the package never stores account cookies, chooses an environment, or sends
-credentials to a runtime VM. `packages/connector/host` selects this client only
+credentials to a runtime VM. `packages/connector/daemon/core` selects this client only
 for `remote_streamable_http` releases, while `managed_stdio` authorization
 stays with the injected local implementation host.
 

@@ -1,12 +1,13 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, type ReactNode } from "react";
+import { ConnectorPaletteItem } from "@tutti-os/connector-renderer/ui";
 import { Spinner } from "@tutti-os/ui-system";
 import {
   Globe,
   Info,
   ListChecks,
+  MessageCirclePlus,
   Minimize2,
   Monitor,
-  Plug,
   Search,
   Target,
   ZapIcon
@@ -15,6 +16,7 @@ import type { AgentSessionCommand } from "../../shared/agentSessionTypes";
 import { cn } from "../../app/renderer/lib/utils";
 import type { AgentGUIProviderSkillOption } from "./model/agentGuiNodeTypes";
 import type { AgentSlashCommandCapability } from "./model/agentSlashCommandProviderPolicy";
+import { projectConnectorPaletteItem } from "./integrations/connector/model/connectorPresentation";
 
 export type AgentSlashPaletteEntry =
   | {
@@ -174,19 +176,21 @@ export function AgentSlashCommandPalette({
     <div className={paletteStyles.palette} role="listbox" aria-label={label}>
       {entries.map((entry, index) => {
         const isHighlighted = index === highlightedIndex;
+        const connectorItem =
+          entry.type === "skill"
+            ? projectConnectorPaletteItem(
+                entry.skill,
+                entry.label,
+                entry.description
+                  ? descriptionWithoutTerminalPeriod(entry.description)
+                  : undefined
+              )
+            : null;
         const isDisabled =
           (entry.type === "capability" && entry.disabled === true) ||
-          (entry.type === "skill" &&
-            (entry.skill.sourceKind === "connector" ||
-              entry.skill.kind === "connector") &&
-            entry.skill.status === "unsupported");
+          connectorItem?.status === "unsupported";
         const groupType = entryGroupType(entry);
-        const entryIcon = slashPaletteEntryIcon(entry);
-        const connectorStatus = connectorStatusPresentation(entry, {
-          connected: connectorConnectedLabel,
-          notConnected: connectorNotConnectedLabel,
-          unsupported: connectorUnsupportedLabel
-        });
+        const entryIcon = connectorItem ? null : slashPaletteEntryIcon(entry);
         const groupHeader =
           showGroupHeaders && firstEntryIndexByType.get(groupType) === index ? (
             <div
@@ -252,62 +256,44 @@ export function AgentSlashCommandPalette({
                 onSelectSkill(entry.skill);
               }}
             >
-              {entryIcon ? (
-                <span aria-hidden="true" className={paletteStyles.icon}>
-                  {entryIcon}
-                </span>
-              ) : null}
-              <span className={paletteStyles.copy}>
-                <span className={paletteStyles.name}>
-                  <span className={paletteStyles.primaryName}>
-                    {entry.type === "command"
-                      ? (entry.primaryLabel ?? entry.label)
-                      : entry.label}
-                  </span>
-                  {entry.type === "command" && entry.secondaryLabel ? (
-                    <span className={paletteStyles.secondaryName}>
-                      {entry.secondaryLabel}
+              {connectorItem && entry.type === "skill" ? (
+                <ConnectorPaletteItem
+                  item={connectorItem}
+                  labels={{
+                    connected: connectorConnectedLabel,
+                    notConnected: connectorNotConnectedLabel,
+                    unsupported: connectorUnsupportedLabel
+                  }}
+                  onSetup={() => onSelectSkill(entry.skill)}
+                />
+              ) : (
+                <>
+                  {entryIcon ? (
+                    <span aria-hidden="true" className={paletteStyles.icon}>
+                      {entryIcon}
                     </span>
                   ) : null}
-                </span>
-                {entry.description ? (
-                  <span className={paletteStyles.descriptionText}>
-                    {descriptionWithoutTerminalPeriod(entry.description)}
+                  <span className={paletteStyles.copy}>
+                    <span className={paletteStyles.name}>
+                      <span className={paletteStyles.primaryName}>
+                        {entry.type === "command"
+                          ? (entry.primaryLabel ?? entry.label)
+                          : entry.label}
+                      </span>
+                      {entry.type === "command" && entry.secondaryLabel ? (
+                        <span className={paletteStyles.secondaryName}>
+                          {entry.secondaryLabel}
+                        </span>
+                      ) : null}
+                    </span>
+                    {entry.description ? (
+                      <span className={paletteStyles.descriptionText}>
+                        {descriptionWithoutTerminalPeriod(entry.description)}
+                      </span>
+                    ) : null}
                   </span>
-                ) : null}
-              </span>
-              {connectorStatus &&
-              !connectorStatus.available &&
-              entry.type === "skill" &&
-              entry.skill.status !== "unsupported" ? (
-                <button
-                  aria-label={connectorStatus.label}
-                  className={paletteStyles.settingsButton}
-                  title={connectorStatus.label}
-                  type="button"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSelectSkill(entry.skill);
-                  }}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                  }}
-                >
-                  {connectorStatus.label}
-                </button>
-              ) : connectorStatus ? (
-                <span
-                  className={cn(
-                    "ml-1 shrink-0 text-[11px] font-medium",
-                    connectorStatus.available
-                      ? "text-[var(--state-success)]"
-                      : "text-[var(--text-secondary)]"
-                  )}
-                >
-                  {connectorStatus.label}
-                </span>
-              ) : null}
+                </>
+              )}
               {entry.type === "capability" &&
               entry.settingsLabel &&
               onSelectCapabilitySettings ? (
@@ -429,12 +415,6 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
       <Globe className={SLASH_PALETTE_ICON_CLASS} />
     );
   }
-  if (
-    entry.type === "skill" &&
-    (entry.skill.sourceKind === "connector" || entry.skill.kind === "connector")
-  ) {
-    return <ConnectorPaletteIcon iconUrl={entry.skill.iconUrl} />;
-  }
   if (entry.type !== "command") {
     return null;
   }
@@ -447,6 +427,8 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
       return <Target className={SLASH_PALETTE_ICON_CLASS} />;
     case "plan":
       return <ListChecks className={SLASH_PALETTE_ICON_CLASS} />;
+    case "side":
+      return <MessageCirclePlus className={SLASH_PALETTE_ICON_CLASS} />;
     case "review":
       return <Search className={SLASH_PALETTE_ICON_CLASS} />;
     case "status":
@@ -454,54 +436,4 @@ function slashPaletteEntryIcon(entry: AgentSlashPaletteEntry): ReactNode {
     default:
       return null;
   }
-}
-
-function ConnectorPaletteIcon({
-  iconUrl
-}: {
-  iconUrl?: string;
-}): React.JSX.Element {
-  const normalizedIconUrl = iconUrl?.trim() ?? "";
-  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
-  const showBrandIcon =
-    normalizedIconUrl.length > 0 && failedIconUrl !== normalizedIconUrl;
-
-  return (
-    <span className="flex size-4 items-center justify-center">
-      {showBrandIcon ? (
-        <img
-          alt=""
-          aria-hidden="true"
-          className="size-4 rounded-[3px] object-contain"
-          src={normalizedIconUrl}
-          onError={() => setFailedIconUrl(normalizedIconUrl)}
-        />
-      ) : (
-        <Plug className={SLASH_PALETTE_ICON_CLASS} />
-      )}
-    </span>
-  );
-}
-
-function connectorStatusPresentation(
-  entry: AgentSlashPaletteEntry,
-  labels: {
-    connected: string;
-    notConnected: string;
-    unsupported: string;
-  }
-): { available: boolean; label: string } | null {
-  if (
-    entry.type !== "skill" ||
-    (entry.skill.sourceKind !== "connector" && entry.skill.kind !== "connector")
-  ) {
-    return null;
-  }
-  if (entry.skill.status === "unsupported") {
-    return { available: false, label: labels.unsupported };
-  }
-  if (entry.skill.status === "available") {
-    return { available: true, label: labels.connected };
-  }
-  return { available: false, label: labels.notConnected };
 }

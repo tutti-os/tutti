@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/composercatalog"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 

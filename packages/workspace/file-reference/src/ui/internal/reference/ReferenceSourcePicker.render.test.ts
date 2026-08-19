@@ -1316,7 +1316,9 @@ function createFolderOnlyView(node: ReferenceNode) {
     setFocusedNode: () => {},
     setSearchQuery: () => {},
     sidebarGroupsBySource: {},
+    sidebarErrorBySource: {},
     sidebarHasMoreBySource: {},
+    sidebarLoadingBySource: {},
     sidebarLoadingMoreBySource: {},
     sortNodes: (nodes: readonly ReferenceNode[]) => nodes,
     tabs: [
@@ -1326,6 +1328,8 @@ function createFolderOnlyView(node: ReferenceNode) {
         sourceId: "workspace"
       }
     ],
+    tabsError: null,
+    tabsValidated: true,
     toggleNode: () => {},
     toggleSelection: () => {},
     toggleSingleSelectionAndExpand: () => {}

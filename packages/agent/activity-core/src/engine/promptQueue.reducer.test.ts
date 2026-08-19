@@ -551,6 +551,69 @@ test("send failure stays blocked until send-now retry clears it", () => {
   assert.equal(retried.commands[0]?.type, "queue/sendPrompt");
 });
 
+test("failed auto submit is removed before a later independent submit", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const first = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  const failed = reduce(
+    first.state,
+    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "failed", {
+      errorMessage: "boom"
+    }),
+    available
+  );
+
+  assert.equal(failed.state.recordsBySessionId["session-1"], undefined);
+
+  const second = reduce(failed.state, submit("prompt-2"), available);
+  assert.equal(send(second.commands[0]).clientSubmitId, "prompt-2");
+});
+
+test("failed hidden head does not block a later queued prompt", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const first = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  const later = reduce(first.state, submit("prompt-2"), available);
+  const failed = reduce(
+    later.state,
+    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "failed", {
+      errorMessage: "boom"
+    }),
+    available
+  );
+
+  assert.equal(failed.commands[0]?.type, "queue/sendPrompt");
+  assert.equal(send(failed.commands[0]).clientSubmitId, "prompt-2");
+});
+
+test("pre-turn failure removes a hidden auto submit before a later submit", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const first = reduce(
+    createInitialPromptQueueState(),
+    submit("prompt-1"),
+    available
+  );
+  const failed = reduce(
+    first.state,
+    commandResult(commandId(first.commands[0]), "queue/sendPrompt", "failed", {
+      errorCode: "agent.process_cleanup_pending"
+    }),
+    available
+  );
+
+  assert.equal(failed.state.recordsBySessionId["session-1"], undefined);
+  assert.equal(failed.commands[0]?.type, "session/reconcile");
+
+  const second = reduce(failed.state, submit("prompt-2"), available);
+  assert.equal(send(second.commands[0]).clientSubmitId, "prompt-2");
+});
+
 test("no-active-turn send failure reconciles before retrying queued prompt", () => {
   const available = canonicalLifecycle("settled", 1);
   const sending = reduce(
@@ -598,6 +661,33 @@ test("session no-active-turn app error reconciles before retrying queued prompt"
       "queue/sendPrompt",
       "failed",
       { errorCode: "agent.session_no_active_turn" }
+    ),
+    available
+  );
+
+  assert.equal(failed.commands.length, 1);
+  assert.equal(failed.commands[0]?.type, "session/reconcile");
+  assert.equal(
+    failed.state.recordsBySessionId["session-1"]?.failedPromptId,
+    null
+  );
+  assert.equal(failed.state.recordsBySessionId["session-1"]?.inFlight, null);
+});
+
+test("process cleanup failure reconciles before retrying queued prompt", () => {
+  const available = canonicalLifecycle("settled", 1);
+  const sending = reduce(
+    createInitialPromptQueueState(),
+    enqueue("prompt-1"),
+    available
+  );
+  const failed = reduce(
+    sending.state,
+    commandResult(
+      commandId(sending.commands[0]),
+      "queue/sendPrompt",
+      "failed",
+      { errorCode: "agent.process_cleanup_pending" }
     ),
     available
   );

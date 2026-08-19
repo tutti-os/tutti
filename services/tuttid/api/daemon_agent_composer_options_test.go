@@ -318,11 +318,11 @@ func TestGeneratedAgentProviderCapabilityOptionsProjectsIconURL(t *testing.T) {
 		Kind:       "connector",
 		Name:       "github",
 		Label:      "GitHub",
-		IconURL:    "data:image/png;base64,Z2l0aHVi",
+		IconURL:    "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 		Status:     "available",
 		Invocation: "textTrigger",
 	}})
-	if len(options) != 1 || options[0].IconUrl == nil || *options[0].IconUrl != "data:image/png;base64,Z2l0aHVi" {
+	if len(options) != 1 || options[0].IconUrl == nil || *options[0].IconUrl != "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg" {
 		t.Fatalf("options = %#v, want connector icon URL", options)
 	}
 }

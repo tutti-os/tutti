@@ -449,7 +449,7 @@ describe("useAgentGuiConversationList", () => {
       expect.objectContaining({
         id: "session-1",
         provider: "codex",
-        status: "ready",
+        status: "working",
         title: "test1",
         titleFallback: null
       })

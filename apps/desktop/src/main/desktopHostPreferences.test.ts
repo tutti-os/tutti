@@ -8,7 +8,7 @@ import { defaultDesktopWorkbenchShortcuts } from "../shared/preferences/index.ts
 import { createDesktopHostPreferencesState } from "./desktopHostPreferences.ts";
 import type { DesktopLogger } from "./logging.ts";
 
-test("createDesktopHostPreferencesState initializes missing preferences with dark theme and default icons", async () => {
+test("createDesktopHostPreferencesState initializes a new profile from daemon defaults with desktop runtime overrides", async () => {
   const putRequests: PutDesktopPreferencesRequest[] = [];
   const state = await createDesktopHostPreferencesState({
     fallbackLocale: "zh-CN",
@@ -27,7 +27,10 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-            featureFlags: {},
+            featureFlags: {
+              "agent.extension.gemini": true,
+              "workspace.standaloneAgentMode": true
+            },
             workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "flat",
             dockPlacement: "bottom",
@@ -54,6 +57,7 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
 
   assert.deepEqual(putRequests, [
     {
+      writeMode: "initializeIfAbsent",
       preferences: {
         agentCliUpdateCheckEnabled: true,
         agentComposerDefaultsByProvider: {},
@@ -63,22 +67,20 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
         deletedAgentConversationRetentionDays: 30,
         appCatalogChannel: "production",
         browserUseConnectionMode: "isolated",
-        defaultAgentProvider: "tutti-agent",
-        featureFlags: {},
-        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
-        dockIconStyle: "default",
-        dockPlacement: "bottom",
-        fileDefaultOpenersByExtension: {
-          htm: "appBrowser",
-          html: "appBrowser",
-          shtml: "appBrowser",
-          xhtml: "appBrowser"
+        defaultAgentProvider: "codex",
+        featureFlags: {
+          "agent.extension.gemini": true,
+          "workspace.standaloneAgentMode": true
         },
+        workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
+        dockIconStyle: "flat",
+        dockPlacement: "bottom",
+        fileDefaultOpenersByExtension: { html: "defaultBrowser" },
         locale: "zh-CN",
         minimizeAnimation: "genie",
         sleepPreventionMode: "never",
         showAppDeveloperSources: false,
-        themeSource: "dark",
+        themeSource: "system",
         updateChannel: "stable",
         updatePolicy: "prompt"
       }
@@ -87,12 +89,16 @@ test("createDesktopHostPreferencesState initializes missing preferences with dar
   assert.equal(state.getAgentCliUpdateCheckEnabled(), true);
   assert.equal(state.getDockPlacement(), "bottom");
   assert.equal(state.getLocale(), "zh-CN");
-  assert.equal(state.getDefaultAgentProvider(), "tutti-agent");
+  assert.equal(state.getDefaultAgentProvider(), "codex");
+  assert.deepEqual(state.getFeatureFlags(), {
+    "agent.extension.gemini": true,
+    "workspace.standaloneAgentMode": true
+  });
   assert.deepEqual(state.getAgentGUIConversationRailCollapsedByProvider(), {});
   assert.equal(state.getBrowserUseConnectionMode(), "isolated");
   assert.equal(state.getSleepPreventionMode(), "never");
-  assert.equal(state.getDockIconStyle(), "default");
-  assert.equal(state.getThemeSource(), "dark");
+  assert.equal(state.getDockIconStyle(), "flat");
+  assert.equal(state.getThemeSource(), "system");
   assert.equal(state.getUpdateChannel(), "stable");
 });
 
@@ -116,7 +122,9 @@ test("createDesktopHostPreferencesState defaults missing rc package preferences 
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-            featureFlags: {},
+            featureFlags: {
+              "workspace.standaloneAgentMode": true
+            },
             workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "flat",
             dockPlacement: "bottom",
@@ -165,7 +173,9 @@ test("createDesktopHostPreferencesState keeps missing beta package preferences o
             appCatalogChannel: "production",
             browserUseConnectionMode: "isolated",
             defaultAgentProvider: "codex",
-            featureFlags: {},
+            featureFlags: {
+              "workspace.standaloneAgentMode": true
+            },
             workbenchShortcuts: defaultDesktopWorkbenchShortcuts,
             dockIconStyle: "flat",
             dockPlacement: "bottom",
@@ -194,7 +204,7 @@ test("createDesktopHostPreferencesState keeps missing beta package preferences o
   assert.equal(putRequests[0]?.preferences.updateChannel, "stable");
 });
 
-test("createDesktopHostPreferencesState keeps initialized theme preferences", async () => {
+test("createDesktopHostPreferencesState preserves initialized preferences with the legacy missing workspace mode", async () => {
   let putCalls = 0;
   const state = await createDesktopHostPreferencesState({
     fallbackLocale: "zh-CN",
@@ -236,6 +246,7 @@ test("createDesktopHostPreferencesState keeps initialized theme preferences", as
   });
 
   assert.equal(putCalls, 0);
+  assert.deepEqual(state.getFeatureFlags(), {});
   assert.equal(state.getDockPlacement(), "bottom");
   assert.equal(state.getLocale(), "en");
   assert.equal(state.getDefaultAgentProvider(), "codex");

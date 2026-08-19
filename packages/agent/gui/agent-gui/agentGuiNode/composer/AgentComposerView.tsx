@@ -130,7 +130,6 @@ export function AgentComposerView(
     handlePastedLargeText,
     handleWorkspaceReferencePicker,
     removeDraftImage,
-    removeDraftConnector,
     removeDraftLargeText,
     setDraftConnectorSelected
   } = input.attachments;
@@ -372,13 +371,10 @@ export function AgentComposerView(
                 style={promptInputAreaStyle}
               >
                 <ComposerDraftAttachments
-                  availableSkills={availableSkills}
-                  draftConnectors={draftConnectors}
                   draftImages={draftImages}
                   draftLargeTexts={visibleDraftLargeTexts}
                   removeLabel={labels.removeMention}
                   onRemoveImage={removeDraftImage}
-                  onRemoveConnector={removeDraftConnector}
                   onRemoveLargeText={removeDraftLargeText}
                   onExpandLargeText={expandDraftLargeTextToPrompt}
                 />
@@ -641,6 +637,14 @@ export function AgentComposerView(
             isPlanModeActive={input.isPlanModeActive}
             connectorsVisible={
               input.props.capabilityMenuState?.connectors?.enabled !== false
+            }
+            connectorsReadOnly={
+              input.props.capabilityControlsReadOnly === true ||
+              input.props.capabilityMenuState?.connectors?.readOnly === true
+            }
+            showConnectorViewMore={
+              input.props.capabilityMenuState?.connectors?.showViewMore !==
+              false
             }
             onClearPlanMode={input.onClearPlanMode}
             composerAction={composerActionNode}

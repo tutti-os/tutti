@@ -9,6 +9,7 @@ import {
   listConnectorMarketCategories,
   refreshConnectorMarket,
   startConnectorMarketAuthorization,
+  updateConnectorMarketConnectorRuntime,
   uninstallConnectorMarketConnector
 } from "./generated/index.ts";
 import type {
@@ -21,6 +22,7 @@ import type {
   ConnectorMarketMutationRequest,
   ConnectorMarketMutationResponse,
   ConnectorMarketOperation,
+  ConnectorMarketRuntimeMutationRequest,
   ConnectorMarketSnapshot
 } from "./generated/index.ts";
 import type { Client } from "./generated/client/index.ts";
@@ -82,6 +84,10 @@ export interface ConnectorMarketClient {
     connectorKey: string,
     request: ConnectorMarketMutationRequest
   ): Promise<ConnectorMarketMutationResponse>;
+  updateConnectorMarketConnectorRuntime(
+    connectorKey: string,
+    request: ConnectorMarketRuntimeMutationRequest
+  ): Promise<ConnectorMarketConnector>;
   startConnectorMarketAuthorization(
     connectorKey: string,
     request: ConnectorMarketAuthorizationRequestWritable
@@ -157,6 +163,16 @@ export function createConnectorMarketClient(
           path: { connectorKey }
         }),
         "Uninstall connector request failed."
+      );
+    },
+    async updateConnectorMarketConnectorRuntime(connectorKey, request) {
+      return unwrapConnectorMarketData(
+        await updateConnectorMarketConnectorRuntime({
+          client,
+          body: request,
+          path: { connectorKey }
+        }),
+        "Update connector runtime request failed."
       );
     },
     async startConnectorMarketAuthorization(connectorKey, request) {

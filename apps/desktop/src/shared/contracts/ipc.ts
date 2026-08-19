@@ -18,6 +18,7 @@ import type {
 import type { DesktopAgentDirectorySnapshot } from "./agentDirectory.ts";
 import type {
   AgentProviderStatus,
+  DesktopPreferencesStateResponse,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -264,6 +265,9 @@ export const desktopIpcChannels = {
     setCustom: "wallpaper:setCustom"
   },
   host: {
+    preferences: {
+      ensureInitialized: "host:preferences:ensureInitialized"
+    },
     files: {
       createUserDocumentsProjectDirectory:
         "host:files:createUserDocumentsProjectDirectory",
@@ -1260,6 +1264,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.wallpaper.clearCustom]: undefined;
   [desktopIpcChannels.wallpaper.getCustom]: undefined;
   [desktopIpcChannels.wallpaper.setCustom]: DesktopSetCustomWallpaperInput;
+  [desktopIpcChannels.host.preferences.ensureInitialized]: undefined;
   [desktopIpcChannels.host.files
     .createUserDocumentsProjectDirectory]: DesktopCreateUserDocumentsProjectDirectoryInput;
   [desktopIpcChannels.host.files.openExternal]: string;
@@ -1475,6 +1480,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.wallpaper.clearCustom]: void;
   [desktopIpcChannels.wallpaper.getCustom]: DesktopCustomWallpaperImage | null;
   [desktopIpcChannels.wallpaper.setCustom]: DesktopCustomWallpaperImage;
+  [desktopIpcChannels.host.preferences
+    .ensureInitialized]: DesktopPreferencesStateResponse;
   [desktopIpcChannels.host.files
     .createUserDocumentsProjectDirectory]: DesktopCreateUserDocumentsProjectDirectoryResult;
   [desktopIpcChannels.host.files.openExternal]: void;

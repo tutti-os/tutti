@@ -396,21 +396,26 @@ func (a *standardACPAdapter) submitPermissionOption(ctx context.Context, session
 	requestID := strings.TrimSpace(input.RequestID)
 	optionID := strings.TrimSpace(input.OptionID)
 	if requestID == "" {
-		return "", errors.New("permission request id is required")
+		return "", fmt.Errorf("%w: permission request id is required", ErrInteractiveResponseInvalid)
 	}
 	if optionID == "" {
-		return "", errors.New("permission option id is required")
+		return "", fmt.Errorf("%w: permission option id is required", ErrInteractiveResponseInvalid)
 	}
 	pending := a.getPendingApproval(session.AgentSessionID, input.TurnID, requestID)
 	if pending == nil {
 		return "", fmt.Errorf("%w: permission request %q", ErrInteractiveRequestNotLive, requestID)
 	}
 	if pending.callType != "approval" {
-		return "", fmt.Errorf("request %q requires interactive submission", requestID)
+		return "", fmt.Errorf("%w: request %q requires interactive submission", ErrInteractiveResponseInvalid, requestID)
 	}
 	resolvedOptionID, ok := pending.resolvePermissionOptionID(optionID)
 	if !ok {
-		return "", fmt.Errorf("permission option %q is not available for request %q", optionID, requestID)
+		return "", fmt.Errorf(
+			"%w: permission option %q is not available for request %q",
+			ErrInteractiveResponseInvalid,
+			optionID,
+			requestID,
+		)
 	}
 	if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
 		optionID: resolvedOptionID,
@@ -429,11 +434,11 @@ func (a *standardACPAdapter) submitPermissionOption(ctx context.Context, session
 func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Session, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
 	turnID := strings.TrimSpace(input.TurnID)
 	if turnID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive turn id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive turn id is required", ErrInteractiveResponseInvalid)
 	}
 	requestID := strings.TrimSpace(input.RequestID)
 	if requestID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive request id is required", ErrInteractiveResponseInvalid)
 	}
 	pending := a.getPendingApproval(session.AgentSessionID, turnID, requestID)
 	if pending == nil {
@@ -442,7 +447,7 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	if pending.callType == "approval" {
 		optionID := interactiveApprovalOptionID(input)
 		if optionID == "" {
-			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
+			return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive option id is required", ErrInteractiveResponseInvalid)
 		}
 		resolvedOptionID, err := a.submitPermissionOption(ctx, session, PermissionOptionInput{
 			RoomID:         input.RoomID,
@@ -504,6 +509,7 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	if pending.kind == "ask-user" && len(pending.options) > 0 {
 		resolvedOptionID, err := acpAskUserPermissionOptionID(pending, optionID, action, payload)
 		if err != nil {
+			err = fmt.Errorf("%w: %v", ErrInteractiveResponseInvalid, err)
 			pending.supersede(err)
 			return SubmitInteractiveResult{
 				AgentSessionID: session.AgentSessionID,

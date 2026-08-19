@@ -402,6 +402,35 @@ describe("AgentTargetSetupGate", () => {
     await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
   });
 
+  it("keeps terminal sign-in running when the Agent UI unmounts", async () => {
+    let complete: ((result: "ready" | "timed_out") => void) | undefined;
+    const completion = new Promise<"ready" | "timed_out">((resolve) => {
+      complete = resolve;
+    });
+    const close = vi.fn();
+    const run = vi.fn(async () => ({ close, completion }));
+    const setup = terminalLoginSetup();
+    installHost(new Map([["extension:gemini", setup.watch]]), {
+      terminalLogin: {
+        run,
+        supportedStartupActionTypes: ["slash_command"]
+      }
+    });
+    const view = render(<Harness openDialog target={geminiTarget} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Start sign in" })
+    );
+    await waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+
+    view.unmount();
+    await waitFor(() => expect(setup.unsubscribe).toHaveBeenCalledTimes(1));
+    expect(close).not.toHaveBeenCalled();
+
+    complete?.("ready");
+    await waitFor(() => expect(close).toHaveBeenCalledTimes(1));
+  });
+
   it("cancels a waiting terminal sign-in and closes the terminal", async () => {
     const close = vi.fn();
     const run = vi.fn(async (_input: { command: string; cwd?: string }) => ({

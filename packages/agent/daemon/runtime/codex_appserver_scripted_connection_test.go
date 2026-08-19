@@ -131,6 +131,14 @@ func (c *scriptedAppServerConnection) notify(method string, params map[string]an
 	c.sendJSON(map[string]any{"method": method, "params": params})
 }
 
+func (c *scriptedAppServerConnection) sendStderr(data []byte) {
+	select {
+	case <-c.closed:
+		return
+	case c.recv <- ProcessFrame{Stderr: append([]byte(nil), data...)}:
+	}
+}
+
 func (c *scriptedAppServerConnection) Recv() (ProcessFrame, error) {
 	return c.recvWithWaitSignal(nil)
 }

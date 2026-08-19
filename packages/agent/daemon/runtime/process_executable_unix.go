@@ -3,6 +3,7 @@
 package agentruntime
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -49,6 +50,49 @@ func prepareProcessExecutable(path string, expected *ExecutableIdentity) (prepar
 	}
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return closeWithError(fmt.Errorf("rewind process executable descriptor: %w", err))
+	}
+	return preparedProcessExecutable{path: "/proc/self/fd/3", file: file}, nil
+}
+
+func prepareReusableNodeInterpreter(
+	ctx context.Context,
+	_ *VerifiedNodeScriptRunner,
+	path string,
+	expected *ExecutableIdentity,
+) (preparedProcessExecutable, error) {
+	return prepareLinuxNodeInterpreter(ctx, path, expected)
+}
+
+func prepareLinuxNodeInterpreter(ctx context.Context, path string, expected *ExecutableIdentity) (preparedProcessExecutable, error) {
+	if err := ctx.Err(); err != nil {
+		return preparedProcessExecutable{}, err
+	}
+	if !validExecutableIdentity(expected) {
+		return preparedProcessExecutable{}, errors.New("node interpreter identity is invalid")
+	}
+	fd, err := unix.Open(path, unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC, 0)
+	if err != nil {
+		return preparedProcessExecutable{}, fmt.Errorf("open verified Node interpreter: %w", err)
+	}
+	file := os.NewFile(uintptr(fd), "verified-node-interpreter")
+	closeWithError := func(err error) (preparedProcessExecutable, error) {
+		_ = file.Close()
+		return preparedProcessExecutable{}, err
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&0o111 == 0 {
+		return closeWithError(errors.New("verified Node interpreter is not an executable ordinary file"))
+	}
+	hash := sha256.New()
+	size, err := io.Copy(hash, &contextReader{ctx: ctx, reader: file})
+	if err != nil {
+		return closeWithError(fmt.Errorf("fingerprint Node interpreter descriptor: %w", err))
+	}
+	if size != expected.SizeBytes || hex.EncodeToString(hash.Sum(nil)) != expected.SHA256 {
+		return closeWithError(errors.New("node interpreter does not match expected identity"))
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return closeWithError(fmt.Errorf("rewind Node interpreter descriptor: %w", err))
 	}
 	return preparedProcessExecutable{path: "/proc/self/fd/3", file: file}, nil
 }

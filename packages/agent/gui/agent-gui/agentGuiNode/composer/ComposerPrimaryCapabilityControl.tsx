@@ -1,10 +1,13 @@
+import { ConnectorComposerMenu } from "@tutti-os/connector-renderer/ui";
 import { openWorkspaceSettingsPanel } from "../../../shared/workspaceSettingsPanel/workspaceSettingsPanelStore";
+import { projectConnectorComposerItems } from "../integrations/connector/model/connectorPresentation";
 import type { AgentComposerProps } from "./AgentComposer.types";
-import { ComposerConnectorsMenu } from "./ComposerConnectorsMenu";
 
 interface Props {
   availableSkills: AgentComposerProps["availableSkills"];
   connectorsVisible: boolean;
+  connectorsReadOnly?: boolean;
+  showConnectorViewMore?: boolean;
   disabled: boolean;
   labels: AgentComposerProps["labels"];
   loading: boolean;
@@ -22,31 +25,36 @@ interface Props {
 export function ComposerPrimaryCapabilityControl({
   availableSkills,
   connectorsVisible,
+  connectorsReadOnly = false,
   disabled,
   labels,
   loading,
   onRetryComposerOptions,
   onCapabilitySettingsRequest,
   onConnectorSelected,
-  selectedConnectorKeys
+  selectedConnectorKeys,
+  showConnectorViewMore = true
 }: Props): React.JSX.Element | null {
   if (!connectorsVisible) {
     return null;
   }
 
   return (
-    <ComposerConnectorsMenu
-      connectors={availableSkills ?? []}
+    <ConnectorComposerMenu
       disabled={disabled}
+      items={projectConnectorComposerItems(
+        availableSkills ?? [],
+        connectorsReadOnly ? [] : selectedConnectorKeys
+      )}
       labels={{
+        authorize: labels.addContentConnectorAuthorize,
+        connect: labels.addContentConnectorConnect,
+        connected: labels.addContentConnectorConnected,
         connectors: labels.addContentConnectors,
-        connectorConnected: labels.addContentConnectorConnected,
-        connectorConnect: labels.addContentConnectorConnect,
-        connectorAuthorize: labels.addContentConnectorAuthorize,
-        connectorEmpty: labels.addContentConnectorEmpty,
-        connectorLoading: labels.addContentConnectorLoading,
-        connectorMore: labels.addContentConnectorMore,
-        connectorSelected: labels.addContentConnectorSelected
+        empty: labels.addContentConnectorEmpty,
+        loading: labels.addContentConnectorLoading,
+        more: labels.addContentConnectorMore,
+        selected: labels.addContentConnectorSelected
       }}
       loading={loading}
       onOpenChange={(open) => {
@@ -54,21 +62,38 @@ export function ComposerPrimaryCapabilityControl({
           onRetryComposerOptions?.({ section: "connectors" });
         }
       }}
-      onOpenConnector={(connectorKey) =>
-        onCapabilitySettingsRequest?.({
-          kind: "connector",
-          connectorKey,
-          action: "open"
-        })
+      onOpenConnector={
+        connectorsReadOnly
+          ? undefined
+          : (connectorKey) =>
+              onCapabilitySettingsRequest?.({
+                kind: "connector",
+                connectorKey,
+                action: "open"
+              })
       }
-      onOpenConnectors={() =>
-        openWorkspaceSettingsPanel({
-          section: "agent",
-          pane: "connectors"
-        })
+      onOpenMarket={
+        !showConnectorViewMore
+          ? undefined
+          : () =>
+              openWorkspaceSettingsPanel({
+                section: "agent",
+                pane: "connectors"
+              })
       }
-      onSelectConnector={onConnectorSelected}
-      selectedConnectorKeys={selectedConnectorKeys}
+      onRuntimeEnabledChange={
+        connectorsReadOnly || !onCapabilitySettingsRequest
+          ? undefined
+          : (connectorKey, enabled) =>
+              onCapabilitySettingsRequest({
+                kind: "connector",
+                connectorKey,
+                action: "set_runtime_enabled",
+                enabled
+              })
+      }
+      onSelectConnector={connectorsReadOnly ? undefined : onConnectorSelected}
+      readOnly={connectorsReadOnly}
     />
   );
 }

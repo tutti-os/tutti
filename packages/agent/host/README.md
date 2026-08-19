@@ -32,6 +32,8 @@ The module owns:
   attachment staging, durable lineage, and startup recovery policy;
 - the durable edit-retry saga, effective-history revision fence, authoritative
   provider-history reconciliation, and explicit replacement recovery policy;
+- the provider-neutral runtime-only Side lifecycle, including live-source
+  capability checks, idempotent open, transient execution, and cleanup;
 - typed conformance scenarios under `conformance`.
 
 `CreateSession` has three explicit modes: an empty session, one command with

@@ -20,6 +20,8 @@ This rule applies to local databases, logs, caches, temporary runtime metadata, 
 - `TUTTI_ENV=development` uses `~/.tutti-dev`
 - `TUTTI_ENV=production` uses `~/.tutti`
 - `TUTTI_STATE_DIR=/custom/path` overrides both defaults
+- `TUTTI_AGENT_RUNTIME_DIR=/custom/path` overrides the managed Agent Extension
+  runtime root
 - `TUTTI_DESKTOP_USER_DATA_DIR=/custom/path` overrides Electron `userData`
   only, for isolated desktop diagnostics
 
@@ -38,6 +40,7 @@ Current supported override surface for local state and closely-related runtime p
 
 - `TUTTI_ENV`
 - `TUTTI_STATE_DIR`
+- `TUTTI_AGENT_RUNTIME_DIR`
 - `TUTTI_LOG_DIR`
 - `TUTTI_DESKTOP_USER_DATA_DIR`
 - `TUTTID_DB_PATH`
@@ -52,6 +55,9 @@ Rules:
 - prefer `TUTTI_STATE_DIR` over adding new per-file overrides
 - keep `TUTTI_DESKTOP_USER_DATA_DIR` paired with an isolated
   `TUTTI_STATE_DIR`; it does not redirect daemon-owned state
+- `TUTTI_STATE_DIR` does not redirect the managed Agent Extension runtime,
+  whose compatibility location is `~/.local/share/tutti/agent-runtimes`; pair
+  isolated Desktop diagnostics with an explicit `TUTTI_AGENT_RUNTIME_DIR`
 - do not add a new environment variable when an existing shared root or generated default can express the same rule
 - if a new override is truly needed, update this document and the matching transport or logging convention document in the same change
 
@@ -128,6 +134,22 @@ Device-global desktop preferences are durable daemon state in the
 `desktop_preferences` row of `tuttid.db`. They are not workspace settings and
 must be changed through the preferences service/API so the daemon can persist,
 normalize, and publish the authoritative preferences event.
+
+Fresh-profile creation is daemon-owned. A client uses the desktop preferences
+`initializeIfAbsent` write mode. Before the atomic write, the preferences
+service applies the daemon's fresh-profile workspace-mode default to the
+normalized client candidate, so the Agent default cannot vary by caller while
+other candidate fields and feature flags are preserved. The store writes that
+complete row with a single `INSERT ... ON CONFLICT DO NOTHING` and returns the
+authoritative stored row. If a concurrent initializer created the row first,
+that stored row wins without being overwritten. Only `initializeIfAbsent` may
+create this identity row. Field-specific writers fail without side effects when
+the row is missing, so a partial patch can never decide whether the identity is
+new or accidentally replace the complete initialization contract. The normal
+omitted/`replace` write mode remains the full preference update. The daemon-owned
+complete default uses the stable desktop update channel; packaged RC builds may
+subsequently align that preference from their installed version. Existing rows
+are never backfilled by initialization.
 
 `agent_cli_update_check_enabled` stores the
 `agentCliUpdateCheckEnabled` preference as a non-null SQLite boolean and
@@ -441,8 +463,16 @@ Agent Extension setup uses these daemon-owned state paths:
 
 ```text
 <state-dir>/agent/extension-runtime-actions/<scope-sha256>.json
+<state-dir>/agent/extension-account-usage-companion-failures/<scope-sha256>.json
+<state-dir>/agent/account-usage-node-snapshots/<node-sha256>.exe
 <state-dir>/agent/discovery/agent-extensions/
 ```
+
+Account-usage companion failure records contain only stable identities, an
+error code, a failure count, and retry timestamps. Raw installer/provider
+errors, paths, output, and credentials are never persisted. Recovery deletes
+the record. Windows stores content-addressed Node snapshots here and keeps each
+verified snapshot read-locked while it is reusable.
 
 Connector CLI packages use daemon-owned state rather than the user's global
 npm prefix. All CLI Connector installations bind to the one signed

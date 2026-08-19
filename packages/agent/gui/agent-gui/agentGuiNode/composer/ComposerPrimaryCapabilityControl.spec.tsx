@@ -65,4 +65,97 @@ describe("ComposerPrimaryCapabilityControl", () => {
       screen.getByTestId("connector-market-composer-loading")
     ).toHaveTextContent("Loading connectors…");
   });
+
+  it("routes the runtime switch to the host instead of draft selection", () => {
+    const onCapabilitySettingsRequest = vi.fn();
+    const onConnectorSelected = vi.fn();
+    render(
+      <ComposerPrimaryCapabilityControl
+        availableSkills={[
+          {
+            connectorKey: "github",
+            kind: "connector",
+            name: "GitHub",
+            sourceKind: "connector",
+            status: "available",
+            trigger: "/github"
+          }
+        ]}
+        connectorsVisible
+        disabled={false}
+        labels={labels}
+        loading={false}
+        onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+        onConnectorSelected={onConnectorSelected}
+        selectedConnectorKeys={[]}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByTestId("connector-market-composer-trigger"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    fireEvent.click(
+      screen.getByTestId("connector-market-composer-status-github")
+    );
+
+    expect(onCapabilitySettingsRequest).toHaveBeenCalledWith({
+      kind: "connector",
+      connectorKey: "github",
+      action: "set_runtime_enabled",
+      enabled: false
+    });
+    expect(onConnectorSelected).not.toHaveBeenCalled();
+  });
+
+  it("keeps a shared connector catalog inspectable without mutation or management actions", () => {
+    const onCapabilitySettingsRequest = vi.fn();
+    const onConnectorSelected = vi.fn();
+    render(
+      <ComposerPrimaryCapabilityControl
+        availableSkills={[
+          {
+            connectorKey: "github",
+            description: "Authorization required on the owner device.",
+            kind: "connector",
+            name: "GitHub",
+            sourceKind: "connector",
+            status: "authRequired",
+            trigger: "/github"
+          }
+        ]}
+        connectorsReadOnly
+        connectorsVisible
+        disabled={false}
+        labels={labels}
+        loading={false}
+        onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+        onConnectorSelected={onConnectorSelected}
+        selectedConnectorKeys={[]}
+        showConnectorViewMore={false}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByTestId("connector-market-composer-trigger"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    const item = screen.getByTestId("connector-market-composer-item-github");
+    expect(item).toHaveAttribute("aria-disabled", "true");
+    expect(item).toHaveTextContent("GitHub");
+    expect(item).not.toHaveTextContent(
+      "Authorization required on the owner device."
+    );
+    expect(
+      screen.queryByTestId("connector-market-composer-more")
+    ).not.toBeInTheDocument();
+
+    fireEvent.pointerDown(item, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+    expect(onCapabilitySettingsRequest).not.toHaveBeenCalled();
+    expect(onConnectorSelected).not.toHaveBeenCalled();
+  });
 });

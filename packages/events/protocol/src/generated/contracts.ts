@@ -13,6 +13,7 @@ export type BusinessEventTopic =
   | "agent.model.catalog.invalidated"
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
+  | "agent.side.updated"
   | "analytics.debug.reported"
   | "connector.market.changed"
   | "preferences.agent.composer.defaults.changed"
@@ -484,6 +485,128 @@ export interface AgentQuickpromptUpdatedPayloadV1 {
   occurredAtUnixMs: number;
 }
 
+export type AgentSideUpdatedPayloadV1 =
+  | {
+      workspaceId: string;
+      sideAgentSessionId: string;
+      sourceAgentSessionId: string;
+      sequence: number;
+      eventType: "message_delta";
+      data: {
+        messageId: string;
+        turnId: string;
+        role: string;
+        kind?: string;
+        occurredAtUnixMs?: number;
+        content?: {
+          operation: "append_text" | "set";
+          text?: string;
+          value?: unknown;
+        };
+        payloadSet?: Record<string, unknown>;
+        payloadUnset?: readonly string[];
+        semantics?: Record<string, unknown>;
+        toolOutput?: {
+          operation: string;
+          text: string;
+          offsetBytes?: number;
+        };
+        status?: string;
+        startedAtUnixMs?: number;
+        completedAtUnixMs?: number;
+      };
+    }
+  | {
+      workspaceId: string;
+      sideAgentSessionId: string;
+      sourceAgentSessionId: string;
+      sequence: number;
+      eventType: "message_update";
+      data: {
+        messageId: string;
+        turnId?: string;
+        role: string;
+        kind?: string;
+        status?: string;
+        seq?: number;
+        callId?: string;
+        parentCallId?: string;
+        rootCallId?: string;
+        title?: string;
+        semantics?: Record<string, unknown>;
+        contentDelta?: string;
+        payload?: Record<string, unknown>;
+        occurredAtUnixMs?: number;
+        startedAtUnixMs?: number;
+        completedAtUnixMs?: number;
+      };
+    }
+  | {
+      workspaceId: string;
+      sideAgentSessionId: string;
+      sourceAgentSessionId: string;
+      sequence: number;
+      eventType: "state_patch";
+      data: {
+        provider?: string;
+        cwd?: string;
+        title?: string;
+        lifecycleStatus?: string;
+        currentPhase?: string;
+        status?: string;
+        occurredAtUnixMs?: number;
+        turnLifecycle?: {
+          activeTurnId?: string | null;
+        };
+        turn?: {
+          turnId: string;
+          activeTurnId?: string | null;
+          phase?: string;
+          outcome?: string;
+          origin?: string;
+          error?: Record<string, unknown> | null;
+          fileChanges?: Record<string, unknown> | null;
+          startedAtUnixMs?: number;
+          completedAtUnixMs?: number;
+          updatedAtUnixMs?: number;
+        };
+        interactionTransition?: {
+          requestId: string;
+          turnId: string;
+          kind: "approval" | "question" | "plan";
+          status: string;
+          toolName?: string;
+          input?: Record<string, unknown>;
+          metadata?: Record<string, unknown>;
+          output?: Record<string, unknown>;
+        };
+      };
+    }
+  | {
+      workspaceId: string;
+      sideAgentSessionId: string;
+      sourceAgentSessionId: string;
+      sequence: number;
+      eventType: "available_commands_update";
+      data: Record<string, unknown>;
+    }
+  | {
+      workspaceId: string;
+      sideAgentSessionId: string;
+      sourceAgentSessionId: string;
+      sequence: number;
+      eventType: "config_options_update";
+      data: Record<string, unknown>;
+    }
+  | {
+      workspaceId: string;
+      sideAgentSessionId: string;
+      sourceAgentSessionId: string;
+      sequence: number;
+      eventType: "session_audit";
+      data: Record<string, unknown>;
+    };
+
 export interface AnalyticsDebugReportedPayloadV1 {
   events: readonly {
     name: string;
@@ -625,6 +748,12 @@ export type AgentQuickpromptUpdatedEventV1 = BusinessEventEnvelopeV1<
   1
 >;
 
+export type AgentSideUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "agent.side.updated",
+  AgentSideUpdatedPayloadV1,
+  1
+>;
+
 export type AnalyticsDebugReportedEventV1 = BusinessEventEnvelopeV1<
   "analytics.debug.reported",
   AnalyticsDebugReportedPayloadV1,
@@ -725,6 +854,7 @@ export type ServerToClientEventTopic =
   | "agent.model.catalog.invalidated"
   | "agent.model.configuration.changed"
   | "agent.quickprompt.updated"
+  | "agent.side.updated"
   | "analytics.debug.reported"
   | "connector.market.changed"
   | "preferences.agent.composer.defaults.changed"
@@ -749,6 +879,7 @@ export type ServerToClientEventV1 =
   | AgentModelCatalogInvalidatedEventV1
   | AgentModelConfigurationChangedEventV1
   | AgentQuickpromptUpdatedEventV1
+  | AgentSideUpdatedEventV1
   | AnalyticsDebugReportedEventV1
   | ConnectorMarketChangedEventV1
   | PreferencesAgentComposerDefaultsChangedEventV1

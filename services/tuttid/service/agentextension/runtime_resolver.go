@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
@@ -37,6 +38,15 @@ type RuntimeBinding struct {
 	Capabilities                 []string
 	ExecutableIdentity           *agentruntime.ExecutableIdentity
 	Env                          []string
+}
+
+type AccountUsageRuntimeBinding struct {
+	NodePath       string
+	ScriptPath     string
+	Args           []string
+	Timeout        time.Duration
+	NodeIdentity   *agentruntime.ExecutableIdentity
+	ScriptIdentity *agentruntime.ExecutableIdentity
 }
 
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {

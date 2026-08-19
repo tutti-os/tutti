@@ -18,7 +18,7 @@ import (
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
 	connectorartifact "github.com/tutti-os/tutti/packages/connector/runtime/artifact"
 	"github.com/tutti-os/tutti/packages/connector/runtime/command"

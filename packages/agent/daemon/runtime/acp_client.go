@@ -63,8 +63,10 @@ type acpPendingCall struct {
 
 type acpActiveHandler struct {
 	ctx     context.Context
+	method  string
 	handler acpMessageHandler
 	errors  chan error
+	results chan json.RawMessage
 }
 
 type acpError struct {
@@ -260,7 +262,13 @@ func (c *acpClient) callLocked(
 	if params != nil {
 		message["params"] = params
 	}
-	active := &acpActiveHandler{ctx: ctx, handler: handler, errors: make(chan error, 1)}
+	active := &acpActiveHandler{
+		ctx:     ctx,
+		method:  method,
+		handler: handler,
+		errors:  make(chan error, 1),
+		results: make(chan json.RawMessage, 1),
+	}
 	pending := &acpPendingCall{response: make(chan acpMessage, 1)}
 	c.registerCall(id, pending, active)
 	defer c.unregisterCall(id, active)
@@ -285,6 +293,8 @@ func (c *acpClient) callLocked(
 				err = io.EOF
 			}
 			return nil, err
+		case result := <-active.results:
+			return result, nil
 		case message := <-pending.response:
 			if message.Error != nil {
 				slog.Warn("agent session ACP request failed",
@@ -382,6 +392,45 @@ func (c *acpClient) unregisterCall(id int64, active *acpActiveHandler) {
 		c.active = nil
 	}
 	c.mu.Unlock()
+}
+
+// failActiveHandler wakes the lifecycle RPC currently waiting for a provider
+// response without terminating the underlying process. The caller owns the
+// decision to retain or close that process after the typed failure is returned.
+func (c *acpClient) failActiveHandler(err error) {
+	if c == nil || err == nil {
+		return
+	}
+	c.mu.Lock()
+	active := c.active
+	c.mu.Unlock()
+	if active == nil {
+		return
+	}
+	select {
+	case active.errors <- err:
+	default:
+	}
+}
+
+// completeActiveHandler supplies a synthetic success result to the active
+// request when the provider emits an authoritative lifecycle notification but
+// loses the matching JSON-RPC response. The method fence prevents an
+// unrelated notification from completing another request's waiter.
+func (c *acpClient) completeActiveHandler(method string, result json.RawMessage) {
+	if c == nil || method == "" || len(result) == 0 {
+		return
+	}
+	c.mu.Lock()
+	active := c.active
+	c.mu.Unlock()
+	if active == nil || active.method != method {
+		return
+	}
+	select {
+	case active.results <- result:
+	default:
+	}
 }
 
 func (c *acpClient) Respond(ctx context.Context, id json.RawMessage, result any, responseErr *acpError) error {

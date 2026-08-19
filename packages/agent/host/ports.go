@@ -168,6 +168,14 @@ type SessionForkTurnBindingRecoveryStore interface {
 	) (storesqlite.ProviderTurnBindingRecoveryResult, error)
 }
 
+// SideConversationRuntime opens only the provider-native ephemeral branch.
+// Host owns lifecycle/idempotency and then reuses RuntimeController for
+// execution, cancellation, interaction responses, and close.
+type SideConversationRuntime interface {
+	ResolveSideConversation(context.Context, ProviderRuntimeSession) (SideConversationCapabilities, error)
+	OpenSideConversation(context.Context, RuntimeOpenSideConversationInput) (OpenSideConversationResult, error)
+}
+
 // SessionForkContextPolicy decides whether host-owned session context can be
 // transferred safely and returns the exact target context to freeze at
 // prepare. Product-specific resource ownership (for example worktrees) stays

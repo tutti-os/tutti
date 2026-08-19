@@ -103,9 +103,9 @@ importers:
       '@tutti-os/config-tsconfig':
         specifier: workspace:*
         version: link:../../packages/configs/tsconfig
-      '@tutti-os/connector-market':
+      '@tutti-os/connector-renderer':
         specifier: workspace:*
-        version: link:../../packages/connector/market
+        version: link:../../packages/connector/renderer
       '@tutti-os/desktop-update-admission':
         specifier: workspace:*
         version: link:../../packages/desktop/update-admission
@@ -476,9 +476,9 @@ importers:
       '@tutti-os/browser-node':
         specifier: workspace:*
         version: link:../../browser/workbench-node
-      '@tutti-os/connector-market':
+      '@tutti-os/connector-renderer':
         specifier: workspace:*
-        version: link:../../connector/market
+        version: link:../../connector/renderer
       '@tutti-os/ui-i18n-runtime':
         specifier: workspace:*
         version: link:../../ui/i18n-runtime
@@ -594,6 +594,9 @@ importers:
       '@tutti-os/config-tsconfig':
         specifier: workspace:*
         version: link:../../configs/tsconfig
+      '@tutti-os/event-protocol':
+        specifier: workspace:*
+        version: link:../../events/protocol
       '@types/lodash':
         specifier: ^4.17.24
         version: 4.17.24
@@ -823,7 +826,7 @@ importers:
 
   packages/configs/tsconfig: {}
 
-  packages/connector/authorization-protocol:
+  packages/connector/contracts:
     dependencies:
       valibot:
         specifier: ^1.1.0
@@ -842,11 +845,11 @@ importers:
         specifier: ^5.8.3
         version: 5.9.3
 
-  packages/connector/market:
+  packages/connector/renderer:
     dependencies:
-      '@tutti-os/connector-authorization-protocol':
+      '@tutti-os/connector-contracts':
         specifier: workspace:*
-        version: link:../authorization-protocol
+        version: link:../contracts
       '@tutti-os/infra':
         specifier: 0.1.0
         version: 0.1.0(lodash-es@4.18.1)(react@19.2.6)
@@ -863,6 +866,12 @@ importers:
         specifier: ^2.3.2
         version: 2.3.2(@types/react@19.2.15)(react@19.2.6)
     devDependencies:
+      '@testing-library/jest-dom':
+        specifier: ^6.9.1
+        version: 6.9.1
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.3(@types/react@19.2.15))(@types/react@19.2.15)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@tutti-os/config-tsconfig':
         specifier: workspace:*
         version: link:../../configs/tsconfig
@@ -890,6 +899,9 @@ importers:
       typescript:
         specifier: ^5.8.3
         version: 5.9.3
+      vitest:
+        specifier: ^4.0.13
+        version: 4.1.7(@types/node@24.12.4)(jsdom@27.4.0)(vite@6.4.2(@types/node@24.12.4)(jiti@2.7.0)(lightningcss@1.32.0)(terser@5.49.0)(tsx@4.22.3)(yaml@2.9.0))
 
   packages/desktop/update-admission:
     dependencies:

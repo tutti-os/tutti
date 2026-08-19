@@ -8,7 +8,7 @@ import (
 	"sort"
 	"strings"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	"gopkg.in/yaml.v3"
 )
 

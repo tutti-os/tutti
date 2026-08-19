@@ -81,6 +81,7 @@ const (
 	ReasonUnsupportedDesktopBrowserUseConnectionMode     = "unsupported_desktop_browser_use_connection_mode"
 	ReasonUnsupportedDesktopLocale                       = "unsupported_desktop_locale"
 	ReasonUnsupportedDesktopMinimizeAnimation            = "unsupported_desktop_minimize_animation"
+	ReasonUnsupportedDesktopPreferencesWriteMode         = "unsupported_desktop_preferences_write_mode"
 	ReasonUnsupportedDesktopSleepPreventionMode          = "unsupported_desktop_sleep_prevention_mode"
 	ReasonUnsupportedDesktopThemeSource                  = "unsupported_desktop_theme_source"
 	ReasonUnsupportedDesktopUpdateChannel                = "unsupported_desktop_update_channel"

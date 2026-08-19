@@ -80,7 +80,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           Push-Location packages/agent/daemon
-          go test ./runtime -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement|LocalProcessTransportUsesWindowsEnvironmentKeySemantics)$'
+          go test ./runtime -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|RunVerifiedNodeScriptBoundedExecutesVerifiedScript|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement|LocalProcessTransportUsesWindowsEnvironmentKeySemantics)$'
           go test ./runtimecmd -run 'Test(ResolverResolveAllReturnsEveryExecutableMatchInPathOrder|ResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant|ResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims|ResolverFindsWindowsNPMGlobalShim)$'
           Pop-Location
 
@@ -93,6 +93,8 @@ jobs:
           go test ./data/workspace -run 'Test(SQLiteDSNPathUsesFileURLFormOnWindows|SQLiteStoreListEmptyDatabase)$'
           go test ./service/managedruntime -run 'TestNodeReadyAcceptsOfficialWindowsCorepackLayout$'
           go test ./service/agentstatus -run 'Test(NewInstallShellCommandUsesCmdInterpreter|PlatformExecutableFileAcceptsPlainWindowsFile|RunDefaultInstallCommandPreservesStructuredArguments)$'
+          $env:TUTTI_RUN_NPM_ACCOUNT_USAGE_E2E = '1'
+          go test ./service/agentextension -run 'Test(AgentExtensionCommandUsesCmdForNPMShim|AgentExtensionCommandExecutesBatchLauncher|BuildInstallPlanUsesNativeWindowsNPMLauncher|AccountUsageProbeE2EInstallsActualNPMPackage|AgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions|AgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails)$' -count=1
           go test ./service/browser -run 'TestStableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows$'
           go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState|WorkspaceAppCLI)'
           go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput$'

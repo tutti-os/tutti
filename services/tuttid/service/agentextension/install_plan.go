@@ -59,9 +59,21 @@ type InstallPlan struct {
 	Executable               string                 `json:"executable"`
 	LaunchArgs               []string               `json:"launchArgs"`
 	Artifact                 *RuntimeBinaryArtifact `json:"artifact,omitempty"`
+	AccountUsage             *AccountUsageInstall   `json:"accountUsage,omitempty"`
 	PublishUserCommand       bool                   `json:"-"`
 	PublishUserCommandOption *bool                  `json:"publishUserCommand,omitempty"`
 	PlanDigest               string                 `json:"planDigest,omitempty"`
+}
+
+type AccountUsageInstall struct {
+	RuntimeIdentity string   `json:"runtimeIdentity"`
+	Runner          string   `json:"runner"`
+	Package         string   `json:"package"`
+	InstallRoot     string   `json:"installRoot"`
+	InstallCommand  []string `json:"installCommand"`
+	Script          string   `json:"script"`
+	Args            []string `json:"args"`
+	TimeoutMS       int      `json:"timeoutMs"`
 }
 
 type RuntimeBinaryArtifact = agentextensionbiz.RuntimeBinaryArtifact
@@ -131,18 +143,23 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 	}
 	installCommand := []string{"download", artifactURL(artifact)}
 	if artifact == nil {
-		installArgs := make([]string, len(manifest.Runtime.Install.Args))
-		for index, argument := range manifest.Runtime.Install.Args {
-			installArgs[index] = resolve(argument)
+		installArgs := make([]string, 0, len(manifest.Runtime.Install.Args))
+		for _, argument := range manifest.Runtime.Install.Args {
+			installArgs = append(installArgs, resolve(argument))
 		}
 		installCommand = append([]string{manifest.Runtime.Install.Runner}, installArgs...)
 	}
 	executable := filepath.Clean(resolve(manifest.Runtime.Launch.Executable))
-	// uv creates Windows console-script launchers with an .exe suffix. Extension
-	// manifests keep the portable executable name extensionless, so normalize
-	// the managed path before staging and verifying the runtime on Windows.
-	if runtime.GOOS == "windows" && manifest.Runtime.Install.Runner == "uv" && filepath.Ext(executable) == "" {
-		executable += ".exe"
+	// Package managers create platform launchers from the extensionless name in
+	// the portable manifest. Normalize only at the Windows adapter boundary so
+	// verification and launch use the actual native file.
+	if runtime.GOOS == "windows" && filepath.Ext(executable) == "" {
+		switch manifest.Runtime.Install.Runner {
+		case "uv":
+			executable += ".exe"
+		case "npm", "pnpm":
+			executable += ".cmd"
+		}
 	}
 	if !pathWithin(executable, installRoot) {
 		return InstallPlan{}, errors.New("extension runtime executable escapes install root")
@@ -161,6 +178,11 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 		Artifact: artifact, PublishUserCommand: publishesUserCommand(manifest),
 		PublishUserCommandOption: manifest.Runtime.Launch.PublishUserCommand,
 	}
+	// The provider-owned companion is optional. Profile or companion-plan
+	// failures must not invalidate an otherwise usable ACP runtime plan.
+	if accountUsage, profileErr := loadAccountUsageProfile(installation); profileErr == nil && accountUsage != nil {
+		plan.AccountUsage, _ = buildAccountUsageInstall(runtimeInstallDir, installation, accountUsage, platform)
+	}
 	encoded, err := json.Marshal(plan)
 	if err != nil {
 		return InstallPlan{}, fmt.Errorf("encode agent target install plan: %w", err)
@@ -168,6 +190,43 @@ func buildInstallPlan(targetID, runtimeInstallDir string, installation Installat
 	digest := sha256.Sum256(encoded)
 	plan.PlanDigest = hex.EncodeToString(digest[:])
 	return plan, nil
+}
+
+func buildAccountUsageInstall(
+	runtimeInstallDir string,
+	installation Installation,
+	profile *AccountUsageProfile,
+	platform string,
+) (*AccountUsageInstall, error) {
+	companionIdentity, err := accountUsageRuntimeIdentity(installation, profile, platform)
+	if err != nil {
+		return nil, err
+	}
+	companionBase := filepath.Join(runtimeInstallDir, ".account-usage")
+	companionRoot := managedRuntimeRoot(companionBase, installation.AgentKey, companionIdentity)
+	if err := validateManagedRuntimeRoot(companionRoot, companionBase, installation.AgentKey, companionIdentity); err != nil {
+		return nil, err
+	}
+	accountUsageScript := filepath.Clean(resolveAccountUsageScript(profile.Runtime.Script, companionRoot))
+	if !pathWithin(accountUsageScript, companionRoot) {
+		return nil, errors.New("account usage companion script escapes install root")
+	}
+	companionArgs, err := accountUsageInstallArgs(
+		installation.Manifest.Runtime.Install.Runner,
+		installation.Manifest.Runtime.Install.Args,
+		profile.Runtime.Package,
+		companionRoot,
+		platform,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &AccountUsageInstall{
+		RuntimeIdentity: companionIdentity, Runner: installation.Manifest.Runtime.Install.Runner,
+		Package: profile.Runtime.Package, InstallRoot: companionRoot,
+		InstallCommand: append([]string{installation.Manifest.Runtime.Install.Runner}, companionArgs...), Script: accountUsageScript,
+		Args: append([]string(nil), profile.Runtime.Args...), TimeoutMS: profile.Runtime.TimeoutMS,
+	}, nil
 }
 
 func managedRuntimeIdentity(
@@ -211,6 +270,45 @@ func managedRuntimeIdentity(
 	}
 	digest := sha256.Sum256(encoded)
 	return "runtime-" + hex.EncodeToString(digest[:])[:16], nil
+}
+
+func accountUsageRuntimeIdentity(installation Installation, profile *AccountUsageProfile, platform string) (string, error) {
+	value := struct {
+		SchemaVersion string               `json:"schemaVersion"`
+		AgentKey      string               `json:"agentKey"`
+		Platform      string               `json:"platform"`
+		Runner        string               `json:"runner"`
+		Profile       *AccountUsageProfile `json:"profile"`
+	}{
+		SchemaVersion: "tutti.agent.account-usage-runtime-identity.v1",
+		AgentKey:      installation.AgentKey, Platform: platform,
+		Runner: installation.Manifest.Runtime.Install.Runner, Profile: profile,
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode account usage runtime identity: %w", err)
+	}
+	digest := sha256.Sum256(encoded)
+	return "runtime-" + hex.EncodeToString(digest[:])[:16], nil
+}
+
+func accountUsageInstallArgs(runner string, declared []string, companionPackage, installRoot, platform string) ([]string, error) {
+	result := make([]string, len(declared))
+	replaced := false
+	for index, argument := range declared {
+		if _, _, ok := exactRuntimePackageArgument(runner, argument); ok {
+			if replaced {
+				return nil, errors.New("extension runtime install names multiple exact packages")
+			}
+			argument = companionPackage
+			replaced = true
+		}
+		result[index] = strings.NewReplacer("${installRoot}", installRoot, "${platform}", platform).Replace(argument)
+	}
+	if !replaced {
+		return nil, errors.New("extension runtime install does not name an exact package")
+	}
+	return result, nil
 }
 
 func runtimeBinaryArtifactForPlatform(manifest Manifest, platform string) (RuntimeBinaryArtifact, error) {

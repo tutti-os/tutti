@@ -29,6 +29,8 @@ const (
 	appServerMethodThreadStart           = "thread/start"
 	appServerMethodThreadResume          = "thread/resume"
 	appServerMethodThreadFork            = "thread/fork"
+	appServerMethodThreadInjectItems     = "thread/inject_items"
+	appServerMethodThreadUnsubscribe     = "thread/unsubscribe"
 	appServerMethodThreadRollback        = "thread/rollback"
 	appServerMethodThreadRead            = "thread/read"
 	appServerMethodThreadCompact         = "thread/compact/start"
@@ -52,30 +54,33 @@ const (
 	appServerMethodPatchApprovalV1     = "applyPatchApproval"
 
 	// Server -> client notifications.
-	appServerNotifyThreadStarted         = "thread/started"
-	appServerNotifyTurnStarted           = "turn/started"
-	appServerNotifyTurnCompleted         = "turn/completed"
-	appServerNotifyAgentMessageDelta     = "item/agentMessage/delta"
-	appServerNotifyCommandOutputDelta    = "item/commandExecution/outputDelta"
-	appServerNotifyReasoningDelta        = "item/reasoning/textDelta"
-	appServerNotifyReasoningSummary      = "item/reasoning/summaryTextDelta"
-	appServerNotifyReasoningSummaryPart  = "item/reasoning/summaryPartAdded"
-	appServerNotifyThreadSettingsUpdated = "thread/settings/updated"
-	appServerNotifyItemStarted           = "item/started"
-	appServerNotifyItemCompleted         = "item/completed"
-	appServerNotifyTokenUsage            = "thread/tokenUsage/updated"
-	appServerNotifyPlanUpdated           = "turn/plan/updated"
-	appServerNotifyThreadNameUpdated     = "thread/name/updated"
-	appServerNotifyRateLimitsUpdated     = "account/rateLimits/updated"
-	appServerNotifyAccountUpdated        = "account/updated"
-	appServerNotifyError                 = "error"
-	appServerNotifyWarning               = "warning"
-	appServerNotifyDeprecation           = "deprecationNotice"
-	appServerNotifyModelRerouted         = "model/rerouted"
-	appServerNotifyThreadCompacted       = "thread/compacted"
-	appServerNotifyServerRequestResolved = "serverRequest/resolved"
-	appServerNotifyThreadGoalUpdated     = "thread/goal/updated"
-	appServerNotifyThreadGoalCleared     = "thread/goal/cleared"
+	appServerNotifyThreadStarted                 = "thread/started"
+	appServerNotifyTurnStarted                   = "turn/started"
+	appServerNotifyTurnCompleted                 = "turn/completed"
+	appServerNotifyAgentMessageDelta             = "item/agentMessage/delta"
+	appServerNotifyCommandOutputDelta            = "item/commandExecution/outputDelta"
+	appServerNotifyReasoningDelta                = "item/reasoning/textDelta"
+	appServerNotifyReasoningSummary              = "item/reasoning/summaryTextDelta"
+	appServerNotifyReasoningSummaryPart          = "item/reasoning/summaryPartAdded"
+	appServerNotifyThreadSettingsUpdated         = "thread/settings/updated"
+	appServerNotifyItemStarted                   = "item/started"
+	appServerNotifyItemCompleted                 = "item/completed"
+	appServerNotifyTokenUsage                    = "thread/tokenUsage/updated"
+	appServerNotifyPlanUpdated                   = "turn/plan/updated"
+	appServerNotifyThreadNameUpdated             = "thread/name/updated"
+	appServerNotifyRateLimitsUpdated             = "account/rateLimits/updated"
+	appServerNotifyAccountUpdated                = "account/updated"
+	appServerNotifyError                         = "error"
+	appServerNotifyWarning                       = "warning"
+	appServerNotifyDeprecation                   = "deprecationNotice"
+	appServerNotifyModelRerouted                 = "model/rerouted"
+	appServerNotifyThreadCompacted               = "thread/compacted"
+	appServerNotifyServerRequestResolved         = "serverRequest/resolved"
+	appServerNotifyThreadGoalUpdated             = "thread/goal/updated"
+	appServerNotifyThreadGoalCleared             = "thread/goal/cleared"
+	appServerNotifyMCPServerStartupStatusUpdated = "mcpServer/startupStatus/updated"
+	appServerNotifyMCPToolCallProgress           = "item/mcpToolCall/progress"
+	appServerNotifyMCPOAuthLoginCompleted        = "mcpServer/oauthLogin/completed"
 )
 
 const (
@@ -151,6 +156,7 @@ type CodexAppServerAdapter struct {
 	commandResolver            ProviderCommandResolver
 	mu                         sync.Mutex
 	sessions                   map[string]*codexAppServerSession
+	pendingSideRoutes          map[*codexAppServerClient]*codexPendingSideRoute
 	retiredSessions            map[string][]*codexAppServerSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
@@ -209,6 +215,9 @@ type codexAppServerSessionLock struct {
 
 type codexAppServerSession struct {
 	client *codexAppServerClient
+	// runtimeSession is the routing identity for connection-scoped clients
+	// that host multiple app-server threads. It is never persisted.
+	runtimeSession Session
 	// releaseFailed preserves ownership after a physical Close error while
 	// making the client unavailable to Exec. A successful replacement moves
 	// this handle to retiredSessions until bounded cleanup confirms closure.
@@ -284,9 +293,13 @@ type codexAppServerSession struct {
 	planModeMask    map[string]any
 	defaultModeMask map[string]any
 	defaultModel    string
-	authState       string
-	authMessage     string
-	activeTurnID    string
+	// tuttiModeHostContext is the latest Tutti-owned developer context applied
+	// to this thread. A Side fork preserves it alongside the provider mode so
+	// the fork cannot silently lose session and workspace context.
+	tuttiModeHostContext string
+	authState            string
+	authMessage          string
+	activeTurnID         string
 	// activeTurnStartConfirmed reports whether a turn/started notification
 	// confirmed activeTurnID. A turn/start issued while another turn is
 	// already running responds with a stub turn id that codex never starts
@@ -312,9 +325,15 @@ type codexAppServerSession struct {
 	canceledProviderThreads map[string]struct{}
 	activeTurn              *codexAppServerActiveTurn
 	childThreads            map[string]*codexAppServerThreadContext
-	// recentForeignDrops remembers recently dropped unknown thread ids so a
-	// late registration can report how many events the ordering gap lost.
+	// recentForeignDrops remembers recently observed unknown thread ids so a
+	// late registration can report the ordering gap; terminal notifications are
+	// retained separately for replay while ordinary progress remains dropped.
 	recentForeignDrops map[string]int
+	// pendingForeignTerminalNotifications retains one terminal notification per
+	// unknown child thread until receiverThreadIds registers that child. This
+	// closes the provider announce/stream ordering gap without admitting
+	// ordinary foreign-thread progress into the parent session.
+	pendingForeignTerminalNotifications map[string]appServerBufferedNotification
 	acpLiveState
 	pendingRequests map[string]*pendingInteractiveRequest
 }
@@ -330,9 +349,15 @@ type codexAppServerThreadContext struct {
 	parentItemID         string
 	normalizer           *acpTurnNormalizer
 	// droppedBeforeRegistration counts events for this thread that arrived
-	// (and were dropped as unknown) before its receiverThreadIds registration
-	// - permanent telemetry for ADR 0003's ordering question.
+	// before its receiverThreadIds registration - permanent telemetry for ADR
+	// 0003's ordering question. Terminal events are replayed after registration;
+	// ordinary progress remains dropped.
 	droppedBeforeRegistration int
+}
+
+type appServerBufferedNotification struct {
+	method string
+	params map[string]any
 }
 
 // codexAppServerActiveTurn carries the streaming context of an in-flight

@@ -6,6 +6,7 @@ export * from "./referenceListSource.ts";
 export * from "./referenceFilterCategories.ts";
 export * from "./referenceProvenance.ts";
 export * from "./referenceSearchErrors.ts";
+export * from "./referenceReadRequestCoordinator.ts";
 
 export function uniqueWorkspaceFileReferences(
   refs: readonly WorkspaceFileReference[]

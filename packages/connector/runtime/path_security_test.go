@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 func TestSecureConnectorStateDirRejectsTraversalBeforeCreatingIt(t *testing.T) {

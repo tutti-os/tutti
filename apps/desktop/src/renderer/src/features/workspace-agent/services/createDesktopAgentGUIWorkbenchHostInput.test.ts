@@ -451,16 +451,26 @@ test("desktop provenance search sends the persisted project section key and agen
     }
   );
 
-  assert.deepEqual(generatedFileInputs, [
-    {
-      agentTargetIds: ["local:codex"],
-      limit: undefined,
-      query: "report",
-      sectionKey: "project:/Users/local/repo",
-      signal: undefined,
-      workspaceId
-    }
-  ]);
+  const [generatedFileInput] = generatedFileInputs as Array<{
+    signal?: AbortSignal;
+  }>;
+  assert.equal(generatedFileInput?.signal?.aborted, false);
+  assert.deepEqual(
+    generatedFileInputs.map((input) => ({
+      ...(input as Record<string, unknown>),
+      signal: undefined
+    })),
+    [
+      {
+        agentTargetIds: ["local:codex"],
+        limit: undefined,
+        query: "report",
+        sectionKey: "project:/Users/local/repo",
+        signal: undefined,
+        workspaceId
+      }
+    ]
+  );
   assert.equal(result.entries[0]?.ref.nodeId, "/outside/project/report.md");
 });
 

@@ -75,6 +75,38 @@ opencode/deepseek-v4-flash-free
 	}
 }
 
+func TestParseVerboseOpenCodeModelsOutputFiltersSparkUnsupportedNoneEffort(t *testing.T) {
+	t.Parallel()
+
+	models := parseOpenCodeModelsOutput([]byte(`openai/gpt-5.3-codex-spark
+{
+  "name": "GPT-5.3 Codex Spark",
+  "variants": {
+    "none": {"reasoningEffort": "none"},
+    "low": {"reasoningEffort": "low"},
+    "medium": {"reasoningEffort": "medium"},
+    "high": {"reasoningEffort": "high"},
+    "xhigh": {"reasoningEffort": "xhigh"}
+  }
+}
+`))
+	if len(models) != 1 {
+		t.Fatalf("models = %#v, want one Spark model", models)
+	}
+	if !models[0].ReasoningEffortsAdvertised {
+		t.Fatalf("Spark reasoning profile = %#v, want advertised", models[0])
+	}
+	want := []string{"low", "medium", "high", "xhigh"}
+	if len(models[0].SupportedReasoningEfforts) != len(want) {
+		t.Fatalf("Spark reasoning efforts = %#v, want %#v", models[0].SupportedReasoningEfforts, want)
+	}
+	for index, value := range want {
+		if got := models[0].SupportedReasoningEfforts[index].Value; got != value {
+			t.Fatalf("Spark reasoning effort[%d] = %q, want %q", index, got, value)
+		}
+	}
+}
+
 func TestParseVerboseOpenCodeModelsOutputKeepsEveryProvider(t *testing.T) {
 	t.Parallel()
 

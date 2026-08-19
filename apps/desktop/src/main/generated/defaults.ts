@@ -92,8 +92,9 @@ export const generatedDefaults = {
       {
         key: "kimi-code",
         releaseIndexUrl:
-          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/authentication-v1/versions.json",
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/account-usage-v1/versions.json",
         fallbackReleaseIndexUrls: [
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/authentication-v1/versions.json",
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/versions.json"
         ],
         signingKeyId: "tutti-kimi-code-release-v1",

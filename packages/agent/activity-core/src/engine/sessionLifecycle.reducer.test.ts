@@ -1791,6 +1791,45 @@ test("authoritative settled state clears a cancel timeout failure", () => {
   );
 });
 
+test("process cleanup failure abandons its awaiting-turn cancel", () => {
+  let state = reduce(createInitialSessionLifecycleState(), {
+    type: "session/snapshotReceived",
+    sessions: [session(null, 1)]
+  }).state;
+  state = reduce(state, {
+    agentSessionId: "session-1",
+    awaitingTurnExpiresAtUnixMs: 30_000,
+    clientSubmitId: "submit-1",
+    commandId: "submit:cancel:submit-1",
+    type: "session/cancelRequested",
+    workspaceId: "workspace-1"
+  }).state;
+  assert.equal(
+    state.operationBySessionId["session-1"]?.cancel.status,
+    "awaitingTurn"
+  );
+
+  const failed = reduce(state, {
+    commandId: "submit:send:submit-1",
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-1",
+    errorCode: "agent.process_cleanup_pending",
+    outcome: "failed",
+    type: "engine/commandResult"
+  });
+
+  assert.equal(
+    failed.state.operationBySessionId["session-1"]?.cancel.status,
+    "idle"
+  );
+  assert.deepEqual(failed.commands, [
+    {
+      expiryId: "cancel:awaiting-turn:submit:cancel:submit-1",
+      type: "engine/cancelExpiry"
+    }
+  ]);
+});
+
 test("cancel result for another session cannot enter canonical turn state", () => {
   let state = reduce(createInitialSessionLifecycleState(), {
     type: "session/snapshotReceived",

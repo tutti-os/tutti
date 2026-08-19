@@ -40,7 +40,7 @@ require (
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0 // indirect
 	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0 // indirect
-	github.com/tutti-os/tutti/packages/connector/host v0.0.0
+	github.com/tutti-os/tutti/packages/connector/daemon/core v0.0.0
 	golang.org/x/text v0.34.0 // indirect
 )
 
@@ -56,4 +56,4 @@ replace github.com/tutti-os/tutti/packages/agent/store-sqlite => ../store-sqlite
 
 replace github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical => ../store-sqlite/canonical
 
-replace github.com/tutti-os/tutti/packages/connector/host => ../../connector/host
+replace github.com/tutti-os/tutti/packages/connector/daemon/core => ../../connector/daemon/core

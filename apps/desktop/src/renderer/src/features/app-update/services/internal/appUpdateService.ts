@@ -1,4 +1,5 @@
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
+import type { DesktopLocale } from "../../../../../../shared/i18n/index.ts";
 import { AppUpdateActionClickedReporter } from "../../../analytics/reporters/app-update-action-clicked/appUpdateActionClickedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
@@ -14,6 +15,13 @@ let nextAppUpdateServiceInstanceNumber = 0;
 
 function formatError(error: unknown): string {
   return resolveDesktopErrorMessage(error, getActiveLocale());
+}
+
+/** Map the desktop locale to the public changelog; new locales intentionally fall back to English. */
+export function resolveOfficialChangelogUrl(locale: DesktopLocale): string {
+  return locale === "zh-CN"
+    ? "https://tutti.sh/zh/changelog"
+    : "https://tutti.sh/en/changelog";
 }
 
 export class AppUpdateService implements IAppUpdateService {
@@ -118,9 +126,10 @@ export class AppUpdateService implements IAppUpdateService {
   }
 
   async openReleaseNotes(): Promise<void> {
-    const url = this.store.updateState?.releaseNotesUrl;
-    if (url && this.hostFilesApi) {
-      await this.hostFilesApi.openExternal(url);
+    if (this.hostFilesApi) {
+      await this.hostFilesApi.openExternal(
+        resolveOfficialChangelogUrl(getActiveLocale())
+      );
     }
   }
 

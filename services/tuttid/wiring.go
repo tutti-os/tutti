@@ -18,13 +18,14 @@ import (
 	agenthttpx "github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
-	connectorcontrolplane "github.com/tutti-os/tutti/packages/clients/connector-controlplane"
-	connectormarketdaemon "github.com/tutti-os/tutti/packages/connector/daemon"
-	connectormarkethost "github.com/tutti-os/tutti/packages/connector/host"
+	connectorcontrolplane "github.com/tutti-os/tutti/packages/connector/daemon/adapters/controlplane"
+	connectormarketdata "github.com/tutti-os/tutti/packages/connector/daemon/adapters/sqlite"
+	connectormarketdaemon "github.com/tutti-os/tutti/packages/connector/daemon/application"
+	connectorcatalog "github.com/tutti-os/tutti/packages/connector/daemon/application/adapters/catalog"
+	connectormarkethost "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
 	connectoragentgateway "github.com/tutti-os/tutti/packages/connector/runtime/agentgateway"
 	marketartifact "github.com/tutti-os/tutti/packages/connector/runtime/artifact"
-	connectormarketdata "github.com/tutti-os/tutti/packages/connector/store-sqlite"
 	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
@@ -36,8 +37,8 @@ import (
 	browsersvc "github.com/tutti-os/tutti/services/tuttid/service/browser"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
-	connectormarketservice "github.com/tutti-os/tutti/services/tuttid/service/connectormarket"
-	connectormcpservice "github.com/tutti-os/tutti/services/tuttid/service/connectormcp"
+	connectormarketservice "github.com/tutti-os/tutti/services/tuttid/service/connector/market"
+	connectormcpservice "github.com/tutti-os/tutti/services/tuttid/service/connector/mcp"
 	desktopupdateadmissionservice "github.com/tutti-os/tutti/services/tuttid/service/desktopupdateadmission"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
 	managedruntimeservice "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
@@ -278,7 +279,7 @@ func (w *tuttiWiring) buildWorkspaceModule(ctx context.Context) error {
 		if err != nil {
 			return fmt.Errorf("configure connector market account authorization: %w", err)
 		}
-		connectorCatalog, err := connectormarketdaemon.NewCatalogSource(connectormarketdaemon.CatalogSourceConfig{
+		connectorCatalog, err := connectorcatalog.NewCatalogSource(connectorcatalog.CatalogSourceConfig{
 			BaseURL:            connectorMarketBaseURL,
 			ExpectedMarketType: connectorMarketType,
 			HTTPClient:         agenthttpx.NewClient(30 * time.Second),
@@ -678,6 +679,9 @@ func attachAnalyticsReporter(api *tuttiapi.DaemonAPI, analyticsReporter reporter
 	}
 	if service, ok := api.AccountService.(*accountservice.Service); ok {
 		service.SetAnalyticsReporter(analyticsReporter)
+	}
+	if service, ok := api.PreferencesService.(*preferencesservice.Service); ok {
+		service.AnalyticsReporter = analyticsReporter
 	}
 }
 

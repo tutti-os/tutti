@@ -48,29 +48,7 @@ export function connectDesktopHostPreferencesEventStream(
         deps.preferences.getUpdateChannel() !== nextPreferences.updateChannel ||
         deps.preferences.getUpdatePolicy() !== nextPreferences.updatePolicy;
 
-      deps.preferences.sync({
-        agentCliUpdateCheckEnabled: nextPreferences.agentCliUpdateCheckEnabled,
-        agentComposerDefaultsByProvider:
-          nextPreferences.agentComposerDefaultsByProvider,
-        agentGuiConversationRailCollapsedByProvider:
-          nextPreferences.agentGuiConversationRailCollapsedByProvider,
-        agentConversationDetailMode:
-          nextPreferences.agentConversationDetailMode,
-        appCatalogChannel: nextPreferences.appCatalogChannel,
-        browserUseConnectionMode: nextPreferences.browserUseConnectionMode,
-        defaultAgentProvider: nextPreferences.defaultAgentProvider,
-        dockIconStyle: nextPreferences.dockIconStyle,
-        dockPlacement: nextPreferences.dockPlacement,
-        featureFlags: nextPreferences.featureFlags,
-        locale: nextPreferences.locale,
-        minimizeAnimation: nextPreferences.minimizeAnimation,
-        sleepPreventionMode: nextPreferences.sleepPreventionMode,
-        themeSource: nextPreferences.themeSource,
-        updateChannel: nextPreferences.updateChannel,
-        updatePolicy: nextPreferences.updatePolicy,
-        workbenchShortcuts: nextPreferences.workbenchShortcuts,
-        workbenchWindowSnapping: nextPreferences.workbenchWindowSnapping
-      });
+      deps.preferences.syncAuthoritative(nextPreferences);
 
       if (updatePreferencesChanged) {
         void deps.updateService

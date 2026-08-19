@@ -898,4 +898,5 @@ describe("typedGoalControlFromComposer", () => {
       )
     ).toBeNull();
   });
+
 });

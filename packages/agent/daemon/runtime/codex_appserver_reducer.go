@@ -320,7 +320,46 @@ func (r codexAppServerReducer) reduceNotification(
 			a.emitSessionEvents(session.AgentSessionID, []activityshared.Event{event})
 		}
 		return codexAppServerReduction{}
+	case appServerNotifyMCPServerStartupStatusUpdated:
+		status := appServerMCPServerStartupStatusPayload(params)
+		if len(status) == 0 {
+			return emit(nil)
+		}
+		slog.Info("agent session Codex MCP server startup status updated",
+			"event", "agent_session.codex.mcp.startup_status",
+			"agent_session_id", session.AgentSessionID,
+			"server_name", asString(status["name"]),
+			"status", asString(status["status"]),
+			"failure_reason", asString(status["failureReason"]),
+		)
+		events := []activityshared.Event{
+			newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+				"mcpServerStartupStatus": status,
+			}),
+		}
+		if strings.EqualFold(asString(status["status"]), "failed") {
+			client.observeMCPStartupStatus(status)
+			events = append(events, codexMCPServerStartupWarningEvent(client, session, turnID, status))
+		}
+		a.emitSessionEvents(session.AgentSessionID, events)
+		return emit(nil)
+	case appServerNotifyMCPToolCallProgress:
+		slog.Debug("agent session Codex MCP tool call progress",
+			"event", "agent_session.codex.mcp.tool_progress",
+			"agent_session_id", session.AgentSessionID,
+			"item_id", asString(params["itemId"]),
+			"message", asString(params["message"]),
+		)
+		return emit(nil)
+	case appServerNotifyMCPOAuthLoginCompleted:
+		a.emitSessionEvents(session.AgentSessionID, []activityshared.Event{
+			newSessionActivityEvent(session, EventSessionUpdated, SessionStatusReady, map[string]any{
+				"mcpServerOAuthLogin": clonePayload(params),
+			}),
+		})
+		return emit(nil)
 	case appServerNotifyThreadStarted:
+		client.completeThreadLifecycleFromNotification(payloadObject(params["thread"]))
 		return codexAppServerReduction{}
 	default:
 		_ = emitCommands

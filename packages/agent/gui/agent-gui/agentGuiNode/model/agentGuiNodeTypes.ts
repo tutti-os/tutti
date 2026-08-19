@@ -269,6 +269,7 @@ export type AgentHomeSuggestionIcon =
   | "breakdown"
   | "review"
   | "interaction"
+  | "github"
   | "about"
   | "import";
 

@@ -22,6 +22,7 @@ export type DesktopAgentGUIHostProps = {
   hostCapabilities: Pick<
     AgentGUIProps["hostCapabilities"],
     | "referenceProvenanceFilterEnabled"
+    | "sideConversationEnabled"
     | "sessionInputHistoryEnabled"
     | "sessionWorktreeEnabled"
     | "sessionLaunchModesByProjectSectionKey"
@@ -105,6 +106,7 @@ export function useStableDesktopAgentGUIHostProps({
     hostCapabilities: {
       referenceProvenanceFilterEnabled:
         nextHostCapabilities.referenceProvenanceFilterEnabled,
+      sideConversationEnabled: nextHostCapabilities.sideConversationEnabled,
       sessionInputHistoryEnabled:
         nextHostCapabilities.sessionInputHistoryEnabled,
       sessionWorktreeEnabled: nextHostCapabilities.sessionWorktreeEnabled,

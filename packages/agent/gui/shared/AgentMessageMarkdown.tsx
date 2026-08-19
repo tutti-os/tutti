@@ -21,6 +21,7 @@ import { resolveWorkspaceFileExtension } from "@tutti-os/workspace-file-preview"
 import { MentionPill } from "@tutti-os/ui-system/components";
 import { useResolvedRichTextMention } from "@tutti-os/ui-rich-text/editor";
 import {
+  resolveWorkspaceMentionLinkAction,
   resolveWorkspaceLinkAction,
   type WorkspaceLinkAction,
   type WorkspaceLinkActionSource
@@ -251,13 +252,20 @@ export function AgentMessageMarkdown({
   const isMentionOnly = isMentionOnlyMarkdownContent(normalizedContent);
   const handleLinkClick = useCallback(
     (href: string): void => {
-      if (workspaceLinkSource && onLinkAction && (workspaceRoot || basePath)) {
-        const action = resolveWorkspaceLinkAction({
-          href,
-          workspaceRoot,
-          basePath,
-          source: workspaceLinkSource
-        });
+      if (workspaceLinkSource && onLinkAction) {
+        const action =
+          resolveWorkspaceMentionLinkAction({
+            href,
+            source: workspaceLinkSource
+          }) ??
+          (workspaceRoot || basePath
+            ? resolveWorkspaceLinkAction({
+                href,
+                workspaceRoot,
+                basePath,
+                source: workspaceLinkSource
+              })
+            : null);
         if (action) {
           onLinkAction(action);
           return;
@@ -531,7 +539,20 @@ interface ParsedWorkspaceFileMentionTarget {
 function parseWorkspaceFileMentionTarget(
   href: string
 ): ParsedWorkspaceFileMentionTarget | null {
-  const target = href.trim();
+  const rawTarget = href.trim();
+  const target = /^\/[A-Za-z]:[\\/]/.test(rawTarget)
+    ? rawTarget.slice(1)
+    : rawTarget;
+  if (isWindowsAbsolutePath(target)) {
+    const path = target.replace(/[\\/]+$/, "");
+    if (!path) {
+      return null;
+    }
+    return {
+      path,
+      explicitKind: /[\\/]$/.test(target) ? "directory" : null
+    };
+  }
   if (!isLocalAbsolutePath(target)) {
     return null;
   }

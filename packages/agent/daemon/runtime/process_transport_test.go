@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,6 +19,15 @@ import (
 func TestVerifiedProcessExecutableFixture(_ *testing.T) {
 	if os.Getenv("TUTTI_TEST_VERIFIED_PROCESS_EXECUTABLE") == "1" {
 		fmt.Print("verified-original")
+	}
+	if os.Getenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE") == "ok" {
+		fmt.Print("ok")
+		_, _ = fmt.Fprint(os.Stderr, "secret-stderr")
+		os.Exit(0)
+	}
+	if os.Getenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE") == "overflow" {
+		fmt.Print("too-large")
+		os.Exit(0)
 	}
 }
 
@@ -63,6 +73,91 @@ func TestRunVerifiedExecutableUsesVerifiedIdentity(t *testing.T) {
 	}
 }
 
+func TestRunVerifiedExecutableBoundedCapturesOnlyBoundedStdout(t *testing.T) {
+	path, identity := copyCurrentExecutableWithIdentity(t)
+	t.Setenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE", "ok")
+
+	output, err := RunVerifiedExecutableBounded(
+		context.Background(), path, []string{"-test.run=TestVerifiedProcessExecutableFixture"}, identity, 8,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(output) != "ok" {
+		t.Fatalf("output = %q", output)
+	}
+
+	t.Setenv("TUTTI_TEST_BOUNDED_PROCESS_EXECUTABLE", "overflow")
+	if _, err := RunVerifiedExecutableBounded(
+		context.Background(), path, []string{"-test.run=TestVerifiedProcessExecutableFixture"}, identity, 3,
+	); err == nil {
+		t.Fatal("RunVerifiedExecutableBounded() overflow error = nil")
+	}
+}
+
+func TestRunVerifiedNodeScriptBoundedExecutesVerifiedScript(t *testing.T) {
+	nodePath, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is unavailable")
+	}
+	nodePath, err = filepath.EvalSymlinks(nodePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nodeIdentity := fileIdentity(t, nodePath)
+	scriptPath := filepath.Join(t.TempDir(), "probe.cjs")
+	script := []byte("process.stderr.write('secret'); process.stdout.write(JSON.stringify({arg: process.argv[2]}));\n")
+	if err := os.WriteFile(scriptPath, script, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	scriptIdentity := fileIdentity(t, scriptPath)
+
+	output, err := RunVerifiedNodeScriptBounded(
+		context.Background(), nodePath, scriptPath, []string{"expected"}, nodeIdentity, scriptIdentity, 128,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(output) != `{"arg":"expected"}` {
+		t.Fatalf("output = %q", output)
+	}
+
+	if err := os.WriteFile(scriptPath, []byte("process.stdout.write('changed')\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunVerifiedNodeScriptBounded(
+		context.Background(), nodePath, scriptPath, nil, nodeIdentity, scriptIdentity, 128,
+	); err == nil || !strings.Contains(err.Error(), "expected identity") {
+		t.Fatalf("changed script error = %v", err)
+	}
+}
+
+func TestContextReaderStopsAfterCancellationDuringRead(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := &contextReader{
+		ctx: ctx,
+		reader: cancelingReader{
+			cancel: cancel,
+			data:   []byte("partial"),
+		},
+	}
+	data, err := io.ReadAll(reader)
+	if !errors.Is(err, context.Canceled) || string(data) != "partial" {
+		t.Fatalf("canceled read = %q, error = %v", data, err)
+	}
+}
+
+type cancelingReader struct {
+	cancel context.CancelFunc
+	data   []byte
+}
+
+func (reader cancelingReader) Read(value []byte) (int, error) {
+	count := copy(value, reader.data)
+	reader.cancel()
+	return count, nil
+}
+
 func TestLocalProcessTransportRejectsChangedExpectedExecutable(t *testing.T) {
 	path, identity := copyCurrentExecutableWithIdentity(t)
 	if err := os.WriteFile(path, []byte("changed executable"), 0o755); err != nil {
@@ -92,6 +187,16 @@ func copyCurrentExecutableWithIdentity(t *testing.T) (string, *ExecutableIdentit
 	}
 	digest := sha256.Sum256(data)
 	return path, &ExecutableIdentity{SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(data))}
+}
+
+func fileIdentity(t *testing.T, path string) *ExecutableIdentity {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(data)
+	return &ExecutableIdentity{SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(data))}
 }
 
 func TestLocalProcessTransportOutlivesStartContext(t *testing.T) {

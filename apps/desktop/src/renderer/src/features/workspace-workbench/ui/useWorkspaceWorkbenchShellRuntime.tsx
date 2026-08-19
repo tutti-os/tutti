@@ -10,7 +10,7 @@ import { useService } from "@tutti-os/infra/di";
 import {
   IConnectorMarketModule,
   openConnectorMarketDialog
-} from "@tutti-os/connector-market/services";
+} from "@tutti-os/connector-renderer/application";
 import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -191,6 +191,12 @@ export function useWorkspaceWorkbenchShellRuntime({
           desktopPreferencesState.featureFlags;
         if (!isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)) {
           return;
+        }
+        if (target.action === "set_runtime_enabled") {
+          return connectorMarketModule.root.market.setRuntimeEnabled(
+            target.connectorKey,
+            target.enabled
+          );
         }
         if (target.action === "open") {
           void openConnectorMarketDialog(

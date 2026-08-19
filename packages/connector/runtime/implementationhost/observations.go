@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 // AuthorizationObserver receives runtime-side credential binding outcomes.

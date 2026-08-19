@@ -212,6 +212,16 @@ func InteractionTreeScenarios() []InteractionTreeScenario {
 	}}
 }
 
+// SideConversationScenarios fixes the provider-neutral contract: the source
+// remains untouched, Side output is transient, a Side survives source Turn
+// settlement, and explicit close releases the child.
+func SideConversationScenarios() []SideConversationScenario {
+	return []SideConversationScenario{{
+		Name: "active parent side stays transient",
+		run:  runActiveParentSideStaysTransient,
+	}}
+}
+
 // CommitObserverScenarios verify the typed post-commit seam independently of
 // any adapter-specific event transport. They intentionally include a failing
 // observer because observer delivery is advisory after the durable commit.

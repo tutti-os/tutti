@@ -4,14 +4,14 @@ export {
   createConfig,
   type Client,
   type ClientOptions,
-  type Config,
+  type Config
 } from "./generated/client/index.ts";
 export {
   createTuttidEventStreamClient,
   type CreateTuttidEventStreamClientInput,
   type TuttidEventStreamClient,
   type TuttidEventStreamConnectionState,
-  type TuttidEventStreamSubscribeOptions,
+  type TuttidEventStreamSubscribeOptions
 } from "./eventStreamClient.ts";
 export type {
   AgentActivityUpdatedPayloadV1,
@@ -22,23 +22,23 @@ export type {
   WorkspaceIssueUpdatedEventV1,
   WorkspaceTuttimodeUpdatedEventV1,
   WorkspaceTuttimodeUpdatedPayloadV1,
-  WorkspaceWorkflowUpdatedEventV1,
+  WorkspaceWorkflowUpdatedEventV1
 } from "@tutti-os/event-protocol";
 export {
   createTuttidClient,
   type CreateTuttidClientInput,
   type MobileRemoteAccessClient,
-  type TuttidClient,
+  type TuttidClient
 } from "./tuttidClient.ts";
 export {
   createCollaborationRunsClient,
-  type CollaborationRunsClient,
+  type CollaborationRunsClient
 } from "./collaborationRunsClient.ts";
 export {
   ConnectorMarketClientError,
   createConnectorMarketClient,
   isConnectorMarketClientError,
-  type ConnectorMarketClient,
+  type ConnectorMarketClient
 } from "./connectorMarketClient.ts";
 export type { ConnectorMarketChangedEventV1 } from "@tutti-os/event-protocol";
 export {
@@ -46,11 +46,11 @@ export {
   type ModelPlanBillingMode,
   type ModelPlanPricing,
   type WorkspaceAgentConfigurationClient,
-  type WorkspaceModelRecommendation,
+  type WorkspaceModelRecommendation
 } from "./workspaceAgentConfigurationClient.ts";
 export {
   createWorkspaceIssueOrchestrationClient,
-  type WorkspaceIssueOrchestrationClient,
+  type WorkspaceIssueOrchestrationClient
 } from "./workspaceIssueOrchestrationClient.ts";
 export type {
   AgentSessionAutomationRuleOverride,
@@ -71,13 +71,13 @@ export type {
   ModelPlanStatus,
   ModelPlanTemplateKind,
   PutAutomationRuleRequest,
-  SetAgentSessionAutomationRuleOverrideRequest,
+  SetAgentSessionAutomationRuleOverrideRequest
 } from "./generated/index.ts";
 export {
   WORKSPACE_AGENT_INTERACTION_KINDS,
   WORKSPACE_AGENT_INTERACTION_STATUSES,
   WORKSPACE_AGENT_TURN_OUTCOMES,
-  WORKSPACE_AGENT_TURN_PHASES,
+  WORKSPACE_AGENT_TURN_PHASES
 } from "./agentProtocolGuards.ts";
 export type { WorkspaceAgentSessionAuditEvent } from "./agentProtocolGuards.ts";
 export {
@@ -90,13 +90,13 @@ export {
   normalizeTuttidError,
   type TuttidProtocolErrorCode,
   type TuttidProtocolErrorOptions,
-  type TuttidProtocolErrorParams,
+  type TuttidProtocolErrorParams
 } from "./errors.ts";
 
 export const runtimeProtocolErrorCodes = {
   invalidRequest: "invalid_request",
   methodNotAllowed: "method_not_allowed",
-  serviceUnavailable: "service_unavailable",
+  serviceUnavailable: "service_unavailable"
 } as const;
 
 export type RuntimeProtocolErrorCode =
@@ -109,7 +109,7 @@ export const workspaceProtocolErrorCodes = {
   workspaceIssueResourceExists: "workspace_issue_resource_exists",
   workspaceIssueResourceNotFound: "workspace_issue_resource_not_found",
   workspaceNotFound: "workspace_not_found",
-  workspaceOperationFailed: "workspace_operation_failed",
+  workspaceOperationFailed: "workspace_operation_failed"
 } as const;
 
 export type WorkspaceProtocolErrorCode =

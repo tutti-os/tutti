@@ -17,7 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 const packagedManifestPath = "connector-manifest.json"

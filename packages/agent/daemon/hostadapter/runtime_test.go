@@ -305,6 +305,27 @@ func TestMapRuntimeErrorMapsDisconnectedSessionAcrossHostBoundary(t *testing.T) 
 	}
 }
 
+func TestMapRuntimeErrorMapsInteractiveContractAcrossHostBoundary(t *testing.T) {
+	for _, test := range []struct {
+		runtime error
+		host    error
+	}{
+		{agentruntime.ErrInteractiveRequestNotLive, host.ErrInteractiveRequestNotLive},
+		{agentruntime.ErrInteractiveAlreadyAnswered, host.ErrInteractiveAlreadyAnswered},
+		{agentruntime.ErrInteractiveResponseInvalid, host.ErrInteractiveResponseInvalid},
+	} {
+		mapped := mapRuntimeError(test.runtime)
+		if !errors.Is(mapped, test.host) || !errors.Is(mapped, test.runtime) {
+			t.Fatalf(
+				"mapped error = %v, want host %v and runtime %v",
+				mapped,
+				test.host,
+				test.runtime,
+			)
+		}
+	}
+}
+
 func TestMapRuntimeErrorMapsMissingSessionAcrossHostBoundary(t *testing.T) {
 	runtimeErr := fmt.Errorf("fence session disappeared: %w", agentruntime.ErrSessionNotFound)
 	mapped := mapRuntimeError(runtimeErr)

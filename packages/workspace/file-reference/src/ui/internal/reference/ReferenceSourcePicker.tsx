@@ -1495,6 +1495,11 @@ function SourceSidebar({
         <p className="px-2 py-1 text-[11px] font-semibold text-[var(--text-tertiary)]">
           {copy.t("referencePicker.sourceColumn")}
         </p>
+        {view.tabsError ? (
+          <p className="px-2 py-1 text-[12px] text-[var(--destructive)]">
+            {copy.t("referencePicker.loadError")}
+          </p>
+        ) : null}
         {view.tabs.map((tab) => {
           const groups = view.sidebarGroupsBySource[tab.sourceId] ?? [];
           const limit = shownBySource[tab.sourceId] ?? SIDEBAR_GROUP_PAGE_SIZE;
@@ -1534,9 +1539,14 @@ function SourceSidebar({
                 {tab.label}
               </button>
               {groups.length === 0 ? (
-                view.isLoadingTabs ? (
+                view.isLoadingTabs ||
+                (view.sidebarLoadingBySource[tab.sourceId] ?? false) ? (
                   <p className="px-2 py-1 text-[12px] text-[var(--text-tertiary)]">
                     …
+                  </p>
+                ) : view.sidebarErrorBySource[tab.sourceId] ? (
+                  <p className="px-2 py-1 text-[12px] text-[var(--destructive)]">
+                    {copy.t("referencePicker.loadError")}
                   </p>
                 ) : null
               ) : (
@@ -1586,6 +1596,11 @@ function SourceSidebar({
                   );
                 })
               )}
+              {groups.length > 0 && view.sidebarErrorBySource[tab.sourceId] ? (
+                <p className="px-2 py-1 text-[12px] text-[var(--destructive)]">
+                  {copy.t("referencePicker.loadError")}
+                </p>
+              ) : null}
               {hasMore ? (
                 <button
                   className="flex items-center gap-1.5 rounded-[6px] px-2 py-1.5 text-left text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] disabled:opacity-60"

@@ -1,6 +1,7 @@
 import {
   memo,
   useMemo,
+  useState,
   type CSSProperties,
   type ReactNode,
   type Ref,
@@ -21,6 +22,11 @@ import type { AgentTranscriptEditRetryControl } from "../../../shared/agentConve
 import type { AgentActivityEditRetryRecoveryAction } from "@tutti-os/agent-activity-core";
 import type { AgentGUIEditRetryPresentation } from "../model/agentGUIEditRetryModel";
 import { AgentGUIEditRetryStatus } from "./AgentGUIEditRetryStatus";
+import {
+  AgentGUITextSelectionActions,
+  readAgentGUITextSelection,
+  type AgentGUITextSelectionSnapshot
+} from "./AgentGUITextSelectionActions";
 
 const TIMELINE_CONTENT_STYLE: CSSProperties = {
   width: "100%",
@@ -57,11 +63,16 @@ interface AgentGUIDetailTimelineProps {
   labels: {
     loadingConversation: string;
     continuedFromTask: string;
+    selectionAddToConversation: string;
+    selectionAskInSide: string;
   };
   onAuthLogin?: (provider?: string | null) => void;
   onForkThroughTurn?: (turnId: string) => void;
   onOpenForkSourceSession?: (agentSessionId: string) => void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
+  onAddSelectionToConversation: (text: string) => void;
+  onAskSelectionInSide?: (text: string) => void;
+  textSelectionActionsEnabled?: boolean;
   showTimelineSkeleton: boolean;
   showUnavailableChatEmpty: boolean;
   timelineContentRef: RefObject<HTMLDivElement | null>;
@@ -89,6 +100,9 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
   onForkThroughTurn,
   onOpenForkSourceSession,
   onLinkAction,
+  onAddSelectionToConversation,
+  onAskSelectionInSide,
+  textSelectionActionsEnabled = true,
   showTimelineSkeleton,
   showUnavailableChatEmpty,
   timelineContentRef,
@@ -97,6 +111,8 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
   workspaceAppIcons
 }: AgentGUIDetailTimelineProps): React.JSX.Element {
   "use memo";
+  const [textSelection, setTextSelection] =
+    useState<AgentGUITextSelectionSnapshot | null>(null);
   const forkLineageAttachments = useMemo(
     () =>
       forkedFrom?.targetTurnId
@@ -142,52 +158,76 @@ export const AgentGUIDetailTimeline = memo(function AgentGUIDetailTimeline({
     ]
   );
   return (
-    <ScrollArea
-      scrollbarMode="native"
-      className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
-      viewportRef={timelineRef}
-      viewportContentRef={timelineContentRef}
-      viewportTestId="agent-gui-timeline"
-      viewportClassName={`${styles.timeline} ${
-        hasActiveConversation
-          ? styles.timelineWithComposer
-          : styles.timelineCentered
-      } ${
-        !isTimelineScrolledToTop ? styles.timelineScrolledFromTop : ""
-      } ${showUnavailableChatEmpty ? styles.timelineUnavailableChatEmpty : ""}`.trim()}
-      viewportContentStyle={TIMELINE_CONTENT_STYLE}
-    >
-      {hasActiveConversation ? (
-        <>
-          <AgentGUIConversationTimelinePane
-            conversation={conversation}
-            turnAttachments={forkLineageAttachments}
-            editRetry={editRetry?.control}
-            followEndMode={followEndMode}
-            isLoading={showTimelineSkeleton}
-            isLoadingOlderMessages={isLoadingOlderMessages}
-            isVisible={isVisible}
-            loadingLabel={labels.loadingConversation}
-            empty={conversationFlowEmpty}
-            onLinkAction={onLinkAction}
-            onAuthLogin={onAuthLogin}
-            onForkThroughTurn={onForkThroughTurn}
-            forkThroughTurnPendingTurnIds={forkThroughTurnPendingTurnIds}
-            availableSkills={availableSkills}
-            workspaceAppIcons={workspaceAppIcons}
-            labels={conversationFlowLabels}
-            virtualScrollControllerRef={virtualScrollControllerRef}
-          />
-          {editRetry ? (
-            <AgentGUIEditRetryStatus
-              presentation={editRetry.presentation}
-              onRecover={editRetry.recover}
+    <>
+      <ScrollArea
+        scrollbarMode="native"
+        className="flex h-full min-h-0 flex-1 flex-col [&_[data-orientation=vertical][data-slot=scroll-area-scrollbar]]:opacity-100"
+        viewportRef={timelineRef}
+        viewportContentRef={timelineContentRef}
+        viewportTestId="agent-gui-timeline"
+        viewportClassName={`${styles.timeline} ${
+          hasActiveConversation
+            ? styles.timelineWithComposer
+            : styles.timelineCentered
+        } ${
+          !isTimelineScrolledToTop ? styles.timelineScrolledFromTop : ""
+        } ${showUnavailableChatEmpty ? styles.timelineUnavailableChatEmpty : ""}`.trim()}
+        viewportContentStyle={TIMELINE_CONTENT_STYLE}
+        viewportProps={{
+          onMouseUp: (event) =>
+            setTextSelection(readAgentGUITextSelection(event.currentTarget)),
+          onPointerDown: () => setTextSelection(null),
+          onScroll: () => setTextSelection(null)
+        }}
+      >
+        {hasActiveConversation ? (
+          <>
+            <AgentGUIConversationTimelinePane
+              conversation={conversation}
+              turnAttachments={forkLineageAttachments}
+              editRetry={editRetry?.control}
+              followEndMode={followEndMode}
+              isLoading={showTimelineSkeleton}
+              isLoadingOlderMessages={isLoadingOlderMessages}
+              isVisible={isVisible}
+              loadingLabel={labels.loadingConversation}
+              empty={conversationFlowEmpty}
+              onLinkAction={onLinkAction}
+              onAuthLogin={onAuthLogin}
+              onForkThroughTurn={onForkThroughTurn}
+              forkThroughTurnPendingTurnIds={forkThroughTurnPendingTurnIds}
+              availableSkills={availableSkills}
+              workspaceAppIcons={workspaceAppIcons}
+              labels={conversationFlowLabels}
+              virtualScrollControllerRef={virtualScrollControllerRef}
             />
-          ) : null}
-        </>
-      ) : (
-        homeContent
-      )}
-    </ScrollArea>
+            {editRetry ? (
+              <AgentGUIEditRetryStatus
+                presentation={editRetry.presentation}
+                onRecover={editRetry.recover}
+              />
+            ) : null}
+          </>
+        ) : (
+          homeContent
+        )}
+      </ScrollArea>
+      {textSelectionActionsEnabled &&
+      hasActiveConversation &&
+      textSelection &&
+      timelineRef.current ? (
+        <AgentGUITextSelectionActions
+          labels={{
+            addToConversation: labels.selectionAddToConversation,
+            askInSide: labels.selectionAskInSide
+          }}
+          snapshot={textSelection}
+          portalTarget={timelineRef.current.ownerDocument.body}
+          onAddToConversation={onAddSelectionToConversation}
+          onAskInSide={onAskSelectionInSide}
+          onDismiss={() => setTextSelection(null)}
+        />
+      ) : null}
+    </>
   );
 });

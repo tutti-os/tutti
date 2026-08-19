@@ -165,7 +165,7 @@
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/commerce": "workspace:*",
-    "@tutti-os/connector-market": "workspace:*",
+    "@tutti-os/connector-renderer": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@tutti-os/desktop-update-admission": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",

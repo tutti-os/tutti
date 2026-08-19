@@ -6,8 +6,10 @@ import type {
   WorkspaceSummary
 } from "@tutti-os/client-tuttid-ts";
 import {
-  createWorkspaceLaunch,
+  createWorkspaceLaunch as createWorkspaceLaunchCore,
+  type WorkspaceLaunch,
   type WorkspaceLaunchAdapters,
+  type WorkspaceLaunchDependencies,
   type WorkspaceLaunchOwnerWindow
 } from "./workspaceLaunch.ts";
 
@@ -44,9 +46,30 @@ function createAdapters(
   };
 }
 
+function createWorkspaceLaunch(
+  deps: Omit<
+    WorkspaceLaunchDependencies,
+    "getPrimaryWorkspaceWindowOptions"
+  > & {
+    getPrimaryWorkspaceWindowOptions?: WorkspaceLaunchDependencies["getPrimaryWorkspaceWindowOptions"];
+  }
+): WorkspaceLaunch {
+  return createWorkspaceLaunchCore({
+    ...deps,
+    getPrimaryWorkspaceWindowOptions:
+      deps.getPrimaryWorkspaceWindowOptions ??
+      (() => ({ windowKind: "workspace", workspaceUiMode: "os" }))
+  });
+}
+
 test("workspace launch ensures an exact User Browser host", async () => {
   const calls: Array<{
-    options: { windowKind?: "agent" | "workspace" } | undefined;
+    options:
+      | {
+          windowKind: "agent" | "workspace";
+          workspaceUiMode: "agent" | "os";
+        }
+      | undefined;
     workspaceID: string;
   }> = [];
   const launch = createWorkspaceLaunch({
@@ -55,6 +78,10 @@ test("workspace launch ensures an exact User Browser host", async () => {
         calls.push({ options, workspaceID });
       }
     }),
+    getPrimaryWorkspaceWindowOptions: () => ({
+      windowKind: "agent",
+      workspaceUiMode: "agent"
+    }),
     tuttidClient: createStartupWorkspaceClient()
   });
 
@@ -62,7 +89,7 @@ test("workspace launch ensures an exact User Browser host", async () => {
 
   assert.deepEqual(calls, [
     {
-      options: { windowKind: "workspace" },
+      options: { windowKind: "workspace", workspaceUiMode: "agent" },
       workspaceID: "ws-browser"
     }
   ]);
@@ -70,13 +97,23 @@ test("workspace launch ensures an exact User Browser host", async () => {
 
 test("workspace launch opens the daemon-resolved startup workspace", async () => {
   let startupCalls = 0;
-  let openedWorkspaceID: string | null = null;
+  let openedWindow:
+    | {
+        windowKind: "agent" | "workspace";
+        workspaceID: string;
+        workspaceUiMode: "agent" | "os";
+      }
+    | undefined;
 
   const launch = createWorkspaceLaunch({
     adapters: createAdapters({
-      async showWorkspaceWindow(workspaceID) {
-        openedWorkspaceID = workspaceID;
+      async showWorkspaceWindow(workspaceID, options) {
+        openedWindow = { ...options, workspaceID };
       }
+    }),
+    getPrimaryWorkspaceWindowOptions: () => ({
+      windowKind: "agent",
+      workspaceUiMode: "agent"
     }),
     tuttidClient: createStartupWorkspaceClient(async () => {
       startupCalls += 1;
@@ -87,7 +124,35 @@ test("workspace launch opens the daemon-resolved startup workspace", async () =>
   await launch.openStartupWindow();
 
   assert.equal(startupCalls, 1);
-  assert.equal(openedWorkspaceID, "ws-start");
+  assert.deepEqual(openedWindow, {
+    windowKind: "agent",
+    workspaceUiMode: "agent",
+    workspaceID: "ws-start"
+  });
+});
+
+test("workspace launch gives an auxiliary Agent window the global OS preference bootstrap", async () => {
+  let openedInput:
+    | { workspaceID: string; workspaceUiMode: "agent" | "os" }
+    | undefined;
+  const launch = createWorkspaceLaunch({
+    adapters: createAdapters({
+      async showAgentWindow(input) {
+        openedInput = {
+          workspaceID: input.workspaceID,
+          workspaceUiMode: input.workspaceUiMode
+        };
+      }
+    }),
+    tuttidClient: createStartupWorkspaceClient()
+  });
+
+  await launch.showAgentWindow({ workspaceID: "ws-agent" });
+
+  assert.deepEqual(openedInput, {
+    workspaceID: "ws-agent",
+    workspaceUiMode: "os"
+  });
 });
 
 test("workspace launch warns and rejects when startup resolution fails", async () => {
@@ -150,7 +215,9 @@ test("workspace launch hands analytics to main after the new window is ready and
   const launch = createWorkspaceLaunch({
     adapters: createAdapters({
       async showWorkspaceWindow(workspaceID, options) {
-        events.push(`${workspaceID}:${options?.windowKind}`);
+        events.push(
+          `${workspaceID}:${options.windowKind}:${options.workspaceUiMode}`
+        );
       }
     }),
     tuttidClient: createStartupWorkspaceClient(
@@ -170,7 +237,7 @@ test("workspace launch hands analytics to main after the new window is ready and
   });
 
   assert.deepEqual(events, [
-    "ws-alpha:agent",
+    "ws-alpha:agent:agent",
     "analytics:accepted",
     "owner:closed"
   ]);

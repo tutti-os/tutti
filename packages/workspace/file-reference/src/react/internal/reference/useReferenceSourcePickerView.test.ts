@@ -318,6 +318,10 @@ test("reference source picker shows html source as text", async () => {
           searchable: true
         },
         isAvailable: async () => true,
+        loadSidebarGroups: async () => ({
+          entries: [],
+          nextCursor: null
+        }),
         listChildren: async () => ({ entries: [], nextCursor: null }),
         metadata: {
           id: "workspace-file",
@@ -598,6 +602,111 @@ test("single-selection picker uses the source heading as root and selects sideba
   }
 });
 
+test("reference source picker reloads sidebar groups and directory content on every open", async () => {
+  const dom = new JSDOM('<!doctype html><div id="root"></div>');
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  const previousHTMLElement = globalThis.HTMLElement;
+  const previousActEnvironment = (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT;
+  globalThis.window = dom.window;
+  globalThis.document = dom.window.document;
+  globalThis.HTMLElement = dom.window.HTMLElement;
+  (
+    globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+  ).IS_REACT_ACT_ENVIRONMENT = true;
+
+  let root: Root | null = null;
+  try {
+    const container = dom.window.document.getElementById("root");
+    assert.ok(container);
+    let tabLoads = 0;
+    let sidebarLoads = 0;
+    let directoryLoads = 0;
+    const aggregator = createSidebarAggregator([
+      file("/workspace/notes.md", "notes.md")
+    ]);
+    aggregator.listSources = async () => {
+      tabLoads += 1;
+      return [
+        {
+          capabilities: {
+            navigable: false,
+            paginated: false,
+            previewable: false,
+            searchable: true
+          },
+          label: "Workspace",
+          sourceId: "workspace-file"
+        }
+      ];
+    };
+    aggregator.loadSidebarGroups = async () => {
+      sidebarLoads += 1;
+      return {
+        autoSelectFirst: false,
+        entries: [],
+        nextCursor: null
+      };
+    };
+    aggregator.listChildren = async () => {
+      directoryLoads += 1;
+      return {
+        entries: [file("/workspace/notes.md", "notes.md")],
+        nextCursor: null
+      };
+    };
+    let open = true;
+
+    function Harness() {
+      useReferenceSourcePickerView({
+        aggregator,
+        onClose() {},
+        onConfirm() {},
+        open,
+        workspaceId: "workspace-reference-reopen"
+      });
+      return null;
+    }
+
+    root = createRoot(container);
+    await act(async () => {
+      root?.render(createElement(Harness));
+      await flushEffects();
+    });
+    await waitFor(
+      () => tabLoads === 1 && sidebarLoads === 1 && directoryLoads === 1
+    );
+
+    open = false;
+    await act(async () => {
+      root?.render(createElement(Harness));
+      await flushEffects();
+    });
+    open = true;
+    await act(async () => {
+      root?.render(createElement(Harness));
+      await flushEffects();
+    });
+    await waitFor(
+      () => tabLoads === 2 && sidebarLoads === 2 && directoryLoads === 2
+    );
+  } finally {
+    if (root) {
+      await act(async () => {
+        root?.unmount();
+      });
+    }
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+    globalThis.HTMLElement = previousHTMLElement;
+    (
+      globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+    ).IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+});
+
 function createOpenWithAggregator(
   listOpenWithApplications: ReferenceSourceAggregator["listOpenWithApplications"]
 ): ReferenceSourceAggregator {
@@ -614,6 +723,8 @@ function createOpenWithAggregator(
   ];
   return {
     getLoadedSource: () => undefined,
+    invalidateRuntimeReads: () => {},
+    loadSidebarGroups: async () => ({ entries: [], nextCursor: null }),
     listChildren: async () => ({ entries: [], nextCursor: null }),
     listOpenWithApplications,
     listRoot: async () => [],
@@ -652,6 +763,11 @@ function createSidebarAggregator(
   ];
   return {
     getLoadedSource: () => undefined,
+    invalidateRuntimeReads: () => {},
+    loadSidebarGroups: async () => ({
+      entries: rootEntries.filter((entry) => entry.kind === "folder"),
+      nextCursor: null
+    }),
     listChildren: async (_scope, node) => ({
       entries:
         node.nodeId === SOURCE_ROOT_NODE_ID

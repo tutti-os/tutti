@@ -6,7 +6,7 @@ import (
 	"context"
 	"strings"
 
-	connectorhost "github.com/tutti-os/tutti/packages/connector/host"
+	connectorhost "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 const (
@@ -16,6 +16,7 @@ const (
 
 	CapabilityStatusAuthRequired  = "authRequired"
 	CapabilityStatusAvailable     = "available"
+	CapabilityStatusDisabled      = "disabled"
 	CapabilityStatusSetupRequired = "setupRequired"
 	CapabilityStatusUnsupported   = "unsupported"
 )
@@ -94,6 +95,9 @@ func ConnectorStatus(connector connectorhost.Connector) string {
 	}
 	switch connector.Authorization.State {
 	case connectorhost.AuthorizationStateNotRequired, connectorhost.AuthorizationStateConnected:
+		if connector.Runtime != nil && connector.Runtime.State != connectorhost.ConnectorRuntimeStateStarted {
+			return CapabilityStatusDisabled
+		}
 		return CapabilityStatusAvailable
 	default:
 		return CapabilityStatusAuthRequired

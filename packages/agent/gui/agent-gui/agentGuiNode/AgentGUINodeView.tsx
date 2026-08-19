@@ -31,10 +31,8 @@ import { AgentGUIConfigMenu } from "./view/AgentGUIAccountConfig";
 import { AgentGUIProviderRail } from "./view/AgentGUIProviderRail";
 import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationRailPane";
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
-import {
-  AgentGUIDetailPane,
-  EMPTY_WORKSPACE_APP_ICONS
-} from "./view/AgentGUIDetailPane";
+import { AgentGUIDetailPane } from "./view/AgentGUIDetailPane";
+import { EMPTY_WORKSPACE_APP_ICONS } from "./view/agentGUIDetailConstants";
 import { mergeWorkspaceAppIconsFromCommands } from "./view/agentGUIDetailModelHelpers";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { AgentGUIReferencePickerSurface } from "./view/AgentGUIReferencePickerSurface";
@@ -79,6 +77,7 @@ export function AgentGUINodeView({
   mentionAgentTargets,
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
+  sideConversationEnabled = false,
   sessionWorktreeEnabled = false,
   sessionLaunchModesByProjectSectionKey,
   onSessionLaunchModePreferenceChange,
@@ -689,6 +688,7 @@ export function AgentGUINodeView({
                 homeTargetProjection={homeTargetProjection}
                 referenceProvenanceFilters={referenceProvenanceFilters}
                 sessionInputHistoryEnabled={sessionInputHistoryEnabled}
+                sideConversationEnabled={sideConversationEnabled}
                 sessionWorktreeEnabled={sessionWorktreeEnabled}
                 sessionLaunchModesByProjectSectionKey={
                   sessionLaunchModesByProjectSectionKey

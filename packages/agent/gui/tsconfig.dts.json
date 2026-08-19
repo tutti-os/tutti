@@ -13,6 +13,8 @@
     "index.ts",
     "AgentGUI.tsx",
     "AgentGUIStartupShell.tsx",
+    "side-conversation.ts",
+    "agentSideConversationController.ts",
     "AgentGUIQuickComposer.tsx",
     "composer-settings-core/index.ts",
     "agents.ts",

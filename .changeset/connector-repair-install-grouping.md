@@ -1,5 +1,5 @@
 ---
-"@tutti-os/connector-market": patch
+"@tutti-os/connector-renderer": patch
 ---
 
 Keep physically missing or invalid Connectors in their catalog section while a

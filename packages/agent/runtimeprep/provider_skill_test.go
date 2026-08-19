@@ -76,6 +76,12 @@ func TestProviderSkillsRenderFromCommandSnapshot(t *testing.T) {
 		"tutti-dev agent start --agent-id <agent-id> --prompt <prompt> --show --json",
 		"tutti-dev agent get --session-id <session-id> --view turns --json",
 		"tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json",
+
+"Generic provider-native subagent requests are not Tutti handoffs",
+
+"Use the current provider's native subagent or collaboration mechanism when available",
+
+"This skill and the `tutti agent ...` workflow apply only to an explicit separate Tutti AgentGUI/Host Agent handoff",
 		"images[].localPath",
 	} {
 		if !strings.Contains(handoff, want) {
@@ -120,6 +126,11 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
+
+"Agent handoff decisions belong to `$tutti-handoff`.",
+
+"Generic subagents use native tools; Tutti handoffs use `$tutti-handoff`.",
+
 		"tutti-dev connector available --json",
 		"Connector aliases `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`",
 		"on an alias or `连接器`/`connector`",
@@ -148,7 +159,7 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 	}
 	if !strings.Contains(claude, "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(claude, "localhost/IPC") ||
-		strings.Contains(claude, "sandbox_permissions=require_escalated") {
+		strings.Contains(claude, "sandbox_permissions=require_escalated") || !strings.Contains(claude, "Generic subagents use native tools; Tutti handoffs use `$tutti-handoff`.") {
 		t.Fatalf("claude policy has wrong provider execution rules: %s", claude)
 	}
 }
@@ -234,6 +245,16 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	} {
 		if !strings.Contains(handoffSkill.Content, expected) {
 			t.Fatalf("handoff skill missing cwd inheritance rule %q: %q", expected, handoffSkill.Content)
+		}
+	}
+	if bundle.RecommendedSystemPrompt == nil {
+		t.Fatal("missing recommended system prompt")
+	}
+	for _, expected := range []string{
+		"Generic subagents use provider-native tools; `$tutti-handoff` is for explicit Tutti handoffs or `mention://agent-target/...`.",
+	} {
+		if !strings.Contains(bundle.RecommendedSystemPrompt.Content, expected) {
+			t.Fatalf("recommended system prompt missing routing boundary %q: %q", expected, bundle.RecommendedSystemPrompt.Content)
 		}
 	}
 	guide, ok := skillBundleFileContent(tuttiSkill, commandGuideReferencePath)

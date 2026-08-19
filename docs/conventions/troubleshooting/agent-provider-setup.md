@@ -148,6 +148,38 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
 
+### A managed Extension runtime cannot be reused after an update on Windows
+
+- Symptom:
+  The first managed Extension install reaches `ready`, but after Extension
+  metadata changes the same compatible runtime falls back to `not_installed`
+  only on Windows. Logs or focused tests report that renaming the legacy runtime
+  directory failed because it is being used by another process.
+- Quick checks:
+  Confirm the package version, discovery profile, and runtime identity are still
+  compatible. Then inspect the adoption path around the legacy-directory rename;
+  if the source `managedRuntimeDirectory` is still open, the failure is a Windows
+  sharing violation rather than a package incompatibility.
+- Root cause:
+  POSIX permits renaming a directory while the process retains an open directory
+  handle. Windows does not. Keeping the verified candidate handle open across
+  `rename` made the portability test pass on macOS while the native Windows lane
+  rejected the same adoption.
+- Fix:
+  Verify and fingerprint the candidate, write the new activation, close the
+  source directory handle, rename it, then reopen the promoted directory and
+  repeat the integrity check. Rollback must close the promoted handle before
+  renaming it back and restoring the previous activation.
+- Validation:
+  On native Windows, install a managed npm runtime, move it to a legacy identity,
+  update the Extension without changing its runtime contract, and assert the
+  runtime is adopted without reinstalling. Keep the batch-launcher execution and
+  companion reconciliation assertions in the same Windows workflow.
+- References:
+  [windows-platform-support.md](../../architecture/windows-platform-support.md)
+  [managed_runtime.go](../../../services/tuttid/service/agentextension/managed_runtime.go)
+  [setup_test.go](../../../services/tuttid/service/agentextension/setup_test.go)
+
 ### Workspace Apps repeatedly probe extension authentication
 
 - Symptom:
@@ -1542,40 +1574,76 @@ invalid_grant`. Search `tuttid.log` for
   `session/prompt` then returns `stopReason: "end_turn"` without an assistant
   chunk or tool call, treat it as a hidden provider failure rather than a
   successful empty answer. Check that the signed Kimi Extension routes
-  `/status` and `/usage` to the runtime with the shared `submitImmediate`
-  effect. Those commands must remain runtime-owned: Tutti Desktop should
-  report its account-usage probe as `unsupported` for `acp:kimi-code` and must
-  not parse Kimi configuration or credentials itself.
+  `/status` to the native status panel with `showStatus` and `/usage` to the
+  runtime with `submitImmediate`.
 - Root cause:
   Kimi Code can create an ACP session while no model is configured. Its ACP
   adapter maps some underlying model, authentication, plan, and balance
   failures to a normal `end_turn` with no output because ACP has no failed stop
   reason. The setup guard previously recognized only the top-level `models`
-  shape. A provider-specific Desktop usage probe would also duplicate Kimi's
-  configuration, credential, endpoint, and quota semantics outside the signed
-  Extension/runtime boundary.
+  shape.
 - Fix:
   Reject both empty ACP model shapes during generic setup. A normal ACP
   terminal with neither assistant output nor tool activity must settle as
   `provider_empty_response`, producing a visible conversation error card that
   points users back to model and account setup. Turns with only thinking or a
   system notice remain valid because they produced observable assistant
-  output. Keep Kimi's `/status` and `/usage` behavior declarative in the signed
-  Extension and execute it through the Kimi ACP runtime, which remains the
-  owner of provider configuration, credentials, account APIs, and quota
-  interpretation.
+  output. Keep Kimi's slash-command behavior declarative in the signed
+  Extension.
 - Validation:
   Cover empty and populated `models`/`configOptions` selectors, thinking-only
   and notice-only ACP turns, and an otherwise normal empty ACP `end_turn`.
-  Assert that an explicit Kimi Desktop usage probe stays `unsupported`, and
-  validate in the Extension repository that `/status` and `/usage` both use
-  `submitImmediate` against the pinned real runtime.
+  Validate in the Extension repository that `/status` uses `showStatus` and
+  `/usage` uses `submitImmediate` against the pinned real runtime.
 - References:
   [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
   [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
   [createDesktopAgentStatusSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentStatusSource.ts)
   [Agent Extensions](../../architecture/agent-extensions.md)
   [Kimi Code Agent Extension](https://github.com/tutti-os/agent-extension-kimi-code)
+
+### Kimi Code account panel says the Agent provides no quota limits
+
+- Symptom:
+  Kimi Code `/status` opens the native account panel, but its limits row says
+  the current Agent does not provide quota limits even though the selected
+  account uses Coding Plan.
+- Quick checks:
+  Confirm the provider is `acp:kimi-code`, the active model in
+  `$KIMI_CODE_HOME/config.toml` (or `~/.kimi-code/config.toml`) resolves to
+  `managed:kimi-code`, and the matching OAuth credential exists under the
+  Kimi-owned `credentials/` directory. Search Desktop logs for
+  `agent.usage_probe.result`; logs contain only strategy/error metadata and
+  must never contain credentials or raw responses.
+- Root cause:
+  Kimi Code 0.28 exposes session/context usage through ACP, but it does not
+  expose Coding Plan account windows as structured ACP data. The native panel
+  therefore had no account-level source and treated the extension provider as
+  unsupported.
+- Fix:
+  The Desktop Kimi account probe resolves the selected model's provider from
+  Kimi configuration. API-key providers return provider-neutral `api` billing
+  with no quota rows, which the renderer labels `API Usage Billing`. The
+  managed provider reads its request-local OAuth access token in Electron main,
+  requests the configured Coding Plan `/usages` endpoint, and projects only
+  provider-neutral quota percentages/reset times. Tokens, API keys, and raw
+  responses never cross renderer IPC and are never logged. Kimi owns OAuth
+  refresh, so the probe must not treat its point-in-time `expires_at` value or a
+  usage-endpoint authorization rejection as Agent login authority. If Kimi
+  rewrites the credential while a request is in flight, retry once with the new
+  token; otherwise keep the Agent available and degrade only the limits row.
+- Validation:
+  Cover managed inline/nested OAuth configuration, Coding Plan summary/window
+  mapping, API billing without an account request, a concurrent credential
+  refresh, an unchanged unauthorized token that does not become
+  `session_expired`, and the renderer's localized API billing label. Run the
+  Desktop tests, typecheck, i18n check, build, and changed-aware push-ready
+  gate.
+- References:
+  [kimiProviderAccount.ts](../../../apps/desktop/src/main/kimiProviderAccount.ts)
+  [kimiProviderUsageProbe.ts](../../../apps/desktop/src/main/kimiProviderUsageProbe.ts)
+  [agentProviderUsageProbe.ts](../../../apps/desktop/src/main/agentProviderUsageProbe.ts)
+  [createDesktopAgentStatusSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentStatusSource.ts)
 
 ### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
 

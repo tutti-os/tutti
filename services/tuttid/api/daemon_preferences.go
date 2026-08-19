@@ -56,6 +56,22 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}, nil
 	}
 
+	writeMode := tuttigenerated.DesktopPreferencesWriteModeReplace
+	if request.Body.WriteMode != nil {
+		writeMode = *request.Body.WriteMode
+		if !writeMode.Valid() {
+			return tuttigenerated.PutDesktopPreferences400JSONResponse{
+				InvalidRequestErrorJSONResponse: invalidRequestError(
+					apierrors.InvalidRequest(
+						apierrors.ReasonUnsupportedDesktopPreferencesWriteMode,
+						apierrors.WithDeveloperMessage("desktop preferences write mode is unsupported"),
+						apierrors.WithParams(map[string]any{"field": "writeMode"}),
+					),
+				),
+			}, nil
+		}
+	}
+
 	defaultAgentProvider := agentproviderbiz.Normalize(string(request.Body.Preferences.DefaultAgentProvider))
 	if defaultAgentProvider == "" || !preferencesbiz.IsDesktopDefaultAgentProvider(defaultAgentProvider) {
 		return tuttigenerated.PutDesktopPreferences400JSONResponse{
@@ -408,6 +424,8 @@ func (api DaemonAPI) PutDesktopPreferences(ctx context.Context, request tuttigen
 		}
 	}
 	preferences, err := api.PreferencesService.Put(ctx, preferencesservice.PutInput{
+		WriteMode: preferencesservice.DesktopPreferencesWriteMode(writeMode),
+
 		AgentCLIUpdateCheckEnabled: request.Body.Preferences.AgentCliUpdateCheckEnabled,
 		AgentComposerDefaultsByProvider: agentComposerDefaultsByProviderFromGenerated(
 			request.Body.Preferences.AgentComposerDefaultsByProvider,

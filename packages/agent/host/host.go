@@ -60,7 +60,8 @@ type Config struct {
 	// instead of engaging the saga. The zero value keeps the feature enabled so
 	// its unit/conformance tests still exercise it; production wiring sets this
 	// true. Remove once the saga's resend/recovery gap is fixed.
-	EditRetryDisabled bool
+	EditRetryDisabled       bool
+	SideConversationRuntime SideConversationRuntime
 }
 
 type Host struct {
@@ -78,6 +79,7 @@ type Host struct {
 	sessionForks              SessionForkStore
 	sessionForkRecovery       SessionForkRecoveryStore
 	sessionForkRuntime        SessionForkRuntime
+	sideRuntime               SideConversationRuntime
 	sessionForkContext        SessionForkContextPolicy
 	sessionForkState          SessionForkProviderStateBinder
 	sessionForkAttachments    SessionForkAttachmentStager
@@ -112,6 +114,8 @@ type Host struct {
 	workspaceRuntimeAdmission *workspaceRuntimeAdmission
 	editRetryDisabled         bool
 	goalFencesRestored        sync.Map
+	sideMu                    sync.Mutex
+	sideConversations         map[string]sideConversationRegistration
 }
 
 func New(config Config) *Host {
@@ -131,6 +135,7 @@ func New(config Config) *Host {
 		deletedSessions: config.DeletedSessions,
 		sessionForks:    config.SessionForks, sessionForkRuntime: config.SessionForkRuntime,
 		historicalState:    config.HistoricalState,
+		sideRuntime:        config.SideConversationRuntime,
 		sessionForkContext: config.SessionForkContext, sessionForkState: config.SessionForkState,
 		sessionForkAttachments: config.SessionForkAttachments,
 		runtime:                config.Runtime,
@@ -149,6 +154,7 @@ func New(config Config) *Host {
 		goalActor: goalActor, sessionMutationActor: sessionMutationActor,
 		workspaceRuntimeAdmission: newWorkspaceRuntimeAdmission(),
 		editRetryDisabled:         config.EditRetryDisabled,
+		sideConversations:         make(map[string]sideConversationRegistration),
 	}
 	if host.runtimeRailPlacement == nil {
 		host.runtimeRailPlacement, _ = host.store.(RuntimeSessionRailPlacementResolver)

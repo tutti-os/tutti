@@ -14,11 +14,11 @@ import (
 func (c *Controller) SubmitInteractive(ctx context.Context, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
 	rootAgentSessionID := strings.TrimSpace(input.RootAgentSessionID)
 	if rootAgentSessionID == "" {
-		return SubmitInteractiveResult{}, fmt.Errorf("root agent session id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: root agent session id is required", ErrInteractiveResponseInvalid)
 	}
 	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
 	if input.AgentSessionID == "" {
-		return SubmitInteractiveResult{}, fmt.Errorf("target agent session id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: target agent session id is required", ErrInteractiveResponseInvalid)
 	}
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, rootAgentSessionID)
 	if err != nil {

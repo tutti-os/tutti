@@ -2523,6 +2523,35 @@ test("shared tuttid client preserves connector market read and install routes", 
   });
 });
 
+test("shared tuttid client updates connector runtime activation", async () => {
+  const projected = { key: "notion", revision: 8 };
+  const { client, requests } = captureClient(() =>
+    jsonResponse(projected, 202)
+  );
+
+  assert.deepEqual(
+    await client.updateConnectorMarketConnectorRuntime("notion", {
+      clientRequestId: "runtime-1",
+      expectedRevision: 7,
+      expectedConnectorRevision: 6,
+      enabled: false
+    }),
+    projected
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: {
+      clientRequestId: "runtime-1",
+      expectedRevision: 7,
+      expectedConnectorRevision: 6,
+      enabled: false
+    },
+    method: "PUT",
+    path: "/v1/connector-market/connectors/notion/runtime",
+    query: {}
+  });
+});
+
 test("shared tuttid connector client cancels a pending authorization without a request body", async () => {
   const { client, requests } = captureClient(
     () => new Response(null, { status: 204 })

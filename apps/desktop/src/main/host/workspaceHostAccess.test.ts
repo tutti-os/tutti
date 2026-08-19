@@ -80,6 +80,9 @@ function createTransportClient(
     async listAgentTargets() {
       throw new Error("not used");
     },
+    async probeAgentTargetAccountUsage() {
+      throw new Error("not used");
+    },
     async listAutomationRules() {
       throw new Error("not used");
     },
@@ -642,6 +645,10 @@ test("workspace host access delegates workspace window handoff", async () => {
           events.push(`workspace:${workspaceID}`);
         }
       }),
+      getPrimaryWorkspaceWindowOptions: () => ({
+        windowKind: "workspace",
+        workspaceUiMode: "os"
+      }),
       tuttidClient: createTransportClient()
     })
   });
@@ -659,6 +666,10 @@ test("workspace host access delegates open workspace app folder without exposing
     },
     workspaceLaunch: createWorkspaceLaunch({
       adapters: createAdapters(),
+      getPrimaryWorkspaceWindowOptions: () => ({
+        windowKind: "workspace",
+        workspaceUiMode: "os"
+      }),
       tuttidClient: createTransportClient()
     })
   });

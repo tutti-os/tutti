@@ -125,6 +125,9 @@ type ComposerSettingsPatch struct {
 type ProviderRuntimeSession struct {
 	ID                      string
 	WorkspaceID             string
+	Scope                   RuntimeSessionScope
+	SourceAgentSessionID    string
+	SideRequestID           string
 	UserID                  string
 	AgentTargetID           string
 	Provider                string

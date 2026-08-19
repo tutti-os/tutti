@@ -595,6 +595,23 @@ func (a *CodexAppServerAdapter) execBlocking(
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadata)
 	appTurn.diagnostics.Start(trace)
+	tuttiModeHostContext := renderTuttiModeHostContext(
+		tuttiModeTurnSnapshotFromContext(ctx),
+	)
+	a.mu.Lock()
+	if session.IsSideConversation() {
+		if strings.TrimSpace(tuttiModeHostContext) == "" {
+			tuttiModeHostContext = appSession.tuttiModeHostContext
+		}
+	} else {
+		appSession.tuttiModeHostContext = tuttiModeHostContext
+	}
+	a.mu.Unlock()
+	if session.IsSideConversation() {
+		tuttiModeHostContext = strings.TrimSpace(
+			tuttiModeHostContext + "\n\n" + codexSideDeveloperInstructions,
+		)
+	}
 	turnParams := appServerTurnStartParams(
 		session,
 		appSession.threadID,
@@ -602,7 +619,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		appSession.planModeMask,
 		appSession.defaultModeMask,
 		execState.defaultModel,
-		renderTuttiModeHostContext(tuttiModeTurnSnapshotFromContext(ctx)),
+		tuttiModeHostContext,
 		a.config.commandNetworkAccess,
 	)
 	if clientUserMessageID := metadataString(execMetadata, "clientSubmitId"); clientUserMessageID != "" {

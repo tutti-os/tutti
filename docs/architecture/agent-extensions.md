@@ -5,8 +5,8 @@ Status: current implemented architecture
 Agent Extensions let independently released ACP agents integrate with Tutti
 without adding provider-specific executable code to this repository. An
 extension is declarative data: a manifest,
-discovery/tool/capability/composer/authentication profiles, locale resources,
-and static assets.
+discovery/tool/capability/composer/authentication/account-usage profiles, locale
+resources, and static assets.
 
 ## Trust And Distribution
 
@@ -127,6 +127,53 @@ prompt-free composer discovery session runs in the normalized selected project
 scope. When no project is selected, it uses the daemon-owned discovery directory
 under `<state>/agent/discovery/<provider>`, because standard ACP session creation
 requires a concrete working directory.
+
+### Provider-owned account usage
+
+An Extension may declare the optional `accountUsage` profile with schema
+`tutti.agent.account-usage-probe.v1`. The profile pins one exact npm or pnpm
+companion package, `node-script` entry below `${installRoot}`, fixed argv, and a
+bounded timeout. The Extension ZIP remains data-only: the companion is a
+separately published Provider-owned artifact with its own runtime identity,
+install root, activation, and verification lifecycle. It is never part of the
+primary ACP install command, runtime identity, activation, resolution, or
+adoption. A companion download, install, verification, or activation failure
+therefore leaves the Agent ready and only makes the account-usage endpoint
+return `runtime_unavailable`; a status read never downloads code. The
+independent reconciler persists a diagnostic-light failure record and its next
+bounded retry time, so daemon restart preserves backoff. Recovery deletes the
+record.
+
+Before every probe, tuttid verifies the fixed host Node interpreter and the
+ordinary in-root CommonJS script independently. The script is supplied to Node
+as the already verified bytes instead of executing an npm `.cmd`/shell shim or
+reopening the mutable script pathname. This is the same contract on Windows,
+macOS, and Linux. Fingerprinting and snapshot construction observe the probe
+context. Windows keeps one content-addressed, verified `node.exe` snapshot in
+daemon-private state and holds it against writes while probes reuse it; after a
+daemon restart the snapshot is verified once instead of copying the source
+interpreter again.
+
+Local Extension development may replace that managed companion with one
+explicit executable through
+`TUTTI_AGENT_EXTENSION_<KEY>_ACCOUNT_USAGE_EXECUTABLE`. This is accepted only
+for a development-mode installation with local-package provenance; the path
+must be an absolute, ordinary, non-symlinked, fingerprint-stable JavaScript
+file. The Node interpreter is still resolved and verified separately.
+Production ignores the override and continues to require the exact companion
+package pinned by the signed profile.
+
+The companion owns all Provider-private behavior, including config and
+credential lookup, OAuth issuer-to-usage-origin binding, endpoint paths,
+refresh timing, and response conversion. It prints only one bounded versioned
+JSON result to stdout; stderr is discarded at the process boundary. `tuttid`
+strictly decodes a closed `available | unsupported | error` result, attaches
+the exact Agent Target and provider identity, and exposes only stable error
+codes and normalized quota fields. Unknown fields, schemas, enums, malformed
+numbers, empty subscription success, and trailing output fail closed. Desktop
+and AgentGUI never select this capability by provider name and never receive
+tokens, configured endpoints, paths, raw response bodies, or Provider error
+text.
 
 ### Spawn Settings And ACP Workflow Modes
 

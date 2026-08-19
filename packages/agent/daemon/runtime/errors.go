@@ -18,6 +18,7 @@ var (
 	ErrSessionDisconnected           = errors.New("agent session is not connected")
 	ErrInteractiveRequestNotLive     = errors.New("interactive request is no longer live")
 	ErrInteractiveAlreadyAnswered    = errors.New("interactive request has already been answered")
+	ErrInteractiveResponseInvalid    = errors.New("interactive response is invalid")
 	ErrSessionNoActiveTurn           = errors.New("agent session has no active turn")
 	ErrCancelTargetMismatch          = errors.New("agent cancellation target is no longer active")
 	ErrActiveTurnTargetRequired      = errors.New("active-turn guidance requires an exact target turn")

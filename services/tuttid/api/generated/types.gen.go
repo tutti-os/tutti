@@ -772,6 +772,183 @@ func (e AgentSubmitDiagnosticsUiMode) Valid() bool {
 	}
 }
 
+// Defines values for AgentTargetAccountUsageAvailableResultOutcome.
+const (
+	AgentTargetAccountUsageAvailableResultOutcomeAvailable AgentTargetAccountUsageAvailableResultOutcome = "available"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageAvailableResultOutcome enum.
+func (e AgentTargetAccountUsageAvailableResultOutcome) Valid() bool {
+	switch e {
+	case AgentTargetAccountUsageAvailableResultOutcomeAvailable:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageAvailableResultSchemaVersion.
+const (
+	AgentTargetAccountUsageAvailableResultSchemaVersionTuttiAgentAccountUsageV1 AgentTargetAccountUsageAvailableResultSchemaVersion = "tutti.agent.account-usage.v1"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageAvailableResultSchemaVersion enum.
+func (e AgentTargetAccountUsageAvailableResultSchemaVersion) Valid() bool {
+	switch e {
+	case AgentTargetAccountUsageAvailableResultSchemaVersionTuttiAgentAccountUsageV1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageBillingMode.
+const (
+	Api          AgentTargetAccountUsageBillingMode = "api"
+	Subscription AgentTargetAccountUsageBillingMode = "subscription"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageBillingMode enum.
+func (e AgentTargetAccountUsageBillingMode) Valid() bool {
+	switch e {
+	case Api:
+		return true
+	case Subscription:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageErrorCode.
+const (
+	AgentTargetAccountUsageErrorCodeAuthRequired       AgentTargetAccountUsageErrorCode = "auth_required"
+	AgentTargetAccountUsageErrorCodeConfigInvalid      AgentTargetAccountUsageErrorCode = "config_invalid"
+	AgentTargetAccountUsageErrorCodeExecutionFailed    AgentTargetAccountUsageErrorCode = "execution_failed"
+	AgentTargetAccountUsageErrorCodeNoData             AgentTargetAccountUsageErrorCode = "no_data"
+	AgentTargetAccountUsageErrorCodeParseFailed        AgentTargetAccountUsageErrorCode = "parse_failed"
+	AgentTargetAccountUsageErrorCodeRateLimited        AgentTargetAccountUsageErrorCode = "rate_limited"
+	AgentTargetAccountUsageErrorCodeRuntimeUnavailable AgentTargetAccountUsageErrorCode = "runtime_unavailable"
+	AgentTargetAccountUsageErrorCodeSessionExpired     AgentTargetAccountUsageErrorCode = "session_expired"
+	AgentTargetAccountUsageErrorCodeTimeout            AgentTargetAccountUsageErrorCode = "timeout"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageErrorCode enum.
+func (e AgentTargetAccountUsageErrorCode) Valid() bool {
+	switch e {
+	case AgentTargetAccountUsageErrorCodeAuthRequired:
+		return true
+	case AgentTargetAccountUsageErrorCodeConfigInvalid:
+		return true
+	case AgentTargetAccountUsageErrorCodeExecutionFailed:
+		return true
+	case AgentTargetAccountUsageErrorCodeNoData:
+		return true
+	case AgentTargetAccountUsageErrorCodeParseFailed:
+		return true
+	case AgentTargetAccountUsageErrorCodeRateLimited:
+		return true
+	case AgentTargetAccountUsageErrorCodeRuntimeUnavailable:
+		return true
+	case AgentTargetAccountUsageErrorCodeSessionExpired:
+		return true
+	case AgentTargetAccountUsageErrorCodeTimeout:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageErrorResultOutcome.
+const (
+	AgentTargetAccountUsageErrorResultOutcomeError AgentTargetAccountUsageErrorResultOutcome = "error"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageErrorResultOutcome enum.
+func (e AgentTargetAccountUsageErrorResultOutcome) Valid() bool {
+	switch e {
+	case AgentTargetAccountUsageErrorResultOutcomeError:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageErrorResultSchemaVersion.
+const (
+	AgentTargetAccountUsageErrorResultSchemaVersionTuttiAgentAccountUsageV1 AgentTargetAccountUsageErrorResultSchemaVersion = "tutti.agent.account-usage.v1"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageErrorResultSchemaVersion enum.
+func (e AgentTargetAccountUsageErrorResultSchemaVersion) Valid() bool {
+	switch e {
+	case AgentTargetAccountUsageErrorResultSchemaVersionTuttiAgentAccountUsageV1:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageQuotaType.
+const (
+	Cost    AgentTargetAccountUsageQuotaType = "cost"
+	Daily   AgentTargetAccountUsageQuotaType = "daily"
+	Model   AgentTargetAccountUsageQuotaType = "model"
+	Monthly AgentTargetAccountUsageQuotaType = "monthly"
+	Session AgentTargetAccountUsageQuotaType = "session"
+	Weekly  AgentTargetAccountUsageQuotaType = "weekly"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageQuotaType enum.
+func (e AgentTargetAccountUsageQuotaType) Valid() bool {
+	switch e {
+	case Cost:
+		return true
+	case Daily:
+		return true
+	case Model:
+		return true
+	case Monthly:
+		return true
+	case Session:
+		return true
+	case Weekly:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageUnsupportedResultOutcome.
+const (
+	Unsupported AgentTargetAccountUsageUnsupportedResultOutcome = "unsupported"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageUnsupportedResultOutcome enum.
+func (e AgentTargetAccountUsageUnsupportedResultOutcome) Valid() bool {
+	switch e {
+	case Unsupported:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageUnsupportedResultSchemaVersion.
+const (
+	TuttiAgentAccountUsageV1 AgentTargetAccountUsageUnsupportedResultSchemaVersion = "tutti.agent.account-usage.v1"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageUnsupportedResultSchemaVersion enum.
+func (e AgentTargetAccountUsageUnsupportedResultSchemaVersion) Valid() bool {
+	switch e {
+	case TuttiAgentAccountUsageV1:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentTargetBuiltinLocalLaunchRefType.
 const (
 	AgentTargetBuiltinLocalLaunchRefTypeBuiltinLocal AgentTargetBuiltinLocalLaunchRefType = "builtin_local"
@@ -1735,6 +1912,30 @@ func (e ConnectorMarketReleaseStatus) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketRuntimeState.
+const (
+	ConnectorMarketRuntimeStateFailed   ConnectorMarketRuntimeState = "failed"
+	ConnectorMarketRuntimeStateStarted  ConnectorMarketRuntimeState = "started"
+	ConnectorMarketRuntimeStateStarting ConnectorMarketRuntimeState = "starting"
+	ConnectorMarketRuntimeStateStopped  ConnectorMarketRuntimeState = "stopped"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketRuntimeState enum.
+func (e ConnectorMarketRuntimeState) Valid() bool {
+	switch e {
+	case ConnectorMarketRuntimeStateFailed:
+		return true
+	case ConnectorMarketRuntimeStateStarted:
+		return true
+	case ConnectorMarketRuntimeStateStarting:
+		return true
+	case ConnectorMarketRuntimeStateStopped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateIssueManagerImageAttachmentRequestMimeType.
 const (
 	IssueAttachmentMimeTypeJPEG CreateIssueManagerImageAttachmentRequestMimeType = "image/jpeg"
@@ -2005,6 +2206,24 @@ func (e DesktopMinimizeAnimation) Valid() bool {
 	case DesktopMinimizeAnimationOff:
 		return true
 	case DesktopMinimizeAnimationScale:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for DesktopPreferencesWriteMode.
+const (
+	DesktopPreferencesWriteModeInitializeIfAbsent DesktopPreferencesWriteMode = "initializeIfAbsent"
+	DesktopPreferencesWriteModeReplace            DesktopPreferencesWriteMode = "replace"
+)
+
+// Valid indicates whether the value is a known member of the DesktopPreferencesWriteMode enum.
+func (e DesktopPreferencesWriteMode) Valid() bool {
+	switch e {
+	case DesktopPreferencesWriteModeInitializeIfAbsent:
+		return true
+	case DesktopPreferencesWriteModeReplace:
 		return true
 	default:
 		return false
@@ -4407,19 +4626,19 @@ func (e WorkspaceGitPatchErrorCode) Valid() bool {
 
 // Defines values for WorkspaceGitPatchStatus.
 const (
-	Error          WorkspaceGitPatchStatus = "error"
-	PartialSuccess WorkspaceGitPatchStatus = "partial-success"
-	Success        WorkspaceGitPatchStatus = "success"
+	WorkspaceGitPatchStatusError          WorkspaceGitPatchStatus = "error"
+	WorkspaceGitPatchStatusPartialSuccess WorkspaceGitPatchStatus = "partial-success"
+	WorkspaceGitPatchStatusSuccess        WorkspaceGitPatchStatus = "success"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceGitPatchStatus enum.
 func (e WorkspaceGitPatchStatus) Valid() bool {
 	switch e {
-	case Error:
+	case WorkspaceGitPatchStatusError:
 		return true
-	case PartialSuccess:
+	case WorkspaceGitPatchStatusPartialSuccess:
 		return true
-	case Success:
+	case WorkspaceGitPatchStatusSuccess:
 		return true
 	default:
 		return false
@@ -4638,25 +4857,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
-	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
-	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
-	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
-	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
+	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
+	Failed    WorkspaceWorkflowOperationStatus = "failed"
+	Pending   WorkspaceWorkflowOperationStatus = "pending"
+	Running   WorkspaceWorkflowOperationStatus = "running"
+	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case WorkspaceWorkflowOperationStatusCanceled:
+	case Canceled:
 		return true
-	case WorkspaceWorkflowOperationStatusFailed:
+	case Failed:
 		return true
-	case WorkspaceWorkflowOperationStatusPending:
+	case Pending:
 		return true
-	case WorkspaceWorkflowOperationStatusRunning:
+	case Running:
 		return true
-	case WorkspaceWorkflowOperationStatusSucceeded:
+	case Succeeded:
 		return true
 	default:
 		return false
@@ -5673,6 +5892,76 @@ type AgentTarget struct {
 	UpdatedAtUnixMs int64                      `json:"updatedAtUnixMs"`
 }
 
+// AgentTargetAccountUsageAvailableResult defines model for AgentTargetAccountUsageAvailableResult.
+type AgentTargetAccountUsageAvailableResult struct {
+	AgentTargetId    string                                              `json:"agentTargetId"`
+	BillingMode      AgentTargetAccountUsageBillingMode                  `json:"billingMode"`
+	CapturedAtUnixMs int64                                               `json:"capturedAtUnixMs"`
+	Outcome          AgentTargetAccountUsageAvailableResultOutcome       `json:"outcome"`
+	Provider         AgentTargetProvider                                 `json:"provider"`
+	Quotas           []AgentTargetAccountUsageQuota                      `json:"quotas"`
+	SchemaVersion    AgentTargetAccountUsageAvailableResultSchemaVersion `json:"schemaVersion"`
+}
+
+// AgentTargetAccountUsageAvailableResultOutcome defines model for AgentTargetAccountUsageAvailableResult.Outcome.
+type AgentTargetAccountUsageAvailableResultOutcome string
+
+// AgentTargetAccountUsageAvailableResultSchemaVersion defines model for AgentTargetAccountUsageAvailableResult.SchemaVersion.
+type AgentTargetAccountUsageAvailableResultSchemaVersion string
+
+// AgentTargetAccountUsageBillingMode defines model for AgentTargetAccountUsageBillingMode.
+type AgentTargetAccountUsageBillingMode string
+
+// AgentTargetAccountUsageErrorCode defines model for AgentTargetAccountUsageErrorCode.
+type AgentTargetAccountUsageErrorCode string
+
+// AgentTargetAccountUsageErrorResult defines model for AgentTargetAccountUsageErrorResult.
+type AgentTargetAccountUsageErrorResult struct {
+	AgentTargetId    string                                          `json:"agentTargetId"`
+	CapturedAtUnixMs int64                                           `json:"capturedAtUnixMs"`
+	ErrorCode        AgentTargetAccountUsageErrorCode                `json:"errorCode"`
+	Outcome          AgentTargetAccountUsageErrorResultOutcome       `json:"outcome"`
+	Provider         AgentTargetProvider                             `json:"provider"`
+	SchemaVersion    AgentTargetAccountUsageErrorResultSchemaVersion `json:"schemaVersion"`
+}
+
+// AgentTargetAccountUsageErrorResultOutcome defines model for AgentTargetAccountUsageErrorResult.Outcome.
+type AgentTargetAccountUsageErrorResultOutcome string
+
+// AgentTargetAccountUsageErrorResultSchemaVersion defines model for AgentTargetAccountUsageErrorResult.SchemaVersion.
+type AgentTargetAccountUsageErrorResultSchemaVersion string
+
+// AgentTargetAccountUsageProbeResult defines model for AgentTargetAccountUsageProbeResult.
+type AgentTargetAccountUsageProbeResult struct {
+	union json.RawMessage
+}
+
+// AgentTargetAccountUsageQuota defines model for AgentTargetAccountUsageQuota.
+type AgentTargetAccountUsageQuota struct {
+	ModelName        *string                          `json:"modelName,omitempty"`
+	PercentRemaining float32                          `json:"percentRemaining"`
+	QuotaType        AgentTargetAccountUsageQuotaType `json:"quotaType"`
+	ResetsAtUnixMs   *int64                           `json:"resetsAtUnixMs,omitempty"`
+}
+
+// AgentTargetAccountUsageQuotaType defines model for AgentTargetAccountUsageQuotaType.
+type AgentTargetAccountUsageQuotaType string
+
+// AgentTargetAccountUsageUnsupportedResult defines model for AgentTargetAccountUsageUnsupportedResult.
+type AgentTargetAccountUsageUnsupportedResult struct {
+	AgentTargetId    string                                                `json:"agentTargetId"`
+	CapturedAtUnixMs int64                                                 `json:"capturedAtUnixMs"`
+	Outcome          AgentTargetAccountUsageUnsupportedResultOutcome       `json:"outcome"`
+	Provider         AgentTargetProvider                                   `json:"provider"`
+	SchemaVersion    AgentTargetAccountUsageUnsupportedResultSchemaVersion `json:"schemaVersion"`
+}
+
+// AgentTargetAccountUsageUnsupportedResultOutcome defines model for AgentTargetAccountUsageUnsupportedResult.Outcome.
+type AgentTargetAccountUsageUnsupportedResultOutcome string
+
+// AgentTargetAccountUsageUnsupportedResultSchemaVersion defines model for AgentTargetAccountUsageUnsupportedResult.SchemaVersion.
+type AgentTargetAccountUsageUnsupportedResultSchemaVersion string
+
 // AgentTargetAuthMethod defines model for AgentTargetAuthMethod.
 type AgentTargetAuthMethod struct {
 	Description *string `json:"description,omitempty"`
@@ -6359,6 +6648,7 @@ type ConnectorMarketConnector struct {
 	Key           string                       `json:"key"`
 	Release       ConnectorMarketRelease       `json:"release"`
 	Revision      int64                        `json:"revision"`
+	Runtime       *ConnectorMarketRuntime      `json:"runtime,omitempty"`
 }
 
 // ConnectorMarketConnectorResponse defines model for ConnectorMarketConnectorResponse.
@@ -6492,6 +6782,23 @@ type ConnectorMarketReleaseSchemaVersion string
 
 // ConnectorMarketReleaseStatus defines model for ConnectorMarketRelease.Status.
 type ConnectorMarketReleaseStatus string
+
+// ConnectorMarketRuntime defines model for ConnectorMarketRuntime.
+type ConnectorMarketRuntime struct {
+	FailureCode *string                     `json:"failureCode,omitempty"`
+	State       ConnectorMarketRuntimeState `json:"state"`
+}
+
+// ConnectorMarketRuntimeState defines model for ConnectorMarketRuntime.State.
+type ConnectorMarketRuntimeState string
+
+// ConnectorMarketRuntimeMutationRequest defines model for ConnectorMarketRuntimeMutationRequest.
+type ConnectorMarketRuntimeMutationRequest struct {
+	ClientRequestId           string `json:"clientRequestId"`
+	Enabled                   bool   `json:"enabled"`
+	ExpectedConnectorRevision *int64 `json:"expectedConnectorRevision,omitempty"`
+	ExpectedRevision          int64  `json:"expectedRevision"`
+}
 
 // ConnectorMarketSnapshot defines model for ConnectorMarketSnapshot.
 type ConnectorMarketSnapshot struct {
@@ -6967,6 +7274,9 @@ type DesktopPreferencesStateResponse struct {
 	Initialized bool               `json:"initialized"`
 	Preferences DesktopPreferences `json:"preferences"`
 }
+
+// DesktopPreferencesWriteMode replace performs the normal full preference update, and omitting writeMode is equivalent to replace. initializeIfAbsent atomically creates the preference row only when it does not exist after applying the daemon-owned Agent workspace-mode default to the supplied preferences. If the row already exists, it returns the authoritative stored preferences unchanged.
+type DesktopPreferencesWriteMode string
 
 // DesktopSleepPreventionMode defines model for DesktopSleepPreventionMode.
 type DesktopSleepPreventionMode string
@@ -7966,6 +8276,12 @@ type MoveWorkspaceFileEntryRequest struct {
 	TargetDirectoryPath string `json:"targetDirectoryPath"`
 }
 
+// OpenWorkspaceAgentSideConversationRequest defines model for OpenWorkspaceAgentSideConversationRequest.
+type OpenWorkspaceAgentSideConversationRequest struct {
+	RequestId          string `json:"requestId"`
+	SideAgentSessionId string `json:"sideAgentSessionId"`
+}
+
 // PermissionConfig defines model for PermissionConfig.
 type PermissionConfig struct {
 	Configurable bool                   `json:"configurable"`
@@ -8056,6 +8372,9 @@ type PutAutomationRuleRequest struct {
 // PutDesktopPreferencesRequest defines model for PutDesktopPreferencesRequest.
 type PutDesktopPreferencesRequest struct {
 	Preferences DesktopPreferences `json:"preferences"`
+
+	// WriteMode replace performs the normal full preference update, and omitting writeMode is equivalent to replace. initializeIfAbsent atomically creates the preference row only when it does not exist after applying the daemon-owned Agent workspace-mode default to the supplied preferences. If the row already exists, it returns the authoritative stored preferences unchanged.
+	WriteMode *DesktopPreferencesWriteMode `json:"writeMode,omitempty"`
 }
 
 // PutModelPlanRequest defines model for PutModelPlanRequest.
@@ -8202,6 +8521,14 @@ type SendWorkspaceAgentSessionInputTurnResponse struct {
 // SendWorkspaceAgentSessionInputTurnResponseKind defines model for SendWorkspaceAgentSessionInputTurnResponse.Kind.
 type SendWorkspaceAgentSessionInputTurnResponseKind string
 
+// SendWorkspaceAgentSideConversationInputRequest defines model for SendWorkspaceAgentSideConversationInputRequest.
+type SendWorkspaceAgentSideConversationInputRequest struct {
+	ClientSubmitId string                    `json:"clientSubmitId"`
+	Content        []AgentPromptContentBlock `json:"content"`
+	DisplayPrompt  *string                   `json:"displayPrompt,omitempty"`
+	TurnId         string                    `json:"turnId"`
+}
+
 // SetAgentModelBindingRequest defines model for SetAgentModelBindingRequest.
 type SetAgentModelBindingRequest struct {
 	// DefaultModel Must belong to the referenced plan's model list when a plan is set.
@@ -8286,6 +8613,13 @@ type SubmitWorkspaceAgentPlanDecisionRequestAction string
 
 // SubmitWorkspaceAgentPlanDecisionRequestPromptKind defines model for SubmitWorkspaceAgentPlanDecisionRequest.PromptKind.
 type SubmitWorkspaceAgentPlanDecisionRequestPromptKind string
+
+// SubmitWorkspaceAgentSideConversationInteractiveRequest defines model for SubmitWorkspaceAgentSideConversationInteractiveRequest.
+type SubmitWorkspaceAgentSideConversationInteractiveRequest struct {
+	Action   *string                 `json:"action,omitempty"`
+	OptionId *string                 `json:"optionId,omitempty"`
+	Payload  *map[string]interface{} `json:"payload,omitempty"`
+}
 
 // SwitchTuttiModeGoalReviewToSelfRequest defines model for SwitchTuttiModeGoalReviewToSelfRequest.
 type SwitchTuttiModeGoalReviewToSelfRequest struct {
@@ -9361,6 +9695,54 @@ type WorkspaceAgentSessionWorktreeSupportResponse struct {
 	ErrorCode *WorkspaceAgentSessionWorktreeSupportErrorCode `json:"errorCode,omitempty"`
 	Root      *string                                        `json:"root,omitempty"`
 	Supported bool                                           `json:"supported"`
+}
+
+// WorkspaceAgentSideCapabilities defines model for WorkspaceAgentSideCapabilities.
+type WorkspaceAgentSideCapabilities struct {
+	ActiveSourceTurn      bool `json:"activeSourceTurn"`
+	Ephemeral             bool `json:"ephemeral"`
+	HideInheritedTurns    bool `json:"hideInheritedTurns"`
+	ModelBoundaryInjected bool `json:"modelBoundaryInjected"`
+	Supported             bool `json:"supported"`
+}
+
+// WorkspaceAgentSideCapabilitiesResponse defines model for WorkspaceAgentSideCapabilitiesResponse.
+type WorkspaceAgentSideCapabilitiesResponse struct {
+	Capabilities WorkspaceAgentSideCapabilities `json:"capabilities"`
+}
+
+// WorkspaceAgentSideConversation defines model for WorkspaceAgentSideConversation.
+type WorkspaceAgentSideConversation struct {
+	Capabilities         WorkspaceAgentSideCapabilities `json:"capabilities"`
+	Provider             string                         `json:"provider"`
+	SideAgentSessionId   string                         `json:"sideAgentSessionId"`
+	SourceAgentSessionId string                         `json:"sourceAgentSessionId"`
+	Status               string                         `json:"status"`
+	WorkspaceId          string                         `json:"workspaceId"`
+}
+
+// WorkspaceAgentSideConversationResponse defines model for WorkspaceAgentSideConversationResponse.
+type WorkspaceAgentSideConversationResponse struct {
+	Side WorkspaceAgentSideConversation `json:"side"`
+}
+
+// WorkspaceAgentSideInteractiveResponse defines model for WorkspaceAgentSideInteractiveResponse.
+type WorkspaceAgentSideInteractiveResponse struct {
+	Disposition string `json:"disposition"`
+}
+
+// WorkspaceAgentSideTurnCancelResponse defines model for WorkspaceAgentSideTurnCancelResponse.
+type WorkspaceAgentSideTurnCancelResponse struct {
+	Canceled     bool `json:"canceled"`
+	TargetAbsent bool `json:"targetAbsent"`
+}
+
+// WorkspaceAgentSideTurnResponse defines model for WorkspaceAgentSideTurnResponse.
+type WorkspaceAgentSideTurnResponse struct {
+	Accepted           bool   `json:"accepted"`
+	SideAgentSessionId string `json:"sideAgentSessionId"`
+	Status             string `json:"status"`
+	TurnId             string `json:"turnId"`
 }
 
 // WorkspaceAgentSource Origin of the workspace Agent configuration. legacy_binding rows were migrated from the former fixed-target binding model.
@@ -10731,6 +11113,9 @@ type DisconnectConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketMuta
 // StartConnectorMarketAuthorizationJSONRequestBody defines body for StartConnectorMarketAuthorization for application/json ContentType.
 type StartConnectorMarketAuthorizationJSONRequestBody = ConnectorMarketAuthorizationRequest
 
+// UpdateConnectorMarketConnectorRuntimeJSONRequestBody defines body for UpdateConnectorMarketConnectorRuntime for application/json ContentType.
+type UpdateConnectorMarketConnectorRuntimeJSONRequestBody = ConnectorMarketRuntimeMutationRequest
+
 // InstallConnectorMarketConnectorJSONRequestBody defines body for InstallConnectorMarketConnector for application/json ContentType.
 type InstallConnectorMarketConnectorJSONRequestBody = ConnectorMarketMutationRequest
 
@@ -10827,6 +11212,9 @@ type UpdateWorkspaceAgentSessionPinJSONRequestBody = UpdateWorkspaceAgentSession
 // UpdateWorkspaceAgentSessionSettingsJSONRequestBody defines body for UpdateWorkspaceAgentSessionSettings for application/json ContentType.
 type UpdateWorkspaceAgentSessionSettingsJSONRequestBody = AgentSessionComposerSettings
 
+// OpenWorkspaceAgentSideConversationJSONRequestBody defines body for OpenWorkspaceAgentSideConversation for application/json ContentType.
+type OpenWorkspaceAgentSideConversationJSONRequestBody = OpenWorkspaceAgentSideConversationRequest
+
 // UpdateWorkspaceAgentSessionTitleJSONRequestBody defines body for UpdateWorkspaceAgentSessionTitle for application/json ContentType.
 type UpdateWorkspaceAgentSessionTitleJSONRequestBody = UpdateWorkspaceAgentSessionTitleRequest
 
@@ -10841,6 +11229,12 @@ type UpdateWorkspaceAgentSessionTuttiModeActivationJSONRequestBody = UpdateTutti
 
 // UpdateWorkspaceAgentSessionVisibilityJSONRequestBody defines body for UpdateWorkspaceAgentSessionVisibility for application/json ContentType.
 type UpdateWorkspaceAgentSessionVisibilityJSONRequestBody = UpdateWorkspaceAgentSessionVisibilityRequest
+
+// SendWorkspaceAgentSideConversationInputJSONRequestBody defines body for SendWorkspaceAgentSideConversationInput for application/json ContentType.
+type SendWorkspaceAgentSideConversationInputJSONRequestBody = SendWorkspaceAgentSideConversationInputRequest
+
+// SubmitWorkspaceAgentSideConversationInteractiveJSONRequestBody defines body for SubmitWorkspaceAgentSideConversationInteractive for application/json ContentType.
+type SubmitWorkspaceAgentSideConversationInteractiveJSONRequestBody = SubmitWorkspaceAgentSideConversationInteractiveRequest
 
 // AuthenticateAgentTargetRuntimeJSONRequestBody defines body for AuthenticateAgentTargetRuntime for application/json ContentType.
 type AuthenticateAgentTargetRuntimeJSONRequestBody = AuthenticateAgentTargetRuntimeRequest
@@ -11027,6 +11421,125 @@ type PutWorkspaceWorkbenchJSONRequestBody = PutWorkspaceWorkbenchRequest
 
 // DecideWorkspaceWorkflowCheckpointJSONRequestBody defines body for DecideWorkspaceWorkflowCheckpoint for application/json ContentType.
 type DecideWorkspaceWorkflowCheckpointJSONRequestBody = DecideWorkspaceWorkflowCheckpointRequest
+
+// AsAgentTargetAccountUsageAvailableResult returns the union data inside the AgentTargetAccountUsageProbeResult as a AgentTargetAccountUsageAvailableResult
+func (t AgentTargetAccountUsageProbeResult) AsAgentTargetAccountUsageAvailableResult() (AgentTargetAccountUsageAvailableResult, error) {
+	var body AgentTargetAccountUsageAvailableResult
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentTargetAccountUsageAvailableResult overwrites any union data inside the AgentTargetAccountUsageProbeResult as the provided AgentTargetAccountUsageAvailableResult
+func (t *AgentTargetAccountUsageProbeResult) FromAgentTargetAccountUsageAvailableResult(v AgentTargetAccountUsageAvailableResult) error {
+	v.Outcome = "available"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentTargetAccountUsageAvailableResult performs a merge with any union data inside the AgentTargetAccountUsageProbeResult, using the provided AgentTargetAccountUsageAvailableResult
+func (t *AgentTargetAccountUsageProbeResult) MergeAgentTargetAccountUsageAvailableResult(v AgentTargetAccountUsageAvailableResult) error {
+	v.Outcome = "available"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAgentTargetAccountUsageUnsupportedResult returns the union data inside the AgentTargetAccountUsageProbeResult as a AgentTargetAccountUsageUnsupportedResult
+func (t AgentTargetAccountUsageProbeResult) AsAgentTargetAccountUsageUnsupportedResult() (AgentTargetAccountUsageUnsupportedResult, error) {
+	var body AgentTargetAccountUsageUnsupportedResult
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentTargetAccountUsageUnsupportedResult overwrites any union data inside the AgentTargetAccountUsageProbeResult as the provided AgentTargetAccountUsageUnsupportedResult
+func (t *AgentTargetAccountUsageProbeResult) FromAgentTargetAccountUsageUnsupportedResult(v AgentTargetAccountUsageUnsupportedResult) error {
+	v.Outcome = "unsupported"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentTargetAccountUsageUnsupportedResult performs a merge with any union data inside the AgentTargetAccountUsageProbeResult, using the provided AgentTargetAccountUsageUnsupportedResult
+func (t *AgentTargetAccountUsageProbeResult) MergeAgentTargetAccountUsageUnsupportedResult(v AgentTargetAccountUsageUnsupportedResult) error {
+	v.Outcome = "unsupported"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+// AsAgentTargetAccountUsageErrorResult returns the union data inside the AgentTargetAccountUsageProbeResult as a AgentTargetAccountUsageErrorResult
+func (t AgentTargetAccountUsageProbeResult) AsAgentTargetAccountUsageErrorResult() (AgentTargetAccountUsageErrorResult, error) {
+	var body AgentTargetAccountUsageErrorResult
+	err := json.Unmarshal(t.union, &body)
+	return body, err
+}
+
+// FromAgentTargetAccountUsageErrorResult overwrites any union data inside the AgentTargetAccountUsageProbeResult as the provided AgentTargetAccountUsageErrorResult
+func (t *AgentTargetAccountUsageProbeResult) FromAgentTargetAccountUsageErrorResult(v AgentTargetAccountUsageErrorResult) error {
+	v.Outcome = "error"
+	b, err := json.Marshal(v)
+	t.union = b
+	return err
+}
+
+// MergeAgentTargetAccountUsageErrorResult performs a merge with any union data inside the AgentTargetAccountUsageProbeResult, using the provided AgentTargetAccountUsageErrorResult
+func (t *AgentTargetAccountUsageProbeResult) MergeAgentTargetAccountUsageErrorResult(v AgentTargetAccountUsageErrorResult) error {
+	v.Outcome = "error"
+	b, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+
+	merged, err := runtime.JSONMerge(t.union, b)
+	t.union = merged
+	return err
+}
+
+func (t AgentTargetAccountUsageProbeResult) Discriminator() (string, error) {
+	var discriminator struct {
+		Discriminator string `json:"outcome"`
+	}
+	err := json.Unmarshal(t.union, &discriminator)
+	return discriminator.Discriminator, err
+}
+
+func (t AgentTargetAccountUsageProbeResult) ValueByDiscriminator() (interface{}, error) {
+	discriminator, err := t.Discriminator()
+	if err != nil {
+		return nil, err
+	}
+	switch discriminator {
+	case "available":
+		return t.AsAgentTargetAccountUsageAvailableResult()
+	case "error":
+		return t.AsAgentTargetAccountUsageErrorResult()
+	case "unsupported":
+		return t.AsAgentTargetAccountUsageUnsupportedResult()
+	default:
+		return nil, errors.New("unknown discriminator value: " + discriminator)
+	}
+}
+
+func (t AgentTargetAccountUsageProbeResult) MarshalJSON() ([]byte, error) {
+	b, err := t.union.MarshalJSON()
+	return b, err
+}
+
+func (t *AgentTargetAccountUsageProbeResult) UnmarshalJSON(b []byte) error {
+	err := t.union.UnmarshalJSON(b)
+	return err
+}
 
 // AsAgentTargetBuiltinLocalLaunchRef returns the union data inside the AgentTargetLaunchRef as a AgentTargetBuiltinLocalLaunchRef
 func (t AgentTargetLaunchRef) AsAgentTargetBuiltinLocalLaunchRef() (AgentTargetBuiltinLocalLaunchRef, error) {

@@ -89,6 +89,7 @@ import {
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   isFeatureEnabled,
+  LAB_AGENT_SIDE_CONVERSATION_FLAG,
   LAB_CODEX_SAVER_MODE_FLAG,
   LAB_CONNECTORS_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
@@ -105,6 +106,7 @@ const AgentSessionReplayNodeReadiness = lazy(() =>
 
 function DesktopAgentGUISurfaceImpl({
   agentActivityRuntime: hostAgentActivityRuntime,
+  agentSideConversationRuntime = null,
   agentHostApi,
   agentSessionReplayService,
   agentStatusSource,
@@ -585,6 +587,11 @@ function DesktopAgentGUISurfaceImpl({
     AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
   );
   const sessionInputHistoryEnabled = true;
+  const sideConversationEnabled = isFeatureEnabled(
+    desktopPreferencesState.changingFeatureFlags ??
+      desktopPreferencesState.featureFlags,
+    LAB_AGENT_SIDE_CONVERSATION_FLAG
+  );
   const codexSaverModeEntryEnabled = isFeatureEnabled(
     desktopPreferencesState.featureFlags,
     LAB_CODEX_SAVER_MODE_FLAG
@@ -661,6 +668,7 @@ function DesktopAgentGUISurfaceImpl({
     },
     hostCapabilities: {
       referenceProvenanceFilterEnabled,
+      sideConversationEnabled,
       sessionInputHistoryEnabled,
       sessionWorktreeEnabled: true,
       sessionLaunchModesByProjectSectionKey,
@@ -723,7 +731,11 @@ function DesktopAgentGUISurfaceImpl({
         allAgentsPresentation={allAgentsPresentation}
         renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}
+        agentSideConversationRuntime={
+          sideConversationEnabled ? agentSideConversationRuntime : null
+        }
         agentHostApi={agentHostApiWithToast}
+        disabled={["clone-github-repository"]}
         tuttiModePlanReviewRuntime={
           capabilityMenuState?.tuttiMode?.enabled === false
             ? null

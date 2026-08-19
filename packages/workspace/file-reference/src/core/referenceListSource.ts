@@ -1,4 +1,5 @@
 import type {
+  LoadSidebarGroupsResult,
   ListChildrenResult,
   NodeRef,
   ReferenceHandle,
@@ -167,9 +168,28 @@ export function createReferenceListSource(
     capabilities,
     isAvailable,
 
+    async loadSidebarGroups(
+      scope,
+      { cursor, signal }
+    ): Promise<LoadSidebarGroupsResult> {
+      const result = await backend.list(scope, {
+        parentGroupId: null,
+        cursor: cursor ?? null,
+        filter: null,
+        signal
+      });
+      return {
+        entries: result.items
+          .filter((item): item is ReferenceListGroup => item.type === "group")
+          .map((item) => itemToNode(sourceId, item)),
+        nextCursor: result.nextCursor ?? null,
+        ...(input.preserveBackendOrder ? { ordered: true } : {})
+      };
+    },
+
     async listChildren(
       scope: ReferenceScope,
-      { node, cursor, filter }
+      { node, cursor, filter, signal }
     ): Promise<ListChildrenResult> {
       // file 节点没有子节点。
       if (node && node.nodeId.startsWith(FILE_PREFIX)) {
@@ -181,7 +201,8 @@ export function createReferenceListSource(
       const result = await backend.list(scope, {
         parentGroupId,
         cursor: cursor ?? null,
-        filter: filter ?? null
+        filter: filter ?? null,
+        signal
       });
       return {
         entries: result.items.map((item) => itemToNode(sourceId, item)),

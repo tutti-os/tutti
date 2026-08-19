@@ -8,6 +8,7 @@ No-mention default:
 
 - Without `mention://...`, do not treat this bundle alone as intent.
 - Use Tutti only when the user explicitly asks for Tutti, a Tutti workspace/app/issue/session capability, or a command described in this bundle.
+- Generic subagents use provider-native tools; `$tutti-handoff` is for explicit Tutti handoffs or `mention://agent-target/...`.
 
 Required mention routing:
 

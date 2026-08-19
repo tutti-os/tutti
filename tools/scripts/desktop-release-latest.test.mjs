@@ -34,10 +34,7 @@ test("desktop release latest metadata exposes CloudFront URLs for every asset", 
     assert.equal(latest.releasedAt, "2026-07-04T12:00:00.000Z");
     assert.equal(latest.gitSha, "537327a1");
     assert.equal(latest.sourceRef, "main");
-    assert.equal(
-      latest.releaseNotesUrl,
-      "https://github.com/tutti-os/tutti/releases/tag/v1.2.3"
-    );
+    assert.equal("releaseNotesUrl" in latest, false);
     assert.equal(
       latest.baseUrl,
       "https://d111111abcdef8.cloudfront.net/desktop-release-assets"

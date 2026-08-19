@@ -89,6 +89,44 @@ func TestReportRequestQueueKeepsSubmitProvenanceAsSameSessionBarrier(t *testing.
 	}
 }
 
+func TestReportRequestQueuePrioritizesCrossSessionBarrierWithoutReorderingSession(t *testing.T) {
+	t.Parallel()
+
+	queue := newReportRequestQueue()
+	queue.enqueue(streamingRequestForSession("session-1", 1))
+	barrier := terminalRequestForSession("session-2", 2)
+	barrier.done = make(chan error, 1)
+	queue.enqueue(barrier)
+
+	first, ok := queue.dequeue()
+	if !ok || first.report.Source.AgentID != "session-2" {
+		t.Fatalf("first report = %#v, want session-2 barrier", first)
+	}
+	second, ok := queue.dequeue()
+	if !ok || second.report.Source.AgentID != "session-1" {
+		t.Fatalf("second report = %#v, want session-1 streaming report", second)
+	}
+}
+
+func TestReportRequestQueueDoesNotLeapfrogEarlierSameSessionReport(t *testing.T) {
+	t.Parallel()
+
+	queue := newReportRequestQueue()
+	queue.enqueue(streamingRequestForSession("session-1", 1))
+	barrier := terminalRequestForSession("session-1", 2)
+	barrier.done = make(chan error, 1)
+	queue.enqueue(barrier)
+
+	first, ok := queue.dequeue()
+	if !ok || first.report.Source.AgentID != "session-1" || first.report.MessageUpdates[0].Status != messageStreamStateStreaming {
+		t.Fatalf("first report = %#v, want earlier same-session stream", first)
+	}
+	second, ok := queue.dequeue()
+	if !ok || second.report.MessageUpdates[0].Status != messageStreamStateCompleted {
+		t.Fatalf("second report = %#v, want same-session barrier", second)
+	}
+}
+
 func TestReportRequestQueueCoalescesToolOutputSnapshotsBeforeTheyBecomeBacklog(t *testing.T) {
 	t.Parallel()
 
@@ -137,6 +175,25 @@ func TestReportRequestQueueCoalescesInterleavedSessionsIndependently(t *testing.
 	depth := queue.enqueue(terminalRequestForSession("session-1", updateCount+1))
 	if depth != 3 {
 		t.Fatalf("queue depth = %d, want two coalesced sessions plus terminal", depth)
+	}
+}
+
+func BenchmarkReportRequestQueueInterleavedSessionBarriers(b *testing.B) {
+	const sessionCount = 1024
+	for iteration := 0; iteration < b.N; iteration++ {
+		queue := newReportRequestQueue()
+		for session := 0; session < sessionCount; session++ {
+			sessionID := fmt.Sprintf("session-%d", session)
+			queue.enqueue(streamingRequestForSession(sessionID, 1))
+			barrier := terminalRequestForSession(sessionID, 2)
+			barrier.done = make(chan error, 1)
+			queue.enqueue(barrier)
+		}
+		for {
+			if _, ok := queue.dequeue(); !ok {
+				break
+			}
+		}
 	}
 }
 

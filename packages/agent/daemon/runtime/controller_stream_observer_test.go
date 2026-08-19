@@ -13,6 +13,18 @@ type recordingRuntimeStreamObserver struct {
 	err    error
 }
 
+type recordingSideStreamCleanupObserver struct {
+	recordingRuntimeStreamObserver
+	forgotten []string
+}
+
+func (o *recordingSideStreamCleanupObserver) ForgetSideConversation(
+	workspaceID string,
+	agentSessionID string,
+) {
+	o.forgotten = append(o.forgotten, workspaceID+"/"+agentSessionID)
+}
+
 type filteringRuntimeStreamObserver struct {
 	recordingRuntimeStreamObserver
 }
@@ -87,6 +99,23 @@ func TestPublishStreamEventsObservesBeforeSessionFanout(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for session fanout")
+	}
+}
+
+func TestControllerSideStreamCleanupObserverIsNotifiedOnSessionRemoval(t *testing.T) {
+	controller := NewController(nil, nil)
+	observer := &recordingSideStreamCleanupObserver{}
+	controller.SetSideStreamEventObserver(observer)
+	session := Session{
+		RoomID: "workspace-1", AgentSessionID: "side-1",
+		Scope: RuntimeSessionScopeSide,
+	}
+	controller.store(session)
+
+	controller.removeRuntimeSession(session)
+
+	if len(observer.forgotten) != 1 || observer.forgotten[0] != "workspace-1/side-1" {
+		t.Fatalf("forgotten sessions = %#v, want [workspace-1/side-1]", observer.forgotten)
 	}
 }
 

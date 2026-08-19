@@ -13,6 +13,7 @@ import {
   isFeatureEnabled,
   labFeatureDefinitions,
   LAB_ENABLED_FLAG,
+  LAB_AGENT_SIDE_CONVERSATION_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
   LAB_CONNECTORS_FLAG,
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
@@ -98,6 +99,23 @@ test("experimental Agent features require independent Lab opt-ins", () => {
     assert.equal(isFeatureEnabled({}, flag), false);
     assert.equal(isFeatureEnabled({ [flag]: true }, flag), true);
   }
+});
+
+test("Side conversations stay disabled until the developer opts in", () => {
+  assert.equal(isFeatureEnabled({}, LAB_AGENT_SIDE_CONVERSATION_FLAG), false);
+  assert.equal(
+    isFeatureEnabled(
+      { [LAB_AGENT_SIDE_CONVERSATION_FLAG]: true },
+      LAB_AGENT_SIDE_CONVERSATION_FLAG
+    ),
+    true
+  );
+  assert.equal(
+    labFeatureDefinitions().some(
+      (definition) => definition.key === LAB_AGENT_SIDE_CONVERSATION_FLAG
+    ),
+    false
+  );
 });
 
 test("graduated Agent features are not registered as Lab flags", () => {

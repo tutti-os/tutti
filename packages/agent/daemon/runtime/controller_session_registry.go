@@ -131,6 +131,9 @@ func (c *Controller) Sessions(roomID string) []Session {
 		if strings.TrimSpace(session.RoomID) != roomID {
 			continue
 		}
+		if session.IsSideConversation() {
+			continue
+		}
 		if c.sessionPublicationPendingLocked(key) {
 			continue
 		}
@@ -499,7 +502,10 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 	c.publishConfigOptionsUpdates(session, pending)
 }
 
-func (c *Controller) publishConfigOptionsUpdates(session Session, pending []AgentSessionConfigOptionsUpdate) {
+func (c *Controller) publishConfigOptionsUpdates(
+	session Session,
+	pending []AgentSessionConfigOptionsUpdate,
+) {
 	if c == nil || len(pending) == 0 {
 		return
 	}
@@ -727,6 +733,13 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
 	c.sessions[foundKey] = session
+	provisional := c.provisionalSessions[foundKey]
+	if provisional && session.IsSideConversation() {
+		c.pendingSideEvents[foundKey] = append(
+			c.pendingSideEvents[foundKey],
+			events...,
+		)
+	}
 	if initialization := c.sessionInitializations[foundKey]; initialization != nil {
 		initialization.events = append(initialization.events, events...)
 	}

@@ -25,6 +25,10 @@ var (
 	ErrSkillBundleUnavailable           = errors.New("agent skill bundle renderer is unavailable")
 	ErrSessionSettingsRequireNewSession = errors.New("agent session settings update requires a new session to preserve context")
 	ErrSubmitDeliveryUnknown            = agenthost.ErrSubmitDeliveryUnknown
+	ErrSideConversationUnsupported      = agenthost.ErrSideConversationUnsupported
+	ErrSideConversationInProgress       = agenthost.ErrSideConversationInProgress
+	ErrSideConversationConflict         = agenthost.ErrSideConversationConflict
+	ErrSideConversationExpired          = agenthost.ErrSideConversationExpired
 )
 
 func NewService(runtime RuntimeController, configs ...ServiceConfig) *Service {

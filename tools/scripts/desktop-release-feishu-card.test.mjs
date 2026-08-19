@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildCardPayload,
+  buildCandidatePromotionElements,
   buildSummaryElements,
   loadRelease,
   resolveMirroredAssetUrl,
@@ -97,6 +98,35 @@ test("release Feishu card clearly marks candidates without claiming public publi
   assert.equal(extractFieldMap(payload).get("构建类型"), "Stable candidate");
   assert.equal(extractFieldMap(payload).has("Commit"), false);
   assert.equal(extractFieldMap(payload).has("部署分支"), false);
+
+  const promotionInstructions = payload.card.elements.find((element) =>
+    element.text?.content?.includes("发布审核操作")
+  );
+  assert.match(
+    promotionInstructions.text.content,
+    /Branch 选择 `release\/0704`/
+  );
+  assert.match(
+    promotionInstructions.text.content,
+    /`release_tag` 填写 `v1\.12\.20`/
+  );
+
+  const actionLabels = payload.card.elements
+    .find((element) => element.tag === "action")
+    .actions.map((action) => action.text.content);
+  assert.ok(actionLabels.includes("打开发布审核流水线"));
+  assert.ok(!actionLabels.includes("提交发布审核"));
+});
+
+test("release Feishu card omits promotion instructions without a workflow URL", () => {
+  assert.deepEqual(
+    buildCandidatePromotionElements({
+      branch: "release/0704",
+      promotionUrl: "",
+      tag: "v1.12.20"
+    }),
+    []
+  );
 });
 
 test("release Feishu card includes tsh-aligned release context fields", () => {

@@ -65,6 +65,33 @@ func TestCodexAppServerAdapterTurnStartAckTimeoutInvalidatesClient(t *testing.T)
 	}
 }
 
+func TestCodexSharedClientInvalidationExpiresEverySessionReference(t *testing.T) {
+	adapter, transport, parent := startedAppServerAdapter(t)
+	client := adapter.getSession(parent.AgentSessionID).client
+	side := parent
+	side.AgentSessionID = "side-shared"
+	side.ProviderSessionID = "codex-thread-side"
+	side.Scope = RuntimeSessionScopeSide
+	side.SourceAgentSessionID = parent.AgentSessionID
+	adapter.storeSession(side.AgentSessionID, &codexAppServerSession{
+		client: client, threadID: side.ProviderSessionID, runtimeSession: side,
+		acpLiveState: newACPLiveState(),
+	})
+
+	if !adapter.invalidateSessionClient(side.AgentSessionID, client) {
+		t.Fatal("shared client was not invalidated")
+	}
+	if adapter.HasLiveSession(parent) || adapter.HasLiveSession(side) {
+		t.Fatal("unhealthy shared client left a parent or Side reference live")
+	}
+	transport.conn.mu.Lock()
+	closeCount := transport.conn.closeCount
+	transport.conn.mu.Unlock()
+	if closeCount != 1 {
+		t.Fatalf("shared client close count = %d, want 1", closeCount)
+	}
+}
+
 func TestCodexAppServerAdapterTurnStartEOFProjectsVisibleFailureBeforeAcceptance(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })

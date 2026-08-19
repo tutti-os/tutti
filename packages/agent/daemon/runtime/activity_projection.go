@@ -117,7 +117,7 @@ func liveMessageDeltasFromSessionEvent(
 	status := strings.TrimSpace(stringFromPayload(event.Payload.Metadata, "streamState"))
 	data := liveprotocol.MessageDeltaData{
 		WorkspaceID:      strings.TrimSpace(session.RoomID),
-		AgentSessionID:   strings.TrimSpace(event.AgentSessionID),
+		AgentSessionID:   strings.TrimSpace(sessionID),
 		MessageID:        messageID,
 		TurnID:           strings.TrimSpace(event.Payload.TurnID),
 		Role:             strings.TrimSpace(stringFromPayload(event.Payload.Metadata, liveMessageRoleMetadataKey)),

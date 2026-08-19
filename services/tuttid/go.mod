@@ -21,13 +21,13 @@ require (
 	github.com/tutti-os/tutti/packages/analytics/reporter-go v0.0.0
 	github.com/tutti-os/tutti/packages/appcli/core v0.0.0
 	github.com/tutti-os/tutti/packages/auth/bridge-go v0.0.0
-	github.com/tutti-os/tutti/packages/clients/connector-controlplane v0.0.0
 	github.com/tutti-os/tutti/packages/clients/device-authority-go v0.0.0
 	github.com/tutti-os/tutti/packages/commerce v0.0.0
-	github.com/tutti-os/tutti/packages/connector/daemon v0.0.0
-	github.com/tutti-os/tutti/packages/connector/host v0.0.0
+	github.com/tutti-os/tutti/packages/connector/daemon/adapters/controlplane v0.0.0
+	github.com/tutti-os/tutti/packages/connector/daemon/adapters/sqlite v0.0.0
+	github.com/tutti-os/tutti/packages/connector/daemon/application v0.0.0
+	github.com/tutti-os/tutti/packages/connector/daemon/core v0.0.0
 	github.com/tutti-os/tutti/packages/connector/runtime v0.0.0
-	github.com/tutti-os/tutti/packages/connector/store-sqlite v0.0.0
 	github.com/tutti-os/tutti/packages/desktop/update-admission v0.0.0
 	github.com/tutti-os/tutti/packages/device-link v0.0.0
 	github.com/tutti-os/tutti/packages/events/stream-go v0.0.0
@@ -75,9 +75,13 @@ require (
 	github.com/eapache/go-xerial-snappy v0.0.0-20180814174437-776d5712da21 // indirect
 	github.com/eapache/queue v1.1.0 // indirect
 	github.com/getkin/kin-openapi v0.135.0 // indirect
+	github.com/go-kratos/aegis v0.2.0 // indirect
+	github.com/go-kratos/kratos/v2 v2.9.2 // indirect
 	github.com/go-openapi/jsonpointer v0.22.4 // indirect
 	github.com/go-openapi/swag/jsonname v0.25.4 // indirect
+	github.com/go-playground/form/v4 v4.2.0 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
+	github.com/gorilla/mux v1.8.1 // indirect
 	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
@@ -112,6 +116,7 @@ require (
 	github.com/speakeasy-api/jsonpath v0.6.3 // indirect
 	github.com/speakeasy-api/openapi v1.19.2 // indirect
 	github.com/tutti-os/tutti/packages/agent/activity-replication v0.0.0 // indirect
+	github.com/tutti-os/tutti/packages/clients/market-go v0.0.0 // indirect
 	github.com/vmware-labs/yaml-jsonpath v0.3.2 // indirect
 	github.com/volcengine/datarangers-sdk-go v1.1.8 // indirect
 	github.com/wlynxg/anet v0.0.5 // indirect
@@ -126,6 +131,9 @@ require (
 	golang.org/x/text v0.34.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
 	golang.org/x/tools v0.42.0 // indirect
+	google.golang.org/genproto/googleapis/api v0.0.0-20260128011058-8636f8732409 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260122232226-8e98ce8d340d // indirect
+	google.golang.org/grpc v1.76.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.0.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
@@ -140,19 +148,21 @@ replace github.com/tutti-os/tutti/packages/appcli/core => ../../packages/appcli/
 
 replace github.com/tutti-os/tutti/packages/auth/bridge-go => ../../packages/auth/bridge-go
 
-replace github.com/tutti-os/tutti/packages/clients/connector-controlplane => ../../packages/clients/connector-controlplane
-
 replace github.com/tutti-os/tutti/packages/clients/device-authority-go => ../../packages/clients/device-authority-go
 
 replace github.com/tutti-os/tutti/packages/commerce => ../../packages/commerce
 
-replace github.com/tutti-os/tutti/packages/connector/daemon => ../../packages/connector/daemon
+replace github.com/tutti-os/tutti/packages/clients/market-go => ../../packages/clients/market-go
 
-replace github.com/tutti-os/tutti/packages/connector/host => ../../packages/connector/host
+replace github.com/tutti-os/tutti/packages/connector/daemon/adapters/controlplane => ../../packages/connector/daemon/adapters/controlplane
+
+replace github.com/tutti-os/tutti/packages/connector/daemon/adapters/sqlite => ../../packages/connector/daemon/adapters/sqlite
+
+replace github.com/tutti-os/tutti/packages/connector/daemon/application => ../../packages/connector/daemon/application
+
+replace github.com/tutti-os/tutti/packages/connector/daemon/core => ../../packages/connector/daemon/core
 
 replace github.com/tutti-os/tutti/packages/connector/runtime => ../../packages/connector/runtime
-
-replace github.com/tutti-os/tutti/packages/connector/store-sqlite => ../../packages/connector/store-sqlite
 
 replace github.com/tutti-os/tutti/packages/device-link => ../../packages/device-link
 

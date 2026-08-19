@@ -94,14 +94,15 @@ type RuntimeAuthInvalidation interface {
 }
 
 type SetupService struct {
-	Plans            InstallPlanService
-	Transport        agentruntime.ProcessTransport
-	Host             agentruntime.HostMetadata
-	Actions          SetupActionStore
-	Discovery        SetupDiscoveryDirectory
-	Runner           InstallCommandRunner
-	UVToolchain      UVToolchainResolver
-	AuthInvalidation RuntimeAuthInvalidation
+	Plans                InstallPlanService
+	Transport            agentruntime.ProcessTransport
+	Host                 agentruntime.HostMetadata
+	Actions              SetupActionStore
+	AccountUsageFailures AccountUsageCompanionFailureStore
+	Discovery            SetupDiscoveryDirectory
+	Runner               InstallCommandRunner
+	UVToolchain          UVToolchainResolver
+	AuthInvalidation     RuntimeAuthInvalidation
 
 	mu           sync.Mutex
 	active       map[string]struct{}
@@ -109,6 +110,11 @@ type SetupService struct {
 	workerCancel context.CancelFunc
 	workers      sync.WaitGroup
 	closed       bool
+
+	accountUsageReconcileMu      sync.Mutex
+	accountUsageReconcilerActive bool
+	accountUsageReconcileWake    chan struct{}
+	accountUsageNow              func() time.Time
 
 	errMu     sync.Mutex
 	workerErr error
@@ -508,6 +514,13 @@ func (s *SetupService) Close() error {
 	}
 	s.mu.Unlock()
 	s.workers.Wait()
+	if s.Plans.Manager != nil {
+		if err := s.Plans.Manager.closeAccountUsageNodeScriptRunner(); err != nil {
+			s.errMu.Lock()
+			s.workerErr = errors.Join(s.workerErr, fmt.Errorf("close account usage Node snapshots: %w", err))
+			s.errMu.Unlock()
+		}
+	}
 	s.errMu.Lock()
 	defer s.errMu.Unlock()
 	return s.workerErr

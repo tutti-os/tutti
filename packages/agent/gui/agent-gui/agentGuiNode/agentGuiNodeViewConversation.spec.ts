@@ -97,9 +97,7 @@ describe("ConversationMeta", () => {
       })
     );
 
-    const meta = container.querySelector(
-      ".agent-gui-node__conversation-meta"
-    );
+    const meta = container.querySelector(".agent-gui-node__conversation-meta");
     expect(meta?.firstElementChild).toHaveClass(
       "agent-gui-node__conversation-worktree-glyph"
     );

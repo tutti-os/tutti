@@ -535,7 +535,7 @@ jobs:
           needs.build-windows.result == 'success' }}
     runs-on: ubuntu-latest
     outputs:
-      release_url: ${{ needs.resolve.outputs.release_candidate == 'true' && steps.stage-candidate-release.outputs.release_url || steps.stage-release.outputs.url }}
+      release_url: ${{ needs.resolve.outputs.release_candidate == 'true' && steps.resolve-candidate-release-url.outputs.release_url || steps.stage-release.outputs.url }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
@@ -543,6 +543,9 @@ jobs:
       TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
       TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
       TUTTI_DESKTOP_RELEASE_CHANNEL: ${{ needs.resolve.outputs.release_channel }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE: ${{ needs.resolve.outputs.release_candidate }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE_ID: ${{ needs.resolve.outputs.release_candidate_id }}
+      TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG: ${{ needs.resolve.outputs.release_candidate_tag }}
       TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
       TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
       TUTTI_DESKTOP_RELEASE_VERSION: ${{ needs.resolve.outputs.release_version }}
@@ -699,7 +702,7 @@ jobs:
               done
           fi
           gh release upload "${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}" release-assets/*
-          echo "release_url=$(jq -r .html_url staged-release.json)" >> "$GITHUB_OUTPUT"
+          echo "release_id=$(jq -r .id staged-release.json)" >> "$GITHUB_OUTPUT"
 
       - name: Install AWS CLI
         run: |
@@ -782,6 +785,20 @@ jobs:
             release-assets \
             updated-release-body.md
           gh release edit "${github_release_tag}" --notes-file updated-release-body.md
+
+      - id: resolve-candidate-release-url
+        name: Resolve current stable GitHub draft URL
+        if: ${{ needs.resolve.outputs.release_candidate == 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_ID: ${{ steps.stage-candidate-release.outputs.release_id }}
+        run: |
+          if [[ -z "${RELEASE_ID}" || "${RELEASE_ID}" == "null" ]]; then
+            echo "Stable GitHub draft release id is missing" >&2
+            exit 1
+          fi
+          release_url="$(gh api "repos/${GITHUB_REPOSITORY}/releases/${RELEASE_ID}" --jq .html_url)"
+          echo "release_url=${release_url}" >> "$GITHUB_OUTPUT"
 
   promote:
     name: Promote Release

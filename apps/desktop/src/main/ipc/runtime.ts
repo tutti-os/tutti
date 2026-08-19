@@ -34,6 +34,7 @@ export function registerRuntimeIpc(
     | "getAgentSessionReplayTransportPlayback"
     | "importAgentSessionCassettes"
     | "prepareAgentSessionReplayWorkspace"
+    | "probeAgentTargetAccountUsage"
     | "updateAgentSessionReplayTransportPlayback"
   >,
   fileDialogs: Pick<DesktopFileDialogAccess, "selectUploadFiles">,
@@ -65,7 +66,11 @@ export function registerRuntimeIpc(
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.runtime.listWorkspaceAgentProbes,
-    (_event, input) => listDesktopWorkspaceAgentProbes(input)
+    (_event, input) =>
+      listDesktopWorkspaceAgentProbes(input, {
+        probeAgentTargetAccountUsage: (agentTargetId) =>
+          tuttidClient.probeAgentTargetAccountUsage(agentTargetId)
+      })
   );
   registerDesktopIpcHandler(
     desktopIpcChannels.runtime.getTerminalStreamUrl,

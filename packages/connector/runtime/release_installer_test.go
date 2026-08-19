@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	connectorartifact "github.com/tutti-os/tutti/packages/connector/runtime/artifact"
 )
 
@@ -85,6 +85,25 @@ func TestReleaseInstallerUninstallRemovesPreparedArtifact(t *testing.T) {
 	}
 	if artifacts.connectorRemoves != 1 || artifacts.releaseRemoves != 0 {
 		t.Fatalf("artifact connector/release removes = %d/%d, want 1/0", artifacts.connectorRemoves, artifacts.releaseRemoves)
+	}
+}
+
+func TestReleaseInstallerUninstallRemovesReleaseWithObsoleteIcon(t *testing.T) {
+	release := runtimeTestRelease()
+	release.Manifest.IconURL = "data:image/png;base64,iVBORw0KGgo="
+	artifacts := &releaseArtifactStub{}
+	installer, err := NewReleaseInstaller(artifacts, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := installer.UninstallRelease(context.Background(), market.UninstallReleaseRequest{
+		OperationID: "uninstall-obsolete-icon",
+		Release:     release,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if artifacts.connectorRemoves != 1 {
+		t.Fatalf("artifact connector removes = %d, want 1", artifacts.connectorRemoves)
 	}
 }
 
@@ -224,7 +243,7 @@ func runtimeTestRelease() market.Release {
 		ReleaseDigest:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		ManifestDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Manifest: market.Manifest{SchemaVersion: "1", DisplayName: "Example",
-			IconURL: "data:image/png;base64,YQ==", AuthorizationKind: "none",
+			IconURL: "https://cdn.example.test/tutti/connector-market/example/1.0.0/example-1.0.0-icon.svg", AuthorizationKind: "none",
 			Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio,
 				ManagedStdio: &market.ManagedStdioImplementation{
 					Runtime: market.RuntimeRequirement{Language: "node", Profile: "connector-node-static", ABI: "node24-linux-arm64"},

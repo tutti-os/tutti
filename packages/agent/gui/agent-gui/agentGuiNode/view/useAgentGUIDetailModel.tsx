@@ -19,10 +19,10 @@ import {
   useStableSlashStatus
 } from "./agentGUIDetailModelHelpers";
 import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
+import { useBottomDockPromptDismissal } from "./useBottomDockPromptDismissal";
 import styles from "../AgentGUINode.styles";
 
 interface Input {
-  bottomDockDismissedPromptRequestId: string | null;
   labels: AgentGUIViewLabels;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
@@ -48,7 +48,6 @@ export function resolveTuttiModeUpdateInlineNotice(input: {
 
 export function useAgentGUIDetailModel(input: Input) {
   const {
-    bottomDockDismissedPromptRequestId,
     labels,
     slashStatusLimits,
     slashStatusLimitsLoading,
@@ -90,6 +89,11 @@ export function useAgentGUIDetailModel(input: Input) {
       ? viewModel.interaction.isRespondingApproval
       : viewModel.interaction.isRespondingInteractivePrompt;
   const activePromptRequestId = activePrompt?.requestId ?? null;
+  const { dismissPrompt: dismissBottomDockPrompt, promptVisible } =
+    useBottomDockPromptDismissal(
+      viewModel.rail.activeConversationId,
+      activePromptRequestId
+    );
   const sessionChrome = useMemo<AgentGUISessionChrome>(
     () => ({ ...viewModel.interaction.sessionChrome, approval: null }),
     [viewModel.interaction.sessionChrome]
@@ -190,14 +194,12 @@ export function useAgentGUIDetailModel(input: Input) {
   });
   // Plan decisions replace the composer in the bottom dock: the card takes its slot
   // and the composer hides until it is acted on (optimistically cleared via
-  // bottomDockDismissedPromptRequestId) or otherwise resolves.
+  // bottomDockDismissedPrompt) or otherwise resolves.
   const activePromptIsPlanDecision =
     activePrompt?.kind === "exit-plan" ||
     activePrompt?.kind === "plan-implementation";
   const activePromptIsVisible =
-    activePrompt !== null &&
-    !homeStatusNoticeVisible &&
-    bottomDockDismissedPromptRequestId !== activePromptRequestId;
+    activePrompt !== null && !homeStatusNoticeVisible && promptVisible;
   const bottomDockReplacementPrompt =
     activePromptIsPlanDecision && activePromptIsVisible ? activePrompt : null;
   // Approval / ask-user prompts keep the original layout: they lift above the
@@ -755,6 +757,7 @@ export function useAgentGUIDetailModel(input: Input) {
   );
 
   return {
+    activePrompt,
     activeConversationTurnBusy,
     activePromptRequestId,
     activePromptResponsePending,
@@ -768,6 +771,7 @@ export function useAgentGUIDetailModel(input: Input) {
     conversation,
     conversationFlowEmpty,
     conversationFlowLabels,
+    dismissBottomDockPrompt,
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,

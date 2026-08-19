@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	connectorhost "github.com/tutti-os/tutti/packages/connector/host"
+	connectorhost "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 func TestConnectorOptionsProjectsEveryCatalogState(t *testing.T) {
@@ -42,6 +42,19 @@ func TestConnectorOptionsPreservesSnapshotReadError(t *testing.T) {
 	_, err := ConnectorOptions(context.Background(), snapshotStub{err: want})
 	if !errors.Is(err, want) {
 		t.Fatalf("ConnectorOptions() error = %v, want %v", err, want)
+	}
+}
+
+func TestConnectorStatusRequiresStartedRuntimeWhenProjected(t *testing.T) {
+	connector := connectorFixture("github", "GitHub", connectorhost.InstallationStateInstalled,
+		connectorhost.AuthorizationStateConnected, connectorhost.CompatibilityStateSupported)
+	connector.Runtime = &connectorhost.ConnectorRuntime{State: connectorhost.ConnectorRuntimeStateStopped}
+	if got := ConnectorStatus(connector); got != CapabilityStatusDisabled {
+		t.Fatalf("stopped ConnectorStatus() = %q, want %q", got, CapabilityStatusDisabled)
+	}
+	connector.Runtime.State = connectorhost.ConnectorRuntimeStateStarted
+	if got := ConnectorStatus(connector); got != CapabilityStatusAvailable {
+		t.Fatalf("started ConnectorStatus() = %q, want %q", got, CapabilityStatusAvailable)
 	}
 }
 

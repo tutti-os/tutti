@@ -23,8 +23,9 @@ Use the focused runtime index or open one area directly:
   Also covers Kimi Code ACP sessions that advertise no model or hide provider
   failures behind an empty `end_turn`.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
-  probes, optional Provider absence misclassified as an environment failure,
-  extension release refresh delaying daemon startup, and CPU spikes.
+  probes, Windows managed-runtime adoption sharing violations, optional Provider
+  absence misclassified as an environment failure, extension release refresh
+  delaying daemon startup, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, capability snapshots, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
   Also covers new or derived conversations that silently fail or lose

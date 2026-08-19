@@ -4,6 +4,43 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentSlashCommandPalette } from "./AgentSlashCommandPalette";
 
 describe("AgentSlashCommandPalette", () => {
+  it("renders the Side icon for the provider-neutral slash command", () => {
+    render(
+      <AgentSlashCommandPalette
+        label="Slash commands"
+        commandsGroupLabel="Commands"
+        capabilitiesGroupLabel="Capabilities"
+        skillsGroupLabel="Skills"
+        pluginsGroupLabel="Plugins"
+        connectorsGroupLabel="Connectors"
+        connectorConnectedLabel="Connected"
+        connectorNotConnectedLabel="Not connected"
+        connectorUnsupportedLabel="Unsupported"
+        mcpGroupLabel="MCP"
+        highlightedIndex={0}
+        entries={[
+          {
+            type: "command",
+            key: "command:side",
+            label: "side",
+            command: {
+              name: "side",
+              description: "Open a temporary conversation"
+            }
+          }
+        ]}
+        onHighlightChange={vi.fn()}
+        onSelect={vi.fn()}
+        onSelectCapability={vi.fn()}
+        onSelectSkill={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByRole("option", { name: /side/i }).querySelector("svg")
+    ).toHaveClass("lucide-message-circle-plus");
+  });
+
   it("renders a capability section and dispatches capability selection", () => {
     const onSelectCapability = vi.fn();
 

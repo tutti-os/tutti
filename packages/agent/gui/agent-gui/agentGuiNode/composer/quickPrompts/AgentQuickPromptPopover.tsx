@@ -338,7 +338,7 @@ export function AgentQuickPromptPopover({
           ) : null}
           <ScrollArea
             className="min-h-0 flex-1"
-            viewportClassName="px-2 pb-2"
+            viewportClassName={cn("px-2 pb-2", isSorting && "pt-2")}
             viewportTestId="agent-quick-prompt-scroll-viewport"
           >
             {isTemplateView ? (

@@ -988,6 +988,7 @@ function createDependenciesStub(): {
       listAgentQuickPrompts: fail,
       moveAgentQuickPrompt: fail,
       listAgentTargets: fail,
+      probeAgentTargetAccountUsage: fail,
       listAutomationRules: fail,
       createAutomationRule: fail,
       updateAutomationRule: fail,

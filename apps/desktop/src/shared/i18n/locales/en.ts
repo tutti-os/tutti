@@ -365,6 +365,7 @@ export const en = {
       stageInstallDone: "CLI installed",
       stageAdapterDone: "Adapter installed",
       stageLoginDone: "Signed in",
+      apiUsageBilling: "API Usage Billing",
       stageLoginDoneApiBilling: "API billing configured",
       stageReadyDone: "Ready",
       networkCheckRegistry: "Install source",
@@ -1330,6 +1331,9 @@ export const en = {
         agentSessionRecordingDescription:
           "Show the developer entry for recording and replaying sessions on Agent Home.",
         agentSessionRecordingLabel: "Agent session recording",
+        agentSideConversationDescription:
+          "Enable /side, transient Side conversations, and the text-selection action toolbar in Agent conversations.",
+        agentSideConversationLabel: "Side conversations",
         codexSaverModeDescription:
           "Show a remembered Codex composer switch that delegates suitable subtasks to Luna Max.",
         codexSaverModeLabel: "Codex saver mode",

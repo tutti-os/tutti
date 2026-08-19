@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 type ConnectorMarketPublisher struct {

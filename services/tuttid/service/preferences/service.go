@@ -8,6 +8,8 @@ import (
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	reporterevents "github.com/tutti-os/tutti/services/tuttid/service/reporter/events"
 )
 
 type DesktopPreferencesPublisher interface {
@@ -33,6 +35,7 @@ type Service struct {
 	Publisher                      DesktopPreferencesPublisher
 	AgentComposerDefaultsPublisher AgentComposerDefaultsPublisher
 	AgentComposerDefaultsValidator AgentComposerDefaultsPatchValidator
+	AnalyticsReporter              reporterservice.Reporter
 	changeObservers                []ChangeObserver
 }
 
@@ -55,7 +58,16 @@ type PatchAgentSessionLaunchModeInput struct {
 	Mode              string
 }
 
+type DesktopPreferencesWriteMode string
+
+const (
+	DesktopPreferencesWriteModeReplace            DesktopPreferencesWriteMode = "replace"
+	DesktopPreferencesWriteModeInitializeIfAbsent DesktopPreferencesWriteMode = "initializeIfAbsent"
+)
+
 type PutInput struct {
+	WriteMode DesktopPreferencesWriteMode
+
 	AgentCLIUpdateCheckEnabled bool
 	// AgentComposerDefaultsByProvider is accepted for wire compatibility but
 	// ignored on write: the legacy provider-keyed defaults are frozen after
@@ -194,13 +206,21 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences store is not configured")
 	}
 
+	writeMode := input.WriteMode
+	if writeMode == "" {
+		writeMode = DesktopPreferencesWriteModeReplace
+	}
+	if writeMode != DesktopPreferencesWriteModeReplace && writeMode != DesktopPreferencesWriteModeInitializeIfAbsent {
+		return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences write mode is unsupported")
+	}
+
 	stored, err := s.Store.GetDesktopPreferences(ctx)
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, err
 	}
 
 	windowSnapping := resolveWindowSnapping(stored, input.WindowSnapping)
-	preferences, err := s.Store.PutDesktopPreferences(ctx, preferencesbiz.DesktopPreferences{
+	candidate := preferencesbiz.DesktopPreferences{
 		AgentCLIUpdateCheckEnabled: input.AgentCLIUpdateCheckEnabled,
 		// The legacy provider-keyed defaults are frozen: client input is
 		// ignored so nothing writes the old field anymore; the stored value
@@ -235,7 +255,36 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		UpdatePolicy:                          strings.TrimSpace(input.UpdatePolicy),
 		WindowSnappingEnabled:                 windowSnapping.Enabled,
 		WindowSnappingShortcutPreset:          windowSnapping.ShortcutPreset,
-	})
+	}
+
+	var preferences preferencesbiz.DesktopPreferences
+	if writeMode == DesktopPreferencesWriteModeInitializeIfAbsent {
+		// Callers provide the complete candidate row, but tuttid owns the
+		// workspace-mode policy for a freshly created profile.
+		freshDefaults := preferencesbiz.DefaultDesktopPreferences()
+		candidate.FeatureFlags[preferencesbiz.DesktopStandaloneAgentModeFeatureFlag] =
+			freshDefaults.FeatureFlags[preferencesbiz.DesktopStandaloneAgentModeFeatureFlag]
+		initializer, ok := s.Store.(workspacedata.DesktopPreferencesInitializer)
+		if !ok {
+			return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences initializer is not configured")
+		}
+		var created bool
+		preferences, created, err = initializer.InitializeDesktopPreferences(ctx, candidate)
+		if err != nil {
+			return preferencesbiz.DesktopPreferences{}, err
+		}
+		if !created {
+			return preferences, nil
+		}
+		// Every fresh-profile row is created through this branch (the field
+		// patch writers refuse to materialize a missing row), so this is the
+		// single spot that can attribute the assigned initial workspace mode.
+		reporterevents.Track(ctx, s.AnalyticsReporter, "settings.workspace_ui_mode_initialized", map[string]any{
+			"workspace_ui_mode": workspaceUiModeAnalyticsValue(preferences),
+		})
+	} else {
+		preferences, err = s.Store.PutDesktopPreferences(ctx, candidate)
+	}
 	if err != nil {
 		return preferencesbiz.DesktopPreferences{}, err
 	}
@@ -246,6 +295,13 @@ func (s Service) Put(ctx context.Context, input PutInput) (preferencesbiz.Deskto
 		_ = s.Publisher.PublishDesktopPreferencesUpdated(ctx, preferences)
 	}
 	return preferences, nil
+}
+
+func workspaceUiModeAnalyticsValue(preferences preferencesbiz.DesktopPreferences) string {
+	if preferences.FeatureFlags[preferencesbiz.DesktopStandaloneAgentModeFeatureFlag] {
+		return "agent"
+	}
+	return "os"
 }
 
 func normalizeAgentComposerDefaultsPatch(

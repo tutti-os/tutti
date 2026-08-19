@@ -48,7 +48,7 @@ import { useService } from "@tutti-os/infra/di";
 import {
   IConnectorMarketModule,
   openConnectorMarketDialog
-} from "@tutti-os/connector-market/services";
+} from "@tutti-os/connector-renderer/application";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type {
@@ -521,6 +521,14 @@ export function StandaloneAgentWindow({
       agentGuiHostInput.createAgentGUIEngagementEventSink("standalone_agent"),
     [agentGuiHostInput]
   );
+  const agentSideConversationRuntime = useMemo(
+    () => agentGuiHostInput.createAgentSideConversationRuntime(),
+    [agentGuiHostInput]
+  );
+  useEffect(
+    () => () => agentSideConversationRuntime?.dispose?.(),
+    [agentSideConversationRuntime]
+  );
   const dockPreviewCache = useMemo(
     () => createStandaloneAgentDockPreviewCache(desktopApi.dockPreviewCache),
     [desktopApi.dockPreviewCache]
@@ -692,6 +700,12 @@ export function StandaloneAgentWindow({
         if (!isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)) {
           return;
         }
+        if (target.action === "set_runtime_enabled") {
+          return connectorMarketModule.root.market.setRuntimeEnabled(
+            target.connectorKey,
+            target.enabled
+          );
+        }
         if (target.action === "open") {
           void openConnectorMarketDialog(
             connectorMarketModule.root,
@@ -862,6 +876,7 @@ export function StandaloneAgentWindow({
           >
             <DesktopAgentGUISurface
               agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
+              agentSideConversationRuntime={agentSideConversationRuntime}
               agentHostApi={agentGuiHostInput.agentHostApi}
               agentSessionReplayService={
                 agentGuiHostInput.agentSessionReplayService

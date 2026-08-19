@@ -61,7 +61,7 @@ func (a *CodexAppServerAdapter) appServerInteractiveRequestScope(
 	params map[string]any,
 ) (Session, string, *codexAppServerThreadContext, error) {
 	rootProviderThreadID := strings.TrimSpace(root.ProviderSessionID)
-	requestThreadID := strings.TrimSpace(asString(params["threadId"]))
+	requestThreadID := appServerMessageThreadID(params)
 	if requestThreadID == "" || rootProviderThreadID == "" || requestThreadID == rootProviderThreadID {
 		return root, rootTurnID, nil, nil
 	}

@@ -64,14 +64,21 @@ func (q *reportRequestQueue) dequeue() (reportRequest, bool) {
 	if q.head >= len(q.items) {
 		return reportRequest{}, false
 	}
-	queued := q.items[q.head]
+	index := q.nextDequeueIndexLocked()
+	queued := q.items[index]
 	request := *queued
 	if streamingKey := queuedStreamingReportKey(request); streamingKey != "" &&
 		q.pendingStreaming[streamingKey] == queued {
 		delete(q.pendingStreaming, streamingKey)
 	}
-	q.items[q.head] = nil
-	q.head++
+	if index == q.head {
+		q.items[q.head] = nil
+		q.head++
+	} else {
+		copy(q.items[index:], q.items[index+1:])
+		q.items[len(q.items)-1] = nil
+		q.items = q.items[:len(q.items)-1]
+	}
 	if q.head == len(q.items) {
 		q.items = nil
 		q.head = 0
@@ -81,6 +88,39 @@ func (q *reportRequestQueue) dequeue() (reportRequest, bool) {
 		q.head = 0
 	}
 	return request, true
+}
+
+// nextDequeueIndexLocked preserves causal order within a session while
+// allowing a durable completion/barrier from another session to make progress.
+// Without this exception, a busy stream can keep the single report worker
+// occupied long enough for reportSessionBeforePublish to time out.
+func (q *reportRequestQueue) nextDequeueIndexLocked() int {
+	seenSessionKeys := make(map[string]struct{})
+	if q.head < len(q.items) && q.items[q.head] != nil {
+		if sessionKey := queuedReportSessionKey(q.items[q.head].report); sessionKey != "" {
+			seenSessionKeys[sessionKey] = struct{}{}
+		}
+	}
+	for index := q.head + 1; index < len(q.items); index++ {
+		candidate := q.items[index]
+		if candidate == nil {
+			continue
+		}
+		sessionKey := queuedReportSessionKey(candidate.report)
+		if isReportBarrierRequest(*candidate) && sessionKey != "" {
+			if _, hasEarlier := seenSessionKeys[sessionKey]; !hasEarlier {
+				return index
+			}
+		}
+		if sessionKey != "" {
+			seenSessionKeys[sessionKey] = struct{}{}
+		}
+	}
+	return q.head
+}
+
+func isReportBarrierRequest(request reportRequest) bool {
+	return request.barrier || request.done != nil
 }
 
 func queuedStreamingReportKey(request reportRequest) string {

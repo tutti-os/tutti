@@ -467,7 +467,7 @@ func (p MutagenAuthFileProjector) installWindowsAMD64(ctx context.Context) (stri
 	}
 	client := p.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: 2 * time.Minute}
+		client = &http.Client{Timeout: 2 * time.Minute} // proxy-funnel-exempt: nil Transport retains Go's proxy-aware default without adding a runtimeprep dependency on agent/daemon
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {

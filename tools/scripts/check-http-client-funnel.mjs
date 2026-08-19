@@ -11,7 +11,11 @@ import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
-const scanRoots = ["services/tuttid", "packages/agent"];
+const scanRoots = [
+  "services/tuttid",
+  "packages/agent",
+  "packages/connector/daemon"
+];
 const clientLiteral = /\bhttp\.Client\{/;
 const exemptComment = "proxy-funnel-exempt:";
 const exemptPathFragments = ["packages/agent/daemon/httpx/"];

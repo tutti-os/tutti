@@ -14,7 +14,10 @@ import {
   nodeRefKey,
   selectedReferenceToWorkspaceFileReference
 } from "../../../core/index.ts";
-import type { ReferenceSourceAggregator } from "../../../core/referenceSourceAggregator.ts";
+import type {
+  ReferenceSourceAggregator,
+  ReferenceSourceTab
+} from "../../../core/referenceSourceAggregator.ts";
 import {
   resolveWorkspaceFileOpenWithCacheKey,
   sortWorkspaceFileEntriesForArrangeMode,
@@ -36,6 +39,11 @@ import {
 } from "./referenceSourcePickerController.ts";
 import { createReferenceSearchResultIndex } from "./referenceSearchResultIndex.ts";
 import { buildReferenceSourcePickerFilteredTree } from "./referenceSourcePickerFilterTree.ts";
+import {
+  readReferenceSourceTabRuntimeCache,
+  writeReferenceSourceTabRuntimeCache
+} from "./referenceSourceTabRuntimeCache.ts";
+import { useReferenceSourceSidebarGroups } from "./useReferenceSourceSidebarGroups.ts";
 
 export type { WorkspaceFileManagerArrangeMode };
 
@@ -159,6 +167,12 @@ export function useReferenceSourcePickerView({
 }: UseReferenceSourcePickerViewInput) {
   const readSnapshot = useSnapshot as <T extends object>(store: T) => T;
   const scope = useMemo<ReferenceScope>(() => ({ workspaceId }), [workspaceId]);
+  const cacheLoadedTabs = useCallback(
+    (tabs: readonly ReferenceSourceTab[]) => {
+      writeReferenceSourceTabRuntimeCache(aggregator, workspaceId, tabs);
+    },
+    [aggregator, workspaceId]
+  );
 
   const controller = useMemo(
     () =>
@@ -166,11 +180,19 @@ export function useReferenceSourcePickerView({
         aggregator,
         scope,
         selectionMode,
-        searchResultKind
+        searchResultKind,
+        onTabsLoaded: cacheLoadedTabs
       }),
-    [aggregator, scope, searchResultKind, selectionMode]
+    [aggregator, cacheLoadedTabs, scope, searchResultKind, selectionMode]
   );
   const snapshot = readSnapshot(controller.store);
+  const sidebar = useReferenceSourceSidebarGroups({
+    aggregator,
+    open,
+    scope,
+    tabs: snapshot.tabs,
+    tabsValidated: snapshot.tabsValidated
+  });
 
   // UI 导航态:每个源各一条面包屑栈([] = 源根)。
   const [breadcrumbBySource, setBreadcrumbBySource] = useState<
@@ -226,7 +248,9 @@ export function useReferenceSourcePickerView({
     if (!open) {
       return;
     }
-    controller.reset();
+    controller.reset(
+      readReferenceSourceTabRuntimeCache(aggregator, workspaceId)
+    );
     controller.open();
     setBreadcrumbBySource({});
     setFocusedNode(null);
@@ -235,7 +259,7 @@ export function useReferenceSourcePickerView({
     return () => {
       controller.close();
     };
-  }, [controller, open]);
+  }, [aggregator, controller, open, workspaceId]);
 
   // 「打开即定位」:一次性把 initialTarget 解析为真实节点路径并应用导航,之后不再干预。
   //  - path[0] = 左栏二级分组(topic / app):作为面包屑根项进入 → 左栏选中 + 中间栏展示其内容;
@@ -423,10 +447,8 @@ export function useReferenceSourcePickerView({
   const searchResultCount = activeTabState?.searchResultCount ?? 0;
   const searchResultIdentity = activeTabState?.searchResultIdentity ?? 0;
 
-  // 每个源的左栏二级分组(左栏可多源同时展开,故按源全量计算):
-  //  - 源自带分组(listSidebarGroups,如本地源的 最近访问/下载/文稿/桌面/个人)优先;
-  //  - 否则取该源根下的 folder。源标题自身就是根入口,不再重复合成同名根目录。
-  // 依赖 snapshot.tabs(getLoadedSource 在 tabs 加载后才有值)与 snapshot.bySource(根加载)。
+  // 二级分组通过独立协议每次打开重新读取，不再从目录 childrenByKey 推导。
+  // 文件类型筛选仍可临时投影 active 源的过滤树，但不会写回二级分组或目录缓存。
   const sidebarGroupsBySource = useMemo<Record<string, ReferenceNode[]>>(() => {
     const result: Record<string, ReferenceNode[]> = {};
     for (const tab of snapshot.tabs) {
@@ -438,62 +460,52 @@ export function useReferenceSourcePickerView({
         );
         continue;
       }
-      const provided = aggregator
-        .getLoadedSource(sourceId)
-        ?.listSidebarGroups?.(scope);
-      if (provided && provided.length > 0) {
-        result[sourceId] = provided;
-        continue;
-      }
-      const root =
-        snapshot.bySource[sourceId]?.childrenByKey[ROOT_CHILDREN_KEY];
-      const folders = (root?.entries ?? []).filter(
-        (node) => node.kind === "folder"
-      );
-      result[sourceId] = folders;
+      result[sourceId] = sidebar.bySource[sourceId]?.entries ?? [];
     }
     return result;
   }, [
     activeSourceId,
-    aggregator,
     childrenByKey,
     recursiveFilterActive,
-    scope,
-    snapshot.bySource,
+    sidebar.bySource,
     snapshot.tabs
   ]);
 
-  // 左栏二级分组「是否还能继续拉取」(分页用)。
-  //  - 自带分组的源(本地源:最近访问/下载/… 固定「位置」)不分页,恒 false;
-  //  - 其余 navigable 源分组取自源根 children,源根带 nextCursor 即可继续拉取。
   const sidebarHasMoreBySource = useMemo<Record<string, boolean>>(() => {
     const result: Record<string, boolean> = {};
     for (const tab of snapshot.tabs) {
-      const sourceId = tab.sourceId;
-      const provided = aggregator
-        .getLoadedSource(sourceId)
-        ?.listSidebarGroups?.(scope);
-      if (provided && provided.length > 0) {
-        result[sourceId] = false;
-        continue;
-      }
-      const root =
-        snapshot.bySource[sourceId]?.childrenByKey[ROOT_CHILDREN_KEY];
-      result[sourceId] = Boolean(root?.nextCursor);
+      result[tab.sourceId] = Boolean(
+        sidebar.bySource[tab.sourceId]?.nextCursor
+      );
     }
     return result;
-  }, [snapshot.tabs, snapshot.bySource, aggregator, scope]);
+  }, [sidebar.bySource, snapshot.tabs]);
 
-  // 左栏二级分组「正在拉取下一页」(源根已加载过且当前在 loading = append 在途)。
   const sidebarLoadingMoreBySource = useMemo<Record<string, boolean>>(() => {
     const result: Record<string, boolean> = {};
     for (const tab of snapshot.tabs) {
-      const root =
-        snapshot.bySource[tab.sourceId]?.childrenByKey[ROOT_CHILDREN_KEY];
-      result[tab.sourceId] = Boolean(root?.loaded && root.loading);
+      const state = sidebar.bySource[tab.sourceId];
+      result[tab.sourceId] = Boolean(state?.loaded && state.loading);
     }
     return result;
-  }, [snapshot.tabs, snapshot.bySource]);
+  }, [sidebar.bySource, snapshot.tabs]);
+
+  const sidebarLoadingBySource = useMemo<Record<string, boolean>>(() => {
+    const result: Record<string, boolean> = {};
+    for (const tab of snapshot.tabs) {
+      const state = sidebar.bySource[tab.sourceId];
+      result[tab.sourceId] = Boolean(!state?.loaded && state?.loading);
+    }
+    return result;
+  }, [sidebar.bySource, snapshot.tabs]);
+
+  const sidebarErrorBySource = useMemo<Record<string, Error | null>>(() => {
+    const result: Record<string, Error | null> = {};
+    for (const tab of snapshot.tabs) {
+      result[tab.sourceId] = sidebar.bySource[tab.sourceId]?.error ?? null;
+    }
+    return result;
+  }, [sidebar.bySource, snapshot.tabs]);
 
   // active 源的二级分组(供自动进入首组、选中高亮等复用)。
   const sidebarGroups = activeSourceId
@@ -569,18 +581,19 @@ export function useReferenceSourcePickerView({
       autoEnteredSourcesRef.current.add(activeSourceId);
       return;
     }
-    const hasProvidedSidebarGroups = Boolean(
-      aggregator.getLoadedSource(activeSourceId)?.listSidebarGroups?.(scope)
-        .length
-    );
-    if (!capabilities?.navigable && !hasProvidedSidebarGroups) {
-      // 根目录派生出的 folder 只是快捷入口。默认停在源根,避免误入第一个目录。
+    const sidebarState = sidebar.bySource[activeSourceId];
+    if (!sidebarState?.loaded) {
+      return;
+    }
+    if (!capabilities?.navigable && !sidebarState.autoSelectFirst) {
+      // 没有固定位置语义的源停在源根，目录内容仍按本次打开实时读取。
       autoEnteredSourcesRef.current.add(activeSourceId);
+      controller.ensureSourceRoot(activeSourceId);
       return;
     }
     const firstGroup = sidebarGroups[0];
     if (!firstGroup) {
-      // 根分组尚未加载完,等加载后再触发。
+      autoEnteredSourcesRef.current.add(activeSourceId);
       return;
     }
     autoEnteredSourcesRef.current.add(activeSourceId);
@@ -588,24 +601,13 @@ export function useReferenceSourcePickerView({
   }, [
     open,
     activeSourceId,
-    aggregator,
     breadcrumbBySource,
     capabilities?.navigable,
+    controller,
     enterFolder,
-    scope,
+    sidebar.bySource,
     sidebarGroups
   ]);
-
-  // 左栏一级源默认全部展开(Finder 风格,无折叠):tabs 就绪后预载每个源的根,
-  // 使非自带分组的源(应用/任务,二级分组取根下 folder)其分组也立即就绪。
-  useEffect(() => {
-    if (!open) {
-      return;
-    }
-    for (const tab of snapshot.tabs) {
-      controller.ensureSourceRoot(tab.sourceId);
-    }
-  }, [open, snapshot.tabs, controller]);
 
   const navigateToBreadcrumb = useCallback(
     (index: number) => {
@@ -913,14 +915,17 @@ export function useReferenceSourcePickerView({
     toggleNode: (node: ReferenceNode) => controller.toggleNode(node),
     sortNodes,
     isLoadingTabs: snapshot.isLoadingTabs,
+    tabsValidated: snapshot.tabsValidated,
+    tabsError: snapshot.tabsError,
     breadcrumb,
     currentNode,
     sidebarGroups,
     sidebarGroupsBySource,
     sidebarHasMoreBySource,
+    sidebarLoadingBySource,
     sidebarLoadingMoreBySource,
-    loadMoreSidebarGroups: (sourceId: string) =>
-      controller.loadMoreSourceRoot(sourceId),
+    sidebarErrorBySource,
+    loadMoreSidebarGroups: sidebar.loadMore,
     selectedGroupKey,
     arrangeMode,
     setArrangeMode,

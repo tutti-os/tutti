@@ -68,7 +68,14 @@ interface FakeOptions {
 
 function fakeAggregator(options: FakeOptions): ReferenceSourceAggregator {
   return {
+    invalidateRuntimeReads: () => {},
     listSources: async () => options.tabs,
+    loadSidebarGroups: async (_scope, sourceId) => ({
+      entries: (
+        options.children[`${sourceId}:${SOURCE_ROOT_NODE_ID}`]?.entries ?? []
+      ).filter((node) => node.kind === "folder"),
+      nextCursor: null
+    }),
     listRoot: async () => [],
     async listChildren(_scope, ref: NodeRef): Promise<ListChildrenResult> {
       return (
@@ -126,7 +133,46 @@ const tabsTwo: ReferenceSourceTab[] = [
   }
 ];
 
-test("open 加载 tabs、默认选中首个并加载其根", async () => {
+test("缓存 tabs 立即可见,打开后仍静默刷新并对账", async () => {
+  let resolveTabs!: (tabs: ReferenceSourceTab[]) => void;
+  const pendingTabs = new Promise<ReferenceSourceTab[]>((resolve) => {
+    resolveTabs = resolve;
+  });
+  const loaded: Array<readonly ReferenceSourceTab[]> = [];
+  const controller = createReferenceSourcePickerController({
+    aggregator: {
+      ...fakeAggregator({ tabs: [], children: {} }),
+      listSources: () => pendingTabs
+    },
+    scope,
+    searchDebounceMs: 0,
+    onTabsLoaded: (tabs) => loaded.push(tabs)
+  });
+
+  controller.reset(tabsTwo);
+  controller.open();
+  const cached = controller.getSnapshot();
+  assert.deepEqual(
+    cached.tabs.map((tab) => tab.sourceId),
+    ["workspace-file", "app-artifact"]
+  );
+  assert.equal(cached.isLoadingTabs, true);
+  assert.equal(cached.tabsValidated, false);
+
+  resolveTabs([tabsTwo[1]!]);
+  await flush();
+  const refreshed = controller.getSnapshot();
+  assert.deepEqual(
+    refreshed.tabs.map((tab) => tab.sourceId),
+    ["app-artifact"]
+  );
+  assert.equal(refreshed.activeSourceId, "app-artifact");
+  assert.equal(refreshed.isLoadingTabs, false);
+  assert.equal(refreshed.tabsValidated, true);
+  assert.equal(loaded.length, 1);
+});
+
+test("open 加载 tabs、默认选中首个但不预加载目录内容", async () => {
   const controller = createReferenceSourcePickerController({
     aggregator: fakeAggregator({
       tabs: tabsTwo,
@@ -151,8 +197,17 @@ test("open 加载 tabs、默认选中首个并加载其根", async () => {
     snap.tabs.map((t) => t.sourceId),
     ["workspace-file", "app-artifact"]
   );
+  assert.equal(
+    snap.bySource["workspace-file"]?.childrenByKey[ROOT_CHILDREN_KEY],
+    undefined
+  );
+
+  controller.ensureSourceRoot("workspace-file");
+  await flush();
   const root =
-    snap.bySource["workspace-file"]?.childrenByKey[ROOT_CHILDREN_KEY];
+    controller.getSnapshot().bySource["workspace-file"]?.childrenByKey[
+      ROOT_CHILDREN_KEY
+    ];
   assert.equal(root?.loaded, true);
   // folder 在前
   assert.deepEqual(
@@ -182,6 +237,8 @@ test("首次加载保留 source 声明的业务顺序", async () => {
   });
 
   controller.open();
+  await flush();
+  controller.ensureSourceRoot("app-artifact");
   await flush();
 
   const root =
@@ -492,6 +549,7 @@ test("expandNode 展开定位到的 folder 并懒加载子节点", async () => {
   controller.open();
   await flush();
   controller.setActiveSource("app-artifact");
+  controller.ensureSourceRoot("app-artifact");
   await flush();
 
   controller.expandNode(folder("app-artifact", "task-1", "任务一"));
@@ -548,6 +606,7 @@ test("loadMore 按 cursor 累积分页(保序不重排)", async () => {
   controller.open();
   await flush();
   controller.setActiveSource("app-artifact");
+  controller.ensureSourceRoot("app-artifact");
   await flush();
   let root =
     controller.getSnapshot().bySource["app-artifact"]?.childrenByKey[
@@ -1991,7 +2050,7 @@ test("close 后丢弃迟到的浏览结果", async () => {
 });
 
 test("并发取数:慢根加载不被另一 key 的取数作废(按 key 隔离 sequence)", async () => {
-  // 复现「本地-个人」回归:open 触发根(ROOT_CHILDREN_KEY)预取尚未返回时,
+  // 复现「本地-个人」回归:显式读取根(ROOT_CHILDREN_KEY)尚未返回时,
   // 进入某分组又触发另一 key 的取数。全局单 sequence 会把迟到的根结果丢弃、
   // 令根 loading 永不清除;按 key 隔离后两者互不影响。
   let resolveRoot!: (value: ListChildrenResult) => void;
@@ -2014,6 +2073,7 @@ test("并发取数:慢根加载不被另一 key 的取数作废(按 key 隔离 s
   });
   controller.open();
   await flush();
+  controller.ensureSourceRoot("workspace-file");
   // 根预取在途时,进入一个分组(不同 key)并完成其取数 —— 这会推进全局计数。
   controller.ensureChildren(folder("workspace-file", "/group"));
   await flush();

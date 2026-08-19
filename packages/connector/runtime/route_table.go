@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 // ManagedRoute is the host-neutral lifecycle contract owned by RouteTable.

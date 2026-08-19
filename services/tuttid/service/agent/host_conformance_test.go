@@ -16,7 +16,7 @@ import (
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"

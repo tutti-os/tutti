@@ -2,6 +2,7 @@ import type {
   AgentProviderProbeListInput,
   AgentProviderProbeListResult
 } from "@tutti-os/agent-gui";
+import type { DesktopPreferencesStateResponse } from "@tutti-os/client-tuttid-ts";
 import type {
   DesktopFeatureAvailabilityApi,
   DesktopMinimumVersionApi
@@ -281,8 +282,13 @@ export interface DesktopHostFilesApi {
 export interface DesktopHostApi {
   files: DesktopHostFilesApi;
   notifications: DesktopHostNotificationsApi;
+  preferences?: DesktopHostPreferencesApi;
   window: DesktopHostWindowApi;
   workspace: DesktopHostWorkspaceApi;
+}
+
+export interface DesktopHostPreferencesApi {
+  ensureInitialized(): Promise<DesktopPreferencesStateResponse>;
 }
 
 export type DesktopBrowserApi = Pick<

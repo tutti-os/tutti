@@ -275,6 +275,17 @@ export function resolveAgentGUIInteractionDisabledReason(input: {
     : input.interactivePromptReason;
 }
 
+export function resolveAgentGUIComposerInteractionDisabledReason(
+  promptKind: AgentConversationPromptVM["kind"] | null | undefined,
+  interaction: AgentGUINodeViewModel["interaction"]
+): string | null {
+  return resolveAgentGUIInteractionDisabledReason({
+    promptKind,
+    approvalReason: interaction.approvalDisabledReason,
+    interactivePromptReason: interaction.interactivePromptDisabledReason
+  });
+}
+
 export function resolveAgentGUIHomeNoticeChrome(input: {
   inlineNoticeChrome: AgentGUISessionChrome | null;
   sessionChrome: AgentGUISessionChrome;

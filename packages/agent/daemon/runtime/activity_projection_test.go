@@ -44,6 +44,35 @@ func TestACPNormalizerProjectsSemanticMessageDeltaWithoutSnapshotDiff(t *testing
 	}
 }
 
+func TestProjectActivityEventsUsesCanonicalSessionIdentityForMessageDelta(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	events := newACPTurnNormalizer().AppendAssistantChunk(session, "turn-1", "hello")
+	if len(events) != 1 {
+		t.Fatalf("normalized events = %#v, want one event", events)
+	}
+	// The projection derives the canonical identity from the session source when
+	// the provider event omits its identity. The live delta must use that same
+	// identity instead of serializing the raw, empty provider field.
+	events[0].AgentSessionID = ""
+	stream := ProjectActivityEventsToStreamEvents(session, events)
+	if len(stream) != 1 {
+		t.Fatalf("stream = %#v, want one message delta", stream)
+	}
+	delta, ok := stream[0].Data.(liveprotocol.Event)
+	if !ok {
+		t.Fatalf("stream data = %T, want live protocol event", stream[0].Data)
+	}
+	var data liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(delta.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.AgentSessionID != session.AgentSessionID {
+		t.Fatalf("message delta agent session id = %q, want canonical %q", data.AgentSessionID, session.AgentSessionID)
+	}
+}
+
 func TestSnapshotNormalizerProjectsSuffixAppendAndFullRewrite(t *testing.T) {
 	t.Parallel()
 	session := reportTestSession()

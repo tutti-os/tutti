@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
 )
 
@@ -17,6 +17,7 @@ type stubConnectorMarketService struct {
 	pageFn       func(context.Context, market.CatalogPageQuery) (market.CatalogPage, error)
 	installFn    func(context.Context, market.ConnectorMutation) (market.MutationResult, error)
 	uninstallFn  func(context.Context, market.ConnectorMutation) (market.MutationResult, error)
+	runtimeFn    func(context.Context, market.ConnectorMutation, bool) (market.Connector, error)
 	refreshFn    func(context.Context, market.Mutation) (market.MutationResult, error)
 	operationFn  func(context.Context, market.OperationScope, string) (market.Operation, error)
 	cancelFn     func(context.Context, market.OperationScope, string) error
@@ -56,6 +57,10 @@ func (service stubConnectorMarketService) Install(ctx context.Context, mutation 
 
 func (service stubConnectorMarketService) Uninstall(ctx context.Context, mutation market.ConnectorMutation) (market.MutationResult, error) {
 	return service.uninstallFn(ctx, mutation)
+}
+
+func (service stubConnectorMarketService) SetRuntimeEnabled(ctx context.Context, mutation market.ConnectorMutation, enabled bool) (market.Connector, error) {
+	return service.runtimeFn(ctx, mutation, enabled)
 }
 
 func (service stubConnectorMarketService) RefreshCatalog(ctx context.Context, mutation market.Mutation) (market.MutationResult, error) {
@@ -336,6 +341,42 @@ func TestDaemonAPIConnectorMarketUninstallPreservesMutationScope(t *testing.T) {
 	}
 }
 
+func TestDaemonAPIConnectorMarketRuntimePersistsActivationIntent(t *testing.T) {
+	service := stubConnectorMarketService{
+		runtimeFn: func(_ context.Context, mutation market.ConnectorMutation, enabled bool) (market.Connector, error) {
+			if mutation.ConnectorKey != "notion" || mutation.ClientRequestID != "runtime-1" ||
+				mutation.ExpectedRevision != 7 || mutation.AccountID != "account-1" || enabled {
+				t.Fatalf("mutation = %#v, enabled = %v", mutation, enabled)
+			}
+			connector := connectorMarketTestConnector()
+			connector.Runtime = &market.ConnectorRuntime{State: market.ConnectorRuntimeStateStopped}
+			connector.Revision = 8
+			return connector, nil
+		},
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		ConnectorMarketService: service,
+		ConnectorMarketScope: func() market.OperationScope {
+			return market.OperationScope{AccountID: "account-1"}
+		},
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPut, "/v1/connector-market/connectors/notion/runtime", map[string]any{
+		"clientRequestId":  "runtime-1",
+		"expectedRevision": 7,
+		"enabled":          false,
+	})
+	if recorder.Code != http.StatusAccepted {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusAccepted, recorder.Body.String())
+	}
+	var response tuttigenerated.ConnectorMarketConnector
+	decodeGeneratedRouteResponse(t, recorder, &response)
+	if response.Runtime == nil || response.Runtime.State != tuttigenerated.ConnectorMarketRuntimeStateStopped || response.Revision != 8 {
+		t.Fatalf("response = %#v", response)
+	}
+}
+
 func TestDaemonAPIConnectorMarketRefreshRejectsNegativeRevision(t *testing.T) {
 	mux := http.NewServeMux()
 	RegisterRoutes(mux, NewRoutes(DaemonAPI{ConnectorMarketService: stubConnectorMarketService{}}))
@@ -472,7 +513,7 @@ func connectorMarketTestConnector() market.Connector {
 			ReleaseDigest:  digest,
 			ManifestDigest: digest,
 			Manifest: market.Manifest{
-				IconURL:       "data:image/png;base64,iVBORw0KGgo=",
+				IconURL:       "https://cdn.example.test/tutti/connector-market/notion/1.0.0/notion-1.0.0-icon.svg",
 				SchemaVersion: "1",
 				DisplayName:   "Notion",
 				AgentRouting:  &market.AgentRouting{Aliases: []string{"Notion", "Notion AI"}},

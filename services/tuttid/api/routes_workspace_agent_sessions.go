@@ -186,6 +186,54 @@ func registerWorkspaceAgentSessionRoutes(
 		wrapper.ForkWorkspaceAgentSession(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-capabilities", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ResolveWorkspaceAgentSideCapabilities(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-conversations", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.OpenWorkspaceAgentSideConversation(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CloseWorkspaceAgentSideConversation(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.SendWorkspaceAgentSideConversationInput(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CancelWorkspaceAgentSideConversationTurn(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/interactive/{requestID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.SubmitWorkspaceAgentSideConversationInteractive(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-session-fork-operations/{operationID}", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

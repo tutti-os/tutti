@@ -400,6 +400,10 @@ export function useAgentGUIViewLabels(input: {
       ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       continuedFromTask: t("agentHost.agentGui.continuedFromTask"),
+      selectionAddToConversation: t(
+        "agentHost.agentGui.selectionAddToConversation"
+      ),
+      selectionAskInSide: t("agentHost.agentGui.selectionAskInSide"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
       untitledConversationTitle: t(

@@ -56,6 +56,7 @@ type ServerEventByTopic = {
 export interface TuttidEventStreamClient {
   connect(): Promise<void>;
   dispose(): void;
+  getConnectionState?(): TuttidEventStreamConnectionState;
   publishIntent<TTopic extends ClientToServerEventTopic>(
     topic: TTopic,
     payload: ClientEventByTopic[TTopic]["payload"]

@@ -472,7 +472,20 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   );
   assert.match(
     workflow,
-    /release_url:\s*\${{\s*needs\.resolve\.outputs\.release_candidate\s*==\s*'true'[\s\S]*steps\.stage-candidate-release\.outputs\.release_url/
+    /release_url:\s*\${{\s*needs\.resolve\.outputs\.release_candidate\s*==\s*'true'[\s\S]*steps\.resolve-candidate-release-url\.outputs\.release_url/
+  );
+  assert.match(
+    workflow,
+    /RELEASE_ID:\s+\${{\s*steps\.stage-candidate-release\.outputs\.release_id\s*}}/
+  );
+  assert.match(
+    workflow,
+    /gh api "repos\/\${GITHUB_REPOSITORY}\/releases\/\${RELEASE_ID}" --jq \.html_url/
+  );
+  assert.ok(
+    workflow.indexOf("name: Resolve current stable GitHub draft URL") >
+      workflow.indexOf("name: Update release notes with summary and direct downloads"),
+    "the candidate draft URL should be refreshed after release notes are updated"
   );
   assert.match(
     workflow,
@@ -580,6 +593,17 @@ test("desktop promotion workflow does not redownload release assets for Feishu",
   );
   assert.match(notifyJobMatch[0], /name:\s+Download release summary/);
   assert.match(notifyJobMatch[0], /name:\s+Send release card/);
+});
+
+test("desktop promotion notification tolerates skipped optional approval", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+  const notifyJob = promoteWorkflow.match(
+    /notify-feishu:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
+  )?.[0];
+
+  assert.ok(notifyJob, "promotion notify job should exist");
+  assert.match(notifyJob, /if:\s+\${{\s*always\(\)\s*&&/);
+  assert.match(notifyJob, /needs\.promote\.result\s*==\s*'success'/);
 });
 
 test("desktop release workflow can mirror release assets to S3 and upsert direct download links", async () => {

@@ -264,12 +264,12 @@ func visibleFailureCode(detail string) string {
 		return "provider_concurrency_limit"
 	case containsFailureMarker(normalized, quotaOrRateLimitFailureMarkers):
 		return FailureCodeQuotaOrRateLimit
-	// A tool MCP server's OAuth failure (Notion/Figma/...) crashes codex's MCP
-	// client and bubbles up here mentioning "access token"/"AuthRequired", which
-	// trips the auth pattern. That is the MCP SERVER needing re-auth, not codex's
-	// own login — codex itself is still signed in — so it must not be reported as
-	// "Codex needs authentication". Let it fall through to the real cause (the
-	// process exit) instead.
+	// A tool MCP server's OAuth failure (Notion/Figma/...) is distinct from
+	// Codex's own login. The adapter now returns a typed startup error before the
+	// generic lifecycle timeout, but keep this text classification for persisted
+	// failures and older app-server artifacts.
+	case detailIsMcpToolServerAuth(detail) && !strings.Contains(normalized, "process exited"):
+		return "mcp_server_auth_required"
 	case authFailurePattern.MatchString(detail) && !detailIsMcpToolServerAuth(detail):
 		return "auth_required"
 	// A run that can't find its CLI binary surfaces as an exec/ENOENT error. This
@@ -486,7 +486,7 @@ func codexErrorLooksLikeNetwork(lower string) bool {
 func visibleFailureRetryable(code string, detail string) bool {
 	if code == "runtime_unavailable" || code == "request_timed_out" || code == "network_error" ||
 		code == "session_interrupted" || strings.HasPrefix(code, "egress_") ||
-		strings.HasPrefix(code, "provider_process_exit_") {
+		strings.HasPrefix(code, "provider_process_exit_") || code == "mcp_server_auth_required" {
 		return true
 	}
 	normalized := strings.ToLower(detail)
@@ -505,6 +505,8 @@ func visibleFailureContent(provider string, phase string, code string) string {
 			return fmt.Sprintf("%s could not start because the selected model is unavailable for this account.", name)
 		case "plugin_unavailable":
 			return fmt.Sprintf("%s started without an optional integration that is currently unavailable.", name)
+		case "mcp_server_auth_required":
+			return fmt.Sprintf("%s could not start because an MCP integration needs to be reconnected. Re-authenticate it and try again.", name)
 		case "auth_required":
 			return fmt.Sprintf("%s needs authentication or configuration.", name)
 		case "cli_not_found":
@@ -540,6 +542,8 @@ func visibleFailureContent(provider string, phase string, code string) string {
 		return fmt.Sprintf("%s could not use the selected model. Choose another model and try again.", name)
 	case "plugin_unavailable":
 		return fmt.Sprintf("%s could not use an optional integration that is currently unavailable.", name)
+	case "mcp_server_auth_required":
+		return fmt.Sprintf("%s could not continue because an MCP integration needs to be reconnected. Re-authenticate it and try again.", name)
 	case "auth_required":
 		return fmt.Sprintf("%s needs authentication or configuration.", name)
 	case "cli_not_found":

@@ -8,7 +8,7 @@ interface ClientResponse<TResult> {
 
 export function unwrapData<TResult>(
   response: ClientResponse<TResult>,
-  fallback: string,
+  fallback: string
 ): TResult {
   if ("error" in response && response.error !== undefined) {
     throw parseTuttidError(response.error, response.response?.status, fallback);
@@ -23,7 +23,7 @@ export function unwrapData<TResult>(
 
 export function unwrapAccepted(
   response: { error?: unknown; response?: Response },
-  fallback: string,
+  fallback: string
 ): void {
   if ("error" in response && response.error !== undefined) {
     throw parseTuttidError(response.error, response.response?.status, fallback);
@@ -33,7 +33,7 @@ export function unwrapAccepted(
 function parseTuttidError(
   error: unknown,
   statusCode: number | undefined,
-  fallback: string,
+  fallback: string
 ): Error {
   const normalizedError = normalizeTuttidError(error, statusCode ?? 0);
   if (normalizedError) {

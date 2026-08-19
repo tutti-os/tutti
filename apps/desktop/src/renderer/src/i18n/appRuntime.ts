@@ -2,7 +2,7 @@ import { createI18nRuntime, type I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { agentGuiI18nResources } from "@tutti-os/agent-gui/i18n";
 import { browserNodeI18nResources } from "@tutti-os/browser-node/i18n";
 import { appCenterI18nResources } from "@tutti-os/workspace-app-center/i18n";
-import { connectorMarketI18nResources } from "@tutti-os/connector-market/i18n";
+import { connectorMarketI18nResources } from "@tutti-os/connector-renderer/i18n";
 import { issueManagerI18nResources } from "@tutti-os/workspace-issue-manager/i18n";
 import { workspaceFileManagerI18nResources } from "@tutti-os/workspace-file-manager/i18n";
 import { workspaceUserProjectI18nResources } from "@tutti-os/workspace-user-project/i18n";

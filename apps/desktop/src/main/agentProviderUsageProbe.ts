@@ -7,6 +7,7 @@ import type {
   AgentProbeProvider,
   AgentUsageQuota
 } from "@tutti-os/agent-gui";
+import type { AgentTargetAccountUsageProbeResult } from "@tutti-os/client-tuttid-ts";
 import {
   migratedAgentGUIProviderIdentityCatalog,
   resolveAgentGUIProviderCatalogIdentity
@@ -15,6 +16,11 @@ import {
 import { getDesktopLogger } from "./logging.ts";
 import { outboundFetch } from "./net/outboundFetch.ts";
 import { probeClaudeCodeProvider } from "./claudeProviderUsageProbe.ts";
+import {
+  failedDesktopAgentProbe,
+  mapProviderOwnedAccountUsageResult,
+  type DesktopAgentProbeTarget
+} from "./agentTargetAccountUsageProbe.ts";
 export { setClaudeOAuthKeychainReaderForTesting } from "./claudeProviderUsageProbe.ts";
 
 const CODEX_DEFAULT_CHATGPT_BASE_URL = "https://chatgpt.com/backend-api/";
@@ -53,13 +59,14 @@ interface CodexUsageWindow {
 }
 
 export async function listDesktopWorkspaceAgentProbes(
-  input: AgentProviderProbeListInput
+  input: AgentProviderProbeListInput,
+  dependencies: DesktopAgentUsageProbeDependencies = {}
 ): Promise<AgentProviderProbeListResult> {
   const capturedAtUnixMs = Date.now();
-  const providers = normalizeProbeProviders(input.providers);
+  const targets = normalizeProbeTargets(input);
   const results = await Promise.all(
-    providers.map((provider) =>
-      probeDesktopAgentProvider(provider, input, capturedAtUnixMs)
+    targets.map((target) =>
+      probeDesktopAgentTarget(target, input, capturedAtUnixMs, dependencies)
     )
   );
   return {
@@ -70,23 +77,59 @@ export async function listDesktopWorkspaceAgentProbes(
   };
 }
 
+export interface DesktopAgentUsageProbeDependencies {
+  probeAgentTargetAccountUsage?: (
+    agentTargetId: string
+  ) => Promise<AgentTargetAccountUsageProbeResult>;
+}
+
 type DesktopAgentUsageProbeHandler = (
   input: AgentProviderProbeListInput,
   capturedAtUnixMs: number
 ) => Promise<AgentProbeProvider>;
 
-function normalizeProbeProviders(providers: readonly string[] | undefined) {
+function normalizeProbeTargets(
+  input: AgentProviderProbeListInput
+): DesktopAgentProbeTarget[] {
+  const requestedTargetIds = (input.agentTargetIds ?? [])
+    .map((targetId) => targetId.trim())
+    .filter(Boolean);
+  if (requestedTargetIds.length > 0) {
+    const targets = requestedTargetIds.map((agentTargetId, index) => {
+      const identity = resolveAgentGUIProviderCatalogIdentity(agentTargetId);
+      const providerHint = input.providers?.[index]?.trim() ?? "";
+      return {
+        agentTargetId,
+        provider: providerHint || identity?.providerId || "unknown"
+      };
+    });
+    return Array.from(
+      new Map(targets.map((target) => [target.agentTargetId, target])).values()
+    );
+  }
+
   const defaults = migratedAgentGUIProviderIdentityCatalog
     .filter((entry) => entry.desktop.usageProbeKind !== "")
     .map((entry) => entry.providerId);
-  const normalized = (providers ?? defaults)
-    .map(
-      (provider) =>
-        resolveAgentGUIProviderCatalogIdentity(provider)?.providerId ??
-        provider.trim()
-    )
-    .filter(Boolean);
-  return Array.from(new Set(normalized));
+  const normalized = (input.providers ?? defaults).flatMap((rawProvider) => {
+    const provider = rawProvider.trim();
+    if (!provider) return [];
+    const identity = resolveAgentGUIProviderCatalogIdentity(provider);
+    return [
+      {
+        agentTargetId: identity?.target.id ?? "",
+        provider: identity?.providerId ?? provider
+      }
+    ];
+  });
+  return Array.from(
+    new Map(
+      normalized.map((target) => [
+        target.agentTargetId || `provider:${target.provider}`,
+        target
+      ])
+    ).values()
+  );
 }
 
 // Coalesce rapid repeat usage probes so window mounts, menu opens, hover
@@ -103,30 +146,41 @@ interface UsageProbeCacheEntry {
   retryNotBeforeMs: number;
 }
 
-const usageProbeCacheByProvider = new Map<string, UsageProbeCacheEntry>();
+const usageProbeCacheByTarget = new Map<string, UsageProbeCacheEntry>();
+const usageProbeInFlightByTarget = new Map<
+  string,
+  Promise<AgentProbeProvider>
+>();
 
-/** Test hook: clears the per-provider usage probe cache between cases. */
+/** Test hook: clears the exact-target usage probe cache between cases. */
 export function resetUsageProbeCacheForTesting(): void {
-  usageProbeCacheByProvider.clear();
+  usageProbeCacheByTarget.clear();
+  usageProbeInFlightByTarget.clear();
 }
 
 function isRateLimitedProbeResult(result: AgentProbeProvider): boolean {
-  const message = (result.lastError?.message ?? "").toLowerCase();
-  return message.includes("rate limit") || message.includes("429");
+  return result.lastError?.code === "rate_limited";
 }
 
-async function probeDesktopAgentProvider(
-  provider: string,
+async function probeDesktopAgentTarget(
+  target: DesktopAgentProbeTarget,
   input: AgentProviderProbeListInput,
-  capturedAtUnixMs: number
+  capturedAtUnixMs: number,
+  dependencies: DesktopAgentUsageProbeDependencies
 ): Promise<AgentProbeProvider> {
   // Availability-only probes are cheap, differently shaped, and not what
   // rate-limits the account API — never cache them.
   if (!input.includeUsage) {
-    return resolveDesktopAgentProbe(provider, input, capturedAtUnixMs);
+    return resolveDesktopAgentProbe(
+      target,
+      input,
+      capturedAtUnixMs,
+      dependencies
+    );
   }
 
-  const cached = usageProbeCacheByProvider.get(provider);
+  const cacheKey = target.agentTargetId || `provider:${target.provider}`;
+  const cached = usageProbeCacheByTarget.get(cacheKey);
   if (cached) {
     const freshEnough =
       capturedAtUnixMs - cached.fetchedAtMs < USAGE_PROBE_CACHE_TTL_MS;
@@ -139,7 +193,8 @@ async function probeDesktopAgentProvider(
       if (coolingDown && !freshEnough) {
         getDesktopLogger().debug("agent usage probe held during 429 cooldown", {
           event: "agent.usage_probe.cooldown",
-          provider,
+          agentTargetId: target.agentTargetId || null,
+          provider: target.provider,
           workspaceId: input.workspaceId,
           retryInMs: cached.retryNotBeforeMs - capturedAtUnixMs
         });
@@ -148,46 +203,82 @@ async function probeDesktopAgentProvider(
     }
   }
 
-  const result = await resolveDesktopAgentProbe(
-    provider,
+  const inFlight = usageProbeInFlightByTarget.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const probe = resolveDesktopAgentProbe(
+    target,
     input,
-    capturedAtUnixMs
-  );
-  logDesktopAgentUsageProbeOutcome(provider, input, result);
-  usageProbeCacheByProvider.set(provider, {
-    result,
-    fetchedAtMs: capturedAtUnixMs,
-    retryNotBeforeMs: isRateLimitedProbeResult(result)
-      ? capturedAtUnixMs + USAGE_PROBE_RATE_LIMIT_COOLDOWN_MS
-      : 0
+    capturedAtUnixMs,
+    dependencies
+  ).then((result) => {
+    logDesktopAgentUsageProbeOutcome(target, input, result);
+    usageProbeCacheByTarget.set(cacheKey, {
+      result,
+      fetchedAtMs: capturedAtUnixMs,
+      retryNotBeforeMs: isRateLimitedProbeResult(result)
+        ? capturedAtUnixMs + USAGE_PROBE_RATE_LIMIT_COOLDOWN_MS
+        : 0
+    });
+    return result;
   });
-  return result;
+  usageProbeInFlightByTarget.set(cacheKey, probe);
+  try {
+    return await probe;
+  } finally {
+    if (usageProbeInFlightByTarget.get(cacheKey) === probe) {
+      usageProbeInFlightByTarget.delete(cacheKey);
+    }
+  }
 }
 
 async function resolveDesktopAgentProbe(
-  provider: string,
+  target: DesktopAgentProbeTarget,
   input: AgentProviderProbeListInput,
-  capturedAtUnixMs: number
+  capturedAtUnixMs: number,
+  dependencies: DesktopAgentUsageProbeDependencies
 ): Promise<AgentProbeProvider> {
-  const probeKind =
-    resolveAgentGUIProviderCatalogIdentity(provider)?.desktop.usageProbeKind ??
-    "";
-  const handler = desktopAgentUsageProbeHandlers.get(probeKind);
-  if (handler) {
-    return handler(input, capturedAtUnixMs);
+  const identity = target.agentTargetId
+    ? resolveAgentGUIProviderCatalogIdentity(target.agentTargetId)
+    : resolveAgentGUIProviderCatalogIdentity(target.provider);
+  const exactCatalogTarget =
+    identity &&
+    (!target.agentTargetId || identity.target.id === target.agentTargetId)
+      ? identity
+      : null;
+  if (
+    exactCatalogTarget &&
+    target.provider !== "unknown" &&
+    exactCatalogTarget.providerId !== target.provider
+  ) {
+    return failedDesktopAgentProbe(target, "parse_failed");
   }
-  return {
-    availability: {
-      detailsVisible: false,
-      status: "unknown"
-    },
-    lastError: input.includeUsage
-      ? {
-          code: "unsupported"
-        }
-      : undefined,
-    provider
-  };
+  const probeKind = exactCatalogTarget
+    ? exactCatalogTarget.desktop.usageProbeKind
+    : "";
+  const handler = desktopAgentUsageProbeHandlers.get(probeKind);
+  if (handler && exactCatalogTarget) {
+    const result = await handler(input, capturedAtUnixMs);
+    return {
+      ...result,
+      agentTargetId: exactCatalogTarget.target.id,
+      provider: exactCatalogTarget.providerId
+    };
+  }
+  if (target.agentTargetId && dependencies.probeAgentTargetAccountUsage) {
+    try {
+      const result = await dependencies.probeAgentTargetAccountUsage(
+        target.agentTargetId
+      );
+      return mapProviderOwnedAccountUsageResult(target, result);
+    } catch {
+      return failedDesktopAgentProbe(target, "runtime_unavailable");
+    }
+  }
+  return failedDesktopAgentProbe(
+    target,
+    input.includeUsage ? "unsupported" : undefined
+  );
 }
 
 const desktopAgentUsageProbeHandlers = new Map<
@@ -203,11 +294,11 @@ const desktopAgentUsageProbeHandlers = new Map<
 // resolves. That kept the renderer quiet, but it also meant a failed or empty
 // Claude/Codex usage fetch left no trace anywhere — a "usage disappeared" report
 // had zero corresponding log lines. Emit one structured line per usage probe so
-// the outcome (and the reason it produced no quotas) is diagnosable. No secrets
-// are included: the provider result carries error codes/messages and strategy
-// names only, never tokens.
+// the outcome (and the reason it produced no quotas) is diagnosable. The log
+// contains stable codes and strategy IDs only, never free-form errors, config,
+// endpoints, response payloads, or credentials.
 function logDesktopAgentUsageProbeOutcome(
-  provider: string,
+  target: DesktopAgentProbeTarget,
   input: AgentProviderProbeListInput,
   result: AgentProbeProvider
 ): void {
@@ -219,17 +310,16 @@ function logDesktopAgentUsageProbeOutcome(
   const level = desktopAgentUsageProbeLogLevel(quotaCount, usageErrorCode);
   const fields: Record<string, unknown> = {
     event: "agent.usage_probe.result",
-    provider,
+    agentTargetId: result.agentTargetId ?? target.agentTargetId ?? null,
+    provider: result.provider,
     workspaceId: input.workspaceId,
     availability: result.availability.status,
     quotaCount,
     usageErrorCode,
-    usageErrorMessage: result.lastError?.message ?? null,
     attempts: (result.attempts ?? []).map((attempt) => ({
       strategy: attempt.strategy,
       success: attempt.success,
-      errorCode: attempt.errorCode ?? null,
-      errorMessage: attempt.errorMessage ?? null
+      errorCode: attempt.errorCode ?? null
     }))
   };
   const logger = getDesktopLogger();
@@ -560,6 +650,9 @@ function numberValue(value: unknown): number | null {
 
 function codexProbeErrorCode(error: unknown): string {
   const message = errorMessage(error).toLowerCase();
+  if (message.includes("rate limit") || message.includes("429")) {
+    return "rate_limited";
+  }
   if (message.includes("unauthorized") || message.includes("expired")) {
     return "session_expired";
   }

@@ -5,6 +5,13 @@ import { ipcRenderer, type IpcRendererEvent } from "electron";
 
 export function createHostDesktopApi(): DesktopHostApi {
   return {
+    preferences: {
+      ensureInitialized() {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.preferences.ensureInitialized
+        );
+      }
+    },
     files: {
       createUserDocumentsProjectDirectory(input) {
         return invokeDesktopApi(

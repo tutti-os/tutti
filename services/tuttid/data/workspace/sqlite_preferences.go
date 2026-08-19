@@ -112,108 +112,6 @@ WHERE id = ?
 	}, nil
 }
 
-func (s *SQLiteStore) PutDesktopPreferences(ctx context.Context, preferences preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, error) {
-	if s == nil || s.writeDB == nil {
-		return preferencesbiz.DesktopPreferences{}, errors.New("workspace database is not initialized")
-	}
-
-	now := unixMs(time.Now().UTC())
-	agentComposerDefaultsJSON, err := encodeAgentComposerDefaultsByProvider(preferences.AgentComposerDefaultsByProvider)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences agent composer defaults: %w", err)
-	}
-	agentComposerDefaultsByAgentTargetJSON, err := encodeAgentComposerDefaultsByProvider(preferences.AgentComposerDefaultsByAgentTarget)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences agent composer defaults by agent target: %w", err)
-	}
-	agentGUIConversationRailCollapsedJSON, err := encodeAgentGUIConversationRailCollapsedByProvider(preferences.AgentGUIConversationRailCollapsedByProvider)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences agent gui conversation rail: %w", err)
-	}
-	agentSessionLaunchModesJSON, err := encodeAgentSessionLaunchModesByWorkspace(preferences.AgentSessionLaunchModesByWorkspace)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences Agent Session launch modes: %w", err)
-	}
-	fileDefaultOpenersJSON, err := encodeFileDefaultOpenersByExtension(preferences.FileDefaultOpenersByExtension)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences file default openers: %w", err)
-	}
-	featureFlagsJSON, err := encodeFeatureFlags(preferences.FeatureFlags)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences feature flags: %w", err)
-	}
-	workbenchShortcutsJSON, err := encodeWorkbenchShortcuts(preferences.WorkbenchShortcuts)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("encode desktop preferences workbench shortcuts: %w", err)
-	}
-	_, err = s.writeDB.ExecContext(ctx, `
-INSERT INTO desktop_preferences (
-  id,
-  agent_cli_update_check_enabled,
-  default_agent_provider,
-  agent_conversation_detail_mode,
-  agent_dock_layout,
-  dock_icon_style,
-  dock_placement,
-  deleted_agent_conversation_retention_days,
-  locale,
-  theme_source,
-  sleep_prevention_mode,
-  update_channel,
-  update_policy,
-  agent_composer_defaults_by_provider_json,
-  agent_composer_defaults_by_agent_target_json,
-  agent_gui_conversation_rail_collapsed_by_provider_json,
-  agent_session_launch_modes_by_workspace_json,
-  file_default_openers_by_extension_json,
-  app_catalog_channel,
-  browser_use_connection_mode,
-  minimize_animation,
-  show_app_developer_sources,
-  workbench_window_snapping_enabled,
-  workbench_window_snapping_shortcut_preset,
-  feature_flags_json,
-  workbench_shortcuts_json,
-  updated_at_unix_ms
-)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(id) DO UPDATE SET
-  agent_cli_update_check_enabled = excluded.agent_cli_update_check_enabled,
-  default_agent_provider = excluded.default_agent_provider,
-  agent_conversation_detail_mode = excluded.agent_conversation_detail_mode,
-  agent_dock_layout = excluded.agent_dock_layout,
-  dock_icon_style = excluded.dock_icon_style,
-  dock_placement = excluded.dock_placement,
-  deleted_agent_conversation_retention_days = excluded.deleted_agent_conversation_retention_days,
-  locale = excluded.locale,
-  theme_source = excluded.theme_source,
-  sleep_prevention_mode = excluded.sleep_prevention_mode,
-  update_channel = excluded.update_channel,
-  update_policy = excluded.update_policy,
-  agent_composer_defaults_by_provider_json = excluded.agent_composer_defaults_by_provider_json,
-  agent_gui_conversation_rail_collapsed_by_provider_json = excluded.agent_gui_conversation_rail_collapsed_by_provider_json,
-  file_default_openers_by_extension_json = excluded.file_default_openers_by_extension_json,
-  app_catalog_channel = excluded.app_catalog_channel,
-  browser_use_connection_mode = excluded.browser_use_connection_mode,
-  minimize_animation = excluded.minimize_animation,
-  show_app_developer_sources = excluded.show_app_developer_sources,
-  workbench_window_snapping_enabled = excluded.workbench_window_snapping_enabled,
-  workbench_window_snapping_shortcut_preset = excluded.workbench_window_snapping_shortcut_preset,
-  feature_flags_json = excluded.feature_flags_json,
-  workbench_shortcuts_json = excluded.workbench_shortcuts_json,
-  updated_at_unix_ms = excluded.updated_at_unix_ms
-`, desktopPreferencesRowID, preferences.AgentCLIUpdateCheckEnabled, preferences.DefaultAgentProvider, preferencesbiz.NormalizeDesktopAgentConversationDetailMode(preferences.AgentConversationDetailMode), preferencesbiz.NormalizeDesktopAgentDockLayout(preferences.AgentDockLayout), preferences.DockIconStyle, preferences.DockPlacement, preferencesbiz.NormalizeDeletedAgentConversationRetentionDays(preferences.DeletedAgentConversationRetentionDays), preferences.Locale, preferences.ThemeSource, preferences.SleepPreventionMode, preferences.UpdateChannel, preferences.UpdatePolicy, agentComposerDefaultsJSON, agentComposerDefaultsByAgentTargetJSON, agentGUIConversationRailCollapsedJSON, agentSessionLaunchModesJSON, fileDefaultOpenersJSON, preferences.AppCatalogChannel, preferences.BrowserUseConnectionMode, preferences.MinimizeAnimation, preferences.ShowAppDeveloperSources, preferences.WindowSnappingEnabled, preferences.WindowSnappingShortcutPreset, featureFlagsJSON, workbenchShortcutsJSON, now)
-	if err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("put desktop preferences: %w", err)
-	}
-
-	// Re-read after the write because the dedicated target-defaults or launch-mode
-	// patch may have committed between a full preferences caller's read and this
-	// update. The conflict clause deliberately preserves those columns, so
-	// returning the input object here would publish a stale snapshot.
-	return s.GetDesktopPreferences(ctx)
-}
-
 func (s *SQLiteStore) PatchAgentComposerDefaultsForTarget(
 	ctx context.Context,
 	agentTargetID string,
@@ -232,16 +130,6 @@ func (s *SQLiteStore) PatchAgentComposerDefaultsForTarget(
 		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("begin agent composer defaults patch: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	defaultPreferences := preferencesbiz.DefaultDesktopPreferences()
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO desktop_preferences (
-  id, locale, theme_source, dock_icon_style, updated_at_unix_ms
-)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(id) DO NOTHING
-`, desktopPreferencesRowID, defaultPreferences.Locale, defaultPreferences.ThemeSource, defaultPreferences.DockIconStyle, unixMs(time.Now().UTC())); err != nil {
-		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("initialize desktop preferences for agent composer defaults patch: %w", err)
-	}
 
 	var raw string
 	if err := tx.QueryRowContext(ctx, `
@@ -249,6 +137,9 @@ SELECT agent_composer_defaults_by_agent_target_json
 FROM desktop_preferences
 WHERE id = ?
 `, desktopPreferencesRowID).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("read agent composer defaults for patch: %w", ErrDesktopPreferencesNotInitialized)
+		}
 		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("read agent composer defaults for patch: %w", err)
 	}
 	defaultsByTarget, err := decodeAgentComposerDefaultsByProvider(raw)
@@ -301,7 +192,7 @@ WHERE id = ?
 		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("count agent composer defaults patch rows: %w", err)
 	}
 	if rows != 1 {
-		return preferencesbiz.AgentComposerDefaults{}, errors.New("desktop preferences row is not initialized")
+		return preferencesbiz.AgentComposerDefaults{}, ErrDesktopPreferencesNotInitialized
 	}
 	if err := tx.Commit(); err != nil {
 		return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("commit agent composer defaults patch: %w", err)
@@ -330,16 +221,6 @@ func (s *SQLiteStore) PatchAgentSessionLaunchMode(
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("begin agent session launch mode patch: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	defaultPreferences := preferencesbiz.DefaultDesktopPreferences()
-	if _, err := tx.ExecContext(ctx, `
-INSERT INTO desktop_preferences (
-  id, locale, theme_source, dock_icon_style, updated_at_unix_ms
-)
-VALUES (?, ?, ?, ?, ?)
-ON CONFLICT(id) DO NOTHING
-`, desktopPreferencesRowID, defaultPreferences.Locale, defaultPreferences.ThemeSource, defaultPreferences.DockIconStyle, unixMs(time.Now().UTC())); err != nil {
-		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("initialize desktop preferences for agent session launch mode patch: %w", err)
-	}
 
 	var raw string
 	if err := tx.QueryRowContext(ctx, `
@@ -347,6 +228,9 @@ SELECT agent_session_launch_modes_by_workspace_json
 FROM desktop_preferences
 WHERE id = ?
 `, desktopPreferencesRowID).Scan(&raw); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return preferencesbiz.DesktopPreferences{}, fmt.Errorf("read agent session launch modes for patch: %w", ErrDesktopPreferencesNotInitialized)
+		}
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("read agent session launch modes for patch: %w", err)
 	}
 	modesByWorkspace, err := decodeAgentSessionLaunchModesByWorkspace(raw)
@@ -379,7 +263,7 @@ WHERE id = ?
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("count agent session launch mode patch rows: %w", err)
 	}
 	if rows != 1 {
-		return preferencesbiz.DesktopPreferences{}, errors.New("desktop preferences row is not initialized")
+		return preferencesbiz.DesktopPreferences{}, ErrDesktopPreferencesNotInitialized
 	}
 	if err := tx.Commit(); err != nil {
 		return preferencesbiz.DesktopPreferences{}, fmt.Errorf("commit agent session launch mode patch: %w", err)

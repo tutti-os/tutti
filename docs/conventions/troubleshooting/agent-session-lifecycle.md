@@ -1484,6 +1484,48 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [codex_appserver_turn_machine.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Codex app-server Start/Resume waits after a lifecycle notification
+
+- Symptom:
+  Session start or resume reaches the provider, but Tutti waits for the
+  lifecycle RPC timeout even though Codex sent `thread/started`. A required MCP
+  server can show the same symptom when the only failure evidence is
+  `mcpServer/startupStatus/updated` with `status = failed` and there is no
+  stderr or JSON-RPC response.
+- Quick checks:
+  Inspect the app-server wire trace for `thread/started` or
+  `mcpServer/startupStatus/updated` before the missing `thread/start` or
+  `thread/resume` response. Distinguish this from a completely silent provider:
+  without an authoritative lifecycle notification, process termination, or
+  transport error, the call must still time out rather than manufacture success.
+- Root cause:
+  App-server notifications and the response for their triggering RPC have no
+  safe application-order guarantee. Waiting only on the response leaves the
+  lifecycle call blocked when Codex has already published the authoritative
+  thread snapshot. Required MCP startup failure is also a terminal lifecycle
+  fact, but it can arrive without stderr or a response. Child terminal
+  notifications can arrive before `receiverThreadIds` registers their thread;
+  dropping those unknown-thread terminal events loses the only completion fact.
+- Fix:
+  Complete only the active method-matched `thread/start` or `thread/resume` wait
+  from a valid `thread/started` snapshot. Schedule the structured MCP failure
+  after a short response grace window so a normal response wins the race. Keep
+  ordinary foreign-thread progress dropped, but retain a bounded terminal
+  notification until child registration and replay it with child identity.
+  Keep confirmed provider turn-id fences; only the existing unconfirmed steer
+  stub and goal-adopted exceptions may settle from a different or empty id.
+- Validation:
+  Run the notification-only Start/Resume wire test, the MCP failed-status
+  response-grace tests, and the child terminal-before-registration replay test.
+  Run the focused app-server suite with `-race` and the full
+  `go test ./packages/agent/daemon/runtime` package suite.
+- References:
+  [codex_appserver_client.go](../../../packages/agent/daemon/runtime/codex_appserver_client.go)
+  [codex_appserver_event_routing.go](../../../packages/agent/daemon/runtime/codex_appserver_event_routing.go)
+  [codex_appserver_turn_machine.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
+  [codex_appserver_lifecycle_test.go](../../../packages/agent/daemon/runtime/codex_appserver_lifecycle_test.go)
+  [codex_appserver_events_test.go](../../../packages/agent/daemon/runtime/codex_appserver_events_test.go)
+
 ### Busy-turn message insertion fails or ends without sending the prompt
 
 - Symptom:

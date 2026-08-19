@@ -154,6 +154,18 @@ func TestVisibleFailureCodeDoesNotTreatMcpServerAuthAsCodexAuth(t *testing.T) {
 	}
 }
 
+func TestVisibleFailureCodeClassifiesMcpServerAuthWithoutProcessExit(t *testing.T) {
+	detail := `codex MCP server figma startup failed (reauthenticationRequired): ` +
+		`rmcp::transport::worker AuthRequired(AuthRequiredError { ` +
+		`resource_metadata="https://mcp.figma.com/.well-known/oauth-protected-resource" })`
+	if got := visibleFailureCode(detail); got != "mcp_server_auth_required" {
+		t.Fatalf("visibleFailureCode() = %q, want mcp_server_auth_required", got)
+	}
+	if !visibleFailureRetryable("mcp_server_auth_required", detail) {
+		t.Fatal("mcp_server_auth_required should be retryable")
+	}
+}
+
 func TestVisibleFailureCodeClassifiesCleanExitAsInterrupted(t *testing.T) {
 	// A clean exit (code 0) reaching here means the app-server was stopped
 	// externally mid-turn (host quit, or an agent killed its own host) — the

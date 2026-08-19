@@ -90,6 +90,7 @@ type Manifest struct {
 		Capabilities   string `json:"capabilities,omitempty"`
 		Composer       string `json:"composer,omitempty"`
 		Authentication string `json:"authentication,omitempty"`
+		AccountUsage   string `json:"accountUsage,omitempty"`
 		Events         string `json:"events,omitempty"`
 	} `json:"profiles"`
 }

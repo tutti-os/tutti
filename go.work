@@ -8,8 +8,6 @@ use ./packages/events/stream-go
 
 use ./packages/clients/device-authority-go
 
-use ./packages/clients/connector-controlplane
-
 use ./packages/clients/market-go
 
 use ./packages/analytics/reporter-go
@@ -19,10 +17,11 @@ use ./packages/device-link
 use ./packages/desktop/update-admission
 
 use (
-	./packages/connector/daemon
-	./packages/connector/host
+	./packages/connector/daemon/adapters/controlplane
+	./packages/connector/daemon/adapters/sqlite
+	./packages/connector/daemon/application
+	./packages/connector/daemon/core
 	./packages/connector/runtime
-	./packages/connector/store-sqlite
 )
 
 use ./apps/cli

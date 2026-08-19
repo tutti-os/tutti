@@ -131,6 +131,8 @@ export interface AgentGUINodeHostCapabilities {
   referenceProvenanceFilterEnabled?: boolean;
   /** Host-owned experimental opt-in for current-Session composer history. */
   sessionInputHistoryEnabled?: boolean;
+  /** Host-owned experimental opt-in for Side and transcript selection actions. */
+  sideConversationEnabled?: boolean;
   /** Host-owned opt-in for launching self-owned local Sessions in git worktrees. */
   sessionWorktreeEnabled?: boolean;
   /** Host-owned durable launch preference projection for this workspace. */
@@ -200,7 +202,7 @@ export interface AgentGUINodeHostActions {
   }) => void | Promise<void>;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
-  ) => void;
+  ) => void | Promise<void>;
   onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
   /**
@@ -433,6 +435,7 @@ export function areAgentGUINodePropsEqual(
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
+    pc.sideConversationEnabled === nc.sideConversationEnabled &&
     pc.sessionWorktreeEnabled === nc.sessionWorktreeEnabled &&
     pc.sessionLaunchModesByProjectSectionKey ===
       nc.sessionLaunchModesByProjectSectionKey &&

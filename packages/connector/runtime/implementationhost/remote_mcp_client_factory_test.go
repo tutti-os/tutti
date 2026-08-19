@@ -6,7 +6,7 @@ import (
 	"reflect"
 	"testing"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	"github.com/tutti-os/tutti/packages/connector/runtime/mcp"
 )
 

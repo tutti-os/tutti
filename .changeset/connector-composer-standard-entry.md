@@ -1,6 +1,6 @@
 ---
 "@tutti-os/agent-gui": patch
-"@tutti-os/connector-market": minor
+"@tutti-os/connector-renderer": minor
 "@tutti-os/desktop": patch
 ---
 
