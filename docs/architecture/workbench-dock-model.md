@@ -220,6 +220,11 @@ Dock visibility and launchability should be modeled separately.
 default navigation set but should appear when a matching node is already open
 or restored from snapshot.
 
+Installed workspace applications default to `when-open`: installation makes an
+application launchable from App Center but does not pin it to the Dock. A host
+may persist an explicit Keep in Dock choice and override visibility to `always`;
+closing the last matching node hides an application without that retained choice.
+
 ### Open-State Indicator
 
 An entry with a matching open or minimized node renders the shared Dock state

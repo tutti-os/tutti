@@ -4,8 +4,39 @@ import { workbenchSnapshotSchemaVersion } from "@tutti-os/workbench-snapshot";
 import {
   readWorkspaceDockRetentionByEntryId,
   replaceWorkspaceDockSnapshotMetadata,
+  resolveWorkspaceDockRetentionDefault,
+  resolveWorkspaceDockRetentionState,
   writeWorkspaceDockRetentionToSnapshot
 } from "./workspaceDockRetention.ts";
+
+test("workspace dock retention follows the entry visibility default", () => {
+  const entry = {
+    icon: null,
+    id: "workspace-app:calendar",
+    label: "Calendar",
+    typeId: "workspace-app-center",
+    visibility: "when-open"
+  } as const;
+
+  assert.equal(resolveWorkspaceDockRetentionDefault(entry), false);
+  assert.equal(
+    resolveWorkspaceDockRetentionDefault({ ...entry, visibility: "always" }),
+    true
+  );
+  assert.deepEqual(resolveWorkspaceDockRetentionState(entry, {}), {
+    retained: false,
+    visibility: "when-open"
+  });
+  assert.deepEqual(
+    resolveWorkspaceDockRetentionState(entry, {
+      "workspace-app:calendar": true
+    }),
+    {
+      retained: true,
+      visibility: "always"
+    }
+  );
+});
 
 test("workspace dock retention round-trips explicit removed entries", () => {
   const snapshot = writeWorkspaceDockRetentionToSnapshot(createSnapshot(), {

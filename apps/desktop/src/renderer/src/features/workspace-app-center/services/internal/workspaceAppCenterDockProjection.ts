@@ -9,6 +9,7 @@ export interface WorkspaceAppCenterDockProjection {
   clickBehavior?: WorkbenchHostDockEntry["clickBehavior"];
   launchEnabled: boolean;
   state?: WorkbenchHostDockEntryState;
+  visibility: WorkbenchHostDockEntry["visibility"];
 }
 
 export function projectWorkspaceAppCenterDockApps(
@@ -82,7 +83,8 @@ export function projectWorkspaceAppCenterDockApps(
 
       return {
         app,
-        ...projection
+        ...projection,
+        visibility: "when-open"
       };
     });
 }
