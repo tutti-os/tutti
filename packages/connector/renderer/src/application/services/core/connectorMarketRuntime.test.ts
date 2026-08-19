@@ -228,7 +228,7 @@ function connector(key: string, overrides: Partial<Connector> = {}): Connector {
       manifest: {
         authorizationKind: "none",
         displayName: "GitHub",
-        iconUrl: "data:image/png;base64,iVBORw0KGgo=",
+        iconUrl: `https://cdn.example.test/tutti/connector-market/${key}/1.0.0/${key}-1.0.0-icon.svg`,
         implementation: {
           builtin: { cli: true, mcp: true, providerId: key },
           kind: "builtin"

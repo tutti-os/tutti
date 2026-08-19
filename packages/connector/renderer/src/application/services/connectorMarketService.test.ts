@@ -32,7 +32,7 @@ function connector(key: string, revision: number): Connector {
       manifest: {
         schemaVersion: "1",
         displayName: key,
-        iconUrl: "data:image/png;base64,iVBORw0KGgo=",
+        iconUrl: `https://cdn.example.test/tutti/connector-market/${key}/1.0.0/${key}-1.0.0-icon.svg`,
         permissions: [],
         implementation: {
           kind: "builtin",

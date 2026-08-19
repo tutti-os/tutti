@@ -7,7 +7,32 @@ import (
 	"testing"
 )
 
-const testConnectorIconURL = "data:image/png;base64,iVBORw0KGgo="
+const testConnectorIconURL = "https://cdn.example.test/tutti/connector-market/test/1.0.0/test-1.0.0-icon.svg"
+
+func TestValidateManifestShapeRequiresSafePublishedHTTPSIcon(t *testing.T) {
+	manifest := Manifest{
+		SchemaVersion: "1", DisplayName: "Published Connector", AuthorizationKind: "none",
+		Implementation: Implementation{Kind: ImplementationKindBuiltin,
+			Builtin: &BuiltinImplementation{ProviderID: "published-connector", MCP: true}},
+	}
+	manifest.IconURL = testConnectorIconURL
+	if err := ValidateManifestShape(manifest); err != nil {
+		t.Fatalf("ValidateManifestShape(%q) error = %v", manifest.IconURL, err)
+	}
+	for _, iconURL := range []string{
+		"data:image/png;base64,iVBORw0KGgo=",
+		"http://cdn.example.test/icon.svg",
+		" https://cdn.example.test/icon.svg",
+		"https://user:secret@cdn.example.test/icon.svg",
+		"https:///icon.svg",
+		"https://cdn.example.test/" + strings.Repeat("x", 2048),
+	} {
+		manifest.IconURL = iconURL
+		if err := ValidateManifestShape(manifest); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+			t.Fatalf("ValidateManifestShape(%q) error = %v, want iconUrl rejection", iconURL, err)
+		}
+	}
+}
 
 func TestImplementationRegistryValidatesSupportedManifest(t *testing.T) {
 	registry := NewImplementationRegistry(map[string]ImplementationValidator{
@@ -188,17 +213,16 @@ func TestImplementationRegistryRejectsUnknownImplementation(t *testing.T) {
 	}
 }
 
-func TestRuntimeReleaseValidationDoesNotRequirePresentationIcon(t *testing.T) {
+func TestRuntimeReleaseValidationRequiresPublishedHTTPSIcon(t *testing.T) {
 	release := testReleaseWithImplementation("github", "1.0.0", ImplementationKindManagedStdio)
-	release.Manifest.IconURL = ""
-
-	if err := ValidateReleaseShape(release); err == nil || !strings.Contains(err.Error(), "iconUrl") {
-		t.Fatalf("full release validation error = %v, want iconUrl rejection", err)
-	}
-	if err := ValidateRuntimeReleaseShape(release); err != nil {
-		t.Fatalf("runtime release validation rejected presentation-only icon: %v", err)
+	for _, iconURL := range []string{"", "data:image/png;base64,iVBORw0KGgo="} {
+		release.Manifest.IconURL = iconURL
+		if err := ValidateRuntimeReleaseShape(release); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+			t.Fatalf("runtime release validation for %q error = %v, want iconUrl rejection", iconURL, err)
+		}
 	}
 
+	release.Manifest.IconURL = testConnectorIconURL
 	release.Manifest.Permissions = []string{"network:*", "network:*"}
 	if err := ValidateRuntimeReleaseShape(release); err == nil || !strings.Contains(err.Error(), "unique") {
 		t.Fatalf("runtime release validation error = %v, want duplicate permission rejection", err)

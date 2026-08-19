@@ -200,14 +200,10 @@ func (source *CatalogSource) mapItem(item *marketv1.PublicMarketItem) (market.Re
 		return market.Release{}, err
 	}
 	releaseDigest := sha256.Sum256([]byte(item.GetItemKey() + "\x00" + item.GetVersion() + "\x00" + item.GetArtifact().GetSha256()))
-	iconURL := connectorManifest.Display.IconURL
-	if strings.TrimSpace(iconURL) == "" {
-		iconURL = legacyConnectorIconURL
-	}
 	// The server's v2 envelope is the generic, market-neutral publication
 	// contract. V3 selects one target first. Both project into the stable host
 	// manifest contract; these schema versions describe different boundaries.
-	manifest := market.Manifest{SchemaVersion: "1", DisplayName: connectorManifest.Display.Name, IconURL: iconURL,
+	manifest := market.Manifest{SchemaVersion: "1", DisplayName: connectorManifest.Display.Name, IconURL: connectorManifest.Display.IconURL,
 		Description: connectorManifest.Display.Description, AgentRouting: connectorManifest.Payload.AgentRouting,
 		Permissions:          connectorManifest.Payload.Permissions,
 		RequiredCapabilities: connectorManifest.Payload.RequiredCapabilities,
@@ -292,8 +288,6 @@ func (authorization wireConnectorAuthorization) interaction() (json.RawMessage, 
 	}
 	return selected, nil
 }
-
-const legacyConnectorIconURL = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2NCA2NCI+PHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiByeD0iMTQiIGZpbGw9IiM2YjcyODAiLz48cGF0aCBkPSJNMTggMjBoMjh2MjRIMTh6IiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjQiLz48L3N2Zz4="
 
 func artifactMediaType(key string) string {
 	switch {

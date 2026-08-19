@@ -550,7 +550,8 @@ function connectorFixture(): Connector {
         authorizationKind: "oauth2",
         description: "Manage repositories and pull requests",
         displayName: "GitHub",
-        iconUrl: "data:image/png;base64,iVBORw0KGgo=",
+        iconUrl:
+          "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
         implementation: {
           builtin: { cli: true, mcp: true, providerId: "github" },
           kind: "builtin"

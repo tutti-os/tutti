@@ -758,7 +758,7 @@ func testConnector() market.Connector {
 		ReleaseDigest:  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		ManifestDigest: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Manifest: market.Manifest{
-			IconURL:       "data:image/png;base64,iVBORw0KGgo=",
+			IconURL:       "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 			SchemaVersion: "1",
 			DisplayName:   "GitHub",
 			Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio,

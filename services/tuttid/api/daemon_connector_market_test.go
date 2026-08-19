@@ -513,7 +513,7 @@ func connectorMarketTestConnector() market.Connector {
 			ReleaseDigest:  digest,
 			ManifestDigest: digest,
 			Manifest: market.Manifest{
-				IconURL:       "data:image/png;base64,iVBORw0KGgo=",
+				IconURL:       "https://cdn.example.test/tutti/connector-market/notion/1.0.0/notion-1.0.0-icon.svg",
 				SchemaVersion: "1",
 				DisplayName:   "Notion",
 				AgentRouting:  &market.AgentRouting{Aliases: []string{"Notion", "Notion AI"}},

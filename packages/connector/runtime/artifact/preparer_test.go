@@ -65,7 +65,7 @@ func TestPreparerVerifiesPromotesAndReusesLatestArtifact(t *testing.T) {
 	}
 }
 
-func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
+func TestResolvePreparedRejectsReleaseWithoutHTTPSIcon(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{
 		packagedManifestPath: manifest,
@@ -79,7 +79,7 @@ func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
+	_, err = preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
 		OperationID: "operation-1",
 		Release:     release,
 	})
@@ -87,20 +87,10 @@ func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	legacyRelease := release
-	legacyRelease.Manifest.IconURL = ""
-	resolved, err := preparer.ResolvePrepared(context.Background(), legacyRelease)
-	if err != nil {
-		t.Fatalf("ResolvePrepared() rejected legacy presentation metadata: %v", err)
-	}
-	if resolved.PreparedPath != prepared.PreparedPath {
-		t.Fatalf("resolved path = %q, want %q", resolved.PreparedPath, prepared.PreparedPath)
-	}
-	if _, err := preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
-		OperationID: "operation-2",
-		Release:     legacyRelease,
-	}); err == nil || !strings.Contains(err.Error(), "iconUrl") {
-		t.Fatalf("Prepare() error = %v, want full icon validation", err)
+	invalidRelease := release
+	invalidRelease.Manifest.IconURL = ""
+	if _, err := preparer.ResolvePrepared(context.Background(), invalidRelease); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+		t.Fatalf("ResolvePrepared() error = %v, want iconUrl rejection", err)
 	}
 }
 
@@ -339,7 +329,7 @@ func testRelease(archive, manifest []byte) market.Release {
 		Manifest: market.Manifest{
 			SchemaVersion: "1",
 			DisplayName:   "GitHub",
-			IconURL:       "data:image/png;base64,iVBORw0KGgo=",
+			IconURL:       "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 			Implementation: market.Implementation{
 				Kind: market.ImplementationKindManagedStdio,
 				ManagedStdio: &market.ManagedStdioImplementation{

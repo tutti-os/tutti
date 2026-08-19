@@ -155,9 +155,9 @@ func (installer *ReleaseInstaller) UninstallRelease(
 	if installer == nil || installer.artifacts == nil {
 		return errors.New("connector release installer is unavailable")
 	}
-	if err := market.ValidateRuntimeReleaseShape(request.Release); err != nil {
-		return err
-	}
+	// Removal is keyed only by connector identity, which each storage boundary
+	// validates before deleting. Do not require obsolete presentation metadata
+	// to clean up an otherwise unsupported local installation.
 	var cleanupErrors []error
 	connectorRemoval := market.RemoveConnectorInstallationRequest{
 		OperationID:  request.OperationID,

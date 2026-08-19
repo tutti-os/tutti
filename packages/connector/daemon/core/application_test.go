@@ -12,6 +12,42 @@ import (
 	"time"
 )
 
+func TestApplicationPublicReadsRejectObsoleteConnectorIcon(t *testing.T) {
+	connector := testConnector("github")
+	connector.Release.Manifest.IconURL = "data:image/png;base64,iVBORw0KGgo="
+	application := newTestApplication(
+		t,
+		newMemoryRepository(connector),
+		&memoryScheduler{},
+		&memoryInstallRuntime{},
+		CatalogSnapshot{},
+	)
+
+	for _, test := range []struct {
+		name string
+		read func() error
+	}{
+		{name: "snapshot", read: func() error {
+			_, err := application.Snapshot(context.Background())
+			return err
+		}},
+		{name: "scoped snapshot", read: func() error {
+			_, err := application.SnapshotForScope(context.Background(), OperationScope{AccountID: "account-1"})
+			return err
+		}},
+		{name: "connector", read: func() error {
+			_, err := application.GetConnector(context.Background(), connector.Key)
+			return err
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if err := test.read(); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+				t.Fatalf("public read error = %v, want iconUrl rejection", err)
+			}
+		})
+	}
+}
+
 func TestApplicationInstallIsDurableAndIdempotent(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	scheduler := &memoryScheduler{}

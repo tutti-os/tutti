@@ -570,7 +570,9 @@ components:
           type: string
         iconUrl:
           type: string
-          pattern: "^data:image/(?:png|webp|svg\\+xml);base64,"
+          format: uri
+          maxLength: 2048
+          pattern: "^https://"
         description:
           type: string
         agentRouting:

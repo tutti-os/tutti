@@ -166,7 +166,7 @@ func testCLIHostWithSetup(t *testing.T, processes agentruntime.ProcessTransport,
 	t.Cleanup(func() { _ = host.Close() })
 	connector := market.Connector{Key: "github", Installation: market.Installation{State: market.InstallationStateInstalled,
 		InstalledReleaseDigest: implementationHostTestReleaseDigest}, Authorization: market.Authorization{State: market.AuthorizationStateNotRequired}}
-	connector.Release = completeImplementationHostTestRelease(market.Release{Manifest: market.Manifest{AuthorizationKind: "none", IconURL: "data:image/png;base64,iVBORw0KGgo=",
+	connector.Release = completeImplementationHostTestRelease(market.Release{Manifest: market.Manifest{AuthorizationKind: "none", IconURL: "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 		Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio, ManagedStdio: &market.ManagedStdioImplementation{
 			Runtime: market.RuntimeRequirement{Language: "node", Profile: connectorruntime.ConnectorNodeProfile, ABI: "node20-" + runtime.GOOS + "-" + runtime.GOARCH},
 			CLI: &market.ManagedCLIInterface{Entrypoint: "connector.js", Commands: []market.CLICommand{{Name: "status",
@@ -295,7 +295,7 @@ func TestImplementationHostRegistersWorkspaceFencedCLIAndDeactivatesIt(t *testin
 	}
 	connector := market.Connector{Key: "github", Installation: market.Installation{State: market.InstallationStateInstalled,
 		InstalledReleaseDigest: implementationHostTestReleaseDigest}, Authorization: market.Authorization{State: market.AuthorizationStateNotRequired}}
-	connector.Release = completeImplementationHostTestRelease(market.Release{Manifest: market.Manifest{AuthorizationKind: "none", IconURL: "data:image/png;base64,iVBORw0KGgo=",
+	connector.Release = completeImplementationHostTestRelease(market.Release{Manifest: market.Manifest{AuthorizationKind: "none", IconURL: "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 		Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio, ManagedStdio: &market.ManagedStdioImplementation{
 			Runtime: market.RuntimeRequirement{Language: "node", Profile: connectorruntime.ConnectorNodeProfile, ABI: "node20-" + runtime.GOOS + "-" + runtime.GOARCH},
 			CLI: &market.ManagedCLIInterface{Entrypoint: "connector.js", Commands: []market.CLICommand{{Name: "status",
@@ -415,7 +415,7 @@ func TestImplementationHostDiscoversAndInvokesRemoteStreamableHTTPMCP(t *testing
 		State: market.InstallationStateInstalled, InstalledReleaseDigest: implementationHostTestReleaseDigest,
 	}, Authorization: market.Authorization{State: market.AuthorizationStateNotRequired}}
 	connector.Release = completeImplementationHostTestRelease(market.Release{Manifest: market.Manifest{
-		AuthorizationKind: "none", IconURL: "data:image/png;base64,iVBORw0KGgo=",
+		AuthorizationKind: "none", IconURL: "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 		RequiredCapabilities: []string{"tools"},
 		Implementation: market.Implementation{Kind: market.ImplementationKindRemoteStreamableHTTP,
 			RemoteStreamableHTTP: &market.RemoteStreamableHTTPImplementation{

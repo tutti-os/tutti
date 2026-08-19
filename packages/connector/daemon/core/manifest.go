@@ -77,18 +77,16 @@ func (registry ImplementationRegistry) Validate(manifest Manifest) error {
 }
 
 func ValidateReleaseShape(release Release) error {
-	return validateReleaseShape(release, true)
+	return validateReleaseShape(release)
 }
 
-// ValidateRuntimeReleaseShape validates the durable execution contract while
-// deliberately excluding icon presentation policy. Installed releases may
-// predate the current icon requirements, but runtime identity, artifact,
-// permission, authorization, and implementation checks must remain strict.
+// ValidateRuntimeReleaseShape applies the same release contract before a
+// persisted release is restored or executed.
 func ValidateRuntimeReleaseShape(release Release) error {
-	return validateReleaseShape(release, false)
+	return ValidateReleaseShape(release)
 }
 
-func validateReleaseShape(release Release, validateIcon bool) error {
+func validateReleaseShape(release Release) error {
 	if release.SchemaVersion != "1" {
 		return invalidManifest("schemaVersion must be 1", nil)
 	}
@@ -121,7 +119,7 @@ func validateReleaseShape(release Release, validateIcon bool) error {
 		strings.TrimSpace(release.Artifact.MediaType) == "" {
 		return invalidManifest("artifact key, lowercase SHA-256, positive sizeBytes, and mediaType are required", nil)
 	}
-	if err := validateManifestShape(release.Manifest, validateIcon); err != nil {
+	if err := ValidateManifestShape(release.Manifest); err != nil {
 		return err
 	}
 	return validateLegacyCredentialBrokerPresentation(release)
@@ -140,18 +138,18 @@ func validateLegacyCredentialBrokerPresentation(release Release) error {
 }
 
 func ValidateManifestShape(manifest Manifest) error {
-	return validateManifestShape(manifest, true)
+	return validateManifestShape(manifest)
 }
 
-func validateManifestShape(manifest Manifest, validateIcon bool) error {
+func validateManifestShape(manifest Manifest) error {
 	if manifest.SchemaVersion != "1" {
 		return invalidManifest("manifest schemaVersion must be 1", nil)
 	}
 	if strings.TrimSpace(manifest.DisplayName) == "" {
 		return invalidManifest("displayName is required", nil)
 	}
-	if validateIcon && !isSafeConnectorIconURL(manifest.IconURL) {
-		return invalidManifest("iconUrl must be a PNG, WebP, or SVG data URL", nil)
+	if !isSafeConnectorIconURL(manifest.IconURL) {
+		return invalidManifest("iconUrl must be a safe HTTPS URL", nil)
 	}
 	if err := validateAgentRouting(manifest.AgentRouting); err != nil {
 		return err
@@ -250,19 +248,11 @@ func safeAgentRoutingAlias(alias string) bool {
 }
 
 func isSafeConnectorIconURL(value string) bool {
-	value = strings.TrimSpace(value)
-	for _, prefix := range []string{"data:image/png;base64,", "data:image/webp;base64,", "data:image/svg+xml;base64,"} {
-		if !strings.HasPrefix(value, prefix) {
-			continue
-		}
-		encoded := strings.TrimPrefix(value, prefix)
-		if encoded == "" || base64.StdEncoding.DecodedLen(len(encoded)) > 128*1024 {
-			return false
-		}
-		decoded, err := base64.StdEncoding.DecodeString(encoded)
-		return err == nil && len(decoded) > 0 && len(decoded) <= 128*1024
+	if value == "" || value != strings.TrimSpace(value) || len(value) > 2048 {
+		return false
 	}
-	return false
+	parsed, err := url.Parse(value)
+	return err == nil && parsed.Scheme == "https" && parsed.Hostname() != "" && parsed.User == nil
 }
 
 func validateManagedStdio(managed ManagedStdioImplementation, authorizationKind string) error {

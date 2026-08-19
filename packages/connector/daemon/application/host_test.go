@@ -665,7 +665,7 @@ func hostTestRelease() market.Release {
 		Manifest: market.Manifest{
 			SchemaVersion:     "1",
 			DisplayName:       "GitHub",
-			IconURL:           "data:image/png;base64,iVBORw0KGgo=",
+			IconURL:           "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 			AuthorizationKind: "none",
 			Implementation: market.Implementation{Kind: market.ImplementationKindManagedStdio,
 				ManagedStdio: &market.ManagedStdioImplementation{

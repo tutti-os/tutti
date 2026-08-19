@@ -210,10 +210,11 @@ stable CLI shims, and removes every prepared artifact and private Node package
 tree for that Connector. It preserves account authorization, user/workspace
 state, and the shared Node package store and package-manager caches.
 
-Catalog display metadata includes a required, bounded PNG, WebP, or SVG data
-URL. This makes the icon available before installation and removes connector-key
-special cases from the renderer. The data URL is generated from the source
-connector icon during publishing and is limited to 128 KiB after decoding.
+Catalog display metadata includes a required public HTTPS icon URL. Publishing
+stores the source PNG, WebP, or SVG as an immutable versioned object and places
+its CDN URL in the Market manifest. The daemon rejects missing URLs, inline
+`data:` images, non-HTTPS schemes, credentials, surrounding whitespace, and
+URLs longer than 2048 bytes before the release reaches a renderer or runtime.
 
 Manifest permissions use a lowercase stable permission name with an optional
 scope (`permission`, `permission:scope`, or `permission:*`). The daemon keeps

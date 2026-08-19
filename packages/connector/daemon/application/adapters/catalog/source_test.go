@@ -57,7 +57,7 @@ func TestCatalogSourceMapsPublishedConnectorItemsWithAdditiveFields(t *testing.T
       "itemKey": "github",
       "version": "1.0.0",
       "metadata": {"labels": ["source-control"]},
-      "display": {"name": "GitHub", "description": "GitHub connector", "iconUrl": "data:image/png;base64,iVBORw0KGgo=", "badge": "new"},
+      "display": {"name": "GitHub", "description": "GitHub connector", "iconUrl": "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg", "badge": "new"},
       "payload": {
         "permissions": ["network:*"],
         "agentRouting": {"aliases": ["Git Hub", "代码托管"]},
@@ -136,7 +136,7 @@ func TestCatalogSourcePreservesRemoteRequiredCapabilities(t *testing.T) {
   "version": "0.2.0",
   "display": {
     "name": "Tencent Docs",
-    "iconUrl": "data:image/png;base64,iVBORw0KGgo="
+    "iconUrl": "https://cdn.example.test/tutti/connector-market/tencent-docs/0.2.0/tencent-docs-0.2.0-icon.svg"
   },
   "payload": {
     "permissions": [],
@@ -188,6 +188,57 @@ func TestCatalogSourcePreservesRemoteRequiredCapabilities(t *testing.T) {
 	}
 }
 
+func TestCatalogSourceRejectsMissingOrNonHTTPSIcon(t *testing.T) {
+	var manifest map[string]any
+	if err := json.Unmarshal([]byte(`{
+  "schemaVersion": "2",
+  "itemType": "connector",
+  "itemKey": "github",
+  "version": "1.0.0",
+  "display": {
+    "name": "GitHub",
+    "iconUrl": "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg"
+  },
+  "payload": {
+    "permissions": [],
+    "packageManifestSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "authorization": {"kind": "none"},
+    "compatibility": {},
+    "implementation": {
+      "kind": "managed_stdio",
+      "managedStdio": {
+        "runtime": {"language": "node", "profile": "connector-node-static", "abi": "node20-darwin-arm64"},
+        "mcp": {"entrypoint": "bin/github.js"}
+      }
+    }
+  }
+}`), &manifest); err != nil {
+		t.Fatal(err)
+	}
+
+	display := manifest["display"].(map[string]any)
+	source := &CatalogSource{executionTarget: "darwin-arm64"}
+	for _, test := range []struct {
+		name    string
+		iconURL string
+	}{
+		{name: "missing"},
+		{name: "data URL", iconURL: "data:image/png;base64,iVBORw0KGgo="},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if test.iconURL == "" {
+				delete(display, "iconUrl")
+			} else {
+				display["iconUrl"] = test.iconURL
+			}
+			_, err := source.mapItem(generatedMarketItem(t, manifest, "github", "1.0.0", "connectors/github/1.0.0.zip"))
+			if err == nil || !strings.Contains(err.Error(), "iconUrl") {
+				t.Fatalf("mapItem() error = %v, want iconUrl rejection", err)
+			}
+		})
+	}
+}
+
 func TestCatalogSourceRejectsLegacyConnectorManifestV1(t *testing.T) {
 	var manifest map[string]any
 	if err := json.Unmarshal([]byte(`{
@@ -195,7 +246,7 @@ func TestCatalogSourceRejectsLegacyConnectorManifestV1(t *testing.T) {
   "itemType": "connector",
   "itemKey": "github",
   "version": "1.0.0",
-  "display": {"name": "GitHub", "iconUrl": "data:image/png;base64,iVBORw0KGgo="},
+  "display": {"name": "GitHub", "iconUrl": "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg"},
   "supportedMarkets": ["overseas"],
   "payload": {
     "permissions": [],

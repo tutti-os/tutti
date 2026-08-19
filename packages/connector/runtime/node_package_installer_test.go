@@ -214,7 +214,7 @@ func testNodePackageRelease(connectorKey, digest string) market.Release {
 			SHA256: strings.Repeat("4", 64), SizeBytes: 1, MediaType: "application/zip"},
 		PublishedAt: time.Unix(1, 0).UTC(), Status: market.ReleaseStatusAvailable,
 		Manifest: market.Manifest{
-			SchemaVersion: "1", DisplayName: "Lark", IconURL: "data:image/png;base64,iVBORw0KGgo=", AuthorizationKind: "none",
+			SchemaVersion: "1", DisplayName: "Lark", IconURL: "https://cdn.example.test/tutti/connector-market/lark/1.0.0/lark-1.0.0-icon.svg", AuthorizationKind: "none",
 			Implementation: market.Implementation{
 				Kind: market.ImplementationKindManagedStdio,
 				ManagedStdio: &market.ManagedStdioImplementation{
