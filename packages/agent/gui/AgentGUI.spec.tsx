@@ -233,6 +233,35 @@ describe("AgentGUI i18n", () => {
     );
   });
 
+  it("disables handoff targets while their provider readiness check is active", () => {
+    const baseProps = createAgentGUIProps("en");
+    render(
+      <AgentGUI
+        {...baseProps}
+        agentDirectory={{
+          agents: [agent("extension-kimi", "kimi-code")],
+          capturedAtUnixMs: null,
+          error: null,
+          status: "ready"
+        }}
+        hostCapabilities={{
+          ...baseProps.hostCapabilities,
+          providerReadinessGates: {
+            "kimi-code": { status: "checking" }
+          }
+        }}
+      />
+    );
+
+    const props = agentGuiNodeSpy.mock.lastCall?.[0] as
+      | AgentGUINodeProbeProps
+      | undefined;
+    expect(props?.hostCapabilities.agentTargets?.[0]?.disabled).toBeUndefined();
+    expect(props?.hostCapabilities.handoffAgentTargets?.[0]?.disabled).toBe(
+      true
+    );
+  });
+
   it("keeps unavailable mention identities outside action directories", () => {
     render(
       <AgentGUI
