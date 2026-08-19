@@ -27,13 +27,27 @@ export function WorkspaceFileManagerContextMenuContainer({
   const [items, setItems] = useState<
     readonly WorkspaceFileManagerContextMenuItem[]
   >([]);
+  const resolvedRequestKeyRef = useRef<string | null>(null);
 
   const contextMenuX = view.contextMenu?.x;
   const contextMenuY = view.contextMenu?.y;
   const contextMenuEntryPath = view.contextMenu?.entry?.path ?? null;
+  const contextMenuRequestKey =
+    contextMenuX === undefined || contextMenuY === undefined
+      ? null
+      : [
+          contextMenuEntryPath ?? "<blank>",
+          view.currentDirectoryPath,
+          contextMenuX,
+          contextMenuY,
+          view.isBusy,
+          view.isLoading,
+          view.isMutating
+        ].join("\u0000");
 
   useLayoutEffect(() => {
-    if (contextMenuX === undefined || contextMenuY === undefined) {
+    if (contextMenuRequestKey === null) {
+      resolvedRequestKeyRef.current = null;
       setItems((current) => (current.length === 0 ? current : []));
       return;
     }
@@ -44,8 +58,14 @@ export function WorkspaceFileManagerContextMenuContainer({
     });
     const resolved = resolveContextMenu(request);
     if (!isPromiseLike(resolved)) {
+      const matchesResolvedRequest =
+        resolvedRequestKeyRef.current === contextMenuRequestKey;
+      resolvedRequestKeyRef.current = contextMenuRequestKey;
       setItems((current) =>
-        areContextMenuItemsEquivalent(current, resolved) ? current : resolved
+        matchesResolvedRequest &&
+        areContextMenuItemsEquivalent(current, resolved)
+          ? current
+          : resolved
       );
       return;
     }
@@ -54,7 +74,11 @@ export function WorkspaceFileManagerContextMenuContainer({
     setItems((current) => (current.length === 0 ? current : []));
     void resolved.then((nextItems) => {
       if (!cancelled) {
+        const matchesResolvedRequest =
+          resolvedRequestKeyRef.current === contextMenuRequestKey;
+        resolvedRequestKeyRef.current = contextMenuRequestKey;
         setItems((current) =>
+          matchesResolvedRequest &&
           areContextMenuItemsEquivalent(current, nextItems)
             ? current
             : nextItems
@@ -68,6 +92,7 @@ export function WorkspaceFileManagerContextMenuContainer({
     // object every render and would retrigger setItems forever.
   }, [
     contextMenuEntryPath,
+    contextMenuRequestKey,
     contextMenuX,
     contextMenuY,
     resolveContextMenu,

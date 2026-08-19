@@ -107,7 +107,7 @@ export function WorkspaceFileManagerContextMenu({
       className={cn(
         // `is-open` keeps host CSS that keys off the class (not only data-state)
         // from leaving the surface at opacity:0.
-        "is-open w-[220px] overflow-visible p-1",
+        "is-open nodrag w-[220px] overflow-visible p-1 [-webkit-app-region:no-drag]",
         positionMode === "viewport" ? "fixed" : "absolute"
       )}
       role="menu"
@@ -126,7 +126,12 @@ export function WorkspaceFileManagerContextMenu({
       }}
     >
       {items.map((item) => (
-        <ContextMenuItemRenderer key={item.id} item={item} onClose={onClose} />
+        <ContextMenuItemRenderer
+          activateOnPointerDown={positionMode === "viewport"}
+          key={item.id}
+          item={item}
+          onClose={onClose}
+        />
       ))}
     </MenuSurface>
   );
@@ -163,8 +168,9 @@ function ContextMenuItemRenderer({
           icon={item.icon ?? <LaunchIcon className="size-4" />}
           label={item.label}
           onClick={() => {
+            const selection = item.onSelect();
             onClose();
-            void item.onSelect();
+            void selection;
           }}
         />
       );
