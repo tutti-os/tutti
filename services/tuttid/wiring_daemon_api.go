@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -271,7 +272,14 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
-	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()}})
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve user home for personal Codex Skills: %w", err)
+	}
+	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{
+		AuthProjector:     runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()},
+		PersonalSkillRoot: filepath.Join(userHome, ".codex", "skills"),
+	})
 	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
 	configureAgentRuntimeAvailability(agentRuntimePreparer, browserService, computerService)
 	userProjectService := userprojectservice.Service{

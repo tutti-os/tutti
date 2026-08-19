@@ -1,6 +1,7 @@
 package runtimeprep
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,57 @@ import (
 	"testing"
 	"unicode/utf8"
 )
+
+func TestDesktopCodexPersonalSkillCreatedInOneSessionIsVisibleInAnother(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	personalRoot := filepath.Join(home, ".codex", "skills")
+	preparer := newTestPreparer(t.TempDir())
+	preparer.RegisterProvider(CodexPreparer{PersonalSkillRoot: personalRoot})
+
+	prepare := func(sessionID string) PreparedRuntime {
+		result, err := preparer.Prepare(t.Context(), PrepareInput{
+			WorkspaceID:    "workspace-1",
+			AgentSessionID: sessionID,
+			AgentTargetID:  "local:codex",
+			Provider:       "codex",
+			Cwd:            t.TempDir(),
+		})
+		if err != nil {
+			t.Fatalf("Prepare(%s) error = %v", sessionID, err)
+		}
+		return result
+	}
+
+	first := prepare("session-1")
+	firstSkills := filepath.Join(envValue(first.Env, "CODEX_HOME"), "skills")
+	created := filepath.Join(firstSkills, "created-skill", "SKILL.md")
+	writeSidecarTestFile(t, created, "---\nname: created-skill\ndescription: created\n---\n")
+
+	second := prepare("session-2")
+	secondSkill := filepath.Join(envValue(second.Env, "CODEX_HOME"), "skills", "created-skill", "SKILL.md")
+	firstInfo, err := os.Stat(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondInfo, err := os.Stat(secondSkill)
+	if err != nil {
+		t.Fatalf("personal Skill missing from second Session: %v", err)
+	}
+	if !os.SameFile(firstInfo, secondInfo) {
+		t.Fatal("Sessions do not expose the same personal Skill file")
+	}
+	if _, err := os.Stat(filepath.Join(personalRoot, "tutti-cli", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("Tutti-managed Skill leaked into personal root, err = %v", err)
+	}
+	var extraRoots []string
+	if err := json.Unmarshal([]byte(envValue(second.Env, tuttiAgentExtraSkillRootsEnv)), &extraRoots); err != nil {
+		t.Fatalf("decode extra Skill roots: %v", err)
+	}
+	if len(extraRoots) != 1 || filepath.Base(extraRoots[0]) != "codex-session-skills" {
+		t.Fatalf("extra Skill roots = %#v, want isolated session root", extraRoots)
+	}
+}
 
 func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T) {
 	home := t.TempDir()

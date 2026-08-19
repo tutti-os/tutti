@@ -2,6 +2,7 @@ package runtimeprep
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -17,7 +18,8 @@ const (
 )
 
 type CodexPreparer struct {
-	AuthProjector AuthFileProjector
+	AuthProjector     AuthFileProjector
+	PersonalSkillRoot string
 }
 
 func (CodexPreparer) Provider() string {
@@ -27,7 +29,13 @@ func (CodexPreparer) Provider() string {
 func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) (result ProviderPrepareResult, err error) {
 	codexHome := filepath.Join(input.RuntimeRoot, "codex-home")
 	logRuntimePrepareTrace("runtime_prepare.codex.entered", input.PrepareInput, nil)
-	if err := prepareCodexHome(codexHome, input.PrepareInput); err != nil {
+	extraSkillRoots, err := prepareCodexHome(
+		codexHome,
+		filepath.Join(input.RuntimeRoot, "codex-session-skills"),
+		p.PersonalSkillRoot,
+		input.PrepareInput,
+	)
+	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
 	cleanup, err := projectCodexAuth(ctx, codexHome, p.AuthProjector)
@@ -76,6 +84,13 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 	env := []string{
 		"CODEX_HOME=" + codexHome,
 	}
+	if len(extraSkillRoots) > 0 {
+		encodedRoots, err := json.Marshal(extraSkillRoots)
+		if err != nil {
+			return ProviderPrepareResult{}, fmt.Errorf("encode Codex extra skill roots: %w", err)
+		}
+		env = append(env, tuttiAgentExtraSkillRootsEnv+"="+string(encodedRoots))
+	}
 	if input.ModelEndpoint.supportsCodex() {
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)
 	}
@@ -118,47 +133,109 @@ func projectCodexAuth(ctx context.Context, codexHome string, projector AuthFileP
 	return cleanup, nil
 }
 
-func prepareCodexHome(codexHome string, input PrepareInput) error {
+func prepareCodexHome(
+	codexHome string,
+	sessionSkillRoot string,
+	personalSkillRoot string,
+	input PrepareInput,
+) ([]string, error) {
+	var extraSkillRoots []string
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", input, nil)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
-		return fmt.Errorf("create codex home: %w", err)
+		return nil, fmt.Errorf("create codex home: %w", err)
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", input, nil)
 	if err := exposeUserCodexFiles(codexHome); err != nil {
-		return err
+		return nil, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", input, nil)
 	if err := exposeCodexImportedRolloutFile(codexHome, input.ExternalRolloutSourcePath); err != nil {
-		return err
+		return nil, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_requested", input, nil)
 	if err := ensureCodexSessionConfig(filepath.Join(codexHome, "config.toml"), input); err != nil {
-		return err
+		return nil, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", input, nil)
 	if !input.SkipSkills {
 		logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
-		if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
-			return err
+		if strings.TrimSpace(personalSkillRoot) == "" {
+			if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
+				return nil, err
+			}
+		} else if err := exposePersonalCodexSkillRoot(
+			filepath.Join(codexHome, "skills"),
+			personalSkillRoot,
+			sessionSkillRoot,
+		); err != nil {
+			return nil, err
 		}
 		logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
 		logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
-		skillPaths, err := installProviderNativeSkillsSessionScoped(filepath.Join(codexHome, "skills"), input)
+		nativeSkillRoot := filepath.Join(codexHome, "skills")
+		reservedRoots := []string(nil)
+		if strings.TrimSpace(personalSkillRoot) != "" {
+			nativeSkillRoot = sessionSkillRoot
+			reservedRoots = []string{filepath.Clean(personalSkillRoot)}
+		}
+		skillPaths, err := installProviderNativeSkillsSessionScopedWithReservedRoots(
+			nativeSkillRoot,
+			reservedRoots,
+			input,
+		)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
 			"skill_count": len(skillPaths),
 		})
+		if strings.TrimSpace(personalSkillRoot) != "" && len(skillPaths) > 0 {
+			extraSkillRoots = []string{nativeSkillRoot}
+		}
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", input, nil)
 	if err := installCodexApprovalRules(codexHome, input); err != nil {
-		return err
+		return nil, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_resolved", input, nil)
+	return extraSkillRoots, nil
+}
+
+func exposePersonalCodexSkillRoot(targetRoot string, personalRoot string, sessionRoot string) error {
+	personalRoot = filepath.Clean(strings.TrimSpace(personalRoot))
+	if personalRoot == "." || !filepath.IsAbs(personalRoot) {
+		return fmt.Errorf("Codex personal skill root must be absolute")
+	}
+	if err := os.MkdirAll(personalRoot, 0o700); err != nil {
+		return fmt.Errorf("create Codex personal skill root: %w", err)
+	}
+	if targetInfo, err := os.Stat(targetRoot); err == nil {
+		personalInfo, personalErr := os.Stat(personalRoot)
+		if personalErr == nil && os.SameFile(targetInfo, personalInfo) {
+			return nil
+		}
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("inspect Codex session skill root: %w", err)
+	}
+	if _, err := os.Lstat(targetRoot); err == nil {
+		if _, sessionErr := os.Lstat(sessionRoot); sessionErr == nil {
+			return fmt.Errorf("Codex session and personal skill roots both already exist")
+		} else if !os.IsNotExist(sessionErr) {
+			return fmt.Errorf("inspect Codex managed skill root: %w", sessionErr)
+		}
+		if err := os.Rename(targetRoot, sessionRoot); err != nil {
+			return fmt.Errorf("preserve existing Codex session skills: %w", err)
+		}
+	}
+	if err := exposeCodexSharedDirectory(personalRoot, targetRoot); err != nil {
+		if _, sessionErr := os.Lstat(sessionRoot); sessionErr == nil {
+			_ = os.Rename(sessionRoot, targetRoot)
+		}
+		return fmt.Errorf("expose Codex personal skill root: %w", err)
+	}
 	return nil
 }
 
