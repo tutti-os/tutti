@@ -6,7 +6,7 @@ import type { AgentComposerProps } from "./AgentComposer.types";
 import { useComposerPaletteCatalog } from "./useComposerPaletteCatalog";
 
 describe("useComposerPaletteCatalog", () => {
-  it("shows host-managed computer use as a capability while daemon readiness is false", () => {
+  it("uses fresh host readiness when Composer capability state is stale", () => {
     const { result } = renderHook(() =>
       useComposerPaletteCatalog({
         provider: "codex",
@@ -58,16 +58,20 @@ describe("useComposerPaletteCatalog", () => {
       result.current.slashPaletteEntries.find(
         (entry) => entry.key === "capability:computerUse"
       )
-    ).toMatchObject({ selectAction: "settings", type: "capability" });
+    ).toMatchObject({ selectAction: "capability", type: "capability" });
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "codex",
         policy: result.current.slashCommandPolicy,
-        computerSupported: false,
+        computerSupported: result.current.computerExecutable,
         commands: result.current.resolvedSlashCommands,
         draft: "/computer click Confirm"
       })
-    ).toBeNull();
+    ).toMatchObject({
+      kind: "submitPrompt",
+      displayPrompt: "/computer click Confirm",
+      requiredSettingsPatch: { computerUse: true }
+    });
   });
 
   it("places connector entries before ordinary skills", () => {
