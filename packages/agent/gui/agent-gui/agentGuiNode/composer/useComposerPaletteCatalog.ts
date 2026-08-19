@@ -309,6 +309,7 @@ export function useComposerPaletteCatalog({
     labels.computerUseCapabilitySettingsLabel,
     labels.tuttiModeDescription,
     labels.tuttiModeLabel,
+    labels.slashCommandPresentation,
     labels.slashCommandCompactLabel,
     labels.slashCommandContextLabel,
     labels.slashCommandFastLabel,
