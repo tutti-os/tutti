@@ -716,6 +716,30 @@ func composerSkillOptionsRuntimeContext(options []ComposerSkillOption) []map[str
 	return result
 }
 
+func filterComposerSkillsRepresentedByCapabilityCatalog(
+	skills []ComposerSkillOption,
+	catalog []ComposerCapabilityOption,
+) []ComposerSkillOption {
+	if len(skills) == 0 || len(catalog) == 0 {
+		return append([]ComposerSkillOption(nil), skills...)
+	}
+	sameSkillFile := newComposerSkillFileIdentityMatcher()
+	result := make([]ComposerSkillOption, 0, len(skills))
+	for _, skill := range skills {
+		represented := false
+		for _, option := range catalog {
+			if option.Kind == "skill" && sameSkillFile(skill.Path, option.Path) {
+				represented = true
+				break
+			}
+		}
+		if !represented {
+			result = append(result, skill)
+		}
+	}
+	return result
+}
+
 func composerCapabilityCatalogFromSkills(provider string, skills []ComposerSkillOption) []ComposerCapabilityOption {
 	if len(skills) == 0 {
 		return []ComposerCapabilityOption{}

@@ -353,6 +353,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 			launchInput.AgentTools,
 			launchInput.AgentCapabilitiesExplicit,
 		)
+		skills = filterComposerSkillsRepresentedByCapabilityCatalog(skills, capabilityCatalog)
 	}
 	catalogProjection := composerModelCatalogProjection{}
 	catalogProjectionOK := false

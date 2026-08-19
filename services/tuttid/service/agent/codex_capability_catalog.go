@@ -79,6 +79,25 @@ func mergeCodexComposerCapabilityOptions(
 	native []ComposerCapabilityOption,
 ) []ComposerCapabilityOption {
 	result := append([]ComposerCapabilityOption(nil), fallback...)
+	sameSkillFile := newComposerSkillFileIdentityMatcher()
+
+	for _, option := range native {
+		replacedFallback := false
+		for index := range result {
+			if result[index].Kind == "skill" && option.Kind == "skill" && sameSkillFile(result[index].Path, option.Path) {
+				result[index] = option
+				replacedFallback = true
+				break
+			}
+		}
+		if !replacedFallback {
+			result = append(result, option)
+		}
+	}
+	return dedupeComposerCapabilityOptions(result)
+}
+
+func newComposerSkillFileIdentityMatcher() func(string, string) bool {
 	fileInfoByPath := make(map[string]os.FileInfo)
 	missingFileInfo := make(map[string]struct{})
 	fileInfo := func(path string) (os.FileInfo, bool) {
@@ -100,29 +119,11 @@ func mergeCodexComposerCapabilityOptions(
 		fileInfoByPath[path] = info
 		return info, true
 	}
-	sameSkillFile := func(left ComposerCapabilityOption, right ComposerCapabilityOption) bool {
-		if left.Kind != "skill" || right.Kind != "skill" {
-			return false
-		}
-		leftInfo, leftOK := fileInfo(left.Path)
-		rightInfo, rightOK := fileInfo(right.Path)
+	return func(leftPath string, rightPath string) bool {
+		leftInfo, leftOK := fileInfo(leftPath)
+		rightInfo, rightOK := fileInfo(rightPath)
 		return leftOK && rightOK && os.SameFile(leftInfo, rightInfo)
 	}
-
-	for _, option := range native {
-		replacedFallback := false
-		for index := range result {
-			if sameSkillFile(result[index], option) {
-				result[index] = option
-				replacedFallback = true
-				break
-			}
-		}
-		if !replacedFallback {
-			result = append(result, option)
-		}
-	}
-	return dedupeComposerCapabilityOptions(result)
 }
 
 func composerCapabilityCatalogLister(profile composerProfile) (CodexCLICapabilityLister, bool, error) {
