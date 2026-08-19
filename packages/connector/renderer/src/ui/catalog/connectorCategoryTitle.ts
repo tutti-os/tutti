@@ -7,9 +7,6 @@ export function resolveConnectorCategoryTitle(input: {
   locale: string;
   i18n: ConnectorMarketI18nRuntime;
 }): string {
-  if (input.sectionId === "installed") {
-    return input.i18n.t("categoryInstalled");
-  }
   const chinese = input.locale.trim().toLowerCase().startsWith("zh");
   const preferred = chinese ? input.displayNameZh : input.displayNameEn;
   const secondary = chinese ? input.displayNameEn : input.displayNameZh;

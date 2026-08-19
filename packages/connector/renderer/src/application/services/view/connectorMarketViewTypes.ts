@@ -120,11 +120,9 @@ export type ConnectorDialogView =
   | ConnectorUninstallConfirmationDialogView;
 
 export interface ConnectorMarketViewState {
-  availableCount: number;
   cardsByKey: Record<string, ConnectorCardView>;
   catalogError: ConnectorCatalogErrorView | null;
   dialog: ConnectorDialogView | null;
-  installedCount: number;
   refreshing: boolean;
   sections: ConnectorSectionView[];
   status: ConnectorMarketViewStatus;

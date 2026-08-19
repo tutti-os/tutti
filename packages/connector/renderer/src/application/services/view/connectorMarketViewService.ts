@@ -15,11 +15,9 @@ import type { ConnectorMarketViewState } from "./connectorMarketViewTypes.ts";
 export class ConnectorMarketViewService implements IConnectorMarketViewService {
   declare readonly _serviceBrand: undefined;
   readonly dataStore = proxy<ConnectorMarketViewState>({
-    availableCount: 0,
     cardsByKey: {},
     catalogError: null,
     dialog: null,
-    installedCount: 0,
     refreshing: false,
     sections: [],
     status: "loading"
@@ -62,11 +60,9 @@ export class ConnectorMarketViewService implements IConnectorMarketViewService {
       this.market.dataStore,
       this.uiState.dataStore
     );
-    this.dataStore.availableCount = next.availableCount;
     this.dataStore.cardsByKey = next.cardsByKey;
     this.dataStore.catalogError = next.catalogError;
     this.dataStore.dialog = next.dialog;
-    this.dataStore.installedCount = next.installedCount;
     this.dataStore.refreshing = next.refreshing;
     this.dataStore.sections = next.sections;
     this.dataStore.status = next.status;

@@ -10,7 +10,6 @@ const uiState: ConnectorMarketUiState = {
   dialog: null,
   query: "",
   scope: {},
-  segment: "available",
   started: true
 };
 
@@ -258,7 +257,40 @@ test("marks managed credential brokers for managed authorization handling", () =
   );
 });
 
-test("keeps a physical repair in the available segment until installation completes", () => {
+test("keeps installed connectors in their catalog sections", () => {
+  const market = createConnectorMarketStoreState();
+  const github = connectorFixture();
+  github.installation = {
+    installedReleaseDigest: github.release.releaseDigest,
+    state: "installed"
+  };
+  const notion = connectorFixture();
+  notion.key = "notion";
+  notion.release.connectorKey = "notion";
+  notion.release.manifest.displayName = "Notion";
+  notion.release.releaseId = "notion@1.0.0";
+  market.loadState = "ready";
+  market.connectorKeys = [github.key, notion.key];
+  market.connectorsByKey[github.key] = github;
+  market.connectorsByKey[notion.key] = notion;
+  market.catalogSections = [
+    {
+      categoryId: "productivity",
+      connectorKeys: [github.key, notion.key],
+      itemCount: 2,
+      kind: "category",
+      loadState: "ready",
+      sortOrder: 10
+    }
+  ];
+
+  const view = buildConnectorMarketView(market, uiState);
+
+  assert.equal(view.sections[0]?.id, "productivity");
+  assert.deepEqual(view.sections[0]?.connectorKeys, [github.key, notion.key]);
+});
+
+test("keeps a physical repair in its catalog section until installation completes", () => {
   const market = createConnectorMarketStoreState();
   const connector = connectorFixture();
   connector.installation = {
@@ -292,8 +324,7 @@ test("keeps a physical repair in the available segment until installation comple
   };
 
   const installingView = buildConnectorMarketView(market, uiState);
-  assert.equal(installingView.installedCount, 0);
-  assert.equal(installingView.availableCount, 1);
+  assert.equal(installingView.sections[0]?.id, "productivity");
   assert.deepEqual(installingView.sections[0]?.connectorKeys, [connector.key]);
   assert.equal(installingView.cardsByKey[connector.key]?.status, "installing");
 
@@ -304,11 +335,8 @@ test("keeps a physical repair in the available segment until installation comple
     state: "completed",
     updatedAt: "2026-08-11T00:00:02Z"
   };
-  const installedView = buildConnectorMarketView(market, {
-    ...uiState,
-    segment: "installed"
-  });
-  assert.equal(installedView.installedCount, 1);
+  const installedView = buildConnectorMarketView(market, uiState);
+  assert.equal(installedView.sections[0]?.id, "productivity");
   assert.deepEqual(installedView.sections[0]?.connectorKeys, [connector.key]);
 });
 
@@ -327,15 +355,13 @@ test("requires an installed connector to update before authorization when the ac
   market.connectorsByKey[connector.key] = connector;
   const dialogState: ConnectorMarketUiState = {
     ...uiState,
-    dialog: { connectorKey: connector.key, kind: "connector" },
-    segment: "installed"
+    dialog: { connectorKey: connector.key, kind: "connector" }
   };
 
   const view = buildConnectorMarketView(market, dialogState);
 
   assert.equal(view.cardsByKey[connector.key]?.action, "update");
   assert.equal(view.cardsByKey[connector.key]?.status, "update_available");
-  assert.deepEqual(view.sections[0]?.connectorKeys, [connector.key]);
   assert.equal(view.dialog?.kind, "installation");
   assert.equal(
     view.dialog?.kind === "installation" && view.dialog.updating,
@@ -376,10 +402,7 @@ test("exposes disconnect directly for an authorized connector", () => {
     updatedAt: "2026-08-06T00:00:01Z"
   };
 
-  const view = buildConnectorMarketView(market, {
-    ...uiState,
-    segment: "installed"
-  });
+  const view = buildConnectorMarketView(market, uiState);
 
   assert.equal(view.cardsByKey[connector.key]?.action, "disconnect");
   assert.equal(view.cardsByKey[connector.key]?.canUninstall, true);
@@ -399,10 +422,7 @@ test("keeps authorization-free connectors on the management action", () => {
   market.connectorKeys = [connector.key];
   market.connectorsByKey[connector.key] = connector;
 
-  const view = buildConnectorMarketView(market, {
-    ...uiState,
-    segment: "installed"
-  });
+  const view = buildConnectorMarketView(market, uiState);
 
   assert.equal(view.cardsByKey[connector.key]?.action, "manage");
 });
@@ -423,8 +443,7 @@ test("projects an uninstall confirmation independently from authorization state"
     dialog: {
       connectorKey: connector.key,
       kind: "uninstall_confirmation"
-    },
-    segment: "installed"
+    }
   }).dialog;
 
   assert.equal(dialog?.kind, "uninstall_confirmation");
@@ -458,8 +477,7 @@ test("disables uninstall controls while one connector mutation is active", () =>
     dialog: {
       connectorKey: connector.key,
       kind: "uninstall_confirmation"
-    },
-    segment: "installed"
+    }
   });
 
   assert.equal(view.cardsByKey[connector.key]?.canUninstall, false);
@@ -468,8 +486,7 @@ test("disables uninstall controls while one connector mutation is active", () =>
   connector.installation.state = "installed";
   const management = buildConnectorMarketView(market, {
     ...uiState,
-    dialog: { connectorKey: connector.key, kind: "connector" },
-    segment: "installed"
+    dialog: { connectorKey: connector.key, kind: "connector" }
   }).dialog;
   assert.equal(management?.kind, "management");
   assert.equal(
@@ -493,8 +510,7 @@ test("offers repair when calibration finds the installed implementation absent",
 
   const view = buildConnectorMarketView(market, {
     ...uiState,
-    dialog: { connectorKey: connector.key, kind: "connector" },
-    segment: "installed"
+    dialog: { connectorKey: connector.key, kind: "connector" }
   });
 
   assert.equal(view.cardsByKey[connector.key]?.action, "install");
@@ -522,8 +538,7 @@ test("offers repair when the installed implementation is invalid", () => {
 
   const view = buildConnectorMarketView(market, {
     ...uiState,
-    dialog: { connectorKey: connector.key, kind: "connector" },
-    segment: "installed"
+    dialog: { connectorKey: connector.key, kind: "connector" }
   });
 
   assert.equal(view.cardsByKey[connector.key]?.action, "install");

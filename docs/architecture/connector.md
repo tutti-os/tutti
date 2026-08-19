@@ -61,9 +61,10 @@ the English name otherwise without another network request. During the bounded
 compatibility window, only `featured`, `productivity`, `development`, and
 `other` may use their released local i18n labels when an older daemon omits
 both names. Unknown dynamic categories without a server name fail closed
-instead of displaying their slug as product copy. The local `installed`
-section remains a renderer-owned virtual category and keeps its local i18n
-label.
+instead of displaying their slug as product copy. Installation state stays on
+the connector card; the renderer does not split the catalog into installed and
+available categories, and catalog pages are loaded without the not-installed
+filter so installed connectors remain in their server-owned sections.
 
 Installation is a device fact. Authorization is an account projection. A
 Connector may therefore be installed while inactive for the current account;

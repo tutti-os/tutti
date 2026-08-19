@@ -203,8 +203,49 @@ test("loads server categories and appends cursor pages", async () => {
   ]);
   assert.equal(service.dataStore.catalogSections[0]?.nextPageToken, undefined);
   assert.deepEqual(pageTokens, [undefined, "page-2"]);
-  assert.deepEqual(installationFilters, ["not_installed", "not_installed"]);
+  assert.deepEqual(installationFilters, [undefined, undefined]);
   assert.equal(service.dataStore.revision, 2);
+  service.dispose();
+});
+
+test("keeps installed connectors in catalog pages after removing the install split", async () => {
+  const github = connector("github", 1);
+  github.installation = {
+    installedReleaseDigest: github.release.releaseDigest,
+    state: "installed"
+  };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [github]),
+      listCategories: async () => [
+        {
+          categoryId: "developer-tools",
+          kind: "category",
+          sortOrder: 40,
+          itemCount: 1
+        }
+      ],
+      listCatalogPage: async ({ installation }) => ({
+        sectionId: "developer-tools",
+        items:
+          installation === "not_installed"
+            ? []
+            : [
+                {
+                  categoryId: "developer-tools",
+                  featured: false,
+                  connector: github
+                }
+              ],
+        revision: 1
+      })
+    })
+  });
+
+  await service.ensureLoaded();
+  assert.deepEqual(service.dataStore.catalogSections[0]?.connectorKeys, [
+    "github"
+  ]);
   service.dispose();
 });
 

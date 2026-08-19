@@ -202,8 +202,6 @@ test("a failed first install remains available for retry", async () => {
   });
 
   await module.activate(new InstantiationService());
-  assert.equal(module.root.view.dataStore.availableCount, 1);
-  assert.equal(module.root.view.dataStore.installedCount, 0);
   assert.equal(module.root.view.dataStore.cardsByKey.github?.action, "install");
   module.root.uiState.openConnector("github");
   assert.equal(module.root.view.dataStore.dialog?.kind, "installation");

@@ -105,11 +105,9 @@ test("changes locale presentation without requesting the Market again", async ()
 
     let marketRequests = 0;
     const viewState = proxy<ConnectorMarketViewState>({
-      availableCount: 0,
       cardsByKey: {},
       catalogError: null,
       dialog: null,
-      installedCount: 0,
       refreshing: false,
       sections: [
         {
