@@ -453,8 +453,7 @@ export interface AgentComposerProps {
   onSubmitEmpty?: () => void;
   /**
    * Overrides the empty-draft send button copy while the empty-send override
-   * is active (e.g. plan review with a diverged intensity reads "Request
-   * changes" instead of "Accept plan"). Falls back to labels.sendAccept.
+   * is active. Falls back to labels.sendAccept.
    */
   emptySubmitLabel?: string;
   onSubmitGuidance?: (

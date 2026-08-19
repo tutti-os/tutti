@@ -391,7 +391,7 @@ describe("TuttiWorkflowDock", () => {
     );
   });
 
-  it("changes the review hint when either preference diverges", () => {
+  it("changes the review hint without creating a duplicate decision surface", () => {
     renderDock({
       kind: "review",
       panel: plan,
@@ -407,5 +407,11 @@ describe("TuttiWorkflowDock", () => {
     expect(
       screen.getByTestId("agent-gui-tutti-workflow-intensity")
     ).toHaveTextContent("80 · 90");
+    expect(
+      screen.queryByRole("button", { name: "Send to re-plan" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Send to accept" })
+    ).not.toBeInTheDocument();
   });
 });

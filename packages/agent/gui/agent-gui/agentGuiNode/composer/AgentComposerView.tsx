@@ -635,6 +635,11 @@ export function AgentComposerView(
             showComposerAction={showComposerActionInFooter}
             isGoalModeActive={input.isGoalModeActive}
             isPlanModeActive={input.isPlanModeActive}
+            isTuttiModeActive={input.isTuttiModeActive}
+            isTuttiModeUpdating={input.isTuttiModeUpdating}
+            tuttiModeSupported={
+              input.props.capabilityMenuState?.tuttiMode?.enabled === true
+            }
             connectorsVisible={
               input.props.capabilityMenuState?.connectors?.enabled !== false
             }
@@ -646,6 +651,7 @@ export function AgentComposerView(
               input.props.capabilityMenuState?.connectors?.showViewMore !==
               false
             }
+            onTuttiModeChange={input.props.onTuttiModeChange}
             onClearPlanMode={input.onClearPlanMode}
             composerAction={composerActionNode}
             projectControl={

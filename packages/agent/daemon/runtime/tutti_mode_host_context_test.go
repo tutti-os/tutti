@@ -107,7 +107,7 @@ func TestRenderTuttiModeHostContextCarriesWorkedWorkflowExamples(t *testing.T) {
 		"schema: tutti-mode-plan/v1",
 		"topicId: default",
 		"effect: 80",
-		"speed: 60",
+		"speed: 70",
 		"reasoningIntensity: 80",
 		"dependsOn: [task-1]",
 		"permissionModeId: bypassPermissions",

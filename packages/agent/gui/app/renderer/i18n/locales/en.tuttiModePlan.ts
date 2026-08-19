@@ -1,9 +1,8 @@
 export const enTuttiModePlan = {
   taskReview: "Plan review",
   cancel: "Cancel plan",
-  reviewHint: "Send to accept · type feedback to request changes",
-  reviewHintReplan:
-    "Effect or speed changed · send to re-plan with the new preferences",
+  reviewHint: "Awaiting review",
+  reviewHintReplan: "Preferences changed",
   materializingTitle: "Creating tasks",
   switchToSelfReview: "Switch to self review",
   switchingToSelfReview: "Switching to self review",
@@ -13,7 +12,7 @@ export const enTuttiModePlan = {
   errorTitle: "Workflow unavailable",
   expand: "Expand workflow",
   collapse: "Collapse workflow",
-  sendAccept: "Accept plan",
+  sendAccept: "Accept",
   sendRequestChanges: "Request changes",
   replanFeedback:
     "Preferences changed from effect {{fromEffect}} / speed {{fromSpeed}} to effect {{toEffect}} / speed {{toSpeed}}. Re-plan the model choices and effect-scaled task verification.",

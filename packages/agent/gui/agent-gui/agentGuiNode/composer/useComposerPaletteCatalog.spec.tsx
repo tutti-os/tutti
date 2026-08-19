@@ -171,4 +171,54 @@ describe("useComposerPaletteCatalog", () => {
         .map((entry) => entry.label)
     ).toEqual(["review"]);
   });
+
+  it("shows /tutti only while the host Tutti Mode gate is enabled", () => {
+    const { result, rerender } = renderHook(
+      ({ enabled }: { enabled: boolean }) =>
+        useComposerPaletteCatalog({
+          provider: "codex",
+          isGoalModeActive: false,
+          goalSupported: false,
+          paletteDraftPrompt: "/",
+          availableCommands: [],
+          availableSkills: [],
+          hasCompactableContext: false,
+          compactSupported: false,
+          composerSettings: {
+            supportsPlanMode: false,
+            supportsBrowser: false,
+            supportsComputerUse: false,
+            slashCommandPolicy: {
+              fallbackCommands: [],
+              commandEffects: [],
+              commandCatalogAuthoritative: true
+            }
+          } as unknown as AgentGUIComposerSettingsVM,
+          capabilityMenuState: { tuttiMode: { enabled } },
+          capabilityControlsReadOnly: false,
+          labels: {
+            tuttiModeDescription: "Coordinate work",
+            tuttiModeLabel: "Tutti Mode"
+          } as AgentComposerProps["labels"],
+          uiLanguage: "en",
+          editorHandleRef: { current: null }
+        }),
+      { initialProps: { enabled: false } }
+    );
+
+    const tuttiEntry = () =>
+      result.current.slashPaletteEntries.find(
+        (entry) => entry.key === "capability:tutti"
+      );
+
+    expect(tuttiEntry()).toBeUndefined();
+    rerender({ enabled: true });
+    expect(tuttiEntry()).toMatchObject({
+      capability: { capability: "tutti", name: "tutti" },
+      label: "Tutti Mode",
+      type: "capability"
+    });
+    rerender({ enabled: false });
+    expect(tuttiEntry()).toBeUndefined();
+  });
 });

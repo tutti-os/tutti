@@ -12,6 +12,7 @@ import {
   type TuttiPlanIssueTaskAction
 } from "../../../workspaceWorkflow";
 import {
+  agentComposerDraftHasContent,
   agentPromptContentDisplayText,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
@@ -28,8 +29,10 @@ export interface AgentGUITuttiWorkflowComposerController {
   planReviewSendActive: boolean;
   tuttiExecutionActive: boolean;
   tuttiExecutionStopping: boolean;
+  planReviewDraftHasContent: boolean;
   planReviewPreferencesDiverged: boolean;
   acceptPendingPlan: () => void;
+  requestPendingPlanChanges: () => void;
   setTuttiModeActiveAndSettleReview: (active: boolean) => void;
   stopTuttiExecution: () => Promise<void>;
   submitPromptOrDecidePlan: (
@@ -72,7 +75,8 @@ interface MaterializingPlan {
 /**
  * Everything the detail pane needs for the Tutti plan review flow and the
  * materialized plan Issue embed: composer-integrated review decisions (empty
- * send accepts, typed send requests changes, preference divergence re-plans),
+ * send accepts, typed send requests changes, and a proven preference change
+ * exposes an additional request-changes action),
  * per-task assignment drafts, the embedded issue panel data plus its inline
  * acceptance decisions, and the single bottom-dock workflow projection.
  */
@@ -148,16 +152,20 @@ export function useAgentGUITuttiWorkflow(input: {
   );
   const planReviewSendActive =
     pendingPlanPanel !== null && !pendingPlanSubmitting;
-  // Current v1 documents carry explicit preference snapshots. Documents from
-  // the legacy single-axis window use orchestrationIntensity as effect and the
-  // balanced speed default without changing that field's execution meaning.
-  const pendingPlanEffect =
-    pendingPlanPanel?.execution.effect ??
-    pendingPlanPanel?.execution.orchestrationIntensity ??
-    50;
-  const pendingPlanSpeed = pendingPlanPanel?.execution.speed ?? 50;
+  const planReviewDraftHasContent = agentComposerDraftHasContent(
+    viewModel.composer.draftContent
+  );
+  // A preference change is real only when the reviewed document carries both
+  // explicit frozen values. Legacy documents without that pair remain
+  // acceptable, but the UI must not invent a comparison from unrelated fields.
+  const pendingPlanEffect = pendingPlanPanel?.execution.effect;
+  const pendingPlanSpeed = pendingPlanPanel?.execution.speed;
+  const pendingPlanHasPreferenceSnapshot =
+    typeof pendingPlanEffect === "number" &&
+    typeof pendingPlanSpeed === "number";
   const planReviewPreferencesDiverged =
     pendingPlanPanel !== null &&
+    pendingPlanHasPreferenceSnapshot &&
     (viewModel.composer.tuttiModeEffect !== pendingPlanEffect ||
       viewModel.composer.tuttiModeSpeed !== pendingPlanSpeed);
   const decidePendingPlan = useStableEventCallback(
@@ -183,18 +191,6 @@ export function useAgentGUITuttiWorkflow(input: {
     }
   );
   const acceptPendingPlan = useStableEventCallback((): void => {
-    if (planReviewPreferencesDiverged && pendingPlanPanel) {
-      decidePendingPlan(
-        "rejected",
-        labels.tuttiModePlanReplanFeedback(
-          String(pendingPlanEffect),
-          String(pendingPlanSpeed),
-          String(viewModel.composer.tuttiModeEffect),
-          String(viewModel.composer.tuttiModeSpeed)
-        )
-      );
-      return;
-    }
     if (pendingPlanPanel && viewModel.rail.activeConversationId) {
       setMaterializingPlan({
         checkpointId: pendingPlanPanel.checkpoint.id,
@@ -205,6 +201,20 @@ export function useAgentGUITuttiWorkflow(input: {
     }
     decidePendingPlan("accepted");
   });
+  const replanPendingPlanWithCurrentPreferences = useStableEventCallback(
+    (): void => {
+      if (!pendingPlanPanel || !pendingPlanHasPreferenceSnapshot) return;
+      decidePendingPlan(
+        "rejected",
+        labels.tuttiModePlanReplanFeedback(
+          String(pendingPlanEffect),
+          String(pendingPlanSpeed),
+          String(viewModel.composer.tuttiModeEffect),
+          String(viewModel.composer.tuttiModeSpeed)
+        )
+      );
+    }
+  );
   const cancelPendingPlan = useStableEventCallback((): void => {
     decidePendingPlan("canceled");
   });
@@ -222,8 +232,8 @@ export function useAgentGUITuttiWorkflow(input: {
   );
   // While a plan review is pending the composer doubles as the decision
   // surface: typed text becomes request-changes feedback (the daemon relays
-  // it to the agent), an empty send accepts. Normal sends resume once the
-  // checkpoint settles.
+  // it to the agent), while an empty send always accepts the exact visible
+  // checkpoint. Normal sends resume once the checkpoint settles.
   const submitPromptOrDecidePlan = useStableEventCallback(
     (
       ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
@@ -415,8 +425,10 @@ export function useAgentGUITuttiWorkflow(input: {
   return {
     composer: {
       acceptPendingPlan,
+      planReviewDraftHasContent,
       planReviewPreferencesDiverged,
       planReviewSendActive,
+      requestPendingPlanChanges: replanPendingPlanWithCurrentPreferences,
       setTuttiModeActiveAndSettleReview,
       stopTuttiExecution: cancelPlanIssueExecution,
       tuttiExecutionActive,

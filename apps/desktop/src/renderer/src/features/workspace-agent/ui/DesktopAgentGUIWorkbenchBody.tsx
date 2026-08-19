@@ -91,7 +91,8 @@ import {
   isFeatureEnabled,
   LAB_AGENT_SIDE_CONVERSATION_FLAG,
   LAB_CODEX_SAVER_MODE_FLAG,
-  LAB_CONNECTORS_FLAG
+  LAB_CONNECTORS_FLAG,
+  LAB_TUTTI_MODE_FLAG
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 const EMPTY_AGENT_SESSION_LAUNCH_MODES_BY_PROJECT_SECTION_KEY: Readonly<
@@ -570,7 +571,7 @@ function DesktopAgentGUISurfaceImpl({
         enabled: isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)
       },
       tuttiMode: {
-        enabled: true
+        enabled: isFeatureEnabled(featureFlags, LAB_TUTTI_MODE_FLAG)
       }
     };
   }, [

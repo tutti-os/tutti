@@ -1,8 +1,8 @@
 export const zhCNTuttiModePlan = {
   taskReview: "计划确认",
   cancel: "取消计划",
-  reviewHint: "直接发送即接受 · 输入反馈后发送即请求修改",
-  reviewHintReplan: "效果或速度已调整 · 发送即按新偏好重新规划",
+  reviewHint: "等待确认",
+  reviewHintReplan: "偏好有变",
   materializingTitle: "正在创建任务",
   switchToSelfReview: "切换为自主审核",
   switchingToSelfReview: "正在切换为自主审核",
@@ -12,7 +12,7 @@ export const zhCNTuttiModePlan = {
   errorTitle: "工作流暂不可用",
   expand: "展开工作流",
   collapse: "收起工作流",
-  sendAccept: "接受计划",
+  sendAccept: "接受",
   sendRequestChanges: "请求修改",
   replanFeedback:
     "偏好已从效果 {{fromEffect}} / 速度 {{fromSpeed}} 调整为效果 {{toEffect}} / 速度 {{toSpeed}}。请重新规划模型选择和随效果变化的任务验证",
@@ -57,5 +57,5 @@ export const zhCNTuttiModePlan = {
   issueStripFailed: "{{count}} 失败",
   issueStripDone: "{{done}}/{{total}} 已完成",
   issueCreateFailed:
-    "已核准的计划未能创建 Issue：{{message}}。请让 Agent 修订计划。"
+    "已核准的计划未能创建 Issue：{{message}}。请让 Agent 修订计划"
 } as const;

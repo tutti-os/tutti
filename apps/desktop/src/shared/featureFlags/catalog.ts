@@ -7,6 +7,7 @@ import {
 export const LAB_ENABLED_FLAG = "lab.enabled";
 export const BROWSER_CHROME_COOKIE_IMPORT_FLAG = "browser.chromeCookieImport";
 export const LAB_AUTOMATION_RULES_FLAG = "lab.automationRules";
+export const LAB_TUTTI_MODE_FLAG = "lab.tuttiMode";
 export const LAB_CONNECTORS_FLAG = "lab.connectors";
 export const LAB_WORKBENCH_SHORTCUTS_FLAG = "lab.workbenchShortcuts";
 export const LAB_CONVERSATION_ACTIVITY_VIEW_FLAG =
@@ -157,6 +158,13 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "lab",
     labelKey: "workspace.settings.lab.automationRulesLabel",
     descriptionKey: "workspace.settings.lab.automationRulesDescription"
+  },
+  {
+    key: LAB_TUTTI_MODE_FLAG,
+    default: false,
+    group: "lab",
+    labelKey: "workspace.settings.lab.tuttiModeLabel",
+    descriptionKey: "workspace.settings.lab.tuttiModeDescription"
   },
   {
     key: LAB_CONNECTORS_FLAG,
