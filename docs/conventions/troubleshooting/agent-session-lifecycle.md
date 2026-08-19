@@ -4703,7 +4703,7 @@ permanently ambiguous`. Provider status may already be `active` while the
   tool-owned nested argument, and prove the source Agent graph remains
   unchanged.
 - References:
-  [state.go](../../../services/tuttid/biz/agentsessionreplay/state.go)
+  [state.go](../../../packages/agent/session-replay/state.go)
   [agent_session_replay_state.go](../../../services/tuttid/data/workspace/agent_session_replay_state.go)
 
 ### Cassette replay loses the provider session before the second stimulus
@@ -4955,13 +4955,13 @@ permanently ambiguous`. Provider status may already be `active` while the
   state can never hold.
 - Fix:
   Register message-content `attachmentId` values as alpha-equivalent
-  identities in `registerReplayIDs` (`services/tuttid/biz/agentsessionreplay/state.go`),
+  identities in `registerReplayIDs` (`packages/agent/session-replay/state.go`),
   like session/turn/message IDs.
 - Validation:
   `TestCompareTuttiReplayStateTreatsAttachmentIDsAsAlphaEquivalent` in
   `state_test.go`; a full record→replay of an image-input cassette passes.
 - References:
-  [state.go](../../../services/tuttid/biz/agentsessionreplay/state.go)
+  [state.go](../../../packages/agent/session-replay/state.go)
 
 ### Replay transport mismatch on Goal Control `operationId`
 
@@ -4981,7 +4981,7 @@ permanently ambiguous`. Provider status may already be `active` while the
   `TestCompareTuttiReplayStateTreatsGoalControlOperationIDsAsAlphaEquivalent`;
   record→audit→replay of `l01_codex` (`l01`) passes.
 - References:
-  [state.go](../../../services/tuttid/biz/agentsessionreplay/state.go)
+  [state.go](../../../packages/agent/session-replay/state.go)
   `tutti-agent-session-replay-cases/cases/l01/scenario.mjs`
 
 ### Project-session replay never shows the restored session in the rail
