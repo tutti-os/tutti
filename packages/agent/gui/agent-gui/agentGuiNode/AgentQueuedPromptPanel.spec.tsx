@@ -31,26 +31,6 @@ function textQueuedPrompt(id: string, text: string, createdAtUnixMs = 1) {
 }
 
 describe("AgentQueuedPromptPanel", () => {
-  it("disables send-next for compact while preserving the other queue actions", () => {
-    const onSendQueuedPromptNext = vi.fn();
-    const onRemoveQueuedPrompt = vi.fn();
-    render(
-      <AgentQueuedPromptPanel
-        queuedPrompts={[textQueuedPrompt("queued-compact", "/compact")]}
-        drainingQueuedPromptId={null}
-        labels={labels}
-        onSendQueuedPromptNext={onSendQueuedPromptNext}
-        onRemoveQueuedPrompt={onRemoveQueuedPrompt}
-        onEditQueuedPrompt={vi.fn()}
-      />
-    );
-
-    expect(screen.getByRole("button", { name: "Send next" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Delete" })).toBeEnabled();
-    fireEvent.click(screen.getByRole("button", { name: "Send next" }));
-    expect(onSendQueuedPromptNext).not.toHaveBeenCalled();
-  });
-
   it("switches between the paused and active queue labels while preserving actions", async () => {
     const onSendQueuedPromptNext = vi.fn();
     const onRemoveQueuedPrompt = vi.fn();

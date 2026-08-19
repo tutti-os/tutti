@@ -5,19 +5,11 @@ import {
   labelForSlashCommand,
   mergeSlashCommands,
   moveSlashCommandHighlight,
-  isCompactSlashCommandInvocation,
   parseSlashCommandInvocation,
   promptForSlashCommand
 } from "./agentSlashCommands";
 
 describe("agentSlashCommands", () => {
-  it("recognizes only the compact control command", () => {
-    expect(isCompactSlashCommandInvocation(" /COMPACT ")).toBe(true);
-    expect(isCompactSlashCommandInvocation("/compact now")).toBe(true);
-    expect(isCompactSlashCommandInvocation("/review")).toBe(false);
-    expect(isCompactSlashCommandInvocation("please /compact")).toBe(false);
-  });
-
   it("filters by command name prefix and description substring", () => {
     const commands = [
       { name: "web", description: "Search online" },

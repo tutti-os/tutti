@@ -447,7 +447,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       refreshedSlashSessionRef.current = null;
     } else if (refreshedSlashSessionRef.current !== refreshKey) {
       refreshedSlashSessionRef.current = refreshKey;
-      onRetryComposerOptions?.();
+      onRetryComposerOptions?.({ force: true, section: "capabilities" });
     }
     draftImagesRef.current = agentComposerDraftImages(draftContent);
     draftFilesRef.current = agentComposerDraftFiles(draftContent);

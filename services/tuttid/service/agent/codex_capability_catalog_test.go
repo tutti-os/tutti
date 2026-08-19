@@ -3,11 +3,47 @@ package agent
 import (
 	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
+
+func TestMergeCodexComposerCapabilityOptionsDeduplicatesSkillFileAliases(t *testing.T) {
+	directory := t.TempDir()
+	nativePath := filepath.Join(directory, "SKILL.md")
+	fallbackPath := filepath.Join(directory, "SKILL-alias.md")
+	if err := os.WriteFile(nativePath, []byte("---\nname: example\n---\n"), 0o600); err != nil {
+		t.Fatalf("write native skill: %v", err)
+	}
+	if err := os.Link(nativePath, fallbackPath); err != nil {
+		t.Fatalf("create skill file alias: %v", err)
+	}
+
+	options := mergeCodexComposerCapabilityOptions(
+		[]ComposerCapabilityOption{{
+			ID:   "skill:example",
+			Kind: "skill",
+			Name: "example",
+			Path: fallbackPath,
+		}},
+		[]ComposerCapabilityOption{{
+			ID:   "skill:plugin:example",
+			Kind: "skill",
+			Name: "plugin:example",
+			Path: nativePath,
+		}},
+	)
+
+	if len(options) != 1 {
+		t.Fatalf("options = %#v, want one canonical skill", options)
+	}
+	if options[0].ID != "skill:plugin:example" || options[0].Name != "plugin:example" || options[0].Path != nativePath {
+		t.Fatalf("option = %#v, want native namespaced skill", options[0])
+	}
+}
 
 func TestParseCodexCapabilityResponses(t *testing.T) {
 	skills := parseCodexSkillCapabilities(json.RawMessage(`{"data":[{"skills":[{"name":"review","description":"Review code","path":"/tmp/review/SKILL.md","enabled":true}]}]}`))

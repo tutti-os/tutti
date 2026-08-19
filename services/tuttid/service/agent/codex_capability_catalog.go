@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -70,7 +71,58 @@ func discoverComposerCapabilityOptions(
 	if err != nil {
 		return fallback, []string{err.Error()}
 	}
-	return mergeComposerCapabilityOptions(fallback, options), nil
+	return mergeCodexComposerCapabilityOptions(fallback, options), nil
+}
+
+func mergeCodexComposerCapabilityOptions(
+	fallback []ComposerCapabilityOption,
+	native []ComposerCapabilityOption,
+) []ComposerCapabilityOption {
+	result := append([]ComposerCapabilityOption(nil), fallback...)
+	fileInfoByPath := make(map[string]os.FileInfo)
+	missingFileInfo := make(map[string]struct{})
+	fileInfo := func(path string) (os.FileInfo, bool) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return nil, false
+		}
+		if info, ok := fileInfoByPath[path]; ok {
+			return info, true
+		}
+		if _, ok := missingFileInfo[path]; ok {
+			return nil, false
+		}
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			missingFileInfo[path] = struct{}{}
+			return nil, false
+		}
+		fileInfoByPath[path] = info
+		return info, true
+	}
+	sameSkillFile := func(left ComposerCapabilityOption, right ComposerCapabilityOption) bool {
+		if left.Kind != "skill" || right.Kind != "skill" {
+			return false
+		}
+		leftInfo, leftOK := fileInfo(left.Path)
+		rightInfo, rightOK := fileInfo(right.Path)
+		return leftOK && rightOK && os.SameFile(leftInfo, rightInfo)
+	}
+
+	for _, option := range native {
+		replacedFallback := false
+		for index := range result {
+			if sameSkillFile(result[index], option) {
+				result[index] = option
+				replacedFallback = true
+				break
+			}
+		}
+		if !replacedFallback {
+			result = append(result, option)
+		}
+	}
+	return dedupeComposerCapabilityOptions(result)
 }
 
 func composerCapabilityCatalogLister(profile composerProfile) (CodexCLICapabilityLister, bool, error) {

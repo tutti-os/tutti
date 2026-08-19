@@ -119,9 +119,6 @@ func projectCodexAuth(ctx context.Context, codexHome string, projector AuthFileP
 }
 
 func prepareCodexHome(codexHome string, input PrepareInput) error {
-	if err := promoteSessionCreatedCodexSkills(filepath.Dir(filepath.Dir(codexHome)), input.AgentSessionID); err != nil {
-		slog.Warn("session-created codex skills were not fully promoted", "error", err)
-	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_requested", input, nil)
 	if err := os.MkdirAll(codexHome, 0o700); err != nil {
 		return fmt.Errorf("create codex home: %w", err)

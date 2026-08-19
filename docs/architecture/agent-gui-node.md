@@ -1295,10 +1295,6 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
   removed so the failed guidance cannot strand the queue or be redirected to a
   newer Turn
 - otherwise send-now performs exact cancel-then-send
-- `/compact` is a thread-level control command, not active-Turn guidance. When
-  entered while a Turn is active it remains queued until canonical availability;
-  its queued row disables `Send next`, then normal queue drain executes it as a
-  standalone control Turn after the active Turn settles
 - user Stop pauses the queue; cancellation must not leak the next prompt
 - a prompt settings precondition is an explicit preparation stage, not a nested
   host effect. It serializes with direct and post-activation settings writes,
@@ -1855,12 +1851,6 @@ For an active Session, composer Skill discovery also scans that Session's
 isolated provider home. Opening slash search explicitly refreshes this catalog
 so newly created Skills appear without restarting the Session; runtime-managed
 Skills remain hidden through their `.tutti-managed-skill` marker.
-
-When a later Codex Session is prepared, runtime preparation promotes valid,
-user-created Skills from prior isolated Codex homes into `~/.codex/skills`.
-Existing personal Skills are never overwritten, and Tutti-managed or malformed
-Skills are not promoted. The existing user-Skill exposure path then makes the
-promoted Skill available in the new Session on Windows and POSIX systems.
 
 App-server-backed skill discovery follows the descriptor boundary. Tutti Agent
 requests only `skills/list` and retains the ordinary Skill projection through

@@ -124,6 +124,7 @@ function requestLoad(
   }
   const section = intent.section;
   const signature = composerOptionsRequestSignature({
+    agentSessionId: intent.agentSessionId,
     provider,
     cwd: intent.cwd,
     settings: intent.settings

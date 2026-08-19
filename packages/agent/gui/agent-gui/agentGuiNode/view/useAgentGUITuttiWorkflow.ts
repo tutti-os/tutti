@@ -15,7 +15,6 @@ import {
   agentPromptContentDisplayText,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
-import { isCompactSlashCommandInvocation } from "../model/agentSlashCommands";
 import { appendAgentGUIComposerPrompt } from "../controller/useAgentGUIComposerAppendRequest";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type {
@@ -230,12 +229,11 @@ export function useAgentGUITuttiWorkflow(input: {
       ...args: Parameters<AgentGUINodeViewProps["actions"]["submitPrompt"]>
     ): void => {
       const [content] = args;
-      const promptText = agentPromptContentDisplayText(content).trim();
-      const isCompactCommand = isCompactSlashCommandInvocation(promptText);
       if (pendingPlanPanel && !pendingPlanSubmitting) {
-        let feedback = promptText;
-        // Compaction is a control command, never plan feedback.
-        if (feedback && !isCompactCommand) {
+        let feedback = agentPromptContentDisplayText(content).trim();
+        // Slash commands (e.g. the usage chip's "/compact") are never plan
+        // feedback — let them flow through the normal submit path.
+        if (feedback && !feedback.startsWith("/")) {
           if (planReviewPreferencesDiverged) {
             feedback += labels.tuttiModePlanReplanFeedbackSuffix(
               String(viewModel.composer.tuttiModeEffect),

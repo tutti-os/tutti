@@ -29,7 +29,6 @@ import type {
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
-import { isCompactSlashCommandInvocation } from "../model/agentSlashCommands";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 import {
@@ -99,6 +98,7 @@ interface UseAgentGUISubmitInteractionActionsInput {
       }
     ) => void
   >;
+  goalControlSupported: boolean;
   isComposerHomeRef: RefObject<boolean>;
   isCurrentConversation(agentSessionId: string): boolean;
   isRespondingToInteraction: boolean;
@@ -143,9 +143,14 @@ interface UseAgentGUISubmitInteractionActionsInput {
 
 export function typedGoalControlFromComposer(
   content: AgentPromptContentBlock[],
-  _displayPrompt?: string
+  _displayPrompt: string | undefined,
+  goalControlSupported: boolean
 ): { action: AgentActivityGoalControlAction; objective?: string } | null {
-  if (content.length !== 1 || content[0]?.type !== "text") {
+  if (
+    !goalControlSupported ||
+    content.length !== 1 ||
+    content[0]?.type !== "text"
+  ) {
     return null;
   }
   // Structured content owns command semantics. displayPrompt may collapse a
@@ -166,6 +171,7 @@ export function useAgentGUISubmitInteractionActions(
     dataRef,
     draftByScopeKeyRef,
     executePromptRef,
+    goalControlSupported,
     isComposerHomeRef,
     isCurrentConversation,
     isRespondingToInteraction,
@@ -459,7 +465,8 @@ export function useAgentGUISubmitInteractionActions(
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
       const typedGoal = typedGoalControlFromComposer(
         normalizedContent,
-        displayPromptText
+        displayPromptText,
+        goalControlSupported
       );
       if (
         !promptImagesSupported &&
@@ -576,9 +583,10 @@ export function useAgentGUISubmitInteractionActions(
     [
       agentActivityRuntime,
       conversationListQuery,
-      promptImagesSupported,
       goalControl,
+      goalControlSupported,
       persistActiveConversation,
+      promptImagesSupported,
       startConversation,
       submitExistingPrompt,
       workspaceId
@@ -613,22 +621,6 @@ export function useAgentGUISubmitInteractionActions(
       }
       const displayPromptText =
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
-      if (
-        isCompactSlashCommandInvocation(
-          agentPromptContentDisplayText(normalizedContent)
-        )
-      ) {
-        submitExistingPrompt(
-          agentSessionId,
-          normalizedContent,
-          displayPromptText,
-          {
-            capabilityRefs: options?.capabilityRefs,
-            trackDraft: true
-          }
-        );
-        return;
-      }
       submitExistingPrompt(
         agentSessionId,
         normalizedContent,

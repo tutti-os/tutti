@@ -109,12 +109,6 @@ export function parseSlashCommandInvocation(
   };
 }
 
-export function isCompactSlashCommandInvocation(draft: string): boolean {
-  return (
-    parseSlashCommandInvocation(draft)?.commandName.toLowerCase() === "compact"
-  );
-}
-
 export function moveSlashCommandHighlight(
   currentIndex: number,
   itemCount: number,
