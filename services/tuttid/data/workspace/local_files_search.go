@@ -18,9 +18,9 @@ import (
 const defaultMaxSearchCandidates = 5000
 
 // defaultSearchIgnoredDirectoryNames preserves the search scope of the former
-// filesystem walker. Native index providers use the same list to discard
-// predictable noise before applying their candidate limit, while
-// localFileSearchCandidates applies it again as a provider-independent guard.
+// filesystem walker. localFileSearchCandidates owns the provider-independent
+// guard; native providers may push down equivalent filtering only when their
+// query semantics preserve responsiveness.
 var defaultSearchIgnoredDirectoryNames = []string{
 	".git",
 	".next",
