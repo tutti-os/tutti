@@ -302,14 +302,26 @@ describe("ConnectorComposerMenu", () => {
     const toggle = await screen.findByTestId(
       "connector-market-composer-status-github"
     );
+    const menuItem = screen.getByTestId(
+      "connector-market-composer-item-github"
+    );
+    expect(menuItem).not.toContainElement(toggle);
+    fireEvent.pointerDown(toggle, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+    fireEvent.pointerUp(toggle, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
     fireEvent.click(toggle);
 
     expect(onRuntimeEnabledChange).toHaveBeenCalledWith("github", false);
     expect(onSelectConnector).not.toHaveBeenCalled();
     expect(toggle).not.toBeChecked();
-    expect(
-      screen.getByTestId("connector-market-composer-item-github")
-    ).toBeInTheDocument();
+    expect(menuItem).toBeInTheDocument();
     expect(screen.getByRole("menu")).toHaveClass("w-[240px]");
   });
 

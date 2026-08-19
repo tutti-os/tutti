@@ -179,49 +179,56 @@ export function ConnectorComposerMenu({
                 ? labels.authorize
                 : labels.connect;
             return (
-              <DropdownMenuItem
-                key={item.connectorKey}
-                className="min-h-9 gap-2.5 px-2.5"
-                data-testid={`connector-market-composer-item-${item.connectorKey}`}
-                data-selected={selected ? "true" : undefined}
-                disabled={
-                  readOnly ||
-                  (connected ? !onSelectConnector : !onOpenConnector)
-                }
-                onPointerDown={(event) => {
-                  if (event.button !== 0 || event.ctrlKey) {
-                    return;
+              <div key={item.connectorKey} className="relative" role="none">
+                <DropdownMenuItem
+                  className={cn("min-h-9 gap-2.5 px-2.5", installed && "pr-14")}
+                  data-testid={`connector-market-composer-item-${item.connectorKey}`}
+                  data-selected={selected ? "true" : undefined}
+                  disabled={
+                    readOnly ||
+                    (connected ? !onSelectConnector : !onOpenConnector)
                   }
-                  event.preventDefault();
-                  closeAndRun(() => {
-                    if (connected) {
-                      onSelectConnector?.(item.connectorKey, !selected);
+                  onPointerDown={(event) => {
+                    if (event.button !== 0 || event.ctrlKey) {
                       return;
                     }
-                    onOpenConnector?.(item.connectorKey);
-                  });
-                }}
-                onSelect={(event) => {
-                  event.preventDefault();
-                  closeAndRun(() => {
-                    if (connected) {
-                      onSelectConnector?.(item.connectorKey, !selected);
-                      return;
-                    }
-                    onOpenConnector?.(item.connectorKey);
-                  });
-                }}
-              >
-                <ConnectorComposerIcon
-                  iconUrl={item.iconUrl}
-                  label={item.name}
-                />
-                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                    event.preventDefault();
+                    closeAndRun(() => {
+                      if (connected) {
+                        onSelectConnector?.(item.connectorKey, !selected);
+                        return;
+                      }
+                      onOpenConnector?.(item.connectorKey);
+                    });
+                  }}
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    closeAndRun(() => {
+                      if (connected) {
+                        onSelectConnector?.(item.connectorKey, !selected);
+                        return;
+                      }
+                      onOpenConnector?.(item.connectorKey);
+                    });
+                  }}
+                >
+                  <ConnectorComposerIcon
+                    iconUrl={item.iconUrl}
+                    label={item.name}
+                  />
+                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  {!installed && !readOnly ? (
+                    <div className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
+                      <LinkIcon aria-hidden className="size-4" />
+                      {actionLabel}
+                    </div>
+                  ) : null}
+                </DropdownMenuItem>
                 {installed ? (
                   <Switch
                     aria-label={item.name}
                     checked={runtimeEnabled}
-                    className="ml-auto shrink-0"
+                    className="absolute top-1/2 right-2.5 z-10 -translate-y-1/2"
                     data-testid={`connector-market-composer-status-${item.connectorKey}`}
                     disabled={
                       readOnly ||
@@ -271,13 +278,8 @@ export function ConnectorComposerMenu({
                       );
                     }}
                   />
-                ) : !readOnly ? (
-                  <div className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
-                    <LinkIcon aria-hidden className="size-4" />
-                    {actionLabel}
-                  </div>
                 ) : null}
-              </DropdownMenuItem>
+              </div>
             );
           })
         ) : loading ? (
