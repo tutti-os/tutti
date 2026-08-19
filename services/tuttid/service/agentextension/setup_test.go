@@ -218,8 +218,18 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	if retryRunner.callCount() != 1 {
 		t.Fatalf("account usage restart retry calls = %d, want 1", retryRunner.callCount())
 	}
-	if persisted, err := restarted.AccountUsageFailures.Read(context.Background(), failureScope); err != nil || persisted != nil {
-		t.Fatalf("recovered account usage failure = %#v, error = %v", persisted, err)
+	for {
+		persisted, readErr := restarted.AccountUsageFailures.Read(context.Background(), failureScope)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if persisted == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("recovered account usage failure = %#v", persisted)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	usage, err := (AccountUsageService{Manager: service.Plans.Manager, Targets: store}).Probe(context.Background(), targetID)
 	if err != nil {
