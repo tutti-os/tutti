@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 
 	agentextensionbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentextension"
 )
@@ -18,6 +19,7 @@ const accountUsageCompanionFailureRelativeDir = "agent/extension-account-usage-c
 
 type FileAccountUsageCompanionFailureStore struct {
 	stateDir string
+	mu       sync.RWMutex
 }
 
 func NewFileAccountUsageCompanionFailureStore(stateDir string) *FileAccountUsageCompanionFailureStore {
@@ -31,6 +33,8 @@ func (s *FileAccountUsageCompanionFailureStore) Read(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	path, err := s.failurePath(scope)
 	if err != nil {
 		return nil, err
@@ -62,6 +66,8 @@ func (s *FileAccountUsageCompanionFailureStore) Put(
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if err := validateAccountUsageCompanionFailure(scope, failure); err != nil {
 		return err
 	}
@@ -108,6 +114,8 @@ func (s *FileAccountUsageCompanionFailureStore) Delete(
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	path, err := s.failurePath(scope)
 	if err != nil {
 		return err
