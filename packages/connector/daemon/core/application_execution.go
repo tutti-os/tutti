@@ -9,6 +9,8 @@ import (
 
 const authorizationSessionTTL = 10 * time.Minute
 
+const compatibilityReasonRemovedFromCatalog = "removed_from_catalog"
+
 func (application *Application) executeRefresh(ctx context.Context, operation Operation) error {
 	if _, err := application.updateOperationStage(ctx, operation.OperationID, OperationStageRefreshing, nil); err != nil {
 		return err
@@ -78,7 +80,7 @@ func (application *Application) executeRefresh(ctx context.Context, operation Op
 				}
 				connector.Compatibility = Compatibility{
 					State:  CompatibilityStateUnsupportedVersion,
-					Reason: "removed_from_catalog",
+					Reason: compatibilityReasonRemovedFromCatalog,
 				}
 				connector.Revision = revision
 				if err := tx.SaveConnector(connector); err != nil {
