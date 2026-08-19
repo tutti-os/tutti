@@ -1,50 +1,35 @@
-import { ConnectorSelectionList } from "@tutti-os/connector-renderer/ui";
 import { Spinner } from "@tutti-os/ui-system";
 import { FileText, X } from "lucide-react";
 import { cn } from "../../../app/renderer/lib/utils";
 import { translate } from "../../../i18n/index";
-import { projectConnectorSelectionItems } from "../integrations/connector/model/connectorPresentation";
 import { pastedTextPreview } from "../model/agentComposerDraft";
 import type {
   AgentComposerDraftImage,
-  AgentComposerDraftLargeText,
-  AgentComposerDraftConnector,
-  AgentGUIProviderSkillOption
+  AgentComposerDraftLargeText
 } from "../model/agentGuiNodeTypes";
 import { AgentComposerDraftImagePreview } from "./AgentComposerDraftPreview";
 import { AGENT_COMPOSER_PASTED_TEXT_FILE_PREFIX } from "./composerDraftUtils";
 
 interface Props {
   draftImages: AgentComposerDraftImage[];
-  draftConnectors: AgentComposerDraftConnector[];
   draftLargeTexts: AgentComposerDraftLargeText[];
-  availableSkills: readonly AgentGUIProviderSkillOption[];
   removeLabel: string;
   onRemoveImage: (id: string) => void;
-  onRemoveConnector: (connectorKey: string) => void;
   onRemoveLargeText: (id: string) => void;
   onExpandLargeText: (id: string) => void;
 }
 
 export function ComposerDraftAttachments({
   draftImages,
-  draftConnectors,
   draftLargeTexts: visibleDraftLargeTexts,
-  availableSkills,
   removeLabel,
   onRemoveImage: removeDraftImage,
-  onRemoveConnector: removeDraftConnector,
   onRemoveLargeText: removeDraftLargeText,
   onExpandLargeText: expandDraftLargeTextToPrompt
 }: Props) {
   const labels = { removeMention: removeLabel };
   return (
     <>
-      <ConnectorSelectionList
-        items={projectConnectorSelectionItems(draftConnectors, availableSkills)}
-        removeLabel={labels.removeMention}
-        onRemove={removeDraftConnector}
-      />
       {draftImages.length > 0 ? (
         <div
           className="mb-2 flex w-full max-w-full flex-wrap items-start gap-2"

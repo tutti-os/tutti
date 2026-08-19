@@ -119,33 +119,44 @@ func NewApplication(config ApplicationConfig) (*Application, error) {
 
 func (application *Application) Snapshot(ctx context.Context) (Snapshot, error) {
 	snapshot, err := application.config.Repository.Snapshot(ctx)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	snapshot, err = application.projectConnectorRuntimes(ctx, snapshot, OperationScope{})
 	return publicSnapshot(snapshot, OperationScope{}), err
 }
 
 func (application *Application) SnapshotForScope(ctx context.Context, scope OperationScope) (Snapshot, error) {
 	if repository, ok := application.config.Repository.(ScopedSnapshotReader); ok {
 		snapshot, err := repository.SnapshotForScope(ctx, scope)
+		if err != nil {
+			return Snapshot{}, err
+		}
+		snapshot, err = application.projectConnectorRuntimes(ctx, snapshot, scope)
 		return publicSnapshot(snapshot, scope), err
 	}
 	snapshot, err := application.config.Repository.Snapshot(ctx)
-	if err != nil || strings.TrimSpace(scope.AccountID) == "" || application.config.AuthorizationProjections == nil {
-		return publicSnapshot(snapshot, scope), err
+	if err != nil {
+		return Snapshot{}, err
 	}
-	for index := range snapshot.Connectors {
-		projection, projectionErr := application.config.AuthorizationProjections.AuthorizationProjection(
-			ctx, scope.AccountID, snapshot.Connectors[index].Key,
-		)
-		if errors.Is(projectionErr, ErrNotFound) {
-			continue
-		}
-		if projectionErr != nil {
-			return Snapshot{}, projectionErr
-		}
-		snapshot.Connectors[index].Authorization = Authorization{
-			State: projection.State, FailureCode: projection.FailureCode,
+	if strings.TrimSpace(scope.AccountID) != "" && application.config.AuthorizationProjections != nil {
+		for index := range snapshot.Connectors {
+			projection, projectionErr := application.config.AuthorizationProjections.AuthorizationProjection(
+				ctx, scope.AccountID, snapshot.Connectors[index].Key,
+			)
+			if errors.Is(projectionErr, ErrNotFound) {
+				continue
+			}
+			if projectionErr != nil {
+				return Snapshot{}, projectionErr
+			}
+			snapshot.Connectors[index].Authorization = Authorization{
+				State: projection.State, FailureCode: projection.FailureCode,
+			}
 		}
 	}
-	return publicSnapshot(snapshot, scope), nil
+	snapshot, err = application.projectConnectorRuntimes(ctx, snapshot, scope)
+	return publicSnapshot(snapshot, scope), err
 }
 
 func publicSnapshot(snapshot Snapshot, scope OperationScope) Snapshot {

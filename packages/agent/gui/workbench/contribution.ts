@@ -1,5 +1,8 @@
 import { createElement, type ReactNode } from "react";
-import type { AgentSessionEngine } from "@tutti-os/agent-activity-core";
+import {
+  selectWorkspaceAgentConsumerSession,
+  type AgentSessionEngine
+} from "@tutti-os/agent-activity-core";
 import {
   type WorkbenchContribution,
   type WorkbenchFrame,
@@ -142,6 +145,29 @@ export function createAgentGuiWorkbenchContribution(
     nodes: [
       {
         frame,
+        getWindowCloseEffect: ({ externalNodeState, node }) => {
+          if (!input.sessionEngine) {
+            return null;
+          }
+          const workbenchState = normalizeAgentGuiWorkbenchState(
+            migrateLegacyAgentGuiWorkbenchState(externalNodeState)
+          );
+          const consumerSession = selectWorkspaceAgentConsumerSession(
+            input.sessionEngine.getSnapshot(),
+            workbenchState.lastActiveAgentSessionId
+          );
+          if (
+            consumerSession?.displayStatus !== "working" &&
+            consumerSession?.displayStatus !== "waiting"
+          ) {
+            return null;
+          }
+          return {
+            nodeId: node.id,
+            title: node.title,
+            typeId: agentGuiWorkbenchTypeId
+          };
+        },
         getHeaderFrameRenderKey: (context) => {
           if (context.isDragging) {
             return "dragging";

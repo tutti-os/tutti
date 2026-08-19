@@ -31,7 +31,6 @@ import {
 } from "./macosUpdaterSupport.ts";
 import {
   createDesktopReleaseFeedResolver,
-  type DesktopReleaseFeed,
   type DesktopReleaseFeedResolver
 } from "./desktopReleaseFeed.ts";
 
@@ -351,7 +350,6 @@ export function createAppUpdateService(
   let activeDownloadPromise: Promise<void> | null = null;
   let preserveAvailableStateDuringCheck = false;
   let quitAndInstallPending = false;
-  let activeReleaseFeed: DesktopReleaseFeed | null = null;
   const stateChangedListeners = new Set<
     (state: AppUpdateState, previousState: AppUpdateState) => void
   >();
@@ -496,11 +494,7 @@ export function createAppUpdateService(
         checkedAt: new Date().toISOString(),
         latestVersion: info.version ?? null,
         releaseDate: normalizeReleaseDate(info.releaseDate),
-        releaseName: info.releaseName ?? null,
-        releaseNotesUrl:
-          activeReleaseFeed?.version === info.version
-            ? activeReleaseFeed.releaseNotesUrl
-            : null
+        releaseName: info.releaseName ?? null
       });
     }),
     resolvedDriver.onUpdateNotAvailable(() => {
@@ -758,7 +752,6 @@ export function createAppUpdateService(
     try {
       if (releaseFeedResolver) {
         const feed = await releaseFeedResolver({ channel: state.channel });
-        activeReleaseFeed = feed;
         resolvedDriver.setFeedUrl(feed.feedUrl);
         getDesktopLogger().info("application updater static feed configured", {
           channel: state.channel,

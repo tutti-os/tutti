@@ -72,4 +72,15 @@ describe("connector presentation projection", () => {
       status: "unsupported"
     });
   });
+
+  it("preserves the stopped runtime state for the composer switch", () => {
+    expect(
+      projectConnectorComposerItems([connector("linear", "disabled")])
+    ).toEqual([
+      expect.objectContaining({
+        connectorKey: "linear",
+        status: "disabled"
+      })
+    ]);
+  });
 });

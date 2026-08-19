@@ -95,7 +95,9 @@ export function AgentRichTextReadonly({
     if (!onLinkClick || !(event.target instanceof Element)) {
       return;
     }
-    const mention = event.target.closest('[data-agent-file-mention="true"]');
+    const mention = event.target.closest(
+      '[data-agent-file-mention="true"][data-agent-mention-href]'
+    );
     if (!(mention instanceof HTMLElement)) {
       return;
     }

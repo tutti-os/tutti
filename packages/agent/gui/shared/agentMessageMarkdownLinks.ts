@@ -321,14 +321,19 @@ function normalizeLocalPathMarkdownLinkAt(
   const target = content.slice(hrefStart, hrefEnd).trim();
   if (
     !target ||
-    !/\s/.test(target) ||
     /[<>]/.test(target) ||
     !isPotentialLocalMarkdownPathHref(target)
   ) {
     return null;
   }
+  const normalizedTarget = /^[A-Za-z]:\\/.test(target)
+    ? target.replaceAll("\\", "/")
+    : target;
+  if (normalizedTarget === target && !/\s/.test(target)) return null;
   return {
-    markdown: `${content.slice(index, hrefStart)}<${target}>)`,
+    markdown: `${content.slice(index, hrefStart)}${
+      /\s/.test(normalizedTarget) ? `<${normalizedTarget}>` : normalizedTarget
+    })`,
     end: hrefEnd + 1
   };
 }

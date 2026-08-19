@@ -588,9 +588,14 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
 
 Compact composer surfaces reuse `ConnectorComposerMenu` from the shared UI
 entrypoint. The menu consumes only a host-neutral projection of connector key,
-name, icon, and setup state; AgentGUI maps its provider-neutral capability
-options into that projection and retains only placement plus its Tutti Mode
-fallback. Selecting one item emits a semantic connector-open intent. The host
+name, icon, setup state, and the scoped runtime state projected by Connector
+Market. An installed Connector is shown as started only when the current boot
+has observed its latest desired generation as enabled and ready; `starting`,
+`stopped`, and `failed` remain off. Older hosts that omit this optional runtime
+projection retain the legacy authorization-based presentation. AgentGUI maps
+its provider-neutral capability options into that projection and retains only
+placement plus its Tutti Mode fallback. Selecting one item emits a semantic
+connector-open intent. The host
 executes `openConnectorMarketDialog(root, connectorKey)`, which waits for the
 authoritative market view, rejects invalid or unknown keys, and then advances
 the package-owned dialog state machine. Before applying the bounded quick-list

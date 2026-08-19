@@ -4921,6 +4921,7 @@ export type ConnectorMarketConnector = {
   installation: ConnectorMarketInstallation;
   authorization: ConnectorMarketAuthorization;
   compatibility: ConnectorMarketCompatibility;
+  runtime?: ConnectorMarketRuntime;
   revision: number;
 };
 
@@ -4999,6 +5000,11 @@ export type ConnectorMarketAuthorization = {
 export type ConnectorMarketCompatibility = {
   state: ConnectorMarketCompatibilityState;
   reason?: string;
+};
+
+export type ConnectorMarketRuntime = {
+  state: "started" | "starting" | "stopped" | "failed";
+  failureCode?: string;
 };
 
 export type ConnectorMarketOperation = {

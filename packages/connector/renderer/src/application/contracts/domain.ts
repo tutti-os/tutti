@@ -172,12 +172,18 @@ export interface ConnectorCompatibility {
   reason?: string;
 }
 
+export interface ConnectorRuntime {
+  state: "started" | "starting" | "stopped" | "failed";
+  failureCode?: string;
+}
+
 export interface Connector {
   key: string;
   release: ConnectorRelease;
   installation: ConnectorInstallation;
   authorization: ConnectorAuthorization;
   compatibility: ConnectorCompatibility;
+  runtime?: ConnectorRuntime;
   revision: number;
 }
 

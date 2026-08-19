@@ -52,3 +52,29 @@ func TestConnectorCommandProviderRejectsMissingRegistry(t *testing.T) {
 		t.Fatalf("error = %v", err)
 	}
 }
+
+func TestConnectorCommandProviderOmitsStoppedRuntime(t *testing.T) {
+	host, registry, connector, generation := testCLIHostWithSetup(t, &connectorProcessStub{}, nil)
+	if _, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{
+		OperationID: "op-1", ConnectionID: "workspace-1", Connector: connector, Enabled: true, Generation: generation,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	generation.Generation++
+	if _, err := host.Reconcile(context.Background(), market.RuntimeReconcileRequest{
+		OperationID: "op-2", ConnectionID: "workspace-1", Connector: connector, Enabled: false, Generation: generation,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	available, err := NewConnectorCommandProvider(registry).Invoke(
+		context.Background(), cliservice.InvokeRequest{CommandID: connectorAvailableCommandID},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	connectors, ok := available.Value["connectors"].([]implementationhost.ConnectorSummary)
+	if !ok || len(connectors) != 0 {
+		t.Fatalf("available connectors = %#v, want none after the Connector runtime stops", available.Value["connectors"])
+	}
+}

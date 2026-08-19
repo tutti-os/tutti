@@ -562,7 +562,6 @@ jobs:
         env:
           RELEASE_CHANNEL: ${{ env.TUTTI_DESKTOP_RELEASE_CHANNEL }}
           RELEASE_GIT_SHA: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
-          RELEASE_NOTES_URL: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
           RELEASE_SOURCE_REF: ${{ needs.resolve.outputs.source_ref }}
           RELEASE_TAG: ${{ env.TUTTI_DESKTOP_RELEASE_TAG }}
         run: |

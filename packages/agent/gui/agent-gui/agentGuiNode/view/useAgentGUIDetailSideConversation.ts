@@ -95,7 +95,9 @@ export function useAgentGUIDetailSideConversation({
   const [focusedSideAgentSessionId, setFocusedSideAgentSessionId] = useState<
     string | null
   >(null);
-  const focused = activeSideAgentSessionId === focusedSideAgentSessionId;
+  const focused =
+    activeSideAgentSessionId !== null &&
+    activeSideAgentSessionId === focusedSideAgentSessionId;
   const emptyDraft = useMemo(emptyAgentComposerDraft, [
     activeSideAgentSessionId
   ]);

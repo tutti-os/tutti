@@ -2,14 +2,15 @@ import { useState } from "react";
 import {
   Badge,
   Button,
-  CheckIcon,
+  ConnectorLinedIcon,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
   LinkIcon,
-  OpenLinkLinedIcon
+  OpenLinkLinedIcon,
+  Switch
 } from "@tutti-os/ui-system";
 import { cn } from "@tutti-os/ui-system/utils";
 
@@ -130,7 +131,7 @@ export function ConnectorComposerMenu({
             </>
           ) : (
             <>
-              <LinkIcon aria-hidden className="size-4" />
+              <ConnectorLinedIcon aria-hidden className="size-4" />
               <span>{labels.connectors}</span>
             </>
           )}
@@ -138,13 +139,14 @@ export function ConnectorComposerMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="start"
-        className="w-[300px] max-w-[calc(100vw-24px)] p-1.5"
+        className="w-[280px] max-w-[calc(100vw-24px)] p-1.5"
         side="top"
         sideOffset={8}
       >
         {quickItems.length > 0 ? (
           quickItems.map((item) => {
             const connected = item.status === "connected";
+            const installed = connected || item.status === "disabled";
             const selected = connected && item.selected === true;
             const actionLabel =
               item.status === "authorization_required"
@@ -188,29 +190,20 @@ export function ConnectorComposerMenu({
                   iconUrl={item.iconUrl}
                   label={item.name}
                 />
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{item.name}</span>
-                  {item.description ? (
-                    <span className="block truncate text-xs text-[var(--text-tertiary)]">
-                      {item.description}
-                    </span>
-                  ) : null}
-                </span>
-                {connected ? (
-                  <span
-                    className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--success)]"
+                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {installed ? (
+                  <Switch
+                    aria-label={item.name}
+                    checked={connected}
+                    className="pointer-events-none ml-auto shrink-0"
                     data-testid={`connector-market-composer-status-${item.connectorKey}`}
-                  >
-                    <CheckIcon aria-hidden className="size-4" />
-                    {selected
-                      ? (labels.selected ?? labels.connected)
-                      : labels.connected}
-                  </span>
+                    tabIndex={-1}
+                  />
                 ) : !readOnly ? (
-                  <span className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
+                  <div className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
                     <LinkIcon aria-hidden className="size-4" />
                     {actionLabel}
-                  </span>
+                  </div>
                 ) : null}
               </DropdownMenuItem>
             );

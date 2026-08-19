@@ -278,13 +278,31 @@ type Compatibility struct {
 	Reason string             `json:"reason,omitempty"`
 }
 
+type ConnectorRuntimeState string
+
+const (
+	ConnectorRuntimeStateStarted  ConnectorRuntimeState = "started"
+	ConnectorRuntimeStateStarting ConnectorRuntimeState = "starting"
+	ConnectorRuntimeStateStopped  ConnectorRuntimeState = "stopped"
+	ConnectorRuntimeStateFailed   ConnectorRuntimeState = "failed"
+)
+
+// ConnectorRuntime is a public, credential-free projection of the current
+// runtime convergence. It is derived while reading a scoped snapshot and is
+// never the source of capability publication truth.
+type ConnectorRuntime struct {
+	State       ConnectorRuntimeState `json:"state"`
+	FailureCode string                `json:"failureCode,omitempty"`
+}
+
 type Connector struct {
-	Key           string        `json:"key"`
-	Release       Release       `json:"release"`
-	Installation  Installation  `json:"installation"`
-	Authorization Authorization `json:"authorization"`
-	Compatibility Compatibility `json:"compatibility"`
-	Revision      uint64        `json:"revision"`
+	Key           string            `json:"key"`
+	Release       Release           `json:"release"`
+	Installation  Installation      `json:"installation"`
+	Authorization Authorization     `json:"authorization"`
+	Compatibility Compatibility     `json:"compatibility"`
+	Runtime       *ConnectorRuntime `json:"runtime,omitempty"`
+	Revision      uint64            `json:"revision"`
 }
 
 type Operation struct {

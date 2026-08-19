@@ -112,7 +112,7 @@ describe("ConnectorComposerMenu", () => {
     ).toHaveTextContent("+2");
   });
 
-  it("shows connected versus connect actions and opens the catalog footer", async () => {
+  it("shows runtime state versus setup actions and opens the catalog footer", async () => {
     const onOpenConnector = vi.fn();
     const onOpenMarket = vi.fn();
     const onOpenChange = vi.fn();
@@ -139,10 +139,9 @@ describe("ConnectorComposerMenu", () => {
     const connected = await screen.findByTestId(
       "connector-market-composer-item-github"
     );
-    expect(connected).toHaveTextContent("Authorized");
     expect(
       screen.getByTestId("connector-market-composer-status-github")
-    ).toHaveClass("ml-auto");
+    ).toBeChecked();
     expect(connected).toHaveAttribute("data-disabled");
     expect(
       screen.getByTestId("connector-market-composer-item-notion")
@@ -201,7 +200,9 @@ describe("ConnectorComposerMenu", () => {
     const authorized = await screen.findByTestId(
       "connector-market-composer-item-notion"
     );
-    expect(authorized).toHaveTextContent("Authorized");
+    expect(
+      screen.getByTestId("connector-market-composer-status-notion")
+    ).toBeChecked();
     expect(authorized).not.toHaveAttribute("data-disabled");
     fireEvent.pointerDown(authorized, { button: 0, ctrlKey: false });
     expect(onSelectConnector).toHaveBeenCalledWith("notion", true);
@@ -241,7 +242,7 @@ describe("ConnectorComposerMenu", () => {
     });
     expect(
       await screen.findByTestId("connector-market-composer-status-lark-cli")
-    ).toHaveTextContent("Authorized");
+    ).toBeChecked();
 
     rendered.rerender(
       <ConnectorComposerMenu
@@ -256,6 +257,27 @@ describe("ConnectorComposerMenu", () => {
     expect(
       screen.getByTestId("connector-market-composer-item-lark-cli")
     ).toHaveTextContent("Authorize");
+  });
+
+  it("renders an installed but stopped connector as switched off", async () => {
+    render(
+      <ConnectorComposerMenu
+        items={[connector("linear", "disabled")]}
+        disabled={false}
+        labels={labels}
+        onOpenConnector={vi.fn()}
+        onOpenMarket={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+
+    expect(
+      await screen.findByTestId("connector-market-composer-status-linear")
+    ).not.toBeChecked();
   });
 
   it("limits the quick connector projection to ten catalog entries", async () => {

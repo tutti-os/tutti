@@ -100,7 +100,8 @@ describe("ComposerPrimaryCapabilityControl", () => {
     );
     const item = screen.getByTestId("connector-market-composer-item-github");
     expect(item).toHaveAttribute("aria-disabled", "true");
-    expect(item).toHaveTextContent(
+    expect(item).toHaveTextContent("GitHub");
+    expect(item).not.toHaveTextContent(
       "Authorization required on the owner device."
     );
     expect(

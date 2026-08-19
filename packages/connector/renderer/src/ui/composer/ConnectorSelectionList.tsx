@@ -35,6 +35,8 @@ export function ConnectorSelectionList({
         >
           <Avatar
             aria-hidden="true"
+            className="rounded-md"
+            imageClassName="size-4 object-contain"
             label={item.name}
             size={24}
             src={item.iconUrl}

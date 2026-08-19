@@ -41,9 +41,11 @@ export function projectConnectorComposerItems(
       status:
         option.status === "available"
           ? "connected"
-          : option.status === "authRequired"
-            ? "authorization_required"
-            : "setup_required"
+          : option.status === "disabled"
+            ? "disabled"
+            : option.status === "authRequired"
+              ? "authorization_required"
+              : "setup_required"
     });
   }
   return items;

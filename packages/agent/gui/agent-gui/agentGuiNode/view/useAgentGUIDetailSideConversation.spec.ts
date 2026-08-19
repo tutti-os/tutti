@@ -63,6 +63,23 @@ describe("appendAgentSidePromptToDraft", () => {
 });
 
 describe("useAgentGUIDetailSideConversation lifecycle", () => {
+  it("does not focus the main composer when no Side conversation is active", () => {
+    const rendered = renderHook(() =>
+      useAgentGUIDetailSideConversation({
+        enabled: false,
+        workspaceId: "workspace-1",
+        sourceAgentSessionId: "source-1",
+        provider: "codex",
+        cwd: null,
+        availableCommands: [],
+        clearMainDraft: vi.fn(),
+        submitPrompt: vi.fn()
+      })
+    );
+
+    expect(rendered.result.current.focused).toBe(false);
+  });
+
   it("leaves /side as ordinary main input when the developer flag is off", () => {
     const submitPrompt = vi.fn();
     const rendered = renderHook(() =>

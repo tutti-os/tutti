@@ -129,6 +129,7 @@ function createGoalControlInput(
     dataRef: { current: {} },
     draftByScopeKeyRef,
     executePromptRef: { current: vi.fn() },
+    goalControlSupported: true,
     isComposerHomeRef: { current: false },
     isCurrentConversation: (agentSessionId: string) =>
       agentSessionId === "session-1",
@@ -599,6 +600,34 @@ describe("existing-session prompt submission", () => {
 });
 
 describe("goal controls", () => {
+  it("submits typed Goal text normally when Goal control is unsupported", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.goalControlSupported = false;
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: false });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "/goal count to ten" }
+      ])
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSessionId: "session-1",
+        content: [{ type: "text", text: "/goal count to ten" }]
+      })
+    );
+    expect(goalControl).not.toHaveBeenCalled();
+  });
+
   it("publishes the Engine-owned optimistic goal before transport settles", async () => {
     const goalControl = vi.fn(() => new Promise<void>(() => {}));
     const { input, sessionEngine } = createGoalControlInput(
@@ -857,14 +886,17 @@ describe("typedGoalControlFromComposer", () => {
     expect(
       typedGoalControlFromComposer(
         [{ type: "text", text: "/goal clear" }],
-        "clear chip"
+        "clear chip",
+        true
       )
     ).toEqual({ action: "clear" });
     expect(
       typedGoalControlFromComposer(
         [{ type: "text", text: "ordinary prompt" }],
-        "/goal clear"
+        "/goal clear",
+        true
       )
     ).toBeNull();
   });
+
 });

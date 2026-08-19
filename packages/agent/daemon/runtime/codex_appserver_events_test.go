@@ -158,6 +158,68 @@ func TestCodexAppServerCompactionKeepsUnrelatedWarnings(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerFinalFileCitationsBecomePortableFileMentions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			name: "Windows output",
+			text: `Created :codex-file-citation{path="C:\Users\local user\output.docx" purpose="output"}`,
+			want: `Created [@output.docx](<C:/Users/local%20user/output.docx>)`,
+		},
+		{
+			name: "Windows UNC remains provider text",
+			text: `Created :codex-file-citation{path="\\server\share\output.docx" purpose="output"}`,
+			want: `Created :codex-file-citation{path="\\server\share\output.docx" purpose="output"}`,
+		},
+		{
+			name: "POSIX output with reordered attributes",
+			text: `Created :codex-file-citation{purpose="output" path="/Users/local user/output.docx"}`,
+			want: `Created [@output.docx](</Users/local%20user/output.docx>)`,
+		},
+		{
+			name: "relative path remains provider text",
+			text: `Created :codex-file-citation{path="output.docx" purpose="output"}`,
+			want: `Created :codex-file-citation{path="output.docx" purpose="output"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			session := reportTestSession()
+			normalizer := newACPTurnNormalizer()
+			events := newCodexAppServerReducer(&CodexAppServerAdapter{}).ReduceNotification(
+				nil,
+				session,
+				"turn-1",
+				acpMessage{
+					Method: appServerNotifyItemCompleted,
+					Params: mustJSONRawMessage(t, map[string]any{
+						"item": map[string]any{"type": "agentMessage", "text": tt.text},
+					}),
+				},
+				normalizer,
+				nil,
+			).Events
+			if len(events) != 1 || events[0].Payload.Content != tt.want {
+				t.Fatalf("item/completed events = %#v, want content %q", events, tt.want)
+			}
+
+			turnText := appServerTurnFinalAssistantText(map[string]any{
+				"items": []any{map[string]any{"type": "agentMessage", "text": tt.text}},
+			})
+			if turnText != tt.want {
+				t.Fatalf("turn/completed text = %q, want %q", turnText, tt.want)
+			}
+		})
+	}
+}
+
 func TestCodexAppServerCommandOutputDeltaUsesToolOutputFastLane(t *testing.T) {
 	t.Parallel()
 	session := reportTestSession()

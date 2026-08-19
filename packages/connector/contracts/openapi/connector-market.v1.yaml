@@ -466,6 +466,8 @@ components:
           $ref: "#/components/schemas/ConnectorMarketAuthorization"
         compatibility:
           $ref: "#/components/schemas/ConnectorMarketCompatibility"
+        runtime:
+          $ref: "#/components/schemas/ConnectorMarketRuntime"
         revision:
           type: integer
           format: int64
@@ -649,6 +651,16 @@ components:
         state:
           $ref: "#/components/schemas/ConnectorMarketCompatibilityState"
         reason:
+          type: string
+    ConnectorMarketRuntime:
+      type: object
+      additionalProperties: false
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [started, starting, stopped, failed]
+        failureCode:
           type: string
     ConnectorMarketOperation:
       type: object

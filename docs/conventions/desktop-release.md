@@ -466,12 +466,12 @@ The Stage job adds the generated summary before checksums and seeds a clearly ma
 - enrich the Feishu release card with the Chinese summary when Feishu notification is enabled
 - update `changelog.json` for stable releases
 
-The desktop updater keeps `releaseNotesUrl` as the published-release pointer so
-the update action remains available only when a release has public notes. The
-renderer opens the official localized changelog landing page instead of a
-GitHub Release: `https://tutti.sh/zh/changelog` for `zh-CN`, and
+The desktop release pointer does not contain a release-notes URL. The renderer
+opens the official localized changelog landing page instead of a GitHub
+Release: `https://tutti.sh/zh/changelog` for `zh-CN`, and
 `https://tutti.sh/en/changelog` for English. It never appends a version or
-anchor, so the website owns the release-history presentation.
+anchor, so the website owns the release-history presentation. Older pointers
+may still contain `releaseNotesUrl`; desktop clients ignore that legacy field.
 
 Before staging the Draft Release, generate GitHub's detailed release notes with
 an explicit comparison tag. RC and beta notes compare against the newest tag in

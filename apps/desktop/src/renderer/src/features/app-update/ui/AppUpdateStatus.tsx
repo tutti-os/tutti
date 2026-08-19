@@ -12,7 +12,10 @@ import {
 import { useTranslation } from "@renderer/i18n";
 import { cn } from "@renderer/lib/format";
 import { useAppUpdateService } from "./useAppUpdateService";
-import { resolveStandaloneAppUpdateStatusPresentation } from "./appUpdateStatusPresentation";
+import {
+  resolveStandaloneAppUpdateStatusPresentation,
+  shouldShowReleaseNotesAction
+} from "./appUpdateStatusPresentation";
 
 const updateIconUrl = new URL("../assets/update.png", import.meta.url).href;
 const tuttiIconUrl = new URL("../assets/tutti.png", import.meta.url).href;
@@ -35,6 +38,10 @@ export function AppUpdateStatus({
         isActing={state.isActing}
         openReleaseNotes={() => service.openReleaseNotes()}
         runPrimaryAction={() => service.runPrimaryAction()}
+        showReleaseNotes={shouldShowReleaseNotesAction(
+          state.updateState?.channel,
+          view.action
+        )}
         view={view}
       />
     );
@@ -46,8 +53,10 @@ export function AppUpdateStatus({
 
   const label = t(view.titleKey, view.titleParams);
   const compact = density === "compact";
-  const showReleaseNotesAction =
-    view.action === "download" || view.action === "install";
+  const showReleaseNotesAction = shouldShowReleaseNotesAction(
+    state.updateState?.channel,
+    view.action
+  );
 
   return (
     <div
@@ -111,11 +120,13 @@ function StandaloneAppUpdateStatus({
   isActing,
   openReleaseNotes,
   runPrimaryAction,
+  showReleaseNotes,
   view
 }: {
   isActing: boolean;
   openReleaseNotes(): Promise<void>;
   runPrimaryAction(): Promise<void>;
+  showReleaseNotes: boolean;
   view: ReturnType<typeof useAppUpdateService>["state"]["view"];
 }) {
   const { t } = useTranslation();
@@ -186,19 +197,21 @@ function StandaloneAppUpdateStatus({
           </p>
         </div>
         <div className="flex items-center justify-end gap-1.5">
-          <PopoverClose asChild>
-            <Button
-              disabled={isActing}
-              onClick={() => {
-                void openReleaseNotes();
-              }}
-              size="sm"
-              type="button"
-              variant="ghost"
-            >
-              {releaseNotesLabel}
-            </Button>
-          </PopoverClose>
+          {showReleaseNotes ? (
+            <PopoverClose asChild>
+              <Button
+                disabled={isActing}
+                onClick={() => {
+                  void openReleaseNotes();
+                }}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                {releaseNotesLabel}
+              </Button>
+            </PopoverClose>
+          ) : null}
           <PopoverClose asChild>
             <Button
               disabled={isActing}

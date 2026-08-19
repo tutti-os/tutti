@@ -598,6 +598,7 @@ export type {
   ConnectorMarketPageSize,
   ConnectorMarketPageToken,
   ConnectorMarketRelease,
+  ConnectorMarketRuntime,
   ConnectorMarketSectionId,
   ConnectorMarketSnapshot,
   CopyWorkspaceFileEntryData,

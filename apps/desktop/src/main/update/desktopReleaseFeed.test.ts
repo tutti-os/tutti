@@ -25,7 +25,6 @@ test("desktop release feed resolves the stable pointer to its immutable feed", a
   assert.deepEqual(feed, {
     feedUrl: `${baseUrl}/v1.2.3`,
     releasedAt: "2026-07-13T10:00:00.000Z",
-    releaseNotesUrl: null,
     tag: "v1.2.3",
     updaterChannel: "latest",
     version: "1.2.3"
@@ -61,18 +60,20 @@ test("desktop release feed rejects malformed pointer JSON", async () => {
   await assert.rejects(resolver({ channel: "stable" }), /not valid JSON/);
 });
 
-test("desktop release feed exposes a validated release notes URL", async () => {
-  const releaseNotesUrl =
-    "https://github.com/tutti-os/tutti/releases/tag/v1.2.3";
+test("desktop release feed ignores legacy release notes metadata", async () => {
   const resolver = createDesktopReleaseFeedResolver({
     baseUrl,
-    fetch: async () => jsonResponse(createPointerDocument({ releaseNotesUrl }))
+    fetch: async () =>
+      jsonResponse(
+        createPointerDocument({
+          releaseNotesUrl:
+            "https://github.com/tutti-os/tutti/releases/tag/v1.2.3"
+        })
+      )
   });
 
-  assert.equal(
-    (await resolver({ channel: "stable" })).releaseNotesUrl,
-    releaseNotesUrl
-  );
+  const feed = await resolver({ channel: "stable" });
+  assert.equal("releaseNotesUrl" in feed, false);
 });
 
 test("desktop release feed rejects an unsupported schema, origin, channel, and tag", async (t) => {

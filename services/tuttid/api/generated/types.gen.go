@@ -1735,6 +1735,30 @@ func (e ConnectorMarketReleaseStatus) Valid() bool {
 	}
 }
 
+// Defines values for ConnectorMarketRuntimeState.
+const (
+	ConnectorMarketRuntimeStateFailed   ConnectorMarketRuntimeState = "failed"
+	ConnectorMarketRuntimeStateStarted  ConnectorMarketRuntimeState = "started"
+	ConnectorMarketRuntimeStateStarting ConnectorMarketRuntimeState = "starting"
+	ConnectorMarketRuntimeStateStopped  ConnectorMarketRuntimeState = "stopped"
+)
+
+// Valid indicates whether the value is a known member of the ConnectorMarketRuntimeState enum.
+func (e ConnectorMarketRuntimeState) Valid() bool {
+	switch e {
+	case ConnectorMarketRuntimeStateFailed:
+		return true
+	case ConnectorMarketRuntimeStateStarted:
+		return true
+	case ConnectorMarketRuntimeStateStarting:
+		return true
+	case ConnectorMarketRuntimeStateStopped:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for CreateIssueManagerImageAttachmentRequestMimeType.
 const (
 	IssueAttachmentMimeTypeJPEG CreateIssueManagerImageAttachmentRequestMimeType = "image/jpeg"
@@ -4656,25 +4680,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
-	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
-	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
-	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
-	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
+	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
+	Failed    WorkspaceWorkflowOperationStatus = "failed"
+	Pending   WorkspaceWorkflowOperationStatus = "pending"
+	Running   WorkspaceWorkflowOperationStatus = "running"
+	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case WorkspaceWorkflowOperationStatusCanceled:
+	case Canceled:
 		return true
-	case WorkspaceWorkflowOperationStatusFailed:
+	case Failed:
 		return true
-	case WorkspaceWorkflowOperationStatusPending:
+	case Pending:
 		return true
-	case WorkspaceWorkflowOperationStatusRunning:
+	case Running:
 		return true
-	case WorkspaceWorkflowOperationStatusSucceeded:
+	case Succeeded:
 		return true
 	default:
 		return false
@@ -6377,6 +6401,7 @@ type ConnectorMarketConnector struct {
 	Key           string                       `json:"key"`
 	Release       ConnectorMarketRelease       `json:"release"`
 	Revision      int64                        `json:"revision"`
+	Runtime       *ConnectorMarketRuntime      `json:"runtime,omitempty"`
 }
 
 // ConnectorMarketConnectorResponse defines model for ConnectorMarketConnectorResponse.
@@ -6510,6 +6535,15 @@ type ConnectorMarketReleaseSchemaVersion string
 
 // ConnectorMarketReleaseStatus defines model for ConnectorMarketRelease.Status.
 type ConnectorMarketReleaseStatus string
+
+// ConnectorMarketRuntime defines model for ConnectorMarketRuntime.
+type ConnectorMarketRuntime struct {
+	FailureCode *string                     `json:"failureCode,omitempty"`
+	State       ConnectorMarketRuntimeState `json:"state"`
+}
+
+// ConnectorMarketRuntimeState defines model for ConnectorMarketRuntime.State.
+type ConnectorMarketRuntimeState string
 
 // ConnectorMarketSnapshot defines model for ConnectorMarketSnapshot.
 type ConnectorMarketSnapshot struct {

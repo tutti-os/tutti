@@ -197,6 +197,21 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	}); err != nil || accepted != InteractionTransitionApplied {
 		t.Fatalf("UpsertInteraction() accepted=%v error=%v", accepted, err)
 	}
+	if result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+		Messages: []MessageUpdate{
+			{
+				MessageID: "toolcall:waiting", TurnID: "turn-1", Role: "assistant", Kind: "tool_call",
+				Status: "waiting_input", Payload: map[string]any{"toolName": "request_input"}, OccurredAtUnixMS: 111,
+			},
+			{
+				MessageID: "toolcall:completed", TurnID: "turn-1", Role: "assistant", Kind: "tool_call",
+				Status: "completed", Payload: map[string]any{"toolName": "completed_tool"}, OccurredAtUnixMS: 112,
+			},
+		},
+	}); err != nil || result.AcceptedCount != 2 {
+		t.Fatalf("ReportSessionMessages() result=%#v error=%v", result, err)
+	}
 
 	settlements, err := store.SettleStaleTurns(ctx)
 	if err != nil {
@@ -226,11 +241,21 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	page, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", Limit: 10,
 	})
-	if err != nil || !ok || len(page.Messages) != 1 {
+	if err != nil || !ok || len(page.Messages) != 3 {
 		t.Fatalf("startup system messages = %#v ok=%v error=%v", page.Messages, ok, err)
 	}
-	message := page.Messages[0]
-	if message.MessageID != "system-stale-turn-turn-1" || message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
+	messagesByID := make(map[string]Message, len(page.Messages))
+	for _, message := range page.Messages {
+		messagesByID[message.MessageID] = message
+	}
+	if message := messagesByID["toolcall:waiting"]; message.Status != "canceled" || message.CompletedAtUnixMS == 0 {
+		t.Fatalf("stale waiting tool message = %#v, want canceled with completion time", message)
+	}
+	if message := messagesByID["toolcall:completed"]; message.Status != "completed" {
+		t.Fatalf("terminal tool message = %#v, want preserved", message)
+	}
+	message := messagesByID["system-stale-turn-turn-1"]
+	if message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
 		t.Fatalf("startup system message = %#v", message)
 	}
 }

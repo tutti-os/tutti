@@ -125,11 +125,10 @@ func openCodeDescriptor() ProviderDescriptor {
 			},
 			Skills: SkillDescriptor{Kind: SkillKindOpenCode, Invocation: SkillInvocationTextTrigger, ConfigDirSuffix: "opencode"},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{
-				FallbackCommands: []string{"compact", "goal", "review"},
+				FallbackCommands: []string{"compact", "review"},
 				CommandEffects: []SlashCommandEffectDescriptor{
 					{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
 					{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
-					{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
 					{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
 				},
 			},
