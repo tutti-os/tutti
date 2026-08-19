@@ -415,9 +415,15 @@ func TestCodexHistoricalSideFallsBackWhenRegisteredSourceClientIsDead(t *testing
 	}
 	source := started.Session
 	source.RuntimeContext = adapter.SessionState(source).RuntimeContext
+	sourceClient := adapter.getSession(source.AgentSessionID).client
 	deadConn := transport.conn(0)
 	if err := deadConn.Close(); err != nil {
 		t.Fatal(err)
+	}
+	select {
+	case <-sourceClient.Done():
+	case <-time.After(time.Second):
+		t.Fatal("source client did not observe the closed connection")
 	}
 
 	capabilities, err := adapter.SideCapabilities(t.Context(), source)
