@@ -473,10 +473,11 @@ type SideConversationCapabilities struct {
 }
 
 type SideConversationOpenInput struct {
-	RoomID               string `json:"roomId"`
-	SourceAgentSessionID string `json:"sourceAgentSessionId"`
-	SideAgentSessionID   string `json:"sideAgentSessionId"`
-	RequestID            string `json:"requestId"`
+	RoomID               string  `json:"roomId"`
+	SourceAgentSessionID string  `json:"sourceAgentSessionId"`
+	SideAgentSessionID   string  `json:"sideAgentSessionId"`
+	RequestID            string  `json:"requestId"`
+	Source               Session `json:"-"`
 }
 
 type SideConversationAdapterOpenInput struct {

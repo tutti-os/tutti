@@ -19,11 +19,12 @@ import (
 type multiProcAppServerTransport struct {
 	mu        sync.Mutex
 	conns     []*scriptedAppServerConnection
+	specs     []ProcessSpec
 	startErr  error
 	configure func(server *fakeCodexAppServer)
 }
 
-func (t *multiProcAppServerTransport) Start(_ context.Context, _ ProcessSpec) (ProcessConnection, error) {
+func (t *multiProcAppServerTransport) Start(_ context.Context, spec ProcessSpec) (ProcessConnection, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	if t.startErr != nil {
@@ -34,6 +35,7 @@ func (t *multiProcAppServerTransport) Start(_ context.Context, _ ProcessSpec) (P
 		t.configure(server)
 	}
 	t.conns = append(t.conns, conn)
+	t.specs = append(t.specs, spec)
 	return conn, nil
 }
 
@@ -73,6 +75,15 @@ func (t *multiProcAppServerTransport) conn(index int) *scriptedAppServerConnecti
 		return nil
 	}
 	return t.conns[index]
+}
+
+func (t *multiProcAppServerTransport) spec(index int) ProcessSpec {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if index < 0 || index >= len(t.specs) {
+		return ProcessSpec{}
+	}
+	return t.specs[index]
 }
 
 func connClosed(conn *scriptedAppServerConnection) bool {

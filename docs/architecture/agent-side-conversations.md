@@ -1,22 +1,22 @@
 # Agent Side Conversations
 
-Side is a runtime-only branch of a live Agent session. It is deliberately not
+Side is a runtime-only branch of an Agent session. It is deliberately not
 Session Fork:
 
 | Property | Session Fork                                | Side                                             |
 | -------- | ------------------------------------------- | ------------------------------------------------ |
 | Identity | canonical child Session                     | runtime-scoped side id                           |
 | Storage  | durable history and lineage                 | no canonical writes                              |
-| Boundary | full session or settled Turn                | live provider snapshot, including an active Turn |
+| Boundary | full session or settled Turn                | provider snapshot, including an active live Turn |
 | Recovery | saga recovery and provider resume           | expires when its provider process is lost        |
 | Events   | optimistic stream plus committed projection | transient stream only                            |
 
 ## Standard provider contract
 
-A provider integrates Side by implementing `SideConversationAdapter` together
-with `LiveSessionProbeAdapter`:
+A provider integrates Side by implementing `SideConversationAdapter`:
 
-1. `SideCapabilities` attests support for the exact selected runtime.
+1. `SideCapabilities` attests support for the selected runtime and may use
+   persisted provider metadata when the source connection is idle.
 2. `OpenSide` creates the provider-native ephemeral branch and returns its
    provider session id.
 3. `OpenSide` quiesces callbacks and releases any child it created before
@@ -84,7 +84,15 @@ current connection state plus connection-state subscription. The canonical
 
 ## Codex reference adapter
 
-Codex uses the source-owned app-server connection and sends:
+Codex uses the source-owned app-server connection while it is live. For an
+idle or historical source, it starts a Side-owned app-server connection and
+loads the persisted source by `threadId`. The historical path restores the
+source's isolated `CODEX_HOME` from persisted runtime metadata so the new
+process can find the original rollout; capability discovery fails closed when
+that metadata is absent. The dedicated process is launched with the Side
+session identity while the source `threadId` is used only by `thread/fork`, so
+resource preparation, logs, and initialization-time events cannot attach to
+the canonical source. Both paths send:
 
 1. `thread/fork` with `ephemeral: true`, `excludeTurns: true`, no
    `lastTurnId`, and Side-specific developer instructions composed with the
@@ -97,13 +105,17 @@ does not remove them from the provider fork's model context. Subsequent Side
 Turns keep both the inherited Tutti host context and the Side-specific
 instructions in their collaboration settings.
 
-The connection has a thread-aware router and is referenced by both runtime
-sessions. Notifications for a new child that arrive before `thread/fork`
-responds are buffered in a provisional route and replayed only after lineage
-validation and Side registration. Closing Side unsubscribes the ephemeral
-child and drops only the Side reference; it does not issue `thread/delete` and
-cannot close the live parent connection. Losing the shared connection produces
-`ErrSideConversationExpired`; Side is never resumed as a canonical thread.
+The connection has a thread-aware router. A live-source connection is
+referenced by both runtime sessions; a historical-source connection is owned
+only by Side and closes with it. Notifications for a new child that arrive
+before `thread/fork` responds are buffered in a provisional route and replayed
+only after lineage validation and Side registration. Closing Side unsubscribes
+the ephemeral child and drops only the Side reference; it does not issue
+`thread/delete` and cannot close the live parent connection. Losing the Side
+connection produces `ErrSideConversationExpired`; Side is never resumed as a
+canonical thread.
+If a physical close fails, the adapter retains the dedicated connection as a
+cleanup owner and retries it through the bounded runtime resource sweeper.
 
 This change establishes the infrastructure, Codex reference vertical slice,
 typed daemon API, and AgentGUI Side pane.

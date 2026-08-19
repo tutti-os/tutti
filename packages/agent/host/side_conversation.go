@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 type sideConversationRegistration struct {
@@ -31,7 +33,7 @@ func (h *Host) ResolveSideConversation(
 	}
 	workspaceID = strings.TrimSpace(workspaceID)
 	sourceAgentSessionID = strings.TrimSpace(sourceAgentSessionID)
-	source, err := h.sideSourceRuntime(workspaceID, sourceAgentSessionID)
+	source, err := h.sideSourceRuntime(ctx, workspaceID, sourceAgentSessionID)
 	if err != nil {
 		return SideConversationCapabilities{}, err
 	}
@@ -42,14 +44,52 @@ func (h *Host) ResolveSideConversation(
 }
 
 func (h *Host) sideSourceRuntime(
+	ctx context.Context,
 	workspaceID string,
 	sourceAgentSessionID string,
 ) (ProviderRuntimeSession, error) {
 	source, found := h.runtime.Session(workspaceID, sourceAgentSessionID)
+	if found {
+		return source, nil
+	}
+	if h.store == nil {
+		return ProviderRuntimeSession{}, ErrRuntimeSessionDisconnected
+	}
+	canonical, found, err := h.store.GetSession(ctx, workspaceID, sourceAgentSessionID)
+	if err != nil {
+		return ProviderRuntimeSession{}, err
+	}
 	if !found {
 		return ProviderRuntimeSession{}, ErrRuntimeSessionDisconnected
 	}
-	return source, nil
+	return historicalSideRuntimeSource(canonical)
+}
+
+func historicalSideRuntimeSource(
+	canonical storesqlite.Session,
+) (ProviderRuntimeSession, error) {
+	settings := composerSettingsFromMap(canonical.Settings)
+	env, err := runtimeEnvironmentForCanonicalSession(
+		nil,
+		canonical.Cwd,
+		canonical,
+	)
+	if err != nil {
+		return ProviderRuntimeSession{}, err
+	}
+	return ProviderRuntimeSession{
+		ID: canonical.ID, WorkspaceID: canonical.WorkspaceID,
+		UserID: canonical.UserID, AgentTargetID: canonical.AgentTargetID,
+		Provider: canonical.Provider, ProviderSessionID: canonical.ProviderSessionID,
+		Resumable: true, Cwd: canonical.Cwd, Env: env, Settings: &settings,
+		Capabilities:   canonical.Capabilities,
+		RuntimeContext: cloneMap(canonical.InternalRuntimeContext),
+		Status:         persistedRuntimeStatus(canonical.ActiveTurnID),
+		Visible:        canonical.Metadata.Visible, Title: canonical.Title,
+		PinnedAtUnixMS:  canonical.PinnedAtUnixMS,
+		CreatedAtUnixMS: canonical.CreatedAtUnixMS,
+		UpdatedAtUnixMS: canonical.UpdatedAtUnixMS,
+	}, nil
 }
 
 func (h *Host) OpenSideConversation(
@@ -193,8 +233,7 @@ func (h *Host) ensureSideSourceRuntimeLocked(
 	workspaceID string,
 	sourceAgentSessionID string,
 ) (ProviderRuntimeSession, error) {
-	_ = ctx
-	return h.sideSourceRuntime(workspaceID, sourceAgentSessionID)
+	return h.sideSourceRuntime(ctx, workspaceID, sourceAgentSessionID)
 }
 
 func (h *Host) SendSideConversation(

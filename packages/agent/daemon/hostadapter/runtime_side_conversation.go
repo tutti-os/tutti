@@ -8,7 +8,7 @@ import (
 )
 
 type sideConversationRuntimeBackend interface {
-	SideCapabilities(context.Context, string, string) (agentruntime.SideConversationCapabilities, error)
+	SideCapabilitiesForSource(context.Context, agentruntime.Session) (agentruntime.SideConversationCapabilities, error)
 	OpenSide(context.Context, agentruntime.SideConversationOpenInput) (agentruntime.SideConversationOpenResult, error)
 }
 
@@ -23,9 +23,7 @@ func (a *RuntimeController) ResolveSideConversation(
 	if !ok {
 		return host.SideConversationCapabilities{}, nil
 	}
-	capabilities, err := backend.SideCapabilities(
-		ctx, source.WorkspaceID, source.ID,
-	)
+	capabilities, err := backend.SideCapabilitiesForSource(ctx, runtimeSession(source))
 	return hostSideCapabilities(capabilities), mapRuntimeError(err)
 }
 
@@ -47,6 +45,7 @@ func (a *RuntimeController) OpenSideConversation(
 			SourceAgentSessionID: input.Source.ID,
 			SideAgentSessionID:   input.SideAgentSessionID,
 			RequestID:            input.RequestID,
+			Source:               runtimeSession(input.Source),
 		},
 	)
 	if err != nil {
