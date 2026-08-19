@@ -463,6 +463,44 @@ detailHydrated:false`.
   [tutti_mode_host_context.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context.go),
   [tutti_mode_host_context_test.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context_test.go)
 
+### Tutti Mode review only offers request changes after preference drift
+
+- **Symptom:** A pending plan review shows only a request-changes action, or
+  accepting an existing plan is silently converted into a rejection after the
+  Composer effect or speed changes. The plan may also contain values that never
+  matched the Turn that produced it.
+- **Quick checks:** Compare three distinct values: the producing Turn's
+  `TuttiModeTurnSnapshot`, the current revision's explicit
+  `execution.effect`/`execution.speed`, and the Session's current Composer
+  preferences. If the first two differ, inspect the `plan propose` or
+  `plan revise` response for `tutti_mode_preference_snapshot_mismatch`. If only
+  the current Composer preferences differ, the drift happened legitimately
+  after proposal and both review decisions must remain available.
+- **Root cause:** Range validation alone allowed an Agent to persist plausible
+  but invented preference values. A hardcoded Host Context example could teach
+  the Agent different values than the frozen Turn snapshot. AgentGUI then
+  treated every post-proposal preference difference as implicit rejection, so
+  the user lost a direct way to accept the already-reviewed document.
+- **Fix:** Render Host Context examples from the exact Turn snapshot. Require
+  Agent CLI proposals and revisions to carry that active Turn ID, and have the
+  plan service validate both explicit values through the activation-service
+  snapshot reader before allocating IDs, writing revision content, or mutating
+  workflow state. In AgentGUI, expose `Request changes` beside `Accept` only
+  when both frozen values prove a real preference change; otherwise expose only
+  `Accept`. Accept must keep the visible checkpoint identity and never convert
+  into request-changes feedback.
+- **Validation:** Prove mismatched, missing-value, and missing-snapshot
+  documents leave revision content and workflow state untouched; prove a
+  matching document succeeds. In the UI, verify the divergent state exposes
+  both actions, request-changes rejects with current-preference feedback,
+  explicit accept records `accepted`, and matching empty-send still accepts.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [agent-gui-node.md](../../architecture/agent-gui-node.md),
+  [service.go](../../../services/tuttid/service/tuttimodeplan/service.go),
+  [tutti_mode_host_context.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context.go),
+  [useAgentGUITuttiWorkflow.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUITuttiWorkflow.ts)
+
 ### Tutti Mode Plan stops loading after a task-graph revision
 
 - **Symptom:** The configuration review panel works and `tutti plan revise`

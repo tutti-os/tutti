@@ -58,6 +58,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI turn actions return plain-text route 404s](./agent-session-lifecycle.md#agentgui-turn-actions-return-plain-text-route-404s)
 - [One hung provider startup blocks unrelated Agent sessions](./agent-session-lifecycle.md#one-hung-provider-startup-blocks-unrelated-agent-sessions)
 - [Existing Session shows Tutti active but the Agent reports Default mode](./agent-session-lifecycle.md#existing-session-shows-tutti-active-but-the-agent-reports-default-mode)
+- [Tutti Mode review only offers request changes after preference drift](./agent-session-lifecycle.md#tutti-mode-review-only-offers-request-changes-after-preference-drift)
 - [Many stopped Tutti Mode conversations start again when the app opens](./agent-session-lifecycle.md#many-stopped-tutti-mode-conversations-start-again-when-the-app-opens)
 - [A new Tutti conversation briefly reports session not found after submit](./agent-session-lifecycle.md#a-new-tutti-conversation-briefly-reports-session-not-found-after-submit)
 - [AgentGUI rail shows a failed Turn but the detail has no error](./agent-session-lifecycle.md#agentgui-rail-shows-a-failed-turn-but-the-detail-has-no-error)

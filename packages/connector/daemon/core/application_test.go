@@ -48,6 +48,73 @@ func TestApplicationPublicReadsRejectObsoleteConnectorIcon(t *testing.T) {
 	}
 }
 
+func TestApplicationPublicReadsHideRemovedCatalogConnectorBeforeValidation(t *testing.T) {
+	removed := testConnector("removed")
+	removed.Installation = Installation{
+		State:                  InstallationStateInstalled,
+		InstalledVersion:       removed.Release.Version,
+		InstalledReleaseID:     removed.Release.ReleaseID,
+		InstalledReleaseDigest: removed.Release.ReleaseDigest,
+	}
+	removed.Compatibility = Compatibility{
+		State:  CompatibilityStateUnsupportedVersion,
+		Reason: compatibilityReasonRemovedFromCatalog,
+	}
+	// Delisted releases may retain an obsolete manifest solely as uninstall
+	// evidence. Public reads must filter them before validating visible data.
+	removed.Release.Manifest.IconURL = "data:image/png;base64,iVBORw0KGgo="
+	visible := testConnector("visible")
+	repository := newMemoryRepository(removed, visible)
+	repository.operations["removed-install"] = Operation{
+		OperationID: "removed-install", ClientRequestID: "removed-install",
+		ConnectorKey: removed.Key, Kind: OperationKindInstall,
+		State: OperationStateCompleted, Stage: OperationStageCompleted,
+		Scope: OperationScope{AccountID: "account-1"}, OwnerAccountID: "account-1",
+		Visibility: OperationVisibilityAccount,
+	}
+	application := newTestApplication(
+		t,
+		repository,
+		&memoryScheduler{},
+		&memoryInstallRuntime{},
+		CatalogSnapshot{},
+	)
+
+	for _, read := range []struct {
+		name string
+		load func() (Snapshot, error)
+	}{
+		{name: "snapshot", load: func() (Snapshot, error) {
+			return application.Snapshot(context.Background())
+		}},
+		{name: "scoped snapshot", load: func() (Snapshot, error) {
+			return application.SnapshotForScope(context.Background(), OperationScope{AccountID: "account-1"})
+		}},
+	} {
+		t.Run(read.name, func(t *testing.T) {
+			snapshot, err := read.load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(snapshot.Connectors) != 1 || snapshot.Connectors[0].Key != visible.Key {
+				t.Fatalf("public connectors = %#v", snapshot.Connectors)
+			}
+			for _, operation := range snapshot.Operations {
+				if operation.ConnectorKey == removed.Key {
+					t.Fatalf("removed connector operation was public: %#v", operation)
+				}
+			}
+		})
+	}
+
+	if _, err := application.GetConnector(context.Background(), removed.Key); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("GetConnector() error = %v, want not found", err)
+	}
+	if _, err := repository.Connector(context.Background(), removed.Key); err != nil {
+		t.Fatalf("removed connector durable evidence was deleted: %v", err)
+	}
+}
+
 func TestApplicationInstallIsDurableAndIdempotent(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	scheduler := &memoryScheduler{}

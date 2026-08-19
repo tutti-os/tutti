@@ -289,7 +289,7 @@ function mergeSectionOptions(
     commands: incoming.commands,
     skills: incoming.skills,
     capabilityCatalog: incoming.capabilityCatalog,
-    slashCommandPolicy: incoming.slashCommandPolicy,
+    slashCommandPolicy: existing.slashCommandPolicy,
     loadedAtUnixMs: incoming.loadedAtUnixMs
   });
 }

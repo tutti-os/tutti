@@ -44,6 +44,15 @@ schema versions belong to different APIs and do not imply compatibility.
 The renderer never calls the remote market. The local daemon is authoritative
 for every state rendered by the desktop application.
 
+An authoritative catalog refresh treats a missing Connector as delisted. A
+not-installed Connector with no active lifecycle operation is deleted
+immediately. Installed Connectors and Connectors with active operations retain
+their private durable installation and cleanup evidence, but the daemon marks
+them `removed_from_catalog` and omits the Connector and its operations from
+public snapshots, single-Connector reads, and catalog-page projections. Public
+validation runs only after that filter, so an obsolete manifest retained solely
+for cleanup cannot make the visible catalog unavailable.
+
 Category identifiers are opaque routing values. The Connector adapter sends
 the exact server `categoryId` back as `sectionId` and never rewrites legacy or
 new IDs. The daemon projects both `displayNameZh` and `displayNameEn` through

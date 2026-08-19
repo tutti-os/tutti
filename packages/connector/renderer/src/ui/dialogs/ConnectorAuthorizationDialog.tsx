@@ -109,9 +109,9 @@ export function ConnectorAuthorizationDialog({
   };
 
   return (
-    <DialogContent className="max-h-[min(720px,calc(100vh-32px))] overflow-y-auto sm:max-w-[520px]">
-      <DialogHeader className="items-center px-5 pt-4 text-center">
-        <div className="mb-1 flex items-center gap-3">
+    <DialogContent className="max-h-[min(720px,calc(100vh-32px))] overflow-y-auto sm:max-w-[420px]">
+      <DialogHeader className="gap-3 px-5 pt-4 text-center">
+        <div className="gap-3 flex items-center justify-center">
           <span className="flex size-12 items-center justify-center rounded-xl bg-[var(--transparency-block)] text-[var(--accent)]">
             <TuttiMarkNew size={32} />
           </span>
@@ -132,7 +132,7 @@ export function ConnectorAuthorizationDialog({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="overflow-hidden rounded-lg border border-[var(--border-1)]">
+      <div className="mt-3 overflow-hidden rounded-lg border border-[var(--border-1)]">
         <ConnectorDialogInfoRow
           description={i18n.t("accountSelectionDescription")}
           icon={<ConnectorIcon displayName={displayName} iconUrl={iconUrl} />}
@@ -160,7 +160,7 @@ export function ConnectorAuthorizationDialog({
           <p className="m-0 text-sm text-[var(--text-secondary)]">
             {i18n.t("connectorAuthorizationConfigurationInvalid")}
           </p>
-          <DialogFooter className="sm:justify-center">
+          <DialogFooter className="pt-1 sm:justify-center">
             <Button
               size="dialog"
               type="button"
@@ -172,7 +172,7 @@ export function ConnectorAuthorizationDialog({
           </DialogFooter>
         </>
       ) : (
-        <DialogFooter className="sm:justify-center">
+        <DialogFooter className="pt-1 sm:justify-center">
           <Button
             size="dialog"
             type="button"
@@ -196,7 +196,7 @@ export function ConnectorAuthorizationDialog({
           </Button>
         </DialogFooter>
       )}
-      <p className="m-0 text-center text-[11px] text-[var(--text-tertiary)]">
+      <p className="text-center text-[11px] text-[var(--text-tertiary)] leading-[1.5]">
         {i18n.t("exactAccessNotice")}
       </p>
     </DialogContent>

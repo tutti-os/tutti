@@ -10057,7 +10057,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-footer-left {
-  gap: 4px;
+  gap: 8px;
 }
 
 .agent-gui-node__composer-footer-accessory {

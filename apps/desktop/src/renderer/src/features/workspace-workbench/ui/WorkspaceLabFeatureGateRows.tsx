@@ -5,12 +5,18 @@ import {
   LAB_AUTOMATION_RULES_FLAG,
   LAB_CONNECTORS_FLAG,
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
+  LAB_TUTTI_MODE_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   isFeatureEnabled
 } from "../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopFeatureFlags } from "../../../../../shared/preferences/index.ts";
 
 const featureGateRows = [
+  {
+    key: LAB_TUTTI_MODE_FLAG,
+    labelKey: "workspace.settings.lab.tuttiModeLabel" as const,
+    descriptionKey: "workspace.settings.lab.tuttiModeDescription" as const
+  },
   {
     key: LAB_AUTOMATION_RULES_FLAG,
     labelKey: "workspace.settings.lab.automationRulesLabel" as const,

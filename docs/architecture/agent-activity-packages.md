@@ -896,7 +896,11 @@ capability catalog.
 The activity snapshot also exposes the composer-options request lifecycle per
 opaque target key and per independent section. `core` contains model,
 reasoning, speed, permission, and effective-settings data; `capabilities`
-contains skills, commands, and capability-catalog data. Desktop requests
+contains skills, commands, and capability-catalog data. The provider's typed
+slash-command policy belongs to `core`; a `capabilities` response that omits it
+or projects it as null must not erase the last successful core value. Every
+section merge updates only the fields owned by that section and preserves
+fields owned by the other sections. Desktop requests
 `core` for the model/reasoning/speed consumer and requests `capabilities` only
 when a capability surface is opened or used; neither capability discovery nor
 its eight-second provider timeout blocks the model controls. `full` remains the

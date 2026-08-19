@@ -71,3 +71,57 @@ func TestCatalogFetchFenceDropsSlowOlderPage(t *testing.T) {
 		t.Fatalf("slow old page replaced newer catalog state: %#v", stored.Release)
 	}
 }
+
+func TestCatalogFetchFenceDoesNotProjectDelistedConnectorFromSlowOlderPage(t *testing.T) {
+	connector := installedTestConnector("github")
+	source := &outOfOrderCatalogSource{
+		oldRelease: connector.Release, newRelease: connector.Release,
+		firstStarted: make(chan struct{}), releaseFirst: make(chan struct{}),
+	}
+	t.Cleanup(func() {
+		select {
+		case <-source.releaseFirst:
+		default:
+			close(source.releaseFirst)
+		}
+	})
+	repository := newMemoryRepository(connector)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	application.config.CatalogSource = source
+	query := CatalogPageQuery{SectionID: "featured", PageSize: 20}
+	type pageResult struct {
+		page CatalogPage
+		err  error
+	}
+	firstDone := make(chan pageResult, 1)
+	go func() {
+		page, err := application.ListCatalogPage(context.Background(), query)
+		firstDone <- pageResult{page: page, err: err}
+	}()
+
+	<-source.firstStarted
+	accepted, err := application.RefreshCatalog(context.Background(), Mutation{
+		ClientRequestID: "refresh-without-github", ExpectedRevision: repository.revision,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	close(source.releaseFirst)
+	result := <-firstDone
+	if result.err != nil {
+		t.Fatal(result.err)
+	}
+	if len(result.page.Items) != 0 {
+		t.Fatalf("slow page projected delisted connector: %#v", result.page.Items)
+	}
+	stored, err := repository.Connector(context.Background(), connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !connectorRemovedFromCatalog(stored) {
+		t.Fatalf("stored connector compatibility = %#v", stored.Compatibility)
+	}
+}

@@ -71,7 +71,7 @@ function loadInput(overrides: { cwd?: string; force?: boolean } = {}) {
   };
 }
 
-test("core settles before capabilities and section requests do not share in-flight state", async () => {
+test("core settles before capabilities without losing core-owned options", async () => {
   const harness = createHarness();
   const core = harness.engine.loadComposerOptions({
     ...loadInput(),
@@ -90,15 +90,25 @@ test("core settles before capabilities and section requests do not share in-flig
 
   harness.succeed(
     harness.commands[0]!.commandId,
-    composerOptions("core-model")
+    composerOptions("core-model", {
+      slashCommandPolicy: {
+        fallbackCommands: ["compact", "help"],
+        commandEffects: []
+      }
+    })
   );
   const coreOptions = await core;
   assert.equal(coreOptions.models[0]?.value, "core-model");
+  assert.deepEqual(coreOptions.slashCommandPolicy?.fallbackCommands, [
+    "compact",
+    "help"
+  ]);
   assert.equal(harness.commands.length, 2);
 
   harness.succeed(
     harness.commands[1]!.commandId,
     composerOptions("capability-response", {
+      slashCommandPolicy: null,
       skills: [
         {
           name: "search",
@@ -111,6 +121,10 @@ test("core settles before capabilities and section requests do not share in-flig
   const merged = await capabilities;
   assert.equal(merged.models[0]?.value, "core-model");
   assert.equal(merged.skills[0]?.name, "search");
+  assert.deepEqual(merged.slashCommandPolicy?.fallbackCommands, [
+    "compact",
+    "help"
+  ]);
 });
 
 test("connector section replaces only connector capabilities", async () => {

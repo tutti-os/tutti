@@ -23,8 +23,9 @@ type Plans interface {
 	GetViewForAgent(context.Context, tuttimodeplanservice.AgentGetInput) (tuttimodeplanservice.SnapshotView, error)
 }
 
-// ActiveTurns resolves the caller session's persisted active turn pointer so
-// propose can stamp the workflow with the turn it was created in.
+// ActiveTurns resolves the caller session's persisted active Turn. The plan
+// service uses that identity to read the immutable effect/speed snapshot and
+// rejects any proposal or revision that does not copy it exactly.
 type ActiveTurns interface {
 	PersistedActiveTurnID(ctx context.Context, workspaceID string, agentSessionID string) (string, error)
 }

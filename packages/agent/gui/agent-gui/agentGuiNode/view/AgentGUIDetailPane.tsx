@@ -32,6 +32,7 @@ import { useAgentGUIDetailScroll } from "./useAgentGUIDetailScroll";
 import { useAgentGUIDetailModel } from "./useAgentGUIDetailModel";
 import { useAgentGUIComposerInputHistoryProps } from "./useAgentGUIComposerInputHistoryProps";
 import { useAgentGUITuttiWorkflow } from "./useAgentGUITuttiWorkflow";
+import { AgentGUITuttiPlanReviewActionSlot } from "./AgentGUITuttiPlanReviewAction";
 import type { AgentGUIDetailPaneProps } from "./AgentGUIDetailPane.types";
 import { useAgentGUIDetailEditRetry } from "./useAgentGUIDetailEditRetry";
 import { useAgentGUIDetailSideConversation } from "./useAgentGUIDetailSideConversation";
@@ -497,14 +498,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           : undefined,
       onPlanIssueBudgetPresetChange: updatePlanIssueBudgetPreset,
       onSubmit: sideConversation.submitMain,
+      composerActionAccessory: (
+        <AgentGUITuttiPlanReviewActionSlot
+          controller={tuttiWorkflowComposer}
+          label={labels.tuttiModePlanSendRequestChanges}
+        />
+      ),
       onSubmitEmpty: tuttiWorkflowComposer.planReviewSendActive
         ? tuttiWorkflowComposer.acceptPendingPlan
         : undefined,
-      emptySubmitLabel:
-        tuttiWorkflowComposer.planReviewSendActive &&
-        tuttiWorkflowComposer.planReviewPreferencesDiverged
-          ? labels.tuttiModePlanSendRequestChanges
-          : undefined,
       onSubmitGuidance: submitGuidancePromptAndScrollToBottom,
       onPromptImagesUnsupported: showPromptImagesUnsupported,
       onSendQueuedPromptNext: sendQueuedPromptNext,
@@ -571,15 +573,15 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       setTuttiModeEffect,
       setTuttiModeSpeed,
       submitInteractivePrompt,
-      tuttiWorkflowComposer.submitPromptOrDecidePlan,
       sideConversation.submitMain,
       tuttiWorkflowComposer.planReviewSendActive,
       tuttiWorkflowComposer.tuttiExecutionActive,
       tuttiWorkflowComposer.tuttiExecutionStopping,
+      tuttiWorkflowComposer.planReviewDraftHasContent,
       tuttiWorkflowComposer.planReviewPreferencesDiverged,
       tuttiWorkflowDock.phase?.kind,
-      labels.tuttiModePlanSendRequestChanges,
       tuttiWorkflowComposer.acceptPendingPlan,
+      tuttiWorkflowComposer.requestPendingPlanChanges,
       submitGuidancePromptAndScrollToBottom,
       uiLanguage,
       stableLinkAction,
@@ -592,7 +594,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       updateDraftContent,
       updateSelectedProjectPath,
       viewModel.rail.activeConversationId,
-      viewModel.composer.availableCommands,
       sideConversation.commands,
       viewModel.composer.availableSkills,
       viewModel.composer.compactSupported,

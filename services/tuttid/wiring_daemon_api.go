@@ -574,6 +574,7 @@ func buildDaemonAPI(
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
 		Store:             workflowStore,
+		TurnSnapshots:     tuttiModeActivations,
 		Revisions:         workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
 		Publisher:         eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
 		IssueMaterializer: tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},

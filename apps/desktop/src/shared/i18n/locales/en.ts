@@ -1376,6 +1376,9 @@ export const en = {
           "Show agent integrations that Tutti is still testing and validating.",
         previewAgentsLabel: "Early access agent integrations",
         shortcutUnbound: "Unbound",
+        tuttiModeDescription:
+          "Shows the Tutti Mode switch and /tutti command in Agent conversations.",
+        tuttiModeLabel: "Tutti Mode",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
         workbenchShortcutsLabel: "Workbench shortcuts",
