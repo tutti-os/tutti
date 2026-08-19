@@ -7,6 +7,7 @@ export function slashCommandDescriptionForDisplay(
   command: AgentSessionCommand,
   labels: Pick<
     AgentComposerProps["labels"],
+    | "slashCommandPresentation"
     | "slashCommandCompactDescription"
     | "slashCommandContextDescription"
     | "slashCommandFastDescription"
@@ -18,6 +19,15 @@ export function slashCommandDescriptionForDisplay(
     | "slashCommandUsageDescription"
   >
 ): string | undefined {
+  const providerDescription = command.description?.trim()
+    ? command.description
+    : undefined;
+  const localizedDescription = labels.slashCommandPresentation?.(
+    command.name
+  ).description;
+  if (localizedDescription) {
+    return providerDescription ?? localizedDescription;
+  }
   switch (command.name.trim().toLowerCase()) {
     case "compact":
       return labels.slashCommandCompactDescription;
@@ -38,7 +48,7 @@ export function slashCommandDescriptionForDisplay(
     case "usage":
       return labels.slashCommandUsageDescription;
     default:
-      return command.description;
+      return providerDescription;
   }
 }
 
@@ -46,6 +56,7 @@ export function slashCommandLabelForDisplay(
   command: AgentSessionCommand,
   labels: Pick<
     AgentComposerProps["labels"],
+    | "slashCommandPresentation"
     | "slashCommandCompactLabel"
     | "slashCommandContextLabel"
     | "slashCommandFastLabel"
@@ -69,6 +80,7 @@ function localizedSlashCommandLabel(
   command: AgentSessionCommand,
   labels: Pick<
     AgentComposerProps["labels"],
+    | "slashCommandPresentation"
     | "slashCommandCompactLabel"
     | "slashCommandContextLabel"
     | "slashCommandFastLabel"
@@ -80,6 +92,10 @@ function localizedSlashCommandLabel(
     | "slashCommandUsageLabel"
   >
 ): string {
+  const localizedLabel = labels.slashCommandPresentation?.(command.name).label;
+  if (localizedLabel) {
+    return localizedLabel;
+  }
   switch (command.name.trim().toLowerCase()) {
     case "compact":
       return labels.slashCommandCompactLabel;
