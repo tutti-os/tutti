@@ -53,7 +53,7 @@ import {
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
 import { useComposerInputHistory } from "./composer/useComposerInputHistory";
-import { useComposerSlashCapabilitiesRefresh } from "./composer/useComposerSlashCapabilitiesRefresh";
+import { refreshComposerSlashCapabilities } from "./composer/useComposerSlashCapabilitiesRefresh";
 
 export { formatSlashStatusTokenCount };
 
@@ -163,6 +163,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     referenceProvenanceFilters = null
   } = props;
   const capabilitiesRequestedKeyRef = useRef<string | null>(null);
+  const slashCapabilitiesRefreshedSessionRef = useRef<string | null>(null);
   const requestCapabilitiesForDraft = useCallback(
     (nextDraft: AgentComposerDraft): void => {
       if (!onRetryComposerOptions) {
@@ -382,12 +383,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         skillQueryMatch !== null &&
         filteredSkills.length > 0));
   const showPalette = showFileMentionPalette || showSlashPalette;
-  useComposerSlashCapabilitiesRefresh({
-    agentSessionId,
-    isPaletteOpen,
-    onRetryComposerOptions,
-    slashQuery
-  });
   const showCommandMenuPanel = isSlashStatusPanelOpen || isReviewPickerOpen;
   const showFloatingCommandMenu = showSlashPalette || showCommandMenuPanel;
   const activeHighlight = clampSlashCommandHighlight(
@@ -402,7 +397,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [skillQueryMatch?.prefix, skillQueryMatch?.query, slashQuery]);
+    refreshComposerSlashCapabilities({
+      agentSessionId,
+      isPaletteOpen,
+      onRetryComposerOptions,
+      refreshedSessionRef: slashCapabilitiesRefreshedSessionRef,
+      slashQuery
+    });
+  }, [
+    agentSessionId,
+    isPaletteOpen,
+    onRetryComposerOptions,
+    skillQueryMatch?.prefix,
+    skillQueryMatch?.query,
+    slashQuery
+  ]);
 
   useEffect(() => {
     const preferredKey =
