@@ -197,6 +197,35 @@ test("desktop release workflow uses the published desktop package name", async (
   }
 });
 
+test("desktop release AWS CLI bootstrap avoids apt mirrors and bounds downloads", async () => {
+  const workflows = [
+    ["release", await readFile(workflowPath, "utf8")],
+    ["promotion", await readFile(promoteWorkflowPath, "utf8")]
+  ];
+
+  for (const [name, workflow] of workflows) {
+    const installStep = workflow.match(
+      /      - name: Install AWS CLI\n[\s\S]*?(?=\n      - name:)/
+    )?.[0];
+    assert.ok(installStep, `${name} workflow must install AWS CLI`);
+    assert.doesNotMatch(
+      installStep,
+      /sudo apt-get (?:update|install)/,
+      `${name} workflow must not depend on an apt mirror to install AWS CLI`
+    );
+    assert.match(
+      installStep,
+      /- name: Install AWS CLI\n\s+timeout-minutes: 5/,
+      `${name} workflow must bound the complete AWS CLI bootstrap step`
+    );
+    assert.match(installStep, /--retry 3/);
+    assert.match(installStep, /--retry-all-errors/);
+    assert.match(installStep, /--connect-timeout 10/);
+    assert.match(installStep, /--max-time 180/);
+    assert.match(installStep, /python3 -m zipfile -e/);
+  }
+});
+
 test("desktop release submits only stable builds to an isolated Store workflow", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const storeWorkflow = await readFile(storeWorkflowPath, "utf8");

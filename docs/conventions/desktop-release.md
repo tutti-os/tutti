@@ -555,6 +555,12 @@ Recommended setup:
 - keep the S3 bucket and prefix configured so the workflow can upload mirrored assets
 - apply a 30-day lifecycle expiration to objects under `<prefix>/candidates/`; never apply that rule to formal `<tag>/` paths
 
+Release and promotion jobs bootstrap AWS CLI without refreshing Ubuntu package
+indexes. The bootstrap uses the runner's Python runtime to extract the official
+AWS CLI archive, retries transient download failures, and has a five-minute
+step deadline. Keep this path independent of APT mirrors so a mirror outage
+cannot consume the release job's full runtime limit after packages have built.
+
 If `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is omitted, the workflow falls back to:
 
 ```text
