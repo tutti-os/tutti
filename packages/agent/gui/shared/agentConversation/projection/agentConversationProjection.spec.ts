@@ -1667,7 +1667,11 @@ describe("projectAgentConversationVM", () => {
               },
               {
                 kind: "message",
-                message: { id: "assistant-2", body: "0.0.0.0:4173`" }
+                message: {
+                  id: "assistant-2",
+                  body: "0.0.0.0:4173`",
+                  statusKind: "working"
+                }
               }
             ]
           }
@@ -1689,6 +1693,209 @@ describe("projectAgentConversationVM", () => {
     expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
       "现在可直接访问：`http://0.0.0.0:4173`"
     ]);
+  });
+
+  it("keeps a line boundary when merging settled adjacent assistant messages so Markdown fences never fuse", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Explain the fix" },
+            userMessages: [{ id: "user-1", body: "Explain the fix" }],
+            agentMessages: [
+              { id: "assistant-1", body: "```ts\nconst x = 1;\n```" },
+              { id: "assistant-2", body: "现在运行 pnpm test" }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "```ts\nconst x = 1;\n```" }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "现在运行 pnpm test",
+                  statusKind: "completed"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
+      "```ts\nconst x = 1;\n```\n现在运行 pnpm test"
+    ]);
+  });
+
+  it("keeps a line boundary when merging settled adjacent messages so list markers stay on their own lines", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "List the steps" },
+            userMessages: [{ id: "user-1", body: "List the steps" }],
+            agentMessages: [
+              { id: "assistant-1", body: "- step one\n- step two" },
+              { id: "assistant-2", body: "- step three" }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "- step one\n- step two"
+                }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "- step three",
+                  statusKind: "completed"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
+      "- step one\n- step two\n- step three"
+    ]);
+  });
+
+  it("merges adjacent assistant messages without inserting a boundary when one side already provides a newline", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Go" },
+            userMessages: [{ id: "user-1", body: "Go" }],
+            agentMessages: [
+              { id: "assistant-1", body: "First line.\n" },
+              { id: "assistant-2", body: "Second line." }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "First line.\n" }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "Second line.",
+                  statusKind: "completed"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
+      "First line.\nSecond line."
+    ]);
+  });
+
+  it("does not keep a previous working status when the merged follow-up carries no status", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Go" },
+            userMessages: [{ id: "user-1", body: "Go" }],
+            agentMessages: [
+              { id: "assistant-1", body: "Part one" },
+              { id: "assistant-2", body: "Part two" }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "Part one",
+                  statusKind: "working"
+                }
+              },
+              {
+                kind: "message",
+                message: { id: "assistant-2", body: "Part two" }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    const mergedMessage = assistantRows[0]?.messages[0];
+    expect(mergedMessage?.body).toBe("Part one\nPart two");
+    expect(mergedMessage?.statusKind).toBeNull();
   });
 
   it("marks user text and each settled turn's latest assistant text reply as copyable", () => {
