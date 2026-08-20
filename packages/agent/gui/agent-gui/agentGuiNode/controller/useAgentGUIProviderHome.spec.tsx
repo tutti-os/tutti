@@ -198,6 +198,56 @@ describe("useAgentGUIProviderHome", () => {
       "persisted-session"
     );
   });
+
+  it("switches Agent target and exact Session as one external-open selection", () => {
+    const codexTarget = target("codex", "agent:codex", "provider-target:codex");
+    const claudeTarget = target(
+      "claude-code",
+      "agent:claude-code",
+      "provider-target:claude-code"
+    );
+    const fixture = renderProviderHome({
+      activeConversationId: "codex-session",
+      conversations: [
+        conversation("codex-session", "codex", "agent:codex"),
+        conversation("claude-session", "claude-code", "agent:claude-code")
+      ],
+      data: {
+        agentTargetId: "agent:codex",
+        lastActiveAgentSessionId: "codex-session",
+        provider: "codex"
+      },
+      selectedTarget: codexTarget,
+      targets: [codexTarget, claudeTarget]
+    });
+
+    let outcome: string | null = null;
+    act(() => {
+      outcome = fixture.result.current.openExternalSession({
+        agentSessionId: "claude-session",
+        agentTargetId: "agent:claude-code",
+        provider: "claude-code",
+        sequence: 9
+      });
+    });
+
+    expect(outcome).toBe("selected");
+    expect(fixture.unactivate).toHaveBeenCalledWith("codex-session");
+    expect(fixture.setConversationFilter).toHaveBeenCalledWith({
+      kind: "agentTarget",
+      agentTargetId: "agent:claude-code"
+    });
+    expect(fixture.selectConversation).toHaveBeenCalledWith("claude-session", {
+      reloadConversations: false,
+      reveal: "external-open"
+    });
+    expect(fixture.getData()).toEqual(
+      expect.objectContaining({
+        agentTargetId: "agent:claude-code",
+        provider: "claude-code"
+      })
+    );
+  });
 });
 
 function renderProviderHome(input: {
@@ -336,7 +386,8 @@ function engine(
             item.id,
             {
               agentSessionId: item.id,
-              agentTargetId: item.agentTargetId
+              agentTargetId: item.agentTargetId,
+              provider: item.provider
             }
           ])
         )

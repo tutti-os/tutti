@@ -408,6 +408,7 @@ export const zhCN = {
     },
     agentMessageCenter: {
       openAria: "打开 Agent 消息",
+      openSessionUnavailable: "无法打开此会话",
       promptConstraintHeader: "约束",
       promptInputHeader: "输入",
       promptQuestion: "为 Agent 添加回复。",

@@ -21,7 +21,8 @@ import { workspaceAgentActivityStatusLabel } from "../shared/workspaceAgentActiv
 import type { WorkspaceLinkAction } from "../actions/workspaceLinkActions";
 import {
   isWaitingMessageCenterItem,
-  type WorkspaceAgentMessageCenterItem
+  type WorkspaceAgentMessageCenterItem,
+  type WorkspaceAgentMessageCenterOpenChatInput
 } from "./workspaceAgentMessageCenterModel";
 import {
   LazyMessageCenterTooltip,
@@ -56,7 +57,7 @@ export interface WorkspaceAgentMessageCenterCardProps {
   showSummaryWithPrompt?: boolean;
   summaryAccessory?: ReactNode;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
-  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onOpenChat: (input: WorkspaceAgentMessageCenterOpenChatInput) => void;
   onSubmitPrompt: (input: {
     action?: string;
     optionId?: string;

@@ -19,7 +19,10 @@ function agentActivityRuntimeWithActivation(
   return {
     getSessionEngine(workspaceId) {
       onWorkspace?.(workspaceId);
-      return { activateSession } as AgentSessionEngine;
+      return {
+        activateSession,
+        getSnapshot: () => ({ sessionLifecycle: { sessionsById: {} } })
+      } as unknown as AgentSessionEngine;
     }
   };
 }
@@ -27,12 +30,18 @@ function agentActivityRuntimeWithActivation(
 test("resolveDesktopAgentGUIOpenSessionActivation extracts valid open-session requests", () => {
   assert.deepEqual(
     resolveDesktopAgentGUIOpenSessionActivation({
-      payload: { agentSessionId: " session-1 " },
+      payload: {
+        agentSessionId: " session-1 ",
+        agentTargetId: " local:claude-code ",
+        provider: "claude-code"
+      },
       sequence: 7,
       type: desktopAgentGUIOpenSessionActivationType
     }),
     {
       agentSessionId: "session-1",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code",
       sequence: 7
     }
   );
@@ -47,7 +56,7 @@ test("resolveDesktopAgentGUIOpenSessionActivation extracts valid open-session re
   );
 });
 
-test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requested session once", () => {
+test("consumeDesktopAgentGUIOpenSessionActivation admits and forwards an exact cross-Agent session once", () => {
   const activated: unknown[] = [];
   const engineWorkspaceIds: string[] = [];
   const cleared: unknown[] = [];
@@ -70,11 +79,16 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
 
   const consumed = consumeDesktopAgentGUIOpenSessionActivation({
     activation: {
-      payload: { agentSessionId: "session-2" },
+      payload: {
+        agentSessionId: "session-2",
+        agentTargetId: "local:claude-code",
+        provider: "claude-code"
+      },
       sequence: 11,
       type: desktopAgentGUIOpenSessionActivationType
     },
     agentActivityRuntime,
+    agentDirectoryStatus: "ready",
     clearNodeActivation: (nodeId, sequence) => {
       cleared.push({ nodeId, sequence });
     },
@@ -90,6 +104,8 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
       stateChanges.push(state);
     },
     provider: "codex",
+    resolveAgentTargetProvider: (agentTargetId) =>
+      agentTargetId === "local:claude-code" ? "claude-code" : null,
     workspaceId: "workspace-1",
     updateNodeState: (updater) => {
       nodeState = updater(nodeState);
@@ -102,6 +118,8 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
   assert.deepEqual(openSessionRequests, [
     {
       agentSessionId: "session-2",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code",
       sequence: 11
     }
   ]);
@@ -113,14 +131,10 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
     }
   ]);
   assert.deepEqual(engineWorkspaceIds, ["workspace-1"]);
-  assert.equal(nodeState.lastActiveAgentSessionId, "session-2");
-  assert.deepEqual(stateChanges, [
-    {
-      conversationRailCollapsed: false,
-      conversationRailWidthPx: null,
-      lastActiveAgentSessionId: "session-2"
-    }
-  ]);
+  assert.equal(nodeState.agentTargetId, undefined);
+  assert.equal(nodeState.lastActiveAgentSessionId, "session-1");
+  assert.equal(nodeState.provider, "codex");
+  assert.deepEqual(stateChanges, []);
 
   const replayed = consumeDesktopAgentGUIOpenSessionActivation({
     activation: {
@@ -129,6 +143,7 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
       type: desktopAgentGUIOpenSessionActivationType
     },
     agentActivityRuntime,
+    agentDirectoryStatus: "ready",
     handledSequence: 11,
     markHandled: (sequence) => {
       handled.push(sequence);
@@ -155,6 +170,8 @@ test("consumeDesktopAgentGUIOpenSessionActivation activates and selects the requ
   assert.deepEqual(openSessionRequests, [
     {
       agentSessionId: "session-2",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code",
       sequence: 11
     }
   ]);
@@ -175,6 +192,7 @@ test("consumeDesktopAgentGUIOpenSessionActivation clears stale cross-provider ta
       type: desktopAgentGUIOpenSessionActivationType
     },
     agentActivityRuntime,
+    agentDirectoryStatus: "ready",
     handledSequence: null,
     markHandled: () => {},
     nodeId: "node-1",
@@ -194,9 +212,10 @@ test("consumeDesktopAgentGUIOpenSessionActivation clears stale cross-provider ta
   assert.equal(nodeState.agentTargetId, null);
 });
 
-test("consumeDesktopAgentGUIOpenSessionActivation leaves rejected admission settlement to the engine", () => {
+test("consumeDesktopAgentGUIOpenSessionActivation leaves state untouched when admission rejects", () => {
   const activated: unknown[] = [];
   const openSessionRequests: unknown[] = [];
+  const rejections: unknown[] = [];
   let nodeState: DesktopAgentGUINodeState = {
     provider: "codex",
     lastActiveAgentSessionId: "session-1"
@@ -213,11 +232,15 @@ test("consumeDesktopAgentGUIOpenSessionActivation leaves rejected admission sett
       type: desktopAgentGUIOpenSessionActivationType
     },
     agentActivityRuntime,
+    agentDirectoryStatus: "ready",
     handledSequence: null,
     markHandled: () => {},
     nodeId: "node-1",
     onOpenSessionRequest: (request) => {
       openSessionRequests.push(request);
+    },
+    onOpenSessionRejected: (request, reason) => {
+      rejections.push({ request, reason });
     },
     onStateChange: () => {},
     provider: "codex",
@@ -227,14 +250,18 @@ test("consumeDesktopAgentGUIOpenSessionActivation leaves rejected admission sett
     }
   });
 
-  assert.equal(consumed, true);
-  assert.deepEqual(openSessionRequests, [
+  assert.equal(consumed, false);
+  assert.deepEqual(openSessionRequests, []);
+  assert.equal(nodeState.lastActiveAgentSessionId, "session-1");
+  assert.deepEqual(rejections, [
     {
-      agentSessionId: "missing-session",
-      sequence: 12
+      reason: "session-activation-rejected",
+      request: {
+        agentSessionId: "missing-session",
+        sequence: 12
+      }
     }
   ]);
-  assert.equal(nodeState.lastActiveAgentSessionId, "missing-session");
   assert.deepEqual(activated, [
     {
       agentSessionId: "missing-session",

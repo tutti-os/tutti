@@ -15,7 +15,8 @@ import {
   WorkspaceAgentMessageCenterPanel,
   dispatchAgentPlanPromptAction,
   useEngineSelector,
-  type WorkspaceAgentMessageCenterModel
+  type WorkspaceAgentMessageCenterModel,
+  type WorkspaceAgentMessageCenterOpenChatInput
 } from "@tutti-os/agent-gui/agent-message-center";
 import {
   type AgentActivityMessage,
@@ -177,10 +178,11 @@ export function WorkspaceAgentMessageCenterAction({
   }, [workspace.id]);
 
   const openMessageCenterChat = useCallback(
-    (input: { agentSessionId: string; provider: string }) => {
+    (input: WorkspaceAgentMessageCenterOpenChatInput) => {
       const launchPromise = launchNode?.(
         createWorkspaceAgentGuiSessionLaunchRequest({
           agentSessionId: input.agentSessionId,
+          agentTargetId: input.agentTargetId,
           provider: input.provider
         })
       );
@@ -282,6 +284,7 @@ export function WorkspaceAgentMessageCenterAction({
         }
         openMessageCenterChat({
           agentSessionId: payload.agentSessionId,
+          agentTargetId: null,
           provider: payload.provider
         });
       }),

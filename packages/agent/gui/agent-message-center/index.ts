@@ -108,7 +108,8 @@ export type {
   WorkspaceAgentMessageCenterIdentity,
   WorkspaceAgentMessageCenterInteractionTarget,
   WorkspaceAgentMessageCenterItem,
-  WorkspaceAgentMessageCenterModel
+  WorkspaceAgentMessageCenterModel,
+  WorkspaceAgentMessageCenterOpenChatInput
 } from "./workspaceAgentMessageCenterModel";
 export type {
   MessageCenterAgentUserStack,

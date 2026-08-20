@@ -18,7 +18,10 @@ import {
   conversationSummariesRenderEqual,
   stableConversationSummaryList
 } from "./agentGuiController.stableHelpers";
-import { conversationStatusFromAgentActivityDisplayStatus } from "./agentGuiController.draftMessageHelpers";
+import {
+  conversationStatusFromAgentActivityDisplayStatus,
+  type AgentGUIOpenSessionRequest
+} from "./agentGuiController.draftMessageHelpers";
 import { mergeVisibleConversations } from "./agentGuiController.conversationHelpers";
 import { rememberAgentGUIActiveConversation } from "../model/agentGuiSessionNavigationMemory";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
@@ -42,6 +45,7 @@ interface UseAgentGUIConversationPresentationInput {
   isSubmitting: boolean;
   normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
   normalizedProviderTargets: readonly AgentGUIAgentTarget[];
+  pendingOpenSessionRequest: AgentGUIOpenSessionRequest | null;
   onDataChangeRef: CurrentValue<
     (updater: (current: AgentGUINodeData) => AgentGUINodeData) => void
   >;
@@ -168,6 +172,13 @@ export function useAgentGUIConversationPresentation(
     if (input.agentTargetsLoading || !input.activeConversationId) {
       return;
     }
+    if (
+      input.pendingOpenSessionRequest &&
+      input.pendingOpenSessionRequest.agentSessionId.trim() !==
+        input.activeConversationId
+    ) {
+      return;
+    }
     const summary = resolveConversationSummaryById(
       input.conversations,
       input.activeConversationId,
@@ -248,6 +259,7 @@ export function useAgentGUIConversationPresentation(
     input.normalizedExplicitProviderTargets,
     input.normalizedProviderTargets,
     input.onDataChangeRef,
+    input.pendingOpenSessionRequest,
     input.agentTargetsLoading,
     input.shouldUseStaticProviderTargets,
     input.transientConversation

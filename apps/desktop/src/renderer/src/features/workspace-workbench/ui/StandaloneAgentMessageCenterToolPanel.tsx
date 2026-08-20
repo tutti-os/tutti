@@ -14,7 +14,8 @@ import {
   useEngineSelector,
   workspaceAgentMessageCenterPromptStatus,
   WorkspaceAgentMessageCenterPanel,
-  type WorkspaceAgentMessageCenterModel
+  type WorkspaceAgentMessageCenterModel,
+  type WorkspaceAgentMessageCenterOpenChatInput
 } from "@tutti-os/agent-gui/agent-message-center";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
@@ -30,7 +31,7 @@ interface StandaloneAgentMessageCenterToolPanelProps {
   open: boolean;
   workspaceId: string;
   onClose: () => void;
-  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onOpenChat: (input: WorkspaceAgentMessageCenterOpenChatInput) => void;
 }
 
 export function StandaloneAgentMessageCenterToolPanel({
@@ -170,9 +171,9 @@ export function StandaloneAgentMessageCenterToolPanel({
     [activityService, workspaceId]
   );
   const handleOpenChat = useCallback(
-    (input: { agentSessionId: string; provider: string }) => {
-      onOpenChat(input);
+    (input: WorkspaceAgentMessageCenterOpenChatInput) => {
       onClose();
+      onOpenChat(input);
     },
     [onClose, onOpenChat]
   );

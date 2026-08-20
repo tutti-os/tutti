@@ -50,6 +50,7 @@ type SessionPresentationInput = Omit<
   | "serverInteractivePrompt"
 >;
 type ProviderHomeInput = Parameters<typeof useAgentGUIProviderHome>[0];
+type ProviderHome = ReturnType<typeof useAgentGUIProviderHome>;
 type OperationActions = ReturnType<typeof useAgentGUIOperationActions>;
 type ProviderCatalog = ReturnType<typeof useAgentGUIProviderCatalogSelection>;
 type LocalState = ReturnType<typeof useAgentGUILocalState>;
@@ -62,12 +63,12 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
   ConversationDetailInput &
   ComposerPresentationInput &
   SessionPresentationInput &
-  ProviderHomeInput &
   ProviderCatalog &
   LocalState &
   ComposerCapabilities &
   SessionDetailTransport &
   OperationActions & {
+    conversationFilter: ProviderHomeInput["conversationFilter"];
     nodeId?: string | null;
     operationActions: OperationActions;
     detailAvailability: AgentGUIDetailViewModel["availability"];
@@ -78,6 +79,9 @@ type UseAgentGUIViewAssemblyInput = ConversationPresentationInput &
       typeof useAgentGUIControllerActions
     >[0]["selectConversation"];
     providerRailMode: AgentGUIProviderRailMode | undefined;
+    providerReadinessGates: ProviderHomeInput["providerReadinessGates"];
+    providerHome: ProviderHome;
+    isLoadingConversations: ProviderHomeInput["isLoadingConversations"];
     tuttiModeActivation: ReturnType<typeof useAgentGUITuttiModeActivation>;
   };
 
@@ -218,10 +222,9 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     }
     return { ...activeConversation, needsUserAction: true };
   }, [activeConversation, session.pendingInteractivePrompt]);
-  const providerHome = useAgentGUIProviderHome(input);
   const controllerActions = useAgentGUIControllerActions({
     ...input.operationActions,
-    ...providerHome,
+    ...input.providerHome,
     loadOlderConversationMessages: input.loadOlderConversationMessages,
     selectConversation: input.selectConversation,
     setTuttiModeActive: input.tuttiModeActivation.setActive,

@@ -95,6 +95,14 @@ describe("agent gui workbench launch contract", () => {
         typeId: "agent-gui"
       })
     ).toMatchObject({
+      activation: {
+        payload: {
+          agentSessionId: "session-2",
+          agentTargetId: "local:codex",
+          provider: "codex"
+        },
+        type: "agent-gui:open-session"
+      },
       openInNewWindow: false,
       reusePolicy: {
         agentSessionId: "session-2",
@@ -103,6 +111,42 @@ describe("agent gui workbench launch contract", () => {
       targetAgentSessionId: "session-2"
     });
   });
+
+  it("preserves an explicit null target in the exact activation contract", () => {
+    const descriptor = createAgentGuiWorkbenchLaunchDescriptor(
+      createAgentGuiWorkbenchSessionLaunchRequest({
+        agentSessionId: "session-provider-default",
+        agentTargetId: null,
+        provider: "codex"
+      })
+    );
+
+    expect(descriptor.activation).toEqual({
+      payload: {
+        agentSessionId: "session-provider-default",
+        agentTargetId: null,
+        provider: "codex"
+      },
+      type: "agent-gui:open-session"
+    });
+  });
+
+  it.each([" ", 42])(
+    "rejects invalid target identity %j instead of degrading to session-only",
+    (agentTargetId) => {
+      expect(() =>
+        createAgentGuiWorkbenchLaunchDescriptor({
+          dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
+          payload: {
+            agentSessionId: "session-invalid-target",
+            agentTargetId,
+            provider: "codex"
+          },
+          typeId: "agent-gui"
+        })
+      ).toThrow("agent_gui_workbench.launch_agent_target_invalid");
+    }
+  );
 
   it("can launch an existing session into a new internal window", () => {
     const descriptor = createAgentGuiWorkbenchLaunchDescriptor({
@@ -117,7 +161,8 @@ describe("agent gui workbench launch contract", () => {
 
     expect(descriptor.activation).toEqual({
       payload: {
-        agentSessionId: "session-2"
+        agentSessionId: "session-2",
+        provider: "codex"
       },
       type: "agent-gui:open-session"
     });
@@ -160,7 +205,8 @@ describe("agent gui workbench launch contract", () => {
         composerAppend: {
           draftPrompt: "Modify the managed issue",
           focusComposer: true
-        }
+        },
+        provider: "codex"
       },
       type: "agent-gui:open-session"
     });

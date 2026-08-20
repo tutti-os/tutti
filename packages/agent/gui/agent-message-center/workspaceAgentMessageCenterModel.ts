@@ -67,6 +67,12 @@ export interface WorkspaceAgentMessageCenterItem {
   sortTimeUnixMs: number;
 }
 
+export interface WorkspaceAgentMessageCenterOpenChatInput {
+  agentSessionId: string;
+  agentTargetId: string | null;
+  provider: string;
+}
+
 export interface WorkspaceAgentMessageCenterInteractionTarget {
   agentSessionId: string;
   requestId: string;

@@ -125,6 +125,7 @@ export function createAgentGuiWorkbenchContribution(
   const nodeStateSource = createAgentGuiWorkbenchNodeStateSource({
     workspaceId: input.workspaceId
   });
+  const pendingSessionInstanceIds = new Map<string, string>();
   const railLayoutStore = createAgentGuiWorkbenchRailLayoutStore();
   const frame = input.frame ?? agentGuiWorkbenchDefaultNodeFrame;
   const copy = resolveAgentGuiWorkbenchContributionCopy(input.copy);
@@ -228,6 +229,12 @@ export function createAgentGuiWorkbenchContribution(
                   state: nextState,
                   typeId: agentGuiWorkbenchTypeId
                 });
+                const committedSessionId =
+                  nextState.lastActiveAgentSessionId?.trim();
+                if (committedSessionId) {
+                  releasePendingSessionInstanceReservations(context.instanceId);
+                  pendingSessionInstanceIds.delete(committedSessionId);
+                }
               },
               provider: agent?.provider ?? null
             }
@@ -454,32 +461,26 @@ export function createAgentGuiWorkbenchContribution(
       // Locate an already-open node currently showing this session (its launch
       // instanceId may differ from the session-keyed one, e.g. a conversation
       // started fresh as a draft) so we focus it instead of opening a duplicate.
-      const existingInstanceId =
+      const committedInstanceId =
         reusePolicy.kind === "current-session"
           ? nodeStateSource.findInstanceIdByAgentSessionId(
               reusePolicy.agentSessionId
             )
           : null;
+      const existingInstanceId =
+        committedInstanceId ??
+        (reusePolicy.kind === "current-session"
+          ? (pendingSessionInstanceIds.get(reusePolicy.agentSessionId) ?? null)
+          : null);
+      if (
+        reusePolicy.kind === "current-session" &&
+        committedInstanceId !== null
+      ) {
+        pendingSessionInstanceIds.delete(reusePolicy.agentSessionId);
+      }
       const instanceId = existingInstanceId ?? descriptorInstanceId;
       const title = copy.nodeTitle;
-      const launchAgentTargetId = providerTarget.agentTargetId;
-      if (targetAgentSessionId) {
-        const previousState = nodeStateSource.readNodeState({
-          instanceId,
-          typeId: agentGuiWorkbenchTypeId
-        });
-        nodeStateSource.writeNodeState({
-          instanceId,
-          state: {
-            ...normalizeAgentGuiWorkbenchState(previousState),
-            ...(targetAgentSessionId
-              ? { lastActiveAgentSessionId: targetAgentSessionId }
-              : {}),
-            agentTargetId: launchAgentTargetId ?? null
-          },
-          typeId: agentGuiWorkbenchTypeId
-        });
-      } else if (providerTarget.agentTargetId) {
+      if (!targetAgentSessionId && providerTarget.agentTargetId) {
         const previousState = nodeStateSource.readNodeState({
           instanceId,
           typeId: agentGuiWorkbenchTypeId
@@ -493,6 +494,12 @@ export function createAgentGuiWorkbenchContribution(
           },
           typeId: agentGuiWorkbenchTypeId
         });
+      }
+      if (
+        reusePolicy.kind === "current-session" &&
+        committedInstanceId === null
+      ) {
+        reservePendingSessionInstanceId(reusePolicy.agentSessionId, instanceId);
       }
       const defaultFrame = resolveAgentGuiWorkbenchDefaultLaunchFrame({
         frame,
@@ -521,6 +528,30 @@ export function createAgentGuiWorkbenchContribution(
       };
     }
   };
+
+  function reservePendingSessionInstanceId(
+    agentSessionId: string,
+    instanceId: string
+  ): void {
+    pendingSessionInstanceIds.delete(agentSessionId);
+    pendingSessionInstanceIds.set(agentSessionId, instanceId);
+    while (pendingSessionInstanceIds.size > 512) {
+      const oldestSessionId = pendingSessionInstanceIds.keys().next().value;
+      if (typeof oldestSessionId !== "string") break;
+      pendingSessionInstanceIds.delete(oldestSessionId);
+    }
+  }
+
+  function releasePendingSessionInstanceReservations(instanceId: string): void {
+    for (const [
+      agentSessionId,
+      pendingInstanceId
+    ] of pendingSessionInstanceIds) {
+      if (pendingInstanceId === instanceId) {
+        pendingSessionInstanceIds.delete(agentSessionId);
+      }
+    }
+  }
 }
 
 function resolveAgentGuiWorkbenchStateAgent(

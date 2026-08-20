@@ -14,7 +14,11 @@ export interface AgentGuiWorkbenchOpenSessionComposerAppend {
 
 export interface AgentGuiWorkbenchOpenSessionPayload {
   agentSessionId: string;
+  /** Canonical Agent identity for target-aware in-window routing. */
+  agentTargetId?: string | null;
   composerAppend?: AgentGuiWorkbenchOpenSessionComposerAppend;
+  /** Runtime metadata used to validate the canonical Agent target. */
+  provider?: AgentGuiWorkbenchProvider;
 }
 
 export interface AgentGuiWorkbenchPrefillPromptPayload {

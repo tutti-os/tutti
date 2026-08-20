@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import {
   createAgentSessionEngine,
   normalizeAgentActivitySession
@@ -72,6 +72,30 @@ describe("messageCenterStackPreviewNodes", () => {
       container.querySelector('[data-agent-mention-kind="workspace-app"]')
         ?.textContent
     ).toContain("AI 文档");
+  });
+});
+
+describe("WorkspaceAgentMessageCenterCard open session", () => {
+  it("forwards the canonical Agent target with the Session identity", () => {
+    const targetItem = item({ summary: "Ready" });
+    targetItem.agentTargetId = "local:agent-b";
+    const onOpenChat = vi.fn();
+
+    render(
+      <WorkspaceAgentMessageCenterCard
+        item={targetItem}
+        isSubmitting={false}
+        onOpenChat={onOpenChat}
+        onSubmitPrompt={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Open session" }));
+    expect(onOpenChat).toHaveBeenCalledWith({
+      agentSessionId: "codex-1",
+      agentTargetId: "local:agent-b",
+      provider: "codex"
+    });
   });
 });
 

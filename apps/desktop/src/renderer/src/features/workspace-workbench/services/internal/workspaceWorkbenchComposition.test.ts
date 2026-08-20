@@ -130,7 +130,8 @@ test("workspace agent GUI session launches use container instances", () => {
   });
   assert.deepEqual(descriptor.activation, {
     payload: {
-      agentSessionId: "session-2"
+      agentSessionId: "session-2",
+      provider: "codex"
     },
     type: "agent-gui:open-session"
   });

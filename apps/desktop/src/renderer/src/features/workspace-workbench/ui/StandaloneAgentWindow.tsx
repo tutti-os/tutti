@@ -703,7 +703,6 @@ export function StandaloneAgentWindow({
     openFileInSidebar,
     runtimeApi: desktopApi.runtime,
     setActivation,
-    setNodeState,
     workspaceAgentActivityService,
     workspaceAppCenterService,
     workspaceId

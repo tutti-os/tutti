@@ -8,6 +8,7 @@ import {
   type SetStateAction
 } from "react";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
+import type { WorkspaceAgentMessageCenterOpenChatInput } from "@tutti-os/agent-gui/agent-message-center";
 import type { DesktopAgentDirectorySnapshot } from "@shared/contracts/agentDirectory.ts";
 import type { DesktopHostWindowApi, DesktopRuntimeApi } from "@preload/types";
 import type { IWorkspaceAppCenterService } from "@renderer/features/workspace-app-center";
@@ -21,8 +22,7 @@ import {
 import {
   desktopAgentGUIOpenSessionActivationType,
   normalizeDesktopAgentGUIProvider,
-  type DesktopAgentGUIProvider,
-  type DesktopAgentGUIWorkbenchState
+  type DesktopAgentGUIProvider
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import { handleStandaloneAgentGuiLaunch } from "../services/standaloneAgentGuiLaunchHandler.ts";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
@@ -49,7 +49,6 @@ interface StandaloneAgentLaunchRoutingInput {
   setActivation: Dispatch<
     SetStateAction<WorkbenchHostNodeBodyContext["activation"]>
   >;
-  setNodeState: Dispatch<SetStateAction<DesktopAgentGUIWorkbenchState>>;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceAppCenterService: IWorkspaceAppCenterService;
   workspaceId: string;
@@ -65,7 +64,6 @@ export function useStandaloneAgentLaunchRouting({
   openFileInSidebar,
   runtimeApi,
   setActivation,
-  setNodeState,
   workspaceAgentActivityService,
   workspaceAppCenterService,
   workspaceId
@@ -73,10 +71,9 @@ export function useStandaloneAgentLaunchRouting({
   handleLinkAction: NonNullable<
     DesktopAgentGUIWorkbenchBodyProps["onLinkAction"]
   >;
-  handleOpenMessageCenterChat(input: {
-    agentSessionId: string;
-    provider: string;
-  }): void;
+  handleOpenMessageCenterChat(
+    input: WorkspaceAgentMessageCenterOpenChatInput
+  ): void;
   issueManagerOpenRequest: StandaloneAgentIssueManagerOpenRequest | null;
 } {
   const activationSequenceRef = useRef(1);
@@ -99,15 +96,11 @@ export function useStandaloneAgentLaunchRouting({
       };
       provider: string;
     }) => {
-      setNodeState((current) => ({
-        ...current,
-        agentTargetId: input.agentTargetId,
-        lastActiveAgentSessionId: input.agentSessionId,
-        provider: normalizeDesktopAgentGUIProvider(input.provider)
-      }));
       setActivation({
         payload: {
           agentSessionId: input.agentSessionId,
+          agentTargetId: input.agentTargetId,
+          provider: normalizeDesktopAgentGUIProvider(input.provider),
           ...(input.composerAppend
             ? { composerAppend: input.composerAppend }
             : {})
@@ -116,13 +109,18 @@ export function useStandaloneAgentLaunchRouting({
         type: desktopAgentGUIOpenSessionActivationType
       });
     },
-    [setActivation, setNodeState]
+    [setActivation]
   );
   const handleOpenMessageCenterChat = useCallback(
-    (input: { agentSessionId: string; provider: string }) => {
-      handleActivateAgentSession({ ...input, agentTargetId: null });
+    (input: WorkspaceAgentMessageCenterOpenChatInput) => {
+      void requestWorkspaceAgentGuiLaunch({
+        agentSessionId: input.agentSessionId,
+        agentTargetId: input.agentTargetId,
+        provider: normalizeDesktopAgentGUIProvider(input.provider),
+        workspaceId
+      });
     },
-    [handleActivateAgentSession]
+    [workspaceId]
   );
 
   useEffect(
