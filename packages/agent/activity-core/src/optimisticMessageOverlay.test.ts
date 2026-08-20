@@ -102,13 +102,13 @@ test("requires an anchor before append and requests reconcile", () => {
   );
 });
 
-test("authoritative reconcile clears a stale nonterminal projection before the next delta", () => {
+test("canonical merge advances a confirmed nonterminal projection before the next delta", () => {
   const overlay = createAgentActivityOptimisticMessageOverlay();
   const initial = canonical({
     version: 1,
     payload: { text: "Hel", content: "Hel" }
   });
-  overlay.reconcile(scope, [initial]);
+  overlay.mergeCanonical(scope, [initial]);
   overlay.apply(delta({ operation: "append_text", text: "lo" }));
   assert.equal(overlay.project(scope, [initial])[0]?.payload.text, "Hello");
 
@@ -116,7 +116,7 @@ test("authoritative reconcile clears a stale nonterminal projection before the n
     version: 2,
     payload: { text: "Hello world", content: "Hello world" }
   });
-  overlay.reconcile(scope, [advanced]);
+  overlay.mergeCanonical(scope, [advanced]);
   assert.equal(
     overlay.project(scope, [advanced])[0]?.payload.text,
     "Hello world"
@@ -135,7 +135,7 @@ test("explicit Session reset drops all state and requires a new authoritative an
     version: 1,
     payload: { text: "cloud", content: "cloud" }
   });
-  overlay.reconcile(scope, [base]);
+  overlay.mergeCanonical(scope, [base]);
   overlay.apply(delta({ operation: "append_text", text: " live" }));
   assert.equal(overlay.project(scope, [base])[0]?.payload.text, "cloud live");
 
@@ -150,7 +150,7 @@ test("explicit Session reset drops all state and requires a new authoritative an
     }
   );
 
-  overlay.reconcile(scope, [base]);
+  overlay.mergeCanonical(scope, [base]);
   assert.equal(
     overlay.apply(delta({ operation: "append_text", text: " recovered" }))
       .applied,
@@ -168,7 +168,7 @@ test("keeps an explicitly terminal optimistic projection until canonical becomes
     version: 1,
     payload: { text: "canonical", content: "canonical" }
   });
-  overlay.reconcile(scope, [initial]);
+  overlay.mergeCanonical(scope, [initial]);
   overlay.apply(
     delta({ operation: "append_text", text: " live final" }, "completed")
   );
@@ -178,7 +178,7 @@ test("keeps an explicitly terminal optimistic projection until canonical becomes
     status: "streaming",
     payload: { text: "canonical partial", content: "canonical partial" }
   });
-  overlay.reconcile(scope, [cloudNonterminal]);
+  overlay.mergeCanonical(scope, [cloudNonterminal]);
   const optimisticTerminal = overlay.project(scope, [cloudNonterminal])[0];
   assert.equal(optimisticTerminal?.status, "completed");
   assert.equal(optimisticTerminal?.payload.text, "canonical live final");
@@ -189,7 +189,7 @@ test("keeps an explicitly terminal optimistic projection until canonical becomes
     completedAtUnixMs: 30,
     payload: { text: "canonical final", content: "canonical final" }
   });
-  overlay.reconcile(scope, [cloudTerminal]);
+  overlay.mergeCanonical(scope, [cloudTerminal]);
   const canonicalTerminal = overlay.project(scope, [cloudTerminal]);
   assert.equal(canonicalTerminal.length, 1);
   assert.equal(canonicalTerminal[0]?.version, 3);
@@ -206,7 +206,7 @@ test("authoritative history removes a terminal optimistic row from a retracted T
       content: "old answer"
     }
   });
-  overlay.reconcile(scope, [initial]);
+  overlay.mergeCanonical(scope, [initial]);
   overlay.apply(
     delta({ operation: "set", value: "old final answer" }, "completed")
   );
@@ -226,7 +226,7 @@ test("authoritative history preserves terminal optimistic rows whose stable iden
       content: "answer"
     }
   });
-  overlay.reconcile(scope, [initial]);
+  overlay.mergeCanonical(scope, [initial]);
   overlay.apply(
     delta({ operation: "set", value: "final answer" }, "completed")
   );
@@ -260,7 +260,7 @@ test("rejects a nonterminal delta after canonical terminal truth", () => {
     completedAtUnixMs: 30,
     payload: { text: "final", content: "final" }
   });
-  overlay.reconcile(scope, [terminal]);
+  overlay.mergeCanonical(scope, [terminal]);
 
   assert.deepEqual(
     overlay.apply(delta({ operation: "append_text", text: " late" })),
@@ -280,7 +280,7 @@ test("allows a terminal set to correct an earlier terminal projection", () => {
     completedAtUnixMs: 30,
     payload: { text: "first final", content: "first final" }
   });
-  overlay.reconcile(scope, [terminal]);
+  overlay.mergeCanonical(scope, [terminal]);
 
   assert.deepEqual(
     overlay.apply(
@@ -304,7 +304,7 @@ test("normalizes missing canonical workspace identity without duplicate messages
     version: 1,
     payload: { text: "Hel", content: "Hel" }
   });
-  overlay.reconcile(scope, [withoutWorkspace]);
+  overlay.mergeCanonical(scope, [withoutWorkspace]);
   assert.equal(
     overlay.apply(delta({ operation: "append_text", text: "lo" })).applied,
     true
@@ -314,14 +314,14 @@ test("normalizes missing canonical workspace identity without duplicate messages
   assert.equal(appended[0]?.workspaceId, scope.workspaceId);
   assert.equal(appended[0]?.payload.text, "Hello");
 
-  overlay.reconcile(scope, [withoutWorkspace]);
+  overlay.mergeCanonical(scope, [withoutWorkspace]);
   overlay.apply(delta({ operation: "set", value: "replacement" }));
   const replaced = overlay.project(scope, [withoutWorkspace]);
   assert.equal(replaced.length, 1);
   assert.equal(replaced[0]?.payload.text, "replacement");
 });
 
-test("reconcile and reset affect only their exact workspace and Session scope", () => {
+test("canonical merge and reset affect only their exact workspace and Session scope", () => {
   const overlay = createAgentActivityOptimisticMessageOverlay();
   const firstScope = sessionScope("session-1");
   const secondScope = sessionScope("session-2");
@@ -334,8 +334,8 @@ test("reconcile and reset affect only their exact workspace and Session scope", 
     messageId: "message-1",
     payload: { text: "second", content: "second" }
   });
-  overlay.reconcile(firstScope, [first]);
-  overlay.reconcile(secondScope, [second]);
+  overlay.mergeCanonical(firstScope, [first]);
+  overlay.mergeCanonical(secondScope, [second]);
   overlay.apply(
     delta(
       { operation: "append_text", text: " optimistic" },
@@ -351,8 +351,11 @@ test("reconcile and reset affect only their exact workspace and Session scope", 
     )
   );
 
-  overlay.reconcile(firstScope, [first]);
-  assert.equal(overlay.project(firstScope, [first])[0]?.payload.text, "first");
+  overlay.mergeCanonical(firstScope, [first]);
+  assert.equal(
+    overlay.project(firstScope, [first])[0]?.payload.text,
+    "first optimistic"
+  );
   assert.equal(
     overlay.project(secondScope, [second])[0]?.payload.text,
     "second optimistic"
@@ -365,12 +368,207 @@ test("reconcile and reset affect only their exact workspace and Session scope", 
   );
 });
 
+test("partial canonical confirmation preserves an unrelated optimistic append anchor", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  overlay.apply(delta({ operation: "set", value: "正在" }));
+  const unrelated = canonical({
+    messageId: "message-2",
+    version: 1,
+    payload: { text: "其他消息", content: "其他消息" }
+  });
+
+  overlay.mergeCanonical(scope, [unrelated]);
+
+  assert.deepEqual(
+    overlay.apply(delta({ operation: "append_text", text: "检查" })),
+    { applied: true, needsReconcile: false }
+  );
+  const projected = overlay.project(scope, [unrelated]);
+  assert.equal(
+    projected.find((message) => message.messageId === "message-1")?.payload
+      .text,
+    "正在检查"
+  );
+  assert.equal(
+    projected.find((message) => message.messageId === "message-2")?.payload
+      .text,
+    "其他消息"
+  );
+});
+
+test("ordinary canonical omission preserves an optimistic append anchor", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  overlay.apply(delta({ operation: "set", value: "正在" }));
+
+  overlay.mergeCanonical(scope, []);
+
+  assert.deepEqual(
+    overlay.apply(delta({ operation: "append_text", text: "检查" })),
+    { applied: true, needsReconcile: false }
+  );
+  assert.equal(overlay.project(scope, [])[0]?.payload.text, "正在检查");
+});
+
+test("projects a gapped canonical tool preview as a stable output anchor", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  const toolPreview = canonical({
+    messageId: "tool-1",
+    version: 3,
+    kind: "tool_call",
+    status: "running",
+    payload: { toolName: "Read", title: "Read" }
+  });
+  overlay.previewCanonical(scope, [toolPreview]);
+
+  assert.equal(overlay.project(scope, [])[0]?.messageId, "tool-1");
+  const output = delta(undefined);
+  output.data.messageId = "tool-1";
+  output.data.kind = "tool_call";
+  output.data.toolOutput = {
+    operation: "append_text",
+    text: "first output",
+    offsetBytes: 0
+  };
+  assert.deepEqual(overlay.apply(output), {
+    applied: true,
+    needsReconcile: false
+  });
+  assert.deepEqual(overlay.project(scope, [])[0]?.payload.output, {
+    text: "first output"
+  });
+});
+
+test("keeps a newer tool preview across an older ordinary canonical read", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  const preview = canonical({
+    messageId: "tool-1",
+    version: 3,
+    kind: "tool_call",
+    status: "running",
+    payload: { toolName: "Read", title: "new preview" }
+  });
+  overlay.previewCanonical(scope, [preview]);
+
+  overlay.mergeCanonical(scope, [
+    canonical({
+      messageId: "tool-1",
+      version: 2,
+      kind: "tool_call",
+      status: "running",
+      payload: { toolName: "Read", title: "old canonical" }
+    })
+  ]);
+
+  assert.equal(overlay.project(scope, [])[0]?.version, 3);
+  assert.equal(overlay.project(scope, [])[0]?.payload.title, "new preview");
+});
+
+test("authoritative history preserves a tool preview only while its Turn is active", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  const preview = canonical({
+    messageId: "tool-1",
+    version: 3,
+    kind: "tool_call",
+    status: "running",
+    payload: { toolName: "Read", title: "Read" }
+  });
+  overlay.previewCanonical(scope, [preview]);
+
+  overlay.reconcileAuthoritativeHistory(
+    scope,
+    [],
+    [effectiveTurn({ phase: "running" })]
+  );
+  assert.equal(overlay.project(scope, []).length, 1);
+
+  overlay.reconcileAuthoritativeHistory(scope, [], [effectiveTurn()]);
+  assert.deepEqual(overlay.project(scope, []), []);
+});
+
+test("terminal canonical confirmation replaces a tool preview without duplication", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  const running = canonical({
+    messageId: "tool-1",
+    version: 3,
+    kind: "tool_call",
+    status: "running",
+    payload: { toolName: "Read", title: "Read" }
+  });
+  const completed = canonical({
+    messageId: "tool-1",
+    version: 4,
+    kind: "tool_call",
+    status: "completed",
+    completedAtUnixMs: 30,
+    payload: { toolName: "Read", title: "Read", output: { text: "done" } }
+  });
+  overlay.previewCanonical(scope, [running]);
+
+  overlay.mergeCanonical(scope, [completed]);
+
+  const projected = overlay.project(scope, [completed]);
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0]?.status, "completed");
+  assert.deepEqual(projected[0]?.payload.output, { text: "done" });
+});
+
+test("a canceled gapped tool preview updates in place before authoritative confirmation", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  overlay.previewCanonical(scope, [
+    canonical({
+      messageId: "tool-1",
+      version: 3,
+      kind: "tool_call",
+      status: "running",
+      payload: { toolName: "Read", title: "Read" }
+    })
+  ]);
+
+  overlay.previewCanonical(scope, [
+    canonical({
+      messageId: "tool-1",
+      version: 4,
+      kind: "tool_call",
+      status: "canceled",
+      completedAtUnixMs: 30,
+      payload: { toolName: "Read", title: "Read" }
+    })
+  ]);
+
+  const projected = overlay.project(scope, []);
+  assert.equal(projected.length, 1);
+  assert.equal(projected[0]?.messageId, "tool-1");
+  assert.equal(projected[0]?.status, "canceled");
+});
+
+test("authoritative history preserves a nonterminal projection for an active Turn", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  overlay.apply(delta({ operation: "set", value: "正在检查" }));
+
+  overlay.reconcileAuthoritativeHistory(
+    scope,
+    [],
+    [effectiveTurn({ phase: "running" })]
+  );
+
+  assert.equal(overlay.project(scope, [])[0]?.payload.text, "正在检查");
+});
+
+test("authoritative history clears a nonterminal projection after its Turn settles", () => {
+  const overlay = createAgentActivityOptimisticMessageOverlay();
+  overlay.apply(delta({ operation: "set", value: "正在检查" }));
+
+  overlay.reconcileAuthoritativeHistory(scope, [], [effectiveTurn()]);
+
+  assert.deepEqual(overlay.project(scope, []), []);
+});
+
 test("applies payload set and unset atomically", () => {
   const overlay = createAgentActivityOptimisticMessageOverlay();
   const base = canonical({
     payload: { text: "base", private: true, preserved: "yes" }
   });
-  overlay.reconcile(scope, [base]);
+  overlay.mergeCanonical(scope, [base]);
   const event = delta(undefined);
   event.data.payloadSet = { phase: "running" };
   event.data.payloadUnset = ["private"];
@@ -393,7 +591,7 @@ test("appends normalized tool output with UTF-8 byte offsets", () => {
       output: { text: "你", exitCode: null }
     }
   });
-  overlay.reconcile(scope, [toolBase]);
+  overlay.mergeCanonical(scope, [toolBase]);
   const event = delta(undefined);
   event.data.messageId = "tool-1";
   event.data.kind = "tool_call";
@@ -420,7 +618,7 @@ test("rejects duplicate or out-of-order tool output without corrupting the overl
     status: "streaming",
     payload: { output: { text: "abc" } }
   });
-  overlay.reconcile(scope, [toolBase]);
+  overlay.mergeCanonical(scope, [toolBase]);
   const event = delta(undefined);
   event.data.messageId = "tool-1";
   event.data.kind = "tool_call";

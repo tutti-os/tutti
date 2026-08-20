@@ -1481,7 +1481,22 @@ that overlay over the latest canonical message base, applies continuous inline
 messages, owns Session deletion tombstones, admits only explicit
 `session_restored` events through those tombstones, and schedules authoritative
 reconciliation after a restore, gap, discontinuity, recovered connection,
-invalid payload, or unanchored append. The Tutti desktop receives local deltas
+invalid payload, or unanchored append. Inline canonical messages and ordinary
+incremental reads merge into that base by stable message identity; their
+omissions are not deletions because either source may be partial or may race a
+precommit delta. Matching nonterminal canonical content may advance a confirmed
+text or tool-output prefix in place, while only a terminal canonical snapshot
+clears the matching optimistic row. Scope-wide omission becomes authoritative
+only for an effective-history replacement, which preserves nonterminal
+optimistic rows belonging to Turns that remain active and removes them after
+those Turns settle or leave effective history. When an otherwise valid inline
+message follows a version gap, the coordinator leaves the Engine's durable
+message cursor unchanged and requests reconciliation, but projects the message
+for an already cached Session through a separate canonical-preview lane. This
+keeps a tool anchor visible and available to later tool-output deltas without
+allowing a missing mutable version to be skipped. Continuous or authoritative
+canonical confirmation removes the preview; an effective-history read retains
+it only while its Turn remains active. The Tutti desktop receives local deltas
 through the business-event WebSocket; shared-device hosts receive the same live
 subset through the framed Go protocol. UI consumers never retain transport
 epoch/sequence state or distinguish local from shared activity sources.

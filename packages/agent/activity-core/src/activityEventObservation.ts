@@ -19,6 +19,7 @@ export interface InlineMessageVersionContinuity {
 
 export interface AgentActivityEventObservation {
   canApplyInlineMessages: boolean;
+  canPreviewInlineMessages: boolean;
   inlineContinuity: InlineMessageVersionContinuity;
   inlineMessages: readonly AgentActivityMessage[];
   intent: SessionActivityObservedIntent;
@@ -50,8 +51,13 @@ export function analyzeAgentActivityEventObservation(input: {
     inlineMessages.length > 0 &&
     inlinePayloadConsistent &&
     inlineContinuity.continuous;
+  const canPreviewInlineMessages =
+    input.hasCachedSession &&
+    inlineMessages.length > 0 &&
+    inlinePayloadConsistent;
   return {
     canApplyInlineMessages,
+    canPreviewInlineMessages,
     inlineContinuity,
     inlineMessages,
     intent: {

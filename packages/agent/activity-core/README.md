@@ -302,8 +302,21 @@ Each host creates one
 `createAgentActivityWorkspaceEventCoordinator` per workspace and passes
 transport deliveries into it. The coordinator validates and cleans
 `message_delta`, owns its optimistic projection over canonical
-`sessionMessagesById`, and clears that projection after authoritative message
-reads or Session removal. The generated `AgentActivityUpdatedEvent` input also
+`sessionMessagesById`, and merges inline or incrementally read canonical
+messages by stable message identity. Partial canonical batches and ordinary
+message reads do not make omission authoritative: an active optimistic row
+remains available as an `append_text` anchor, while matching nonterminal
+canonical content may advance its confirmed prefix in place. A terminal
+canonical snapshot clears the matching optimistic row. Only an
+effective-history replacement, explicit Session removal, or rebind may use
+omission to clear the projection; effective-history replacement still
+preserves nonterminal rows for Turns that remain active. A structurally valid
+inline message that follows a version gap is not written to the Engine or used
+to advance its durable cursor. For an already cached Session, the coordinator
+instead keeps it in a separate canonical preview so tool anchors and status
+remain visible while the required message reconcile runs. Later live deltas
+may attach to that preview by `messageId`; a continuous or authoritative read
+confirms or removes it. The generated `AgentActivityUpdatedEvent` input also
 accepts:
 
 - `turn_update`: atomically updates the canonical Turn and the cached Session's
