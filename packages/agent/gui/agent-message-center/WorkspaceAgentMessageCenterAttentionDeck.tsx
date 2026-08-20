@@ -10,7 +10,10 @@ import { cn } from "@tutti-os/ui-system";
 import { useTranslation } from "../i18n/index";
 import type { WorkspaceLinkAction } from "../actions/workspaceLinkActions";
 import { WorkspaceAgentMessageCenterCard } from "./WorkspaceAgentMessageCenterCard";
-import type { WorkspaceAgentMessageCenterItem } from "./workspaceAgentMessageCenterModel";
+import type {
+  WorkspaceAgentMessageCenterItem,
+  WorkspaceAgentMessageCenterOpenChatInput
+} from "./workspaceAgentMessageCenterModel";
 
 const DECK_MAX_PEEK = 2;
 const DECK_NEW_CARD_COOLDOWN_MS = 500;
@@ -25,7 +28,7 @@ export interface WorkspaceAgentMessageCenterAttentionDeckProps {
     input: WorkspaceAgentMessageCenterAttentionDeckRenderCardInput
   ) => ReactNode;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
-  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onOpenChat: (input: WorkspaceAgentMessageCenterOpenChatInput) => void;
   onSubmitPrompt: (
     item: WorkspaceAgentMessageCenterItem,
     input: {

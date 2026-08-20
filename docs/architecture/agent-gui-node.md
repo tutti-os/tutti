@@ -2794,6 +2794,14 @@ AgentGUI, Message Center, dock/header, workspace window, and standalone Agent wi
 
 Opening a panel/window creates presentation state only. It does not clone a Session, copy engine entities, or start another event stream. Standalone tools are Desktop chrome, not AgentGUI lifecycle.
 
+The Message Center `Open session` action carries the canonical Session,
+Agent Target, and Provider identity together. In the standalone Agent window,
+the embedded panel closes first and delegates that identity to the existing
+workspace AgentGUI launch handler. A Session request without
+`openInNewWindow=true` activates the Session in the current Agent window and
+must not call the native window opener. Workspace-hosted Message Center actions
+reuse the existing Workbench node launch with the same identity tuple.
+
 Workbench previews must not mount a second AgentGUI tree. Genie capture prefers
 the host-provided native image and clones the visible node DOM into a texture
 only after native capture fails or exceeds its bounded wait. Electron hosts

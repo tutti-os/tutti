@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { AgentToolTab } from "@tutti-os/agent-gui/workbench/tool-sidebar";
+import type { WorkspaceAgentMessageCenterOpenChatInput } from "@tutti-os/agent-gui/agent-message-center";
 import type { AgentToolBrowserController } from "@tutti-os/agent-gui/workbench/tool-sidebar";
 import type {
   WorkbenchContribution,
@@ -100,10 +101,9 @@ export function StandaloneAgentToolSidebarPanel({
     controller: AgentToolBrowserController | null
   ) => void;
   onCloseMessageCenter: () => void;
-  onOpenMessageCenterChat: (input: {
-    agentSessionId: string;
-    provider: string;
-  }) => void;
+  onOpenMessageCenterChat: (
+    input: WorkspaceAgentMessageCenterOpenChatInput
+  ) => void;
   tab: AgentToolTab;
   setToolHost: (instanceId: string, host: WorkbenchHostHandle | null) => void;
   workspaceId: string;

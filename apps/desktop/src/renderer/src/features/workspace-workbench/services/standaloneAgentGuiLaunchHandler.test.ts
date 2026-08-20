@@ -48,6 +48,37 @@ test("standalone Agent session launches activate locally and clear an omitted ta
   assert.deepEqual(opened, []);
 });
 
+test("standalone Agent session launches preserve an explicit target in the current window", async () => {
+  const activations: unknown[] = [];
+  const opened: DesktopHostOpenAgentWindowInput[] = [];
+
+  await handleStandaloneAgentGuiLaunch(
+    {
+      agentSessionId: "session-agent-b",
+      agentTargetId: " local:agent-b ",
+      provider: "codex",
+      workspaceId: "workspace-1"
+    },
+    createContext({
+      activateAgentSession(input) {
+        activations.push(input);
+      },
+      async openAgentWindow(input) {
+        opened.push(input);
+      }
+    })
+  );
+
+  assert.deepEqual(activations, [
+    {
+      agentSessionId: "session-agent-b",
+      agentTargetId: "local:agent-b",
+      provider: "codex"
+    }
+  ]);
+  assert.deepEqual(opened, []);
+});
+
 test("standalone Agent draft launches open a new window with the complete bootstrap intent", async () => {
   const opened: DesktopHostOpenAgentWindowInput[] = [];
 

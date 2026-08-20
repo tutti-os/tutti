@@ -7,6 +7,7 @@ import {
   type ReactNode
 } from "react";
 import { selectWorkspaceAgentConsumerCounts } from "@tutti-os/agent-activity-core";
+import type { WorkspaceAgentMessageCenterOpenChatInput } from "@tutti-os/agent-gui/agent-message-center";
 import {
   AgentToolPanelIcon,
   AgentToolSidebar,
@@ -60,10 +61,9 @@ interface StandaloneAgentToolSidebarProps {
   issueManagerOpenRequest?: StandaloneAgentIssueManagerOpenRequest | null;
   mainContentMinWidthPx?: number;
   renderHeader: (layout: AgentToolSidebarHeaderLayout) => ReactNode;
-  onOpenMessageCenterChat: (input: {
-    agentSessionId: string;
-    provider: string;
-  }) => void;
+  onOpenMessageCenterChat: (
+    input: WorkspaceAgentMessageCenterOpenChatInput
+  ) => void;
   onAppsOpen: () => void;
   onAppendBrowserElementMention: (mention: string) => void;
   onBrowserElementError: (message: string) => void;

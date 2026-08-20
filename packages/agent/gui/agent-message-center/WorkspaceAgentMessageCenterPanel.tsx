@@ -29,7 +29,8 @@ import {
   isInteractiveMessageCenterItem,
   selectMessageCenterAttentionDeckItems,
   type WorkspaceAgentMessageCenterItem,
-  type WorkspaceAgentMessageCenterModel
+  type WorkspaceAgentMessageCenterModel,
+  type WorkspaceAgentMessageCenterOpenChatInput
 } from "./workspaceAgentMessageCenterModel";
 import { WorkspaceAgentMessageCenterAttentionDeck } from "./WorkspaceAgentMessageCenterAttentionDeck";
 import { MessageCenterViewMenu } from "./WorkspaceAgentMessageCenterViewControls";
@@ -90,7 +91,7 @@ export interface WorkspaceAgentMessageCenterPanelProps {
     action: string;
     provider: string;
   }) => void;
-  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onOpenChat: (input: WorkspaceAgentMessageCenterOpenChatInput) => void;
   promptStatus?: (
     item: WorkspaceAgentMessageCenterItem
   ) => "idle" | "responding" | "unknown" | "failed";
@@ -708,7 +709,7 @@ const MessageCenterRenderedCard = memo(function MessageCenterRenderedCard({
   item: WorkspaceAgentMessageCenterItem;
   lazySummary: boolean;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
-  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onOpenChat: (input: WorkspaceAgentMessageCenterOpenChatInput) => void;
   onSubmitPrompt: (
     item: WorkspaceAgentMessageCenterItem,
     input: WorkspaceAgentMessageCenterPromptInput

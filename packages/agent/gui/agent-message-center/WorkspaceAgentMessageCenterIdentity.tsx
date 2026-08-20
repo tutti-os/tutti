@@ -23,7 +23,8 @@ import { userAvatarPlaceholderUrl } from "../shared/userAvatarPlaceholder";
 import {
   isWaitingMessageCenterItem,
   type WorkspaceAgentMessageCenterIdentity,
-  type WorkspaceAgentMessageCenterItem
+  type WorkspaceAgentMessageCenterItem,
+  type WorkspaceAgentMessageCenterOpenChatInput
 } from "./workspaceAgentMessageCenterModel";
 
 export function MessageCenterOpenChatButton({
@@ -38,7 +39,7 @@ export function MessageCenterOpenChatButton({
   alwaysVisible?: boolean;
   item: WorkspaceAgentMessageCenterItem;
   label: string;
-  onOpenChat: (input: { agentSessionId: string; provider: string }) => void;
+  onOpenChat: (input: WorkspaceAgentMessageCenterOpenChatInput) => void;
   provider: string;
 }): JSX.Element {
   "use memo";
@@ -65,6 +66,7 @@ export function MessageCenterOpenChatButton({
           onClick={() =>
             onOpenChat({
               agentSessionId: item.agentSessionId,
+              agentTargetId: item.agentTargetId?.trim() || null,
               provider: item.provider
             })
           }
