@@ -612,6 +612,27 @@ test("desktop promotion notification tolerates skipped optional approval", async
   assert.match(notifyJob, /needs\.promote\.result\s*==\s*'success'/);
 });
 
+test("desktop promotion sends the canonical tag URL instead of a transient draft URL", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+
+  assert.match(
+    promoteWorkflow,
+    /release_url:\s+\${{\s*github\.server_url\s*}}\/\${{\s*github\.repository\s*}}\/releases\/tag\/\${{\s*needs\.resolve\.outputs\.release_tag\s*}}/
+  );
+  assert.doesNotMatch(
+    promoteWorkflow,
+    /release_url="\$\(jq -r \.html_url release\.json\)"/
+  );
+  assert.doesNotMatch(
+    promoteWorkflow,
+    /release_url:\s+\${{\s*needs\.resolve\.outputs\.release_url\s*}}/
+  );
+  assert.match(
+    promoteWorkflow,
+    /RELEASE_URL:\s+\${{\s*needs\.promote\.outputs\.release_url\s*}}/
+  );
+});
+
 test("desktop release workflow can mirror release assets to S3 and upsert direct download links", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
