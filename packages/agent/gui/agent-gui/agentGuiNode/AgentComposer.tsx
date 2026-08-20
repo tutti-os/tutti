@@ -398,11 +398,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   useEffect(() => {
     setHighlightedIndex(0);
     refreshComposerSlashCapabilities({
-      agentSessionId,
-      isPaletteOpen,
-      onRetryComposerOptions,
+      agentSessionId, isPaletteOpen,
+      onRetryComposerOptions, slashQuery,
       refreshedSessionRef: slashCapabilitiesRefreshedSessionRef,
-      slashQuery
     });
   }, [
     agentSessionId,
