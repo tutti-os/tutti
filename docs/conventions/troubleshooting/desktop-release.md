@@ -142,6 +142,38 @@
   [resolve-previous-release-tag.mjs](../../../apps/desktop/scripts/resolve-previous-release-tag.mjs)
   [githubReleaseBody.mjs](../../../apps/desktop/scripts/lib/githubReleaseBody.mjs)
 
+### Desktop release stalls after all packages finish building
+
+- Symptom:
+  Every macOS and Windows build succeeds and the GitHub draft assets are
+  staged, but `Stage Release Draft` remains in `Install AWS CLI` until GitHub
+  cancels the job near its six-hour runtime limit. The last output comes from
+  `apt-get update` and contains repeated `Ign` lines for Ubuntu package indexes.
+- Quick checks:
+  Inspect the start of `Install AWS CLI`. If the shell still runs
+  `sudo apt-get update`, the Actions run used a workflow revision from before
+  the bounded bootstrap fix. Confirm no later `curl` or `aws --version` line
+  appears; that distinguishes an APT mirror stall from an AWS CLI download or
+  credential failure.
+- Root cause:
+  The old bootstrap refreshed Ubuntu package indexes before checking for AWS
+  CLI. A transient runner mirror failure could therefore block an otherwise
+  complete release, and the step had no deadline below GitHub's job limit.
+- Fix:
+  Start a new release run from a revision that skips APT, extracts the official
+  AWS CLI archive with `python3 -m zipfile`, retries bounded downloads, and
+  limits the complete install step to five minutes. Re-running the original
+  Actions run is insufficient because GitHub reuses that run's old workflow
+  revision.
+- Validation:
+  Run `node --test tools/scripts/desktop-release-config.test.mjs`. Confirm both
+  release workflows reject `apt-get`, require the download retry/connect/total
+  time limits, use Python extraction, and set the step deadline.
+- References:
+  [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
+  [.github/workflows/desktop-release-promote.yml](../../../.github/workflows/desktop-release-promote.yml)
+  [desktop-release-config.test.mjs](../../../tools/scripts/desktop-release-config.test.mjs)
+
 ### Desktop dev GUI exits before opening
 
 - Symptom:
