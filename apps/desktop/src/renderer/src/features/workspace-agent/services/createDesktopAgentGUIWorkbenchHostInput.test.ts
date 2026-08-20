@@ -100,8 +100,7 @@ test("desktop agent GUI workbench host input reuses an injected agent host api",
         "workspace-issue",
         "agent-session",
         "workspace-app",
-        "agent-target",
-        "workspace-model"
+        "agent-target"
       ],
       surface: "composer",
       target: "agent-gui",
@@ -452,16 +451,26 @@ test("desktop provenance search sends the persisted project section key and agen
     }
   );
 
-  assert.deepEqual(generatedFileInputs, [
-    {
-      agentTargetIds: ["local:codex"],
-      limit: undefined,
-      query: "report",
-      sectionKey: "project:/Users/local/repo",
-      signal: undefined,
-      workspaceId
-    }
-  ]);
+  const [generatedFileInput] = generatedFileInputs as Array<{
+    signal?: AbortSignal;
+  }>;
+  assert.equal(generatedFileInput?.signal?.aborted, false);
+  assert.deepEqual(
+    generatedFileInputs.map((input) => ({
+      ...(input as Record<string, unknown>),
+      signal: undefined
+    })),
+    [
+      {
+        agentTargetIds: ["local:codex"],
+        limit: undefined,
+        query: "report",
+        sectionKey: "project:/Users/local/repo",
+        signal: undefined,
+        workspaceId
+      }
+    ]
+  );
   assert.equal(result.entries[0]?.ref.nodeId, "/outside/project/report.md");
 });
 
@@ -759,6 +768,23 @@ test("desktop agent GUI workbench host input tracks privacy-safe engagement even
     contentType: "large_text",
     hadPrefill: true
   });
+  await reportEngagement({
+    ...context,
+    source: "composer_input",
+    type: "quick_prompt_panel_opened"
+  });
+  await reportEngagement({
+    ...context,
+    promptType: "saved",
+    source: "composer_input",
+    type: "quick_prompt_used"
+  });
+  await reportEngagement({
+    ...context,
+    promptType: "recommended_template",
+    source: "composer_input",
+    type: "quick_prompt_used"
+  });
 
   assert.deepEqual(reporterCalls, [
     [
@@ -808,10 +834,67 @@ test("desktop agent GUI workbench host input tracks privacy-safe engagement even
           surface: "standalone_agent"
         }
       }
+    ],
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.quick_prompt_engagement",
+        params: {
+          action: "panel_opened",
+          agent_session_id: "session-1",
+          agent_target_id: "codex-local",
+          composer_ready: true,
+          conversation_state: "existing",
+          panel_visit_id: "visit-1",
+          provider: "codex",
+          source: "composer_input",
+          surface: "standalone_agent"
+        }
+      }
+    ],
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.quick_prompt_engagement",
+        params: {
+          action: "prompt_used",
+          agent_session_id: "session-1",
+          agent_target_id: "codex-local",
+          composer_ready: true,
+          conversation_state: "existing",
+          panel_visit_id: "visit-1",
+          prompt_type: "saved",
+          provider: "codex",
+          source: "composer_input",
+          surface: "standalone_agent"
+        }
+      }
+    ],
+    [
+      {
+        clientTS: 1749124800000,
+        name: "agent.quick_prompt_engagement",
+        params: {
+          action: "prompt_used",
+          agent_session_id: "session-1",
+          agent_target_id: "codex-local",
+          composer_ready: true,
+          conversation_state: "existing",
+          panel_visit_id: "visit-1",
+          prompt_type: "recommended_template",
+          provider: "codex",
+          source: "composer_input",
+          surface: "standalone_agent"
+        }
+      }
     ]
   ]);
-  assert.equal(JSON.stringify(reporterCalls).includes("prompt"), false);
-  assert.equal(JSON.stringify(reporterCalls).includes("path"), false);
+  for (const [event] of reporterCalls) {
+    assert.equal(event && "content" in (event.params ?? {}), false);
+    assert.equal(event && "title" in (event.params ?? {}), false);
+    assert.equal(event && "prompt" in (event.params ?? {}), false);
+    assert.equal(event && "path" in (event.params ?? {}), false);
+  }
 });
 
 test("desktop agent GUI workbench host input tracks runtime session pin changes", async () => {

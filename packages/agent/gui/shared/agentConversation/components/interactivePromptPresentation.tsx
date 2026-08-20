@@ -246,10 +246,14 @@ export function promptToolDetailLabel(kind: PromptToolDetail["kind"]): string {
       return translate("agentHost.agentTool.details.mcp");
     case "path":
       return translate("agentHost.agentTool.details.path");
+    case "prompt":
+      return translate("agentHost.agentTool.details.prompt");
     case "query":
       return translate("agentHost.agentTool.details.query");
     case "reason":
       return translate("agentHost.agentTool.details.summary");
+    case "url":
+      return translate("agentHost.agentTool.details.url");
   }
 }
 

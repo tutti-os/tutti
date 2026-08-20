@@ -16,6 +16,7 @@ import { useService } from "@tutti-os/infra/di";
 import { INotificationService } from "@tutti-os/ui-notifications";
 import {
   Button,
+  LoadingIcon,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -31,6 +32,7 @@ import {
   projectWorkspaceAccountMenuComposition
 } from "./workspaceAccountCommerceAdapter";
 import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
+import { startWorkspaceAccountLogin } from "./workspaceAccountLogin";
 
 const debugRegistrationCreditsToastStorageKey =
   "tutti.agentGui.debugRegistrationCreditsToast";
@@ -94,6 +96,7 @@ interface WorkspaceAccountMenuState {
   membershipAccess: MembershipAccessState;
   membershipTierKey: string | null;
   registrationCreditsToast: RegistrationCreditsToastState | null;
+  signingIn: boolean;
   onOpenChange(open: boolean): void;
   onLogin(): void;
   onLogout(): void;
@@ -228,6 +231,7 @@ function useWorkspaceAccountMenuState(
               }
             }
           : null,
+      signingIn: accountState.signingIn,
       onOpenChange(open) {
         if (open) {
           void accountService.refreshUserInfo();
@@ -237,7 +241,11 @@ function useWorkspaceAccountMenuState(
         }
       },
       onLogin() {
-        void accountService.startLogin();
+        void startWorkspaceAccountLogin(
+          accountService,
+          notifications,
+          t("workspace.accountMenu.signInFailed")
+        );
       },
       onLogout() {
         void accountService.logout();
@@ -266,6 +274,7 @@ function useWorkspaceAccountMenuState(
     };
   }, [
     accountService,
+    accountState.signingIn,
     accountState.user,
     commerceProjection,
     commerceEnabled,
@@ -282,6 +291,7 @@ function useWorkspaceAccountMenuState(
 type WorkspaceAccountMenuLabels = CommerceMenuLabels & {
   title: string;
   settings: string;
+  signingIn: string;
   free: string;
   signIn: string;
   signOut: string;
@@ -301,6 +311,7 @@ function useWorkspaceAccountMenuLabels(): WorkspaceAccountMenuLabels {
     creditsBalance: t("workspace.accountMenu.creditsBalance"),
     accountCenter: t("workspace.accountMenu.accountCenter"),
     settings: t("workspace.accountMenu.settings"),
+    signingIn: t("workspace.settings.account.signingIn"),
     free: t("workspace.accountMenu.free"),
     signIn: t("workspace.accountMenu.signIn"),
     signOut: t("workspace.accountMenu.signOut"),
@@ -349,6 +360,8 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
           <button
             type="button"
             aria-label={labels.signIn}
+            aria-busy={accountMenuState.signingIn}
+            disabled={accountMenuState.signingIn}
             onClick={accountMenuState.onLogin}
             className="relative grid size-8 cursor-pointer place-items-center rounded-full border border-transparent bg-transparent p-0 shadow-none [-webkit-app-region:no-drag]"
             data-account-signin-trigger="true"
@@ -367,11 +380,16 @@ const WorkspaceAccountMenuView = memo(function WorkspaceAccountMenuView({
             variant="ghost"
             size="sm"
             aria-label={labels.signIn}
+            aria-busy={accountMenuState.signingIn}
+            disabled={accountMenuState.signingIn}
             onClick={accountMenuState.onLogin}
             className="rounded-[4px] px-2.5 text-[13px] font-semibold text-[var(--workbench-chrome-foreground)] [-webkit-app-region:no-drag]"
             data-account-signin-trigger="true"
           >
-            {labels.signIn}
+            {accountMenuState.signingIn ? (
+              <LoadingIcon className="mr-1 size-3.5" />
+            ) : null}
+            {accountMenuState.signingIn ? labels.signingIn : labels.signIn}
           </Button>
         )}
       </div>

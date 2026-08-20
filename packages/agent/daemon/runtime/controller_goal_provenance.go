@@ -20,6 +20,9 @@ func (c *Controller) BindGoalProvenance(
 	fingerprint string,
 	binding GoalProvenanceBinding,
 ) (GoalProvenanceBinding, error) {
+	if session.IsSideConversation() {
+		return GoalProvenanceBinding{}, ErrSideConversationUnsupported
+	}
 	reporter, ok := c.goalProvenanceReporter()
 	if !ok {
 		return GoalProvenanceBinding{}, errors.New("durable goal provenance reporter is unavailable")
@@ -42,6 +45,9 @@ func (c *Controller) LookupGoalProvenance(
 	session Session,
 	fingerprint string,
 ) (GoalProvenanceBinding, bool, error) {
+	if session.IsSideConversation() {
+		return GoalProvenanceBinding{}, false, ErrSideConversationUnsupported
+	}
 	reporter, ok := c.goalProvenanceReporter()
 	if !ok {
 		return GoalProvenanceBinding{}, false, errors.New("durable goal provenance reporter is unavailable")

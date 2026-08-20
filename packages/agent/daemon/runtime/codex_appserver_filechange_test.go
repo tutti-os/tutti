@@ -113,6 +113,7 @@ func TestAppServerFileChangeApprovalUsesStartedItemChanges(t *testing.T) {
 	}
 	if pending == nil {
 		t.Fatal("pending approval is nil")
+		return
 	}
 	if pending.approvalPurpose != approvalPurposeEditFiles {
 		t.Fatalf("pending approval purpose = %q, want %q", pending.approvalPurpose, approvalPurposeEditFiles)

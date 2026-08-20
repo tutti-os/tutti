@@ -12,14 +12,14 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		scenarios []Scenario
 		wantCount int
 	}{
-		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 29},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 24},
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 34},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 29},
 		{name: "guidance", scenarios: GuidanceScenarios(), wantCount: 3},
 		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 5},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
 		{name: "title policy", scenarios: TitlePolicyScenarios(), wantCount: 1},
 		{name: "deletion admission", scenarios: DeletionAdmissionScenarios(), wantCount: 3},
-		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 7},
+		{name: "coordinator", scenarios: CoordinatorScenarios(), wantCount: 8},
 		{name: "goal", scenarios: GoalScenarios(), wantCount: 17},
 		{name: "commit observer", scenarios: CommitObserverScenarios(), wantCount: 2},
 	}
@@ -44,11 +44,41 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 	}
 }
 
+func TestPublishedWorkspaceRuntimeDisconnectScenarioCatalogHasUniqueNames(t *testing.T) {
+	t.Parallel()
+	scenarios := WorkspaceRuntimeDisconnectScenarios()
+	if len(scenarios) != 1 || scenarios[0].Name == "" {
+		t.Fatalf("workspace runtime disconnect scenarios=%#v", scenarios)
+	}
+}
+
+func TestPublishedWorkspaceRuntimeAdmissionScenarioCatalogHasUniqueNames(t *testing.T) {
+	scenarios := WorkspaceRuntimeAdmissionScenarios()
+	seen := make(map[string]struct{}, len(scenarios))
+	for _, scenario := range scenarios {
+		if scenario.Name == "" {
+			t.Fatal("workspace runtime admission scenario has empty name")
+		}
+		if _, duplicate := seen[scenario.Name]; duplicate {
+			t.Fatalf("duplicate workspace runtime admission scenario name %q", scenario.Name)
+		}
+		seen[scenario.Name] = struct{}{}
+	}
+}
+
 func TestPublishedInteractionTreeScenarioCatalogHasUniqueNames(t *testing.T) {
 	t.Parallel()
 	scenarios := InteractionTreeScenarios()
 	if len(scenarios) != 1 || scenarios[0].Name == "" {
 		t.Fatalf("interaction tree scenarios=%#v", scenarios)
+	}
+}
+
+func TestPublishedRailPlacementRecoveryScenarioCatalogHasUniqueNames(t *testing.T) {
+	t.Parallel()
+	scenarios := RailPlacementRecoveryScenarios()
+	if len(scenarios) != 1 || scenarios[0].Name == "" {
+		t.Fatalf("rail placement recovery scenarios=%#v", scenarios)
 	}
 }
 
@@ -76,7 +106,11 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create empty session",
 		"create with initial content",
 		"create with typed initial goal",
+		"initial Goal exposes execution pending",
+		"typed initial goal waits for canonical rail initialization",
+		"failed canonical initialization aborts unpublished runtime",
 		"create with explicit rail placement",
+		"create with authoritative rail placement outside local project registry",
 		"resume persisted session",
 		"send input",
 		"send connector-only input",
@@ -84,6 +118,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"guidance forwards exact target",
 		"guidance target mismatch does not dispatch provider and cleans claim",
 		"new turns require durable provider acceptance",
+		"providerless canonical terminal settles and replays submission",
 		"rejected initial submit discards runtime without completing canonical session",
 		"duplicate client submit id",
 		"exact turn cancel",
@@ -107,7 +142,11 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create empty session",
 		"create with initial content",
 		"create with typed initial goal",
+		"initial Goal exposes execution pending",
+		"typed initial goal waits for canonical rail initialization",
+		"failed canonical initialization aborts unpublished runtime",
 		"create with explicit rail placement",
+		"create with authoritative rail placement outside local project registry",
 		"resume persisted session",
 		"send input",
 		"send connector-only input",
@@ -115,6 +154,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"guidance forwards exact target",
 		"guidance target mismatch does not dispatch provider and cleans claim",
 		"new turns require durable provider acceptance",
+		"providerless canonical terminal settles and replays submission",
 		"rejected initial submit discards runtime without completing canonical session",
 		"duplicate client submit id",
 		"initial title cas",
@@ -131,12 +171,13 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 	}
 	wantCoordinator := []string{
 		"exact turn cancel",
+		"exact turn cancel keeps delivery-unconfirmed intent pending",
 		"interactive response",
 		"interactive response reuses provider request id across turns",
 		"interactive response race",
+		"interactive follow-up recovers through Host admission",
 		"plan decision",
-		"recover operations before stale turns and worktree sweep",
-		"worktree sweep failure propagates",
+		"recover operations before stale turns",
 	}
 	if got := scenarioNames(Scenarios()); !slices.Equal(got, wantAdapterLifecycle) {
 		t.Fatalf("adapter lifecycle scenarios=%v, want %v", got, wantAdapterLifecycle)

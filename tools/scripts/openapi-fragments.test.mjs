@@ -14,7 +14,7 @@ test("normalizes repository and package fragment references", () => {
       [
         "packages/workspace/issue-manager/openapi/issue-manager.v1.yaml",
         {
-          package: "@tutti-os/connector-market",
+          package: "@tutti-os/connector-contracts",
           path: "openapi/connector-market.v1.yaml"
         }
       ],
@@ -23,7 +23,7 @@ test("normalizes repository and package fragment references", () => {
     [
       "packages/workspace/issue-manager/openapi/issue-manager.v1.yaml",
       {
-        package: "@tutti-os/connector-market",
+        package: "@tutti-os/connector-contracts",
         path: "openapi/connector-market.v1.yaml"
       }
     ]
@@ -33,7 +33,7 @@ test("normalizes repository and package fragment references", () => {
 test("resolves package fragments through package exports", () => {
   const resolved = resolveOpenApiFragmentPath(
     {
-      package: "@tutti-os/connector-market",
+      package: "@tutti-os/connector-contracts",
       path: "openapi/connector-market.v1.yaml"
     },
     {
@@ -42,15 +42,15 @@ test("resolves package fragments through package exports", () => {
       resolvePackageSpecifier(specifier) {
         assert.equal(
           specifier,
-          "@tutti-os/connector-market/openapi/connector-market.v1.yaml"
+          "@tutti-os/connector-contracts/openapi/connector-market.v1.yaml"
         );
-        return "/node_modules/@tutti-os/connector-market/openapi/connector-market.v1.yaml";
+        return "/node_modules/@tutti-os/connector-contracts/openapi/connector-market.v1.yaml";
       }
     }
   );
   assert.equal(
     resolved,
-    "/node_modules/@tutti-os/connector-market/openapi/connector-market.v1.yaml"
+    "/node_modules/@tutti-os/connector-contracts/openapi/connector-market.v1.yaml"
   );
 });
 
@@ -58,7 +58,7 @@ test("rejects package paths that escape the package export boundary", () => {
   assert.throws(
     () =>
       normalizeOpenApiFragmentRefs(
-        [{ package: "@tutti-os/connector-market", path: "../private.yaml" }],
+        [{ package: "@tutti-os/connector-contracts", path: "../private.yaml" }],
         extensionKey
       ),
     /package-relative/

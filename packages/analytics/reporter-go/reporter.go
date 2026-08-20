@@ -184,11 +184,23 @@ type reporterCommon struct {
 	sessionID              string
 	appVersion             string
 	osName                 string
+	osVersion              string
+	cpuABI                 string
 	additional             map[string]any
 	dynamicContextProvider func() DynamicContext
 }
 
+type runtimeInfo struct {
+	osName    string
+	osVersion string
+	cpuABI    string
+}
+
 func newReporterCommon(config Config) (reporterCommon, error) {
+	return newReporterCommonWithRuntimeInfo(config, currentRuntimeInfo())
+}
+
+func newReporterCommonWithRuntimeInfo(config Config, runtimeInfo runtimeInfo) (reporterCommon, error) {
 	deviceID, err := resolveDeviceID(config)
 	if err != nil {
 		return reporterCommon{}, err
@@ -197,10 +209,30 @@ func newReporterCommon(config Config) (reporterCommon, error) {
 		deviceID:               deviceID,
 		sessionID:              uuid.NewString(),
 		appVersion:             config.Analytics.AppVersion,
-		osName:                 runtime.GOOS,
+		osName:                 runtimeInfo.osName,
+		osVersion:              runtimeInfo.osVersion,
+		cpuABI:                 runtimeInfo.cpuABI,
 		additional:             copyParams(config.CommonParams),
 		dynamicContextProvider: config.DynamicContextProvider,
 	}, nil
+}
+
+func currentRuntimeInfo() runtimeInfo {
+	return runtimeInfo{
+		osName:    runtime.GOOS,
+		osVersion: currentOSVersion(),
+		cpuABI:    runtime.GOARCH,
+	}
+}
+
+func (c reporterCommon) teaHeader() teaSDKHeader {
+	return teaSDKHeader{
+		AppVersion:      c.appVersion,
+		AppVersionMinor: c.appVersion,
+		OSName:          c.osName,
+		OSVersion:       c.osVersion,
+		CPUABI:          c.cpuABI,
+	}
 }
 
 func (c reporterCommon) snapshot() (map[string]any, string) {
@@ -237,7 +269,7 @@ func (c reporterCommon) dynamicContext() (dynamic DynamicContext) {
 	return dynamic
 }
 
-func normalizeEvents(events []Event, common map[string]any) []teaSDKEvent {
+func normalizeEvents(events []Event, common map[string]any, header teaSDKHeader) []teaSDKEvent {
 	normalized := make([]teaSDKEvent, 0, len(events))
 	for _, event := range events {
 		if event.Name == "" {
@@ -254,12 +286,19 @@ func normalizeEvents(events []Event, common map[string]any) []teaSDKEvent {
 		for key := range common {
 			delete(params, key)
 		}
-		if _, exists := params["event_id"]; !exists {
-			params["event_id"] = uuid.NewString()
+		for _, key := range []string{"app_version", "app_version_minor", "os_name", "os_version", "cpu_abi"} {
+			delete(params, key)
 		}
+		eventID, _ := params["event_id"].(string)
+		eventID = strings.TrimSpace(eventID)
+		if eventID == "" {
+			eventID = uuid.NewString()
+		}
+		params["event_id"] = eventID
 		normalized = append(normalized, teaSDKEvent{
 			Name:     event.Name,
 			ClientTS: clientTS,
+			EventID:  eventID,
 			Params:   params,
 		})
 	}

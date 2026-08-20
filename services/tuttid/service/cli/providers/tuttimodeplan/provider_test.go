@@ -827,6 +827,28 @@ func TestIssueAcknowledgeConflictAndRejectedFenceMapToInvalidInput(t *testing.T)
 	}
 }
 
+func TestAgentPlanPreferenceMismatchMapsToActionableInvalidInput(t *testing.T) {
+	actualEffect := 90
+	actualSpeed := 55
+	err := agentPlanError(&tuttimodeplanservice.PreferenceSnapshotMismatchError{
+		ExpectedEffect: 50,
+		ExpectedSpeed:  50,
+		ActualEffect:   &actualEffect,
+		ActualSpeed:    &actualSpeed,
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("preference mismatch mapped to %v, want invalid input", err)
+	}
+	if got := cliservice.InvokeErrorReason(err); got != "tutti_mode_preference_snapshot_mismatch" {
+		t.Fatalf("preference mismatch reason = %q", got)
+	}
+	for _, expected := range []string{"execution.effect to 50", "execution.speed to 50"} {
+		if !strings.Contains(err.Error(), expected) {
+			t.Fatalf("preference mismatch error = %v, want %q", err, expected)
+		}
+	}
+}
+
 func TestRunIssueAcknowledgeMapsMissingExecutionWithoutScheduleCopy(t *testing.T) {
 	_, err := (Provider{
 		acknowledgements: &recordingIssueAcknowledger{
@@ -1201,7 +1223,7 @@ func TestRunProposeUsesAgentSessionWithoutInventingToolCallProvenance(t *testing
 		t.Fatalf("write proposal: %v", err)
 	}
 	plans := &recordingPlans{}
-	result, err := NewProvider(nil, plans, nil).runPropose(context.Background(), framework.InvokeContext{
+	result, err := NewProvider(nil, plans, &stubActiveTurns{turnID: "turn-1"}).runPropose(context.Background(), framework.InvokeContext{
 		WorkspaceID: "workspace-1",
 		Request: cliservice.InvokeRequest{Context: cliservice.InvokeContext{
 			AgentSessionID:  "session-1",
@@ -1235,18 +1257,28 @@ func (turns *stubActiveTurns) PersistedActiveTurnID(_ context.Context, workspace
 	return turns.turnID, turns.err
 }
 
-func TestRunProposeStampsCallerActiveTurnBestEffort(t *testing.T) {
+func TestRunProposeRequiresAndStampsCallerActiveTurn(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "proposal.md")
 	if err := os.WriteFile(path, configurationMarkdownFixture(), 0o600); err != nil {
 		t.Fatalf("write proposal: %v", err)
 	}
 	for name, testCase := range map[string]struct {
-		turns *stubActiveTurns
-		want  string
+		turns   *stubActiveTurns
+		want    string
+		wantErr bool
 	}{
-		"stamps the persisted active turn": {turns: &stubActiveTurns{turnID: " turn-9 "}, want: "turn-9"},
-		// Anchoring is decoration; a pointer read failure must not fail propose.
-		"resolver failure degrades to no anchor": {turns: &stubActiveTurns{err: errors.New("pointer read failed")}, want: ""},
+		"stamps the persisted active turn": {
+			turns: &stubActiveTurns{turnID: " turn-9 "},
+			want:  "turn-9",
+		},
+		"resolver failure fails closed": {
+			turns:   &stubActiveTurns{err: errors.New("pointer read failed")},
+			wantErr: true,
+		},
+		"missing pointer fails closed": {
+			turns:   &stubActiveTurns{},
+			wantErr: true,
+		},
 	} {
 		t.Run(name, func(t *testing.T) {
 			plans := &recordingPlans{}
@@ -1254,6 +1286,15 @@ func TestRunProposeStampsCallerActiveTurnBestEffort(t *testing.T) {
 				WorkspaceID: "workspace-1",
 				Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: "session-1"}},
 			}, proposeInput{File: path, RequestID: "proposal-request-1"})
+			if testCase.wantErr {
+				if err == nil {
+					t.Fatal("runPropose() error = nil, want missing source Turn error")
+				}
+				if plans.proposeInput.RequestID != "" {
+					t.Fatalf("plan service was called without exact source Turn: %#v", plans.proposeInput)
+				}
+				return
+			}
 			if err != nil {
 				t.Fatalf("runPropose() error = %v", err)
 			}
@@ -1293,7 +1334,7 @@ func TestAgentPlanCommandsRequireAndPropagateCallerSession(t *testing.T) {
 	}
 
 	plans := &recordingPlans{}
-	provider = NewProvider(nil, plans, nil)
+	provider = NewProvider(nil, plans, &stubActiveTurns{turnID: "turn-9"})
 	invoke := framework.InvokeContext{
 		WorkspaceID: "workspace-1",
 		Request:     cliservice.InvokeRequest{Context: cliservice.InvokeContext{AgentSessionID: " session-1 "}},
@@ -1306,6 +1347,9 @@ func TestAgentPlanCommandsRequireAndPropagateCallerSession(t *testing.T) {
 	}
 	if plans.reviseInput.AgentSessionID != "session-1" || plans.reviseInput.RequestID != "revision-request-1" || plans.getInput.AgentSessionID != "session-1" {
 		t.Fatalf("caller session was not propagated: revise=%#v get=%#v", plans.reviseInput, plans.getInput)
+	}
+	if plans.reviseInput.ProducedByTurnID != "turn-9" {
+		t.Fatalf("revision source turn = %q, want turn-9", plans.reviseInput.ProducedByTurnID)
 	}
 }
 
@@ -1339,7 +1383,7 @@ func activeActivation() *activationbiz.Activation {
 	return &activationbiz.Activation{
 		ID: "activation-1",
 		CurrentRevision: activationbiz.Revision{
-			Revision: 1, State: activationbiz.StateActive, Source: activationbiz.SourceAgentCommand,
+			Revision: 1, State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
 		},
 	}
 }
@@ -1360,8 +1404,12 @@ func TestTuttiModeGateRejectsInactiveSessionsAndAllowsActive(t *testing.T) {
 	_, err := NewProvider(nil, inactivePlans, nil).
 		WithTuttiModeActivations(inactiveReader).
 		runPropose(context.Background(), invoke, proposeInput{File: path, RequestID: "request-1"})
-	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "Tutti Mode is not active") {
+	if !errors.Is(err, cliservice.ErrInvalidInput) ||
+		!strings.Contains(err.Error(), "only the user can turn it on") {
 		t.Fatalf("inactive propose error = %v, want tutti-mode-inactive invalid input", err)
+	}
+	if strings.Contains(err.Error(), "tutti mode set") {
+		t.Fatalf("inactive propose error = %v, must not offer an Agent activation command", err)
 	}
 	if inactivePlans.proposeInput.RequestID != "" {
 		t.Fatalf("inactive session reached plan service: %#v", inactivePlans.proposeInput)
@@ -1372,7 +1420,7 @@ func TestTuttiModeGateRejectsInactiveSessionsAndAllowsActive(t *testing.T) {
 
 	// An active session proceeds to the plan service.
 	activePlans := &recordingPlans{}
-	_, err = NewProvider(nil, activePlans, nil).
+	_, err = NewProvider(nil, activePlans, &stubActiveTurns{turnID: "turn-1"}).
 		WithTuttiModeActivations(&stubActivationReader{activation: activeActivation()}).
 		runPropose(context.Background(), invoke, proposeInput{File: path, RequestID: "request-2"})
 	if err != nil {
@@ -1384,7 +1432,7 @@ func TestTuttiModeGateRejectsInactiveSessionsAndAllowsActive(t *testing.T) {
 
 	// An unwired reader leaves the gate open (best-effort semantics).
 	openPlans := &recordingPlans{}
-	if _, err := NewProvider(nil, openPlans, nil).
+	if _, err := NewProvider(nil, openPlans, &stubActiveTurns{turnID: "turn-1"}).
 		runPropose(context.Background(), invoke, proposeInput{File: path, RequestID: "request-3"}); err != nil {
 		t.Fatalf("unwired gate error = %v", err)
 	}

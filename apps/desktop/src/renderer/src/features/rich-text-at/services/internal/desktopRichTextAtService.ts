@@ -12,6 +12,7 @@ import {
   createRichTextMarkdownLinkInsertResult,
   createRichTextTriggerProvider
 } from "@tutti-os/ui-rich-text/plugins";
+import { isRichTextFolderHref } from "@tutti-os/ui-rich-text/core";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type { WorkspaceUserProject } from "@tutti-os/workspace-user-project/contracts";
 import {
@@ -34,7 +35,6 @@ import {
   createAgentSessionAtContributor,
   createAgentTargetAtContributor
 } from "./desktopRichTextAtAgentContributors.ts";
-import { createWorkspaceModelAtContributor } from "./desktopRichTextAtModelContributor.ts";
 import {
   compactMentionPresentation,
   compactStringRecord,
@@ -133,8 +133,7 @@ export class DesktopRichTextAtService implements IDesktopRichTextAtService {
       createWorkspaceAppAtContributor({
         tuttidClient: dependencies.tuttidClient,
         getLocale: dependencies.getLocale
-      }),
-      createWorkspaceModelAtContributor(dependencies.tuttidClient)
+      })
     ];
   }
 
@@ -528,12 +527,12 @@ function resolveWorkspaceFileLabel(item: WorkspaceFileAtItem): string {
   }
 
   const path = item.path.trim();
-  return path.split("/").filter(Boolean).at(-1) || path;
+  return path.replace(/\\/g, "/").split("/").filter(Boolean).at(-1) || path;
 }
 
 function isIssueWorkspaceRuntimePath(path: string, root: string): boolean {
-  const trimmed = path.trim();
-  const normalizedRoot = root.trim().replace(/\/+$/, "");
+  const trimmed = normalizeWorkspaceFileBoundaryPath(path);
+  const normalizedRoot = normalizeWorkspaceFileBoundaryPath(root);
   if (!normalizedRoot) {
     return false;
   }
@@ -770,7 +769,7 @@ function queryMetadataString(
 
 function workspaceFileReferenceHref(item: WorkspaceFileAtItem): string {
   const path = item.path.trim();
-  if (item.kind === "directory" && path && !path.endsWith("/")) {
+  if (item.kind === "directory" && path && !isRichTextFolderHref(path)) {
     return `${path}/`;
   }
   return path;

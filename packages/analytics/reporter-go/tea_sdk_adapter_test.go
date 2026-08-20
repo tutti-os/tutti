@@ -1,6 +1,7 @@
 package reporter
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -8,6 +9,63 @@ import (
 
 	sdk "github.com/volcengine/datarangers-sdk-go"
 )
+
+func TestTeaSDKPayloadUsesPresetHeaderAndEventID(t *testing.T) {
+	var payload []byte
+	adapter := defaultTeaSDK{
+		sendEventsWithHeader: func(_ sdk.AppType, appID int64, header *sdk.Header, events []*sdk.EventV3) error {
+			var err error
+			payload, err = json.Marshal(&sdk.ServerSdkEventMessage{
+				AppId:   &appID,
+				Header:  header,
+				EventV3: events,
+			})
+			return err
+		},
+	}
+	eventID := "event-1"
+	err := adapter.Send(
+		20004092,
+		"user-1",
+		[]teaSDKEvent{{
+			Name:     "workspace.opened",
+			ClientTS: 1749124800000,
+			EventID:  eventID,
+			Params:   map[string]any{"event_id": eventID},
+		}},
+		map[string]any{"os": "darwin", "app_version": "1.2.3-rc.4"},
+		teaSDKHeader{
+			AppVersion:      "1.2.3-rc.4",
+			AppVersionMinor: "1.2.3-rc.4",
+			OSName:          "darwin",
+			OSVersion:       "15.6",
+			CPUABI:          "arm64",
+		},
+	)
+	if err != nil {
+		t.Fatalf("Send() error = %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(payload, &decoded); err != nil {
+		t.Fatalf("decode payload: %v", err)
+	}
+	decodedHeader := decoded["header"].(map[string]any)
+	for key, want := range map[string]string{
+		"app_version":       "1.2.3-rc.4",
+		"app_version_minor": "1.2.3-rc.4",
+		"os_name":           "darwin",
+		"os_version":        "15.6",
+		"cpu_abi":           "arm64",
+	} {
+		if got := decodedHeader[key]; got != want {
+			t.Fatalf("header[%q] = %v, want %q; payload=%s", key, got, want, payload)
+		}
+	}
+	decodedEvent := decoded["event_v3"].([]any)[0].(map[string]any)
+	if got := decodedEvent["event_id"]; got != eventID {
+		t.Fatalf("event_id = %v, want %q; payload=%s", got, eventID, payload)
+	}
+}
 
 func TestEnsureTeaSDKLogDirSecuresExistingDirectory(t *testing.T) {
 	logDir := filepath.Join(t.TempDir(), "sdk-logs")

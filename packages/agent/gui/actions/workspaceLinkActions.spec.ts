@@ -65,9 +65,9 @@ describe("resolveWorkspaceFileLinkAction", () => {
       })
     ).toMatchObject({
       type: "open-workspace-file",
-      path: "C:/Users/test/project/tutti/src/App.tsx",
-      directoryPath: "C:/Users/test/project/tutti/src",
-      workspaceRoot: "C:/Users/test/project/tutti"
+      path: "/C:/Users/test/project/tutti/src/App.tsx",
+      directoryPath: "/C:/Users/test/project/tutti/src",
+      workspaceRoot: "/C:/Users/test/project/tutti"
     });
   });
 
@@ -331,9 +331,22 @@ describe("resolveWorkspaceFileLinkAction", () => {
       })
     ).toMatchObject({
       type: "open-workspace-file",
-      path: "C:/Users/test/project/tutti/src/App.tsx",
-      directoryPath: "C:/Users/test/project/tutti/src",
-      workspaceRoot: "C:/Users/test/project/tutti"
+      path: "/C:/Users/test/project/tutti/src/App.tsx",
+      directoryPath: "/C:/Users/test/project/tutti/src",
+      workspaceRoot: "/C:/Users/test/project/tutti"
+    });
+
+    expect(
+      resolveWorkspaceFileLinkAction({
+        path: "/c/Users/test/project/tutti/src/App.tsx",
+        workspaceRoot: "C:\\Users\\test\\project\\tutti",
+        source: "agent-file-change"
+      })
+    ).toMatchObject({
+      type: "open-workspace-file",
+      path: "/C:/Users/test/project/tutti/src/App.tsx",
+      directoryPath: "/C:/Users/test/project/tutti/src",
+      workspaceRoot: "/C:/Users/test/project/tutti"
     });
   });
 });

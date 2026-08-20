@@ -6,7 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
@@ -27,6 +29,56 @@ type RailSection struct {
 	Kind        string
 	ProjectPath string
 	Key         string
+}
+
+// ResolveAgentSessionRailSectionInput identifies the final runtime context
+// used to resolve a session's immutable rail section before process startup.
+type ResolveAgentSessionRailSectionInput struct {
+	WorkspaceID       string
+	AgentSessionID    string
+	Cwd               string
+	RuntimeContext    map[string]any
+	ExplicitPlacement *RailSection
+	// ExplicitPlacementAuthoritative accepts a new project placement without
+	// requiring it to appear in this store's local project registry.
+	ExplicitPlacementAuthoritative bool
+}
+
+// ResolveAgentSessionRailSection resolves the same existing, explicit, import,
+// and cwd-based rail decision used by canonical session persistence without
+// mutating the store.
+func (s *Store) ResolveAgentSessionRailSection(
+	ctx context.Context,
+	input ResolveAgentSessionRailSectionInput,
+) (RailSection, error) {
+	if s == nil || s.db == nil {
+		return RailSection{}, fmt.Errorf("resolve workspace agent session rail section: store is unavailable")
+	}
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	if workspaceID == "" || agentSessionID == "" {
+		return RailSection{}, fmt.Errorf("resolve workspace agent session rail section: workspace and session are required")
+	}
+	tx, err := s.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return RailSection{}, fmt.Errorf("resolve workspace agent session rail section: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	section, err := s.resolveAgentSessionRailSectionTx(
+		ctx,
+		tx,
+		workspaceID,
+		agentSessionID,
+		strings.TrimSpace(input.Cwd),
+		input.RuntimeContext,
+		"",
+		input.ExplicitPlacement,
+		input.ExplicitPlacementAuthoritative,
+	)
+	if err != nil {
+		return RailSection{}, err
+	}
+	return section, nil
 }
 
 type existingAgentSessionRailSection struct {
@@ -57,6 +109,7 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	runtimeContext map[string]any,
 	importProjectPath string,
 	explicitPlacement *RailSection,
+	explicitPlacementAuthoritative bool,
 ) (RailSection, error) {
 	existingRail, err := getExistingAgentSessionRailSectionTx(ctx, tx, workspaceID, agentSessionID)
 	if err != nil {
@@ -65,6 +118,29 @@ func (s *Store) resolveAgentSessionRailSectionTx(
 	explicitRail, hasExplicitRail, err := explicitAgentSessionRailSection(explicitPlacement)
 	if err != nil {
 		return RailSection{}, err
+	}
+	if !existingRail.Found && hasExplicitRail && explicitRail.Kind == RailSectionKindProject && !explicitPlacementAuthoritative {
+		projectPaths, err := s.listRailProjectPaths(ctx, tx)
+		if err != nil {
+			return RailSection{}, err
+		}
+		registered := false
+		for _, projectPath := range projectPaths {
+			if AreProjectPathsEqual(projectPath, explicitRail.ProjectPath) {
+				registered = true
+				break
+			}
+		}
+		// Placement is selected before the canonical session transaction. If
+		// that project was removed in between, Chats is the only valid durable
+		// owner; accepting the stale explicit placement would recreate an
+		// orphan project rail after deletion committed.
+		if !registered {
+			explicitRail = RailSection{
+				Kind: RailSectionKindConversations,
+				Key:  RailSectionKeyConversations,
+			}
+		}
 	}
 	importRail, hasImportRail := importedAgentSessionRailSection(
 		finalCWD,
@@ -201,7 +277,7 @@ func ClassifyRailSection(
 	projects := normalizeRailProjectPaths(projectPaths)
 	normalizedCWD := NormalizeProjectPath(cwd)
 	for _, project := range projects {
-		if project == normalizedCWD {
+		if sameRailPath(project, normalizedCWD) {
 			return RailSection{
 				Kind:        RailSectionKindProject,
 				ProjectPath: project,
@@ -249,16 +325,24 @@ func normalizeRailProjectPaths(paths []string) []string {
 }
 
 // NormalizeProjectPath canonicalizes a project or session path the same way
-// rail classification does: absolute, symlink-resolved for existing
-// directories, and cleaned.
-func NormalizeProjectPath(path string) string {
-	path = strings.TrimSpace(path)
-	if path == "" {
+// rail classification does. Native host paths are made absolute,
+// symlink-resolved for existing directories, and cleaned. A POSIX-rooted
+// logical path stays in that namespace when the host is Windows.
+func NormalizeProjectPath(projectPath string) string {
+	return normalizeProjectPathForPlatform(projectPath, runtime.GOOS)
+}
+
+func normalizeProjectPathForPlatform(projectPath string, goos string) string {
+	projectPath = strings.TrimSpace(projectPath)
+	if projectPath == "" {
 		return ""
 	}
-	absolute, err := filepath.Abs(path)
+	if goos == "windows" && isPOSIXProjectPath(projectPath) {
+		return pathpkg.Clean(strings.ReplaceAll(projectPath, `\`, "/"))
+	}
+	absolute, err := filepath.Abs(projectPath)
 	if err != nil {
-		return filepath.Clean(path)
+		return filepath.Clean(projectPath)
 	}
 	if info, statErr := os.Stat(absolute); statErr == nil && info.IsDir() {
 		if evaluated, evalErr := filepath.EvalSymlinks(absolute); evalErr == nil {
@@ -269,15 +353,36 @@ func NormalizeProjectPath(path string) string {
 }
 
 func agentSessionRailPathContains(parent string, child string) bool {
-	parent = NormalizeProjectPath(parent)
-	child = NormalizeProjectPath(child)
+	return IsProjectPathWithin(parent, child)
+}
+
+// IsProjectPathWithin reports whether child is the same as, or nested below,
+// parent using the current platform's filesystem identity rules.
+func IsProjectPathWithin(parent string, child string) bool {
+	return isProjectPathWithinForPlatform(parent, child, runtime.GOOS)
+}
+
+func isProjectPathWithinForPlatform(parent string, child string, goos string) bool {
+	parent = normalizeProjectPathForPlatform(parent, goos)
+	child = normalizeProjectPathForPlatform(child, goos)
 	if parent == "" || child == "" {
 		return false
 	}
-	if parent == child {
+	if sameRailPathForPlatform(parent, child, goos) {
 		return true
 	}
-	rel, err := filepath.Rel(parent, child)
+	parentIsPOSIX := isPOSIXProjectPath(parent)
+	childIsPOSIX := isPOSIXProjectPath(child)
+	if parentIsPOSIX != childIsPOSIX {
+		return false
+	}
+	comparisonParent := railPathForComparisonForPlatform(parent, goos)
+	comparisonChild := railPathForComparisonForPlatform(child, goos)
+	if goos == "windows" && parentIsPOSIX {
+		prefix := strings.TrimSuffix(comparisonParent, "/") + "/"
+		return strings.HasPrefix(comparisonChild, prefix)
+	}
+	rel, err := filepath.Rel(comparisonParent, comparisonChild)
 	if err != nil {
 		return false
 	}
@@ -354,7 +459,7 @@ func conversationsAgentSessionRailSection() RailSection {
 // the given project are stored under, matching the SectionKey accepted by
 // ListSessionSection.
 func RailSectionKeyForProject(projectPath string) string {
-	projectPath = NormalizeProjectPath(projectPath)
+	projectPath = railIdentityPath(projectPath)
 	if projectPath == "" {
 		return RailSectionKeyConversations
 	}
@@ -374,6 +479,68 @@ func NormalizeRailSectionKey(sectionKey string) string {
 		return RailSectionKeyForProject(strings.TrimPrefix(sectionKey, prefix))
 	}
 	return sectionKey
+}
+
+func railIdentityPath(path string) string {
+	return railIdentityPathForPlatform(path, runtime.GOOS)
+}
+
+func railIdentityPathForPlatform(path string, goos string) string {
+	path = normalizeProjectPathForPlatform(path, goos)
+	if goos == "windows" && isWindowsProjectPath(path) {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+func railPathForComparisonForPlatform(path string, goos string) string {
+	if goos == "windows" && isWindowsProjectPath(path) {
+		return strings.ToLower(path)
+	}
+	return path
+}
+
+func sameRailPath(left string, right string) bool {
+	return sameRailPathForPlatform(left, right, runtime.GOOS)
+}
+
+func sameRailPathForPlatform(left string, right string, goos string) bool {
+	return railPathForComparisonForPlatform(left, goos) == railPathForComparisonForPlatform(right, goos)
+}
+
+func isPOSIXProjectPath(path string) bool {
+	return strings.HasPrefix(path, "/") && !isWindowsProjectPath(path)
+}
+
+func isWindowsProjectPath(path string) bool {
+	if len(path) >= 3 && isASCIIAlpha(path[0]) && path[1] == ':' && isProjectPathSeparator(path[2]) {
+		return true
+	}
+	return len(path) >= 3 &&
+		isProjectPathSeparator(path[0]) &&
+		isProjectPathSeparator(path[1]) &&
+		!isProjectPathSeparator(path[2])
+}
+
+func isProjectPathSeparator(value byte) bool {
+	return value == '/' || value == '\\'
+}
+
+func isASCIIAlpha(value byte) bool {
+	return value >= 'a' && value <= 'z' || value >= 'A' && value <= 'Z'
+}
+
+// AreProjectPathsEqual compares project paths using the filesystem identity
+// rules of the current platform. Windows drive and UNC paths are
+// case-insensitive and accept either slash direction; POSIX paths remain
+// case-sensitive.
+func AreProjectPathsEqual(left string, right string) bool {
+	left = NormalizeProjectPath(left)
+	right = NormalizeProjectPath(right)
+	if left == "" || right == "" {
+		return left == right
+	}
+	return sameRailPath(left, right)
 }
 
 func normalizeAgentSessionRailSection(section RailSection) RailSection {

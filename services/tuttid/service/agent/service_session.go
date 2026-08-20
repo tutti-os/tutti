@@ -144,10 +144,31 @@ func (s *Service) initializeRuntimeSession(
 	session ProviderRuntimeSession,
 	railPlacement *agenthost.RailPlacement,
 ) (PersistedSession, error) {
+	return s.initializeRuntimeSessionWithRailAuthority(ctx, session, railPlacement, false)
+}
+
+func (s *Service) initializeRuntimeSessionWithRailAuthority(
+	ctx context.Context,
+	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
+	railPlacementAuthoritative bool,
+) (PersistedSession, error) {
 	if s == nil || s.SessionInitializer == nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: session initializer is unavailable")
 	}
-	persisted, err := s.SessionInitializer.InitializeRuntimeSession(ctx, session, railPlacement)
+	var (
+		persisted PersistedSession
+		err       error
+	)
+	if initializer, ok := s.SessionInitializer.(sessionInitializerWithRailAuthority); ok {
+		persisted, err = initializer.InitializeRuntimeSessionWithRailAuthority(
+			ctx, session, railPlacement, railPlacementAuthoritative,
+		)
+	} else if railPlacementAuthoritative {
+		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: session initializer does not support authoritative rail placement")
+	} else {
+		persisted, err = s.SessionInitializer.InitializeRuntimeSession(ctx, session, railPlacement)
+	}
 	if err != nil {
 		return PersistedSession{}, fmt.Errorf("initialize workspace agent session: %w", err)
 	}

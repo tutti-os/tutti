@@ -115,15 +115,3 @@ func digestWorkflowRevision(raw []byte) string {
 	hash := sha256.Sum256(raw)
 	return fmt.Sprintf("%x", hash[:])
 }
-
-func syncWorkflowRevisionDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return fmt.Errorf("open workspace workflow revision directory: %w", err)
-	}
-	defer directory.Close()
-	if err := directory.Sync(); err != nil {
-		return fmt.Errorf("sync workspace workflow revision directory: %w", err)
-	}
-	return nil
-}

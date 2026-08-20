@@ -8,6 +8,7 @@ import {
   dispatchSessionForkThroughTurn,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
+import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import type { useAgentHostApi } from "../../../agentActivityHost";
 import type { AgentHostUserProject } from "../../../host/agentHostApi";
@@ -55,11 +56,11 @@ export function useAgentGUIConversationMetadataActions(
   } = input;
 
   const removeProject = useCallback(
-    (path: string) => {
+    async (path: string): Promise<boolean> => {
       const normalizedPath = path.trim();
       const remove = agentHostApi.userProjects?.remove;
       if (!normalizedPath || !remove) {
-        return;
+        return false;
       }
       setListError(null);
       // Filter the visible list only after the backend confirms the delete
@@ -71,23 +72,23 @@ export function useAgentGUIConversationMetadataActions(
       // reports the removed project's section, and nothing re-triggers a
       // refetch afterwards, so the row stays visible until an unrelated
       // remount forces a fresh fetch.
-      const handleRemoveError = (error: unknown) => {
+      const handleRemoveError = (error: unknown): false => {
         const message = getAgentGUIErrorMessage(error);
         setListError(message);
         showAgentGUIControllerErrorToast(agentHostApi.toast, message);
+        return false;
       };
       try {
-        void Promise.resolve(remove({ path: normalizedPath }))
-          .then(() => {
-            setUserProjectsSnapshot(
-              userProjectsRef.current.filter(
-                (project) => project.path !== normalizedPath
-              )
-            );
-          })
-          .catch(handleRemoveError);
+        await remove({ path: normalizedPath });
+        setUserProjectsSnapshot(
+          userProjectsRef.current.filter(
+            (project) =>
+              !areWorkspaceUserProjectPathsEqual(project.path, normalizedPath)
+          )
+        );
+        return true;
       } catch (error) {
-        handleRemoveError(error);
+        return handleRemoveError(error);
       }
     },
     [agentHostApi.toast, agentHostApi.userProjects, setUserProjectsSnapshot]

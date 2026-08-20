@@ -25,6 +25,9 @@ function quotaRenderStateEquals(
   return (
     left?.quotaType === right?.quotaType &&
     left?.percentRemaining === right?.percentRemaining &&
+    left?.amountRemaining === right?.amountRemaining &&
+    left?.amountLimit === right?.amountLimit &&
+    left?.amountUnit === right?.amountUnit &&
     left?.resetsAtUnixMs === right?.resetsAtUnixMs &&
     left?.resetText === right?.resetText &&
     left?.dollarRemaining === right?.dollarRemaining &&
@@ -206,6 +209,8 @@ export function buildDockAgentProbeTooltipLines(
 
 interface DockDisplayQuotaRow {
   label: string;
+  amountRemaining?: number;
+  amountUnit?: AgentUsageQuota["amountUnit"];
   percentRemaining?: number;
   dollarRemaining?: number;
   resetDisplay?: string;
@@ -238,6 +243,8 @@ function quotaTypeLabel(quotaType: string, t: TranslateFn): string {
       return t("agentHost.workspaceAgentProbeQuotaDaily");
     case "cost":
       return t("agentHost.workspaceAgentProbeQuotaCost");
+    case "credits":
+      return t("agentHost.workspaceAgentProbeQuotaCredits");
     default:
       return quotaType;
   }
@@ -254,6 +261,8 @@ function buildCompactDisplayQuotas(
     (quota) => !quota.modelName && quota.quotaType !== "model"
   );
   const displayRows: DockDisplayQuotaRow[] = nonModelQuotas.map((quota) => ({
+    amountRemaining: quota.amountRemaining,
+    amountUnit: quota.amountUnit,
     label:
       quota.quotaType === "session" ? "" : quotaTypeLabel(quota.quotaType, t),
     percentRemaining: quota.percentRemaining,
@@ -291,6 +300,15 @@ function formatQuotaPrimaryLine(
   row: DockDisplayQuotaRow,
   t: TranslateFn
 ): string | null {
+  if (
+    row.amountUnit === "credits" &&
+    row.amountRemaining !== undefined &&
+    Number.isFinite(row.amountRemaining)
+  ) {
+    return t("agentHost.workspaceAgentProbeQuotaCreditsRemaining", {
+      amount: formatQuotaAmount(row.amountRemaining)
+    });
+  }
   if (row.percentRemaining !== undefined) {
     return t("agentHost.workspaceAgentProbeQuotaRemaining", {
       percent: Math.round(row.percentRemaining)
@@ -302,6 +320,12 @@ function formatQuotaPrimaryLine(
     });
   }
   return null;
+}
+
+function formatQuotaAmount(value: number): string {
+  return Math.max(0, value).toLocaleString("en-US", {
+    maximumFractionDigits: 2
+  });
 }
 
 function appendDockProbeUsageLines(

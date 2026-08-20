@@ -76,7 +76,11 @@ export const statusLabelKeys = {
     "workspace.workbenchDesktop.agentProviders.manageStatusAuthRequired",
   available: "workspace.workbenchDesktop.agentProviders.manageStatusAvailable",
   checking: "workspace.workbenchDesktop.agentProviders.manageStatusChecking",
+  configured:
+    "workspace.workbenchDesktop.agentProviders.manageStatusConfigured",
   connected: "workspace.workbenchDesktop.agentProviders.manageStatusConnected",
+  temporarily_unsupported:
+    "workspace.workbenchDesktop.agentProviders.manageStatusTemporarilyUnsupported",
   unknown: "workspace.workbenchDesktop.agentProviders.manageStatusUnknown",
   unsupported:
     "workspace.workbenchDesktop.agentProviders.manageStatusUnsupported"
@@ -478,9 +482,11 @@ export function resolveStatusDotTone(
   switch (status) {
     case "connected":
       return "green";
+    case "configured":
     case "available":
       return "blue";
     case "auth_required":
+    case "temporarily_unsupported":
     case "unsupported":
       return "amber";
     case "checking":

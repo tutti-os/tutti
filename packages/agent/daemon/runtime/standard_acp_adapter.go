@@ -10,6 +10,16 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
+type standardACPProviderMessageHandler func(
+	context.Context,
+	*acpClient,
+	Session,
+	string,
+	acpMessage,
+	*acpTurnNormalizer,
+	EventSink,
+) ([]activityshared.Event, bool, error)
+
 type standardACPConfig struct {
 	provider            string
 	adapterName         string
@@ -32,6 +42,17 @@ type standardACPConfig struct {
 	// right after it succeeds and may reject the start (setup probes use it to
 	// catch agents that create a session they cannot actually serve).
 	validateNewSessionResult func(json.RawMessage) error
+	// validateSettings rejects provider-specific setting combinations both
+	// before startup and before live settings reach the provider. Generic ACP
+	// descriptors can expose provider-wide options even when the selected model
+	// narrows their support.
+	validateSettings func(Session, SessionSettingsPatch) error
+	// filterRuntimeConfigOptionDescriptors removes provider-invalid capability
+	// values before descriptors become the live RuntimeContext authority.
+	filterRuntimeConfigOptionDescriptors func(Session, []map[string]any) []map[string]any
+	// filterRuntimeConfigOptionValues removes provider-invalid current values
+	// before they become the SessionState settings/runtime-context authority.
+	filterRuntimeConfigOptionValues func(Session, map[string]any) map[string]any
 	// allowSyntheticNotice lets codex-acp-derived providers promote bare
 	// transport text ("Reconnecting... 1/5", "Falling back ... transport")
 	// streamed as ordinary chunks into system-notice banners instead of
@@ -44,6 +65,10 @@ type standardACPConfig struct {
 	// the resolved command (e.g. codex-acp `--config model=...` flags that can
 	// only be applied at process start).
 	commandWithSettings func([]string, Session) []string
+	// initialPromptContext resolves provider-owned context that ACP v1 cannot
+	// carry through a developer/system channel. It is appended to the first
+	// provider prompt only and never projected as user-visible content.
+	initialPromptContext func(Session) (string, error)
 	// finalizeEnv applies provider-owned environment composition after session,
 	// target, and managed-runtime overrides have been resolved.
 	finalizeEnv func([]string, Session) ([]string, error)
@@ -78,6 +103,7 @@ type standardACPConfig struct {
 	launchPermission               *StandardACPLaunchPermissionSetting
 	setModelReasoningEffortMeta    bool
 	messageDiagnostics             *standardACPMessageDiagnostics
+	providerMessageHandler         standardACPProviderMessageHandler
 	capabilities                   []string
 	agentTargetID                  string
 	installationID                 string
@@ -106,6 +132,7 @@ type standardACPAdapter struct {
 	preparer                   ProviderLaunchPreparer
 	mu                         sync.Mutex
 	sessions                   map[string]*standardACPSession
+	retiredSessions            map[string][]*standardACPSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
 	commandSink                CommandSnapshotSink
@@ -118,8 +145,19 @@ type standardACPAdapter struct {
 }
 
 type standardACPSession struct {
-	client            *acpClient
+	client *acpClient
+	// releasing fences new live-client work while idle release is closing the
+	// transport. The lifecycle lock serializes mutating entrypoints; this flag
+	// also makes liveness probes fail closed during the close call.
+	releasing bool
+	// releaseFailed keeps a physical client registered for another Close
+	// attempt while preventing new work from reusing its closed stdin.
+	releaseFailed     bool
 	providerSessionID string
+	// resumeMethod records the capability proven by this process's initialize
+	// handshake. Idle release is safe only when the next process can restore
+	// the provider session through this method.
+	resumeMethod string
 	// resumeRuntimeContext preserves the historical adapter projection only
 	// when replay attaches at an already-initialized connection checkpoint.
 	resumeRuntimeContext map[string]any
@@ -140,6 +178,38 @@ type standardACPSession struct {
 	// planMode denies permission-gated operations even when the provider emits
 	// a request while its planning workflow is active.
 	planMode bool
+	// initialPromptContext remains pending until the provider accepts its first
+	// prompt. A failed transport call leaves it pending for the next attempt.
+	initialPromptContext string
+}
+
+func (a *standardACPAdapter) resolveInitialPromptContext(session Session) (string, error) {
+	if a == nil || a.config.initialPromptContext == nil {
+		return "", nil
+	}
+	context, err := a.config.initialPromptContext(session)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(context), nil
+}
+
+func (a *standardACPAdapter) pendingInitialPromptContext(session *standardACPSession) string {
+	if a == nil || session == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return session.initialPromptContext
+}
+
+func (a *standardACPAdapter) consumeInitialPromptContext(session *standardACPSession) {
+	if a == nil || session == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session.initialPromptContext = ""
 }
 
 func (a *standardACPAdapter) stampTurnLifecycleSnapshots(acpSession *standardACPSession, events []activityshared.Event) []activityshared.Event {

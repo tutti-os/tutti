@@ -285,7 +285,7 @@ func (c *Client) RenewDeviceAuthorityLease(ctx context.Context, req RenewDeviceA
 	}
 	responseAuthorityID := strings.TrimSpace(raw.AuthorityID)
 	if responseAuthorityID != "" && responseAuthorityID != authorityID {
-		return RenewDeviceAuthorityLeaseResult{}, fmt.Errorf("renew device authority lease response authority id %q does not match request %q", responseAuthorityID, authorityID)
+		return RenewDeviceAuthorityLeaseResult{}, fmt.Errorf("%w: renew response authority id does not match request", ErrResponseBinding)
 	}
 	return RenewDeviceAuthorityLeaseResult{
 		AuthorityID: responseAuthorityID,

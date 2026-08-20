@@ -68,13 +68,14 @@ func deleteSessionTreeRowsTx(
 	workspaceID string,
 	sessionIDs []string,
 	now int64,
-) (int, int, []string, error) {
+) (int, int, []string, []TransactionMutation, error) {
 	removedMessages := int64(0)
 	removedSessions := int64(0)
 	removedSessionIDs := make([]string, 0, len(sessionIDs))
+	terminalMutations := make([]TransactionMutation, 0)
 	plan, err := recoverableDeletePlanTx(ctx, tx, workspaceID, sessionIDs)
 	if err != nil {
-		return 0, 0, nil, err
+		return 0, 0, nil, nil, err
 	}
 	for _, agentSessionID := range sessionIDs {
 		if plan.activeBySession[agentSessionID] {
@@ -83,12 +84,14 @@ func deleteSessionTreeRowsTx(
 SELECT COUNT(*) FROM workspace_agent_messages
 WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 `, workspaceID, agentSessionID).Scan(&messageCount); err != nil {
-				return 0, 0, nil, fmt.Errorf("count workspace agent session tree messages: %w", err)
+				return 0, 0, nil, nil, fmt.Errorf("count workspace agent session tree messages: %w", err)
 			}
 			removedMessages += messageCount
-			if err := settleDeletedSessionWorkTx(ctx, tx, workspaceID, agentSessionID, now); err != nil {
-				return 0, 0, nil, err
+			settledTurns, err := settleDeletedSessionWorkTx(ctx, tx, workspaceID, agentSessionID, now)
+			if err != nil {
+				return 0, 0, nil, nil, err
 			}
+			terminalMutations = append(terminalMutations, settledTurns...)
 		}
 		if !plan.activeBySession[agentSessionID] && !plan.mergeBySession[agentSessionID] {
 			continue
@@ -108,21 +111,21 @@ WHERE workspace_id = ? AND agent_session_id = ?`+deletedPredicate,
 			now, recoverableDeleteVersionCurrent, plan.sizeBySession[agentSessionID], workspaceID, agentSessionID,
 		)
 		if err != nil {
-			return 0, 0, nil, fmt.Errorf("delete workspace agent session tree member: %w", err)
+			return 0, 0, nil, nil, fmt.Errorf("delete workspace agent session tree member: %w", err)
 		}
 		sessionCount, err := sessionResult.RowsAffected()
 		if err != nil {
-			return 0, 0, nil, fmt.Errorf("delete workspace agent session tree rows affected: %w", err)
+			return 0, 0, nil, nil, fmt.Errorf("delete workspace agent session tree rows affected: %w", err)
 		}
 		if sessionCount == 0 {
-			return 0, 0, nil, fmt.Errorf("delete workspace agent session tree member %q: row disappeared", agentSessionID)
+			return 0, 0, nil, nil, fmt.Errorf("delete workspace agent session tree member %q: row disappeared", agentSessionID)
 		}
 		if plan.activeBySession[agentSessionID] {
 			removedSessions++
 			removedSessionIDs = append(removedSessionIDs, agentSessionID)
 		}
 	}
-	return int(removedMessages), int(removedSessions), removedSessionIDs, nil
+	return int(removedMessages), int(removedSessions), removedSessionIDs, terminalMutations, nil
 }
 
 type recoverableDeleteMember struct {
@@ -275,7 +278,34 @@ func settleDeletedSessionWorkTx(
 	workspaceID string,
 	agentSessionID string,
 	now int64,
-) error {
+) ([]TransactionMutation, error) {
+	rows, err := tx.QueryContext(ctx, `
+SELECT turn_id
+FROM workspace_agent_turns
+WHERE workspace_id = ? AND agent_session_id = ? AND phase <> 'settled'
+ORDER BY turn_id
+`, workspaceID, agentSessionID)
+	if err != nil {
+		return nil, fmt.Errorf("list live turns for deleted workspace agent session: %w", err)
+	}
+	terminalMutations := make([]TransactionMutation, 0)
+	for rows.Next() {
+		var turnID string
+		if err := rows.Scan(&turnID); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan live turn for deleted workspace agent session: %w", err)
+		}
+		terminalMutations = append(terminalMutations, terminalTurnMutation(
+			workspaceID, agentSessionID, turnID, "upsert", now, false,
+		))
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return nil, fmt.Errorf("iterate live turns for deleted workspace agent session: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("close live turns for deleted workspace agent session: %w", err)
+	}
 	statements := []struct {
 		name  string
 		query string
@@ -360,8 +390,8 @@ WHERE workspace_id = ? AND agent_session_id = ?
 	}
 	for _, statement := range statements {
 		if _, err := tx.ExecContext(ctx, statement.query, statement.args...); err != nil {
-			return fmt.Errorf("settle deleted workspace agent session %s: %w", statement.name, err)
+			return nil, fmt.Errorf("settle deleted workspace agent session %s: %w", statement.name, err)
 		}
 	}
-	return nil
+	return terminalMutations, nil
 }

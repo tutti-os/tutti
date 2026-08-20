@@ -41,6 +41,7 @@ type ProviderSpec struct {
 	AdapterPackage               AdapterPackageRequirement
 	AuthStatusCommand            []string
 	AuthStatusCommandTimeout     time.Duration
+	RemoteAuthProbe              providerregistry.RemoteAuthProbeDescriptor
 	AuthMarkerPaths              []string
 	Install                      InstallerSpec
 	Update                       ProviderUpdateSpec
@@ -156,6 +157,7 @@ func providerSpecFromDescriptor(descriptor providerregistry.ProviderDescriptor) 
 		AdapterBinaryNames:     adapterBinaryNames,
 		AdapterCommand:         append([]string(nil), descriptor.Runtime.Command...),
 		AuthStatusCommand:      append([]string(nil), descriptor.Status.AuthStatusCommand...),
+		RemoteAuthProbe:        descriptor.Status.RemoteAuthProbe,
 		AuthStatusCommandTimeout: time.Duration(
 			descriptor.Status.AuthStatusCommandTimeoutSeconds,
 		) * time.Second,

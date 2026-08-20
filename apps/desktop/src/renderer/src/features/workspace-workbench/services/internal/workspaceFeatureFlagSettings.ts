@@ -3,9 +3,7 @@ import type { DesktopFeatureFlags } from "@shared/preferences";
 import { desktopFeatureFlagsEqual } from "../../../../../../shared/preferences/index.ts";
 import {
   AGENT_EXTENSION_ACTIVATION_FLAGS,
-  AGENT_QUICK_PROMPT_LIBRARY_FLAG,
-  isFeatureEnabled,
-  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  isFeatureEnabled
 } from "../../../../../../shared/featureFlags/catalog.ts";
 import type { IDesktopPreferencesService as DesktopPreferencesService } from "../../../desktop-preferences/services/desktopPreferencesService.interface.ts";
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
@@ -36,12 +34,6 @@ export function createWorkspaceFeatureFlagSettings(input: {
         return;
       }
 
-      const quickPromptLibraryChanged =
-        isFeatureEnabled(previousFlags, AGENT_QUICK_PROMPT_LIBRARY_FLAG) !==
-        isFeatureEnabled(nextFlags, AGENT_QUICK_PROMPT_LIBRARY_FLAG);
-      const mobileRemoteAccessSettingsChanged =
-        isFeatureEnabled(previousFlags, MOBILE_REMOTE_ACCESS_SETTINGS_FLAG) !==
-        isFeatureEnabled(nextFlags, MOBILE_REMOTE_ACCESS_SETTINGS_FLAG);
       try {
         const activationChanged = AGENT_EXTENSION_ACTIVATION_FLAGS.some(
           (flag) =>
@@ -55,11 +47,7 @@ export function createWorkspaceFeatureFlagSettings(input: {
       } catch {
         input.notifications.error({
           title: createTranslator(getActiveLocale()).t(
-            quickPromptLibraryChanged
-              ? "workspace.settings.developer.quickPromptLibrarySaveFailed"
-              : mobileRemoteAccessSettingsChanged
-                ? "workspace.settings.developer.mobileRemoteAccessSettingsSaveFailed"
-                : "workspace.settings.lab.preferencesSaveFailed"
+            "workspace.settings.lab.preferencesSaveFailed"
           )
         });
       }

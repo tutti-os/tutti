@@ -29,6 +29,7 @@ type fakeRuntime struct {
 	canResumeCalls          []RuntimeResumeInput
 	canResumeHook           func(RuntimeResumeInput) bool
 	cancelCalls             []RuntimeCancelInput
+	cancelErr               error
 	cancelResult            RuntimeCancelResult
 	cancelResultSet         bool
 	closeErr                error
@@ -51,12 +52,16 @@ type fakeRuntime struct {
 	goalGenerationFenceHook func(context.Context, RuntimeGoalGenerationFenceInput) error
 	resumeCalls             []RuntimeResumeInput
 	sessions                map[string]ProviderRuntimeSession
+	disconnectedSessions    map[string]bool
 	submitInteractiveCalls  []RuntimeSubmitInteractiveInput
 	submitInteractiveErr    error
 	interactiveDisposition  RuntimeInteractiveDisposition
 	startErr                error
 	startCalls              []RuntimeStartInput
 	startHook               func(RuntimeStartInput, ProviderRuntimeSession) ProviderRuntimeSession
+	publishInitCalls        []RuntimeSessionInitializationPublishInput
+	publishInitHook         func(RuntimeSessionInitializationPublishInput, ProviderRuntimeSession) error
+	pendingInits            map[string]bool
 	updateSettingsCalls     []RuntimeUpdateSettingsInput
 	closeHook               func(RuntimeCloseInput)
 	validateErr             error
@@ -297,6 +302,34 @@ type fakeSessionInitializer struct {
 	reader *fakeSessionReader
 }
 
+func (f fakeSessionInitializer) ResolveRuntimeSessionRailPlacement(
+	_ context.Context,
+	input agenthost.ResolveRuntimeSessionRailPlacementInput,
+) (*agenthost.RailPlacement, error) {
+	if input.RailPlacement != nil {
+		placement := *input.RailPlacement
+		return &placement, nil
+	}
+	if f.reader != nil {
+		if existing, found := f.reader.sessions[strings.TrimSpace(input.WorkspaceID)+":"+strings.TrimSpace(input.AgentSessionID)]; found &&
+			strings.TrimSpace(existing.RailSectionKey) != "" {
+			kind := agenthost.RailPlacementKind(strings.TrimSpace(existing.RailSectionKind))
+			if kind == "" && strings.TrimSpace(existing.RailSectionKey) == agentactivitybiz.RailSectionKeyConversations {
+				kind = agenthost.RailPlacementKindConversations
+			}
+			return &agenthost.RailPlacement{
+				Version: agenthost.RailPlacementVersion, Kind: kind,
+				ProjectPath: existing.RailProjectPath, SectionKey: existing.RailSectionKey,
+			}, nil
+		}
+	}
+	section := agentactivitybiz.ClassifyRailSection(input.Cwd, input.RuntimeContext, nil)
+	return &agenthost.RailPlacement{
+		Version: agenthost.RailPlacementVersion, Kind: agenthost.RailPlacementKind(section.Kind),
+		ProjectPath: section.ProjectPath, SectionKey: section.Key,
+	}, nil
+}
+
 func (f fakeSessionInitializer) InitializeRuntimeSession(
 	_ context.Context,
 	session ProviderRuntimeSession,
@@ -460,7 +493,9 @@ func (f fakeMessageReader) ListSessionMessages(
 
 func newFakeRuntime() *fakeRuntime {
 	return &fakeRuntime{
-		sessions: make(map[string]ProviderRuntimeSession),
+		sessions:             make(map[string]ProviderRuntimeSession),
+		disconnectedSessions: make(map[string]bool),
+		pendingInits:         make(map[string]bool),
 	}
 }
 
@@ -469,6 +504,9 @@ func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (Runti
 	targetAgentSessionID := input.RootAgentSessionID
 	if len(input.Targets) > 0 {
 		targetAgentSessionID = input.Targets[len(input.Targets)-1].AgentSessionID
+	}
+	if f.cancelErr != nil {
+		return RuntimeCancelResult{AgentSessionID: targetAgentSessionID}, f.cancelErr
 	}
 	if f.cancelResultSet {
 		if f.cancelResult.AgentSessionID == "" {
@@ -538,7 +576,9 @@ func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 	f.closeCalls = append(f.closeCalls, input)
 	err := f.closeErr
 	if err == nil {
-		delete(f.sessions, input.WorkspaceID+":"+input.AgentSessionID)
+		key := input.WorkspaceID + ":" + input.AgentSessionID
+		delete(f.sessions, key)
+		delete(f.pendingInits, key)
 	}
 	// Hooks observe completion, so publish them only after the fake's state is
 	// fully updated. Tests use this callback as the synchronization boundary.
@@ -546,6 +586,21 @@ func (f *fakeRuntime) Close(_ context.Context, input RuntimeCloseInput) error {
 		f.closeHook(input)
 	}
 	return err
+}
+
+func (f *fakeRuntime) DisconnectRuntimeSession(
+	_ context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := strings.TrimSpace(workspaceID) + ":" + strings.TrimSpace(agentSessionID)
+	if _, ok := f.sessions[key]; !ok || f.disconnectedSessions[key] {
+		return false, nil
+	}
+	f.disconnectedSessions[key] = true
+	return true, nil
 }
 
 func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
@@ -557,6 +612,15 @@ func (f *fakeRuntime) CanResume(input RuntimeResumeInput) bool {
 }
 
 func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeExecResult, error) {
+	f.mu.Lock()
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	if f.disconnectedSessions[key] {
+		f.resumeCalls = append(f.resumeCalls, RuntimeResumeInput{
+			WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID,
+		})
+		delete(f.disconnectedSessions, key)
+	}
+	f.mu.Unlock()
 	f.execCalls = append(f.execCalls, input)
 	if input.Guidance && f.guidanceTargetMismatch && strings.TrimSpace(input.TurnID) != strings.TrimSpace(f.guidanceTarget) {
 		return RuntimeExecResult{
@@ -576,7 +640,6 @@ func (f *fakeRuntime) Exec(_ context.Context, input RuntimeExecInput) (RuntimeEx
 	if f.execErr != nil {
 		return RuntimeExecResult{}, f.execErr
 	}
-	key := input.WorkspaceID + ":" + input.AgentSessionID
 	if session, ok := f.sessions[key]; ok {
 		session.Status = "working"
 		session.Resumable = true
@@ -685,12 +748,22 @@ func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (Provi
 		UpdatedAtUnixMS: input.UpdatedAtUnixMS,
 	}
 	f.sessions[input.WorkspaceID+":"+input.AgentSessionID] = session
+	delete(f.disconnectedSessions, input.WorkspaceID+":"+input.AgentSessionID)
 	return session, nil
 }
 
 func (f *fakeRuntime) Session(workspaceID string, agentSessionID string) (ProviderRuntimeSession, bool) {
-	session, ok := f.sessions[workspaceID+":"+agentSessionID]
+	key := workspaceID + ":" + agentSessionID
+	session, ok := f.sessions[key]
 	return session, ok
+}
+
+func (f *fakeRuntime) RuntimeSessionLive(workspaceID, agentSessionID string) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	key := workspaceID + ":" + agentSessionID
+	_, registered := f.sessions[key]
+	return registered && !f.disconnectedSessions[key]
 }
 
 func (f *fakeRuntime) SetVisible(_ context.Context, input RuntimeSetVisibleInput) (ProviderRuntimeSession, error) {
@@ -1109,10 +1182,10 @@ func (f fakeSessionReader) PurgeDeletedSessions(_ context.Context, input agentac
 	return result, nil
 }
 
-func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (ProviderRuntimeSession, error) {
+func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (RuntimeStartResult, error) {
 	f.startCalls = append(f.startCalls, input)
 	if f.startErr != nil {
-		return ProviderRuntimeSession{}, f.startErr
+		return RuntimeStartResult{}, f.startErr
 	}
 	f.nextID++
 	now := time.Now().UnixMilli()
@@ -1121,7 +1194,7 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Provide
 		id = "session-" + string(rune('0'+f.nextID))
 	}
 	if existing, ok := f.sessions[input.WorkspaceID+":"+id]; ok {
-		return existing, nil
+		return RuntimeStartResult{Session: existing, Created: false}, nil
 	}
 	session := ProviderRuntimeSession{
 		ID:            id,
@@ -1149,6 +1222,31 @@ func (f *fakeRuntime) Start(_ context.Context, input RuntimeStartInput) (Provide
 		session = f.startHook(input, session)
 	}
 	f.sessions[input.WorkspaceID+":"+session.ID] = session
+	if input.CanonicalInitPending {
+		if f.pendingInits == nil {
+			f.pendingInits = make(map[string]bool)
+		}
+		f.pendingInits[input.WorkspaceID+":"+session.ID] = true
+	}
+	return RuntimeStartResult{Session: session, Created: true}, nil
+}
+
+func (f *fakeRuntime) PublishSessionInitialization(
+	_ context.Context,
+	input RuntimeSessionInitializationPublishInput,
+) (ProviderRuntimeSession, error) {
+	f.publishInitCalls = append(f.publishInitCalls, input)
+	key := input.WorkspaceID + ":" + input.AgentSessionID
+	session, found := f.sessions[key]
+	if !found {
+		return ProviderRuntimeSession{}, ErrSessionNotFound
+	}
+	if f.publishInitHook != nil {
+		if err := f.publishInitHook(input, session); err != nil {
+			return ProviderRuntimeSession{}, err
+		}
+	}
+	delete(f.pendingInits, key)
 	return session, nil
 }
 

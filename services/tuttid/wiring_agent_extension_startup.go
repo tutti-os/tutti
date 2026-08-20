@@ -28,7 +28,10 @@ func restoreAgentExtensionsForStartup(
 	return false
 }
 
-func startAgentExtensionBackgroundRefresh(manager *agentextensionservice.Manager) {
+func startAgentExtensionBackgroundRefresh(
+	manager *agentextensionservice.Manager,
+	setup *agentextensionservice.SetupService,
+) {
 	go func() {
 		startedAt := time.Now()
 		slog.Info("agent extension background refresh started",
@@ -37,6 +40,7 @@ func startAgentExtensionBackgroundRefresh(manager *agentextensionservice.Manager
 			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
 			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
 		}
+		setup.WakeAccountUsageCompanionReconciler()
 		slog.Info("agent extension background refresh completed",
 			"event", "tutti.agent_extension.refresh_completed",
 			"durationMs", time.Since(startedAt).Milliseconds())

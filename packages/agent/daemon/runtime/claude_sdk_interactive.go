@@ -21,11 +21,11 @@ type claudeSDKInteractiveAck struct {
 func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Session, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
 	turnID := strings.TrimSpace(input.TurnID)
 	if turnID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive turn id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive turn id is required", ErrInteractiveResponseInvalid)
 	}
 	requestID := strings.TrimSpace(input.RequestID)
 	if requestID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive request id is required", ErrInteractiveResponseInvalid)
 	}
 	targetAgentSessionID := firstNonEmpty(strings.TrimSpace(input.AgentSessionID), strings.TrimSpace(session.AgentSessionID))
 	adapterSession, pending := a.getClaudeSDKPendingRequestWithSession(targetAgentSessionID, turnID, requestID)
@@ -41,11 +41,16 @@ func (a *ClaudeCodeSDKAdapter) SubmitInteractive(ctx context.Context, session Se
 	if pending.callType == "approval" {
 		optionID = interactiveApprovalOptionID(input)
 		if optionID == "" {
-			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
+			return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive option id is required", ErrInteractiveResponseInvalid)
 		}
 		resolvedOptionID, ok := pending.resolvePermissionOptionID(optionID)
 		if !ok {
-			return SubmitInteractiveResult{}, fmt.Errorf("permission option %q is not available for request %q", optionID, requestID)
+			return SubmitInteractiveResult{}, fmt.Errorf(
+				"%w: permission option %q is not available for request %q",
+				ErrInteractiveResponseInvalid,
+				optionID,
+				requestID,
+			)
 		}
 		optionID = resolvedOptionID
 	}
@@ -225,6 +230,21 @@ func (a *ClaudeCodeSDKAdapter) applyClaudeSDKInteractiveAck(
 	response pendingInteractiveResponse,
 	ack claudeSDKInteractiveAck,
 ) {
+	if a == nil || adapterSession == nil || pending == nil {
+		return
+	}
+	// The sidecar response is received without this lock, but its canonical
+	// effects share the exact-session commit axis with reader dispatch and
+	// replacement. A response from E1 cannot settle or publish after E2 wins.
+	adapterSession.dispatchMu.Lock()
+	defer adapterSession.dispatchMu.Unlock()
+	rootAgentSessionID := firstNonEmptyString(
+		strings.TrimSpace(adapterSession.session.AgentSessionID),
+		strings.TrimSpace(session.AgentSessionID),
+	)
+	if !a.sessionMayDispatch(rootAgentSessionID, adapterSession) {
+		return
+	}
 	var state pendingInteractiveRequestState
 	var terminalErr error
 	switch ack.disposition {
@@ -399,7 +419,12 @@ func (a *ClaudeCodeSDKAdapter) claudeSDKInteractiveRequested(
 		options:         options,
 		response:        make(chan pendingInteractiveResponse, 1),
 	}
-	a.storeClaudeSDKPendingRequest(adapterSession, pending)
+	if !a.storeClaudeSDKPendingRequest(adapterSession, pending) {
+		// The SDK sidecar assigns one request ID to one interaction. A repeated
+		// identity is a replay, not a new approval: do not re-open the turn by
+		// emitting another waiting transition after the original has settled.
+		return nil, nil
+	}
 	events := []activityshared.Event{
 		newTurnActivityEvent(eventSession, EventTurnUpdated, eventTurnID, SessionStatusWaiting, "", "", map[string]any{
 			"phase":     string(activityshared.TurnPhaseWaitingApproval),
@@ -571,17 +596,28 @@ func claudeSDKInteractiveOptions(payload map[string]any, toolCall map[string]any
 	}
 }
 
-func (a *ClaudeCodeSDKAdapter) storeClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, pending *pendingInteractiveRequest) {
+// storeClaudeSDKPendingRequest records one provider interaction exactly once.
+// The caller must not publish its waiting events when this returns false.
+func (a *ClaudeCodeSDKAdapter) storeClaudeSDKPendingRequest(adapterSession *claudeSDKAdapterSession, pending *pendingInteractiveRequest) bool {
 	if a == nil || adapterSession == nil || pending == nil {
-		return
+		return false
 	}
-	pending.onTerminal = a.recordTerminalInteractiveRequest
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if adapterSession.pendingRequests == nil {
 		adapterSession.pendingRequests = make(map[string]*pendingInteractiveRequest)
 	}
-	adapterSession.pendingRequests[claudeSDKPendingRequestKey(pending.turnID, pending.requestID)] = pending
+	key := claudeSDKPendingRequestKey(pending.turnID, pending.requestID)
+	if _, exists := adapterSession.pendingRequests[key]; exists {
+		return false
+	}
+	terminalKey := newInteractiveRequestKey(pending.agentSessionID, pending.turnID, pending.requestID)
+	if a.terminalInteractions.get(terminalKey) != InteractiveDispositionUnknown {
+		return false
+	}
+	pending.onTerminal = a.recordTerminalInteractiveRequest
+	adapterSession.pendingRequests[key] = pending
+	return true
 }
 
 func (a *ClaudeCodeSDKAdapter) getClaudeSDKPendingRequest(agentSessionID string, turnID string, requestID string) *pendingInteractiveRequest {

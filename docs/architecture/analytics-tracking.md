@@ -60,12 +60,27 @@ Common params are split by ownership. tuttid injects its params on every event
 before forwarding to Tea. The renderer supplies only the params it uniquely
 knows.
 
+Runtime and application metadata that DataFinder defines as preset properties
+is sent in the SDK header as well as retained in the legacy custom common
+params where one already exists. This keeps existing dashboards compatible
+while allowing DataFinder's built-in dimensions to receive `os_name`,
+`os_version`, `app_version`, `app_version_minor`, and `cpu_abi`. The reporter
+sends the exact configured application version to both version fields. This
+preserves prerelease suffixes such as `-rc.0` in `app_version_minor` when
+DataFinder normalizes `app_version`. Event UUIDs follow the same transition:
+`event_id` remains in event params and is also assigned to the SDK event's
+preset ID field.
+
 | Param               | Owner    | Notes                                               |
 | ------------------- | -------- | --------------------------------------------------- |
 | `device_id`         | tuttid   | Persisted UUID in state dir; stable across restarts |
 | `session_id`        | tuttid   | UUID generated once at daemon startup               |
 | `app_version`       | tuttid   | Resolved from generated defaults or env override    |
+| `app_version_minor` | tuttid   | Exact version, including prerelease suffixes        |
 | `os`                | tuttid   | Resolved at startup                                 |
+| `os_name`           | tuttid   | Preset SDK header; currently the Go runtime OS key  |
+| `os_version`        | tuttid   | Preset SDK header; best-effort product OS version   |
+| `cpu_abi`           | tuttid   | Preset SDK header; Go runtime architecture key      |
 | `event_id`          | tuttid   | Generated UUID when the event does not supply one   |
 | `authority`         | tuttid   | `"client"` for Tutti Desktop events                 |
 | `business_app_id`   | tuttid   | Tutti account/commerce application ID               |
@@ -160,6 +175,17 @@ event measures explicit mode changes through `previous_mode` and `next_mode`.
 It does not set the renderer-owned common `mode` field: after an earlier
 replacement failure, the durable preference and the actual native owner-window
 route can temporarily differ, and the main process must not guess that route.
+
+tuttid reports `settings.workspace_ui_mode_initialized` exactly once per fresh
+profile, from the `initializeIfAbsent` write branch that owns every
+fresh-preference-row creation (the dedicated field patch writers refuse to
+materialize a missing row). The `workspace_ui_mode` param carries the assigned
+initial mode derived from the authoritative stored row, so cohort analysis can
+separate "assigned by default" from "explicitly chosen" and from later escapes
+measured by `settings.workspace_ui_mode_changed`. The param is deliberately not
+named `mode` to avoid colliding with the renderer-owned window-mode common
+param. As a daemon-side event it usually fires before login, so it attributes
+to the device identity like early `account.login` stages.
 
 ## API Contract
 
@@ -454,3 +480,56 @@ The method calls the generated OpenAPI SDK and reuses generated request types.
 - Do not read Tea credentials from anywhere other than `ResolveAnalyticsConfig()`
 - After modifying `config/tutti.defaults.json`, always re-run
   `generate-defaults.mjs` and commit the generated files together
+
+## Agent Host terminal failure telemetry
+
+Agent Host may emit aggregated terminal failures through
+`TerminalFailureObserver`. Sources:
+
+- failed `session_create` / `message_send` lifecycle commands
+- guidance target binding failures (`flow=guidance`,
+  `failure_stage=guidance_target`) before claim creation or when the runtime
+  rejects an exact turn target before provider admission
+- goal-control prepare / refresh command failures, and durable
+  `GoalOperationFailed` / terminal incidents
+- durable runtime-operation failures for `interactive_response`,
+  `plan_decision`, `turn_cancel`, and `edit_retry`
+- settled failed / interrupted root turns (including child/subagent sessions
+  via `IsChildSession`)
+- failed / errored `tool_call` messages in session-message commits
+
+Out of scope for dedicated Host terminal-failure flows:
+
+- queue as a separate event family (queued submits still fail as
+  `message_send` / turn settlements; `isQueued` remains a diagnostic trait)
+- session fork (TSH does not expose fork)
+- file-change card open failures (desktop UI / TSH Analytics only)
+- shared-agent product events (owned by the shared-agent analytics track)
+
+Adapters should map those observations into product analytics events. Do not
+promote every `LifecycleStep` into a product analytics event; lifecycle steps
+remain diagnostic. Terminal failures carry the original error message and
+failure stage for investigation without user-supplied logs.
+
+### Who extracts failures from a committed delta
+
+`Host.notifyCommitted` owns delta terminal failures. It calls
+`ObserveTerminalFailuresFromDelta` before `NotifyCommitted`, so every commit
+Host publishes is already accounted for by the time observers run. A
+`CommitObserver` — `ActivityProjection.ObserveCommitted` included — must never
+re-observe the delta it receives; doing so double-counts every durable runtime,
+goal, turn, and tool-call failure whenever the same observer is wired to both.
+
+A report path that commits and fans out without going through Host calls
+`ObserveTerminalFailuresFromDelta` exactly once next to its own
+`NotifyCommitted`. In tuttid that path is
+`ActivityProjection.observeCommittedOutsideHost`, the single entrypoint for the
+direct activity-state, session-message, and stale-turn reports;
+`ActivityProjection.SetTerminalFailureObserver` exists to feed it. Canonical
+bookkeeping commits (`CanonicalDelta`) carry no failure-bearing sections, so
+they need no extraction.
+
+Because the observed `RuntimeOperations`, `EffectiveHistory`, and `GoalStore`
+wrappers are the only source of durable runtime and goal commit deltas, `New`
+installs them when either `CommitObserver` or `TerminalFailureObserver` is
+configured. An adapter that wants failure analytics alone still gets them.

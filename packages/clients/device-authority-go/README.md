@@ -17,6 +17,8 @@ The module owns:
   and lease-renewal HTTP wire contracts;
 - the canonical `tsh.gateway.owner-session.v1` Ed25519 signing payload;
 - response-to-request credential binding checks;
+- `ErrResponseBinding` for adapters to fail closed when a lease response is
+  bound to a different authority;
 - bounded response and HTTP error metadata handling;
 - a reusable process-local Ed25519 identity source compatible with TSH's
   current behavior.
@@ -60,7 +62,8 @@ product demand
   -> RegisterDeviceGatewayIdentity
   -> IssueDeviceGatewayOwnerTunnelToken
   -> product starts relaytransport.OwnerHost
-  -> RenewDeviceAuthorityLease on the product schedule
+  -> RenewDeviceAuthorityLease on the product schedule while its server
+     `ExpiresAt` remains fresh
   -> product releases Relay demand
 ```
 

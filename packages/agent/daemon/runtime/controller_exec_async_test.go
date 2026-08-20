@@ -370,6 +370,7 @@ func TestControllerExecReportsTerminalTurnAsSettledAndAvailable(t *testing.T) {
 	}
 	if terminalPatch == nil {
 		t.Fatalf("reports = %#v, missing terminal turn patch", reports)
+		return
 	}
 	if terminalPatch.CurrentPhase != string(activityshared.TurnPhaseIdle) {
 		t.Fatalf("terminal patch current phase = %q, want idle", terminalPatch.CurrentPhase)

@@ -4,9 +4,11 @@ import {
   composerModelFavoritesStorageKey,
   composerModelRecentsStorageKey,
   parseComposerModelIdList,
+  reconcileRecentComposerModels,
   recordRecentComposerModel,
   serializeComposerModelIdList,
-  toggleFavoriteComposerModel
+  toggleFavoriteComposerModel,
+  type ComposerModelHistoryVerdict
 } from "./composerModelChoiceHistory";
 
 describe("composerModelChoiceHistory", () => {
@@ -67,5 +69,19 @@ describe("composerModelChoiceHistory", () => {
     ]);
     expect(toggleFavoriteComposerModel(withFavorite, "m1")).toEqual([]);
     expect(toggleFavoriteComposerModel(withFavorite, " ")).toEqual(["m1"]);
+  });
+
+  it("removes only positively rejected recent models", () => {
+    const verdicts = new Map<string, ComposerModelHistoryVerdict>([
+      ["old", "rejected"],
+      ["valid", "verified"],
+      ["unknown", "unverifiable"]
+    ]);
+    expect(
+      reconcileRecentComposerModels(
+        ["old", "valid", "unknown"],
+        (modelId) => verdicts.get(modelId) ?? "unverifiable"
+      )
+    ).toEqual(["valid", "unknown"]);
   });
 });

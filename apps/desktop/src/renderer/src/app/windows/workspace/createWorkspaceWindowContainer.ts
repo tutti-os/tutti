@@ -9,8 +9,13 @@ import {
 } from "@renderer/features/analytics";
 import { startPredefinePageviewAnalytics } from "@renderer/features/analytics/predefinePageviewAnalytics.ts";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
-import { registerConnectorMarketModule } from "@renderer/features/connector-market";
+import {
+  registerConnectorMarketModule,
+  requestDesktopConnectorInstallAdmission
+} from "@renderer/features/connector";
+import { addTuttiDesktopClientToConnectorAuthorizationUrl } from "@renderer/features/connector/adapters/connectorAuthorizationClientUrl.ts";
 import { registerDesktopPreferencesServices } from "@renderer/features/desktop-preferences/services/registerDesktopPreferencesServices.ts";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import { registerRichTextAtServices } from "@renderer/features/rich-text-at/services/registerRichTextAtServices";
 import { createDesktopAgentSessionStatusViewResolver } from "@renderer/features/rich-text-at/providers/desktopAgentSessionStatusView.ts";
 import { registerWorkspaceAgentServices } from "@renderer/features/workspace-agent/services/registerWorkspaceAgentServices";
@@ -103,6 +108,7 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
   const activeWorkspaceID =
     routeWorkspaceID || environment.startupWorkspaceID || "__default__";
   const routeView = routeParameters.get("view") || "workspace";
+  const initialWorkspaceUiMode = readInitialWorkspaceUiMode(routeParameters);
   const runtimeInstanceId =
     createWorkspaceWindowInstanceId("workspace-runtime");
   const tuttidClient = createDesktopTuttidClient(desktopApi.runtime);
@@ -134,9 +140,10 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     available: analyticsDebugAvailable,
     eventStreamClient: tuttidEventStreamClient
   });
+  const workspaceUiMode = routeView === "agent" ? "agent" : "os";
   const reporterService = registerReporterServices(registry, {
     tuttidClient,
-    mode: routeView === "agent" ? "agent" : "os"
+    mode: workspaceUiMode
   });
   const reportPredefinePageview = shouldReportPredefinePageview(
     window.location.search
@@ -147,10 +154,19 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     "workspace-renderer",
     reporterService
   );
+  const hostPreferences = desktopApi.host.preferences;
   const desktopPreferencesService = await registerDesktopPreferencesServices(
     registry,
     tuttidClient,
-    tuttidEventStreamClient
+    tuttidEventStreamClient,
+    {
+      ...(hostPreferences
+        ? {
+            ensureInitialized: () => hostPreferences.ensureInitialized()
+          }
+        : {}),
+      ...(initialWorkspaceUiMode ? { initialWorkspaceUiMode } : {})
+    }
   );
   const daemonConnectionAnalytics = startDesktopDaemonConnectionAnalytics({
     eventStreamClient: tuttidEventStreamClient,
@@ -215,7 +231,13 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     canRequest: () => accountService.store.user !== null,
     client: tuttidClient,
     eventStreamClient: tuttidEventStreamClient,
-    openAuthorizationUrl: (url) => desktopApi.host.files.openExternal(url),
+    openAuthorizationUrl: (url) =>
+      desktopApi.host.files.openExternal(
+        addTuttiDesktopClientToConnectorAuthorizationUrl(
+          url,
+          import.meta.env.DEV
+        )
+      ),
     reportDiagnostic: (error) => {
       void desktopApi.runtime
         .logRendererDiagnostic({
@@ -227,10 +249,17 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
           source: "workspace-renderer"
         })
         .catch(() => undefined);
-    }
+    },
+    requestInstallAdmission: () =>
+      requestDesktopConnectorInstallAdmission(
+        accountService,
+        notificationService,
+        translate("workspace.accountMenu.signInFailed")
+      )
   });
   const workspaceAgentServices = registerWorkspaceAgentServices(registry, {
     accountLogin: accountService,
+    browserApi: desktopApi.browser,
     clipboard: {
       writeText: (text) => navigator.clipboard.writeText(text)
     },
@@ -245,6 +274,7 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     terminalCommandRunner: createAgentProviderTerminalCommandRunner(
       desktopApi.runtime
     ),
+    uiMode: workspaceUiMode,
     windowLifecycle,
     workspaceId: activeWorkspaceID,
     workspaceUserProjectService
@@ -488,6 +518,13 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     dispose,
     markCommitted
   };
+}
+
+function readInitialWorkspaceUiMode(
+  parameters: URLSearchParams
+): DesktopWorkspaceUiMode | undefined {
+  const mode = parameters.get("workspaceUiMode");
+  return mode === "agent" || mode === "os" ? mode : undefined;
 }
 
 function createWorkspaceWindowInstanceId(prefix: string): string {

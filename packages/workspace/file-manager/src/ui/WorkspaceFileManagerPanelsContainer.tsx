@@ -7,7 +7,10 @@ import {
 import type { TuttiDateLocale } from "@tutti-os/ui-system/date-format";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
 import type { WorkspaceFileManagerSession } from "../services/workspaceFileManagerService.interface.ts";
-import { workspaceFileSearchEntryToEntry } from "../services/workspaceFileManagerModel.ts";
+import {
+  formatWorkspaceFilePathForDisplay,
+  workspaceFileSearchEntryToEntry
+} from "../services/workspaceFileManagerModel.ts";
 import type { WorkspaceFileEntry } from "../services/workspaceFileManagerTypes.ts";
 import {
   type WorkspaceFileManagerEntryDragMode,
@@ -31,6 +34,7 @@ import { useWorkspaceFileManagerPanelsView } from "./useWorkspaceFileManagerServ
 export function WorkspaceFileManagerPanelsContainer({
   arrangeMode,
   dateLocale,
+  pathDisplayPlatform,
   entryDragMode,
   i18n,
   layoutMode,
@@ -45,6 +49,7 @@ export function WorkspaceFileManagerPanelsContainer({
 }: {
   arrangeMode: WorkspaceFileManagerArrangeMode;
   dateLocale?: TuttiDateLocale;
+  pathDisplayPlatform?: string | null;
   entryDragMode?: WorkspaceFileManagerEntryDragMode;
   i18n: WorkspaceFileManagerI18nRuntime;
   layoutMode: WorkspaceFileManagerLayoutMode;
@@ -77,10 +82,16 @@ export function WorkspaceFileManagerPanelsContainer({
   const searchEntryContextByPath = useMemo(() => {
     const contextByPath = new Map<string, string>();
     for (const entry of view.searchEntries) {
-      contextByPath.set(entry.path, entry.directoryPath);
+      contextByPath.set(
+        entry.path,
+        formatWorkspaceFilePathForDisplay(
+          entry.directoryPath,
+          pathDisplayPlatform
+        )
+      );
     }
     return contextByPath;
-  }, [view.searchEntries]);
+  }, [pathDisplayPlatform, view.searchEntries]);
   const treeRows = useMemo(
     () =>
       buildWorkspaceFileManagerVisibleTreeRows({
@@ -201,6 +212,7 @@ export function WorkspaceFileManagerPanelsContainer({
       contextMenuEntryPath={view.contextMenuEntryPath}
       copy={i18n}
       dateLocale={dateLocale}
+      pathDisplayPlatform={pathDisplayPlatform}
       entryContextByPath={view.isSearchMode ? searchEntryContextByPath : null}
       entryDragMode={entryDragMode}
       iconUrlByCacheKey={iconUrlByCacheKey}

@@ -54,10 +54,20 @@ export function replaceCanonicalSessionSnapshot(
         sessionVersion(incomingSession);
     }
     if (useIncoming && source.activeTurn?.agentSessionId === id) {
-      mergeTurnInto(turnsById, state.turnsById, source.activeTurn);
+      mergeTurnInto(
+        turnsById,
+        state.turnsById,
+        source.activeTurn,
+        source.lifecycleCapabilitiesProjected !== true
+      );
     }
     if (useIncoming && source.latestTurn?.agentSessionId === id) {
-      mergeTurnInto(turnsById, state.turnsById, source.latestTurn);
+      mergeTurnInto(
+        turnsById,
+        state.turnsById,
+        source.latestTurn,
+        source.lifecycleCapabilitiesProjected !== true
+      );
     }
     for (const interaction of [
       ...source.latestTurnInteractions,
@@ -277,6 +287,15 @@ export function upsertCanonicalTurn(
   const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const current = state.turnsById[key];
   if (current && !shouldUseIncomingTurn(current, turn)) return state;
+  return writeCanonicalTurn(state, turn, current);
+}
+
+function writeCanonicalTurn(
+  state: SessionLifecycleState,
+  turn: AgentActivityTurn,
+  current: AgentActivityTurn | undefined
+): SessionLifecycleState {
+  const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const nextTurn = current ? preserveTurnProvenance(current, turn) : turn;
   if (current && areJsonLikeValuesEqual(current, nextTurn)) return state;
   return {
@@ -300,11 +319,18 @@ export function upsertCanonicalTurnProjection(
 
   const key = canonicalTurnKey(agentSessionId, turnId);
   const currentTurn = state.turnsById[key];
-  if (currentTurn && !shouldUseIncomingTurn(currentTurn, input.turn)) {
+  if (
+    currentTurn &&
+    !shouldUseIncomingTurnProjection(
+      currentTurn,
+      input.turn,
+      input.hostFencedSameTurnSettlement === true
+    )
+  ) {
     return state;
   }
 
-  const withTurn = upsertCanonicalTurn(state, input.turn);
+  const withTurn = writeCanonicalTurn(state, input.turn, currentTurn);
   const session = withTurn.sessionsById[agentSessionId];
   if (!session) return withTurn;
 
@@ -420,8 +446,25 @@ function shouldUseIncomingTurn(
   return true;
 }
 
+function shouldUseIncomingTurnProjection(
+  current: AgentActivityTurn,
+  incoming: AgentActivityTurn,
+  hostFencedSameTurnSettlement: boolean
+): boolean {
+  if (
+    hostFencedSameTurnSettlement &&
+    current.phase !== "settled" &&
+    incoming.phase === "settled" &&
+    allowedTurnTransition(current.phase, incoming.phase)
+  ) {
+    return true;
+  }
+  return shouldUseIncomingTurn(current, incoming);
+}
+
 interface CanonicalTurnProjection {
   activeTurnId: string | null;
+  hostFencedSameTurnSettlement?: true;
   turn: AgentActivityTurn;
 }
 
@@ -521,17 +564,43 @@ function canonicalSession(
 function mergeTurnInto(
   target: Record<string, AgentActivityTurn>,
   existing: Readonly<Record<string, AgentActivityTurn>>,
-  turn: AgentActivityTurn
+  turn: AgentActivityTurn,
+  preserveProjectedForkBinding: boolean
 ): void {
   const key = canonicalTurnKey(turn.agentSessionId, turn.turnId);
   const current = target[key] ?? existing[key];
   if (!current || shouldUseIncomingTurn(current, turn)) {
-    const candidate = current ? preserveTurnProvenance(current, turn) : turn;
+    const candidate = current
+      ? preserveTurnProjectionState(
+          current,
+          preserveTurnProvenance(current, turn),
+          preserveProjectedForkBinding
+        )
+      : turn;
     target[key] =
       current && areJsonLikeValuesEqual(current, candidate)
         ? current
         : { ...candidate };
   }
+}
+
+function preserveTurnProjectionState(
+  current: AgentActivityTurn,
+  incoming: AgentActivityTurn,
+  preserveProjectedForkBinding: boolean
+): AgentActivityTurn {
+  if (
+    !preserveProjectedForkBinding ||
+    current.providerForkBindingAvailable !== true ||
+    incoming.providerForkBindingAvailable === true
+  ) {
+    return incoming;
+  }
+  return {
+    ...incoming,
+    providerForkBindingAvailable: true,
+    providerForkBindingState: current.providerForkBindingState
+  };
 }
 
 function reuseRecordIfShallowEqual<T>(
@@ -666,17 +735,41 @@ function preserveProjectedSessionState(
   current: CanonicalAgentSession | undefined,
   incoming: CanonicalAgentSession
 ): CanonicalAgentSession {
+  const messageVersion = Math.max(
+    current?.messageVersion ?? 0,
+    incoming.messageVersion ?? 0
+  );
+  const goalSyncState =
+    current?.goalSyncState !== undefined &&
+    !Object.prototype.hasOwnProperty.call(incoming, "goalSyncState")
+      ? current.goalSyncState
+      : undefined;
+  const tuttiModeActivation =
+    current?.tuttiModeActivation &&
+    (!incoming.tuttiModeActivation ||
+      incoming.tuttiModeActivation.currentRevision.revision <
+        current.tuttiModeActivation.currentRevision.revision)
+      ? current.tuttiModeActivation
+      : undefined;
+  const preserved = {
+    ...incoming,
+    ...(messageVersion === (incoming.messageVersion ?? 0)
+      ? {}
+      : { messageVersion }),
+    ...(goalSyncState === undefined ? {} : { goalSyncState }),
+    ...(tuttiModeActivation === undefined ? {} : { tuttiModeActivation })
+  };
   if (
     current?.lifecycleCapabilitiesProjected === true &&
     incoming.lifecycleCapabilitiesProjected !== true
   ) {
     return {
-      ...incoming,
+      ...preserved,
       lifecycleCapabilities: current.lifecycleCapabilities,
       lifecycleCapabilitiesProjected: true
     };
   }
-  return incoming;
+  return preserved;
 }
 
 function sessionVersion(session: CanonicalAgentSession): number {

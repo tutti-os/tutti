@@ -2,6 +2,38 @@
 
 [Back to troubleshooting index](./README.md)
 
+### A published stable release is missing from the public changelog
+
+- Symptom:
+  The stable GitHub Release and its installers are public, but
+  `https://tutti.sh/changelog` skips that version and the aggregate
+  `changelog.json` does not contain its tag.
+- Quick checks:
+  Inspect the public `changelog.json`, then confirm the GitHub Release is a
+  published non-prerelease with a `release-summary.json` asset. Check the
+  original promotion run's `Update stable changelog metadata` step and any
+  later release or recovery runs that rewrote the mutable aggregate.
+- Root cause:
+  The public page renders the release-owned aggregate rather than deriving
+  entries from GitHub on each request. If that mutable aggregate loses an
+  entry, later releases preserve the incomplete baseline even though the
+  missing release and its immutable summary remain valid.
+- Fix:
+  Run `Repair Desktop Release Changelog` with the exact missing stable tag.
+  The workflow validates the published release and staged summary metadata,
+  rebuilds the public entry from the current human-reviewed Release Notes,
+  preserves every existing entry, and upserts the corrected summary without
+  moving release pointers or republishing assets. Do not rerun promotion for an
+  older stable tag because its rollback guard correctly rejects moving the
+  public channel behind the current release.
+- Validation:
+  Confirm the workflow's S3 round-trip verification passes, then verify the
+  public aggregate and `https://tutti.sh/changelog` both contain the restored
+  version after the configured cache window.
+- References:
+  [.github/workflows/desktop-release-changelog-repair.yml](../../../.github/workflows/desktop-release-changelog-repair.yml)
+  [upsert-release-changelog.mjs](../../../apps/desktop/scripts/upsert-release-changelog.mjs)
+
 ### Packaged Tutti starts but external shells cannot find `tutti`
 
 - Symptom:

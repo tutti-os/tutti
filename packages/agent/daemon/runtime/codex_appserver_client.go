@@ -14,14 +14,22 @@ import (
 
 type codexAppServerClient struct {
 	raw *acpClient
-	// closeOnce makes Close idempotent: the client is closed from several
-	// owners (session replacement, lifecycle Close/Release, force-cancel,
-	// startup failure defers) and only the first close may reach the process.
-	closeOnce sync.Once
-	closeErr  error
+	// messageRouter, when present, is the connection-wide dispatcher for
+	// clients that own more than one app-server thread (for example a parent
+	// plus ephemeral Side threads). It deliberately overrides per-RPC
+	// handlers so notifications from another thread cannot be misattributed
+	// merely because one thread has an RPC in flight.
+	messageRouterMu sync.RWMutex
+	messageRouter   acpMessageHandler
+	// Close remains idempotent after success but retries a failed physical
+	// transport close so lifecycle cleanup never loses process ownership.
+	closeMu sync.Mutex
+	closed  bool
 	// parsedNotificationMethods tracks notification methods already run
 	// through the typed schema parse (telemetry only).
 	parsedNotificationMethods sync.Map
+	mcpFailureMu              sync.Mutex
+	mcpFailureScheduled       bool
 }
 
 type codexAppServerCaller struct {
@@ -46,6 +54,9 @@ func (c *codexAppServerClient) SetMessageHandler(handler acpMessageHandler) {
 	}
 	c.raw.SetMessageHandler(func(ctx context.Context, message acpMessage) error {
 		c.parseInboundMessage(message)
+		if router := c.getMessageRouter(); router != nil {
+			return router(ctx, message)
+		}
 		if handler == nil {
 			return nil
 		}
@@ -53,21 +64,109 @@ func (c *codexAppServerClient) SetMessageHandler(handler acpMessageHandler) {
 	})
 }
 
+func (c *codexAppServerClient) SetMessageRouter(router acpMessageHandler) {
+	if c == nil {
+		return
+	}
+	c.messageRouterMu.Lock()
+	c.messageRouter = router
+	c.messageRouterMu.Unlock()
+}
+
+func (c *codexAppServerClient) getMessageRouter() acpMessageHandler {
+	if c == nil {
+		return nil
+	}
+	c.messageRouterMu.RLock()
+	defer c.messageRouterMu.RUnlock()
+	return c.messageRouter
+}
+
 func (c *codexAppServerClient) SetStderrSink(sink func([]byte)) {
 	if c == nil || c.raw == nil {
 		return
 	}
-	c.raw.SetStderrSink(sink)
+	c.raw.SetStderrSink(func(chunk []byte) {
+		if sink != nil {
+			sink(chunk)
+		}
+		c.observeMCPStderr(chunk)
+	})
+}
+
+func (c *codexAppServerClient) observeMCPStderr(chunk []byte) {
+	if c == nil || len(chunk) == 0 {
+		return
+	}
+	diagnostics := c.raw.Diagnostics()
+	detail := diagnostics.StderrTail
+	failure := codexMCPServerStartupFailureFromStderr(detail)
+	c.scheduleMCPFailure(failure, "stderr")
+}
+
+func (c *codexAppServerClient) observeMCPStartupStatus(status map[string]any) {
+	c.scheduleMCPFailure(codexMCPServerStartupFailureFromStatus(status), "notification")
+}
+
+func (c *codexAppServerClient) completeThreadLifecycleFromNotification(thread map[string]any) {
+	if c == nil || c.raw == nil || len(thread) == 0 {
+		return
+	}
+	threadID := strings.TrimSpace(asString(thread["id"]))
+	if threadID == "" {
+		return
+	}
+	result, err := json.Marshal(map[string]any{"thread": clonePayload(thread)})
+	if err != nil {
+		return
+	}
+	c.raw.completeActiveHandler(appServerMethodThreadStart, result)
+	c.raw.completeActiveHandler(appServerMethodThreadResume, result)
+}
+
+func (c *codexAppServerClient) scheduleMCPFailure(failure error, source string) {
+	if c == nil || failure == nil {
+		return
+	}
+	c.mcpFailureMu.Lock()
+	if c.mcpFailureScheduled {
+		c.mcpFailureMu.Unlock()
+		return
+	}
+	c.mcpFailureScheduled = true
+	c.mcpFailureMu.Unlock()
+	slog.Warn("agent session Codex MCP server startup failed",
+		"event", "agent_session.codex.mcp.startup_failed",
+		"source", source,
+		"error", failure.Error(),
+		"grace_ms", defaultCodexAppServerMCPFailureGraceWindow.Milliseconds(),
+	)
+	time.AfterFunc(defaultCodexAppServerMCPFailureGraceWindow, func() {
+		c.failActiveCall(failure)
+	})
+}
+
+func (c *codexAppServerClient) failActiveCall(err error) {
+	if c == nil || c.raw == nil {
+		return
+	}
+	c.raw.failActiveHandler(err)
 }
 
 func (c *codexAppServerClient) Close() error {
 	if c == nil || c.raw == nil {
 		return nil
 	}
-	c.closeOnce.Do(func() {
-		c.closeErr = c.raw.Close()
-	})
-	return c.closeErr
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.closed {
+		return nil
+	}
+	err := c.raw.Close()
+	if err == nil {
+		c.closed = true
+	}
+	return err
 }
 
 func (c *codexAppServerClient) Done() <-chan struct{} {
@@ -145,6 +244,9 @@ func (c *codexAppServerClient) wrapHandler(handler acpMessageHandler) acpMessage
 	}
 	return func(ctx context.Context, message acpMessage) error {
 		c.parseInboundMessage(message)
+		if router := c.getMessageRouter(); router != nil {
+			return router(ctx, message)
+		}
 		return handler(ctx, message)
 	}
 }
@@ -420,6 +522,71 @@ func (c *codexAppServerClient) ThreadFork(
 		return nil, err
 	}
 	return caller.rawResult, nil
+}
+
+type codexSideThreadForkParams struct {
+	ThreadID              string  `json:"threadId"`
+	Ephemeral             *bool   `json:"ephemeral,omitempty"`
+	ExcludeTurns          *bool   `json:"excludeTurns,omitempty"`
+	DeveloperInstructions *string `json:"developerInstructions,omitempty"`
+}
+
+func (c *codexAppServerClient) ThreadForkSide(
+	ctx context.Context,
+	timeout time.Duration,
+	params map[string]any,
+	handler acpMessageHandler,
+	lateResult func(json.RawMessage),
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexSideThreadForkParams](params)
+	if err != nil {
+		return nil, err
+	}
+	_ = handler
+	return c.raw.CallNoHandlerWithLateResult(
+		ctx,
+		timeout,
+		appServerMethodThreadFork,
+		typedParams,
+		lateResult,
+	)
+}
+
+func (c *codexAppServerClient) ThreadInjectItems(
+	ctx context.Context,
+	timeout time.Duration,
+	params map[string]any,
+	handler acpMessageHandler,
+) (json.RawMessage, error) {
+	typedParams, err := codexProtoParams[codexproto.ThreadInjectItemsParams](params)
+	if err != nil {
+		return nil, err
+	}
+	client, caller := c.typed(timeout, handler, false)
+	_, err = client.ThreadInjectItems(ctx, typedParams)
+	if err != nil {
+		return nil, err
+	}
+	return caller.rawResult, nil
+}
+
+func (c *codexAppServerClient) ThreadUnsubscribeNoHandler(
+	ctx context.Context,
+	timeout time.Duration,
+	threadID string,
+) error {
+	if c == nil || c.raw == nil {
+		return errors.New("app-server client is nil")
+	}
+	_, err := c.raw.CallNoHandlerWithTimeout(
+		ctx,
+		timeout,
+		appServerMethodThreadUnsubscribe,
+		codexproto.ThreadUnsubscribeParams{
+			ThreadID: strings.TrimSpace(threadID),
+		},
+	)
+	return err
 }
 
 func (c *codexAppServerClient) TurnStart(

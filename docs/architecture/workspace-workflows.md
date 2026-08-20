@@ -46,8 +46,11 @@ planning behavior, while `/tutti` creates or advances a Tutti-owned
 `TuttiModeActivation`. The badges are compatible, and removing either badge
 only disables that modifier. The Tutti badge creates durable activation state,
 not a workflow; a workflow begins only when the Agent invokes the Tutti CLI.
-The CLI remains available when the activation is inactive, and an autonomous
-Agent invocation never fabricates a slash-command activation.
+Workflow CLI capabilities remain discoverable when activation is inactive, but
+their mutation paths require the user-controlled activation to be active. The
+Agent has no CLI or service mutation that can change this state; it must ask the
+user to turn Tutti Mode on manually. The persisted `agent_command` source is
+retained only so revisions written by older builds remain readable.
 
 ## Durable And Derived Entities
 
@@ -120,10 +123,14 @@ require the same caller session as the workflow's `sourceSessionId`; a mismatch
 is deliberately reported as not found. This is a local capability boundary,
 not a claim that an environment variable is a malicious-client authentication
 credential. The daemon host is responsible for constructing the CLI runtime
-context. Until it exposes a trusted current Turn/tool-call seam, CLI proposal
-creation leaves `sourceTurnId` and `sourceToolCallId` empty. In particular,
-App CLI `ParentCommandID` is nested-command context and must never be recorded
-as an Agent tool-call ID.
+context. Agent plan proposal and revision commands require the exact active
+Turn ID from that context and fail closed when it is unavailable. The plan
+service resolves that Turn through the activation service and verifies the
+document's explicit `execution.effect` and `execution.speed` equal its frozen
+snapshot before writing an immutable revision or workflow mutation. It never
+substitutes the mutable current Session preferences. `sourceToolCallId` remains
+empty until a trusted tool-call seam exists; App CLI `ParentCommandID` is
+nested-command context and must never be recorded as an Agent tool-call ID.
 
 The same caller authority applies after Issue materialization. Generic Issue
 Manager mutations cannot modify a `tutti_mode_plan` graph; they return
@@ -266,6 +273,10 @@ The frontmatter owns:
   compiles the explicit speed preference into a 1-4 upper parallel target while
   the durable scheduler still enforces dependency, isolation, budget, and
   workspace-capacity limits;
+- explicit effect and speed values copied from the producing Turn's immutable
+  activation snapshot; both fields are required for Agent CLI proposals and
+  revisions, and either a missing snapshot or an unequal value rejects the
+  mutation before revision-file persistence;
 - auto or fixed token budget and quota waterline (the token limit is dormant
   and no longer surfaced in UI);
 - task IDs, content, priority, assignment (agent target, model plan, model,
@@ -292,6 +303,7 @@ directly.
 ```text
 Agent: tutti plan propose --file <plan.md> --request-id <stable-id>
   (plan.md = complete narrative + full task graph in one document)
+  -> daemon validates effect/speed against the exact producing Turn snapshot
   -> daemon commits workflow + revision + the single pending task review
   -> daemon publishes workspace.workflow.updated
   -> AgentGUI pulls the authoritative session-scoped pending snapshot
@@ -309,6 +321,7 @@ review rejected ("request changes")
      checkpoint-scoped clientSubmitId and linked back as a feedback turn
      (best-effort; the committed rejection never depends on dispatch)
   -> Agent appends a complete replacement plan with tutti plan revise
+  -> daemon validates the replacement against that revision Turn's snapshot
   -> revision append atomically completes that exact pending operation
   -> the panel refreshes onto the new pending review
 

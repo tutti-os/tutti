@@ -15,6 +15,10 @@ on:
       target_commit:
         required: true
         type: string
+      verify_release_tag:
+        default: true
+        required: false
+        type: boolean
   workflow_dispatch:
     inputs:
       release_tag:
@@ -35,6 +39,11 @@ on:
       submit:
         default: false
         description: Submit the validated package to Partner Center
+        required: true
+        type: boolean
+      verify_release_tag:
+        default: true
+        description: Require the release tag to resolve to the target commit
         required: true
         type: boolean
 
@@ -63,6 +72,7 @@ jobs:
       TUTTI_STORE_IDENTITY_NAME: ${{ vars.TUTTI_STORE_IDENTITY_NAME }}
       TUTTI_STORE_PUBLISHER: ${{ vars.TUTTI_STORE_PUBLISHER }}
       TUTTI_STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.TUTTI_STORE_PUBLISHER_DISPLAY_NAME }}
+      TUTTI_STORE_MSIX_MIN_VERSION: 10.0.17763.0
 
     steps:
       - name: Validate stable submission request
@@ -98,6 +108,7 @@ jobs:
           ref: ${{ inputs.target_commit }}
 
       - name: Verify stable tag points to release target
+        if: ${{ inputs.verify_release_tag }}
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -170,7 +181,16 @@ jobs:
           $publisher = $identity.GetAttribute('Publisher')
           $version = $identity.GetAttribute('Version')
           $architecture = $identity.GetAttribute('ProcessorArchitecture')
+          $minVersion = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Dependencies']/*[local-name()='TargetDeviceFamily']").GetAttribute('MinVersion')
+          $maxVersionTested = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Dependencies']/*[local-name()='TargetDeviceFamily']").GetAttribute('MaxVersionTested')
           $expectedVersion = "$env:TUTTI_DESKTOP_BUILD_VERSION.0"
+          try {
+            $parsedMinVersion = [version]$minVersion
+            $parsedMaxVersionTested = [version]$maxVersionTested
+            $requiredMinVersion = [version]$env:TUTTI_STORE_MSIX_MIN_VERSION
+          } catch {
+            throw "Invalid Store package Windows version metadata: MinVersion=$minVersion, MaxVersionTested=$maxVersionTested"
+          }
           $packageDisplayName = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Properties']/*[local-name()='DisplayName']").InnerText
           $application = $manifest.SelectSingleNode("/*[local-name()='Package']/*[local-name()='Applications']/*[local-name()='Application']")
           $applicationId = $application.GetAttribute('Id')
@@ -178,6 +198,9 @@ jobs:
           $entryPoint = $application.GetAttribute('EntryPoint')
           $visualElements = $application.SelectSingleNode("*[local-name()='VisualElements']")
           $applicationDisplayName = $visualElements.GetAttribute('DisplayName')
+          $applicationBackgroundColor = $visualElements.GetAttribute('BackgroundColor')
+          $applicationAppListEntry = $visualElements.GetAttribute('AppListEntry')
+          $desktopShortcut = $application.SelectSingleNode("*[local-name()='Extensions']/*[local-name()='Extension' and @Category='windows.shortcut']/*[local-name()='Shortcut']")
 
           if ($identityName -ne $env:TUTTI_STORE_IDENTITY_NAME) {
             throw "Store identity mismatch: $identityName"
@@ -190,6 +213,12 @@ jobs:
           }
           if ($architecture -ne 'x64') {
             throw "Store architecture mismatch: $architecture"
+          }
+          if ($parsedMinVersion -lt $requiredMinVersion) {
+            throw "Store package MinVersion $minVersion is below the Microsoft Store MSIX floor $env:TUTTI_STORE_MSIX_MIN_VERSION"
+          }
+          if ($parsedMaxVersionTested -lt $parsedMinVersion) {
+            throw "Store package MaxVersionTested $maxVersionTested is below MinVersion $minVersion"
           }
           if ($packageDisplayName -ne $env:TUTTI_STORE_DISPLAY_NAME) {
             throw "Store package display name mismatch: $packageDisplayName"
@@ -205,6 +234,21 @@ jobs:
           }
           if ($applicationDisplayName -ne 'Tutti') {
             throw "Installed application display name mismatch: $applicationDisplayName"
+          }
+          if ($applicationBackgroundColor -ne 'transparent') {
+            throw "Installed application tile background must be transparent: $applicationBackgroundColor"
+          }
+          if ($applicationAppListEntry -ne 'default') {
+            throw "Installed application must appear in the Start menu: $applicationAppListEntry"
+          }
+          if ($null -eq $desktopShortcut) {
+            throw "Store manifest does not declare the Tutti desktop shortcut"
+          }
+          if ($desktopShortcut.GetAttribute('File') -ne '$(Desktop)\Tutti.lnk') {
+            throw "Store desktop shortcut path mismatch: $($desktopShortcut.GetAttribute('File'))"
+          }
+          if ($desktopShortcut.GetAttribute('Icon') -ne 'app\Tutti.exe') {
+            throw "Store desktop shortcut icon mismatch: $($desktopShortcut.GetAttribute('Icon'))"
           }
           $storeAssets = @(
             'StoreLogo.png',
@@ -245,6 +289,9 @@ jobs:
             packageDisplayName = $packageDisplayName
             productId = $env:TUTTI_MICROSOFT_STORE_PRODUCT_ID
             publisher = $publisher
+            minVersion = $minVersion
+            maxVersionTested = $maxVersionTested
+            submissionPackage = [System.IO.Path]::ChangeExtension($package.Name, '.msix')
             sha256 = $sha256
             tag = $env:TUTTI_DESKTOP_RELEASE_TAG
             version = $version
@@ -253,6 +300,24 @@ jobs:
           "path=$($package.FullName)" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "sha256=$sha256" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
           "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "minVersion=$minVersion" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "maxVersionTested=$maxVersionTested" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - id: submission
+        name: Prepare MSIX Store submission package
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $appxPath = '${{ steps.package.outputs.path }}'
+          $msixPath = [System.IO.Path]::ChangeExtension($appxPath, '.msix')
+          Copy-Item -LiteralPath $appxPath -Destination $msixPath -Force
+          $appxSha256 = (Get-FileHash -LiteralPath $appxPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $msixSha256 = (Get-FileHash -LiteralPath $msixPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($appxSha256 -ne $msixSha256) {
+            throw "MSIX submission alias changed the validated package bytes"
+          }
+          "path=$msixPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "sha256=$msixSha256" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Upload validated Store submission artifact
         uses: actions/upload-artifact@v7
@@ -260,6 +325,7 @@ jobs:
           name: tutti-desktop-store-${{ inputs.release_tag }}
           path: |
             apps/desktop/dist/*.appx
+            apps/desktop/dist/*.msix
             apps/desktop/dist/store-submission.json
           if-no-files-found: error
           retention-days: 30
@@ -297,9 +363,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $appxPath = '${{ steps.package.outputs.path }}'
-          $msixPath = [System.IO.Path]::ChangeExtension($appxPath, '.msix')
-          Copy-Item -LiteralPath $appxPath -Destination $msixPath -Force
+          $msixPath = '${{ steps.submission.outputs.path }}'
           msstore publish $msixPath -id "$env:TUTTI_MICROSOFT_STORE_PRODUCT_ID"
 
       - name: Record submission summary
@@ -313,7 +377,10 @@ jobs:
           - Tag: `$env:TUTTI_DESKTOP_RELEASE_TAG`
           - Commit: `$(git rev-parse HEAD)`
           - Store version: `${{ steps.package.outputs.version }}`
+          - Windows MinVersion: `${{ steps.package.outputs.minVersion }}`
+          - MaxVersionTested: `${{ steps.package.outputs.maxVersionTested }}`
           - SHA-256: `${{ steps.package.outputs.sha256 }}`
+          - MSIX SHA-256: `${{ steps.submission.outputs.sha256 }}`
           - Submitted: `${{ inputs.submit }}`
 
           The workflow stops after Partner Center accepts the submission request; it does not wait for certification.

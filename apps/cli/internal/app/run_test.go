@@ -5,10 +5,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -21,20 +25,116 @@ func runDefaultProgram(t *testing.T, args []string, stdout *bytes.Buffer, stderr
 	return RunWithProgram(t.Context(), "tutti", args, stdout, stderr)
 }
 
-func TestCliInvokeContextFromEnvIncludesAgentSessionID(t *testing.T) {
+func TestCliInvokeContextFromEnvIncludesAgentRuntimeContext(t *testing.T) {
 	t.Setenv("TUTTI_APP_ID", " automation-app ")
 	t.Setenv("TUTTI_WORKSPACE_ID", " workspace-1 ")
 	t.Setenv("TUTTI_APP_CLI_PARENT_COMMAND_ID", " parent-1 ")
 	t.Setenv("TUTTI_AGENT_SESSION_ID", " session-1 ")
+	t.Setenv("TUTTI_AGENT_CWD", " /workspace/project/worktree ")
+	t.Setenv("TUTTI_AGENT_RAIL_PLACEMENT", ` {"version":1,"kind":"project","projectPath":"/workspace/project","sectionKey":"project:/workspace/project"} `)
 
 	context := cliInvokeContextFromEnv()
 	if context.AppID != "automation-app" ||
 		context.Source != "cli" ||
 		context.WorkspaceID != "workspace-1" ||
 		context.ParentCommandID != "parent-1" ||
-		context.AgentSessionID != "session-1" {
+		context.AgentSessionID != "session-1" ||
+		context.AgentCWD != "/workspace/project/worktree" ||
+		context.AgentRailPlacementJSON != `{"version":1,"kind":"project","projectPath":"/workspace/project","sectionKey":"project:/workspace/project"}` {
 		t.Fatalf("context = %#v", context)
 	}
+}
+
+func TestHydrateDynamicStdinInputForwardsRawJSON(t *testing.T) {
+	previous := dynamicInputReader
+	dynamicInputReader = func() io.Reader {
+		return strings.NewReader(`{"scope":"desktop","path":"C:\\Temp\\示例.png"}`)
+	}
+	t.Cleanup(func() { dynamicInputReader = previous })
+	command := daemon.Capability{InputSchema: map[string]any{
+		"properties": map[string]any{
+			"arguments-json": map[string]any{"type": "string"},
+		},
+	}}
+	input, err := hydrateDynamicStdinInput(command, map[string]any{
+		"name": "click", "arguments-json": "-",
+	})
+	if err != nil {
+		t.Fatalf("hydrate stdin: %v", err)
+	}
+	if input["arguments-json"] != `{"scope":"desktop","path":"C:\\Temp\\示例.png"}` {
+		t.Fatalf("input = %#v", input)
+	}
+}
+
+func TestRunDynamicComputerToolCallReadsArgumentsFromStdin(t *testing.T) {
+	previous := dynamicInputReader
+	dynamicInputReader = func() io.Reader {
+		return strings.NewReader(`{"scope":"desktop","path":"C:\\Temp\\示例.png"}`)
+	}
+	t.Cleanup(func() { dynamicInputReader = previous })
+
+	var invoked daemon.InvokeRequest
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/cli/capabilities":
+			_, _ = w.Write([]byte(`{"commands":[{"id":"computer.tool.call","path":["computer","tool","call"],"summary":"Call tool","inputSchema":{"type":"object","properties":{"name":{"type":"string"},"arguments-json":{"type":"string"}},"required":["name"]},"output":{"defaultMode":"json","json":true}}]}`))
+		case "/v1/cli/commands/computer.tool.call/invoke":
+			if err := json.NewDecoder(r.Body).Decode(&invoked); err != nil {
+				t.Fatalf("decode invoke: %v", err)
+			}
+			_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	writeEndpoint(t, server.URL, "token-1")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := runDefaultProgram(t, []string{
+		"computer", "tool", "call", "--name", "click", "--arguments-json", "-", "--json",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+	}
+	if invoked.Input["arguments-json"] != `{"scope":"desktop","path":"C:\\Temp\\示例.png"}` {
+		t.Fatalf("invoke input = %#v", invoked.Input)
+	}
+}
+
+func TestWindowsPowerShellUTF8PipelinePreservesDynamicInput(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows PowerShell encoding contract")
+	}
+	powershell, err := exec.LookPath("powershell.exe")
+	if err != nil {
+		t.Skip("Windows PowerShell is unavailable")
+	}
+	executable := strings.ReplaceAll(os.Args[0], "'", "''")
+	script := "$utf8 = [Text.UTF8Encoding]::new($false); " +
+		"$OutputEncoding = $utf8; [Console]::OutputEncoding = $utf8; " +
+		`'{"path":"C:\\Temp\\示例.png"}' | & '` + executable + `' '-test.run=^TestDynamicStdinUTF8Helper$'`
+	command := exec.Command(powershell, "-NoProfile", "-NonInteractive", "-Command", script)
+	command.Env = append(os.Environ(), "TUTTI_TEST_STDIN_UTF8_HELPER=1")
+	output, err := command.CombinedOutput()
+	if err != nil {
+		t.Fatalf("PowerShell pipeline: %v: %s", err, output)
+	}
+	got := strings.TrimPrefix(strings.TrimSpace(string(output)), "\ufeff")
+	if want := `{"path":"C:\\Temp\\示例.png"}`; got != want {
+		t.Fatalf("stdin = %q, want %q", got, want)
+	}
+}
+
+func TestDynamicStdinUTF8Helper(_ *testing.T) {
+	if os.Getenv("TUTTI_TEST_STDIN_UTF8_HELPER") != "1" {
+		return
+	}
+	_, _ = io.Copy(os.Stdout, os.Stdin)
+	os.Exit(0)
 }
 
 func TestWriteDynamicJSONKeepsCommandWarningsOutOfAppValue(t *testing.T) {
@@ -691,6 +791,69 @@ func TestRunDynamicCommandAggregatesRepeatedFlags(t *testing.T) {
 	params, ok := input["param"].([]any)
 	if !ok || len(params) != 2 || params[0] != "path=/tmp/a" || params[1] != "mode=preview" {
 		t.Fatalf("param input = %#v", input["param"])
+	}
+}
+
+func TestRunDynamicCommandSendsSchemaDeclaredScalarTypes(t *testing.T) {
+	const capabilities = `{"commands":[{"id":"agent-context.agent.messages","path":["agent","messages"],"summary":"Read messages","inputSchema":{"type":"object","required":["session-id"],"properties":{"session-id":{"type":"string"},"limit":{"type":"integer"},"waterline-percent":{"type":"number"},"follow":{"type":"boolean"}}},"output":{"defaultMode":"json","json":true}}]}`
+	tests := []struct {
+		name      string
+		args      []string
+		wantInput map[string]any
+	}{
+		{
+			name:      "scalar flags reach the daemon as declared JSON types",
+			args:      []string{"agent", "messages", "--session-id", "S-1", "--limit", "25", "--waterline-percent", "12.5", "--follow", "yes"},
+			wantInput: map[string]any{"session-id": "S-1", "limit": float64(25), "waterline-percent": 12.5, "follow": true},
+		},
+		{
+			name:      "a bare boolean flag stays boolean",
+			args:      []string{"agent", "messages", "--session-id", "S-1", "--follow"},
+			wantInput: map[string]any{"session-id": "S-1", "follow": true},
+		},
+		{
+			// Terminal text the declared type cannot hold is forwarded as-is:
+			// the daemon owns input rejection wording, not the CLI.
+			name:      "unparseable values are forwarded unchanged",
+			args:      []string{"agent", "messages", "--session-id", "S-1", "--limit", "many"},
+			wantInput: map[string]any{"session-id": "S-1", "limit": "many"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var invokedBody map[string]any
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/v1/cli/capabilities":
+					_, _ = w.Write([]byte(capabilities))
+				case "/v1/cli/commands/agent-context.agent.messages/invoke":
+					if err := json.NewDecoder(r.Body).Decode(&invokedBody); err != nil {
+						t.Fatalf("decode body: %v", err)
+					}
+					_, _ = w.Write([]byte(`{"ok":true,"output":{"kind":"json","value":{"ok":true}}}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			defer server.Close()
+
+			writeEndpoint(t, server.URL, "token-1")
+
+			var stdout bytes.Buffer
+			var stderr bytes.Buffer
+			if code := runDefaultProgram(t, tt.args, &stdout, &stderr); code != 0 {
+				t.Fatalf("code = %d, stderr = %s", code, stderr.String())
+			}
+			input, ok := invokedBody["input"].(map[string]any)
+			if !ok {
+				t.Fatalf("input = %#v", invokedBody["input"])
+			}
+			if !reflect.DeepEqual(input, tt.wantInput) {
+				t.Fatalf("input = %#v, want %#v", input, tt.wantInput)
+			}
+		})
 	}
 }
 

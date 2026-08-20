@@ -38,6 +38,7 @@ import {
   getAgentTargetSetup,
   getStartupWorkspace,
   listAgentTargets,
+  probeAgentTargetAccountUsage,
   listAgentQuickPrompts,
   getWorkspaceFileTreeSnapshot,
   getWorkspace,
@@ -184,6 +185,15 @@ export function createTuttidClient(
       return unwrapData(
         await listAgentTargets({ client }),
         "Agent targets request failed."
+      );
+    },
+    async probeAgentTargetAccountUsage(agentTargetID) {
+      return unwrapData(
+        await probeAgentTargetAccountUsage({
+          client,
+          path: { agentTargetID }
+        }),
+        "Agent target account usage request failed."
       );
     },
     async setSystemAgentTargetEnabled(agentTargetID, enabled) {

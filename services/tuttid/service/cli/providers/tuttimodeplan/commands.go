@@ -230,6 +230,10 @@ func (p Provider) runPropose(ctx context.Context, invoke framework.InvokeContext
 	if err := p.requireTuttiModeActive(ctx, invoke.WorkspaceID, sessionID); err != nil {
 		return nil, err
 	}
+	turnID, err := p.callerActiveTurnID(ctx, invoke.WorkspaceID, sessionID)
+	if err != nil {
+		return nil, err
+	}
 	markdown, err := readPlanFile(input.File)
 	if err != nil {
 		return nil, err
@@ -237,7 +241,7 @@ func (p Provider) runPropose(ctx context.Context, invoke framework.InvokeContext
 	result, err := p.plans.Propose(ctx, tuttimodeplanservice.ProposeInput{
 		WorkspaceID:     invoke.WorkspaceID,
 		SourceSessionID: sessionID,
-		SourceTurnID:    p.callerActiveTurnID(ctx, invoke.WorkspaceID, sessionID),
+		SourceTurnID:    turnID,
 		RequestID:       input.RequestID,
 		Markdown:        markdown,
 	})
@@ -258,16 +262,21 @@ func (p Provider) runRevise(ctx context.Context, invoke framework.InvokeContext,
 	if err := p.requireTuttiModeActive(ctx, invoke.WorkspaceID, sessionID); err != nil {
 		return nil, err
 	}
+	turnID, err := p.callerActiveTurnID(ctx, invoke.WorkspaceID, sessionID)
+	if err != nil {
+		return nil, err
+	}
 	markdown, err := readPlanFile(input.File)
 	if err != nil {
 		return nil, err
 	}
 	result, err := p.plans.ReviseFromAgent(ctx, tuttimodeplanservice.AgentReviseInput{
-		WorkspaceID:    invoke.WorkspaceID,
-		WorkflowID:     input.WorkflowID,
-		AgentSessionID: sessionID,
-		RequestID:      input.RequestID,
-		Markdown:       markdown,
+		WorkspaceID:      invoke.WorkspaceID,
+		WorkflowID:       input.WorkflowID,
+		AgentSessionID:   sessionID,
+		ProducedByTurnID: turnID,
+		RequestID:        input.RequestID,
+		Markdown:         markdown,
 	})
 	if err != nil {
 		return nil, agentPlanError(err)
@@ -462,18 +471,33 @@ func (p Provider) runIssueStop(
 	}, nil
 }
 
-// callerActiveTurnID is best-effort decoration: the timeline anchors the plan
-// panel on this turn when present, and a missing pointer (unwired store, read
-// race) degrades the panel to the timeline tail rather than failing propose.
-func (p Provider) callerActiveTurnID(ctx context.Context, workspaceID string, sessionID string) string {
+// callerActiveTurnID is the authority for the immutable preference snapshot
+// that a new proposal or revision must copy. Agent-authored plan mutations fail
+// closed when the exact active Turn cannot be proven; otherwise omitting the
+// provenance would also bypass preference consistency validation.
+func (p Provider) callerActiveTurnID(ctx context.Context, workspaceID string, sessionID string) (string, error) {
 	if p.turns == nil {
-		return ""
+		return "", cliservice.ServiceUnavailableError(
+			"Tutti Mode source Turn resolver is unavailable",
+			nil,
+		)
 	}
 	turnID, err := p.turns.PersistedActiveTurnID(ctx, workspaceID, sessionID)
 	if err != nil {
-		return ""
+		return "", cliservice.ServiceUnavailableError(
+			"Tutti Mode source Turn is unavailable",
+			err,
+		)
 	}
-	return strings.TrimSpace(turnID)
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		return "", cliservice.InvalidInputReasonError(
+			"tutti_mode_source_turn_unavailable",
+			"Tutti Mode plan mutations must run inside the active Agent Turn so its exact effect and speed snapshot can be verified. Start a new Tutti Mode Turn and retry.",
+			nil,
+		)
+	}
+	return turnID, nil
 }
 
 func callerAgentSessionID(invoke framework.InvokeContext) (string, error) {

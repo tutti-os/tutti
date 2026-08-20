@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import path, { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { workspaceFilePreviewMaxBytes } from "@tutti-os/workspace-file-preview";
+import { formatWorkspaceFilePathForDisplay } from "@tutti-os/workspace-file-manager/services";
 import { desktopErrorCodes } from "../../shared/errors/desktopErrors.ts";
 import type {
   DesktopCreateUserDocumentsProjectDirectoryInput,
@@ -344,7 +345,10 @@ function resolveWorkspaceTargetPath(
 }
 
 function resolveWorkspaceTargetRoot(logicalPath: string): string {
-  const normalizedPath = logicalPath.trim().replaceAll("\\", "/");
+  const normalizedPath = formatWorkspaceFilePathForDisplay(
+    logicalPath,
+    process.platform
+  ).replaceAll("\\", "/");
   if (
     isWorkspaceLogicalPath(normalizedPath) ||
     !path.isAbsolute(normalizedPath)

@@ -33,8 +33,10 @@ describe("useAgentGUIComposerPresentation", () => {
         } as AgentGUIRuntime,
         composerOptionsLoadStatus: "error",
         composerOptionsLoading: false,
+        connectorOptionsLoading: false,
         composerSupport: composerSettingsSupportFromOptions(null, null),
         composerTargetProvider: "opencode",
+        composerTargetData: target,
         data,
         defaultReasoningEffort: null,
         draftSettingsBySessionId: {},
@@ -125,8 +127,10 @@ describe("useAgentGUIComposerPresentation", () => {
             reasoning: false
           },
           composerOptionsLoading: false,
+          connectorOptionsLoading: false,
           composerTargetProvider: "opencode",
           codexSaverModeEntryEnabled: entryEnabled,
+          composerTargetData: target,
           data,
           defaultReasoningEffort: null,
           draftSettingsBySessionId: drafts,
@@ -157,6 +161,14 @@ describe("useAgentGUIComposerPresentation", () => {
     });
     expect(result.current.stableComposerSettings).toMatchObject({
       selectedModelValue: "opencode/new-model",
+      modelChoiceHistory: {
+        targetId: "local:opencode",
+        catalog: {
+          authoritative: false,
+          effectiveModel: "opencode/old-model",
+          loading: false
+        }
+      },
       selectedPermissionModeValue: "full-access",
       selectedReasoningEffortValue: "high",
       selectedSpeedValue: "fast"
@@ -295,7 +307,9 @@ describe("useAgentGUIComposerPresentation", () => {
           } as AgentGUIRuntime,
           composerSupport: composerSettingsSupportFromOptions(options, null),
           composerOptionsLoading: false,
+          connectorOptionsLoading: false,
           composerTargetProvider: "opencode",
+          composerTargetData: target,
           data,
           defaultReasoningEffort: "high",
           draftSettingsBySessionId,

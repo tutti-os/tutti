@@ -2,9 +2,11 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
@@ -97,6 +99,155 @@ func TestControllerSessionEventSinkTracksSyntheticTurnLifecycle(t *testing.T) {
 		*patches[0].TurnLifecycle.ActiveTurnID != "synthetic-turn-1" {
 		t.Fatalf("reported state patches = %#v, want synthetic turn lifecycle", patches)
 	}
+}
+
+func TestControllerSessionEventSinkCommitsChildTerminalBeforePublish(t *testing.T) {
+	reporter := newSessionEventTerminalBarrierReporter()
+	controller := NewController(nil, reporter)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "root-session-1",
+		Provider:       ProviderCodex,
+		Status:         SessionStatusReady,
+	}
+	controller.store(session)
+	stream, unsubscribe, ok := controller.Subscribe(session.RoomID, session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+	defer unsubscribe()
+	select {
+	case <-stream:
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial session snapshot was not published")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		controller.applySessionEventsByAgentSessionID(
+			session.AgentSessionID,
+			[]activityshared.Event{lateChildCompletionEvent(session)},
+		)
+		close(done)
+	}()
+
+	var report agentsessionstore.ReportActivityInput
+	select {
+	case report = <-reporter.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("terminal report did not reach the durable barrier")
+	}
+	if !reportContainsAgentSessionStatePatch(report, "child-session-1") {
+		t.Fatalf("terminal report = %#v, want child state patch", report)
+	}
+	expectNoStreamEventType(t, stream, StreamEventStatePatch)
+
+	reporter.release <- nil
+	waitForPublishedSessionEvent(t, stream, EventTurnCompleted, "", "")
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("session event sink did not return after durable commit")
+	}
+}
+
+func TestControllerSessionEventSinkWithholdsChildTerminalWhenCommitFails(t *testing.T) {
+	reporter := newSessionEventTerminalBarrierReporter()
+	controller := NewController(nil, reporter)
+	session := Session{
+		RoomID:         "room-1",
+		AgentSessionID: "root-session-1",
+		Provider:       ProviderCodex,
+		Status:         SessionStatusReady,
+	}
+	controller.store(session)
+	stream, unsubscribe, ok := controller.Subscribe(session.RoomID, session.AgentSessionID)
+	if !ok {
+		t.Fatal("Subscribe returned ok=false")
+	}
+	defer unsubscribe()
+	select {
+	case <-stream:
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial session snapshot was not published")
+	}
+
+	reporter.release <- errors.New("durable report failed")
+	controller.applySessionEventsByAgentSessionID(
+		session.AgentSessionID,
+		[]activityshared.Event{lateChildCompletionEvent(session)},
+	)
+	select {
+	case <-reporter.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("terminal report did not reach the durable barrier")
+	}
+	expectNoStreamEventType(t, stream, StreamEventStatePatch)
+}
+
+type sessionEventTerminalBarrierReporter struct {
+	started chan agentsessionstore.ReportActivityInput
+	release chan error
+}
+
+func newSessionEventTerminalBarrierReporter() *sessionEventTerminalBarrierReporter {
+	return &sessionEventTerminalBarrierReporter{
+		started: make(chan agentsessionstore.ReportActivityInput, 1),
+		release: make(chan error, 1),
+	}
+}
+
+func (r *sessionEventTerminalBarrierReporter) Report(
+	ctx context.Context,
+	report agentsessionstore.ReportActivityInput,
+) error {
+	select {
+	case r.started <- report:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	select {
+	case err := <-r.release:
+		return err
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+}
+
+func (r *sessionEventTerminalBarrierReporter) ReportSubmitProvenance(
+	ctx context.Context,
+	report agentsessionstore.ReportActivityInput,
+) error {
+	return r.Report(ctx, report)
+}
+
+func lateChildCompletionEvent(root Session) activityshared.Event {
+	event := newTurnActivityEvent(
+		root,
+		EventTurnCompleted,
+		"child-turn-1",
+		SessionStatusReady,
+		"",
+		"",
+		nil,
+	)
+	event.AgentSessionID = "child-session-1"
+	event.SessionKind = "child"
+	event.RootAgentSessionID = root.AgentSessionID
+	event.RootTurnID = "root-turn-1"
+	return event
+}
+
+func reportContainsAgentSessionStatePatch(
+	report agentsessionstore.ReportActivityInput,
+	agentSessionID string,
+) bool {
+	for _, patch := range report.StatePatches {
+		if patch.AgentSessionID == agentSessionID {
+			return true
+		}
+	}
+	return false
 }
 
 func TestControllerFinishParentTurnDoesNotOverwriteSyntheticLifecycle(t *testing.T) {

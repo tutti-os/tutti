@@ -38,10 +38,21 @@ func (s *Store) RecordTurnTransition(ctx context.Context, transition TurnTransit
 	}
 	mutations := []TransactionMutation{}
 	if accepted {
-		mutations = append(mutations,
-			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntityTurn, turn.TurnID, "upsert", turn.UpdatedAtUnixMS),
-			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntitySession, turn.AgentSessionID, "upsert", turn.UpdatedAtUnixMS),
+		turnMutation := transactionMutation(
+			turn.WorkspaceID, turn.AgentSessionID, MutationEntityTurn,
+			turn.TurnID, "upsert", turn.UpdatedAtUnixMS,
 		)
+		// The persisted row may already be settled when a late capability-only
+		// merge is accepted. Only the incoming lifecycle fact can identify a
+		// terminal transition; the final row shape cannot.
+		if strings.TrimSpace(transition.Phase) == TurnPhaseSettled {
+			turnMutation = terminalTurnMutation(
+				turn.WorkspaceID, turn.AgentSessionID, turn.TurnID,
+				"upsert", turn.UpdatedAtUnixMS, false,
+			)
+		}
+		mutations = append(mutations, turnMutation,
+			transactionMutation(turn.WorkspaceID, turn.AgentSessionID, MutationEntitySession, turn.AgentSessionID, "upsert", turn.UpdatedAtUnixMS))
 	}
 	if _, err := s.commitTransaction(ctx, tx, transition.WorkspaceID, mutations); err != nil {
 		return Turn{}, false, fmt.Errorf("commit workspace agent turn transition: %w", err)
@@ -202,6 +213,22 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 			return Turn{}, false, fmt.Errorf("set workspace agent session active turn: %w", err)
 		}
 	}
+	if acceptedGoalExecutionTurn(merged) {
+		if _, err := tx.ExecContext(ctx, `
+UPDATE workspace_agent_session_goals
+SET execution_pending = 0, updated_at_unix_ms = MAX(updated_at_unix_ms, ?)
+WHERE workspace_id = ? AND agent_session_id = ? AND revision = ? AND execution_pending = 1
+  AND EXISTS (
+    SELECT 1 FROM workspace_agent_goal_control_operations operation
+    WHERE operation.workspace_id = workspace_agent_session_goals.workspace_id
+      AND operation.agent_session_id = workspace_agent_session_goals.agent_session_id
+      AND operation.operation_id = ? AND operation.goal_revision = ? AND operation.repair_epoch = ?
+  )
+`, occurred, workspaceID, agentSessionID, merged.SourceGoalRevision,
+			merged.SourceGoalOperationID, merged.SourceGoalRevision, merged.SourceGoalRepairEpoch); err != nil {
+			return Turn{}, false, fmt.Errorf("clear Goal execution-pending state: %w", err)
+		}
+	}
 
 	stored, ok, err := getAgentTurnTx(ctx, tx, workspaceID, agentSessionID, turnID)
 	if err != nil {
@@ -211,6 +238,14 @@ WHERE workspace_id = ? AND agent_session_id = ? AND deleted_at_unix_ms = 0
 		return Turn{}, false, fmt.Errorf("read recorded workspace agent turn: %w", sql.ErrNoRows)
 	}
 	return stored, true, nil
+}
+
+func acceptedGoalExecutionTurn(turn Turn) bool {
+	if turn.Origin != TurnOriginGoalArm && turn.Origin != TurnOriginGoalContinuation {
+		return false
+	}
+	return strings.TrimSpace(turn.SourceGoalOperationID) != "" &&
+		turn.SourceGoalRevision > 0 && turn.SourceGoalRepairEpoch >= 0
 }
 
 // validateLiveTurnSlotTx enforces the session-to-live-turn cardinality at the
@@ -288,7 +323,7 @@ func mergeTurnTransition(existing Turn, hasExisting bool, transition TurnTransit
 	))
 	merged.Backfilled = false
 	merged.UpdatedAtUnixMS = occurred
-	if transition.ErrorMessage != "" {
+	if transition.ErrorMessage != "" || transition.ErrorCode != "" {
 		merged.ErrorMessage = strings.TrimSpace(transition.ErrorMessage)
 		merged.ErrorCode = strings.TrimSpace(transition.ErrorCode)
 	}
@@ -423,8 +458,13 @@ func (s *Store) SettleStaleTurns(ctx context.Context) ([]StaleTurnSettlement, er
 	}()
 
 	rows, err := tx.QueryContext(ctx, `
-SELECT t.workspace_id, t.agent_session_id, t.turn_id
+SELECT t.workspace_id, t.agent_session_id, t.turn_id,
+       COALESCE(s.provider, ''), s.session_kind, COALESCE(s.parent_tool_call_id, ''),
+       t.started_at_unix_ms
 FROM workspace_agent_turns AS t
+JOIN workspace_agent_sessions AS s
+  ON s.workspace_id = t.workspace_id
+ AND s.agent_session_id = t.agent_session_id
 WHERE t.phase != ?
   AND NOT EXISTS (
     SELECT 1 FROM workspace_agent_runtime_operations AS op
@@ -439,7 +479,7 @@ WHERE t.phase != ?
       )
       AND op.status IN (?, ?)
   )
-ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
+ORDER BY t.workspace_id ASC, t.agent_session_id ASC, t.turn_id ASC
 `, TurnPhaseSettled, RuntimeOperationKindEditRetry,
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased)
 	if err != nil {
@@ -448,10 +488,21 @@ ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
 	settlements := make([]StaleTurnSettlement, 0)
 	for rows.Next() {
 		var settlement StaleTurnSettlement
-		if err := rows.Scan(&settlement.WorkspaceID, &settlement.AgentSessionID, &settlement.TurnID); err != nil {
+		var sessionKind, parentToolCallID string
+		if err := rows.Scan(
+			&settlement.WorkspaceID,
+			&settlement.AgentSessionID,
+			&settlement.TurnID,
+			&settlement.Provider,
+			&sessionKind,
+			&parentToolCallID,
+			&settlement.StartedAtUnixMS,
+		); err != nil {
 			rows.Close()
 			return nil, fmt.Errorf("scan stale workspace agent turn: %w", err)
 		}
+		settlement.IsChildSession = strings.EqualFold(strings.TrimSpace(sessionKind), SessionKindChild) ||
+			strings.TrimSpace(parentToolCallID) != ""
 		settlements = append(settlements, settlement)
 	}
 	if err := rows.Err(); err != nil {
@@ -469,6 +520,9 @@ ORDER BY workspace_id ASC, agent_session_id ASC, turn_id ASC
 	}
 
 	now := unixMs(time.Now().UTC())
+	for index := range settlements {
+		settlements[index].SettledAtUnixMS = now
+	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_turns AS t
 SET phase = ?, outcome = ?, settled_at_unix_ms = ?, updated_at_unix_ms = ?
@@ -490,6 +544,22 @@ WHERE phase != ?
 		RuntimeOperationKindEditRetry,
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("settle stale workspace agent turns: %w", err)
+	}
+	for index := range settlements {
+		turn, found, err := getAgentTurnTx(
+			ctx,
+			tx,
+			settlements[index].WorkspaceID,
+			settlements[index].AgentSessionID,
+			settlements[index].TurnID,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("read settled stale workspace agent turn: %w", err)
+		}
+		if !found {
+			return nil, errors.New("settled stale workspace agent turn disappeared")
+		}
+		settlements[index].Turn = turn
 	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_sessions AS s
@@ -538,6 +608,10 @@ WHERE status = ?
 		RuntimeOperationStatusPrepared, RuntimeOperationStatusLeased); err != nil {
 		return nil, fmt.Errorf("supersede stale workspace agent interactions: %w", err)
 	}
+	canceledMessages, err := s.cancelStaleTurnToolMessagesTx(ctx, tx, settlements, now)
+	if err != nil {
+		return nil, err
+	}
 	notifiedSessions := make(map[string]Message, len(settlements))
 	for _, settlement := range settlements {
 		key := settlement.WorkspaceID + "\x00" + settlement.AgentSessionID
@@ -551,10 +625,10 @@ WHERE status = ?
 		notifiedSessions[key] = message
 	}
 
-	mutations := make([]TransactionMutation, 0, len(settlements)*3+len(pendingInteractions))
+	mutations := make([]TransactionMutation, 0, len(settlements)*3+len(pendingInteractions)+len(canceledMessages))
 	for _, settlement := range settlements {
 		mutations = append(mutations,
-			transactionMutation(settlement.WorkspaceID, settlement.AgentSessionID, MutationEntityTurn, settlement.TurnID, "settle", now),
+			terminalTurnMutation(settlement.WorkspaceID, settlement.AgentSessionID, settlement.TurnID, "settle", now, true),
 			transactionMutation(settlement.WorkspaceID, settlement.AgentSessionID, MutationEntitySession, settlement.AgentSessionID, "upsert", now),
 		)
 	}
@@ -562,6 +636,12 @@ WHERE status = ?
 		mutations = append(mutations, transactionMutation(
 			interaction.WorkspaceID, interaction.AgentSessionID, MutationEntityInteraction,
 			interactionMutationEntityID(interaction.TurnID, interaction.RequestID), "supersede", now,
+		))
+	}
+	for _, canceled := range canceledMessages {
+		mutations = append(mutations, transactionMutation(
+			canceled.workspaceID, canceled.message.AgentSessionID, MutationEntityMessage,
+			canceled.message.MessageID, "upsert", int64(canceled.message.Version),
 		))
 	}
 	for key, message := range notifiedSessions {
@@ -730,62 +810,3 @@ func interactionImmutableIdentityEqual(existing Interaction, incoming Interactio
 		jsonMapsEqual(existing.Input, incoming.Input) &&
 		jsonMapsEqual(existing.Metadata, incoming.Metadata)
 }
-
-func (s *Store) ListSessionInteractions(ctx context.Context, input ListSessionInteractionsInput) ([]Interaction, error) {
-	if s == nil || s.db == nil {
-		return nil, errors.New("workspace database is not initialized")
-	}
-	workspaceID := strings.TrimSpace(input.WorkspaceID)
-	agentSessionID := strings.TrimSpace(input.AgentSessionID)
-	if workspaceID == "" || agentSessionID == "" {
-		return nil, nil
-	}
-	query := agentInteractionSelectSQL + `
-WHERE workspace_id = ? AND agent_session_id = ?
-  AND NOT EXISTS (
-    SELECT 1 FROM workspace_agent_turn_history history
-    WHERE history.workspace_id = workspace_agent_interactions.workspace_id
-      AND history.agent_session_id = workspace_agent_interactions.agent_session_id
-      AND history.turn_id = workspace_agent_interactions.turn_id
-      AND history.history_state = 'retracted'
-  )`
-	args := []any{workspaceID, agentSessionID}
-	turnID := strings.TrimSpace(input.TurnID)
-	requestID := strings.TrimSpace(input.RequestID)
-	if turnID != "" || requestID != "" {
-		if turnID == "" || requestID == "" {
-			return nil, errors.New("workspace agent interaction turn and request ids must be provided together")
-		}
-		query += ` AND turn_id = ? AND request_id = ?`
-		args = append(args, turnID, requestID)
-	}
-	if status := strings.TrimSpace(input.Status); status != "" {
-		query += ` AND status = ?`
-		args = append(args, status)
-	}
-	query += `
-ORDER BY created_at_unix_ms ASC, request_id ASC`
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, fmt.Errorf("list workspace agent interactions: %w", err)
-	}
-	defer rows.Close()
-
-	interactions := make([]Interaction, 0)
-	for rows.Next() {
-		interaction, err := scanAgentInteraction(rows)
-		if err != nil {
-			return nil, err
-		}
-		interactions = append(interactions, interaction)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate workspace agent interactions: %w", err)
-	}
-	return interactions, nil
-}
-
-const agentInteractionSelectSQL = `
-SELECT workspace_id, agent_session_id, request_id, turn_id, kind, status, tool_name,
-       input_json, output_json, metadata_json, created_at_unix_ms, updated_at_unix_ms
-FROM workspace_agent_interactions`

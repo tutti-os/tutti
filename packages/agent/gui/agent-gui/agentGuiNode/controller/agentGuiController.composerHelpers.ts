@@ -256,6 +256,9 @@ export function providerSkillsFromComposerOptions(
           ...(isConnector && capability.iconUrl
             ? { iconUrl: capability.iconUrl }
             : {}),
+          ...(isConnector && capability.installedAtUnixMs
+            ? { installedAtUnixMs: capability.installedAtUnixMs }
+            : {}),
           ...(capability.description
             ? { description: capability.description }
             : {}),
@@ -276,6 +279,7 @@ export function areProviderSkillOptionsEqual(
     left.name === right.name &&
     left.connectorKey === right.connectorKey &&
     left.iconUrl === right.iconUrl &&
+    left.installedAtUnixMs === right.installedAtUnixMs &&
     left.trigger === right.trigger &&
     left.invocation === right.invocation &&
     left.sourceKind === right.sourceKind &&

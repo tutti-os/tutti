@@ -366,6 +366,35 @@ export function areComposerSettingOptionListsEqual(
   );
 }
 
+function areComposerModelChoiceHistoriesEqual(
+  left: AgentGUIComposerSettingsVM["modelChoiceHistory"],
+  right: AgentGUIComposerSettingsVM["modelChoiceHistory"]
+): boolean {
+  if (!left || !right) {
+    return left === right;
+  }
+  if (left.targetId !== right.targetId) {
+    return false;
+  }
+  const leftCatalog = left.catalog;
+  const rightCatalog = right.catalog;
+  if (!leftCatalog || !rightCatalog) {
+    return leftCatalog === rightCatalog;
+  }
+  return (
+    leftCatalog.authoritative === rightCatalog.authoritative &&
+    leftCatalog.loading === rightCatalog.loading &&
+    leftCatalog.effectiveModel === rightCatalog.effectiveModel &&
+    leftCatalog.models.length === rightCatalog.models.length &&
+    leftCatalog.models.every(
+      (model, index) =>
+        model.value === rightCatalog.models[index]!.value &&
+        Boolean(model.requested) ===
+          Boolean(rightCatalog.models[index]!.requested)
+    )
+  );
+}
+
 export function useStableComposerSettings(
   settings: AgentSessionComposerSettings
 ): AgentSessionComposerSettings;
@@ -472,7 +501,12 @@ export function areComposerSettingsVMsEqual(
     (left.composerOptionsLoadStatus ?? null) ===
       (right.composerOptionsLoadStatus ?? null) &&
     !!left.isCapabilityOptionsLoading === !!right.isCapabilityOptionsLoading &&
+    !!left.isConnectorOptionsLoading === !!right.isConnectorOptionsLoading &&
     !!left.isModelOptionsLoading === !!right.isModelOptionsLoading &&
+    areComposerModelChoiceHistoriesEqual(
+      left.modelChoiceHistory,
+      right.modelChoiceHistory
+    ) &&
     left.modelUnavailable === right.modelUnavailable &&
     left.reasoningUnavailable === right.reasoningUnavailable &&
     left.speedUnavailable === right.speedUnavailable &&
@@ -562,6 +596,12 @@ export function stabilizeComposerSettingsVM(
   )
     ? previous.permissionConfig
     : next.permissionConfig;
+  const modelChoiceHistory = areComposerModelChoiceHistoriesEqual(
+    previous.modelChoiceHistory,
+    next.modelChoiceHistory
+  )
+    ? previous.modelChoiceHistory
+    : next.modelChoiceHistory;
   const availableModels = areComposerSettingOptionListsEqual(
     previous.availableModels,
     next.availableModels
@@ -591,6 +631,7 @@ export function stabilizeComposerSettingsVM(
     ...next,
     sessionSettings,
     draftSettings,
+    modelChoiceHistory,
     permissionConfig,
     availableModels,
     availableReasoningEfforts,

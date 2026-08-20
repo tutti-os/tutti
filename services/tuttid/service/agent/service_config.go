@@ -7,7 +7,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
@@ -32,6 +32,8 @@ type ServiceHostConfig struct {
 
 type ServiceRuntimeConfig struct {
 	Preparer                      runtimeprep.Preparer
+	Connector                     ConnectorRuntime
+	ConnectorCapabilities         ConnectorCapabilityResolver
 	ModelGateway                  ModelGatewayRegistry
 	BrowserUseAvailable           func() bool
 	ComputerUseAvailable          func() bool
@@ -150,6 +152,8 @@ func (s *Service) applyConfig(config ServiceConfig) {
 	s.WorkspaceIDs = config.Resources.WorkspaceIDs
 	s.PromptAttachmentStore = config.Resources.PromptAttachmentStore
 	s.RuntimePreparer = config.Runtime.Preparer
+	s.ConnectorRuntime = config.Runtime.Connector
+	s.ConnectorCapabilities = config.Runtime.ConnectorCapabilities
 	s.ModelGateway = config.Runtime.ModelGateway
 	s.BrowserUseAvailable = config.Runtime.BrowserUseAvailable
 	s.ComputerUseAvailable = config.Runtime.ComputerUseAvailable

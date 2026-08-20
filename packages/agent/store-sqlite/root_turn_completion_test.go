@@ -573,6 +573,45 @@ func TestRootProviderCompletionIsOrderIndependentAndTracksLatestProviderTurn(t *
 	}
 }
 
+func TestGuidanceContinuationFencesInterruptedProviderTerminal(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "codex", OccurredAtUnixMS: 10,
+	}, "root-turn", 10)
+	reportRootProviderTurn(t, store, "root", "root-turn", "provider-old", RootProviderTurnPhaseRunning, 20)
+	reportRootProviderTurn(t, store, "root", "root-turn", "continuation:guidance", RootProviderTurnPhaseRunning, 30)
+
+	if _, err := store.ReportActivityState(ctx, ActivityStateReport{
+		Session: SessionStateReport{
+			WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+			Provider: "codex", OccurredAtUnixMS: 40,
+		},
+		RootProviderTurn: &RootProviderTurnTransition{
+			WorkspaceID: "ws-1", RootAgentSessionID: "root", RootTurnID: "root-turn",
+			ProviderTurnID: "provider-old", Phase: RootProviderTurnPhaseCompleted,
+			Outcome: TurnOutcomeCanceled, OccurredAtUnixMS: 40,
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	root, found, err := store.GetTurn(ctx, "ws-1", "root", "root-turn")
+	if err != nil || !found || root.Phase != TurnPhaseRunning ||
+		root.RootProviderTurnID != "continuation:guidance" ||
+		root.RootProviderTurnPhase != RootProviderTurnPhaseRunning {
+		t.Fatalf("interrupted response settled guidance root: %#v found=%v err=%v", root, found, err)
+	}
+
+	reportRootProviderTurn(t, store, "root", "root-turn", "provider-guidance", RootProviderTurnPhaseRunning, 50)
+	final := reportRootProviderTurn(t, store, "root", "root-turn", "provider-guidance", RootProviderTurnPhaseCompleted, 60)
+	if !final.RootTurnAccepted || final.RootTurn.Phase != TurnPhaseSettled ||
+		final.RootTurn.Outcome != TurnOutcomeCompleted {
+		t.Fatalf("guidance provider completion = %#v", final)
+	}
+}
+
 func reportRootProviderTurn(
 	t *testing.T,
 	store *Store,

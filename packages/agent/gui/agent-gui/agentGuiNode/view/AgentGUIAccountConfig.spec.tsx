@@ -131,6 +131,38 @@ describe("AgentGUIConfigMenu", () => {
     ).toBeNull();
   });
 
+  it.each(["Coding Plan", "CodeBuddy Account"])(
+    "shows unavailable account quota copy for %s billing",
+    (providerAuthAccountLabel) => {
+      render(
+        <AgentGUIConfigMenu
+          environmentSetupVisible={false}
+          labels={labels}
+          providerScopedActionsVisible
+          provider="acp:codebuddy"
+          providerLabel="CodeBuddy"
+          providerAuthAccountLabel={providerAuthAccountLabel}
+          slashStatusLimits={[]}
+          slashStatusLimitsLoading={false}
+          slashStatusLimitsResolvedEmpty={false}
+          slashStatusUsageCapturedAtUnixMs={500}
+          slashStatusUsageDidFail={false}
+          slashStatusUsageAttempted
+          onAgentConfigMenuOpen={vi.fn()}
+          onOpenAgentEnvSetup={vi.fn()}
+          onOpenAgentSettings={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+      expect(screen.getByText(providerAuthAccountLabel)).toBeInTheDocument();
+      expect(
+        screen.getByTestId("agent-gui-config-usage-unavailable")
+      ).toHaveTextContent("Unavailable");
+    }
+  );
+
   it("uses a custom mask only when no original icon exists", () => {
     render(
       <AgentGUIConfigMenu

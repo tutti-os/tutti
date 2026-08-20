@@ -97,6 +97,7 @@ type ResolvedBundle struct {
 // Resolve composes a deployment profile without materializing provider files.
 // DefaultPreparer uses the same resolver before provider preparation.
 func Resolve(ctx context.Context, input PrepareInput, profile DeploymentProfile, sources ...SkillSource) (ResolvedBundle, error) {
+	input = expandConnectorAgentContext(input)
 	resolved, err := resolveCapabilities(ctx, input, profile, sources)
 	if err != nil {
 		return ResolvedBundle{}, err
@@ -125,13 +126,12 @@ func StandardProfile() DeploymentProfile {
 	}
 }
 
-// ConnectorDiscoveryPack teaches an Agent the stable two-level Broker flow.
-// Connector-owned Skills remain lazy and untrusted; they are never injected
-// into the initial provider context.
+// ConnectorDiscoveryPack teaches an explicitly Connector-enabled Agent the
+// stable two-level Broker flow. Connector-owned Skills remain untrusted.
 func ConnectorDiscoveryPack() CapabilityPack {
 	return CapabilityPack{Name: "connector-discovery", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
-		if input.commandCapabilities == nil || !input.commandCapabilities.HasAll(
-			"connector.available", "connector.capabilities", "connector.skills", "connector.skill.read", "connector.invoke",
+		if input.Connector == nil || input.commandCapabilities == nil || !input.commandCapabilities.HasAll(
+			"connector.available",
 		) {
 			return CapabilityContribution{Enabled: false}, nil
 		}
@@ -193,6 +193,25 @@ func CoreSkillsPack() CapabilityPack {
 	}}
 }
 
+// VerifiedEndpointOutputPack contributes only the provider response contract
+// for reporting a local server endpoint. It is safe for non-desktop hosts and
+// intentionally excludes desktop execution, media, and filesystem semantics.
+func VerifiedEndpointOutputPack() CapabilityPack {
+	return CapabilityPack{Name: "verified-endpoint-output", Resolve: func(_ context.Context, input PrepareInput) (CapabilityContribution, error) {
+		policy, err := verifiedEndpointOutputPolicy(input)
+		if err != nil {
+			return CapabilityContribution{}, err
+		}
+		return CapabilityContribution{Enabled: true, PolicySections: []PolicySection{{
+			Anchor:   PolicyAnchorSpecialized,
+			Key:      "verified-endpoint-output",
+			Order:    900,
+			Delivery: PolicyDeliveryProviderRuntime,
+			Body:     policy,
+		}}}, nil
+	}}
+}
+
 // TuttiDesktopHostPack contributes policy that is true for the local Tutti
 // desktop host but not necessarily for other deployments such as managed VMs.
 func TuttiDesktopHostPack() CapabilityPack {
@@ -207,10 +226,11 @@ func TuttiDesktopHostPack() CapabilityPack {
 		}
 		return CapabilityContribution{Enabled: true, PolicySections: []PolicySection{
 			{
-				Anchor: PolicyAnchorTools,
-				Key:    "provider-execution",
-				Order:  -100,
-				Body:   providerExecution,
+				Anchor:   PolicyAnchorTools,
+				Key:      "provider-execution",
+				Order:    -100,
+				Delivery: PolicyDeliveryProviderRuntime,
+				Body:     providerExecution,
 			},
 			{
 				Anchor:   PolicyAnchorSpecialized,
@@ -390,26 +410,30 @@ func resolveCapabilities(ctx context.Context, input PrepareInput, profile Deploy
 			section.Body = renderedBody
 			section.Key = name + "/" + section.Key
 		}
-		resolved.Skills = append(resolved.Skills, contribution.Skills...)
+		if !input.SkipSkills {
+			resolved.Skills = append(resolved.Skills, contribution.Skills...)
+		}
 		resolved.PolicySections = append(resolved.PolicySections, contribution.PolicySections...)
 		resolved.EnvOverlay = append(resolved.EnvOverlay, contribution.EnvOverlay...)
 	}
-	for _, source := range sources {
-		if source == nil {
-			continue
-		}
-		skills, err := source.Skills(ctx, SkillContext{WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Provider: input.Provider, Cwd: input.Cwd})
-		if err != nil {
-			return nil, fmt.Errorf("resolve runtime preparation skill source: %w", err)
-		}
-		for index := range skills {
-			if skills[index].Source == "" {
-				skills[index].Source = "host"
+	if !input.SkipSkills {
+		for _, source := range sources {
+			if source == nil {
+				continue
 			}
+			skills, err := source.Skills(ctx, SkillContext{WorkspaceID: input.WorkspaceID, AgentSessionID: input.AgentSessionID, Provider: input.Provider, Cwd: input.Cwd})
+			if err != nil {
+				return nil, fmt.Errorf("resolve runtime preparation skill source: %w", err)
+			}
+			for index := range skills {
+				if skills[index].Source == "" {
+					skills[index].Source = "host"
+				}
+			}
+			resolved.Skills = append(resolved.Skills, skills...)
 		}
-		resolved.Skills = append(resolved.Skills, skills...)
+		resolved.Skills = append(resolved.Skills, input.ExtraSkills...)
 	}
-	resolved.Skills = append(resolved.Skills, input.ExtraSkills...)
 	if err := validateResolvedSkills(resolved.Skills, input.Provider); err != nil {
 		return nil, err
 	}

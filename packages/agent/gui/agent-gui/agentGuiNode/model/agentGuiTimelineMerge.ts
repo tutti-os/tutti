@@ -207,6 +207,11 @@ export function compareTimelineItemsForMerge(
   left: WorkspaceAgentActivityTimelineItem,
   right: WorkspaceAgentActivityTimelineItem
 ): number {
+  const leftOptimistic = isOptimisticUserPromptItem(left);
+  const rightOptimistic = isOptimisticUserPromptItem(right);
+  if (leftOptimistic !== rightOptimistic) {
+    return leftOptimistic ? 1 : -1;
+  }
   const leftSeq = left.seq ?? 0;
   const rightSeq = right.seq ?? 0;
   return (

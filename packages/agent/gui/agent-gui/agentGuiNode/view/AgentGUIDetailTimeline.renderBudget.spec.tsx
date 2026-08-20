@@ -44,8 +44,11 @@ describe("AgentGUIDetailTimeline render budget", () => {
       isTimelineScrolledToTop: true,
       labels: {
         loadingConversation: "Loading",
-        continuedFromTask: "Continued from task"
+        continuedFromTask: "Continued from task",
+        selectionAddToConversation: "Add to conversation",
+        selectionAskInSide: "Ask in Side chat"
       },
+      onAddSelectionToConversation: vi.fn(),
       showTimelineSkeleton: false,
       showUnavailableChatEmpty: false,
       timelineContentRef: createRef<HTMLDivElement>(),
@@ -95,8 +98,11 @@ describe("AgentGUIDetailTimeline render budget", () => {
         isTimelineScrolledToTop
         labels={{
           loadingConversation: "Loading",
-          continuedFromTask: "Continued from task"
+          continuedFromTask: "Continued from task",
+          selectionAddToConversation: "Add to conversation",
+          selectionAskInSide: "Ask in Side chat"
         }}
+        onAddSelectionToConversation={vi.fn()}
         onOpenForkSourceSession={onOpenForkSourceSession}
         showTimelineSkeleton={false}
         showUnavailableChatEmpty={false}

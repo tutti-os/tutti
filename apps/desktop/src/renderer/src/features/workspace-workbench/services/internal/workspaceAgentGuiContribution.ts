@@ -1,4 +1,4 @@
-import { createElement, type ReactNode } from "react";
+import { createElement, useEffect, useMemo, type ReactNode } from "react";
 import type {
   AgentGUIProvider,
   AgentGUIAllAgentsPresentation,
@@ -61,6 +61,26 @@ import { requestGroupChatLaunch } from "../groupChatLaunchCoordinator.ts";
 import { useExternalStoreValue } from "../../ui/useExternalStoreValue.ts";
 import { workspaceAgentGuiNodeFrame } from "./workspaceWorkbenchComposition.ts";
 import type { AgentSessionReplayDesktopComposition } from "@renderer/features/agent-session-replay/services/agentSessionReplayDesktopComposition.ts";
+
+function DesktopWorkspaceAgentGUIWorkbenchBodyWithSideRuntime({
+  createAgentSideConversationRuntime,
+  ...props
+}: Omit<
+  DesktopWorkspaceAgentGUIWorkbenchBodyProps,
+  "agentSideConversationRuntime"
+> & {
+  createAgentSideConversationRuntime: () => DesktopAgentGUIWorkbenchBodyProps["agentSideConversationRuntime"];
+}) {
+  const sideRuntime = useMemo(
+    () => createAgentSideConversationRuntime(),
+    [createAgentSideConversationRuntime]
+  );
+  useEffect(() => () => sideRuntime?.dispose?.(), [sideRuntime]);
+  return createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
+    ...props,
+    agentSideConversationRuntime: sideRuntime
+  });
+}
 
 export function createWorkspaceAgentGuiContribution(input: {
   agentQuickPromptService?: AgentQuickPromptService;
@@ -164,8 +184,10 @@ export function createWorkspaceAgentGuiContribution(input: {
       Parameters<typeof createAgentGuiWorkbenchContribution>[0]["renderBody"]
     >[1]
   ) => {
-    return createElement(DesktopWorkspaceAgentGUIWorkbenchBody, {
+    return createElement(DesktopWorkspaceAgentGUIWorkbenchBodyWithSideRuntime, {
       agentActivityRuntime: agentGUIWorkbenchHostInput.agentActivityRuntime,
+      createAgentSideConversationRuntime:
+        agentGUIWorkbenchHostInput.createAgentSideConversationRuntime,
       agentHostApi: agentGUIWorkbenchHostInput.agentHostApi,
       agentSessionReplayService:
         agentGUIWorkbenchHostInput.agentSessionReplayService,

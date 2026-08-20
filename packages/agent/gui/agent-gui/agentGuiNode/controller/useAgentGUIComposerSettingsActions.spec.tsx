@@ -138,6 +138,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
       }
     };
     const onDataChange = vi.fn();
+    const setDetailError = vi.fn();
     const onRememberComposerDefaults = vi.fn();
     const draftSettingsBySessionIdRef: {
       current: Record<string, AgentSessionComposerSettings>;
@@ -192,6 +193,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
         selectedComposerTargetDataRef: { current: target },
         sessionEngine,
         setDraftSettingsBySessionId: vi.fn(),
+        setDetailError,
         updateComposerSettingsRef: { current: vi.fn() },
         workspaceId: "workspace-1"
       })
@@ -227,6 +229,7 @@ describe("useAgentGUIComposerSettingsActions", () => {
       }
     });
     expect(onDataChange).not.toHaveBeenCalled();
+    expect(setDetailError).toHaveBeenCalledWith(null);
 
     act(() => {
       rendered.result.current.updateComposerSettings({

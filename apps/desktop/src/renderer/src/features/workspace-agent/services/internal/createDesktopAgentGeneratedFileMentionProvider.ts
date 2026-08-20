@@ -4,6 +4,7 @@ import {
   type AgentContextMentionProvider
 } from "@tutti-os/agent-gui/context-mention-provider";
 import { createRichTextMarkdownLinkInsertResult } from "@tutti-os/ui-rich-text/plugins";
+import { isRichTextFolderHref } from "@tutti-os/ui-rich-text/core";
 import type { ReferenceProvenanceFilter } from "@tutti-os/workspace-file-reference/contracts";
 import {
   tuttiFileAssetUrls,
@@ -68,7 +69,7 @@ export function createDesktopAgentGeneratedFileMentionProvider(input: {
     getItemLabel: (item) => item.displayName,
     getItemSubtitle: (item) => item.path,
     getItemIconUrl: (item) =>
-      item.path.endsWith("/")
+      isRichTextFolderHref(item.path)
         ? tuttiFolderAssetUrls.default
         : tuttiFileAssetUrls.default,
     toInsertResult(item) {

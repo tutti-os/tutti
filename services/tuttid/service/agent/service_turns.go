@@ -2,8 +2,10 @@ package agent
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"strings"
+	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -24,6 +26,10 @@ type TurnStore interface {
 	ListPendingInteractionsBySession(context.Context, string, []string) (map[string][]agentactivitybiz.Interaction, error)
 }
 
+type sessionGoalStateBatchReader interface {
+	ListSessionGoalStates(context.Context, string, []string) (map[string]agentactivitybiz.SessionGoalState, error)
+}
+
 // TurnCancelObserver is notified after CancelTurn actually canceled a live
 // turn. The Issue manager uses it to cascade a user's stop on a planning
 // conversation to every running task run that conversation orchestrates.
@@ -34,9 +40,10 @@ type TurnCancelObserver interface {
 type CancelTurnReason string
 
 const (
-	CancelTurnReasonTurnCanceled   CancelTurnReason = "turn_canceled"
-	CancelTurnReasonAlreadySettled CancelTurnReason = "already_settled"
-	CancelTurnReasonNotFound       CancelTurnReason = "not_found"
+	CancelTurnReasonTurnCanceled    CancelTurnReason = "turn_canceled"
+	CancelTurnReasonCancelRequested CancelTurnReason = "cancel_requested"
+	CancelTurnReasonAlreadySettled  CancelTurnReason = "already_settled"
+	CancelTurnReasonNotFound        CancelTurnReason = "not_found"
 )
 
 type CancelTurnResult struct {
@@ -110,8 +117,8 @@ func (s *Service) ListTurns(ctx context.Context, workspaceID string, agentSessio
 
 // CancelTurn stops one specific turn (protocol v2). It is idempotent: a
 // settled or unknown turn is a no-op success (already_settled / not_found),
-// never an error. An active turn goes through the runtime cancel and its
-// persisted record settles with outcome=canceled.
+// never an error. An exact cancel whose provider delivery is unconfirmed is
+// accepted as cancel_requested; canonical terminal evidence determines its outcome.
 func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (CancelTurnResult, error) {
 	workspaceID = strings.TrimSpace(workspaceID)
 	agentSessionID = strings.TrimSpace(agentSessionID)
@@ -129,7 +136,8 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 	hostResult, err := s.ApplicationHost().CancelTurn(ctx, agenthost.CancelTurnInput{
 		WorkspaceID: workspaceID, AgentSessionID: agentSessionID, TurnID: turnID,
 	})
-	if err != nil {
+	pending := errors.Is(err, agenthost.ErrRuntimeOperationInProgress) && hostResult.IntentAccepted
+	if err != nil && !pending {
 		return CancelTurnResult{}, normalizeRuntimeError(err)
 	}
 	session, err := s.Get(ctx, workspaceID, agentSessionID)
@@ -140,6 +148,9 @@ func (s *Service) CancelTurn(ctx context.Context, workspaceID string, agentSessi
 		Session:  session,
 		Canceled: hostResult.Operation.Status == agentactivitybiz.RuntimeOperationStatusCompleted && hostResult.Operation.Result == agentactivitybiz.RuntimeOperationResultCanceled,
 		Reason:   CancelTurnReasonAlreadySettled,
+	}
+	if pending {
+		result.Reason = CancelTurnReasonCancelRequested
 	}
 	switch hostResult.State {
 	case agenthost.CancelStateNotFound:
@@ -203,10 +214,10 @@ func (s *Service) persistedActiveTurnID(ctx context.Context, workspaceID string,
 }
 
 // projectSessionForResponse is the canonical boundary for every public service
-// response that contains one Session. Keep the persisted Turn projection and
-// the Tutti-owned, session-associated activation read projection here so
-// mutations cannot accidentally return a partial Session that clears newer
-// client state.
+// response that contains one Session. Keep the persisted Turn projection, the
+// Host-owned Goal synchronization evidence, and the Tutti-owned,
+// session-associated activation read projection here so mutations cannot
+// accidentally return a partial Session that clears newer client state.
 func (s *Service) projectSessionForResponse(ctx context.Context, workspaceID string, session Session) (Session, error) {
 	return s.withProtocolV2TurnState(ctx, strings.TrimSpace(workspaceID), session)
 }
@@ -222,7 +233,8 @@ func (s *Service) projectSessionsForResponse(ctx context.Context, workspaceID st
 // persisted v2 turn state: activeTurnId pointer, embedded active/latest turns,
 // and pending interactions. latestTurn remains an independent turn entity
 // projection; it is never persisted on the session row. The Tutti-owned,
-// session-associated TuttiModeActivation read projection is attached last.
+// session-associated TuttiModeActivation and Host-owned Goal synchronization
+// read projections are attached last.
 func (s *Service) withProtocolV2TurnState(ctx context.Context, workspaceID string, session Session) (Session, error) {
 	return s.withProtocolV2TurnStateProjectionOptions(
 		ctx,
@@ -247,7 +259,11 @@ func (s *Service) withProtocolV2TurnStateProjectionOptions(
 		if err != nil {
 			return Session{}, err
 		}
-		return s.withTuttiModeActivation(ctx, workspaceID, session)
+		session, err = s.withTuttiModeActivation(ctx, workspaceID, session)
+		if err != nil {
+			return Session{}, err
+		}
+		return s.withSessionGoalState(ctx, workspaceID, session)
 	}
 	latestTurn, ok, err := s.TurnStore.GetLatestTurn(ctx, workspaceID, session.ID)
 	if err != nil {
@@ -284,7 +300,11 @@ func (s *Service) withProtocolV2TurnStateProjectionOptions(
 	if err != nil {
 		return Session{}, err
 	}
-	return s.withTuttiModeActivation(ctx, workspaceID, session)
+	session, err = s.withTuttiModeActivation(ctx, workspaceID, session)
+	if err != nil {
+		return Session{}, err
+	}
+	return s.withSessionGoalState(ctx, workspaceID, session)
 }
 
 func (s *Service) withProtocolV2TurnStateProjection(ctx context.Context, workspaceID string, session Session, latestTurn *agentactivitybiz.Turn, latestTurnInteractions []agentactivitybiz.Interaction) (Session, error) {
@@ -324,7 +344,11 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		return sessions, nil
 	}
 	if s == nil || s.TurnStore == nil {
-		return s.withTuttiModeActivations(ctx, workspaceID, sessions)
+		result, err := s.withTuttiModeActivations(ctx, workspaceID, sessions)
+		if err != nil {
+			return nil, err
+		}
+		return s.withSessionGoalStates(ctx, workspaceID, result)
 	}
 	ids := make([]string, 0, len(sessions))
 	activeTurnIDBySessionID := make(map[string]string)
@@ -351,15 +375,30 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 	if err != nil {
 		return nil, err
 	}
+	forkabilityByTurn := make(map[string]bool)
 	result := make([]Session, len(sessions))
 	for i, session := range sessions {
 		sessionID := strings.TrimSpace(session.ID)
 		if latest, ok := latestBySessionID[sessionID]; ok {
 			value := latest
+			if strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindChild {
+				value = s.withProviderTurnForkabilityCached(
+					ctx, workspaceID, sessionID, latest, forkabilityByTurn,
+				)
+			} else {
+				value.ProviderForkBindingAvailable = false
+			}
 			session.LatestTurn = &value
 		}
 		if active, ok := activeBySessionID[sessionID]; ok {
 			value := active
+			if strings.TrimSpace(session.Kind) != agentactivitybiz.SessionKindChild {
+				value = s.withProviderTurnForkabilityCached(
+					ctx, workspaceID, sessionID, active, forkabilityByTurn,
+				)
+			} else {
+				value.ProviderForkBindingAvailable = false
+			}
 			session.ActiveTurn = &value
 		}
 		session.PendingInteractions = pendingBySessionID[sessionID]
@@ -370,7 +409,176 @@ func (s *Service) withProtocolV2TurnStates(ctx context.Context, workspaceID stri
 		}
 		result[i] = session
 	}
-	return s.withTuttiModeActivations(ctx, workspaceID, result)
+	result, err = s.withTuttiModeActivations(ctx, workspaceID, result)
+	if err != nil {
+		return nil, err
+	}
+	return s.withSessionGoalStates(ctx, workspaceID, result)
+}
+
+func (s *Service) withProviderTurnForkabilityCached(
+	ctx context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turn agentactivitybiz.Turn,
+	forkabilityByTurn map[string]bool,
+) agentactivitybiz.Turn {
+	turn.ProviderForkBindingAvailable = false
+	if strings.TrimSpace(turn.Phase) != agentactivitybiz.TurnPhaseSettled {
+		return turn
+	}
+	key := strings.Join([]string{
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(agentSessionID),
+		strings.TrimSpace(turn.TurnID),
+		strings.TrimSpace(turn.RootProviderTurnID),
+		string(turn.ProviderTurnBindingJSON),
+	}, "\x00")
+	if forkable, ok := forkabilityByTurn[key]; ok {
+		turn.ProviderForkBindingAvailable = forkable
+		return turn
+	}
+	projected := s.withProviderTurnForkability(
+		ctx, workspaceID, agentSessionID, turn,
+	)
+	forkabilityByTurn[key] = projected.ProviderForkBindingAvailable
+	return projected
+}
+
+func (s *Service) withSessionGoalState(
+	ctx context.Context,
+	workspaceID string,
+	session Session,
+) (Session, error) {
+	session.GoalSyncState = nil
+	if s == nil || s.GoalStateStore == nil {
+		return session, nil
+	}
+	state, found, err := s.GoalStateStore.GetSessionGoalState(
+		ctx,
+		strings.TrimSpace(workspaceID),
+		strings.TrimSpace(session.ID),
+	)
+	if err != nil {
+		return Session{}, err
+	}
+	if found {
+		return projectSessionGoalState(session, state)
+	}
+	return session, nil
+}
+
+func (s *Service) withSessionGoalStates(
+	ctx context.Context,
+	workspaceID string,
+	sessions []Session,
+) ([]Session, error) {
+	if len(sessions) == 0 {
+		return sessions, nil
+	}
+	result := make([]Session, len(sessions))
+	for i, session := range sessions {
+		session.GoalSyncState = nil
+		result[i] = session
+	}
+	if s == nil || s.GoalStateStore == nil {
+		return result, nil
+	}
+	ids := make([]string, 0, len(sessions))
+	for _, session := range result {
+		ids = append(ids, strings.TrimSpace(session.ID))
+	}
+	states := make(map[string]agentactivitybiz.SessionGoalState)
+	if reader, ok := s.GoalStateStore.(sessionGoalStateBatchReader); ok {
+		var err error
+		states, err = reader.ListSessionGoalStates(
+			ctx,
+			strings.TrimSpace(workspaceID),
+			ids,
+		)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		for _, id := range ids {
+			state, found, err := s.GoalStateStore.GetSessionGoalState(
+				ctx,
+				strings.TrimSpace(workspaceID),
+				id,
+			)
+			if err != nil {
+				return nil, err
+			}
+			if found {
+				states[id] = state
+			}
+		}
+	}
+	for i, session := range result {
+		if state, ok := states[strings.TrimSpace(session.ID)]; ok {
+			projected, err := projectSessionGoalState(session, state)
+			if err != nil {
+				return nil, err
+			}
+			session = projected
+		}
+		result[i] = session
+	}
+	return result, nil
+}
+
+// projectSessionGoalState makes Host-owned durable Goal state the Session read
+// authority. Desired state remains visible while convergence is unresolved;
+// once synced (or definitively failed), observed state owns provider progress.
+func projectSessionGoalState(
+	session Session,
+	state agentactivitybiz.SessionGoalState,
+) (Session, error) {
+	var rawGoal any
+	if !state.Tombstoned && len(state.Desired) > 0 {
+		rawGoal = state.Desired
+	}
+	if !state.Tombstoned &&
+		(state.SyncStatus == agentactivitybiz.GoalSyncStatusSynced ||
+			state.SyncStatus == agentactivitybiz.GoalSyncStatusFailed) &&
+		len(state.Observed) > 0 {
+		rawGoal = state.Observed
+	}
+	goal, err := decodeProjectedSessionGoal(rawGoal)
+	if err != nil {
+		return Session{}, err
+	}
+	session.Metadata.Goal = goal
+	session.GoalSyncState = projectedSessionGoalSyncState(state)
+	if state.UpdatedAtUnixMS > 0 &&
+		(session.UpdatedAt == nil || state.UpdatedAtUnixMS > session.UpdatedAt.UnixMilli()) {
+		updatedAt := time.UnixMilli(state.UpdatedAtUnixMS)
+		session.UpdatedAt = &updatedAt
+	}
+	return session, nil
+}
+
+func decodeProjectedSessionGoal(rawGoal any) (*agentactivitybiz.SessionGoal, error) {
+	raw, ok := rawGoal.(map[string]any)
+	status, _ := raw["status"].(string)
+	if !ok || strings.TrimSpace(status) != "completed" {
+		return agentactivitybiz.DecodeSessionGoal(rawGoal)
+	}
+	normalized := make(map[string]any, len(raw))
+	for key, value := range raw {
+		normalized[key] = value
+	}
+	normalized["status"] = "complete"
+	return agentactivitybiz.DecodeSessionGoal(normalized)
+}
+
+func projectedSessionGoalSyncState(state agentactivitybiz.SessionGoalState) *SessionGoalSyncState {
+	return &SessionGoalSyncState{
+		Revision:           state.Revision,
+		SyncStatus:         strings.TrimSpace(state.SyncStatus),
+		PendingOperationID: strings.TrimSpace(state.PendingOperationID),
+		ExecutionPending:   state.ExecutionPending,
+	}
 }
 
 func (s *Service) withSessionForkLineage(

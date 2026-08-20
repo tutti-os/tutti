@@ -83,7 +83,9 @@ export type { WorkspaceAgentSessionAuditEvent } from "./agentProtocolGuards.ts";
 export {
   getTuttidErrorI18nCandidates,
   getTuttidProtocolErrorCode,
+  isTuttidTransportError,
   isTuttidProtocolError,
+  TuttidTransportError,
   TuttidProtocolError,
   normalizeTuttidError,
   type TuttidProtocolErrorCode,

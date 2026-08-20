@@ -11,10 +11,13 @@ import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
 import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
 import { enAgentGuiComposer } from "./en.agentGuiComposer.ts";
 import { enAgentGuiProjectLaunch } from "./en.agentGuiProjectLaunch.ts";
+import { enAgentGuiSide } from "./en.agentGuiSide.ts";
+import { enAgentGuiHomeSuggestions } from "./en.agentGuiHomeSuggestions.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
   imageLoadFailed: "Image failed to load",
+  imageTemporarilyUnavailable: "Image temporarily unavailable",
   retryImage: "Retry",
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
   followupPlaceholder: "Request follow-up changes from {{provider}}",
@@ -394,31 +397,7 @@ export const enAgentGui = {
     }
   },
   empty: "What can {{provider}} help you with?",
-  homeSuggestionsClose: "Close suggestions",
-  homeSuggestions: {
-    about: {
-      title: "Meet Tutti",
-      prompt: "Tell me what Tutti can help me do"
-    },
-    breakdown: {
-      title: "Task breakdown",
-      taskCenterLabel: "Task management",
-      prompt:
-        "Use {{taskCenterMention}} to help me break down the task, topic { enter here }"
-    },
-    review: {
-      title: "Quality review",
-      prompt: "Have { @agent } review the output quality of { @agent session }"
-    },
-    interaction: {
-      title: "Agent interaction",
-      prompt:
-        "Have { @agent } and { @agent } work together to { do something }, topic { enter here }"
-    },
-    import: {
-      title: "Import session"
-    }
-  },
+  ...enAgentGuiHomeSuggestions,
   conversations: "Sessions",
   newConversation: "New session",
   agentConfig: "Check & Settings",
@@ -572,9 +551,6 @@ export const enAgentGui = {
   promptImagesUnsupported:
     "This agent does not support image input with the current model.",
   ...enAgentGuiRuntimeNotices,
-  contextCompactionInProgress: "Compacting context",
-  contextCompactionCompleted: "Context compacted.",
-  contextCompactionInterrupted: "Context compaction interrupted.",
   tuttiModeCheckpointWakeTaskSettled: "A task finished — review needed",
   tuttiModeCheckpointWakeTaskFailed: "A task failed — review needed",
   tuttiModeCheckpointWakeTaskCanceled: "A task was canceled — review needed",
@@ -596,7 +572,7 @@ export const enAgentGui = {
   turnSummaryViaTool: "via {{tool}}",
   turnSummaryBefore: "Before",
   turnSummaryAfter: "After",
-  turnSummaryEmpty: "Empty",
+  codeBlockEmptyContent: "(empty)",
   turnSummaryOpenFile: "Open",
   turnSummaryUndo: "Undo",
   turnSummaryReapply: "Reapply",
@@ -718,6 +694,12 @@ export const enAgentGui = {
   composerFileFolderUnsupported: "Folders cannot be attached here",
   composerFileTooLarge: "File is too large",
   composerFilePreparationFailed: "File preparation failed",
+  composerFileStillPreparing:
+    "This attachment is still being prepared. Open it after preparation finishes.",
+  composerFileOpenFailed:
+    "This attachment failed to prepare. Remove it and add the file again.",
+  composerFileOpenUnavailable:
+    "This attachment has no openable path yet. Remove it and add the file again.",
   mentionPalette: "Reference or Invoke",
   addReference: "Add reference",
   addContent: "Add files and more",
@@ -789,5 +771,6 @@ export const enAgentGui = {
   syncPending: "Saved locally, syncing to cloud",
   syncSynced: "Synced to cloud",
   syncFailed: "Cloud sync failed",
+  ...enAgentGuiSide,
   ...enAgentGuiCollaboration
 } as const;

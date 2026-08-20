@@ -10,9 +10,12 @@ import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 import { zhCNAgentGuiComposer } from "./zh-CN.agentGuiComposer.ts";
 import { zhCNAgentGuiProjectLaunch } from "./zh-CN.agentGuiProjectLaunch.ts";
+import { zhCNAgentGuiSide } from "./zh-CN.agentGuiSide.ts";
+import { zhCNAgentGuiHomeSuggestions } from "./zh-CN.agentGuiHomeSuggestions.ts";
 export const zhCNAgentGui = {
   imageDownloaded: "图片已下载",
   imageLoadFailed: "图片加载失败",
+  imageTemporarilyUnavailable: "图片暂时无法查看",
   retryImage: "重试",
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:
@@ -20,7 +23,7 @@ export const zhCNAgentGui = {
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
   followupPlaceholder: "要求 {{provider}} 继续后续变更",
   installRequiredPlaceholder: "请先连接 {{provider}}，然后再发送消息",
-  installRequiredAction: "连接",
+  installRequiredAction: "安装",
   providerGateCheckingTitle: "正在检查 Agent",
   providerGateCheckingDescription:
     "稍等一下，我们正在确认 {{provider}} 是否已经可用。",
@@ -29,7 +32,7 @@ export const zhCNAgentGui = {
   providerGateInstallTitle: "先连接 {{provider}}",
   providerGateInstallDescription:
     "需要先连接 {{provider}}，才能在这里开始新的对话。",
-  providerGateInstallAction: "连接",
+  providerGateInstallAction: "安装",
   providerGateLoginTitle: "登录 {{provider}}",
   providerGateLoginDescription: "使用账号登录后即可开始使用 {{provider}} 对话",
   providerGateLoginAction: "登录",
@@ -316,7 +319,7 @@ export const zhCNAgentGui = {
   slashStatusContextValue:
     "{{percentLeft}}% 剩余（已用 {{usedTokens}} / {{totalTokens}}）",
   slashStatusContextUnavailable: "—",
-  slashStatusLimitsUnavailable: "当前 Agent 未提供额度限制",
+  slashStatusLimitsUnavailable: "账户额度暂不可用",
   slashStatusEmptyValue: "—",
   slashStatusUsageJustUpdated: "刚刚更新",
   slashStatusUsageMinutesAgo: "{{count}} 分钟前更新",
@@ -425,29 +428,7 @@ export const zhCNAgentGui = {
     }
   },
   empty: "需要 {{provider}} 帮你做些什么？",
-  homeSuggestionsClose: "收起建议",
-  homeSuggestions: {
-    about: {
-      title: "认识 Tutti",
-      prompt: "介绍一下 Tutti 能帮我做些什么"
-    },
-    breakdown: {
-      title: "任务拆解",
-      taskCenterLabel: "任务管理",
-      prompt: "使用 {{taskCenterMention}} 帮我拆解任务，任务主题 { 请输入 }"
-    },
-    review: {
-      title: "质量审查",
-      prompt: "让 { @agent } 审查 { @agent 会话 } 的产物质量"
-    },
-    interaction: {
-      title: "Agent 互动",
-      prompt: "让 { @agent } 和 { @agent } 一起 { 做些什么 }，主题 { 请输入 }"
-    },
-    import: {
-      title: "导入会话"
-    }
-  },
+  ...zhCNAgentGuiHomeSuggestions,
   conversations: "会话",
   newConversation: "新建会话",
   agentConfig: "检测与设置",
@@ -591,9 +572,6 @@ export const zhCNAgentGui = {
   sessionNoLongerAvailable: "之前的 Agent 会话已不可用",
   promptImagesUnsupported: "当前模型不支持图片输入。",
   ...zhCNAgentGuiRuntimeNotices,
-  contextCompactionInProgress: "正在压缩上下文",
-  contextCompactionCompleted: "已压缩上下文",
-  contextCompactionInterrupted: "上下文压缩已中断",
   tuttiModeCheckpointWakeTaskSettled: "某任务已完成，待审查",
   tuttiModeCheckpointWakeTaskFailed: "某任务失败，待审查",
   tuttiModeCheckpointWakeTaskCanceled: "某任务已取消，待审查",
@@ -615,7 +593,7 @@ export const zhCNAgentGui = {
   turnSummaryViaTool: "通过 {{tool}}",
   turnSummaryBefore: "变更前",
   turnSummaryAfter: "变更后",
-  turnSummaryEmpty: "空内容",
+  codeBlockEmptyContent: "(empty)",
   turnSummaryOpenFile: "打开",
   turnSummaryUndo: "撤销",
   turnSummaryReapply: "重新应用",
@@ -796,5 +774,6 @@ export const zhCNAgentGui = {
   syncPending: "已保存到本地，正在同步到云端",
   syncSynced: "已同步到云端",
   syncFailed: "云端同步失败",
+  ...zhCNAgentGuiSide,
   ...zhCNAgentGuiCollaboration
 } as const;

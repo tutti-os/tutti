@@ -12,6 +12,11 @@ const COMPOSER_MODEL_FAVORITES_STORAGE_PREFIX =
 
 export const MAX_RECENT_COMPOSER_MODELS = 5;
 
+export type ComposerModelHistoryVerdict =
+  | "verified"
+  | "rejected"
+  | "unverifiable";
+
 export function composerModelRecentsStorageKey(
   agentTargetId: string | null | undefined
 ): string {
@@ -79,6 +84,25 @@ export function recordRecentComposerModel(
     0,
     MAX_RECENT_COMPOSER_MODELS
   );
+}
+
+/**
+ * Remove only models that the current catalog positively rejects. An
+ * unverifiable window must preserve history until stronger testimony arrives.
+ */
+export function reconcileRecentComposerModels(
+  currentRecentIds: readonly string[],
+  verdictForModel: (modelId: string) => ComposerModelHistoryVerdict
+): readonly string[] {
+  return sanitizeComposerModelIdList(currentRecentIds).filter(
+    (modelId) => verdictForModel(modelId) !== "rejected"
+  );
+}
+
+export function normalizeComposerModelHistoryTargetId(
+  agentTargetId: string | null | undefined
+): string | null {
+  return agentTargetId?.trim() || null;
 }
 
 export function toggleFavoriteComposerModel(

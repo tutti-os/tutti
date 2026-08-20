@@ -47,16 +47,18 @@ func TestDaemonAPIListsWorkspaceDeletedAgentSessions(t *testing.T) {
 				if workspaceID != "ws-1" || input.SearchQuery != "hello" || input.Cursor != "20|session-0" || input.Limit != 25 {
 					t.Fatalf("workspace/input = %q/%#v", workspaceID, input)
 				}
-				if input.ProjectPath == nil || *input.ProjectPath != "" {
-					t.Fatalf("project path = %#v, want explicit unscoped", input.ProjectPath)
+				if input.RailSectionKey == nil || *input.RailSectionKey != "conversations" {
+					t.Fatalf("rail section key = %#v, want conversations", input.RailSectionKey)
 				}
 				return agentservice.DeletedSessionPage{
 					Sessions: []agentservice.DeletedSessionSummary{{
 						AgentSessionID: "session-1", Title: "Hello", UpdatedAtUnixMS: 20,
+						RailSectionKey:  "conversations",
 						DeletedAtUnixMS: 30, Restorable: false, UnavailableReason: "legacyDataUnavailable",
 					}},
 					ProjectOptions: []agentservice.DeletedSessionProjectOption{{
-						ProjectPath: "/projects/tutti", ProjectLabel: "tutti", ProjectAvailable: false,
+						RailSectionKey: "project:/projects/tutti", ProjectPath: "/projects/tutti",
+						ProjectLabel: "tutti", ProjectAvailable: false,
 					}},
 					TotalCount: 1, WorkspaceTotalCount: 3, HasMore: true, NextCursor: "10|session-2",
 				}, nil
@@ -68,7 +70,7 @@ func TestDaemonAPIListsWorkspaceDeletedAgentSessions(t *testing.T) {
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/deleted-agent-sessions?searchQuery=hello&projectScope=unscoped&cursor=20%7Csession-0&limit=25",
+		"/v1/workspaces/ws-1/deleted-agent-sessions?searchQuery=hello&railSectionKey=conversations&cursor=20%7Csession-0&limit=25",
 		nil,
 	)
 	if recorder.Code != http.StatusOK {
@@ -76,13 +78,13 @@ func TestDaemonAPIListsWorkspaceDeletedAgentSessions(t *testing.T) {
 	}
 	var response tuttigenerated.WorkspaceDeletedAgentSessionListResponse
 	decodeGeneratedRouteResponse(t, recorder, &response)
-	if len(response.Sessions) != 1 || response.Sessions[0].ProjectPath != nil || response.Sessions[0].UnavailableReason == nil {
+	if len(response.Sessions) != 1 || response.Sessions[0].RailSectionKey != "conversations" || response.Sessions[0].ProjectPath != nil || response.Sessions[0].UnavailableReason == nil {
 		t.Fatalf("sessions = %#v", response.Sessions)
 	}
 	if response.TotalCount != 1 || response.WorkspaceTotalCount != 3 || !response.HasMore || response.NextCursor == nil {
 		t.Fatalf("page = %#v", response)
 	}
-	if len(response.ProjectOptions) != 1 || response.ProjectOptions[0].ProjectAvailable {
+	if len(response.ProjectOptions) != 1 || response.ProjectOptions[0].RailSectionKey != "project:/projects/tutti" || response.ProjectOptions[0].ProjectAvailable {
 		t.Fatalf("project options = %#v", response.ProjectOptions)
 	}
 }
@@ -96,7 +98,7 @@ func TestDaemonAPIRejectsAmbiguousDeletedSessionProjectFilter(t *testing.T) {
 		t,
 		mux,
 		http.MethodGet,
-		"/v1/workspaces/ws-1/deleted-agent-sessions?projectScope=unscoped&projectPath=%2Fprojects%2Ftutti",
+		"/v1/workspaces/ws-1/deleted-agent-sessions?railSectionKey=conversations&projectPath=%2Fprojects%2Ftutti",
 		nil,
 	)
 	if recorder.Code != http.StatusBadRequest {

@@ -14,6 +14,7 @@ func generatedAgentSessionIsolation(
 		return nil
 	}
 	return &tuttigenerated.WorkspaceAgentSessionIsolation{
+		WorktreeId:   optionalStringPointer(strings.TrimSpace(isolation.WorktreeID)),
 		Mode:         tuttigenerated.WorkspaceAgentSessionIsolationMode(isolation.Mode),
 		WorktreePath: strings.TrimSpace(isolation.WorktreePath),
 		Branch:       strings.TrimSpace(isolation.Branch),

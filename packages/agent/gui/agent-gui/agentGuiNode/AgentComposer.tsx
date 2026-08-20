@@ -15,7 +15,7 @@ import {
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentGUIRuntime } from "../../agentActivityRuntime";
-import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
+import { useComposerDraftAttachmentsWithConnectors } from "./composer/useComposerDraftAttachmentsWithConnectors";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
 import {
   INITIAL_DOCK_COMPOSER_METRICS,
@@ -151,6 +151,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onPromptImagesUnsupported,
     onSubmitInteractivePrompt,
     onCapabilitySettingsRequest,
+    onRetryComposerOptions,
     onSlashStatusOpen,
     onLinkAction,
     onRequestWorkspaceReferences = null,
@@ -160,6 +161,33 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onRequestGitBranches = null,
     referenceProvenanceFilters = null
   } = props;
+  const capabilitiesRequestedKeyRef = useRef<string | null>(null);
+  const requestCapabilitiesForDraft = useCallback(
+    (nextDraft: AgentComposerDraft): void => {
+      if (!onRetryComposerOptions) {
+        return;
+      }
+      const nextPrompt = agentComposerDraftPrompt(nextDraft).trimStart();
+      if (!nextPrompt.startsWith("/")) {
+        return;
+      }
+      const requestKey = `${provider}:${agentSessionId ?? "draft"}`;
+      if (capabilitiesRequestedKeyRef.current === requestKey) {
+        return;
+      }
+      capabilitiesRequestedKeyRef.current = requestKey;
+      onRetryComposerOptions({ section: "capabilities" });
+    },
+    [agentSessionId, onRetryComposerOptions, provider]
+  );
+  const handleDraftContentChange: AgentComposerProps["onDraftContentChange"] =
+    useCallback(
+      (nextDraft, sourceScopeKey) => {
+        requestCapabilitiesForDraft(nextDraft);
+        onDraftContentChange(nextDraft, sourceScopeKey);
+      },
+      [onDraftContentChange, requestCapabilitiesForDraft]
+    );
   const {
     canQueueWhileBusy,
     editorDisabled: disabled,
@@ -298,7 +326,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     entries: inputHistory,
     hasOlderPage: inputHistoryHasOlderPage,
     isLoadingOlderPage: inputHistoryIsLoadingOlderPage,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     onRequestOlderPage: onRequestOlderInputHistoryPage,
     runtime: agentActivityRuntime,
     workspaceId
@@ -340,10 +368,11 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptBeforeSelection
   } = paletteCatalog;
   const showFileMentionPalette =
-    !disabled && isPaletteOpen && fileMentionSuggestion !== null;
+    !disabled && isActive && isPaletteOpen && fileMentionSuggestion !== null;
   const showSlashPalette =
     !showFileMentionPalette &&
     !disabled &&
+    isActive &&
     isPaletteOpen &&
     ((slashQuery !== null &&
       (slashPaletteEntries.length > 0 ||
@@ -462,7 +491,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     // missing flag as enabled.
     tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
     capabilityControlsReadOnly,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     onSettingsChange,
     onSubmit: submitWithComposerModifiers,
     onSubmitEmpty,
@@ -514,7 +543,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftPromptRef,
     setPaletteDraftPrompt,
     setIsPaletteOpen,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     showFileMentionPalette,
     mentionHighlightedKey,
     mentionSearchState,
@@ -526,6 +555,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     isSendingTurn,
     isSubmittingPrompt,
     showStopButton,
+    isActive,
     onSettingsChange,
     handleSlashPaletteKeyDown,
     handleSlashCommandMenuKeyDown,
@@ -537,7 +567,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   });
   const { clearActiveFileMentionTrigger } = mentionActions;
 
-  const attachments = useComposerDraftAttachments({
+  const attachments = useComposerDraftAttachmentsWithConnectors({
     workspaceId,
     workspacePath,
     draftContent,
@@ -557,7 +587,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     setPaletteDraftPrompt,
     setIsPaletteOpen,
     clearActiveFileMentionTrigger,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     onPromptImagesUnsupported,
     onContentEntered: reportContentEntered,
     onRequestWorkspaceReferences,
@@ -614,7 +644,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     disabled: composerControlsHardDisabled || inputDisabled,
     labels: labels.quickPrompts,
     onBeforeOpen: closeQuickPromptCompetingDisclosure,
-    onInsertPrompt: insertQuickPrompt
+    onInsertPrompt: insertQuickPrompt,
+    onQuickPromptPanelOpened: () => engagement?.quickPromptPanelOpened?.(),
+    onQuickPromptUsed: (promptType) => engagement?.quickPromptUsed?.(promptType)
   });
   const restoreComposerCaretAfterProjectMenu = (event: Event): void => {
     event.preventDefault();

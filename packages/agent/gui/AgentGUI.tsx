@@ -24,6 +24,10 @@ import {
   type TuttiModePlanReviewRuntime
 } from "./workspaceWorkflow";
 import { AgentVisibleErrorPresentationProvider } from "./shared/visibleError/AgentVisibleErrorPresentationContext";
+import {
+  AgentSideConversationRuntimeProvider,
+  type AgentSideConversationRuntime
+} from "./agentSideConversationRuntime";
 
 export type { AgentGUIHomeSuggestionId } from "./types";
 export type { ReferenceProvenanceCatalog as AgentGUIReferenceProvenanceFilterCatalog } from "@tutti-os/workspace-file-reference/contracts";
@@ -32,6 +36,7 @@ type AgentGUIPublicHostCapabilities = Omit<
   AgentGUINodeProps["hostCapabilities"],
   | "agentTargets"
   | "agentTargetsLoading"
+  | "mentionAgentTargets"
   | "handoffAgentTargets"
   | "handoffAgentTargetsLoading"
   | "providerRailAllPresentation"
@@ -50,6 +55,12 @@ export interface AgentGUIProps extends Omit<
 > {
   agentDirectory: AgentGUIAgentDirectorySnapshot;
   /**
+   * Complete host-owned identity catalog for rendered Agent mentions. Unlike
+   * handoff, this directory may include unavailable targets because it does
+   * not grant launch capability.
+   */
+  mentionAgentDirectory?: AgentGUIAgentDirectorySnapshot;
+  /**
    * Host-owned launch catalog for conversation handoff. When omitted, handoff
    * uses `agentDirectory`, preserving the single-runtime host contract.
    */
@@ -57,6 +68,7 @@ export interface AgentGUIProps extends Omit<
   allAgentsPresentation?: AgentGUIAllAgentsPresentation | null;
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   agentActivityRuntime: AgentGUIRuntime;
+  agentSideConversationRuntime?: AgentSideConversationRuntime | null;
   agentHostApi?: AgentHostInputApi | null;
   tuttiModePlanReviewRuntime?: TuttiModePlanReviewRuntime | null;
   /** Starter entries to hide below the empty new-session composer. */
@@ -69,9 +81,11 @@ export interface AgentGUIProps extends Omit<
 
 export const AgentGUI = memo(function AgentGUI({
   agentActivityRuntime,
+  agentSideConversationRuntime,
   agentHostApi,
   tuttiModePlanReviewRuntime,
   agentDirectory,
+  mentionAgentDirectory,
   handoffAgentDirectory,
   allAgentsPresentation = null,
   renderAgentsEmpty,
@@ -118,6 +132,11 @@ export const AgentGUI = memo(function AgentGUI({
         agentDirectory.agents.length === 0 &&
         (agentDirectory.status === "idle" ||
           agentDirectory.status === "loading"),
+      mentionAgentTargets: mentionAgentDirectory
+        ? projectAgentGUIAgentsToTargets(
+            normalizeAgentGUIAgents(mentionAgentDirectory.agents)
+          )
+        : undefined,
       handoffAgentTargets,
       handoffAgentTargetsLoading:
         effectiveHandoffAgentDirectory.agents.length === 0 &&
@@ -136,7 +155,8 @@ export const AgentGUI = memo(function AgentGUI({
       effectiveHandoffAgentDirectory.agents.length,
       effectiveHandoffAgentDirectory.status,
       handoffAgentTargets,
-      hostCapabilities
+      hostCapabilities,
+      mentionAgentDirectory?.agents
     ]
   );
   const nodeRenderSlots = useMemo<AgentGUINodeProps["renderSlots"]>(
@@ -153,18 +173,25 @@ export const AgentGUI = memo(function AgentGUI({
   };
   const content = (
     <AgentGuiI18nProvider runtime={i18n} locale={locale}>
-      <TuttiModePlanReviewRuntimeProvider runtime={tuttiModePlanReviewRuntime}>
-        <AgentGUIActivityHostProvider
-          agentActivityRuntime={agentActivityRuntime}
-          agentHostApi={agentHostApi}
+      <AgentSideConversationRuntimeProvider
+        runtime={agentSideConversationRuntime}
+      >
+        <TuttiModePlanReviewRuntimeProvider
+          runtime={tuttiModePlanReviewRuntime}
         >
-          <AgentVisibleErrorPresentationProvider
-            value={props.hostCapabilities?.visibleErrorPresentationOverrides}
+          <AgentGUIActivityHostProvider
+            agentActivityRuntime={agentActivityRuntime}
+            agentHostApi={agentHostApi}
           >
-            <AgentGUINode {...nodeProps} />
-          </AgentVisibleErrorPresentationProvider>
-        </AgentGUIActivityHostProvider>
-      </TuttiModePlanReviewRuntimeProvider>
+            <AgentVisibleErrorPresentationProvider
+              scope={props.hostCapabilities?.visibleErrorPresentationScope}
+              value={props.hostCapabilities?.visibleErrorPresentationOverrides}
+            >
+              <AgentGUINode {...nodeProps} />
+            </AgentVisibleErrorPresentationProvider>
+          </AgentGUIActivityHostProvider>
+        </TuttiModePlanReviewRuntimeProvider>
+      </AgentSideConversationRuntimeProvider>
     </AgentGuiI18nProvider>
   );
   return (

@@ -159,25 +159,25 @@ describe("AgentGUINode memoization", () => {
     );
   });
 
-  it("rerenders when Session fork is enabled", () => {
+  it("rerenders when Side conversations are enabled", () => {
     mockViewModel = createViewModel();
     const props = createProps();
     const { rerender } = render(<AgentGUINode {...props} />);
 
     expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sessionForkEnabled: false })
+      expect.objectContaining({ sideConversationEnabled: false })
     );
     agentGuiNodeViewSpy.mockClear();
 
     rerender(
       <AgentGUINode
         {...props}
-        hostCapabilities={{ sessionForkEnabled: true }}
+        hostCapabilities={{ sideConversationEnabled: true }}
       />
     );
 
     expect(agentGuiNodeViewSpy).toHaveBeenLastCalledWith(
-      expect.objectContaining({ sessionForkEnabled: true })
+      expect.objectContaining({ sideConversationEnabled: true })
     );
   });
 
@@ -576,6 +576,7 @@ function createViewModel(
     queueStatus: "active",
     gate: {
       conversationBusy: false,
+      isAwaitingTurnStart: false,
       runtime: {
         status: "ready",
         reason: null,
@@ -586,6 +587,7 @@ function createViewModel(
     },
     isSubmitting: false,
     isInterrupting: false,
+    hasPendingSubmitStopTarget: false,
     promptImagesSupported: true,
     availability: "ready",
     listError: null,

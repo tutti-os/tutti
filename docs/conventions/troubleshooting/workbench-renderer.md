@@ -59,6 +59,38 @@
   [standaloneAgentToolWorkbench.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/standaloneAgentToolWorkbench.ts)
   [browser-node-package.md](../../architecture/browser-node-package.md)
 
+### Final Browser tab close leaves the Workbench window open
+
+- Symptom:
+  A Browser Workbench node has one tab. Its tab close control is visible, but
+  clicking it leaves the Browser window open. The native Workbench close
+  control may still work.
+- Quick checks:
+  Inspect the callbacks passed to `BrowserNodeWorkbenchHeader`. Confirm that
+  the final-tab callback reaches `windowActions.close()` and is not implemented
+  as `BrowserNodeHostApi.close({ nodeId: surfaceNodeId })`. The Workbench node ID
+  is a parent surface ID; registered Browser guests use `:tab:*` child IDs.
+- Root cause:
+  Browser guest cleanup and Workbench surface closure are different lifecycle
+  boundaries. Closing a parent ID through the Browser host API emits a guest
+  close event but cannot remove the Workbench node. The native window control
+  can mask this mismatch because its own click handler separately closes the
+  Workbench window, while the final-tab control has no such fallback.
+- Fix:
+  Keep the native action and final-tab request separate. Bind the dedicated
+  final-tab request to `windowActions.close()` and let Browser tab-surface lease
+  release close the remaining child guests after unmount. Do not add a second
+  Workbench close call to the native control's capture path.
+- Validation:
+  Exercise the Browser Workbench close-request adapter and assert that its
+  final-tab request runs the Workbench close action exactly once. Keep the
+  package tab intent tests to prove that the dedicated Workbench request wins
+  while the ordinary standalone-host callback remains a supported fallback.
+- References:
+  [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
+  [Browser Workbench adapter](../../../packages/browser/workbench-node/src/workbench/index.ts)
+  [Browser Workbench adapter test](../../../packages/browser/workbench-node/src/workbench/browserNodeCloseRequests.test.ts)
+
 ### Inline custom-header menu is clipped to the Workbench title bar
 
 - Symptom:
@@ -92,6 +124,40 @@
   [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
   [workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
   [browser-node-package.md](../../architecture/browser-node-package.md)
+
+### Overflowing custom header widens the Workbench body
+
+- Symptom:
+  A resizable Workbench node remains visually inside its frame, but after a
+  custom header gains enough non-wrapping content, its body and embedded
+  webview retain a much wider layout viewport. Narrowing the node clips the
+  page instead of triggering its responsive layout.
+- Quick checks:
+  Compare the bounding widths of `.workbench-window`,
+  `.workbench-window__header--custom`, and `.workbench-window__body`, then
+  inspect the computed Grid columns. If the outer window keeps its saved width
+  while the implicit column, header, and body all resolve wider, trace the
+  header's min-content contribution rather than changing the webview width.
+- Root cause:
+  A Grid that defines only rows leaves its single implicit column sized as
+  `auto`. A custom header with `overflow: visible` retains a content-based
+  automatic minimum, so non-wrapping tabs or controls can enlarge that column.
+  The body shares the enlarged track, and a `width: 100%` webview then receives
+  the wrong layout viewport even though the outer window clips the result.
+- Fix:
+  Define the Workbench window's single column as `minmax(0, 1fr)`. Keep the
+  header's intentional visible overflow for inline overlays; the explicit
+  zero-minimum track prevents horizontal min-content from resizing the shared
+  body column. Adding `min-width: 0` only inside the custom header does not
+  change the Grid item's automatic minimum contribution.
+- Validation:
+  Open enough fixed-minimum-width tabs to overflow a Browser node, then resize
+  the node narrower and wider. Confirm the tab list scrolls, the header and
+  body widths remain equal to the Workbench frame, and the guest page responds
+  to each available width instead of being clipped at its previous viewport.
+- References:
+  [workbench.css](../../../packages/workbench/surface/src/styles/workbench.css)
+  [BrowserNodeChrome.tsx](../../../packages/browser/workbench-node/src/react/BrowserNodeChrome.tsx)
 
 ### Standalone Agent dev window stays black during cold startup
 
@@ -653,14 +719,23 @@
   revision.
 - Fix:
   Keep native capture as the foreground high-fidelity path. Background and
-  minimized popup nodes reuse only a successful memory or persistent image;
-  they do not request a fresh DOM snapshot. Keep an unavailable result local to
-  the mounted popup so reopening can retry after the node becomes foreground.
-  Show a static terminal placeholder instead of a loading skeleton when no
-  successful image exists.
+  minimized popup nodes first reuse a successful memory or persistent image.
+  Treat the bounded Dock PNG as one Node-level latest artifact shared by popup
+  and minimize capture: read shared memory first, then read the unrevisioned
+  persistent latest identity and exact revision in parallel. Prefer the shared
+  latest entry and promote an exact-revision fallback when used. If those
+  sources miss, serialize DOM-cloned snapshots for non-minimized background
+  nodes, yield the renderer task queue between clones, deduplicate them by
+  preview identity and revision, and write successful images to the one
+  shared-latest identity. Keep the full-resolution Genie animation texture
+  separate. Do not DOM-capture minimized nodes because their content may be
+  unhydrated. Keep an unavailable result local to the mounted popup so reopening
+  can retry after the node becomes foreground. Show a static terminal
+  placeholder instead of a loading skeleton when no successful image exists.
 - Validation:
-  Cover native-null plus persisted-cache success, assert that background DOM
-  capture is not called, and reopen the popup to prove that a prior unavailable
+  Cover native-null plus exact-cache promotion, shared memory and unrevisioned
+  persisted-cache reuse before DOM capture, single shared-latest writes after
+  memory or DOM success, and reopen the popup to prove that a prior unavailable
   result does not block a later successful capture.
 - References:
   [docs/architecture/workbench-dock-model.md](../../architecture/workbench-dock-model.md)

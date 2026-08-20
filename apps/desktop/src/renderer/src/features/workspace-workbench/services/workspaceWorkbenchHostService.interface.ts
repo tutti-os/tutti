@@ -97,8 +97,25 @@ export type WorkspaceWorkbenchCapabilitySettingsTarget =
   | {
       kind: "connector";
       connectorKey: string;
-      action?: "open";
+      action?: "install" | "open";
+    }
+  | {
+      kind: "connector";
+      connectorKey: string;
+      action: "set_runtime_enabled";
+      enabled: boolean;
     };
+
+export interface WorkspaceBrowserPageOpenInput {
+  surfaceNodeIds: readonly string[];
+  url: string;
+  workspaceId: string;
+}
+
+export interface WorkspaceBrowserPageOpenResult {
+  pageNodeId: string;
+  surfaceNodeId: string;
+}
 
 export interface WorkspaceWorkbenchHostInput {
   readonly captureNodePreviewImages?: WorkbenchHostProps["captureNodePreviewImages"];
@@ -143,7 +160,7 @@ export interface WorkspaceWorkbenchHostSessionUpdate {
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
-  ) => void;
+  ) => void | Promise<void>;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBody: (
     context: WorkspaceWorkbenchBodyRendererContext
@@ -169,6 +186,7 @@ export interface IWorkspaceWorkbenchHostService {
   readonly dockRetention: WorkspaceDockRetentionService;
 
   approveWindowClose(): Promise<void>;
+  setWindowCloseGuardEnabled(enabled: boolean): Promise<void>;
   openHostSession(workspaceId: string): WorkspaceWorkbenchHostSessionBinding;
   createWorkspaceAppExternalFileReferenceAdapter(
     workspaceId: string
@@ -210,6 +228,9 @@ export interface IWorkspaceWorkbenchHostService {
     diagnostic: WorkspaceOnboardingAutoOpenDiagnostic
   ): void;
   markWorkspaceOnboardingAutoOpened(workspaceId: string): Promise<void>;
+  openBrowserPage(
+    input: WorkspaceBrowserPageOpenInput
+  ): WorkspaceBrowserPageOpenResult | null;
   readWallpaperDisplayMode(workspaceId: string): WorkspaceWallpaperDisplayMode;
   readWallpaperId(workspaceId: string): WorkspaceWallpaperId;
   resolveWindowCloseRequest(input: {

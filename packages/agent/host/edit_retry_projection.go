@@ -110,9 +110,15 @@ func editRetryReplacementInput(
 	if err := json.Unmarshal([]byte(envelope.TuttiModeSnapshotJSON), &tuttiModeSnapshot); err != nil {
 		return SendInput{}, err
 	}
+	var metadata map[string]any
+	if strings.TrimSpace(envelope.MetadataJSON) != "" {
+		if err := json.Unmarshal([]byte(envelope.MetadataJSON), &metadata); err != nil {
+			return SendInput{}, err
+		}
+	}
 	return SendInput{
 		Content: normalized, DisplayPrompt: editedText,
-		CapabilityRefs: capabilityRefs, TuttiModeSnapshot: tuttiModeSnapshot,
+		CapabilityRefs: capabilityRefs, Metadata: metadata, TuttiModeSnapshot: tuttiModeSnapshot,
 	}, nil
 }
 

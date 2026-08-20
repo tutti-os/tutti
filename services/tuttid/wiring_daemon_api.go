@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit // Composition root is intentionally kept as one auditable dependency graph.
 package main
 
 import (
@@ -59,6 +60,7 @@ func buildDaemonAPI(
 	browserService *browsersvc.Service,
 	computerService *computersvc.Service,
 	modelGateway *modelgatewayservice.Gateway,
+	connectorRuntime agentservice.ConnectorRuntime,
 	installTuttiModeWatchdog func(tuttimodeexecutionservice.Worker),
 ) (tuttiapi.DaemonAPI, *workspaceservice.AppCenterService, *agentdaemon.Runtime, *agentservice.ProviderAuthWatcher, error) {
 	workspaceStore, _ := store.(workspacedata.WorkbenchStore)
@@ -102,9 +104,7 @@ func buildDaemonAPI(
 		Publisher:                      preferencesPublisher,
 		AgentComposerDefaultsPublisher: preferencesPublisher,
 	}
-	agentTargets := agenttargetservice.Service{
-		Store: agentTargetStore,
-	}
+	agentTargets := agenttargetservice.Service{Store: agentTargetStore}
 	agentRuntimeDir, err := tuttitypes.DefaultAgentRuntimeDir()
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve agent runtime directory: %w", err)
@@ -116,22 +116,21 @@ func buildDaemonAPI(
 	agentExtensionStateDir := tuttitypes.DefaultStateDir()
 	agentSetupDiscovery := agentextensiondata.NewFileSetupDiscoveryDirectory(agentExtensionStateDir)
 	agentExtensionManager := &agentextensionservice.Manager{
-		Sources:           tuttitypes.ResolveAgentExtensionSources(),
-		RuntimeInstallDir: agentRuntimeDir,
-		RuntimeBinDir:     agentExtensionBinDir,
-		Store:             agentTargetStore,
-		Installations:     agentextensiondata.NewFileInstallationStore(agentExtensionStateDir),
-		Discovery:         agentSetupDiscovery,
-		Preferences:       preferencesStore,
+		Sources:                     tuttitypes.ResolveAgentExtensionSources(),
+		RuntimeInstallDir:           agentRuntimeDir,
+		RuntimeBinDir:               agentExtensionBinDir,
+		AccountUsageNodeSnapshotDir: filepath.Join(agentExtensionStateDir, "agent", "account-usage-node-snapshots"),
+		Store:                       agentTargetStore,
+		Installations:               agentextensiondata.NewFileInstallationStore(agentExtensionStateDir),
+		Discovery:                   agentSetupDiscovery,
+		Preferences:                 preferencesStore,
+		UserPathAdapter:             agentstatusservice.NewUserPathAdapter(),
 	}
-	preferences.RegisterChangeObserver(func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
-		for _, reconcileErr := range agentExtensionManager.ReconcileDesktopPreferencesChange(ctx, previous, current) {
-			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
-			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
-		}
-	})
 	agentTargetInstallPlans := agentextensionservice.InstallPlanService{
 		Manager: agentExtensionManager, Workspaces: store, Targets: agentTargetStore,
+	}
+	agentTargetAccountUsage := agentextensionservice.AccountUsageService{
+		Manager: agentExtensionManager, Targets: agentTargetStore,
 	}
 	agentTargets.AvailabilityResolver = agentExtensionManager
 	refreshAgentExtensionsInBackground := restoreAgentExtensionsForStartup(ctx, agentExtensionManager)
@@ -211,7 +210,9 @@ func buildDaemonAPI(
 		AnalyticsReporter:          analyticsReporter,
 		ManagedRuntime:             managedRuntimeResolver,
 		ClaudeCodeRuntimeDir:       filepath.Join(agentRuntimeDir, "claude-code"),
+		UserCommandBinDir:          agentExtensionBinDir,
 		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
+		UserPathAdapter:            agentstatusservice.NewUserPathAdapter(),
 	})
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
@@ -241,8 +242,16 @@ func buildDaemonAPI(
 	agentTargetSetup.Transport = agentProcessComposition.transport
 	agentTargetSetup.Host = agentHostMetadata
 	agentTargetSetup.Actions = agentextensiondata.NewFileSetupActionStore(agentExtensionStateDir)
+	agentTargetSetup.AccountUsageFailures = agentextensiondata.NewFileAccountUsageCompanionFailureStore(agentExtensionStateDir)
 	agentTargetSetup.Discovery = agentSetupDiscovery
 	agentTargetSetup.AuthInvalidation = runOutcomes
+	preferences.RegisterChangeObserver(func(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) {
+		for _, reconcileErr := range agentExtensionManager.ReconcileDesktopPreferencesChange(ctx, previous, current) {
+			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
+			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
+		}
+		agentTargetSetup.WakeAccountUsageCompanionReconciler()
+	})
 	agentRuntimeConfig := agentdaemon.Config{
 		Reporter: agentRunOutcomeReporter{
 			DurableActivityReporter: agentActivityProjection,
@@ -274,11 +283,12 @@ func buildDaemonAPI(
 		Publisher: eventstreamservice.AgentQuickPromptPublisher{Service: events},
 	}
 	agentRuntimeController := newAgentRuntimeAdapter(agentRuntime.Controller())
-	agentRuntime.Controller().SetStreamEventObserver(agentRuntimeActivityEventBridge{
-		publisher: eventstreamservice.AgentActivityPublisher{Service: events},
-	})
+	configureAgentRuntimeEventObservers(agentRuntime.Controller(), events)
 	agentModelCapabilities := agentservice.NewModelCapabilitiesService()
 	agentModelCatalog := agentservice.NewAgentModelCatalog()
+	agentModelCatalog.PersistentPath = filepath.Join(
+		tuttitypes.DefaultStateDir(), "agent-model-catalog", "model-catalog.json",
+	)
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentModelCatalog.ProviderCommands = &agentStatusService
 	agentSessionPurgeStore, ok := agentActivityRepo.(agenthost.SessionPurgeStore)
@@ -358,6 +368,8 @@ func buildDaemonAPI(
 	agentSessionConfig := agentservice.ServiceConfig{
 		Runtime: agentservice.ServiceRuntimeConfig{
 			Preparer:                 agentRuntimePreparation,
+			Connector:                connectorRuntime,
+			ConnectorCapabilities:    agentRuntimeController,
 			ModelGateway:             modelGateway,
 			BrowserUseAvailable:      browserUseAvailable,
 			ComputerUseAvailable:     computerUseAvailable,
@@ -442,6 +454,7 @@ func buildDaemonAPI(
 		Components:      agentServiceComponents,
 	}
 	agentSessionService := agentservice.NewService(agentRuntimeController, agentSessionConfig)
+	configureUserProjectSessionDeletion(&userProjectService, agentSessionService)
 	agentStatusService.OnProviderStatusInvalidated = agentSessionService.InvalidateProviderAvailabilityCache
 	preferences.AgentComposerDefaultsValidator = agentSessionService
 	modelPlans.NativeSubscriptionProbe = modelPlanNativeSubscriptionProbe{Agents: agentSessionService}
@@ -499,6 +512,7 @@ func buildDaemonAPI(
 	if err := agentHost.Recover(ctx); err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("recover agent host: %w", err)
 	}
+	go agentActivityProjection.RunTurnTerminalAnalytics(ctx)
 	go func() {
 		if err := agentHost.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
 			slog.ErrorContext(ctx, "agent Host worker lifecycle stopped", "error", err)
@@ -560,6 +574,7 @@ func buildDaemonAPI(
 	}
 	tuttiModePlans := &tuttimodeplanservice.Service{
 		Store:             workflowStore,
+		TurnSnapshots:     tuttiModeActivations,
 		Revisions:         workspacedata.WorkflowRevisionFiles{StateDir: tuttitypes.DefaultStateDir()},
 		Publisher:         eventstreamservice.WorkspaceWorkflowPublisher{Service: events},
 		IssueMaterializer: tuttimodeplanservice.WorkspaceIssueMaterializer{Issues: &issueService},
@@ -774,8 +789,12 @@ func buildDaemonAPI(
 		replayComposition, agentModelCatalog, agentSessionService, events,
 	)
 
+	if err := agentTargetSetup.StartAccountUsageCompanionReconciler(); err != nil {
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start account usage companion reconciler: %w", err)
+	}
 	if refreshAgentExtensionsInBackground {
-		startAgentExtensionBackgroundRefresh(agentExtensionManager)
+		startAgentExtensionBackgroundRefresh(agentExtensionManager, agentTargetSetup)
 	}
 	agentSessionReplayVerifier := composeAgentReplayVerifier(agentProcessComposition.replay, replaySemanticRuntime)
 
@@ -786,6 +805,7 @@ func buildDaemonAPI(
 		AgentQuickPromptService:   agentQuickPromptService,
 		AgentTargetService:        agentTargets,
 		AgentTargetSetupService:   agentTargetSetup,
+		AgentTargetAccountUsage:   agentTargetAccountUsage,
 		PreferencesService:        preferences,
 		AgentMaintenanceService:   agentMaintenance,
 		ManagedCredentialsService: managedCredentials,
@@ -809,6 +829,7 @@ func buildDaemonAPI(
 			Adapter: fileAdapter,
 		},
 		AgentSessionService:          agentSessionService,
+		SideConversationService:      agentSessionService,
 		AgentSessionRecordingService: agentSessionRecordingService,
 		AgentSessionReplayVerifier:   agentSessionReplayVerifier,
 		AgentStatusService:           replayAgentProviderStatusAPI(replayComposition, &agentStatusService),

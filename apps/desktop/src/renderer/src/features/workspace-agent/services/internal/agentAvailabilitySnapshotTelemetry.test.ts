@@ -116,6 +116,23 @@ test("availability requires installed CLI, authentication, and ready provider", 
   assert.equal(params.unavailableReason, "provider_error");
 });
 
+test("configured credentials keep a ready provider available without claiming authentication", () => {
+  const params = buildAvailabilitySnapshotParams(
+    status({
+      authenticated: false,
+      authStatus: "configured",
+      availability: "ready",
+      cliInstalled: true,
+      provider: "claude-code"
+    }),
+    "env_detected"
+  );
+
+  assert.equal(params.authenticated, false);
+  assert.equal(params.isAvailable, true);
+  assert.equal(params.unavailableReason, "none");
+});
+
 test("availability reports an explicit conversation failure trigger", async () => {
   const events: ReporterEventInput[] = [];
   const telemetry = new AgentAvailabilitySnapshotTelemetry({
@@ -189,6 +206,7 @@ test("availability rollover uses the activation time supplied by its lifecycle",
 
 function status(input: {
   authenticated: boolean;
+  authStatus?: AgentProviderStatus["auth"]["status"];
   availability: AgentProviderStatus["availability"]["status"];
   cliInstalled: boolean;
   provider: string;
@@ -197,7 +215,8 @@ function status(input: {
     actions: [],
     adapter: { command: [], installed: true },
     auth: {
-      status: input.authenticated ? "authenticated" : "required"
+      status:
+        input.authStatus ?? (input.authenticated ? "authenticated" : "required")
     },
     availability: { status: input.availability },
     cli: { installed: input.cliInstalled },

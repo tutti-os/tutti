@@ -20,7 +20,7 @@ func (a *standardACPAdapter) Exec(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
-	acpSession := a.getSession(session.AgentSessionID)
+	acpSession := a.getUsableSession(session.AgentSessionID)
 	if acpSession == nil || acpSession.client == nil {
 		return []activityshared.Event{standardACPRootProviderTurnCompletedEvent(
 			session,
@@ -84,6 +84,13 @@ func (a *standardACPAdapter) Exec(
 	acpPromptContent := promptContentForACP(providerContent)
 	if mentionRoutingApplied {
 		acpPromptContent = appendTuttiMentionRoutingPrompt(acpPromptContent, mentionRoutingSkills)
+	}
+	initialPromptContext := a.pendingInitialPromptContext(acpSession)
+	if initialPromptContext != "" {
+		acpPromptContent = append(acpPromptContent, map[string]any{
+			"type": "text",
+			"text": initialPromptContext,
+		})
 	}
 	// ACP v1 has no developer/system or synthetic-message channel. Keep the
 	// canonical Tutti-owned context in the provider-only prompt payload; the
@@ -217,6 +224,10 @@ execLoop:
 				emitEvents(terminalEvents)
 			}
 			return snapshotEvents(), nil
+		}
+		if initialPromptContext != "" {
+			a.consumeInitialPromptContext(acpSession)
+			initialPromptContext = ""
 		}
 
 		stopReason := acpStopReason(result)
@@ -385,21 +396,26 @@ func (a *standardACPAdapter) submitPermissionOption(ctx context.Context, session
 	requestID := strings.TrimSpace(input.RequestID)
 	optionID := strings.TrimSpace(input.OptionID)
 	if requestID == "" {
-		return "", errors.New("permission request id is required")
+		return "", fmt.Errorf("%w: permission request id is required", ErrInteractiveResponseInvalid)
 	}
 	if optionID == "" {
-		return "", errors.New("permission option id is required")
+		return "", fmt.Errorf("%w: permission option id is required", ErrInteractiveResponseInvalid)
 	}
 	pending := a.getPendingApproval(session.AgentSessionID, input.TurnID, requestID)
 	if pending == nil {
 		return "", fmt.Errorf("%w: permission request %q", ErrInteractiveRequestNotLive, requestID)
 	}
 	if pending.callType != "approval" {
-		return "", fmt.Errorf("request %q requires interactive submission", requestID)
+		return "", fmt.Errorf("%w: request %q requires interactive submission", ErrInteractiveResponseInvalid, requestID)
 	}
 	resolvedOptionID, ok := pending.resolvePermissionOptionID(optionID)
 	if !ok {
-		return "", fmt.Errorf("permission option %q is not available for request %q", optionID, requestID)
+		return "", fmt.Errorf(
+			"%w: permission option %q is not available for request %q",
+			ErrInteractiveResponseInvalid,
+			optionID,
+			requestID,
+		)
 	}
 	if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
 		optionID: resolvedOptionID,
@@ -418,11 +434,11 @@ func (a *standardACPAdapter) submitPermissionOption(ctx context.Context, session
 func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Session, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
 	turnID := strings.TrimSpace(input.TurnID)
 	if turnID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive turn id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive turn id is required", ErrInteractiveResponseInvalid)
 	}
 	requestID := strings.TrimSpace(input.RequestID)
 	if requestID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive request id is required", ErrInteractiveResponseInvalid)
 	}
 	pending := a.getPendingApproval(session.AgentSessionID, turnID, requestID)
 	if pending == nil {
@@ -431,7 +447,7 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	if pending.callType == "approval" {
 		optionID := interactiveApprovalOptionID(input)
 		if optionID == "" {
-			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
+			return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive option id is required", ErrInteractiveResponseInvalid)
 		}
 		resolvedOptionID, err := a.submitPermissionOption(ctx, session, PermissionOptionInput{
 			RoomID:         input.RoomID,
@@ -454,6 +470,38 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	optionID := strings.TrimSpace(input.OptionID)
 	action := strings.TrimSpace(input.Action)
 	payload := clonePayload(input.Payload)
+	if pending.providerMethod != "" {
+		result, resolvedOptionID, err := cursorNativeInteractiveResult(pending, action, optionID, payload)
+		if err != nil {
+			pending.supersede(err)
+			return SubmitInteractiveResult{
+				AgentSessionID: session.AgentSessionID,
+				RequestID:      requestID,
+				Disposition:    InteractiveDispositionSuperseded,
+			}, err
+		}
+		optionID = resolvedOptionID
+		if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
+			optionID: optionID,
+			action:   action,
+			payload:  payload,
+			result:   result,
+		}); err != nil {
+			return SubmitInteractiveResult{}, err
+		}
+		if state, err := pending.waitForDisposition(ctx); err != nil {
+			return SubmitInteractiveResult{}, err
+		} else if state != pendingInteractiveRequestStateAnswered {
+			return SubmitInteractiveResult{}, interactiveDispositionError(requestID, state)
+		}
+		return SubmitInteractiveResult{
+			AgentSessionID: session.AgentSessionID,
+			RequestID:      requestID,
+			Accepted:       true,
+			OptionID:       optionID,
+			Disposition:    InteractiveDispositionAnswered,
+		}, nil
+	}
 	result := acpInteractiveResponseResult(action, optionID, payload)
 	if err := ctx.Err(); err != nil {
 		return SubmitInteractiveResult{}, err
@@ -461,6 +509,7 @@ func (a *standardACPAdapter) SubmitInteractive(ctx context.Context, session Sess
 	if pending.kind == "ask-user" && len(pending.options) > 0 {
 		resolvedOptionID, err := acpAskUserPermissionOptionID(pending, optionID, action, payload)
 		if err != nil {
+			err = fmt.Errorf("%w: %v", ErrInteractiveResponseInvalid, err)
 			pending.supersede(err)
 			return SubmitInteractiveResult{
 				AgentSessionID: session.AgentSessionID,

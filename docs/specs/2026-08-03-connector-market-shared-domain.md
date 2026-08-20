@@ -25,9 +25,11 @@ independent durable state and runtime-specific adapters.
 
 ### Remote Connector Market API
 
-The Connector Market service owns the authoritative, versioned schema and
-publishes a generated Go client. It exposes published market items with
-immutable artifact keys, digests, and sizes.
+The Connector Market service owns the authoritative, versioned schema and its
+generated protobuf/HTTP artifacts. Tutti pins those artifacts by provider
+commit and SHA-256 in `packages/clients/market-go`, which exposes the reusable
+Go client without importing the service application module. It exposes
+published market items with immutable artifact keys, digests, and sizes.
 
 Market-neutral connector `schemaVersion: "2"` declares one implementation.
 Connector `schemaVersion: "3"` keeps the same release identity and listing

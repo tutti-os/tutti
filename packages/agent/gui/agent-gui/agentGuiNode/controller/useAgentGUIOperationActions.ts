@@ -1,5 +1,5 @@
 import { selectEngineSession } from "@tutti-os/agent-activity-core";
-import { useCallback } from "react";
+import { useCallback, useRef } from "react";
 import { translate } from "../../../i18n/index";
 import { textPromptContent } from "../model/agentComposerDraft";
 import {
@@ -26,7 +26,7 @@ type NewConversationInput = Parameters<
 
 type UseAgentGUIOperationActionsInput = Omit<
   SubmitInput,
-  "isSessionMarkedNonResumable" | "startConversation"
+  "goalControlSupported" | "isSessionMarkedNonResumable" | "startConversation"
 > &
   Omit<HomeInput, "submitPrefillPrompt"> &
   Omit<NewConversationInput, "getCachedComposerOptions"> &
@@ -52,9 +52,19 @@ type UseAgentGUIOperationActionsInput = Omit<
 export function useAgentGUIOperationActions(
   input: UseAgentGUIOperationActionsInput
 ) {
+  // startConversation is memoized without providerComposerOptions in its
+  // dependency list. Read through a ref so Create densification sees the same
+  // live options the home composer is presenting (e.g. auto after the user
+  // switches away from a remembered full-access default).
+  const providerComposerOptionsRef = useRef(input.providerComposerOptions);
+  providerComposerOptionsRef.current = input.providerComposerOptions;
+  const getCachedComposerOptions = useCallback(
+    () => providerComposerOptionsRef.current,
+    []
+  );
   const startConversation = useAgentGUINewConversationActivation({
     ...input,
-    getCachedComposerOptions: () => input.providerComposerOptions
+    getCachedComposerOptions
   });
 
   const { createConversation: enterConversationHome } =
@@ -115,6 +125,10 @@ export function useAgentGUIOperationActions(
 
   const submitActions = useAgentGUISubmitInteractionActions({
     ...input,
+    goalControlSupported:
+      input.providerComposerOptions?.slashCommandPolicy?.commandEffects.some(
+        ({ effect }) => effect === "activateGoalMode"
+      ) === true,
     isSessionMarkedNonResumable,
     startConversation
   });

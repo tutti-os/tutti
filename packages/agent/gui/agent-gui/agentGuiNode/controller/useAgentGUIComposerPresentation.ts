@@ -4,6 +4,7 @@ import type {
   AgentActivitySession
 } from "@tutti-os/agent-activity-core";
 import { useMemo } from "react";
+import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import type {
   AgentSessionComposerSettings,
@@ -28,6 +29,7 @@ import {
   speedSelectionFromComposerOptions
 } from "./agentGuiController.composerHelpers";
 import {
+  composerModelChoiceHistoryTargetId,
   enforceComposerModelBindingForHomeDefaults,
   isForegroundModelOptionsLoading,
   resolveComposerSettingsPresentation,
@@ -50,12 +52,14 @@ interface UseAgentGUIComposerPresentationInput {
   composerSupport: ReturnType<typeof composerSettingsSupportFromOptions>;
   composerOptionsLoadStatus?: AgentActivityComposerOptionsLoadStatus;
   composerOptionsLoading: boolean;
+  connectorOptionsLoading: boolean;
   composerTargetProvider: AgentGUIProvider;
   codexSaverModeEntryEnabled?: boolean;
   data: AgentGUINodeData;
   defaultReasoningEffort: AgentSessionReasoningEffort | null;
   draftSettingsBySessionId: Record<string, AgentSessionComposerSettings>;
   providerComposerOptions: AgentActivityComposerOptions | null;
+  composerTargetData: AgentGUIComposerTargetData;
   selectedComposerTargetData: AgentGUIComposerTargetData;
   selectedProjectPath: string | null;
   shouldApplyPreparedProjectSelection: boolean;
@@ -251,11 +255,34 @@ export function useAgentGUIComposerPresentation(
       composerOptionsLoadStatus: input.composerOptionsLoadStatus,
       isSettingsLoading: !hasACPSettings && !composerOptionsError,
       isCapabilityOptionsLoading: input.composerOptionsLoading,
+      isConnectorOptionsLoading: input.connectorOptionsLoading,
       isModelOptionsLoading: isForegroundModelOptionsLoading({
         modelOptionsLoading: input.providerComposerOptions?.modelOptionsLoading,
         selection: activeSessionModelSelection,
         supportsModel: input.composerSupport.model
       }),
+      modelChoiceHistory: {
+        targetId: composerModelChoiceHistoryTargetId({
+          activeConversationId: input.activeConversationId,
+          target: input.composerTargetData
+        }),
+        catalog: input.providerComposerOptions
+          ? {
+              authoritative:
+                input.providerComposerOptions.behavior
+                  .modelOptionsAuthoritative === true,
+              loading:
+                input.providerComposerOptions.modelOptionsLoading === true,
+              effectiveModel: normalizeOptionalText(
+                input.providerComposerOptions.effectiveSettings?.model
+              ),
+              models: input.providerComposerOptions.models.map((option) => ({
+                value: option.value,
+                ...(option.requested === true ? { requested: true } : {})
+              }))
+            }
+          : null
+      },
       modelUnavailable:
         input.activeConversationId !== null &&
         sessionSettings === null &&
@@ -343,6 +370,8 @@ export function useAgentGUIComposerPresentation(
     input.composerSupport,
     input.composerOptionsLoadStatus,
     input.composerOptionsLoading,
+    input.connectorOptionsLoading,
+    input.composerTargetData,
     input.composerTargetProvider,
     input.providerComposerOptions,
     input.selectedComposerTargetData.agentTargetId,
@@ -374,7 +403,9 @@ function resolveSelectedProjectSectionKey(
   }
   return (
     userProjects
-      .find((project) => project.path.trim() === projectPath)
+      .find((project) =>
+        areWorkspaceUserProjectPathsEqual(project.path, projectPath)
+      )
       ?.sectionKey?.trim() || null
   );
 }

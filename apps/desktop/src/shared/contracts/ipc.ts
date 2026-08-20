@@ -18,6 +18,7 @@ import type {
 import type { DesktopAgentDirectorySnapshot } from "./agentDirectory.ts";
 import type {
   AgentProviderStatus,
+  DesktopPreferencesStateResponse,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -191,6 +192,7 @@ export const desktopIpcChannels = {
     automationHostReady: "browser:automation-host-ready",
     automationRequest: "browser:automation-request",
     automationResponse: "browser:automation-response",
+    automationTurnClaim: "browser:automation-turn-claim",
     capturePreview: "browser:capturePreview",
     chooseDownloadDirectory: "browser:chooseDownloadDirectory",
     clearBrowsingData: "browser:clearBrowsingData",
@@ -264,6 +266,9 @@ export const desktopIpcChannels = {
     setCustom: "wallpaper:setCustom"
   },
   host: {
+    preferences: {
+      ensureInitialized: "host:preferences:ensureInitialized"
+    },
     files: {
       createUserDocumentsProjectDirectory:
         "host:files:createUserDocumentsProjectDirectory",
@@ -292,6 +297,7 @@ export const desktopIpcChannels = {
     },
     window: {
       approveClose: "host:window:approveClose",
+      setCloseGuardEnabled: "host:window:setCloseGuardEnabled",
       capturePreview: "host:window:capturePreview",
       capturePreviewImages: "host:window:capturePreviewImages",
       closeRequest: "host:window:closeRequest",
@@ -352,7 +358,11 @@ export interface DesktopHostWindowResizeContentWidthResult {
 
 export interface DesktopHostWindowCloseRequestPayload {
   requestId?: string;
-  reason: "quit" | "window-close";
+  reason: "native-window-close" | "quit" | "window-close";
+}
+
+export interface DesktopHostWindowCloseGuardInput {
+  enabled: boolean;
 }
 
 export interface DesktopHostOpenAgentWindowInput {
@@ -1028,9 +1038,18 @@ export function desktopComputerUseStatusesEqual(
   );
 }
 
+export type DesktopComputerUseActionFailureReason =
+  | "timeout"
+  | "spawn-error"
+  | "exit-code";
+
 export interface DesktopComputerUseActionResult {
   success: boolean;
   output: string;
+  /** The child-process exit code, when the process reached close normally. */
+  exitCode?: number | null;
+  /** A stable reason that lets the renderer distinguish common failures. */
+  failureReason?: DesktopComputerUseActionFailureReason;
 }
 
 export type DesktopComputerUsePermissionPane =
@@ -1072,6 +1091,12 @@ export interface DesktopBrowserAutomationRequest {
 
 export interface DesktopBrowserAutomationHostReady {
   surfaceRole: "agent" | "user";
+  workspaceId: string;
+}
+
+export interface DesktopBrowserAutomationTurnClaim {
+  agentSessionId: string;
+  agentTurnId: string;
   workspaceId: string;
 }
 
@@ -1246,6 +1271,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.wallpaper.clearCustom]: undefined;
   [desktopIpcChannels.wallpaper.getCustom]: undefined;
   [desktopIpcChannels.wallpaper.setCustom]: DesktopSetCustomWallpaperInput;
+  [desktopIpcChannels.host.preferences.ensureInitialized]: undefined;
   [desktopIpcChannels.host.files
     .createUserDocumentsProjectDirectory]: DesktopCreateUserDocumentsProjectDirectoryInput;
   [desktopIpcChannels.host.files.openExternal]: string;
@@ -1285,6 +1311,8 @@ export interface DesktopInvokePayloadByChannel {
     .copyImageToClipboard]: DesktopClipboardImagePayload;
   [desktopIpcChannels.host.files.copyFilesToClipboard]: string[];
   [desktopIpcChannels.host.window.approveClose]: undefined;
+  [desktopIpcChannels.host.window
+    .setCloseGuardEnabled]: DesktopHostWindowCloseGuardInput;
   [desktopIpcChannels.host.window
     .capturePreview]: DesktopHostWindowCapturePreviewInput;
   [desktopIpcChannels.host.window
@@ -1459,6 +1487,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.wallpaper.clearCustom]: void;
   [desktopIpcChannels.wallpaper.getCustom]: DesktopCustomWallpaperImage | null;
   [desktopIpcChannels.wallpaper.setCustom]: DesktopCustomWallpaperImage;
+  [desktopIpcChannels.host.preferences
+    .ensureInitialized]: DesktopPreferencesStateResponse;
   [desktopIpcChannels.host.files
     .createUserDocumentsProjectDirectory]: DesktopCreateUserDocumentsProjectDirectoryResult;
   [desktopIpcChannels.host.files.openExternal]: void;
@@ -1486,6 +1516,7 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.host.files.copyImageToClipboard]: void;
   [desktopIpcChannels.host.files.copyFilesToClipboard]: void;
   [desktopIpcChannels.host.window.approveClose]: void;
+  [desktopIpcChannels.host.window.setCloseGuardEnabled]: void;
   [desktopIpcChannels.host.window.capturePreview]: string | null;
   [desktopIpcChannels.host.window
     .capturePreviewImages]: DesktopHostWindowPreviewImages | null;

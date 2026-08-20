@@ -16,9 +16,19 @@ type CanonicalSessionStore interface {
 	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
+// RuntimeSessionRailPlacementResolver is the optional create-time capability
+// that resolves a prepared runtime's final canonical rail placement before a
+// provider process starts. Keeping it separate preserves source compatibility
+// for external CanonicalStore implementations; CreateSession fails closed
+// when the capability is unavailable.
+type RuntimeSessionRailPlacementResolver interface {
+	ResolveRuntimeSessionRailPlacement(context.Context, ResolveRuntimeSessionRailPlacementInput) (*RailPlacement, error)
+}
+
 type RuntimeSessionInitialization struct {
-	Session       ProviderRuntimeSession
-	RailPlacement *RailPlacement
+	Session                    ProviderRuntimeSession
+	RailPlacement              *RailPlacement
+	RailPlacementAuthoritative bool
 }
 
 type CanonicalTurnStore interface {
@@ -158,6 +168,14 @@ type SessionForkTurnBindingRecoveryStore interface {
 	) (storesqlite.ProviderTurnBindingRecoveryResult, error)
 }
 
+// SideConversationRuntime opens only the provider-native ephemeral branch.
+// Host owns lifecycle/idempotency and then reuses RuntimeController for
+// execution, cancellation, interaction responses, and close.
+type SideConversationRuntime interface {
+	ResolveSideConversation(context.Context, ProviderRuntimeSession) (SideConversationCapabilities, error)
+	OpenSideConversation(context.Context, RuntimeOpenSideConversationInput) (OpenSideConversationResult, error)
+}
+
 // SessionForkContextPolicy decides whether host-owned session context can be
 // transferred safely and returns the exact target context to freeze at
 // prepare. Product-specific resource ownership (for example worktrees) stays
@@ -250,7 +268,7 @@ type HistoricalSessionStateStore interface {
 // create, resume, send, exact cancel, interactive, plan, title, and visibility
 // workflows. Process transport and provider implementations stay behind it.
 type RuntimeController interface {
-	Start(context.Context, RuntimeStartInput) (ProviderRuntimeSession, error)
+	Start(context.Context, RuntimeStartInput) (RuntimeStartResult, error)
 	Resume(context.Context, RuntimeResumeInput) (ProviderRuntimeSession, error)
 	Session(workspaceID string, agentSessionID string) (ProviderRuntimeSession, bool)
 	CanResume(RuntimeResumeInput) bool
@@ -265,12 +283,50 @@ type RuntimeController interface {
 	Close(context.Context, RuntimeCloseInput) error
 }
 
+// RuntimeSessionInitializationPublisher is the explicit release half of a
+// create-time canonical initialization barrier. CreateSession requires this
+// capability before starting a provider Runtime; other Host workflows can use
+// a narrower RuntimeController without pretending to support creation.
+type RuntimeSessionInitializationPublisher interface {
+	PublishSessionInitialization(context.Context, RuntimeSessionInitializationPublishInput) (ProviderRuntimeSession, error)
+}
+
+// RuntimeSessionRepreparer replaces an idle Session's live provider
+// connection without changing its canonical or provider session identity.
+// Implementations must serialize against Turn admission and fail when a Turn
+// is active.
+type RuntimeSessionRepreparer interface {
+	Reprepare(context.Context, RuntimeResumeInput) (ProviderRuntimeSession, error)
+}
+
 // RuntimeSessionLiveness distinguishes a registered runtime Session from a
 // live provider connection. It is required when Goal generation fencing is
 // configured: background recovery must never guess liveness and reconnect an
 // idle/offline Session merely to deliver deferred control work.
 type RuntimeSessionLiveness interface {
 	RuntimeSessionLive(workspaceID, agentSessionID string) bool
+}
+
+// RuntimeWorkspaceDisconnector exposes registered runtime sessions and
+// releases only their live provider connection. It must preserve the runtime
+// session record and provider resume identity, and must not invoke a
+// provider-history session close operation.
+type RuntimeWorkspaceDisconnector interface {
+	WorkspaceRuntimeSessions(context.Context, string) ([]ProviderRuntimeSession, error)
+	DisconnectRuntimeSession(context.Context, SessionRef) (bool, error)
+}
+
+// RuntimeWorkspaceDisconnectTargeter supports a reentrant detach that must
+// defer semantic cleanup without targeting a later provider connection.
+type RuntimeWorkspaceDisconnectTargeter interface {
+	SnapshotWorkspaceRuntimeDisconnectTargets(string) []RuntimeDisconnectTarget
+	DisconnectRuntimeSessionTarget(context.Context, RuntimeDisconnectTarget) (bool, error)
+}
+
+// RuntimeRetainedSettingsUpdater refreshes the settings snapshot kept by a
+// disconnected runtime Session without starting its provider connection.
+type RuntimeRetainedSettingsUpdater interface {
+	UpdateRetainedSettings(context.Context, RuntimeUpdateSettingsInput) error
 }
 
 // RuntimeHistoryController is an optional semantic capability. Host lifecycle
@@ -316,17 +372,9 @@ type RuntimeOperationEventPublisher interface {
 }
 
 // StaleTurnSettler runs after durable runtime operations, goal operations, and
-// goal reconcile inbox work have been recovered and before the adapter-specific
-// worktree-isolation sweep.
+// goal reconcile inbox work have been recovered.
 type StaleTurnSettler interface {
 	SettleStaleTurnsOnStartup(context.Context) error
-}
-
-// WorktreeGarbageCollector owns adapter-specific git/filesystem cleanup. Host
-// schedules it during startup recovery and from the periodic Run worker so
-// cleanup cannot accidentally follow a turn or runtime terminal transition.
-type WorktreeGarbageCollector interface {
-	SweepWorktreeIsolation(context.Context) error
 }
 
 type GoalStateStore interface {
@@ -424,9 +472,33 @@ type RuntimePreparationInput struct {
 type PreparedRuntime struct {
 	Cwd               string
 	Env               []string
+	MCPServers        []MCPServerBinding
 	ProviderTargetRef map[string]any
 	Settings          *ComposerSettings
 	RuntimeContext    map[string]any
+}
+
+type MCPServerBinding struct {
+	Name    string
+	Type    string
+	URL     string
+	Headers map[string]string
+}
+
+func cloneHostMCPServerBindings(input []MCPServerBinding) []MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		binding.Headers = headers
+		result = append(result, binding)
+	}
+	return result
 }
 
 type RuntimeCleanupInput struct {
@@ -492,8 +564,50 @@ type LifecycleStep struct {
 
 // LifecycleObserver receives diagnostic step outcomes. It must not influence
 // command correctness; durable state remains in CanonicalStore.
+//
+// Adapters must not turn every LifecycleStep into a product analytics event.
+// Prefer TerminalFailureObserver for aggregated failure telemetry.
 type LifecycleObserver interface {
 	ObserveLifecycleStep(context.Context, LifecycleStep)
+}
+
+// TerminalFailure is one aggregated failure fact for product telemetry.
+// Host emits at most one observation per failed command or durable terminal
+// settlement. It carries the failure stage and original error text so adapters
+// can report without depending on user-supplied logs.
+type TerminalFailure struct {
+	Flow                          string
+	FailureStage                  string
+	WorkspaceID                   string
+	AgentSessionID                string
+	TurnID                        string
+	OperationID                   string
+	ClientSubmitID                string
+	RequestID                     string
+	Provider                      string
+	ErrorCode                     string
+	ErrorMessage                  string
+	ProviderAcceptanceDiagnostics *RuntimeProviderAcceptanceDiagnostics
+	ToolNameFamily                string
+	InteractionKind               string
+	TurnOutcome                   string
+	// DurationMS is populated only when the canonical terminal fact carries a
+	// valid start and settlement timestamp. Zero means unavailable.
+	DurationMS int64
+	// StartupReconciled distinguishes daemon-start interruption settlement from
+	// a live provider terminal observation.
+	StartupReconciled bool
+	// IsChildSession marks provider-native subagent sessions (parent tool call).
+	// Adapters may use it to distinguish child-session turn/tool failures from
+	// root-session ones without a separate event family.
+	IsChildSession bool
+	Retryable      bool
+}
+
+// TerminalFailureObserver receives aggregated terminal failures. It must not
+// influence command correctness; durable state remains in CanonicalStore.
+type TerminalFailureObserver interface {
+	ObserveTerminalFailure(context.Context, TerminalFailure)
 }
 
 // CommitObserver is the single post-commit wake surface. Implementations must

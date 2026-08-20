@@ -115,8 +115,38 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	emit EventSink,
 	emitCommands CommandSnapshotSink,
 ) ([]activityshared.Event, error) {
+	return a.GuideActiveTurnWithProviderDispatch(
+		ctx,
+		session,
+		content,
+		displayPrompt,
+		turnID,
+		emit,
+		emitCommands,
+		nil,
+	)
+}
+
+func (a *CodexAppServerAdapter) GuideActiveTurnWithProviderDispatch(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	emitCommands CommandSnapshotSink,
+	reportDispatch ProviderDispatchSink,
+) ([]activityshared.Event, error) {
+	reportNotDispatched := func() {
+		if reportDispatch != nil {
+			reportDispatch(ProviderDispatchResult{
+				Disposition: DispatchDispositionNotDispatched,
+			})
+		}
+	}
 	appSession := a.getSession(session.AgentSessionID)
 	if appSession == nil || appSession.client == nil {
+		reportNotDispatched()
 		return nil, ErrSessionDisconnected
 	}
 	activeTurnID := a.sessionActiveTurnID(session.AgentSessionID)
@@ -131,9 +161,23 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 		var err error
 		providerContent, err = materializeProviderPromptImagesAtBoundary(ctx, providerContent, a.promptImageMaterializer)
 		if err != nil {
+			reportNotDispatched()
 			return nil, err
 		}
-		return a.steerActiveTurn(ctx, appSession, session, content, providerContent, explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit)
+		events, err := a.steerActiveTurn(
+			ctx, appSession, session, content, providerContent,
+			explicitDisplayPrompt, visibleText, turnID, activeTurnID, emit,
+		)
+		if err != nil {
+			if reportDispatch != nil {
+				reportDispatch(ProviderDispatchResult{
+					Disposition: DispatchDispositionOutcomeUnknown,
+				})
+			}
+			return events, err
+		}
+		reportCodexAppliedWithoutProviderTurn(reportDispatch)
+		return events, nil
 	}
 	// The canonical root turn remains active while child sessions drain even
 	// after the provider's root turn has ended. Guidance in that window starts
@@ -142,44 +186,24 @@ func (a *CodexAppServerAdapter) GuideActiveTurn(
 	if a.sessionActiveTurn(session.AgentSessionID) != nil {
 		// The provider turn exists but turn/started has not supplied its id yet;
 		// starting another turn would race the existing one.
+		reportNotDispatched()
 		return nil, ErrSessionNoActiveTurn
 	}
-	attemptID := "continuation:" + newID()
-	eventContext, ok := activityEventContext(session, "root-provider-turn-started:"+attemptID, turnID)
-	if !ok {
-		return nil, ErrSessionDisconnected
-	}
-	started := activityshared.NewRootProviderTurnStarted(eventContext, turnID, attemptID)
-	if binding, err := a.WriteProviderTurnBinding(
-		ProviderTurnBindingWriteInput{
-			Kind:           ProviderTurnBindingWriteStarted,
-			ProviderTurnID: attemptID,
-		},
-	); err == nil {
-		started.Payload.ProviderTurnBindingJSON = binding
-	}
-	started.Payload.Metadata = map[string]any{"guidanceContinuation": true}
-	continuation := newCodexGuidanceContinuationAdmission(attemptID)
-	if err := a.execAsync(
-		context.WithoutCancel(ctx),
+	events, err := a.startGuidanceContinuation(
+		ctx,
 		session,
 		content,
 		displayPrompt,
 		turnID,
 		emit,
 		emitCommands,
-		continuation,
-	); err != nil {
-		return nil, err
+	)
+	if err != nil {
+		reportNotDispatched()
+		return events, err
 	}
-	if err := <-continuation.admitted; err != nil {
-		return nil, err
-	}
-	if emit != nil {
-		emit([]activityshared.Event{started})
-	}
-	close(continuation.provisionalStarted)
-	return []activityshared.Event{started}, nil
+	reportCodexAppliedWithoutProviderTurn(reportDispatch)
+	return events, nil
 }
 
 func (appTurn *codexAppServerActiveTurn) markTerminated() {
@@ -437,6 +461,21 @@ func (a *CodexAppServerAdapter) execBlocking(
 			emitProviderLocked(next)
 		}
 	}
+	// A turn/start failure has no provider identity to accept. Publish its
+	// canonical terminal directly so the controller can settle the Turn, while
+	// dropping any provider events that arrived before the failed response.
+	emitProviderlessTerminal := func(next []activityshared.Event) {
+		eventsMu.Lock()
+		defer eventsMu.Unlock()
+		if turnClosed {
+			return
+		}
+		turnClosed = true
+		pendingProviderEvents = nil
+		if len(next) > 0 {
+			emitLocked(next)
+		}
+	}
 	releaseProviderEvents := func() {
 		eventsMu.Lock()
 		defer eventsMu.Unlock()
@@ -556,6 +595,23 @@ func (a *CodexAppServerAdapter) execBlocking(
 
 	trace := newCodexAppServerTurnTrace(session, turnID, execMetadata)
 	appTurn.diagnostics.Start(trace)
+	tuttiModeHostContext := renderTuttiModeHostContext(
+		tuttiModeTurnSnapshotFromContext(ctx),
+	)
+	a.mu.Lock()
+	if session.IsSideConversation() {
+		if strings.TrimSpace(tuttiModeHostContext) == "" {
+			tuttiModeHostContext = appSession.tuttiModeHostContext
+		}
+	} else {
+		appSession.tuttiModeHostContext = tuttiModeHostContext
+	}
+	a.mu.Unlock()
+	if session.IsSideConversation() {
+		tuttiModeHostContext = strings.TrimSpace(
+			tuttiModeHostContext + "\n\n" + codexSideDeveloperInstructions,
+		)
+	}
 	turnParams := appServerTurnStartParams(
 		session,
 		appSession.threadID,
@@ -563,7 +619,7 @@ func (a *CodexAppServerAdapter) execBlocking(
 		appSession.planModeMask,
 		appSession.defaultModeMask,
 		execState.defaultModel,
-		renderTuttiModeHostContext(tuttiModeTurnSnapshotFromContext(ctx)),
+		tuttiModeHostContext,
 		a.config.commandNetworkAccess,
 	)
 	if clientUserMessageID := metadataString(execMetadata, "clientSubmitId"); clientUserMessageID != "" {
@@ -602,11 +658,11 @@ func (a *CodexAppServerAdapter) execBlocking(
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnCanceled, turnID, SessionStatusCanceled, "", "", map[string]any{
 				"error": err.Error(),
 			}))
-			emitTerminal(terminalEvents)
+			emitProviderlessTerminal(terminalEvents)
 		} else {
 			terminalEvents := normalizer.FinishFailed(session, turnID)
 			terminalEvents = append(terminalEvents, newTurnActivityEvent(session, EventTurnFailed, turnID, SessionStatusFailed, "", "", acpFailureMetadata(err)))
-			emitTerminal(terminalEvents)
+			emitProviderlessTerminal(terminalEvents)
 		}
 		if invalidateClient && a.invalidateSessionClient(session.AgentSessionID, appSession.client) {
 			slog.Warn(

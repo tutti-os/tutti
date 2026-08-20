@@ -60,6 +60,22 @@ test("desktop release feed rejects malformed pointer JSON", async () => {
   await assert.rejects(resolver({ channel: "stable" }), /not valid JSON/);
 });
 
+test("desktop release feed ignores legacy release notes metadata", async () => {
+  const resolver = createDesktopReleaseFeedResolver({
+    baseUrl,
+    fetch: async () =>
+      jsonResponse(
+        createPointerDocument({
+          releaseNotesUrl:
+            "https://github.com/tutti-os/tutti/releases/tag/v1.2.3"
+        })
+      )
+  });
+
+  const feed = await resolver({ channel: "stable" });
+  assert.equal("releaseNotesUrl" in feed, false);
+});
+
 test("desktop release feed rejects an unsupported schema, origin, channel, and tag", async (t) => {
   const cases = [
     {

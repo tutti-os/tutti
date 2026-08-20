@@ -8,6 +8,7 @@ import {
   getCommandRenderData,
   getFileChangeRenderData,
   getImageGenerationRenderData,
+  getToolCallFailureText,
   getToolFallbackText,
   getWebFetchRenderData,
   getWebSearchRenderData
@@ -262,6 +263,7 @@ function hasReadContent(call: AgentToolCallVM): boolean {
 function hasWriteContent(call: AgentToolCallVM): boolean {
   const files = getFileChangeRenderData(call);
   return Boolean(
+    getToolCallFailureText(call) ||
     files.some((file) => file.content !== null || file.unifiedDiff !== null) ||
     (files.length === 0 &&
       (call.summary.trim() ||
@@ -274,6 +276,7 @@ function hasWriteContent(call: AgentToolCallVM): boolean {
 function hasEditContent(call: AgentToolCallVM): boolean {
   const files = getFileChangeRenderData(call);
   return Boolean(
+    getToolCallFailureText(call) ||
     files.some(
       (file) =>
         file.unifiedDiff !== null ||

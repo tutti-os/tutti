@@ -43,10 +43,11 @@ export class WorkspaceAgentActivityImportOperations {
         normalizedWorkspaceId,
         request
       );
-    await Promise.all([
-      this.dependencies.refreshActivity(normalizedWorkspaceId),
-      this.dependencies.refreshUserProjects()
-    ]);
+    // Project registration repairs imported rail membership in the daemon.
+    // Refresh it before querying activity so the first rail read uses the
+    // newly registered project section instead of the conversations section.
+    await this.dependencies.refreshUserProjects();
+    await this.dependencies.refreshActivity(normalizedWorkspaceId);
     return result;
   }
 

@@ -242,8 +242,12 @@ export class WorkspaceDeletedConversationsController implements IWorkspaceDelete
           {
             cursor: append ? state.nextCursor : null,
             limit: deletedConversationPageSize,
-            projectPath: filter.kind === "project" ? filter.projectPath : null,
-            projectScope: filter.kind,
+            railSectionKey:
+              filter.kind === "project"
+                ? filter.railSectionKey
+                : filter.kind === "unscoped"
+                  ? "conversations"
+                  : null,
             search: search || null
           }
         );
@@ -415,24 +419,27 @@ function mergeProjectOptions(
     | readonly WorkspaceDeletedConversationProjectOption[]
     | readonly WorkspaceDeletedConversation[]
 ): WorkspaceDeletedConversationProjectOption[] {
-  const byPath = new Map(
-    existing.map((option) => [option.projectPath, option])
+  const bySectionKey = new Map(
+    existing.map((option) => [option.railSectionKey, option])
   );
   for (const item of incoming) {
-    if (!item.projectPath) {
+    if (!item.railSectionKey || item.railSectionKey === "conversations") {
       continue;
     }
-    byPath.set(item.projectPath, {
+    bySectionKey.set(item.railSectionKey, {
       projectAvailable: item.projectAvailable,
       projectLabel:
-        item.projectLabel?.trim() || projectBasename(item.projectPath),
-      projectPath: item.projectPath
+        item.projectLabel?.trim() ||
+        (item.projectPath ? projectBasename(item.projectPath) : null) ||
+        item.railSectionKey,
+      projectPath: item.projectPath,
+      railSectionKey: item.railSectionKey
     });
   }
-  return [...byPath.values()].sort(
+  return [...bySectionKey.values()].sort(
     (left, right) =>
       left.projectLabel.localeCompare(right.projectLabel) ||
-      left.projectPath.localeCompare(right.projectPath)
+      left.railSectionKey.localeCompare(right.railSectionKey)
   );
 }
 
@@ -452,7 +459,8 @@ function projectFiltersEqual(
   return (
     left.kind === right.kind &&
     (left.kind !== "project" ||
-      (right.kind === "project" && left.projectPath === right.projectPath))
+      (right.kind === "project" &&
+        left.railSectionKey === right.railSectionKey))
   );
 }
 

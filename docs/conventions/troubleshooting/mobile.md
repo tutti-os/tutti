@@ -188,26 +188,21 @@
 
 ## Mobile quick prompts are missing from the plus menu
 
-- **Symptom:** The Desktop quick-prompt library is enabled and contains
-  prompts, but the connected Mobile composer does not show Quick prompts under
-  `+`.
-- **Quick checks:** Read the host's Desktop preferences and confirm
-  `agent.quickPromptLibrary` is `true`. Then inspect the DeviceLink
-  `agent_http` responses for `GET /v1/preferences/desktop` and
+- **Symptom:** The connected Mobile composer does not show Quick prompts under
+  `+`, or the list is empty despite prompts saved on Desktop.
+- **Quick checks:** Inspect the DeviceLink `agent_http` response for
   `GET /v1/agent-quick-prompts`. A 403 response with `route_not_allowed`
   identifies an allowlist gap.
-- **Root cause:** Mobile deliberately fails closed when it cannot verify the
-  Desktop feature gate. It also loads prompt content only from the canonical
-  device list, so neither the UI nor workspace activity state invents a local
+- **Root cause:** Mobile loads prompt content only from the canonical device
+  list, so neither the UI nor workspace activity state invents a local
   fallback.
-- **Fix:** Keep the two exact GET routes in the DeviceLink allowlist and keep
-  all preference writes, quick-prompt mutations, and per-prompt routes blocked.
-  Refresh the authenticated-device quick-prompt service when the `+` menu
-  opens.
-- **Validation:** Confirm a disabled or missing feature flag hides the row,
-  enabling it exposes the canonical prompt order, search matches title and
-  content, and selecting a prompt adds text at the current input position
-  without replacing the existing draft or sending it.
+- **Fix:** Keep the exact quick-prompt GET route in the DeviceLink allowlist
+  and keep all preference writes, quick-prompt mutations, and per-prompt
+  routes blocked. Refresh the authenticated-device quick-prompt service when
+  the `+` menu opens.
+- **Validation:** Confirm the canonical prompt order is visible, search
+  matches title and content, and selecting a prompt adds text at the current
+  input position without replacing the existing draft or sending it.
 - **References:** `services/tuttid/service/mobileremote/remote_protocol.go`,
   `apps/mobile/src/services/mobileQuickPromptLibraryService.ts`,
   `apps/mobile/src/components/MobileComposerDock.tsx`
@@ -377,6 +372,47 @@ sh.tutti.mobile` and inspect a narrow logcat window for the Go fatal message.
   beyond the previous crash window with no new Go fatal message.
 - **References:** `packages/device-link/mobile/link.go`,
   `apps/mobile/android/app/src/main/java/sh/tutti/mobile/DeviceLinkModule.kt`
+
+## Mobile direct DeviceLink consistently takes about ten seconds
+
+- **Symptom:** A paired computer is online and often on the same LAN, but the
+  direct path regularly needs roughly ten seconds before it becomes usable.
+  Relay may appear much faster even though P2P eventually succeeds.
+- **Quick checks:** Inspect sanitized `device_link.stage` events for
+  `direct_credentials_ready`, `direct_attempt_created`,
+  `direct_first_candidate_published`, `direct_attempt_ready`,
+  `direct_remote_candidate_received`, and `direct_connected`. If credentials
+  or attempt creation appear only after a five-second boundary, inspect the
+  native prepare bridge for a blocking full ICE description. If ready is early
+  but connected is late, isolate candidate exchange from authenticated
+  ICE/QUIC instead of changing Relay delay.
+- **Root cause:** The caller previously waited for a complete host-only ICE
+  description, created the attempt to discover server STUN endpoints, replaced
+  the Participant, and then waited for a second complete description. The
+  Desktop owner also waited for its full description before publishing. Two
+  configured five-second gathering windows therefore sat on the critical path,
+  while TSH's lower-level implementation already published credentials and
+  trickled candidates during `Connect`.
+- **Fix:** Use `candidateexchange.Start` and publish valid ICE credentials
+  immediately, allowing an empty candidate list. Run `PublishLocal` and
+  `FeedRemote` beside `Participant.Connect`; keep signed attempt reads/writes,
+  push hints, account authorization, and pairing state in the product adapter.
+  Mobile must drain the gomobile `ActionPump` next/resolve protocol rather than
+  use the legacy blocking `LocalDescription` bridge or own a second TypeScript
+  retry/poll scheduler. Resolve a publication successfully only after the
+  returned authoritative attempt contains its candidate snapshot. Android must
+  keep enough native operation workers for `Connect`, candidate actions, and
+  Relay work to progress concurrently.
+- **Validation:** Cover an initial zero-candidate snapshot, a later local
+  candidate update, a ready peer with zero candidates, a later authoritative
+  remote snapshot, missed-push polling fallback, exact-snapshot publish retry,
+  and a successful stream probe. Compare stage deltas on LAN and external NAT;
+  do not log candidates, addresses, ICE credentials, fingerprints, tokens, or
+  payloads.
+- **References:** `packages/device-link/candidateexchange`,
+  `packages/device-link/mobile/link.go`,
+  `apps/mobile/src/services/deviceLinkCandidateExchange.ts`,
+  `services/tuttid/service/mobileremote/candidate_exchange.go`
 
 ## Mobile shows output from a completed Session after foreground resume
 

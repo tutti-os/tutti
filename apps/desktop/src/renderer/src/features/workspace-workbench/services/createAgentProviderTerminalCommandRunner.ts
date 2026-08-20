@@ -7,6 +7,7 @@ import type { DesktopRuntimeApi } from "@preload/types";
 import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
 import { classifyDesktopErrorCode } from "../../../../../shared/errors/desktopErrors.ts";
 import { defaultWorkspaceTerminalWorkbenchTypeId } from "./internal/workspaceTerminalWorkbenchConstants.ts";
+import { requestWorkspaceTerminalLoginLaunch } from "../../workspace-agent/services/workspaceTerminalLoginLaunchCoordinator.ts";
 
 export function createAgentProviderTerminalCommandRunner(
   runtimeApi: DesktopRuntimeApi
@@ -19,6 +20,24 @@ export function createAgentProviderTerminalCommandRunner(
         event: "agent-provider.terminal-command.start",
         level: "info"
       });
+      const workspaceId = context?.workspaceId?.trim() ?? "";
+      if (workspaceId) {
+        const launchHandle = await requestWorkspaceTerminalLoginLaunch({
+          command: command.input,
+          cwd: command.cwd ?? undefined,
+          workspaceId
+        });
+        if (launchHandle) {
+          logTerminalCommandEvent(runtimeApi, {
+            command,
+            context,
+            event: "agent-provider.terminal-command.complete",
+            extraDetails: { launchRoute: "workspace-handler" },
+            level: "info"
+          });
+          return { close: launchHandle.close };
+        }
+      }
       const host = readWorkbenchHost(context);
       if (!host) {
         logTerminalCommandEvent(runtimeApi, {

@@ -315,17 +315,42 @@ describe("canonical Turn error projection", () => {
     ).toBe("Turn failed");
   });
 
-  it("does not synthesize a failed Turn when no transcript item has been hydrated", () => {
+  it("projects the latest failed Turn when no transcript item has been hydrated", () => {
     const failed = failedTurn();
-    const detail = buildCanonicalWorkspaceAgentDetailView({
+    const input = {
       activity: activity(),
       session: session({ latestTurn: failed }),
       sessionTurns: [failed],
       workspaceRoot: "/workspace/demo",
       timelineItems: []
-    });
+    };
+    const detail = buildCanonicalWorkspaceAgentDetailView(input);
+    const conversation = projectWorkspaceAgentTimelineToConversationVM(input);
 
-    expect(detail.turns).toEqual([]);
+    expect(detail.turns).toEqual([
+      expect.objectContaining({
+        id: "turn-1",
+        agentMessages: [
+          expect.objectContaining({
+            id: "turn-error:session-1:turn-1",
+            body: "Turn failed",
+            visibleError: expect.objectContaining({ detail: "Turn failed" })
+          })
+        ]
+      })
+    ]);
+    expect(
+      conversation.rows.some(
+        (row) =>
+          row.kind === "message" &&
+          row.speaker === "assistant" &&
+          row.messages.some(
+            (message) =>
+              message.id === "turn-error:session-1:turn-1" &&
+              message.visibleError?.detail === "Turn failed"
+          )
+      )
+    ).toBe(true);
   });
 
   it("keeps the current running Turn last when an older failed Turn is outside the window", () => {
@@ -372,6 +397,7 @@ describe("canonical Turn error projection", () => {
 
       enrichProjectedTurnsWithCanonicalErrors({
         turns,
+        latestTurnId: "turn-2",
         sessionTurns: [
           failedTurn({
             outcome,

@@ -2,6 +2,7 @@ import type { EngineDiagnosticSink } from "./diagnostics.ts";
 import type { AgentActivitySendInput } from "../types.ts";
 import type {
   AgentSessionActivateEffectInput,
+  EngineClock,
   EngineCommandResultContract,
   EngineCommandResultIntent,
   EngineExternalCommand,
@@ -18,6 +19,7 @@ import type {
 // reducer transitions, never executed in place here.
 
 export interface CreateEngineEffectExecutorInput {
+  clock: EngineClock;
   commandPort: EngineTypedCommandPort;
   diagnosticSink?: EngineDiagnosticSink;
   onResult: (intent: EngineCommandResultIntent) => void;
@@ -31,6 +33,7 @@ export interface EngineEffectExecutor {
 }
 
 export function createEngineEffectExecutor({
+  clock,
   commandPort,
   diagnosticSink,
   onResult,
@@ -113,6 +116,7 @@ export function createEngineEffectExecutor({
             commandType: command.type,
             ...commandCorrelationFields(command),
             outcome: "timedOut",
+            settledAtUnixMs: clock.nowUnixMs(),
             resultContract,
             type: "engine/commandResult"
           });
@@ -136,6 +140,7 @@ export function createEngineEffectExecutor({
             commandType: command.type,
             ...commandCorrelationFields(command),
             outcome: "succeeded",
+            settledAtUnixMs: clock.nowUnixMs(),
             resultContract,
             type: "engine/commandResult",
             value
@@ -157,6 +162,7 @@ export function createEngineEffectExecutor({
             ...commandCorrelationFields(command),
             ...engineCommandErrorFields(error),
             outcome: "failed",
+            settledAtUnixMs: clock.nowUnixMs(),
             resultContract,
             type: "engine/commandResult"
           });
@@ -325,6 +331,7 @@ function activationInput(
   command: Extract<EngineExternalCommand, { type: "session/activate" }>
 ): AgentSessionActivateEffectInput {
   const shared = {
+    activationId: command.correlationId,
     agentSessionId: command.agentSessionId,
     ...(command.capabilityRefs?.length
       ? { capabilityRefs: command.capabilityRefs }
@@ -337,8 +344,14 @@ function activationInput(
       ? { initialDisplayPrompt: command.initialDisplayPrompt }
       : {}),
     ...(command.isolation ? { isolation: command.isolation } : {}),
+    ...(command.modelExplicit !== undefined
+      ? { modelExplicit: command.modelExplicit }
+      : {}),
     ...(command.railPlacement
       ? { railPlacement: { ...command.railPlacement } }
+      : {}),
+    ...(command.reasoningEffortExplicit !== undefined
+      ? { reasoningEffortExplicit: command.reasoningEffortExplicit }
       : {}),
     ...(command.settings ? { settings: { ...command.settings } } : {}),
     ...(command.submitDiagnostics

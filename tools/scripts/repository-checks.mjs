@@ -103,6 +103,13 @@ export const repositoryCheckDefinitions = [
   },
   {
     group: "boundaries",
+    key: "boundary:connector",
+    label: "Connector ownership boundary",
+    script: "check:connector-boundaries",
+    matches: isConnectorBoundaryRelevant
+  },
+  {
+    group: "boundaries",
     key: "boundary:electron",
     label: "Electron runtime boundary",
     script: "check:electron-runtime-boundaries",
@@ -259,6 +266,7 @@ function isDefaultsContractRelevant(file) {
 
 function isApiContractRelevant(file) {
   return (
+    file.startsWith("packages/connector/contracts/openapi/") ||
     file.startsWith("services/tuttid/api/openapi/") ||
     file.startsWith("services/tuttid/api/generated/") ||
     file.startsWith("packages/clients/tuttid-ts/src/generated/") ||
@@ -266,6 +274,18 @@ function isApiContractRelevant(file) {
     file === "tools/scripts/generate-openapi.mjs" ||
     file === "tools/scripts/sync-workbench-openapi-schema.mjs" ||
     file === "tools/scripts/check-agent-protocol-enums.mjs"
+  );
+}
+
+function isConnectorBoundaryRelevant(file) {
+  return (
+    file.startsWith("packages/connector/") ||
+    file.startsWith(
+      "packages/agent/gui/agent-gui/agentGuiNode/integrations/connector/"
+    ) ||
+    file.startsWith("apps/desktop/src/renderer/src/features/connector/") ||
+    file === "tools/scripts/check-connector-boundaries.mjs" ||
+    file === "tools/scripts/check-connector-boundaries.test.mjs"
   );
 }
 

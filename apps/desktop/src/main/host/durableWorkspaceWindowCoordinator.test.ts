@@ -33,20 +33,30 @@ test("durable workspace window coordinator shares one pending open per workspace
   const openWindow = new Promise<{ id: string }>((resolve) => {
     resolveOpen = resolve;
   });
-  const coordinator = createDurableWorkspaceWindowCoordinator<TestWindow>({
+  const openedModes: string[] = [];
+  const coordinator = createDurableWorkspaceWindowCoordinator<
+    TestWindow,
+    [{ workspaceUiMode: "agent" | "os" }]
+  >({
     activate() {},
     find() {
       return null;
     },
-    open() {
+    open(_workspaceID, options) {
       openCount += 1;
+      openedModes.push(options.workspaceUiMode);
       return openWindow;
     }
   });
 
-  const firstShow = coordinator.show("workspace-1");
-  const secondShow = coordinator.show("workspace-1");
+  const firstShow = coordinator.show("workspace-1", {
+    workspaceUiMode: "agent"
+  });
+  const secondShow = coordinator.show("workspace-1", {
+    workspaceUiMode: "os"
+  });
   assert.equal(openCount, 1);
+  assert.deepEqual(openedModes, ["agent"]);
 
   const window = { id: "opened" };
   resolveOpen(window);

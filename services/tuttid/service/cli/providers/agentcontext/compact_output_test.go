@@ -141,12 +141,15 @@ func TestMessageCompactImageLocalPathPrefersResolverOverPayloadPath(t *testing.T
 }
 
 func TestSessionSummaryValueOmitsRuntimeContext(t *testing.T) {
-	value := sessionSummaryValue(agentserviceSessionWithRuntime())
+	value := sessionSummaryValue("WORKSPACE-1", agentserviceSessionWithRuntime())
 	if value["agentSessionId"] != "SESSION-1" {
 		t.Fatalf("value = %#v", value)
 	}
 	if value["agentTargetId"] != "local:codex" {
 		t.Fatalf("agentTargetId = %#v", value["agentTargetId"])
+	}
+	if value["workspaceId"] != "WORKSPACE-1" || value["mentionUri"] != "mention://agent-session/SESSION-1?workspaceId=WORKSPACE-1" {
+		t.Fatalf("session reference = %#v", value)
 	}
 	if _, ok := value["id"]; ok {
 		t.Fatalf("session JSON should use typed id key: %#v", value)
@@ -166,7 +169,7 @@ func TestSessionSummaryValueOmitsRuntimeContext(t *testing.T) {
 }
 
 func TestSessionSummaryValueIncludesTurnEntitiesAndInteractions(t *testing.T) {
-	value := sessionSummaryValue(agentserviceSessionWithLifecycle())
+	value := sessionSummaryValue("WORKSPACE-1", agentserviceSessionWithLifecycle())
 
 	turn, ok := value["latestTurn"].(map[string]any)
 	if !ok {
@@ -184,14 +187,14 @@ func TestSessionSummaryValueIncludesTurnEntitiesAndInteractions(t *testing.T) {
 }
 
 func TestSessionInspectValueIncludesTurnEntities(t *testing.T) {
-	value := sessionInspectValue(agentserviceSessionWithLifecycle())
+	value := sessionInspectValue("WORKSPACE-1", agentserviceSessionWithLifecycle())
 	if _, ok := value["latestTurn"].(map[string]any); !ok {
 		t.Fatalf("latestTurn = %#v", value["latestTurn"])
 	}
 }
 
 func TestSessionActionValueIncludesExactAgentTarget(t *testing.T) {
-	value := sessionActionValue(agentserviceSessionWithRuntime())
+	value := sessionActionValue("WORKSPACE-1", agentserviceSessionWithRuntime())
 	if value["agentTargetId"] != "local:codex" {
 		t.Fatalf("agentTargetId = %#v", value["agentTargetId"])
 	}
@@ -200,15 +203,16 @@ func TestSessionActionValueIncludesExactAgentTarget(t *testing.T) {
 func TestSessionValuesIncludeWorktreeIsolation(t *testing.T) {
 	session := agentserviceSessionWithRuntime()
 	session.Isolation = &agentservice.SessionIsolation{
-		Mode: "worktree", WorktreePath: "/state/agent/worktrees/SESSION-1",
+		WorktreeID: "worktree-1", Mode: "worktree", WorktreePath: "/state/agent/worktrees/worktree-1",
 		Branch: "tutti/SESSION-1", BaseCommit: "abc123",
 	}
 	for name, value := range map[string]map[string]any{
-		"summary": sessionSummaryValue(session),
-		"action":  sessionActionValue(session),
+		"summary": sessionSummaryValue("WORKSPACE-1", session),
+		"action":  sessionActionValue("WORKSPACE-1", session),
 	} {
 		isolation, ok := value["isolation"].(map[string]any)
-		if !ok || isolation["mode"] != "worktree" || isolation["worktreePath"] != "/state/agent/worktrees/SESSION-1" ||
+		if !ok || isolation["mode"] != "worktree" || isolation["worktreeId"] != "worktree-1" ||
+			isolation["worktreePath"] != "/state/agent/worktrees/worktree-1" ||
 			isolation["branch"] != "tutti/SESSION-1" || isolation["baseCommit"] != "abc123" {
 			t.Fatalf("%s isolation = %#v", name, value["isolation"])
 		}
@@ -216,7 +220,7 @@ func TestSessionValuesIncludeWorktreeIsolation(t *testing.T) {
 }
 
 func TestSessionSummaryValueOmitsOptionalEmptyRuntimeProtocolFields(t *testing.T) {
-	value := sessionSummaryValue(agentservice.Session{
+	value := sessionSummaryValue("WORKSPACE-1", agentservice.Session{
 		ID:           "SESSION-1",
 		Provider:     "codex",
 		ActiveTurnID: "",
@@ -226,6 +230,17 @@ func TestSessionSummaryValueOmitsOptionalEmptyRuntimeProtocolFields(t *testing.T
 	}
 	if interactions, ok := value["pendingInteractions"].([]any); !ok || len(interactions) != 0 {
 		t.Fatalf("pendingInteractions = %#v", value["pendingInteractions"])
+	}
+}
+
+func TestAgentSessionMentionURIEscapesIdentifiers(t *testing.T) {
+	got := agentSessionMentionURI(" workspace one/blue ", " session/one? ")
+	want := "mention://agent-session/session%2Fone%3F?workspaceId=workspace+one%2Fblue"
+	if got != want {
+		t.Fatalf("agentSessionMentionURI() = %q, want %q", got, want)
+	}
+	if got := agentSessionMentionURI("", "SESSION-1"); got != "" {
+		t.Fatalf("agentSessionMentionURI() without workspace = %q", got)
 	}
 }
 

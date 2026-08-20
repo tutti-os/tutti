@@ -1,4 +1,5 @@
 import type {
+  LoadSidebarGroupsResult,
   ListChildrenInput,
   ListChildrenResult,
   ReferenceNode,
@@ -64,6 +65,7 @@ const LOCAL_SIDEBAR_GROUPS: ReadonlyArray<{
 export function createWorkspaceFileReferenceSource(input: {
   adapter: WorkspaceFileReferenceAdapter;
   label: string;
+  os?: NodeJS.Platform;
   order?: number;
 }): ReferenceSourceService {
   const { adapter, label } = input;
@@ -96,19 +98,28 @@ export function createWorkspaceFileReferenceSource(input: {
       previewable: true,
       paginated: false,
       navigable: false,
-      filterable: true
+      filterable: true,
+      filtersUseSearch: true
     },
 
     isAvailable: () => typeof adapter.listDirectory === "function",
 
-    // 本地源自带固定「位置」二级分组,而非从源根目录推导。
-    listSidebarGroups(): ReferenceNode[] {
-      return LOCAL_SIDEBAR_GROUPS.map((group) => ({
-        ref: { sourceId: WORKSPACE_FILE_SOURCE_ID, nodeId: group.nodeId },
-        kind: "folder",
-        displayName: translate(group.labelKey),
-        hasChildren: true
-      }));
+    // 本地源自带固定「位置」二级分组,独立于目录 children 每次打开重新读取。
+    async loadSidebarGroups(): Promise<LoadSidebarGroupsResult> {
+      return {
+        autoSelectFirst: true,
+        entries: LOCAL_SIDEBAR_GROUPS.filter(
+          (group) =>
+            input.os !== "win32" || group.nodeId !== RECENT_GROUP_NODE_ID
+        ).map((group) => ({
+          ref: { sourceId: WORKSPACE_FILE_SOURCE_ID, nodeId: group.nodeId },
+          kind: "folder",
+          displayName: translate(group.labelKey),
+          hasChildren: true
+        })),
+        nextCursor: null,
+        ordered: true
+      };
     },
 
     async listChildren(

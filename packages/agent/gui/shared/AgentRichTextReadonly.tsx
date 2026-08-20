@@ -9,7 +9,6 @@ import { AgentMentionReadonlyView } from "../agent-gui/agentGuiNode/agentRichTex
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "./AgentMessageMarkdown";
 import type { AgentGUIProviderSkillOption } from "../agent-gui/agentGuiNode/model/agentGuiNodeTypes";
 import {
-  resolveAgentTargetPresentation,
   useAgentTargetPresentations,
   type AgentMessageMarkdownAgentTarget
 } from "./AgentTargetPresentationContext";
@@ -60,12 +59,10 @@ export function AgentRichTextReadonly({
   );
   const contentDoc = useMemo(
     () =>
-      hydrateAgentRichTextMentionPresentations(
-        parsedDoc,
-        workspaceAppIcons,
-        effectiveAgentTargets
-      ),
-    [effectiveAgentTargets, parsedDoc, workspaceAppIcons]
+      workspaceAppIcons.length > 0
+        ? hydrateWorkspaceAppMentionIcons(parsedDoc, workspaceAppIcons)
+        : parsedDoc,
+    [parsedDoc, workspaceAppIcons]
   );
   const isMentionOnly = isMentionOnlyRichTextDoc(contentDoc);
   const extensions = useMemo(
@@ -83,19 +80,24 @@ export function AgentRichTextReadonly({
         options: {
           nodeMapping: {
             agentFileMention: ({ node }) => (
-              <AgentMentionReadonlyView attrs={node.attrs ?? {}} />
+              <AgentMentionReadonlyView
+                agentTargets={effectiveAgentTargets}
+                attrs={node.attrs ?? {}}
+              />
             )
           }
         }
       }),
-    [contentDoc, extensions]
+    [contentDoc, effectiveAgentTargets, extensions]
   );
 
   const handleClick = (event: MouseEvent<HTMLDivElement>) => {
     if (!onLinkClick || !(event.target instanceof Element)) {
       return;
     }
-    const mention = event.target.closest('[data-agent-file-mention="true"]');
+    const mention = event.target.closest(
+      '[data-agent-file-mention="true"][data-agent-mention-href]'
+    );
     if (!(mention instanceof HTMLElement)) {
       return;
     }
@@ -150,21 +152,6 @@ function isMentionOnlyRichTextDoc(doc: JSONContent): boolean {
   return (
     inlineContent.length === 1 && inlineContent[0]?.type === "agentFileMention"
   );
-}
-
-function hydrateAgentRichTextMentionPresentations(
-  parsedDoc: JSONContent,
-  workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[],
-  agentTargets: readonly AgentMessageMarkdownAgentTarget[]
-): JSONContent {
-  let doc = parsedDoc;
-  if (workspaceAppIcons.length > 0) {
-    doc = hydrateWorkspaceAppMentionIcons(doc, workspaceAppIcons);
-  }
-  if (agentTargets.length > 0) {
-    doc = hydrateAgentMentionPresentations(doc, agentTargets);
-  }
-  return doc;
 }
 
 function hydrateWorkspaceAppMentionIcons(
@@ -231,51 +218,4 @@ function resolveWorkspaceAppIconUrl(input: {
   return (
     exactMatch?.iconUrl?.trim() || fallbackMatch?.iconUrl?.trim() || undefined
   );
-}
-
-function hydrateAgentMentionPresentations(
-  node: JSONContent,
-  agentTargets: readonly AgentMessageMarkdownAgentTarget[]
-): JSONContent {
-  const nextContent = node.content?.map((child) =>
-    hydrateAgentMentionPresentations(child, agentTargets)
-  );
-  if (node.type !== "agentFileMention") {
-    return nextContent ? { ...node, content: nextContent } : node;
-  }
-  const attrs = node.attrs ?? {};
-  const kind = typeof attrs.kind === "string" ? attrs.kind : "";
-  if (kind !== "agent-target" && kind !== "session") {
-    return nextContent ? { ...node, content: nextContent } : node;
-  }
-  const agentTargetId =
-    kind === "session"
-      ? typeof attrs.agentTargetId === "string"
-        ? attrs.agentTargetId.trim()
-        : ""
-      : typeof attrs.targetId === "string"
-        ? attrs.targetId.trim()
-        : "";
-  const workspaceId =
-    typeof attrs.workspaceId === "string" ? attrs.workspaceId.trim() : "";
-  const target = resolveAgentTargetPresentation({
-    agentTargetId,
-    agentTargets,
-    workspaceId
-  });
-  if (!target) {
-    return nextContent ? { ...node, content: nextContent } : node;
-  }
-  return {
-    ...node,
-    attrs: {
-      ...node.attrs,
-      agentProviderId: target.provider?.trim() ?? "",
-      iconUrl: target.iconUrl?.trim() ?? "",
-      ...(kind === "agent-target"
-        ? { name: target.name?.trim() || attrs.name }
-        : {})
-    },
-    ...(nextContent ? { content: nextContent } : {})
-  };
 }

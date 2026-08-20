@@ -56,7 +56,7 @@ func TestStartMobileRemoteHostFollowsPersistedPreference(t *testing.T) {
 		wantStarts int
 		wantCloses int
 	}{
-		{name: "enabled", flags: map[string]bool{preferencesbiz.FeatureFlagMobileRemoteAccess: true}, wantStarts: 1},
+		{name: "stored enabled value is ignored", flags: map[string]bool{preferencesbiz.FeatureFlagMobileRemoteAccess: true}, wantCloses: 1},
 		{name: "disabled", wantCloses: 1},
 		{name: "read failure fails closed", getErr: errors.New("read failed"), wantCloses: 1},
 	} {
@@ -90,7 +90,7 @@ func TestStartMobileRemoteHostFollowsPersistedPreference(t *testing.T) {
 	}
 }
 
-func TestMobileRemoteHostTracksPreferenceChanges(t *testing.T) {
+func TestMobileRemoteHostRemainsDisabledWhenPreferenceChanges(t *testing.T) {
 	store := &mobileRemotePreferencesStore{}
 	preferences := &preferencesservice.Service{Store: store}
 	host := &recordingMobileRemoteHost{}
@@ -106,15 +106,15 @@ func TestMobileRemoteHostTracksPreferenceChanges(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if host.starts != 1 || host.closes != 1 {
-		t.Fatalf("enabled lifecycle calls = start %d, close %d; want start 1, close 1", host.starts, host.closes)
+	if host.starts != 0 || host.closes != 1 {
+		t.Fatalf("enabled lifecycle calls = start %d, close %d; want start 0, close 1", host.starts, host.closes)
 	}
 
 	if _, err := preferences.Put(context.Background(), preferencesservice.PutInput{}); err != nil {
 		t.Fatal(err)
 	}
-	if host.starts != 1 || host.closes != 2 {
-		t.Fatalf("disabled lifecycle calls = start %d, close %d; want start 1, close 2", host.starts, host.closes)
+	if host.starts != 0 || host.closes != 1 {
+		t.Fatalf("disabled lifecycle calls = start %d, close %d; want start 0, close 1", host.starts, host.closes)
 	}
 }
 

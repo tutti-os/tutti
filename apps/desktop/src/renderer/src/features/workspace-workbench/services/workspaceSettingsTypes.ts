@@ -32,6 +32,7 @@ export interface WorkspaceDeletedConversation {
   readonly projectAvailable: boolean;
   readonly projectLabel: string | null;
   readonly projectPath: string | null;
+  readonly railSectionKey: string;
   readonly restorable: boolean;
   readonly title: string;
   readonly unavailableReason:
@@ -44,13 +45,14 @@ export interface WorkspaceDeletedConversation {
 export interface WorkspaceDeletedConversationProjectOption {
   readonly projectAvailable: boolean;
   readonly projectLabel: string;
-  readonly projectPath: string;
+  readonly projectPath: string | null;
+  readonly railSectionKey: string;
 }
 
 export type WorkspaceDeletedConversationProjectFilter =
   | { readonly kind: "all" }
   | { readonly kind: "unscoped" }
-  | { readonly kind: "project"; readonly projectPath: string };
+  | { readonly kind: "project"; readonly railSectionKey: string };
 
 export type WorkspaceDeletedConversationOperation = "deleting" | "restoring";
 

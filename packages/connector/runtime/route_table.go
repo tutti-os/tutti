@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 // ManagedRoute is the host-neutral lifecycle contract owned by RouteTable.
@@ -102,12 +102,10 @@ func (table *RouteTable) Commit(next ManagedRoute) error {
 		table.mu.Unlock()
 		return errors.New("connector runtime reconcile generation is stale")
 	}
-	if current != nil {
-		delete(table.routes, key)
-		table.retiring[key] = current
-		current.Fence()
-	}
 	table.mu.Unlock()
+
+	// Finish older cleanup debt before creating another retired generation.
+	// The current published route remains available throughout this wait.
 	if retiring != nil {
 		if err := retiring.Close(time.Now().Add(3 * time.Second)); err != nil {
 			return fmt.Errorf("retire previous connector route: %w", err)
@@ -118,6 +116,21 @@ func (table *RouteTable) Commit(next ManagedRoute) error {
 		}
 		table.mu.Unlock()
 	}
+
+	table.mu.Lock()
+	if table.closed || table.routes[key] != current {
+		table.mu.Unlock()
+		return errors.New("connector runtime route changed while committing")
+	}
+	// Publish the ready candidate before fencing the previous route. Consumers
+	// therefore always see old or next; close failure is cleanup debt, not an
+	// availability gap.
+	table.routes[key] = next
+	if current != nil {
+		table.retiring[key] = current
+		current.Fence()
+	}
+	table.mu.Unlock()
 	if current != nil {
 		if err := current.Close(time.Now().Add(3 * time.Second)); err != nil {
 			return fmt.Errorf("retire previous connector route: %w", err)
@@ -128,12 +141,6 @@ func (table *RouteTable) Commit(next ManagedRoute) error {
 		}
 		table.mu.Unlock()
 	}
-	table.mu.Lock()
-	defer table.mu.Unlock()
-	if table.closed || table.routes[key] != nil {
-		return errors.New("connector runtime route changed while committing")
-	}
-	table.routes[key] = next
 	return nil
 }
 
@@ -181,6 +188,37 @@ func (table *RouteTable) Remove(key string, generation market.HostGeneration, re
 	}
 	table.mu.Unlock()
 	return nil
+}
+
+// RemoveMatching fences and closes every route selected from a stable snapshot.
+// Callers that need to exclude concurrent commits must serialize their host
+// lifecycle mutations around this method.
+func (table *RouteTable) RemoveMatching(
+	match func(ManagedRoute) bool,
+	generation market.HostGeneration,
+	deadline time.Time,
+) error {
+	if table == nil || match == nil {
+		return nil
+	}
+	table.mu.RLock()
+	targets := make([]ManagedRoute, 0)
+	seen := make(map[string]struct{})
+	for _, routes := range []map[string]ManagedRoute{table.routes, table.retiring} {
+		for _, route := range routes {
+			if _, exists := seen[route.RouteID()]; exists || !match(route) {
+				continue
+			}
+			seen[route.RouteID()] = struct{}{}
+			targets = append(targets, route)
+		}
+	}
+	table.mu.RUnlock()
+	var errs []error
+	for _, route := range targets {
+		errs = append(errs, table.Remove(route.RouteID(), generation, route.RouteReleaseDigest(), deadline))
+	}
+	return errors.Join(errs...)
 }
 
 func (table *RouteTable) RetireExact(route ManagedRoute, deadline time.Time) error {

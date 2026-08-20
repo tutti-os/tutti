@@ -52,8 +52,7 @@ interface ClearWorkspaceAgentSessionsResponse {
 export interface ListWorkspaceDeletedAgentSessionsInput {
   cursor: string | null;
   limit: number;
-  projectPath: string | null;
-  projectScope: "all" | "project" | "unscoped";
+  railSectionKey: string | null;
   search: string | null;
 }
 
@@ -396,24 +395,17 @@ export function createDesktopWorkspaceSettingsClient(input: {
         {
           cursor: query.cursor ?? undefined,
           limit: query.limit,
-          projectPath:
-            query.projectScope === "project"
-              ? (query.projectPath ?? undefined)
-              : undefined,
-          projectScope:
-            query.projectScope === "unscoped" ? "unscoped" : undefined,
+          railSectionKey: query.railSectionKey ?? undefined,
           searchQuery: query.search ?? undefined
         }
       );
-      const projectsByPath = new Map(
-        page.projectOptions.map((project) => [project.projectPath, project])
+      const projectsBySectionKey = new Map(
+        page.projectOptions.map((project) => [project.railSectionKey, project])
       );
       return {
         ...page,
         sessions: page.sessions.map((session) => {
-          const project = session.projectPath
-            ? projectsByPath.get(session.projectPath)
-            : undefined;
+          const project = projectsBySectionKey.get(session.railSectionKey);
           return {
             ...session,
             projectAvailable: project?.projectAvailable ?? false,

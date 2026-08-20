@@ -81,19 +81,6 @@ test("forwards the host-owned composer footer accessory slot", () => {
   );
 });
 
-test("forwards the host-owned Session fork experiment opt-in", () => {
-  const result = useStableDesktopAgentGUIHostProps({
-    hostActions: {},
-    hostCapabilities: { sessionForkEnabled: true },
-    identity: { currentUserId: null, nodeId: "node-1", workspaceId: "ws-1" },
-    renderSlots: {},
-    runtimeRequests: {},
-    workspace: {}
-  } as never);
-
-  assert.equal(result.hostCapabilities.sessionForkEnabled, true);
-});
-
 test("forwards the live conversation rail layout signal", () => {
   const onConversationRailLayoutChange = () => {};
   const result = useStableDesktopAgentGUIHostProps({

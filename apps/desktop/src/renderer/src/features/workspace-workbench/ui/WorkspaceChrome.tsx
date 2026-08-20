@@ -37,6 +37,7 @@ const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX = 64;
 const WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_RESERVED_WIDTH_PX =
   WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_INSET_PX +
   WORKSPACE_CHROME_MAC_TRAFFIC_LIGHT_GUTTER_PX;
+const WORKSPACE_CHROME_TITLEBAR_HEIGHT_PX = 52;
 
 export function WorkspaceChrome({
   appName,
@@ -171,6 +172,9 @@ export function WorkspaceChrome({
           {headerSlot ? <div className="min-w-0">{headerSlot}</div> : null}
           <WorkspaceFeedbackGroupPopover />
           <WorkspaceAgentMessageCenterAction
+            drawerTopInsetPx={
+              isWindows ? WORKSPACE_CHROME_TITLEBAR_HEIGHT_PX : undefined
+            }
             launchNode={launchNode}
             open={messageCenterOpen}
             setOpen={setMessageCenterOpen}

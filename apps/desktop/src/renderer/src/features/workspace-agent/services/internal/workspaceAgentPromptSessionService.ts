@@ -114,6 +114,7 @@ export class WorkspaceAgentPromptSessionService implements IWorkspaceAgentPrompt
     try {
       activation =
         await this.dependencies.workspaceAgentActivityService.activateSession({
+          activationId: clientSubmitId,
           agentSessionId,
           agentTargetId,
           clientSubmitId,

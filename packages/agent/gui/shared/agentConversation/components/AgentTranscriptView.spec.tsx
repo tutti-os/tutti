@@ -13,6 +13,7 @@ import {
   AgentTranscriptView,
   areAgentTranscriptViewPropsEqual
 } from "./AgentTranscriptView";
+import { AgentConversationFlow } from "./AgentConversationFlow";
 import { AgentObservationGapSourceProvider } from "../AgentObservationGapContext";
 import { AgentTurnDisclosureProvider } from "./AgentTurnDisclosureContext";
 import { projectAgentConversationVM } from "../projection/agentConversationProjection";
@@ -30,6 +31,53 @@ vi.mock("../../../i18n/index", async (importOriginal) => {
 });
 
 describe("AgentTranscriptView", () => {
+  it("uses standalone Agent target presentations for session mention icons", () => {
+    const mention =
+      "[@Jun Sun's Tutti Agent](mention://agent-session/session-source?agentTargetId=shared-agent%3Ajun-tutti&workspaceId=workspace-1) what is this";
+    const base = detailViewModel();
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            ...base.turns[0]!,
+            userMessage: { id: "user-1", body: mention },
+            userMessages: [{ id: "user-1", body: mention }]
+          }
+        ]
+      })
+    );
+
+    const { container } = render(
+      <AgentConversationFlow
+        agentTargets={[
+          {
+            agentTargetId: "shared-agent:jun-tutti",
+            iconUrl: "https://example.test/tutti-agent.png",
+            name: "Jun Sun's Tutti Agent",
+            provider: "tutti-agent",
+            workspaceId: "workspace-1"
+          }
+        ]}
+        conversation={conversation}
+        empty={null}
+        isLoading={false}
+        loadingLabel="Loading"
+        labels={{
+          thinkingLabel: "Thought process",
+          toolCallsLabel: (count) => `Tool calls (${count})`,
+          processing: "Planning next moves",
+          turnSummary: "Changed files"
+        }}
+      />
+    );
+
+    expect(
+      container
+        .querySelector('[data-agent-mention-kind="session"]')
+        ?.querySelector("img")
+    ).toHaveAttribute("src", "https://example.test/tutti-agent.png");
+  });
+
   it("shows through-turn fork for a supported provider-bound Turn and passes its exact id", () => {
     const onForkThroughTurn = vi.fn();
     const settledTurn = canonicalTurn({

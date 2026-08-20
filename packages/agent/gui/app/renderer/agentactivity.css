@@ -140,6 +140,23 @@
   -webkit-app-region: no-drag;
 }
 
+/*
+ * The image preview is portaled to document.body, so it cannot inherit the
+ * workbench header's scoped Windows titlebar inset. Reuse the same native
+ * caption-button geometry for the portal controls; otherwise the close and
+ * zoom buttons sit underneath the minimize/maximize/close buttons.
+ */
+body[data-tutti-titlebar-overlay="true"] {
+  --tutti-titlebar-controls-inset: calc(
+    100vw - env(titlebar-area-width, calc(100vw - 138px)) + 10px
+  );
+}
+
+body[data-tutti-titlebar-overlay="true"] .tsh-zoom-dialog__toolbar-actions {
+  right: calc(20px + var(--tutti-titlebar-controls-inset));
+  inset-inline-end: calc(20px + var(--tutti-titlebar-controls-inset));
+}
+
 .tsh-zoom-dialog__image {
   display: block;
   max-width: calc(100vw - 48px);
@@ -168,9 +185,19 @@
   -webkit-app-region: no-drag;
 }
 
+body[data-tutti-titlebar-overlay="true"] .tsh-zoom-dialog__zoom-controls {
+  right: calc(168px + var(--tutti-titlebar-controls-inset));
+}
+
 .tsh-zoom-dialog:not([data-tsh-image-actions="true"])
   .tsh-zoom-dialog__zoom-controls {
   right: 72px;
+}
+
+body[data-tutti-titlebar-overlay="true"]
+  .tsh-zoom-dialog:not([data-tsh-image-actions="true"])
+  .tsh-zoom-dialog__zoom-controls {
+  right: calc(72px + var(--tutti-titlebar-controls-inset));
 }
 
 .tsh-image-context-menu {
@@ -4217,12 +4244,37 @@ aside.workspace-agents-status-panel
 }
 
 .agent-gui-conversation__user-image-thumbnail {
+  position: relative;
   box-sizing: border-box;
+  height: 80px;
   max-height: 80px;
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line-2);
   border-radius: 8px;
+}
+
+.agent-gui-conversation__user-image-thumbnail > .tsh-zoomable-image {
+  width: 100%;
+  height: 100%;
+}
+
+.agent-gui-conversation__user-image-thumbnail > .tsh-zoomable-image > img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.agent-gui-conversation__user-image-thumbnail[data-image-state="loading"]
+  > .tsh-zoomable-image {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.agent-gui-conversation__user-image-thumbnail[data-image-state="loading"]
+  > .tsh-zoomable-image
+  > .tsh-zoomable-image__trigger {
+  visibility: hidden;
 }
 
 .agent-gui-conversation__assistant-message-flow {
@@ -5310,15 +5362,18 @@ aside.workspace-agents-status-panel
 
 /*
  * The tool-sidebar actions are removed from the flex flow above. On Windows
- * the native caption buttons occupy the right edge of the same overlay, so a
- * bare `right: 0` puts those actions underneath minimize/restore/close. Move
- * the absolute action group to the same safe edge used by the header padding.
+ * the native caption buttons occupy the right edge of the same overlay. Keep
+ * the tool header anchored to the same edge as its body panel, then reserve
+ * the caption-button hit area inside that header so its controls stay clear
+ * without shifting the header border into the Agent surface.
  */
 .agent-gui-workbench-header[data-tutti-titlebar-overlay="true"]
-  .agent-gui-workbench-header__secondary-accessory:has(
-    [data-agent-tool-sidebar-header="true"]
-  ) {
-  right: var(--tutti-titlebar-controls-inset);
+  [data-agent-tool-sidebar-header="true"] {
+  box-sizing: border-box;
+  padding-right: calc(
+    var(--tutti-titlebar-controls-inset) +
+      var(--agent-gui-workbench-header-padding-x)
+  );
 }
 
 /*
@@ -7424,6 +7479,187 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-width: 0;
   min-height: 0;
   background: inherit;
+}
+
+.agent-gui-node__detail-workbench {
+  display: flex;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agent-gui-node__detail-primary {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: inherit;
+}
+
+.agent-gui-node__side-pane {
+  position: relative;
+  display: flex;
+  flex: 0 0 var(--agent-gui-side-pane-width, 440px);
+  flex-direction: column;
+  width: var(--agent-gui-side-pane-width, 440px);
+  min-width: 360px;
+  max-width: 600px;
+  min-height: 0;
+  overflow: hidden;
+  border-left: 1px solid var(--line-1, var(--tutti-line-1));
+}
+
+.agent-gui-node__side-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -4px;
+  z-index: 8;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.agent-gui-node__side-resize-handle::after {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 3px;
+  width: 2px;
+  background: transparent;
+  content: "";
+  transition: background 120ms ease;
+}
+
+.agent-gui-node__side-resize-handle:hover::after,
+.agent-gui-node__side-resize-handle:focus-visible::after {
+  background: var(--tutti-purple);
+}
+
+.agent-gui-node__side-resize-handle:focus-visible {
+  outline: none;
+}
+
+.agent-gui-node__side-close-button {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-secondary, var(--tutti-text-secondary));
+  cursor: pointer;
+}
+
+.agent-gui-node__side-header {
+  display: flex;
+  flex: 0 0 44px;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 10px 4px;
+}
+
+.agent-gui-node__side-close-button:hover {
+  background: var(--transparency-block, var(--tutti-surface-2));
+  color: var(--text-primary, var(--tutti-text-primary));
+}
+
+.agent-gui-node__side-close-button:focus-visible {
+  outline: 2px solid var(--tutti-purple);
+  outline-offset: 1px;
+}
+
+.agent-gui-node__side-timeline-frame {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.agent-gui-node__side-timeline {
+  display: grid;
+  align-content: start;
+  min-height: 0;
+  padding: 8px 18px 112px;
+  scroll-padding-bottom: 112px;
+}
+
+.agent-gui-node__side-empty-state {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 20px;
+  color: var(--text-secondary, var(--tutti-text-secondary));
+  text-align: center;
+}
+
+.agent-gui-node__side-empty-state-icon {
+  margin-bottom: 18px;
+  color: var(--text-secondary, var(--tutti-text-secondary));
+}
+
+.agent-gui-node__side-empty-state-title {
+  color: var(--text-primary, var(--tutti-text-primary));
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 24px;
+}
+
+.agent-gui-node__side-empty-state-description {
+  max-width: 360px;
+  margin: 8px 0 0;
+  font-size: 14px;
+  line-height: 22px;
+}
+
+.agent-gui-node__side-error {
+  margin: 0 12px 12px;
+  color: var(--destructive, var(--tutti-destructive));
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.agent-gui-node__side-composer {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  flex: 0 0 auto;
+  background: linear-gradient(
+    to bottom,
+    transparent,
+    var(--background-fronted, var(--tutti-surface-1)) 18px
+  );
+}
+
+.agent-gui-node__side-composer > .agent-gui-node__composer {
+  padding-right: 10px;
+  padding-left: 10px;
+}
+
+@media (max-width: 860px) {
+  .agent-gui-node__detail-workbench:has(.agent-gui-node__side-pane)
+    > .agent-gui-node__detail-primary {
+    display: none;
+  }
+
+  .agent-gui-node__side-pane {
+    flex-basis: 100%;
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+    border-left: 0;
+  }
+
+  .agent-gui-node__side-resize-handle {
+    display: none;
+  }
 }
 
 .agent-gui-node__timeline {
@@ -9824,7 +10060,7 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer-footer-left {
-  gap: 4px;
+  gap: 8px;
 }
 
 .agent-gui-node__composer-footer-accessory {

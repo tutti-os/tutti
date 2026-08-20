@@ -34,6 +34,9 @@ export function classifyChangedFiles(
   const testShards = buildTypeScriptTestShards(testSelection.packageNames);
 
   return {
+    buildWindowsInstaller: normalizedFiles.some(
+      isWindowsDesktopInstallerRelevant
+    ),
     packAll: packSelection.packAll,
     packPackages: packSelection.packageNames,
     runAgentSessionReplay: normalizedFiles.some(isAgentSessionReplayRelevant),
@@ -126,6 +129,7 @@ export function discoverReleasePackages(root = workspaceRoot) {
 
 export function formatClassificationOutputs(classification) {
   return [
+    ["build_windows_installer", classification.buildWindowsInstaller],
     ["pack_all", classification.packAll],
     ["pack_packages", JSON.stringify(classification.packPackages)],
     ["run_agent_session_replay", classification.runAgentSessionReplay],
@@ -142,6 +146,16 @@ export function formatClassificationOutputs(classification) {
   ]
     .map(([key, value]) => `${key}=${value}`)
     .join("\n");
+}
+
+export function isWindowsDesktopInstallerRelevant(file) {
+  return (
+    ["package.json", "pnpm-lock.yaml"].includes(file) ||
+    file === "apps/desktop/package.json" ||
+    file.startsWith("apps/desktop/build/") ||
+    file.startsWith("apps/desktop/scripts/") ||
+    file.startsWith("services/tuttid/builtin-apps/")
+  );
 }
 
 export function buildTypeScriptTestShards(packageNames, maximum = 3) {

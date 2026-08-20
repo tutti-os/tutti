@@ -5,6 +5,13 @@ import { ipcRenderer, type IpcRendererEvent } from "electron";
 
 export function createHostDesktopApi(): DesktopHostApi {
   return {
+    preferences: {
+      ensureInitialized() {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.preferences.ensureInitialized
+        );
+      }
+    },
     files: {
       createUserDocumentsProjectDirectory(input) {
         return invokeDesktopApi(
@@ -187,6 +194,12 @@ export function createHostDesktopApi(): DesktopHostApi {
       approveClose(): Promise<void> {
         return invokeDesktopApi(desktopIpcChannels.host.window.approveClose);
       },
+      setCloseGuardEnabled(enabled: boolean): Promise<void> {
+        return invokeDesktopApi(
+          desktopIpcChannels.host.window.setCloseGuardEnabled,
+          { enabled }
+        );
+      },
       capturePreview(input): Promise<string | null> {
         return invokeDesktopApi(
           desktopIpcChannels.host.window.capturePreview,
@@ -212,14 +225,21 @@ export function createHostDesktopApi(): DesktopHostApi {
         const handler = (
           _event: Electron.IpcRendererEvent,
           payload?: { reason?: unknown; requestId?: unknown }
-        ) =>
+        ) => {
+          const reason =
+            payload?.reason === "native-window-close"
+              ? "native-window-close"
+              : payload?.reason === "quit"
+                ? "quit"
+                : "window-close";
           listener({
             requestId:
               typeof payload?.requestId === "string"
                 ? payload.requestId
                 : undefined,
-            reason: payload?.reason === "quit" ? "quit" : "window-close"
+            reason
           });
+        };
         ipcRenderer.on(desktopIpcChannels.host.window.closeRequest, handler);
         return () => {
           ipcRenderer.removeListener(

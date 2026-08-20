@@ -9,6 +9,7 @@ import (
 )
 
 const defaultProviderStatusCacheTTL = 30 * time.Minute
+const defaultRemoteAuthProbeTTL = 15 * time.Minute
 
 // ProviderStatusCache is the daemon-owned application cache for local provider
 // readiness. Entries are keyed by provider rather than request shape so a

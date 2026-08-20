@@ -107,7 +107,10 @@ export const workspaceWorkbenchDesktopI18nKeys = {
     manageStatusAuthRequired: "agentProviders.manageStatusAuthRequired",
     manageStatusAvailable: "agentProviders.manageStatusAvailable",
     manageStatusChecking: "agentProviders.manageStatusChecking",
+    manageStatusConfigured: "agentProviders.manageStatusConfigured",
     manageStatusConnected: "agentProviders.manageStatusConnected",
+    manageStatusTemporarilyUnsupported:
+      "agentProviders.manageStatusTemporarilyUnsupported",
     manageStatusUnknown: "agentProviders.manageStatusUnknown",
     manageStatusUnsupported: "agentProviders.manageStatusUnsupported",
     manageTitle: "agentProviders.manageTitle",

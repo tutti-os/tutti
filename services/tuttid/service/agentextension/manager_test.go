@@ -1498,6 +1498,9 @@ func testPackageZIPFor(t *testing.T, manifest Manifest, discovery string) []byte
 	if manifest.Profiles.Authentication != "" {
 		files[manifest.Profiles.Authentication] = []byte(`{"schemaVersion":"tutti.agent.authentication.v1","methods":[{"id":"login","type":"terminal","command":{"strategy":"runtime-subcommand","args":["login"]}}]}`)
 	}
+	if manifest.Profiles.AccountUsage != "" {
+		files[manifest.Profiles.AccountUsage] = []byte(`{"schemaVersion":"tutti.agent.account-usage-probe.v1","runtime":{"package":"@example/gemini-account-usage@1.0.0","kind":"node-script","script":"${installRoot}/node_modules/@example/gemini-account-usage/dist/cli.cjs","args":["--output","json"],"timeoutMs":10000}}`)
+	}
 	for name, content := range files {
 		header := &zip.FileHeader{Name: name, Method: zip.Store}
 		header.SetMode(0o600)

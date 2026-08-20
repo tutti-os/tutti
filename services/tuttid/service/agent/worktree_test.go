@@ -2,14 +2,13 @@ package agent
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
-	"time"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -21,28 +20,16 @@ type recordingSessionDirectoryAllocator struct {
 	path  string
 }
 
-type recordingWorktreeSessionInitializer struct {
-	sessions *fakeSessionReader
-}
-
-func (i recordingWorktreeSessionInitializer) InitializeRuntimeSession(
-	ctx context.Context,
-	session ProviderRuntimeSession,
-	railPlacement *agenthost.RailPlacement,
-) (PersistedSession, error) {
-	persisted, err := (fakeSessionInitializer{}).InitializeRuntimeSession(ctx, session, railPlacement)
-	if err == nil {
-		i.sessions.sessions[persisted.WorkspaceID+":"+persisted.ID] = persisted
-	}
-	return persisted, err
-}
-
 func (a *recordingSessionDirectoryAllocator) CreateSessionDirectory(context.Context) (string, error) {
 	a.calls++
 	if err := os.MkdirAll(a.path, 0o755); err != nil {
 		return "", err
 	}
 	return a.path, nil
+}
+
+func (*recordingSessionDirectoryAllocator) ReleaseSessionDirectory(_ context.Context, path string) error {
+	return os.RemoveAll(path)
 }
 
 func initSessionWorktreeRepo(t *testing.T) string {
@@ -77,23 +64,46 @@ func createWorktreeFixture(t *testing.T, sessionID string) (string, string, Sess
 	if err != nil {
 		t.Fatalf("createSessionWorktree() error = %v", err)
 	}
-	record := sessionWorktreeRecord{
-		SessionIsolation: launch.Isolation,
-		SessionID:        sessionID, WorkspaceID: "workspace-1", RepoRoot: repo,
-	}
-	t.Cleanup(func() {
-		rollbackSessionWorktree(context.Background(), filepath.Join(stateDir, "agent", "worktrees"), record)
-	})
+	cleanupManagedWorktreeFixture(t, stateDir, launch.Isolation)
 	return stateDir, repo, launch.Isolation
+}
+
+func cleanupManagedWorktreeFixture(t *testing.T, stateDir string, isolation SessionIsolation) {
+	t.Helper()
+	t.Cleanup(func() {
+		service := &Service{WorktreeStateDir: stateDir}
+		service.rollbackSessionWorktree(context.Background(), isolation)
+	})
+}
+
+func assertWorktreeExists(t *testing.T, worktreePath string) {
+	t.Helper()
+	if stat, err := os.Stat(worktreePath); err != nil || !stat.IsDir() {
+		t.Fatalf("managed worktree %q is unavailable: stat=%#v error=%v", worktreePath, stat, err)
+	}
 }
 
 func TestCreateSessionWorktree(t *testing.T) {
 	stateDir, _, isolation := createWorktreeFixture(t, "session-create")
-	if isolation.Mode != WorktreeIsolationMode || isolation.Branch != "tutti/session-create" {
+	if isolation.WorktreeID == "" || isolation.Mode != WorktreeIsolationMode ||
+		isolation.Branch != "tutti/worktree/"+isolation.WorktreeID {
 		t.Fatalf("isolation = %#v", isolation)
 	}
-	if isolation.WorktreePath != filepath.Join(stateDir, "agent", "worktrees", "session-create") {
+	if isolation.WorktreePath != filepath.Join(stateDir, "agent", "worktrees", isolation.WorktreeID) {
 		t.Fatalf("worktree path = %q", isolation.WorktreePath)
+	}
+	metadata, err := os.ReadFile(worktreeRecordPath(
+		filepath.Join(stateDir, "agent", "worktrees"), isolation.WorktreeID,
+	))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(metadata), "sessionId") || strings.Contains(string(metadata), "session-create") {
+		t.Fatalf("managed worktree metadata retained Session identity: %s", metadata)
+	}
+	var record managedWorktreeRecord
+	if err := json.Unmarshal(metadata, &record); err != nil || record.State != managedWorktreeStateReady {
+		t.Fatalf("managed worktree metadata state = %q, error = %v", record.State, err)
 	}
 	if _, err := os.Stat(filepath.Join(isolation.WorktreePath, "tracked.txt")); err != nil {
 		t.Fatalf("worktree tracked file: %v", err)
@@ -111,14 +121,7 @@ func TestCreateSessionWorktreeReusesMatchingSessionLaunch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		rollbackSessionWorktree(context.Background(), filepath.Join(stateDir, "agent", "worktrees"), sessionWorktreeRecord{
-			SessionIsolation: first.Isolation,
-			SessionID:        "session-retry",
-			WorkspaceID:      "workspace-1",
-			RepoRoot:         repo,
-		})
-	})
+	cleanupManagedWorktreeFixture(t, stateDir, first.Isolation)
 	second, err := createSessionWorktree(context.Background(), stateDir, "workspace-1", repo, "session-retry")
 	if err != nil {
 		t.Fatalf("retry createSessionWorktree() error = %v", err)
@@ -131,23 +134,115 @@ func TestCreateSessionWorktreeReusesMatchingSessionLaunch(t *testing.T) {
 	}
 }
 
-func TestCreateSessionWorktreeRejectsRetryFromDifferentWorkspace(t *testing.T) {
+func TestCreateSessionWorktreeRecoversInterruptedCreatingRecord(t *testing.T) {
+	stateDir := t.TempDir()
+	repo := initSessionWorktreeRepo(t)
+	source, err := resolveSessionWorktreeSource(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktreesRoot := filepath.Join(stateDir, "agent", "worktrees")
+	interruptedID := "interrupted-worktree"
+	record := managedWorktreeRecord{
+		WorktreeID: interruptedID, State: managedWorktreeStateCreating,
+		WorktreePath: filepath.Join(worktreesRoot, interruptedID),
+		Branch:       "tutti/worktree/" + interruptedID,
+		BaseCommit:   source.BaseCommit,
+		WorkspaceID:  "workspace-1", RepoRoot: source.RepoRoot,
+		GitCommonDir: source.GitCommonDir, RelativeCwd: ".",
+		CreationRequestHash: managedWorktreeCreationRequestHash("workspace-1", "request-retry"),
+	}
+	if err := writeManagedWorktreeRecord(worktreesRoot, record); err != nil {
+		t.Fatal(err)
+	}
+
+	launch, err := createSessionWorktree(
+		context.Background(), stateDir, "workspace-1", repo, "request-retry",
+	)
+	if err != nil {
+		t.Fatalf("createSessionWorktree() retry error = %v", err)
+	}
+	cleanupManagedWorktreeFixture(t, stateDir, launch.Isolation)
+	if launch.Isolation.WorktreeID == interruptedID || !launch.Created {
+		t.Fatalf("recovered launch = %#v", launch)
+	}
+	if _, err := os.Stat(worktreeRecordPath(worktreesRoot, interruptedID)); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("interrupted metadata stat error = %v", err)
+	}
+}
+
+func TestCreateSessionWorktreeCompletesInterruptedReadyCheckout(t *testing.T) {
+	stateDir := t.TempDir()
+	repo := initSessionWorktreeRepo(t)
+	source, err := resolveSessionWorktreeSource(context.Background(), repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	worktreesRoot := filepath.Join(stateDir, "agent", "worktrees")
+	worktreeID := "interrupted-ready-checkout"
+	record := managedWorktreeRecord{
+		WorktreeID: worktreeID, State: managedWorktreeStateCreating,
+		WorktreePath: filepath.Join(worktreesRoot, worktreeID),
+		Branch:       "tutti/worktree/" + worktreeID,
+		BaseCommit:   source.BaseCommit,
+		WorkspaceID:  "workspace-1", RepoRoot: source.RepoRoot,
+		GitCommonDir: source.GitCommonDir, RelativeCwd: ".",
+		CreationRequestHash: managedWorktreeCreationRequestHash("workspace-1", "request-finish"),
+	}
+	if err := writeManagedWorktreeRecord(worktreesRoot, record); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gitOutput(context.Background(), repo, "worktree", "add", "-b", record.Branch, record.WorktreePath, record.BaseCommit); err != nil {
+		t.Fatal(err)
+	}
+	cleanupManagedWorktreeFixture(t, stateDir, managedWorktreeIsolation(record))
+
+	launch, err := createSessionWorktree(
+		context.Background(), stateDir, "workspace-1", repo, "request-finish",
+	)
+	if err != nil || launch.Created || launch.Isolation.WorktreeID != worktreeID {
+		t.Fatalf("createSessionWorktree() launch=%#v error=%v", launch, err)
+	}
+	ready, err := readManagedWorktreeRecord(worktreeRecordPath(worktreesRoot, worktreeID))
+	if err != nil || ready.State != managedWorktreeStateReady {
+		t.Fatalf("managed worktree state=%q error=%v", ready.State, err)
+	}
+}
+
+func TestCreateSessionWorktreeIgnoresDamagedUnrelatedMetadata(t *testing.T) {
+	stateDir := t.TempDir()
+	repo := initSessionWorktreeRepo(t)
+	worktreesRoot := filepath.Join(stateDir, "agent", "worktrees")
+	if err := os.MkdirAll(worktreeRecordsDir(worktreesRoot), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(worktreeRecordPath(worktreesRoot, "damaged"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	launch, err := createSessionWorktree(
+		context.Background(), stateDir, "workspace-1", repo, "request-after-damage",
+	)
+	if err != nil {
+		t.Fatalf("createSessionWorktree() error = %v", err)
+	}
+	cleanupManagedWorktreeFixture(t, stateDir, launch.Isolation)
+}
+
+func TestCreateSessionWorktreeScopesCreationIdempotencyByWorkspace(t *testing.T) {
 	stateDir := t.TempDir()
 	repo := initSessionWorktreeRepo(t)
 	first, err := createSessionWorktree(context.Background(), stateDir, "workspace-1", repo, "session-scope-mismatch")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		rollbackSessionWorktree(context.Background(), filepath.Join(stateDir, "agent", "worktrees"), sessionWorktreeRecord{
-			SessionIsolation: first.Isolation,
-			SessionID:        "session-scope-mismatch",
-			WorkspaceID:      "workspace-1",
-			RepoRoot:         repo,
-		})
-	})
-	if _, err := createSessionWorktree(context.Background(), stateDir, "workspace-2", repo, "session-scope-mismatch"); !errors.Is(err, ErrWorktreeCreateFailed) {
-		t.Fatalf("retry error = %v, want ErrWorktreeCreateFailed", err)
+	cleanupManagedWorktreeFixture(t, stateDir, first.Isolation)
+	second, err := createSessionWorktree(context.Background(), stateDir, "workspace-2", repo, "session-scope-mismatch")
+	if err != nil {
+		t.Fatalf("second workspace create error = %v", err)
+	}
+	cleanupManagedWorktreeFixture(t, stateDir, second.Isolation)
+	if second.Isolation.WorktreeID == first.Isolation.WorktreeID {
+		t.Fatalf("workspace-scoped worktrees reused id %q", second.Isolation.WorktreeID)
 	}
 }
 
@@ -168,14 +263,7 @@ func TestCreateSessionWorktreePreservesSelectedRepositorySubdirectory(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		rollbackSessionWorktree(context.Background(), filepath.Join(stateDir, "agent", "worktrees"), sessionWorktreeRecord{
-			SessionIsolation: launch.Isolation,
-			SessionID:        "session-subdirectory",
-			WorkspaceID:      "workspace-1",
-			RepoRoot:         repo,
-		})
-	})
+	cleanupManagedWorktreeFixture(t, stateDir, launch.Isolation)
 	wantCwd := filepath.Join(launch.Isolation.WorktreePath, "packages", "foo")
 	if launch.Cwd != wantCwd {
 		t.Fatalf("runtime cwd = %q, want %q", launch.Cwd, wantCwd)
@@ -196,10 +284,7 @@ func TestCreateSessionWorktreeReportsDirtySourceWarning(t *testing.T) {
 		t.Fatal(err)
 	}
 	isolation := launch.Isolation
-	record := sessionWorktreeRecord{SessionIsolation: isolation, SessionID: "session-dirty-source", WorkspaceID: "workspace-1", RepoRoot: repo}
-	t.Cleanup(func() {
-		rollbackSessionWorktree(context.Background(), filepath.Join(stateDir, "agent", "worktrees"), record)
-	})
+	cleanupManagedWorktreeFixture(t, stateDir, isolation)
 	if len(launch.Warnings) != 1 || launch.Warnings[0].Code != worktreeDirtyBaseWarningCode {
 		t.Fatalf("warnings = %#v", launch.Warnings)
 	}
@@ -489,95 +574,22 @@ func TestServiceCreateRollsBackWorktreeWhenHostStartFails(t *testing.T) {
 	if !errors.Is(err, startErr) {
 		t.Fatalf("Create error = %v, want %v", err, startErr)
 	}
-	worktreePath := filepath.Join(stateDir, "agent", "worktrees", "session-service-fail")
-	if _, statErr := os.Stat(worktreePath); !os.IsNotExist(statErr) {
-		t.Fatalf("failed create worktree still exists: %v", statErr)
+	entries, readErr := os.ReadDir(filepath.Join(stateDir, "agent", "worktrees"))
+	if readErr != nil && !errors.Is(readErr, os.ErrNotExist) {
+		t.Fatal(readErr)
+	}
+	for _, entry := range entries {
+		if entry.Name() != ".metadata" {
+			t.Fatalf("failed create worktree still exists: %s", entry.Name())
+		}
 	}
 	if len(runtime.sessions) != 0 {
 		t.Fatalf("runtime sessions = %#v, want none", runtime.sessions)
 	}
-	if _, branchErr := gitOutput(context.Background(), repo, "show-ref", "--verify", "refs/heads/tutti/session-service-fail"); branchErr == nil {
-		t.Fatal("failed create branch still exists")
+	branches, branchErr := gitOutput(context.Background(), repo, "branch", "--list", "tutti/worktree/*")
+	if branchErr != nil || strings.TrimSpace(branches) != "" {
+		t.Fatalf("failed create branches = %q, error=%v", branches, branchErr)
 	}
-}
-
-func TestServiceCreateSerializesWorktreeWithSweep(t *testing.T) {
-	stateDir := t.TempDir()
-	repo := initSessionWorktreeRepo(t)
-	startEntered := make(chan struct{})
-	releaseStart := make(chan struct{})
-	runtime := newFakeRuntime()
-	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
-		if err := os.WriteFile(filepath.Join(input.Cwd, "creating.txt"), []byte("creating\n"), 0o644); err != nil {
-			t.Errorf("write creating marker: %v", err)
-		}
-		close(startEntered)
-		<-releaseStart
-		return session
-	}
-	service := newTestService(runtime)
-	service.WorktreeStateDir = stateDir
-	service.WorkspaceIDs = func(context.Context) ([]string, error) { return []string{"workspace-1"}, nil }
-	service.SessionReader = fakeSessionReader{sessions: map[string]PersistedSession{}}
-
-	createDone := make(chan struct{})
-	var created Session
-	var createErr error
-	go func() {
-		defer close(createDone)
-		created, createErr = service.Create(context.Background(), "workspace-1", CreateSessionInput{
-			AgentSessionID: "session-concurrent-create", AgentTargetID: agenttargetbiz.IDLocalCodex,
-			Cwd: stringPointer(repo), Isolation: WorktreeIsolationMode, InitialContent: TextPromptContent("work"),
-			RailPlacement: projectRailPlacement(repo),
-		})
-	}()
-	select {
-	case <-startEntered:
-	case <-createDone:
-		t.Fatalf("Create finished before runtime start hook: %v", createErr)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for runtime start hook")
-	}
-	if service.worktreeIsolationMu.TryLock() {
-		service.worktreeIsolationMu.Unlock()
-		t.Fatal("worktree isolation lock was not held during session creation")
-	}
-
-	sweepStarted := make(chan struct{})
-	sweepDone := make(chan error, 1)
-	go func() {
-		close(sweepStarted)
-		sweepDone <- service.SweepWorktreeIsolation(context.Background())
-	}()
-	<-sweepStarted
-	select {
-	case err := <-sweepDone:
-		t.Fatalf("sweep completed during worktree creation: %v", err)
-	case <-time.After(150 * time.Millisecond):
-	}
-
-	close(releaseStart)
-	select {
-	case <-createDone:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for isolated create")
-	}
-	if createErr != nil {
-		t.Fatalf("Create error = %v", createErr)
-	}
-	select {
-	case err := <-sweepDone:
-		if err != nil {
-			t.Fatalf("SweepWorktreeIsolation error = %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for worktree sweep")
-	}
-	if created.Isolation == nil {
-		t.Fatalf("created session isolation = %#v", created.Isolation)
-	}
-	t.Cleanup(func() { service.rollbackSessionWorktree(context.Background(), *created.Isolation) })
-	assertWorktreeExists(t, created.Isolation.WorktreePath)
 }
 
 func TestServiceCreateWorktreeRetryReusesExistingCheckout(t *testing.T) {
@@ -649,232 +661,162 @@ func TestServiceCreateWorktreeUsesSelectedRepositorySubdirectory(t *testing.T) {
 	}
 }
 
-func TestServiceCreateSerializesManagedCwdReferenceWithSweep(t *testing.T) {
-	stateDir, _, isolation := createWorktreeFixture(t, "session-gc-reference-race")
-	managedCwd := filepath.Join(isolation.WorktreePath, "nested")
-	if err := os.MkdirAll(managedCwd, 0o755); err != nil {
+func TestListManagedWorktreesUsesIndependentResourceIdentity(t *testing.T) {
+	stateDir, _, isolation := createWorktreeFixture(t, "session-list-resource")
+	service := &Service{WorktreeStateDir: stateDir}
+	worktrees, err := service.ListManagedWorktrees(context.Background(), "workspace-1")
+	if err != nil {
 		t.Fatal(err)
 	}
-	startEntered := make(chan struct{})
-	releaseStart := make(chan struct{})
-	runtime := newFakeRuntime()
-	runtime.startHook = func(_ RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
-		close(startEntered)
-		<-releaseStart
-		return session
+	if len(worktrees) != 1 {
+		t.Fatalf("managed worktrees = %#v", worktrees)
 	}
-	service := newTestService(runtime)
-	service.WorktreeStateDir = stateDir
-	service.WorkspaceIDs = func(context.Context) ([]string, error) { return []string{"workspace-1"}, nil }
-	sessions := &fakeSessionReader{sessions: map[string]PersistedSession{}}
-	service.SessionReader = sessions
-	service.SessionInitializer = recordingWorktreeSessionInitializer{sessions: sessions}
-
-	createDone := make(chan error, 1)
-	go func() {
-		_, err := service.Create(context.Background(), "workspace-1", CreateSessionInput{
-			AgentSessionID: "session-referencing-managed-cwd", AgentTargetID: agenttargetbiz.IDLocalCodex,
-			Cwd: stringPointer(managedCwd),
-		})
-		createDone <- err
-	}()
-	select {
-	case <-startEntered:
-	case err := <-createDone:
-		t.Fatalf("Create finished before runtime start hook: %v", err)
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for runtime start hook")
+	got := worktrees[0]
+	if got.WorktreeID != isolation.WorktreeID || got.WorktreeID == "session-list-resource" {
+		t.Fatalf("managed worktree identity = %#v", got)
 	}
-	if service.worktreeIsolationMu.TryLock() {
-		service.worktreeIsolationMu.Unlock()
-		t.Fatal("worktree GC lock was not held while creating a session with a managed cwd")
+	if filepath.Base(got.WorktreePath) != got.WorktreeID || got.Branch != "tutti/worktree/"+got.WorktreeID {
+		t.Fatalf("managed worktree path/branch = %#v", got)
 	}
-
-	sweepDone := make(chan error, 1)
-	go func() { sweepDone <- service.SweepWorktreeIsolation(context.Background()) }()
-	select {
-	case err := <-sweepDone:
-		t.Fatalf("sweep completed while the managed cwd session was being created: %v", err)
-	case <-time.After(150 * time.Millisecond):
-	}
-
-	close(releaseStart)
-	select {
-	case err := <-createDone:
-		if err != nil {
-			t.Fatalf("Create error = %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for managed cwd session create")
-	}
-	select {
-	case err := <-sweepDone:
-		if err != nil {
-			t.Fatalf("SweepWorktreeIsolation error = %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for worktree sweep")
-	}
-	assertWorktreeExists(t, isolation.WorktreePath)
 }
 
-func TestSweepSessionWorktreesKeepsDirtyWorktree(t *testing.T) {
-	stateDir, _, isolation := createWorktreeFixture(t, "session-gc-dirty")
+func TestDeleteManagedWorktreeRequiresExplicitRequest(t *testing.T) {
+	stateDir, repo, isolation := createWorktreeFixture(t, "session-explicit-delete")
+	service := &Service{WorktreeStateDir: stateDir}
+	deleted, err := service.DeleteManagedWorktree(context.Background(), "workspace-1", isolation.WorktreeID)
+	if err != nil || !deleted {
+		t.Fatalf("DeleteManagedWorktree() deleted=%v error=%v", deleted, err)
+	}
+	if _, statErr := os.Stat(isolation.WorktreePath); !errors.Is(statErr, os.ErrNotExist) {
+		t.Fatalf("deleted worktree stat error = %v", statErr)
+	}
+	if _, branchErr := gitOutput(context.Background(), repo, "show-ref", "--verify", "refs/heads/"+isolation.Branch); branchErr == nil {
+		t.Fatal("explicitly deleted worktree branch still exists")
+	}
+	worktrees, listErr := service.ListManagedWorktrees(context.Background(), "workspace-1")
+	if listErr != nil || len(worktrees) != 0 {
+		t.Fatalf("managed worktrees after delete = %#v error=%v", worktrees, listErr)
+	}
+}
+
+func TestSessionDeleteDoesNotDeleteManagedWorktree(t *testing.T) {
+	stateDir := t.TempDir()
+	repo := initSessionWorktreeRepo(t)
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	installFakeCanonicalSessionStore(service)
+	service.WorktreeStateDir = stateDir
+	session, err := service.Create(context.Background(), "workspace-1", CreateSessionInput{
+		AgentSessionID: "11111111-1111-4111-8111-111111111111",
+		ClientSubmitID: "submit-independent-worktree",
+		AgentTargetID:  agenttargetbiz.IDLocalCodex,
+		Cwd:            stringPointer(repo), Isolation: WorktreeIsolationMode,
+		RailPlacement: projectRailPlacement(repo),
+	})
+	if err != nil || session.Isolation == nil {
+		t.Fatalf("Create() session=%#v error=%v", session, err)
+	}
+	t.Cleanup(func() { service.rollbackSessionWorktree(context.Background(), *session.Isolation) })
+	deleted, err := service.Delete(context.Background(), "workspace-1", session.ID)
+	if err != nil || !deleted.Removed {
+		t.Fatalf("Delete() result=%#v error=%v", deleted, err)
+	}
+	assertWorktreeExists(t, session.Isolation.WorktreePath)
+	worktrees, err := service.ListManagedWorktrees(context.Background(), "workspace-1")
+	if err != nil || len(worktrees) != 1 || worktrees[0].WorktreeID != session.Isolation.WorktreeID {
+		t.Fatalf("managed worktrees after Session delete=%#v error=%v", worktrees, err)
+	}
+}
+
+func TestDeleteManagedWorktreeRejectsDirtyCheckout(t *testing.T) {
+	stateDir, _, isolation := createWorktreeFixture(t, "session-explicit-delete-dirty")
 	if err := os.WriteFile(filepath.Join(isolation.WorktreePath, "dirty.txt"), []byte("dirty\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := sweepSessionWorktrees(context.Background(), stateDir, nil, nil); err != nil {
-		t.Fatal(err)
+	service := &Service{WorktreeStateDir: stateDir}
+	if _, err := service.DeleteManagedWorktree(context.Background(), "workspace-1", isolation.WorktreeID); !errors.Is(err, ErrManagedWorktreeDirty) {
+		t.Fatalf("DeleteManagedWorktree() error=%v, want dirty conflict", err)
 	}
 	assertWorktreeExists(t, isolation.WorktreePath)
 }
 
-func TestSweepConfiguredWorktreeIsolationProtectsRecoverableDeletedSession(t *testing.T) {
-	stateDir, _, isolation := createWorktreeFixture(t, "session-gc-deleted-recoverable")
-	reader := &fakeSessionReader{
-		sessions: map[string]PersistedSession{},
-		recoverableDeleted: []agentactivitybiz.DeletedSessionResource{{
-			WorkspaceID:    "workspace-1",
-			AgentSessionID: "session-gc-deleted-recoverable",
-			Cwd:            isolation.WorktreePath,
-		}},
-	}
-	if err := sweepConfiguredWorktreeIsolation(
-		context.Background(),
-		&sync.RWMutex{},
-		stateDir,
-		func(context.Context) ([]string, error) { return []string{"workspace-1"}, nil },
-		reader,
-		func(PersistedSession) bool { return false },
-	); err != nil {
-		t.Fatal(err)
-	}
-	assertWorktreeExists(t, isolation.WorktreePath)
-}
-
-func TestSweepSessionWorktreesKeepsAheadBranch(t *testing.T) {
-	stateDir, _, isolation := createWorktreeFixture(t, "session-gc-ahead")
+func TestDeleteManagedWorktreeRejectsAheadBranch(t *testing.T) {
+	stateDir, _, isolation := createWorktreeFixture(t, "session-explicit-delete-ahead")
 	if err := os.WriteFile(filepath.Join(isolation.WorktreePath, "committed.txt"), []byte("commit\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	runGitForTest(t, isolation.WorktreePath, "add", "committed.txt")
 	runGitForTest(t, isolation.WorktreePath, "commit", "-q", "-m", "worktree commit")
-	if err := sweepSessionWorktrees(context.Background(), stateDir, nil, nil); err != nil {
-		t.Fatal(err)
+	service := &Service{WorktreeStateDir: stateDir}
+	if _, err := service.DeleteManagedWorktree(context.Background(), "workspace-1", isolation.WorktreeID); !errors.Is(err, ErrManagedWorktreeAhead) {
+		t.Fatalf("DeleteManagedWorktree() error=%v, want ahead conflict", err)
 	}
 	assertWorktreeExists(t, isolation.WorktreePath)
 }
 
-func TestSweepSessionWorktreesKeepsAheadRecordedBranchWhenHeadDetached(t *testing.T) {
-	stateDir, repo, isolation := createWorktreeFixture(t, "session-gc-ahead-detached")
-	if err := os.WriteFile(filepath.Join(isolation.WorktreePath, "committed.txt"), []byte("commit\n"), 0o644); err != nil {
+func TestDeleteManagedWorktreeBranchRejectsConcurrentAdvance(t *testing.T) {
+	stateDir, _, isolation := createWorktreeFixture(t, "session-explicit-delete-race")
+	worktreesRoot := filepath.Join(stateDir, "agent", "worktrees")
+	record, err := readManagedWorktreeRecord(worktreeRecordPath(worktreesRoot, isolation.WorktreeID))
+	if err != nil {
 		t.Fatal(err)
 	}
-	runGitForTest(t, isolation.WorktreePath, "add", "committed.txt")
-	runGitForTest(t, isolation.WorktreePath, "commit", "-q", "-m", "worktree commit")
-	runGitForTest(t, isolation.WorktreePath, "checkout", "-q", "--detach", isolation.BaseCommit)
-	if err := sweepSessionWorktrees(context.Background(), stateDir, nil, nil); err != nil {
+	branchRef := "refs/heads/" + isolation.Branch
+	expectedOID, exists, err := managedWorktreeBranchOID(context.Background(), record, branchRef)
+	if err != nil || !exists {
+		t.Fatalf("managedWorktreeBranchOID() oid=%q exists=%v error=%v", expectedOID, exists, err)
+	}
+	if err := os.WriteFile(filepath.Join(isolation.WorktreePath, "concurrent.txt"), []byte("commit\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	assertWorktreeExists(t, isolation.WorktreePath)
-	if _, err := gitOutput(context.Background(), repo, "show-ref", "--verify", "refs/heads/"+isolation.Branch); err != nil {
-		t.Fatalf("recorded branch %q was removed: %v", isolation.Branch, err)
+	runGitForTest(t, isolation.WorktreePath, "add", "concurrent.txt")
+	runGitForTest(t, isolation.WorktreePath, "commit", "-q", "-m", "concurrent commit")
+
+	err = deleteManagedWorktreeBranch(context.Background(), record, branchRef, expectedOID)
+	if !errors.Is(err, ErrManagedWorktreeChanged) {
+		t.Fatalf("deleteManagedWorktreeBranch() error=%v, want changed conflict", err)
+	}
+	if _, err := gitRepoOutput(context.Background(), record, "show-ref", "--verify", branchRef); err != nil {
+		t.Fatalf("concurrently advanced branch was removed: %v", err)
 	}
 }
 
-func TestSweepSessionWorktreesKeepsResumableCreator(t *testing.T) {
-	stateDir, repo, isolation := createWorktreeFixture(t, "session-gc-resumable")
-	sessions := []PersistedSession{{ID: "session-gc-resumable", WorkspaceID: "workspace-1", Cwd: repo}}
-	canResumeCalled := false
-	if err := sweepSessionWorktrees(context.Background(), stateDir, sessions, func(PersistedSession) bool {
-		canResumeCalled = true
-		return true
-	}); err != nil {
-		t.Fatal(err)
-	}
-	if !canResumeCalled {
-		t.Fatal("creator resumability was not evaluated")
-	}
-	assertWorktreeExists(t, isolation.WorktreePath)
-}
-
-func TestSweepSessionWorktreesKeepsTreeUsedByAnotherSession(t *testing.T) {
-	stateDir, repo, isolation := createWorktreeFixture(t, "session-gc-used")
-	sessions := []PersistedSession{
-		{ID: "session-gc-used", WorkspaceID: "workspace-1", Cwd: repo},
-		{ID: "other-session", WorkspaceID: "workspace-1", Cwd: filepath.Join(isolation.WorktreePath, "nested")},
-	}
-	if err := sweepSessionWorktrees(context.Background(), stateDir, sessions, func(PersistedSession) bool { return false }); err != nil {
-		t.Fatal(err)
-	}
-	assertWorktreeExists(t, isolation.WorktreePath)
-}
-
-func TestSweepSessionWorktreesKeepsTreeReferencedByUnresumableCreator(t *testing.T) {
-	stateDir, _, isolation := createWorktreeFixture(t, "session-gc-creator-cwd")
-	sessions := []PersistedSession{{ID: "session-gc-creator-cwd", WorkspaceID: "workspace-1", Cwd: isolation.WorktreePath}}
-	if err := sweepSessionWorktrees(context.Background(), stateDir, sessions, func(PersistedSession) bool { return false }); err != nil {
-		t.Fatal(err)
-	}
-	assertWorktreeExists(t, isolation.WorktreePath)
-}
-
-func TestSweepSessionWorktreesDeletesCleanOrphanAndBranch(t *testing.T) {
-	stateDir, repo, isolation := createWorktreeFixture(t, "session-gc-delete")
-	if err := sweepSessionWorktrees(context.Background(), stateDir, nil, nil); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := os.Stat(isolation.WorktreePath); !os.IsNotExist(err) {
-		t.Fatalf("worktree still exists, stat error = %v", err)
-	}
-	if _, err := gitOutput(context.Background(), repo, "show-ref", "--verify", "refs/heads/"+isolation.Branch); err == nil {
-		t.Fatalf("branch %q still exists", isolation.Branch)
-	}
-}
-
-func TestSweepSessionWorktreesCleansChildAfterParentWorktreeRemoved(t *testing.T) {
+func TestListManagedWorktreesReadsLegacySessionMetadataWithoutOwnership(t *testing.T) {
 	stateDir := t.TempDir()
 	repo := initSessionWorktreeRepo(t)
-	parentLaunch, err := createSessionWorktree(context.Background(), stateDir, "workspace-1", repo, "session-gc-parent")
-	if err != nil {
-		t.Fatalf("create parent worktree: %v", err)
-	}
-	parent := parentLaunch.Isolation
-	childLaunch, err := createSessionWorktree(context.Background(), stateDir, "workspace-1", parent.WorktreePath, "session-gc-child")
-	if err != nil {
-		t.Fatalf("create child worktree from parent cwd: %v", err)
-	}
-	child := childLaunch.Isolation
 	worktreesRoot := filepath.Join(stateDir, "agent", "worktrees")
-	childRecord, err := readSessionWorktreeRecord(worktreeRecordPath(worktreesRoot, "session-gc-child"))
+	legacyID := "legacy-session-id"
+	worktreePath := filepath.Join(worktreesRoot, legacyID)
+	branch := "tutti/" + legacyID
+	baseCommit, err := gitOutput(context.Background(), repo, "rev-parse", "HEAD")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if childRecord.GitCommonDir == "" || pathInsideWorktree(childRecord.GitCommonDir, parent.WorktreePath) {
-		t.Fatalf("child GC anchor %q depends on collectable parent worktree %q", childRecord.GitCommonDir, parent.WorktreePath)
-	}
-	runGitForTest(t, repo, "worktree", "remove", parent.WorktreePath)
-	runGitForTest(t, repo, "branch", "-D", parent.Branch)
-	if err := os.Remove(worktreeRecordPath(worktreesRoot, "session-gc-parent")); err != nil {
+	if _, err := gitOutput(context.Background(), repo, "worktree", "add", "-b", branch, worktreePath, strings.TrimSpace(baseCommit)); err != nil {
 		t.Fatal(err)
 	}
-	if err := sweepSessionWorktrees(context.Background(), stateDir, nil, nil); err != nil {
-		t.Fatalf("sweep after parent removal: %v", err)
+	record := managedWorktreeRecord{
+		WorktreePath: worktreePath, Branch: branch, BaseCommit: strings.TrimSpace(baseCommit),
+		LegacySessionID: legacyID, WorkspaceID: "workspace-1", RepoRoot: repo,
 	}
-	if _, statErr := os.Stat(child.WorktreePath); !os.IsNotExist(statErr) {
-		t.Fatalf("child worktree still exists, stat error = %v", statErr)
+	if err := os.MkdirAll(worktreeRecordsDir(worktreesRoot), 0o700); err != nil {
+		t.Fatal(err)
 	}
-	if _, branchErr := gitOutput(context.Background(), repo, "show-ref", "--verify", "refs/heads/"+child.Branch); branchErr == nil {
-		t.Fatalf("child branch %q still exists", child.Branch)
+	data, err := json.Marshal(record)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if _, statErr := os.Stat(worktreeRecordPath(worktreesRoot, "session-gc-child")); !os.IsNotExist(statErr) {
-		t.Fatalf("child record still exists, stat error = %v", statErr)
+	if err := os.WriteFile(worktreeRecordPath(worktreesRoot, legacyID), data, 0o600); err != nil {
+		t.Fatal(err)
 	}
-}
-
-func assertWorktreeExists(t *testing.T, path string) {
-	t.Helper()
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("worktree %q does not exist: %v", path, err)
+	service := &Service{WorktreeStateDir: stateDir}
+	t.Cleanup(func() {
+		legacyIsolation := managedWorktreeIsolation(record)
+		legacyIsolation.WorktreeID = legacyID
+		service.rollbackSessionWorktree(context.Background(), legacyIsolation)
+	})
+	worktrees, err := service.ListManagedWorktrees(context.Background(), "workspace-1")
+	if err != nil || len(worktrees) != 1 || worktrees[0].WorktreeID != legacyID {
+		t.Fatalf("legacy managed worktrees = %#v error=%v", worktrees, err)
 	}
 }

@@ -16,6 +16,11 @@ var _ agenthost.CommitObserver = (*ActivityProjection)(nil)
 // ObserveCommitted is the one post-commit fanout for daemon-local views,
 // analytics, provider ownership cleanup, and event-stream wakeups. Durable
 // delivery never depends on this callback succeeding.
+//
+// It must not extract terminal failures: Host.notifyCommitted already observes
+// the deltas it relays here, and observeCommittedOutsideHost observes the ones
+// that never reach Host. Doing it here too would double-count every durable
+// runtime and goal failure.
 func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agenthost.CommittedDelta) error {
 	if p == nil {
 		return nil
@@ -45,6 +50,13 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 		p.observeSessionMessages(ctx, committed.Input, committed.Reply)
 	}
 	for _, settled := range delta.RootTurnsSettled {
+		p.reportRootTurnTerminalEvent(ctx, settled)
+		if settled.StartupReconciled {
+			// Startup reconciliation force-settles every turn left on disk.
+			// Waking the Tutti-mode and automation observers for those would
+			// resume chains the daemon restart already interrupted.
+			continue
+		}
 		p.observeRootTurnSettled(ctx, settled.WorkspaceID, settled.AgentSessionID, settled.Turn)
 	}
 	if committed := delta.GoalOperation; committed != nil && committed.Stage == agenthost.GoalOperationPrepared && committed.Audit != nil {

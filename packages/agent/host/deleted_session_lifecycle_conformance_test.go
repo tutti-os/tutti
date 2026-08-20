@@ -153,9 +153,9 @@ type deletedSessionLifecycleRuntime struct {
 func (r *deletedSessionLifecycleRuntime) Start(
 	context.Context,
 	agenthost.RuntimeStartInput,
-) (agenthost.ProviderRuntimeSession, error) {
+) (agenthost.RuntimeStartResult, error) {
 	r.startCalls++
-	return agenthost.ProviderRuntimeSession{}, nil
+	return agenthost.RuntimeStartResult{}, nil
 }
 
 func (r *deletedSessionLifecycleRuntime) Resume(

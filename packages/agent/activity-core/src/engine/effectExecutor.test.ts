@@ -134,6 +134,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
     correlationId: "submit-create",
     cwd: "/repo",
     isolation: "worktree",
+    modelExplicit: false,
     initialContent: [{ text: "build it", type: "text" }],
     initialDisplayPrompt: "Build it",
     initialGoalControl: { action: "set", objective: "ship it" },
@@ -150,6 +151,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
       sectionKey: "project:/repo",
       version: 1
     },
+    reasoningEffortExplicit: true,
     settings: { model: "model-1", planMode: true },
     submitDiagnostics: { blockCount: 1, source: "test" },
     title: "Session",
@@ -262,12 +264,14 @@ test("projects shared commands onto typed lifecycle effects without host switche
     ]
   );
   assert.deepEqual(calls[0]?.input, {
+    activationId: "submit-create",
     agentSessionId: "session-1",
     agentTargetId: "target-1",
     capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
     clientSubmitId: "submit-create",
     cwd: "/repo",
     isolation: "worktree",
+    modelExplicit: false,
     initialContent: [{ text: "build it", type: "text" }],
     initialDisplayPrompt: "Build it",
     initialGoalControl: { action: "set", objective: "ship it" },
@@ -284,6 +288,7 @@ test("projects shared commands onto typed lifecycle effects without host switche
       sectionKey: "project:/repo",
       version: 1
     },
+    reasoningEffortExplicit: true,
     settings: { model: "model-1", planMode: true },
     submitDiagnostics: { blockCount: 1, source: "test" },
     title: "Session",
@@ -416,6 +421,7 @@ function executeAndWait(
 ): Promise<EngineCommandResultIntent> {
   return new Promise((resolve) => {
     createEngineEffectExecutor({
+      clock: { nowUnixMs: () => 1234 },
       commandPort,
       onResult: resolve,
       scheduler: {

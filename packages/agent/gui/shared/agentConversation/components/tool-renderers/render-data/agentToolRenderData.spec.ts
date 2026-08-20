@@ -4,9 +4,11 @@ import {
   getCommandRenderData,
   getFileChangeRenderData,
   getImageGenerationRenderData,
+  getPlanModeRenderData,
   getSearchRenderData,
   getSkillRenderData,
   getTaskRenderData,
+  getToolCallFailureText,
   getToolFallbackText,
   getWebSearchRenderData,
   getWebFetchRenderData
@@ -68,6 +70,20 @@ describe("agentToolRenderData", () => {
       imageUri: "/workspace/output/canonical.webp",
       mimeType: "image/webp"
     });
+  });
+
+  it("derives a Windows plan file name from the native path", () => {
+    const data = getPlanModeRenderData(
+      makeCall({
+        rendererKind: "plan-enter",
+        input: {
+          filePath: "C:\\Users\\demo\\workspace\\plans\\plan.md"
+        }
+      })
+    );
+
+    expect(data.filePath).toBe("C:\\Users\\demo\\workspace\\plans\\plan.md");
+    expect(data.fileName).toBe("plan.md");
   });
 
   it("extracts canonical command render data", () => {
@@ -240,6 +256,39 @@ describe("agentToolRenderData", () => {
     );
 
     expect(text.error).toBe("permission denied");
+  });
+
+  it("unwraps tool_use_error tags from failed write payloads", () => {
+    const failure = getToolCallFailureText(
+      makeCall({
+        toolName: "Write",
+        status: "Failed",
+        statusKind: "failed",
+        error: {
+          message:
+            "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"
+        }
+      })
+    );
+
+    expect(failure).toBe(
+      "File has not been read yet. Read it first before writing to it."
+    );
+  });
+
+  it("falls back to failed output text when error payload is missing", () => {
+    const failure = getToolCallFailureText(
+      makeCall({
+        toolName: "Write",
+        status: "Failed",
+        statusKind: "failed",
+        output: {
+          text: "<tool_use_error>Write blocked</tool_use_error>"
+        }
+      })
+    );
+
+    expect(failure).toBe("Write blocked");
   });
 
   it("extracts file changes from direct file content input", () => {

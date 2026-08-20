@@ -70,6 +70,50 @@ describe("projectWorkspaceConversationRail", () => {
     expect(sections[0]?.items.map((item) => item.id)).toEqual(["new", "known"]);
   });
 
+  test("rehomes a conversation when server membership disagrees with its rail key", () => {
+    const sections = projectWorkspaceConversationRail({
+      conversations: [conversation("session-1", "project:/right", 20)],
+      loadingMoreSectionId: null,
+      memberships: [
+        membership(
+          "section:project:/wrong",
+          "project",
+          "project:/wrong",
+          ["session-1"],
+          "Wrong"
+        ),
+        membership(
+          "section:project:/right",
+          "project",
+          "project:/right",
+          [],
+          "Right"
+        )
+      ]
+    });
+
+    expect(
+      sections.map((section) => ({
+        id: section.id,
+        ids: section.items.map((item) => item.id)
+      }))
+    ).toEqual([{ id: "section:project:/right", ids: ["session-1"] }]);
+  });
+
+  test("does not classify a missing rail key as conversations", () => {
+    const sections = projectWorkspaceConversationRail({
+      conversations: [conversation("session-1", "", 20)],
+      loadingMoreSectionId: null,
+      memberships: [
+        membership("section:conversations", "conversations", "conversations", [
+          "session-1"
+        ])
+      ]
+    });
+
+    expect(sections).toEqual([]);
+  });
+
   test("deduplicates canonical navigation ids across Rail memberships", () => {
     expect(
       selectWorkspaceConversationRailSessionIds([

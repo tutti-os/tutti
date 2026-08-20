@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
@@ -94,6 +95,20 @@ func (c *acpClient) readLoop() {
 		}
 		c.setStdoutTail(stdoutTail)
 		pending = append(pending, frame.Stdout...)
+		// Synthetic optional-probe / startup-metadata responses are not cassette
+		// units. Completing them would report ChunkSeq=0 and trip the provider
+		// input barrier's "position moved backward" guard after real frames.
+		if frame.Synthetic {
+			for {
+				line, rest, ok := bytes.Cut(pending, []byte("\n"))
+				if !ok {
+					break
+				}
+				pending = rest
+				c.dispatchLine(line)
+			}
+			continue
+		}
 		var unitIndex uint64
 		for {
 			line, rest, ok := bytes.Cut(pending, []byte("\n"))
@@ -106,16 +121,53 @@ func (c *acpClient) readLoop() {
 				continue
 			}
 			unitIndex = nextUnitIndex
-			if err := c.completeProviderInputUnit(
-				frame,
-				unitIndex,
-				sessionreplay.ProviderInputUnitProtocolMessage,
-			); err != nil {
-				c.finish(err)
-				return
+			for {
+				err := c.completeProviderInputUnit(
+					frame,
+					unitIndex,
+					sessionreplay.ProviderInputUnitProtocolMessage,
+				)
+				if errors.Is(err, errReplaySyntheticPending) {
+					if drainErr := c.drainSyntheticOptionalProbeResponses(); drainErr != nil {
+						c.finish(drainErr)
+						return
+					}
+					continue
+				}
+				if err != nil {
+					c.finish(err)
+					return
+				}
+				break
 			}
 		}
 	}
+}
+
+func (c *acpClient) drainSyntheticOptionalProbeResponses() error {
+	replayConn, ok := c.conn.(interface{ HasPendingSyntheticStdout() bool })
+	if !ok {
+		return nil
+	}
+	for replayConn.HasPendingSyntheticStdout() {
+		frame, err := c.conn.Recv()
+		if err != nil {
+			return err
+		}
+		if len(frame.Stdout) == 0 {
+			continue
+		}
+		pending := append([]byte(nil), frame.Stdout...)
+		for {
+			line, rest, cut := bytes.Cut(pending, []byte("\n"))
+			if !cut {
+				break
+			}
+			pending = rest
+			c.dispatchLine(line)
+		}
+	}
+	return nil
 }
 
 func (c *acpClient) completeProviderInputUnit(

@@ -8,7 +8,7 @@ import (
 )
 
 const agentTurnSelectSQL = `
-SELECT workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
+SELECT workspace_id, agent_session_id, turn_id, COALESCE(identity_anchor_turn_id, ''), phase, outcome, error_json,
 	       file_changes_json, completed_command_json, backfilled,
 	       started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms, updated_at_unix_ms,
 	       turn_origin, COALESCE(source_goal_operation_id, ''), COALESCE(source_goal_revision, 0),
@@ -35,6 +35,7 @@ func scanAgentTurn(scanner rowScanner) (Turn, error) {
 		&turn.WorkspaceID,
 		&turn.AgentSessionID,
 		&turn.TurnID,
+		&turn.IdentityAnchorTurnID,
 		&turn.Phase,
 		&outcome,
 		&errorJSON,

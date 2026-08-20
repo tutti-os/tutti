@@ -187,7 +187,7 @@ func baseContext(ctx context.Context) context.Context {
 }
 
 func (s Service) resolveAuth(ctx context.Context, spec ProviderSpec, installed bool, binaryPath string) AuthInfo {
-	auth, _ := s.resolveAuthAndCLIVersion(ctx, spec, installed, binaryPath)
+	auth, _, _ := s.resolveAuthAndCLIVersion(ctx, spec, installed, binaryPath)
 	return auth
 }
 
@@ -196,24 +196,12 @@ func (s Service) resolveAuthAndCLIVersion(
 	spec ProviderSpec,
 	installed bool,
 	binaryPath string,
-) (AuthInfo, string) {
+) (AuthInfo, string, providerstatus.AuthEvidenceAuthority) {
 	if !installed {
-		return AuthInfo{Status: AuthUnknown}, ""
+		return AuthInfo{Status: AuthUnknown}, "", providerstatus.AuthEvidenceAuthorityNone
 	}
 	if isClaudeStatusSpec(spec) && strings.TrimSpace(os.Getenv("TUTTI_MOCK_AGENT_UNBOUND")) == "1" {
-		return AuthInfo{Status: AuthRequired}, ""
-	}
-	// A runtime authentication failure (e.g. a 401 sending a message) invalidates
-	// the stale "logged in" marker/command result until the user re-authenticates
-	// or a request succeeds again. We self-heal the moment the credential file is
-	// rewritten by a fresh login: re-login is a terminal action that never reports
-	// a "successful run", so without this the flag would stick until the user's
-	// next message succeeds, leaving the dock/wizard stuck on "needs login".
-	if failedAt, ok := s.RunOutcomes.AuthInvalidatedSince(spec.Provider); ok {
-		if !s.authCredentialsRefreshedAfter(spec, failedAt) {
-			return AuthInfo{Status: AuthRequired}, ""
-		}
-		s.RunOutcomes.ClearAuthInvalidated(spec.Provider)
+		return AuthInfo{Status: AuthRequired}, "", providerstatus.AuthEvidenceAuthorityLocal
 	}
 	// RunAuthStatusCommand is an explicit test seam. Keep it authoritative so
 	// status-cache tests can observe detection without depending on a real home
@@ -221,20 +209,20 @@ func (s Service) resolveAuthAndCLIVersion(
 	if s.RunAuthStatusCommand != nil && len(spec.AuthStatusCommand) > 0 &&
 		strings.TrimSpace(binaryPath) != "" {
 		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
-			return auth, ""
+			return auth, "", authCommandEvidenceAuthority(spec)
 		}
-		return s.resolveAuthFromMarkers(spec), ""
+		return s.resolveAuthFromMarkers(spec), "", providerstatus.AuthEvidenceAuthorityLocal
 	}
 	if authMarkerIsAuthoritative(spec) {
 		if auth, definitive := s.resolveAuthFromMarkersWithValidity(spec); definitive {
-			return auth, ""
+			return auth, "", providerstatus.AuthEvidenceAuthorityLocal
 		}
 	}
 	if len(spec.AuthStatusCommand) > 0 && strings.TrimSpace(binaryPath) != "" {
 		if isCursorAuthCommandSpec(spec) && s.RunAuthStatusCommand == nil {
 			release, acquired := s.DetectionCommands.acquire(ctx)
 			if !acquired {
-				return s.resolveAuthFromMarkers(spec), ""
+				return s.resolveAuthFromMarkers(spec), "", providerstatus.AuthEvidenceAuthorityLocal
 			}
 			defer release()
 			auth, cliVersion, ok := s.cursorAuthStatus(
@@ -243,16 +231,75 @@ func (s Service) resolveAuthAndCLIVersion(
 				s.commandResolver().Env(spec.AdapterEnv),
 			)
 			if ok {
-				return auth, cliVersion
+				return auth, cliVersion, providerstatus.AuthEvidenceAuthorityLocal
 			}
-			return s.resolveAuthFromMarkers(spec), cliVersion
+			return s.resolveAuthFromMarkers(spec), cliVersion, providerstatus.AuthEvidenceAuthorityLocal
 		}
 		if auth, ok := s.resolveAuthFromCommand(ctx, spec, binaryPath); ok {
-			return auth, ""
+			return auth, "", authCommandEvidenceAuthority(spec)
 		}
-		return s.resolveAuthFromMarkers(spec), ""
+		return s.resolveAuthFromMarkers(spec), "", providerstatus.AuthEvidenceAuthorityLocal
 	}
-	return s.resolveAuthFromMarkers(spec), ""
+	return s.resolveAuthFromMarkers(spec), "", providerstatus.AuthEvidenceAuthorityLocal
+}
+
+func authCommandEvidenceAuthority(ProviderSpec) providerstatus.AuthEvidenceAuthority {
+	return providerstatus.AuthEvidenceAuthorityLocal
+}
+
+func (s Service) reduceProviderAuth(
+	spec ProviderSpec,
+	local AuthInfo,
+	hasAPICredential bool,
+	authority providerstatus.AuthEvidenceAuthority,
+) AuthInfo {
+	return s.reduceProviderAuthWithRemote(spec, local, hasAPICredential, authority, providerstatus.AuthEvidence{}, false)
+}
+
+func (s Service) reduceProviderAuthWithRemote(
+	spec ProviderSpec,
+	local AuthInfo,
+	hasAPICredential bool,
+	authority providerstatus.AuthEvidenceAuthority,
+	remote providerstatus.AuthEvidence,
+	hasRemoteEvidence bool,
+) AuthInfo {
+	evidence := providerstatus.LocalAuthEvidence(local)
+	if hasAPICredential {
+		evidence.Kind = providerstatus.AuthEvidenceLocalCredential
+	} else if authority == providerstatus.AuthEvidenceAuthorityRemote {
+		switch local.Status {
+		case AuthAuthenticated:
+			evidence.Kind = providerstatus.AuthEvidenceRemoteSuccess
+		case AuthRequired:
+			evidence.Kind = providerstatus.AuthEvidenceRemoteAuthFailure
+		}
+	}
+	observation := providerstatus.ReduceAuthEvidence(providerstatus.AuthObservation{}, evidence)
+	if hasRemoteEvidence {
+		if strings.TrimSpace(remote.AccountLabel) == "" {
+			remote.AccountLabel = observation.AccountLabel
+		}
+		if strings.TrimSpace(remote.AuthMethod) == "" {
+			remote.AuthMethod = observation.AuthMethod
+		}
+		observation = providerstatus.ReduceAuthEvidence(observation, remote)
+	}
+	remoteEvidence, observedAt, ok := s.RunOutcomes.AuthEvidence(spec.Provider)
+	if ok && s.authCredentialsRefreshedAfter(spec, observedAt) {
+		s.RunOutcomes.ClearAuthEvidence(spec.Provider)
+		ok = false
+	}
+	if ok {
+		if strings.TrimSpace(remoteEvidence.AccountLabel) == "" {
+			remoteEvidence.AccountLabel = observation.AccountLabel
+		}
+		if strings.TrimSpace(remoteEvidence.AuthMethod) == "" {
+			remoteEvidence.AuthMethod = observation.AuthMethod
+		}
+		observation = providerstatus.ReduceAuthEvidence(observation, remoteEvidence)
+	}
+	return providerstatus.AuthInfoFromObservation(observation)
 }
 
 func (s Service) cursorAuthStatus(

@@ -11,10 +11,11 @@ import { createPortal } from "react-dom";
 import { useService } from "@tutti-os/infra/di";
 import type { WorkspaceSummary } from "@tutti-os/client-tuttid-ts";
 import { INotificationService } from "@tutti-os/ui-notifications";
-import { createConnectorMarketI18nRuntime } from "@tutti-os/connector-market/i18n";
-import { ConnectorMarketPanel } from "@tutti-os/connector-market/ui";
-import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
+import { createConnectorMarketI18nRuntime } from "@tutti-os/connector-renderer/i18n";
+import { ConnectorMarketPanel } from "@tutti-os/connector-renderer/ui";
+import { IConnectorMarketModule } from "@tutti-os/connector-renderer/application";
 import type {
+  DesktopComputerUseActionResult,
   DesktopComputerUsePermissionPane,
   DesktopComputerUsePermissionsStatus,
   DesktopComputerUseStatus
@@ -94,7 +95,6 @@ import {
   LAB_CONNECTORS_FLAG,
   LAB_WORKBENCH_SHORTCUTS_FLAG,
   LAB_AUTOMATION_RULES_FLAG,
-  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG,
   resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkspaceAgentGuiLabel } from "../services/workspaceAgentProviderCatalog";
@@ -215,11 +215,6 @@ export function WorkspaceSettingsPanel({
     pendingFeatureFlags,
     LAB_AUTOMATION_RULES_FLAG
   );
-  const mobileRemoteAccessSettingsEnabled = isFeatureEnabled(
-    pendingFeatureFlags,
-    MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
-  );
-
   useEffect(() => {
     if (settingsState.open) {
       settingsService.syncWorkspace({ id: workspace.id });
@@ -231,19 +226,6 @@ export function WorkspaceSettingsPanel({
       settingsService.selectSection("general");
     }
   }, [labSectionVisible, settingsService, settingsState.activeSection]);
-
-  useEffect(() => {
-    if (
-      !mobileRemoteAccessSettingsEnabled &&
-      settingsState.activeSection === "connection"
-    ) {
-      settingsService.selectSection("general");
-    }
-  }, [
-    mobileRemoteAccessSettingsEnabled,
-    settingsService,
-    settingsState.activeSection
-  ]);
 
   useEffect(() => {
     if (!automationRulesEnabled && settingsState.agentTab === "automation") {
@@ -333,14 +315,10 @@ export function WorkspaceSettingsPanel({
               id: "appearance" as const,
               label: t("workspace.settings.nav.appearance")
             },
-            ...(mobileRemoteAccessSettingsEnabled
-              ? [
-                  {
-                    id: "connection" as const,
-                    label: t("workspace.settings.nav.connection")
-                  }
-                ]
-              : []),
+            {
+              id: "connection" as const,
+              label: t("workspace.settings.nav.connection")
+            },
             {
               id: "deletedConversations" as const,
               label: t("workspace.settings.nav.deletedConversations")
@@ -424,145 +402,158 @@ export function WorkspaceSettingsPanel({
                 workbenchShortcuts={desktopPreferencesState.workbenchShortcuts}
               />
             ) : settingsState.activeSection === "agent" ? (
-              <div className="flex min-h-0 flex-col gap-5 pt-5">
-                <SectionTabs
-                  ariaLabel={t("workspace.settings.nav.agent")}
-                  className="h-8 shrink-0"
-                  tabs={[
-                    {
-                      value: "general" as const,
-                      label: t("workspace.settings.agent.tabs.general")
-                    },
-                    {
-                      value: "agents" as const,
-                      label: t("workspace.settings.agent.tabs.agents")
-                    },
-                    ...(connectorsVisible
-                      ? [
-                          {
-                            value: "connectors" as const,
-                            label: translateConnectorMarket("title")
-                          }
-                        ]
-                      : []),
-                    {
-                      value: "customAgents" as const,
-                      label: t("workspace.settings.agent.tabs.customAgents")
-                    },
-                    ...(automationRulesEnabled
-                      ? [
-                          {
-                            value: "automation" as const,
-                            label: t("workspace.settings.agent.tabs.automation")
-                          }
-                        ]
-                      : [])
-                  ]}
-                  value={settingsState.agentTab}
-                  onValueChange={(tab) => settingsService.selectAgentTab(tab)}
-                />
-                {settingsState.agentTab === "agents" ? (
-                  <WorkspaceAgentsSettingsTab
-                    autoCheckEnabled={
-                      desktopPreferencesState.agentCliUpdateCheckEnabled
-                    }
-                    autoCheckPending={
-                      desktopPreferencesState.changingAgentCliUpdateCheckEnabled !==
-                      null
-                    }
-                    agentProviderStatusService={agentProviderStatusService}
-                    agentsService={agentsService}
-                    focusProvider={settingsState.agentFocusProvider}
-                    focusRequestID={settingsState.agentFocusRequestID}
-                    earlyAccessEnabled={earlyAccessIntegrationsEnabled}
-                    featureFlags={pendingFeatureFlags}
-                    featureFlagsPending={
-                      desktopPreferencesState.changingFeatureFlags !== null
-                    }
-                    onAgentEnabledChange={(agentTargetID, enabled) =>
-                      settingsService.setAgentTargetEnabled(
-                        agentTargetID,
-                        enabled
-                      )
-                    }
-                    onAutoCheckEnabledChange={(enabled) => {
-                      void desktopPreferencesService
-                        .setAgentCliUpdateCheckEnabled(enabled)
-                        .catch((error) => {
-                          notifications.error({
-                            description:
-                              error instanceof Error && error.message.trim()
-                                ? error.message
-                                : undefined,
-                            title: t(
-                              "workspace.settings.agent.agents.autoCheckUpdatesFailed"
-                            )
+              <div className="flex min-h-0 flex-col gap-5">
+                <div className="pb-[20px]">
+                  <div className="sticky top-0 z-10 -mx-[22px] px-[22px] py-3 bg-[var(--background-fronted)]">
+                    <SectionTabs
+                      ariaLabel={t("workspace.settings.nav.agent")}
+                      className="h-8 shrink-0"
+                      tabs={[
+                        {
+                          value: "general" as const,
+                          label: t("workspace.settings.agent.tabs.general")
+                        },
+                        {
+                          value: "agents" as const,
+                          label: t("workspace.settings.agent.tabs.agents")
+                        },
+                        ...(connectorsVisible
+                          ? [
+                              {
+                                value: "connectors" as const,
+                                label: translateConnectorMarket("title")
+                              }
+                            ]
+                          : []),
+                        {
+                          value: "customAgents" as const,
+                          label: t("workspace.settings.agent.tabs.customAgents")
+                        },
+                        ...(automationRulesEnabled
+                          ? [
+                              {
+                                value: "automation" as const,
+                                label: t(
+                                  "workspace.settings.agent.tabs.automation"
+                                )
+                              }
+                            ]
+                          : [])
+                      ]}
+                      value={settingsState.agentTab}
+                      onValueChange={(tab) =>
+                        settingsService.selectAgentTab(tab)
+                      }
+                    />
+                  </div>
+                  {settingsState.agentTab === "agents" ? (
+                    <WorkspaceAgentsSettingsTab
+                      autoCheckEnabled={
+                        desktopPreferencesState.agentCliUpdateCheckEnabled
+                      }
+                      autoCheckPending={
+                        desktopPreferencesState.changingAgentCliUpdateCheckEnabled !==
+                        null
+                      }
+                      agentProviderStatusService={agentProviderStatusService}
+                      agentsService={agentsService}
+                      focusProvider={settingsState.agentFocusProvider}
+                      focusRequestID={settingsState.agentFocusRequestID}
+                      earlyAccessEnabled={earlyAccessIntegrationsEnabled}
+                      featureFlags={pendingFeatureFlags}
+                      featureFlagsPending={
+                        desktopPreferencesState.changingFeatureFlags !== null
+                      }
+                      onAgentEnabledChange={(agentTargetID, enabled) =>
+                        settingsService.setAgentTargetEnabled(
+                          agentTargetID,
+                          enabled
+                        )
+                      }
+                      onAutoCheckEnabledChange={(enabled) => {
+                        void desktopPreferencesService
+                          .setAgentCliUpdateCheckEnabled(enabled)
+                          .catch((error) => {
+                            notifications.error({
+                              description:
+                                error instanceof Error && error.message.trim()
+                                  ? error.message
+                                  : undefined,
+                              title: t(
+                                "workspace.settings.agent.agents.autoCheckUpdatesFailed"
+                              )
+                            });
                           });
+                      }}
+                      onExtensionEnabledChange={(flag, enabled) => {
+                        return settingsService.changeFeatureFlags({
+                          ...pendingFeatureFlags,
+                          [flag]: enabled
                         });
-                    }}
-                    onExtensionEnabledChange={(flag, enabled) => {
-                      return settingsService.changeFeatureFlags({
-                        ...pendingFeatureFlags,
-                        [flag]: enabled
-                      });
-                    }}
-                    onOpenEnvironment={(provider) =>
-                      agentEnvService.open({ focus: "detect", provider })
-                    }
-                  />
-                ) : settingsState.agentTab === "connectors" &&
-                  connectorsVisible ? (
-                  <ConnectorMarketPanel
-                    i18n={connectorMarketI18n}
-                    onError={handleConnectorMarketError}
-                    onTryConnector={() => settingsService.closePanel()}
-                    root={connectorMarketModule.root}
-                  />
-                ) : settingsState.agentTab === "customAgents" ? (
-                  <SettingsRows>
-                    <WorkspaceAgentsSection />
-                  </SettingsRows>
-                ) : settingsState.agentTab === "automation" &&
-                  automationRulesEnabled ? (
-                  <SettingsRows>
-                    <WorkspaceAutomationRulesSection />
-                  </SettingsRows>
-                ) : (
-                  <WorkspaceAgentSettingsSection
-                    agentConversationDetailMode={
-                      desktopPreferencesState.agentConversationDetailMode
-                    }
-                    browserUseConnectionMode={
-                      desktopPreferencesState.browserUseConnectionMode
-                    }
-                    changingAgentConversationDetailMode={
-                      desktopPreferencesState.changingAgentConversationDetailMode
-                    }
-                    changingDefaultAgentProvider={
-                      desktopPreferencesState.changingDefaultAgentProvider
-                    }
-                    changingBrowserUseConnectionMode={
-                      desktopPreferencesState.changingBrowserUseConnectionMode
-                    }
-                    defaultAgentProvider={
-                      desktopPreferencesState.defaultAgentProvider
-                    }
-                    focusedAnchor={settingsState.generalFocusAnchor}
-                    focusRequestID={settingsState.generalFocusRequestID}
-                    onBrowserUseConnectionModeChange={(mode) => {
-                      void settingsService.changeBrowserUseConnectionMode(mode);
-                    }}
-                    onAgentConversationDetailModeChange={(mode) => {
-                      void settingsService.changeAgentConversationDetailMode(
-                        mode
-                      );
-                    }}
-                    onDefaultAgentProviderChange={(provider) => {
-                      void settingsService.changeDefaultAgentProvider(provider);
-                    }}
-                    onOpenExternalAgentImport={onOpenExternalAgentImport}
-                  />
-                )}
+                      }}
+                      onOpenEnvironment={(provider) =>
+                        agentEnvService.open({ focus: "detect", provider })
+                      }
+                    />
+                  ) : settingsState.agentTab === "connectors" &&
+                    connectorsVisible ? (
+                    <ConnectorMarketPanel
+                      i18n={connectorMarketI18n}
+                      locale={desktopPreferencesState.locale}
+                      onError={handleConnectorMarketError}
+                      onTryConnector={() => settingsService.closePanel()}
+                      root={connectorMarketModule.root}
+                    />
+                  ) : settingsState.agentTab === "customAgents" ? (
+                    <SettingsRows>
+                      <WorkspaceAgentsSection />
+                    </SettingsRows>
+                  ) : settingsState.agentTab === "automation" &&
+                    automationRulesEnabled ? (
+                    <SettingsRows>
+                      <WorkspaceAutomationRulesSection />
+                    </SettingsRows>
+                  ) : (
+                    <WorkspaceAgentSettingsSection
+                      agentConversationDetailMode={
+                        desktopPreferencesState.agentConversationDetailMode
+                      }
+                      browserUseConnectionMode={
+                        desktopPreferencesState.browserUseConnectionMode
+                      }
+                      changingAgentConversationDetailMode={
+                        desktopPreferencesState.changingAgentConversationDetailMode
+                      }
+                      changingDefaultAgentProvider={
+                        desktopPreferencesState.changingDefaultAgentProvider
+                      }
+                      changingBrowserUseConnectionMode={
+                        desktopPreferencesState.changingBrowserUseConnectionMode
+                      }
+                      defaultAgentProvider={
+                        desktopPreferencesState.defaultAgentProvider
+                      }
+                      focusedAnchor={settingsState.generalFocusAnchor}
+                      focusRequestID={settingsState.generalFocusRequestID}
+                      onBrowserUseConnectionModeChange={(mode) => {
+                        void settingsService.changeBrowserUseConnectionMode(
+                          mode
+                        );
+                      }}
+                      onAgentConversationDetailModeChange={(mode) => {
+                        void settingsService.changeAgentConversationDetailMode(
+                          mode
+                        );
+                      }}
+                      onDefaultAgentProviderChange={(provider) => {
+                        void settingsService.changeDefaultAgentProvider(
+                          provider
+                        );
+                      }}
+                      onOpenExternalAgentImport={onOpenExternalAgentImport}
+                    />
+                  )}
+                </div>
               </div>
             ) : settingsState.activeSection === "appearance" ? (
               <WorkspaceAppearanceSettingsSection
@@ -619,12 +610,7 @@ export function WorkspaceSettingsPanel({
                 }}
               />
             ) : settingsState.activeSection === "connection" ? (
-              <WorkspaceConnectionSettingsSection
-                featureFlags={
-                  desktopPreferencesState.changingFeatureFlags ??
-                  desktopPreferencesState.featureFlags
-                }
-              />
+              <WorkspaceConnectionSettingsSection />
             ) : settingsState.activeSection === "deletedConversations" ? (
               <WorkspaceDeletedConversationsSection
                 changingRetentionDays={
@@ -1235,7 +1221,14 @@ function ComputerUseSetupRow({
         );
         return;
       }
-      if (currentStatus.installed) {
+      // A Windows binary can be present while `cua-driver doctor` is failing
+      // (for example after a partial/UAC-blocked installation). Do not treat
+      // that state as a successful install; the repaired non-interactive
+      // installer must get a chance to reconcile it.
+      const windowsDriverReady =
+        currentStatus.platform !== "win32" ||
+        currentStatus.authorization === "authorized";
+      if (currentStatus.installed && windowsDriverReady) {
         setOperationProgress(100);
         await delay(computerUseOperationSettleMs);
         setMessage(null);
@@ -1245,6 +1238,17 @@ function ComputerUseSetupRow({
         return;
       }
       const result = await settingsService.installComputerUse();
+      logPermissionDiagnostic(
+        "computer_use.permission_install_completed",
+        {
+          success: result.success,
+          exitCode: result.exitCode ?? null,
+          failureReason: result.failureReason ?? null,
+          outputBytes: result.output.length,
+          diagnosticMessage: truncateComputerUseActionOutput(result.output)
+        },
+        result.success ? "info" : "warn"
+      );
       setOperationProgress(100);
       await delay(computerUseOperationSettleMs);
       if (result.success) {
@@ -1277,10 +1281,31 @@ function ComputerUseSetupRow({
           }
         }
       } else {
-        setMessage(t("workspace.settings.general.computerUseInstallFailed"));
+        setMessage(
+          formatComputerUseActionFailure(
+            result,
+            t("workspace.settings.general.computerUseInstallFailed")
+          )
+        );
       }
-    } catch {
-      setMessage(t("workspace.settings.general.computerUseInstallFailed"));
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      logPermissionDiagnostic(
+        "computer_use.permission_install_completed",
+        {
+          success: false,
+          failureReason: "renderer-error",
+          error: errorMessage
+        },
+        "error"
+      );
+      setMessage(
+        formatComputerUseActionFailure(
+          { output: errorMessage },
+          t("workspace.settings.general.computerUseInstallFailed")
+        )
+      );
     } finally {
       setOperation(null);
       setOperationProgress(0);
@@ -2119,6 +2144,26 @@ function summarizeComputerUseStatusForDiagnostic(
     permissionSource: status.permissions?.source ?? null,
     reason: status.reason ?? null
   };
+}
+
+const computerUseActionDiagnosticMaxLength = 600;
+
+function truncateComputerUseActionOutput(output: string): string | null {
+  const normalized = output.trim();
+  if (!normalized) {
+    return null;
+  }
+  return normalized.length <= computerUseActionDiagnosticMaxLength
+    ? normalized
+    : `${normalized.slice(0, computerUseActionDiagnosticMaxLength)}…`;
+}
+
+function formatComputerUseActionFailure(
+  result: Pick<DesktopComputerUseActionResult, "output">,
+  fallback: string
+): string {
+  const diagnostic = truncateComputerUseActionOutput(result.output);
+  return diagnostic ? `${fallback}: ${diagnostic}` : fallback;
 }
 
 function delay(ms: number): Promise<void> {

@@ -10,7 +10,7 @@ import {
 } from "./sessionLifecycle.state.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
-const TURN_CANCEL_TIMEOUT_MS = 30_000;
+export const TURN_CANCEL_TIMEOUT_MS = 30_000;
 
 export function reconcilePendingCancels(
   previous: SessionLifecycleState,
@@ -186,6 +186,23 @@ export function cancelCommand(
   };
 }
 
+export function clearCancel(
+  state: SessionLifecycleState,
+  id: string
+): EngineReducerResult<SessionLifecycleState> {
+  const operation = state.operationBySessionId[id];
+  if (!operation || operation.cancel.status === "idle") return unchanged(state);
+  const nextState = state.sessionsById[id]
+    ? setCancel(state, id, initialCancel())
+    : removeDetachedOperation(state, id);
+  return {
+    commands: operation.cancel.expiryId
+      ? [{ type: "engine/cancelExpiry", expiryId: operation.cancel.expiryId }]
+      : NO_COMMANDS,
+    state: nextState
+  };
+}
+
 export function sessionVersion(session: {
   updatedAtUnixMs?: number;
   lastEventUnixMs?: number;
@@ -213,4 +230,13 @@ function unchanged(
   state: SessionLifecycleState
 ): EngineReducerResult<SessionLifecycleState> {
   return { commands: NO_COMMANDS, state };
+}
+
+function removeDetachedOperation(
+  state: SessionLifecycleState,
+  id: string
+): SessionLifecycleState {
+  const operationBySessionId = { ...state.operationBySessionId };
+  delete operationBySessionId[id];
+  return { ...state, operationBySessionId };
 }

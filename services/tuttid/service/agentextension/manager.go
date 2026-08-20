@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"reflect"
 	"regexp"
@@ -36,18 +35,41 @@ var safeKey = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9._-]{0,62}[a-z0-9])?$`)
 const runtimeVersionProbeTimeout = 90 * time.Second
 
 type Manager struct {
-	Sources           []tuttitypes.AgentExtensionSource
-	RuntimeInstallDir string
-	RuntimeBinDir     string
-	Store             workspacedata.AgentTargetStore
-	Installations     InstallationStore
-	Discovery         SetupDiscoveryDirectory
-	Preferences       workspacedata.PreferencesStore
-	Client            *http.Client
-	RuntimeResolver   runtimecmd.Resolver
-	reconcileMu       sync.Mutex
-	versionCacheOnce  sync.Once
-	runtimeVersions   *runtimeVersionCache
+	Sources                     []tuttitypes.AgentExtensionSource
+	RuntimeInstallDir           string
+	RuntimeBinDir               string
+	AccountUsageNodeSnapshotDir string
+	Store                       workspacedata.AgentTargetStore
+	Installations               InstallationStore
+	Discovery                   SetupDiscoveryDirectory
+	Preferences                 workspacedata.PreferencesStore
+	Client                      *http.Client
+	RuntimeResolver             runtimecmd.Resolver
+	UserPathAdapter             UserPathAdapter
+	reconcileMu                 sync.Mutex
+	versionCacheOnce            sync.Once
+	runtimeVersions             *runtimeVersionCache
+	accountUsageOnce            sync.Once
+	accountUsageCache           *accountUsageProbeCache
+	nodeIdentityOnce            sync.Once
+	nodeIdentities              *runtimeExecutableIdentityCache
+	nodeRunnerOnce              sync.Once
+	nodeRunner                  *agentruntime.VerifiedNodeScriptRunner
+}
+
+func (m *Manager) accountUsageNodeScriptRunner() *agentruntime.VerifiedNodeScriptRunner {
+	m.nodeRunnerOnce.Do(func() {
+		m.nodeRunner = agentruntime.NewVerifiedNodeScriptRunner(m.AccountUsageNodeSnapshotDir)
+	})
+	return m.nodeRunner
+}
+
+func (m *Manager) closeAccountUsageNodeScriptRunner() error {
+	return m.accountUsageNodeScriptRunner().Close()
+}
+
+type UserPathAdapter interface {
+	Ensure(context.Context, string) error
 }
 
 type Installation = agentextensionbiz.Installation
@@ -369,16 +391,20 @@ func (m *Manager) runtimeBinding(installation Installation, command []string, ve
 	}, nil
 }
 
-func (m *Manager) ResolveAgentTargetAvailability(ctx context.Context, target agenttargetbiz.Target) (string, string) {
+func (m *Manager) ResolveAgentTargetAvailability(ctx context.Context, target agenttargetbiz.Target) (string, string, string) {
 	launchRef, err := agenttargetbiz.RuntimeProviderTargetRef(target)
 	if err != nil || launchRef["kind"] != agenttargetbiz.LaunchRefTypeAgentExtension {
-		return "unknown", "invalid_extension_launch_ref"
+		return "unknown", "invalid_extension_launch_ref", ""
 	}
 	installationID, _ := launchRef["extensionInstallationId"].(string)
-	if _, err := m.ResolveRuntime(ctx, installationID); err != nil {
-		return "not_installed", "compatible_runtime_not_installed"
+	binding, err := m.ResolveRuntime(ctx, installationID)
+	if err != nil {
+		return "not_installed", "compatible_runtime_not_installed", ""
 	}
-	return "ready", ""
+	if len(binding.Command) == 0 {
+		return "not_installed", "compatible_runtime_not_installed", ""
+	}
+	return "ready", "", strings.TrimSpace(binding.Command[0])
 }
 
 func (m *Manager) reconcileSource(ctx context.Context, source tuttitypes.AgentExtensionSource) (Installation, error) {
@@ -721,7 +747,7 @@ func runtimeVersionWithEnv(ctx context.Context, executable string, args []string
 	}
 	probeCtx, cancel := context.WithTimeout(ctx, runtimeVersionProbeTimeout)
 	defer cancel()
-	command := exec.CommandContext(probeCtx, executable, args...)
+	command := newAgentExtensionCommand(probeCtx, executable, args...)
 	command.Env = env
 	output, err := command.CombinedOutput()
 	if err != nil {
@@ -782,7 +808,7 @@ func runtimeVersionWithIdentity(
 	if identity != nil {
 		output, err = agentruntime.RunVerifiedExecutable(probeCtx, executable, args, identity)
 	} else {
-		output, err = exec.CommandContext(probeCtx, executable, args...).CombinedOutput()
+		output, err = newAgentExtensionCommand(probeCtx, executable, args...).CombinedOutput()
 	}
 	if err != nil {
 		return "", runtimeVersionProbeError(ctx, probeCtx, err)

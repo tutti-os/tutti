@@ -1,6 +1,7 @@
 import { act, renderHook } from "@testing-library/react";
 import {
   createAgentSessionEngine,
+  type AgentActivitySessionGoalSyncState,
   type AgentActivityTurn,
   type PendingActivationIntentRecord
 } from "@tutti-os/agent-activity-core";
@@ -91,7 +92,7 @@ describe("useAgentGUISessionPresentation", () => {
     });
   });
 
-  it("keeps a confirmed Session busy until its expected Turn exists", () => {
+  it("separates Turn-start feedback from canonical execution busy", () => {
     const sessionEngine = createAgentSessionEngine({
       clock: { nowUnixMs: () => 1 },
       commandPort: createTestEngineCommandPort({
@@ -106,12 +107,14 @@ describe("useAgentGUISessionPresentation", () => {
       activeEngineActiveTurn: null,
       activeEngineAvailability: "available",
       activeEngineHasPendingInteractions: false,
+      activeHasPendingSubmitStopTarget: false,
       activeEngineLatestTurn: null as AgentActivityTurn | null,
       activeEngineRuntimeAvailability: null,
       activeEngineRuntimeActivity: "idle" as "idle" | "running",
       activeEngineSession: {
         agentSessionId: "session-1",
         goal: null,
+        goalSyncState: null as AgentActivitySessionGoalSyncState | null,
         resumable: true
       },
       activeEngineSettingsUpdate: null,
@@ -164,18 +167,38 @@ describe("useAgentGUISessionPresentation", () => {
 
     const rendered = renderHook(() => useAgentGUISessionPresentation(input));
 
-    expect(rendered.result.current.activeConversationBusy).toBe(true);
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(true);
+    expect(rendered.result.current.composerGate.submission).toEqual({
+      status: "blocked",
+      reason: "submitting"
+    });
 
     input.activeLatestPendingSubmitTurnId = "turn-1";
     input.hasUnconfirmedSubmit = false;
     rendered.rerender();
 
     expect(rendered.result.current.activeConversationBusy).toBe(false);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(false);
+
+    input.activeLiveState = "activating";
+    rendered.rerender();
+
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(false);
+    expect(rendered.result.current.composerGate.submission.status).not.toBe(
+      "queue"
+    );
+
+    input.activeLiveState = "active";
+    rendered.rerender();
 
     input.activePendingActivation = {
       agentSessionId: "session-1",
       agentTargetId: "local:claude-code",
       clientSubmitId: "submit-1",
+      commandOutcome: "pending",
+      commandSettledAtUnixMs: null,
       content: [{ type: "text", text: "hello" }],
       cwd: "/workspace",
       errorCode: null,
@@ -183,15 +206,19 @@ describe("useAgentGUISessionPresentation", () => {
       expiresAtUnixMs: Number.MAX_SAFE_INTEGER,
       initialPromptRetracted: false,
       initialTurnExpected: true,
+      lastObservedStage: "requested",
       mode: "new",
       requestedAtUnixMs: 1,
       requestId: "request-1",
-      status: "confirmed",
+      snapshotObservedAtUnixMs: null,
+      snapshotOutcome: "not_observed",
+      status: "requested",
       title: null,
       workspaceId: "workspace-1"
     };
     rendered.rerender();
-    expect(rendered.result.current.activeConversationBusy).toBe(true);
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(true);
 
     input.activeEngineLatestTurn = {
       agentSessionId: "session-1",
@@ -210,10 +237,265 @@ describe("useAgentGUISessionPresentation", () => {
     input.activePendingActivation = null;
     input.activeEngineLatestTurn = null;
     input.activeEngineRuntimeActivity = "running";
+    input.activityDisplayStatus = "idle";
     rendered.rerender();
-    expect(rendered.result.current.activeConversationBusy).toBe(true);
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
 
     input.activeEngineRuntimeActivity = "idle";
+    input.activityDisplayStatus = "idle";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activeEngineActiveTurn = {
+      agentSessionId: "session-1",
+      origin: "user_prompt",
+      phase: "running",
+      startedAtUnixMs: 5,
+      turnId: "turn-2",
+      updatedAtUnixMs: 5
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(false);
+
+    input.activeEngineActiveTurn = null;
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activePendingActivation = {
+      agentSessionId: "session-1",
+      agentTargetId: "local:claude-code",
+      clientSubmitId: "goal-submit-1",
+      commandOutcome: "succeeded",
+      commandSettledAtUnixMs: 4,
+      content: [{ type: "text", text: "/goal ship it" }],
+      cwd: "/workspace",
+      errorCode: null,
+      errorMessage: null,
+      expiresAtUnixMs: Number.MAX_SAFE_INTEGER,
+      initialGoalControl: { action: "set", objective: "ship it" },
+      initialPromptRetracted: false,
+      initialTurnExpected: false,
+      lastObservedStage: "confirmed",
+      mode: "new",
+      requestedAtUnixMs: 4,
+      requestId: "goal-request-1",
+      snapshotObservedAtUnixMs: 4,
+      snapshotOutcome: "matched",
+      status: "confirmed",
+      title: null,
+      workspaceId: "workspace-1"
+    };
+    input.activeGoalControlPresentation = {
+      agentSessionId: "session-1",
+      goal: { objective: "ship it", status: "active" },
+      optimistic: true,
+      status: "pending_create"
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(true);
+
+    input.activePendingActivation = {
+      ...input.activePendingActivation,
+      status: "confirmed"
+    };
+    input.activeGoalControlPresentation = {
+      ...input.activeGoalControlPresentation,
+      optimistic: false,
+      status: "idle"
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    for (const syncStatus of ["pending", "applying", "unknown"] as const) {
+      input.activeEngineSession = {
+        ...input.activeEngineSession!,
+        goalSyncState: {
+          pendingOperationId: null,
+          revision: 1,
+          syncStatus
+        }
+      };
+      rendered.rerender();
+      expect(rendered.result.current.activeConversationBusy).toBe(false);
+    }
+
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        pendingOperationId: null,
+        revision: 1,
+        syncStatus: "synced"
+      }
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        executionPending: true,
+        pendingOperationId: null,
+        revision: 1,
+        syncStatus: "synced"
+      }
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(true);
+
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        pendingOperationId: "goal-operation-1",
+        revision: 1,
+        syncStatus: "synced"
+      }
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        executionPending: true,
+        pendingOperationId: null,
+        revision: 1,
+        syncStatus: "diverged"
+      }
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        pendingOperationId: "goal-operation-1",
+        revision: 1,
+        syncStatus: "applying"
+      }
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(true);
+
+    for (const syncStatus of ["pending", "unknown"] as const) {
+      input.activeEngineSession = {
+        ...input.activeEngineSession!,
+        goalSyncState: {
+          pendingOperationId: "goal-operation-1",
+          revision: 1,
+          syncStatus
+        }
+      };
+      rendered.rerender();
+      expect(rendered.result.current.activeConversationBusy).toBe(false);
+      expect(rendered.result.current.isAwaitingTurnStart).toBe(true);
+    }
+
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        executionPending: true,
+        pendingOperationId: null,
+        revision: 1,
+        syncStatus: "synced"
+      }
+    };
+
+    input.activeEngineLatestTurn = {
+      agentSessionId: "session-1",
+      origin: "goal_arm",
+      phase: "running",
+      startedAtUnixMs: 5,
+      turnId: "goal-turn-1",
+      updatedAtUnixMs: 5
+    };
+    input.activeEngineRuntimeActivity = "running";
+    input.activityDisplayStatus = "working";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(true);
+    expect(rendered.result.current.isAwaitingTurnStart).toBe(false);
+
+    input.activeEngineLatestTurn = {
+      ...input.activeEngineLatestTurn,
+      outcome: "completed",
+      phase: "settled",
+      settledAtUnixMs: 6,
+      updatedAtUnixMs: 6
+    };
+    input.activityDisplayStatus = "completed";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activeEngineLatestTurn = {
+      ...input.activeEngineLatestTurn,
+      error: { message: "Runtime host unavailable" },
+      outcome: "failed"
+    };
+    input.activityDisplayStatus = "failed";
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activeEngineLatestTurn = null;
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        pendingOperationId: null,
+        revision: 1,
+        syncStatus: "failed"
+      }
+    };
+    rendered.rerender();
+    expect(rendered.result.current.activeConversationBusy).toBe(false);
+
+    input.activeEngineSession = {
+      ...input.activeEngineSession!,
+      goalSyncState: {
+        pendingOperationId: "goal-operation-1",
+        revision: 1,
+        syncStatus: "applying"
+      }
+    };
+    for (const status of ["canceled", "failed"] as const) {
+      input.activePendingActivation = {
+        ...input.activePendingActivation,
+        status
+      };
+      rendered.rerender();
+      expect(rendered.result.current.activeConversationBusy).toBe(false);
+    }
+
+    input.activePendingActivation = {
+      ...input.activePendingActivation,
+      status: "confirmed"
+    };
+    for (const status of [
+      "paused",
+      "blocked",
+      "usageLimited",
+      "budgetLimited",
+      "complete"
+    ] as const) {
+      input.activeGoalControlPresentation = {
+        ...input.activeGoalControlPresentation,
+        goal: { objective: "ship it", status }
+      };
+      rendered.rerender();
+      expect(rendered.result.current.activeConversationBusy).toBe(false);
+    }
+
+    input.activeGoalControlPresentation = {
+      agentSessionId: "session-1",
+      goal: null,
+      optimistic: false,
+      status: "idle"
+    };
+    input.activePendingActivation = {
+      ...input.activePendingActivation,
+      initialGoalControl: { action: "clear" }
+    };
     rendered.rerender();
     expect(rendered.result.current.activeConversationBusy).toBe(false);
   });

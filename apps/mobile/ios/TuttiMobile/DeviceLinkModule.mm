@@ -142,19 +142,21 @@ RCT_REMAP_METHOD(prepareLink,
                  timeoutMillis:(double)timeoutMillis
                  resolver:(RCTPromiseResolveBlock)resolve
                  rejecter:(RCTPromiseRejectBlock)reject) {
+  (void)timeoutMillis;
   int64_t generation = [self beginLinkOperation];
   dispatch_async(self.operationQueue, ^{
     NSError *error = nil;
     TUTMobileLink *prepared = TUTMobileNewLink(stunEndpointsJSON, &error);
     if (prepared == nil || error != nil) {
+      [self closeDetachedLink:[self cancelLinkOperation:generation]];
       reject(@"DEVICE_LINK_PREPARE_FAILED", @"Unable to prepare DeviceLink",
              error);
       return;
     }
-    NSString *description =
-        [prepared localDescription:(int64_t)timeoutMillis error:&error];
+    NSString *description = [prepared startLocalDescription:&error];
     if (description == nil || error != nil) {
       [self closeDetachedLink:prepared];
+      [self closeDetachedLink:[self cancelLinkOperation:generation]];
       reject(@"DEVICE_LINK_PREPARE_FAILED", @"Unable to prepare DeviceLink",
              error);
       return;
@@ -172,6 +174,102 @@ RCT_REMAP_METHOD(prepareLink,
       @"token" : @(generation),
     });
   });
+}
+
+RCT_REMAP_METHOD(nextCandidateExchangeAction,
+                 nextCandidateExchangeAction:(double)token
+                 timeoutMillis:(double)timeoutMillis
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject) {
+  TUTMobileLink *selected = [self linkSnapshotForGeneration:(int64_t)token];
+  if (selected == nil) {
+    reject(@"DEVICE_LINK_CANDIDATE_FAILED",
+           @"DeviceLink preparation is no longer current", nil);
+    return;
+  }
+  dispatch_async(self.operationQueue, ^{
+    NSError *error = nil;
+    NSString *action = [selected
+        nextCandidateExchangeAction:(int64_t)timeoutMillis
+                              error:&error];
+    if (action == nil || error != nil) {
+      reject(@"DEVICE_LINK_CANDIDATE_FAILED",
+             @"Unable to read DeviceLink candidate action", error);
+      return;
+    }
+    resolve(action);
+  });
+}
+
+RCT_REMAP_METHOD(resolveCandidateExchangeAction,
+                 resolveCandidateExchangeAction:(double)actionId
+                 succeeded:(BOOL)succeeded
+                 retryable:(BOOL)retryable
+                 candidatesJSON:(NSString *)candidatesJSON
+                 token:(double)token
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject) {
+  TUTMobileLink *selected = [self linkSnapshotForGeneration:(int64_t)token];
+  if (selected == nil) {
+    reject(@"DEVICE_LINK_CANDIDATE_FAILED",
+           @"DeviceLink preparation is no longer current", nil);
+    return;
+  }
+  dispatch_async(self.operationQueue, ^{
+    NSError *error = nil;
+    long added = 0;
+    BOOL resolved = [selected
+        resolveCandidateExchangeAction:(int64_t)actionId
+                              succeeded:succeeded
+                              retryable:retryable
+                          candidatesJSON:candidatesJSON
+                                   ret0_:&added
+                                   error:&error];
+    if (!resolved || error != nil) {
+      reject(@"DEVICE_LINK_CANDIDATE_FAILED",
+             @"Unable to resolve DeviceLink candidate action", error);
+      return;
+    }
+    resolve(@(added));
+  });
+}
+
+RCT_REMAP_METHOD(notifyRemoteCandidateChange,
+                 notifyRemoteCandidateChange:(double)token
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject) {
+  TUTMobileLink *selected = [self linkSnapshotForGeneration:(int64_t)token];
+  if (selected == nil) {
+    reject(@"DEVICE_LINK_CANDIDATE_FAILED",
+           @"DeviceLink preparation is no longer current", nil);
+    return;
+  }
+  NSError *error = nil;
+  if (![selected notifyRemoteCandidateChange:&error]) {
+    reject(@"DEVICE_LINK_CANDIDATE_FAILED",
+           @"Unable to notify DeviceLink candidate change", error);
+    return;
+  }
+  resolve(nil);
+}
+
+RCT_REMAP_METHOD(stopCandidateExchange,
+                 stopCandidateExchange:(double)token
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject) {
+  TUTMobileLink *selected = [self linkSnapshotForGeneration:(int64_t)token];
+  if (selected != nil) {
+    [selected stopCandidateExchange];
+  }
+  resolve(nil);
+}
+
+RCT_REMAP_METHOD(cancelLink,
+                 cancelLink:(double)token
+                 resolver:(RCTPromiseResolveBlock)resolve
+                 rejecter:(RCTPromiseRejectBlock)reject) {
+  [self closeDetachedLink:[self cancelLinkOperation:(int64_t)token]];
+  resolve(nil);
 }
 
 RCT_REMAP_METHOD(connectLink,
@@ -690,6 +788,18 @@ RCT_REMAP_METHOD(closeLink,
     self.relaySubprotocol = nil;
   }
   [self closeDetachedLink:previous];
+}
+
+- (TUTMobileLink *)cancelLinkOperation:(int64_t)generation {
+  @synchronized(self) {
+    if (generation != self.linkGeneration) {
+      return nil;
+    }
+    self.linkGeneration += 1;
+    TUTMobileLink *previous = self.link;
+    self.link = nil;
+    return previous;
+  }
 }
 
 - (void)closeDetachedLink:(TUTMobileLink *)link {

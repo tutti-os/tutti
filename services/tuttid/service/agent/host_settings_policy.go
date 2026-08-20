@@ -25,6 +25,7 @@ func (p serviceHostSettingsPolicy) NormalizePersistedSettings(
 			ctx,
 			p.catalog,
 			session.Provider,
+			session.Cwd,
 			settings.Model,
 			settings.ReasoningEffort,
 		)
@@ -60,6 +61,7 @@ func (p serviceHostSettingsPolicy) NormalizeRuntimeSettingsPatch(
 				ctx,
 				p.catalog,
 				provider,
+				session.Cwd,
 				selectedModel,
 				selectedReasoningEffort,
 			)

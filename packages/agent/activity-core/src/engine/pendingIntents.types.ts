@@ -18,6 +18,30 @@ export type PendingActivationStatus =
   | "uncertain"
   | "failed";
 
+export type PendingActivationCommandOutcome =
+  | "pending"
+  | "succeeded"
+  | "failed"
+  | "timed_out"
+  | "invalid_result"
+  | "canceled";
+
+export type PendingActivationSnapshotOutcome =
+  | "not_observed"
+  | "session_missing"
+  | "workspace_mismatch"
+  | "stale_for_new"
+  | "matched";
+
+export type PendingActivationLastObservedStage =
+  | "requested"
+  | "command_settled"
+  | "snapshot_observed"
+  | "confirmed"
+  | "stale_command_result"
+  | "expired"
+  | "canceled";
+
 /** True while an activation may still yield, or already yielded, a session. */
 export function isPendingActivationViable(
   activation: { status: PendingActivationStatus } | null | undefined
@@ -36,15 +60,20 @@ interface PendingActivationIntentRecordBase {
   content: readonly AgentPromptContentBlock[];
   displayPrompt?: string;
   cwd: string;
+  commandOutcome: PendingActivationCommandOutcome;
+  commandSettledAtUnixMs: number | null;
   errorCode: string | null;
   errorMessage: string | null;
   expiresAtUnixMs: number;
   initialPromptRetracted: boolean;
   initialTurnExpected: boolean;
+  lastObservedStage: PendingActivationLastObservedStage;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   railSectionKey?: string;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
@@ -52,6 +81,8 @@ interface PendingActivationIntentRecordBase {
   requestId: string;
   settings?: AgentActivitySessionSettings;
   status: PendingActivationStatus;
+  snapshotObservedAtUnixMs: number | null;
+  snapshotOutcome: PendingActivationSnapshotOutcome;
   title: string | null;
   workspaceId: string;
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
@@ -94,6 +125,7 @@ export interface PendingSubmitIntentRecord {
   displayPrompt?: string;
   errorCode: string | null;
   errorMessage: string | null;
+  errorReason: string | null;
   expiresAtUnixMs: number;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   requestedAtUnixMs: number;
@@ -121,8 +153,10 @@ interface SessionActivationRequestedIntentBase {
   initialTurnExpected?: boolean;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   railSectionKey?: string;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   initialDisplayPrompt?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
@@ -194,8 +228,10 @@ interface SessionActivateCommandBase {
   initialDisplayPrompt?: string;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;

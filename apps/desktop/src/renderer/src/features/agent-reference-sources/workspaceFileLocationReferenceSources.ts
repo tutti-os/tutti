@@ -3,6 +3,7 @@ import type {
   WorkspaceFileLocationSection
 } from "@tutti-os/workspace-file-manager/services";
 import type {
+  LoadSidebarGroupsResult,
   ListChildrenInput,
   ListChildrenResult,
   NodeRef,
@@ -120,6 +121,7 @@ function createLocationReferenceSource(input: {
       paginated: false,
       navigable: false,
       filterable: true,
+      filtersUseSearch: true,
       ...(input.searchByProvenance
         ? { provenanceDimensions: ["agent"] as const }
         : {})
@@ -130,17 +132,14 @@ function createLocationReferenceSource(input: {
       return section !== null && section.locations.length > 0;
     },
 
-    listSidebarGroups(): ReferenceNode[] {
-      // The picker calls this synchronously. The source registry has already
-      // resolved availability, so use the latest synchronous snapshot available
-      // from the getLocationSections provider.
-      const sections = input.getLocationSections();
-      if (sections instanceof Promise) {
-        return [];
-      }
-      const section =
-        sections.find((item) => item.id === input.sectionId) ?? null;
-      return locationNodes(section?.locations ?? [], sourceId);
+    async loadSidebarGroups(): Promise<LoadSidebarGroupsResult> {
+      const section = await getSection();
+      return {
+        autoSelectFirst: true,
+        entries: locationNodes(section?.locations ?? [], sourceId),
+        nextCursor: null,
+        ordered: true
+      };
     },
 
     async listChildren(

@@ -116,6 +116,66 @@ describe("WorkspaceActivityService", () => {
     service.dispose();
   });
 
+  test("projects a conversation project from its rail key instead of cwd or Rail membership", async () => {
+    const expectedProject = createUserProject();
+    const wrongProject = createUserProject({
+      id: "project-2",
+      label: "wrong",
+      path: "/workspace/wrong",
+      sectionKey: "project:wrong"
+    });
+    const session = {
+      ...createSession(),
+      cwd: "/workspace/wrong/.tutti/agent/worktrees/session-1",
+      railSectionKey: expectedProject.sectionKey
+    };
+    const service = createService(
+      createClient({
+        listMessages: emptyMessagePage,
+        listSections: async () => ({
+          pinned: { hasMore: false, sessions: [], totalCount: 0 },
+          sections: [
+            {
+              hasMore: false,
+              kind: "project",
+              sectionKey: wrongProject.sectionKey,
+              sessions: [session],
+              totalCount: 1,
+              userProject: wrongProject
+            },
+            {
+              hasMore: false,
+              kind: "project",
+              sectionKey: expectedProject.sectionKey,
+              sessions: [],
+              totalCount: 0,
+              userProject: expectedProject
+            }
+          ],
+          workspaceId: workspace.id
+        }),
+        projects: [expectedProject, wrongProject],
+        session: () => session
+      })
+    );
+
+    await service.start();
+    await flushAsyncWork();
+
+    expect(
+      service
+        .getSnapshot()
+        .activityConversations.find(
+          (conversation) => conversation.id === session.id
+        )?.project
+    ).toMatchObject({
+      id: expectedProject.id,
+      sectionKey: expectedProject.sectionKey
+    });
+
+    service.dispose();
+  });
+
   test("projects processing before the active Turn receives its first message", async () => {
     const activeSession = createSession();
     activeSession.activeTurnId = "turn-1";
@@ -1895,6 +1955,7 @@ function createClient(options: {
     latestVersion: number;
     messages: WorkspaceAgentSessionMessage[];
   }>;
+  listSections?: NonNullable<TuttidClient["listWorkspaceAgentSessionSections"]>;
   projects?: Awaited<ReturnType<TuttidClient["listUserProjects"]>>["projects"];
   send?(
     workspaceId: string,
@@ -2001,42 +2062,44 @@ function createClient(options: {
         workspaceId: workspace.id
       };
     },
-    listWorkspaceAgentSessionSections: async () => {
-      const sessions = railSessions();
-      if (sessions.length === 0) {
+    listWorkspaceAgentSessionSections:
+      options.listSections ??
+      (async () => {
+        const sessions = railSessions();
+        if (sessions.length === 0) {
+          return {
+            pinned: { hasMore: false, sessions: [], totalCount: 0 },
+            sections: [],
+            workspaceId: workspace.id
+          };
+        }
+        const pinnedSessions = sessions.filter(
+          (session) => session.pinnedAtUnixMs != null
+        );
+        const conversationSessions = sessions.filter(
+          (session) => session.pinnedAtUnixMs == null
+        );
         return {
-          pinned: { hasMore: false, sessions: [], totalCount: 0 },
-          sections: [],
+          pinned: {
+            hasMore: false,
+            sessions: pinnedSessions,
+            totalCount: pinnedSessions.length
+          },
+          sections:
+            conversationSessions.length === 0
+              ? []
+              : [
+                  {
+                    hasMore: false,
+                    kind: "conversations" as const,
+                    sectionKey: "conversations",
+                    sessions: conversationSessions,
+                    totalCount: conversationSessions.length
+                  }
+                ],
           workspaceId: workspace.id
         };
-      }
-      const pinnedSessions = sessions.filter(
-        (session) => session.pinnedAtUnixMs != null
-      );
-      const conversationSessions = sessions.filter(
-        (session) => session.pinnedAtUnixMs == null
-      );
-      return {
-        pinned: {
-          hasMore: false,
-          sessions: pinnedSessions,
-          totalCount: pinnedSessions.length
-        },
-        sections:
-          conversationSessions.length === 0
-            ? []
-            : [
-                {
-                  hasMore: false,
-                  kind: "conversations" as const,
-                  sectionKey: "conversations",
-                  sessions: conversationSessions,
-                  totalCount: conversationSessions.length
-                }
-              ],
-        workspaceId: workspace.id
-      };
-    },
+      }),
     sendWorkspaceAgentSessionInput: options.send,
     submitWorkspaceAgentInteractive: options.interactive,
     updateWorkspaceAgentSessionPin: options.pin,
@@ -2113,6 +2176,7 @@ function createSession(): WorkspaceAgentSession {
     endedAtUnixMs: null,
     forkedFrom: null,
     goal: null,
+    goalSyncState: null,
     id: "session-1",
     imported: false,
     kind: "root",

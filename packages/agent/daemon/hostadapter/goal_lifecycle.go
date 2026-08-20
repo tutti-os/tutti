@@ -28,6 +28,7 @@ func (o goalControlLifecycleObserver) ObserveGoalControlApplied(
 		RepairEpoch: observation.RepairEpoch, Action: observation.Action,
 		ProviderTurnID: observation.ProviderTurnID, Observed: observation.Observed,
 		OccurredAtUnixMS: observation.OccurredAtUnixMS,
+		ExecutionPending: observation.ExecutionPending,
 	})
 }
 

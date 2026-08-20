@@ -287,10 +287,15 @@ func projectPortableMaterializedContent(payload map[string]any) {
 		projectedBlock := cloneReplayMap(block)
 		blockType, _ := projectedBlock["type"].(string)
 		if blockType == "text" || blockType == "image" {
-			// The provider materializes this path while building the message. The
-			// attachmentId/text is the portable semantic contract; the path is
-			// workspace-local and must not enter replay-state validation.
+			// Workspace-local / transport locators are not part of the portable
+			// semantic contract. Final compare also strips attachmentId (see
+			// stripVolatilePromptImageLocators) because shared object-upload
+			// replay may omit it while recorded local cassettes still carry it.
 			delete(projectedBlock, "path")
+			delete(projectedBlock, "url")
+			delete(projectedBlock, "uri")
+			delete(projectedBlock, "assetId")
+			delete(projectedBlock, "uploadStatus")
 		}
 		projectedContent[index] = projectedBlock
 	}
@@ -472,6 +477,13 @@ func portableAgentStatePath(path, root string) string {
 	if err != nil || relative == ".." ||
 		strings.HasPrefix(relative, ".."+string(filepath.Separator)) ||
 		filepath.IsAbs(relative) {
+		// Shared-agent owner remaps session.Cwd under /workspace/<roomId>/...
+		// while rail project metadata stays on the logical /workspace/... path.
+		// Treat either direction as the portable replay root.
+		if sharedWorkspaceRemappedCWDEqual(normalizedPath, normalizedRoot) ||
+			sharedWorkspaceRemappedCWDEqual(normalizedRoot, normalizedPath) {
+			return PortableReplayCWDToken
+		}
 		return path
 	}
 	if relative == "." {

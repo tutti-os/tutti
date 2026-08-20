@@ -50,32 +50,48 @@ type InteractionSeed struct {
 }
 
 type Fixture struct {
-	Session                *SessionSeed
-	LiveOnlySession        *SessionSeed
-	AdditionalSessions     []SessionSeed
-	Turn                   *TurnSeed
-	AdditionalTurns        []TurnSeed
-	Interaction            *InteractionSeed
-	AdditionalInteractions []InteractionSeed
-	PreparedSubmitID       string
-	RecoverInteractive     bool
-	DisableGoalInbox       bool
-	AcceptGoalControlsOnly bool
-	CompleteGoalOnSet      bool
-	EmptyPauseResumeGoal   bool
+	Session                                  *SessionSeed
+	LiveOnlySession                          *SessionSeed
+	AdditionalSessions                       []SessionSeed
+	Turn                                     *TurnSeed
+	AdditionalTurns                          []TurnSeed
+	Interaction                              *InteractionSeed
+	AdditionalInteractions                   []InteractionSeed
+	PreparedSubmitID                         string
+	RecoverInteractive                       bool
+	RecoverInteractiveFollowUpPrompt         string
+	RecoverInteractiveFollowUpClientSubmitID string
+	RecoverInteractiveFollowUpDisposition    agenthost.RuntimeInteractiveDisposition
+	DisableGoalInbox                         bool
+	AcceptGoalControlsOnly                   bool
+	CompleteGoalOnSet                        bool
+	EmptyPauseResumeGoal                     bool
+	// RaceRuntimeStartReport makes the test Runtime attempt its ordinary
+	// session-start activity report before CreateSession initializes canonical
+	// state. A conforming Host must keep that report behind the canonical
+	// initialization barrier.
+	RaceRuntimeStartReport bool
+	// FailSessionInitialization fails the canonical initialize half after the
+	// Runtime has started, before its report/event barrier may be released.
+	FailSessionInitialization bool
 	// DisconnectGoalFenceDelivery drops the live Runtime Session during the
 	// first fence delivery, modeling a Host restart with accepted durable intent
 	// but no in-memory provider Session.
 	DisconnectGoalFenceDelivery bool
 	FailCommitObserver          bool
 	RejectInitialExec           bool
+	RailProjectPaths            []string
 	// GuidanceTargetMismatch makes the test runtime reject guidance whose
 	// explicit TurnID is not the Session.ActiveTurnID. It models the runtime
 	// target race without exposing a runtime/provider API to scenarios.
 	GuidanceTargetMismatch bool
-	WorktreeGCSweepErr     error
-	DeleteAdmissionErr     error
-	DeleteSessionPlans     [][]string
+	// CancelDeliveryUnconfirmed makes the test runtime acknowledge the exact
+	// cancel delivery without being able to confirm that it stopped that turn.
+	// The Host must retain the durable operation instead of inventing a
+	// terminal outcome.
+	CancelDeliveryUnconfirmed bool
+	DeleteAdmissionErr        error
+	DeleteSessionPlans        [][]string
 }
 
 type SessionObservation struct {
@@ -105,19 +121,23 @@ type GoalObservation struct {
 	Revision           int64
 	PendingOperationID string
 	SyncStatus         string
+	ExecutionPending   bool
 }
 
 type CancelObservation struct {
 	Session  SessionObservation
 	TurnID   string
 	Canceled bool
+	Pending  bool
 	Reason   string
 }
 
 type OperationObservation struct {
-	OperationID string
-	Status      string
-	Result      string
+	OperationID          string
+	Status               string
+	Result               string
+	ConfirmedTurnID      string
+	IdentityAnchorTurnID string
 }
 
 type InteractiveObservation struct {
@@ -129,9 +149,11 @@ type InteractiveObservation struct {
 }
 
 type Metrics struct {
-	StartCalls  int
-	ResumeCalls int
-	ExecCalls   int
+	StartCalls    int
+	ResumeCalls   int
+	ExecCalls     int
+	LastStartEnv  []string
+	LastResumeEnv []string
 	// GuidanceProviderCalls counts guidance dispatches that passed the
 	// runtime's exact-target gate. ExecCalls includes the rejected gate check.
 	GuidanceProviderCalls              int
@@ -141,12 +163,15 @@ type Metrics struct {
 	CloseCalls                         int
 	GoalControlCalls                   int
 	GoalReconcileCalls                 int
+	RuntimeSessionPublishCalls         int
+	RuntimeStartReportWrites           int
 	RuntimeOperationCommits            int
 	GoalOperationCommits               int
 	RootTurnSettlements                int
 	LastCancelTargets                  []agenthost.RuntimeCancelTarget
 	LastInteractiveTurnID              string
 	LastInteractiveRequestID           string
+	LastExecClientSubmitID             string
 	LastInitialTitle                   string
 	LastExecRequiresProviderAcceptance bool
 	LastClosePreservedCanonicalState   bool
@@ -191,9 +216,91 @@ type Driver interface {
 	Metrics() Metrics
 }
 
+// WorkspaceRuntimeDisconnectDriver is a narrow opt-in lifecycle contract so a
+// new Host capability does not source-break existing external conformance
+// drivers that implement the stable Driver interface.
+type WorkspaceRuntimeDisconnectDriver interface {
+	Driver
+	DisconnectWorkspaceRuntime(context.Context, string) (agenthost.DisconnectWorkspaceRuntimeResult, error)
+}
+
+type WorkspaceRuntimeDisconnectScenario struct {
+	Name string
+	run  func(context.Context, WorkspaceRuntimeDisconnectDriver) error
+}
+
+// WorkspaceRuntimeAdmissionDriver exposes only the Host-owned coordination
+// seam needed to verify admission and durable disconnect fencing.
+type WorkspaceRuntimeAdmissionDriver interface {
+	WithWorkspaceRuntimeOperation(context.Context, string, func(context.Context) error) error
+	AcquireWorkspaceRuntimeDisconnectFence(context.Context, string) (WorkspaceRuntimeDisconnectFenceDriver, error)
+}
+
+type WorkspaceRuntimeDisconnectFenceDriver interface {
+	Wait(context.Context) (context.Context, error)
+	Release()
+}
+
+type WorkspaceRuntimeAdmissionScenario struct {
+	Name string
+	run  func(context.Context, WorkspaceRuntimeAdmissionDriver) error
+}
+
+func RunWorkspaceRuntimeAdmission(
+	ctx context.Context,
+	driver WorkspaceRuntimeAdmissionDriver,
+	scenario WorkspaceRuntimeAdmissionScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("workspace runtime admission conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("workspace runtime admission scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunWorkspaceRuntimeDisconnect(
+	ctx context.Context,
+	driver WorkspaceRuntimeDisconnectDriver,
+	scenario WorkspaceRuntimeDisconnectScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("workspace runtime disconnect conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("workspace runtime disconnect scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+// ProviderlessTerminalDriver is the narrow fault-injection capability for a
+// Runtime that durably fails the exact canonical Turn before it acquires a
+// provider identity. It stays separate from Fixture so downstream conformance
+// drivers can adopt this lifecycle scenario before upgrading their pinned
+// Tutti dependency; an extra test-driver method is source-compatible with the
+// previous conformance contract.
+type ProviderlessTerminalDriver interface {
+	ResetProviderlessTerminalExec(context.Context, *SessionSeed) error
+}
+
 type Scenario struct {
 	Name string
 	run  func(context.Context, Driver) error
+}
+
+// RailPlacementRecoveryDriver is separate from Driver so Host consumers adopt
+// the immutable rail recovery proof explicitly instead of reimplementing rail
+// normalization in an application adapter.
+type RailPlacementRecoveryDriver interface {
+	Reset(context.Context, Fixture) error
+	Create(context.Context, string, agenthost.CreateSessionInput) (SessionObservation, string, error)
+	GetSessionWithRailPlacement(context.Context, agenthost.SessionRef, *agenthost.RailPlacement) (SessionObservation, error)
+}
+
+type RailPlacementRecoveryScenario struct {
+	Name string
+	run  func(context.Context, RailPlacementRecoveryDriver) error
 }
 
 // DeletedSessionLifecycleDriver is separate from Driver so adapters adopt the
@@ -254,12 +361,50 @@ type InteractionTreeScenario struct {
 	run  func(context.Context, InteractionTreeDriver) error
 }
 
+type SideConversationMetrics struct {
+	ParentActive    bool
+	CanonicalWrites int
+	TransientEvents int
+	SideLive        bool
+}
+
+// SideConversationDriver is optional because a provider may omit the native
+// Side adapter entirely. Implementations exercise the common Host lifecycle;
+// provider-specific protocol details belong in adapter tests.
+type SideConversationDriver interface {
+	ResetSideConversation(context.Context) error
+	SettleSideParent(context.Context) error
+	OpenSideConversation(context.Context, agenthost.OpenSideConversationInput) (agenthost.OpenSideConversationResult, error)
+	SendSideConversation(context.Context, agenthost.RuntimeExecInput) (agenthost.RuntimeExecResult, error)
+	CloseSideConversation(context.Context, string, string) error
+	SideConversationMetrics() SideConversationMetrics
+}
+
+type SideConversationScenario struct {
+	Name string
+	run  func(context.Context, SideConversationDriver) error
+}
+
 func Run(ctx context.Context, driver Driver, scenario Scenario) error {
 	if driver == nil {
 		return fmt.Errorf("agent host conformance driver is required")
 	}
 	if scenario.run == nil {
 		return fmt.Errorf("agent host conformance scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunRailPlacementRecovery(
+	ctx context.Context,
+	driver RailPlacementRecoveryDriver,
+	scenario RailPlacementRecoveryScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("agent host rail placement recovery conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf("agent host rail placement recovery conformance scenario %q has no runner", scenario.Name)
 	}
 	return scenario.run(ctx, driver)
 }
@@ -302,6 +447,23 @@ func RunInteractionTree(
 	}
 	if scenario.run == nil {
 		return fmt.Errorf("agent host interaction tree conformance scenario %q has no runner", scenario.Name)
+	}
+	return scenario.run(ctx, driver)
+}
+
+func RunSideConversation(
+	ctx context.Context,
+	driver SideConversationDriver,
+	scenario SideConversationScenario,
+) error {
+	if driver == nil {
+		return fmt.Errorf("agent host side conversation conformance driver is required")
+	}
+	if scenario.run == nil {
+		return fmt.Errorf(
+			"agent host side conversation conformance scenario %q has no runner",
+			scenario.Name,
+		)
 	}
 	return scenario.run(ctx, driver)
 }

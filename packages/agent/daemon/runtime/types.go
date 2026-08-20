@@ -69,6 +69,7 @@ type StartInput struct {
 	Provider                string
 	CWD                     string
 	Env                     []string
+	MCPServers              []MCPServerBinding
 	Title                   string
 	InitialTitleEstablished bool
 	Visible                 *bool
@@ -77,6 +78,7 @@ type StartInput struct {
 	PermissionModeID        string
 	Settings                *SessionSettings
 	Provisional             bool
+	CanonicalInitPending    bool
 }
 
 type ResumeInput struct {
@@ -88,15 +90,19 @@ type ResumeInput struct {
 	Resumable         bool
 	CWD               string
 	Env               []string
+	MCPServers        []MCPServerBinding
 	Title             string
 	Status            string
 	Visible           *bool
 	RuntimeContext    map[string]any
-	ProviderTargetRef map[string]any
-	PermissionModeID  string
-	Settings          *SessionSettings
-	CreatedAtUnixMS   int64
-	UpdatedAtUnixMS   int64
+	// ProviderLaunchRuntimeContext is an ephemeral overlay visible only to
+	// ProviderLaunchPreparer while establishing this live connection.
+	ProviderLaunchRuntimeContext map[string]any
+	ProviderTargetRef            map[string]any
+	PermissionModeID             string
+	Settings                     *SessionSettings
+	CreatedAtUnixMS              int64
+	UpdatedAtUnixMS              int64
 	// GoalGenerationFences must be retained before this Session becomes
 	// available for Goal or Turn submission. Adapter installation follows
 	// Resume connection establishment and precedes Controller publication.
@@ -213,6 +219,11 @@ type ExecInput struct {
 	InitialTitleBase                string
 	Metadata                        map[string]any
 	Guidance                        bool
+	// ConnectorRoutingUpdate carries the current connector alias index when it
+	// diverged from the index materialized into the session's instructions at
+	// preparation time. The controller renders it into provider-facing content
+	// only; canonical prompt content never includes it. Nil means no update.
+	ConnectorRoutingUpdate *string
 	// HistoryReplacement requires a fresh provider turn. It may not steer an
 	// active turn or reinterpret the edited text as a provider slash command.
 	// The provider's complete EffectiveHistoryAdapter seam always returns one
@@ -372,27 +383,33 @@ type PromptContentBlock struct {
 }
 
 type Session struct {
-	RoomID             string              `json:"roomId"`
-	AgentSessionID     string              `json:"agentSessionId"`
-	RootAgentSessionID string              `json:"rootAgentSessionId,omitempty"`
-	AgentTargetID      string              `json:"agentTargetId,omitempty"`
-	Provider           string              `json:"provider"`
-	ProviderSessionID  string              `json:"providerSessionId"`
-	Resumable          bool                `json:"resumable"`
-	CWD                string              `json:"cwd,omitempty"`
-	Env                []string            `json:"-"`
-	Status             string              `json:"status"`
-	TurnLifecycle      *TurnLifecycle      `json:"turnLifecycle,omitempty"`
-	SubmitAvailability *SubmitAvailability `json:"submitAvailability,omitempty"`
-	Title              string              `json:"title,omitempty"`
-	LastError          string              `json:"lastError,omitempty"`
-	Visible            bool                `json:"visible"`
-	RuntimeContext     map[string]any      `json:"runtimeContext,omitempty"`
-	ProviderTargetRef  map[string]any      `json:"-"`
-	PermissionModeID   string              `json:"permissionModeId,omitempty"`
-	Settings           *SessionSettings    `json:"settings,omitempty"`
-	CreatedAtUnixMS    int64               `json:"createdAtUnixMs"`
-	UpdatedAtUnixMS    int64               `json:"updatedAtUnixMs"`
+	RoomID             string `json:"roomId"`
+	AgentSessionID     string `json:"agentSessionId"`
+	RootAgentSessionID string `json:"rootAgentSessionId,omitempty"`
+	// Scope separates durable workspace sessions from runtime-only side
+	// conversations. The empty value is canonical for backwards compatibility.
+	Scope                RuntimeSessionScope `json:"scope,omitempty"`
+	SourceAgentSessionID string              `json:"sourceAgentSessionId,omitempty"`
+	SideRequestID        string              `json:"sideRequestId,omitempty"`
+	AgentTargetID        string              `json:"agentTargetId,omitempty"`
+	Provider             string              `json:"provider"`
+	ProviderSessionID    string              `json:"providerSessionId"`
+	Resumable            bool                `json:"resumable"`
+	CWD                  string              `json:"cwd,omitempty"`
+	Env                  []string            `json:"-"`
+	MCPServers           []MCPServerBinding  `json:"-"`
+	Status               string              `json:"status"`
+	TurnLifecycle        *TurnLifecycle      `json:"turnLifecycle,omitempty"`
+	SubmitAvailability   *SubmitAvailability `json:"submitAvailability,omitempty"`
+	Title                string              `json:"title,omitempty"`
+	LastError            string              `json:"lastError,omitempty"`
+	Visible              bool                `json:"visible"`
+	RuntimeContext       map[string]any      `json:"runtimeContext,omitempty"`
+	ProviderTargetRef    map[string]any      `json:"-"`
+	PermissionModeID     string              `json:"permissionModeId,omitempty"`
+	Settings             *SessionSettings    `json:"settings,omitempty"`
+	CreatedAtUnixMS      int64               `json:"createdAtUnixMs"`
+	UpdatedAtUnixMS      int64               `json:"updatedAtUnixMs"`
 	// LifecycleAuthority is set once an adapter-origin TurnLifecycle snapshot
 	// was applied (ADR 0008). Authority sessions copy lifecycle from
 	// snapshots and derive Status purely; legacy sessions keep the historic
@@ -411,6 +428,67 @@ type Session struct {
 	// title so a restarted runtime never lets a provider title clobber a
 	// persisted user title.
 	UserTitleSet bool `json:"-"`
+}
+
+type MCPServerBinding struct {
+	Name    string
+	Type    string
+	URL     string
+	Headers map[string]string
+}
+
+func cloneMCPServerBindings(input []MCPServerBinding) []MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		binding.Headers = headers
+		result = append(result, binding)
+	}
+	return result
+}
+
+type RuntimeSessionScope string
+
+const (
+	RuntimeSessionScopeCanonical RuntimeSessionScope = "canonical"
+	RuntimeSessionScopeSide      RuntimeSessionScope = "side"
+)
+
+func (s Session) IsSideConversation() bool {
+	return s.Scope == RuntimeSessionScopeSide
+}
+
+type SideConversationCapabilities struct {
+	Supported             bool `json:"supported"`
+	ActiveSourceTurn      bool `json:"activeSourceTurn"`
+	Ephemeral             bool `json:"ephemeral"`
+	HideInheritedTurns    bool `json:"hideInheritedTurns"`
+	ModelBoundaryInjected bool `json:"modelBoundaryInjected"`
+}
+
+type SideConversationOpenInput struct {
+	RoomID               string  `json:"roomId"`
+	SourceAgentSessionID string  `json:"sourceAgentSessionId"`
+	SideAgentSessionID   string  `json:"sideAgentSessionId"`
+	RequestID            string  `json:"requestId"`
+	Source               Session `json:"-"`
+}
+
+type SideConversationAdapterOpenInput struct {
+	Source    Session `json:"-"`
+	Side      Session `json:"-"`
+	RequestID string  `json:"requestId"`
+}
+
+type SideConversationOpenResult struct {
+	Session      Session                      `json:"session"`
+	Capabilities SideConversationCapabilities `json:"capabilities"`
 }
 
 type SessionInteractivePrompt struct {
@@ -485,6 +563,7 @@ type StreamEvent struct {
 
 type StartResult struct {
 	Session Session `json:"session"`
+	Created bool    `json:"created"`
 }
 
 type CloseResult struct {
@@ -531,9 +610,21 @@ type ProviderAcceptanceReceipt struct {
 	ProviderInputUnit *activityshared.ProviderInputUnitContext `json:"-"`
 }
 
+// ProviderAcceptanceDiagnostics describes the identity evidence observed at
+// the provider acceptance boundary. It is telemetry metadata only and must not
+// be used as durable coordination state.
+type ProviderAcceptanceDiagnostics struct {
+	Status                   string `json:"status"`
+	ProviderSessionIDPresent bool   `json:"providerSessionIdPresent"`
+	ProviderTurnIDPresent    bool   `json:"providerTurnIdPresent"`
+	ProviderTurnIDSource     string `json:"providerTurnIdSource,omitempty"`
+	FailureReason            string `json:"failureReason,omitempty"`
+}
+
 type ProviderDispatchResult struct {
-	Disposition DispatchDisposition        `json:"disposition"`
-	Acceptance  *ProviderAcceptanceReceipt `json:"acceptance,omitempty"`
+	Disposition           DispatchDisposition            `json:"disposition"`
+	Acceptance            *ProviderAcceptanceReceipt     `json:"acceptance,omitempty"`
+	AcceptanceDiagnostics *ProviderAcceptanceDiagnostics `json:"acceptanceDiagnostics,omitempty"`
 	// Failure is a process-local provider observation. It is carried only to
 	// the synchronous Controller caller and is never serialized or persisted as
 	// coordination state.
@@ -571,7 +662,12 @@ type SubmitInteractiveResult struct {
 	Accepted       bool                   `json:"accepted"`
 	OptionID       string                 `json:"optionId,omitempty"`
 	Disposition    InteractiveDisposition `json:"-"`
-	Events         []Event                `json:"events"`
+	// FollowUpPrompt is a provider-neutral intent for the Host to submit a
+	// follow-up through its normal SendInput admission path. Runtime must not
+	// dispatch this prompt directly because Host owns its idempotency and
+	// recovery semantics.
+	FollowUpPrompt string  `json:"-"`
+	Events         []Event `json:"events"`
 }
 
 type UpdateSettingsResult struct {

@@ -12,6 +12,24 @@ export {
   AGENT_PASTED_TEXT_MENTION_KIND
 } from "./shared/pastedTextKinds";
 export { AgentGUI } from "./AgentGUI";
+export {
+  AgentSideConversationRuntimeProvider,
+  useAgentSideConversationSnapshot,
+  useOptionalAgentSideConversationRuntime
+} from "./agentSideConversationRuntime";
+export type {
+  AgentSideCapabilities,
+  AgentSideConversationRuntime,
+  AgentSideConversationSnapshot,
+  AgentSideConversationState,
+  AgentSideInteraction,
+  AgentSideInteractionAction
+} from "./agentSideConversationRuntime";
+export { createAgentSideConversationRuntime } from "./agentSideConversationController";
+export type {
+  AgentSideConversationStreamEvent,
+  AgentSideConversationTransport
+} from "./agentSideConversationController";
 export type {
   AgentGUIProps,
   AgentGUIReferenceProvenanceFilterCatalog
@@ -78,14 +96,16 @@ export type {
   AgentRunErrorCode,
   AgentVisibleErrorOverride,
   AgentVisibleErrorOverrideCode,
-  AgentVisibleErrorOverrides
+  AgentVisibleErrorOverrides,
+  AgentVisibleErrorPresentationScope
 } from "./shared/agentEnv/agentErrorPresentation";
 export type {
   AgentGUIComposerContentType,
   AgentGUIComposerFocusMethod,
   AgentGUIEngagementContext,
   AgentGUIEngagementEvent,
-  AgentGUIEngagementEventSink
+  AgentGUIEngagementEventSink,
+  AgentGUIQuickPromptType
 } from "./agent-gui/agentGuiNode/engagement/agentGUIEngagement.types";
 export {
   agentGUIAgentIsReady,
@@ -205,6 +225,22 @@ export type {
   AgentActivityRuntimeUpdateSessionSettingsInput,
   AgentActivityRuntimeUpdateSessionSettingsResult
 } from "./agentActivityRuntime";
+export {
+  agentGUIPerformanceDuration,
+  createAgentGUIPerformanceMonitor,
+  trackAgentGUIComposerOptionsLoad
+} from "./agentGUIPerformanceMonitor";
+export type {
+  AgentGUIComposerOptionsLoadInput,
+  AgentGUIComposerOptionsLoadSource,
+  AgentGUIComposerOptionsPerformanceEvent,
+  AgentGUIComposerOptionsPerformanceTrackerInput,
+  AgentGUIFirstTokenKind,
+  AgentGUIPerformanceDurationBucket,
+  AgentGUIPerformanceEvent,
+  AgentGUIPerformanceFailureStage,
+  AgentGUIPerformanceMonitor
+} from "./agentGUIPerformanceMonitor";
 export type {
   AgentHostApi,
   AgentHostAgentTargetAuthenticatedAccount,

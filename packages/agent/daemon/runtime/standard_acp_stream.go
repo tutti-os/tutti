@@ -34,6 +34,11 @@ func (a *standardACPAdapter) handleACPMessage(
 		"message_method", message.Method,
 		"message_id", rawMessageLogValue(message.ID),
 	)
+	if handler := a.config.providerMessageHandler; handler != nil {
+		if events, handled, err := handler(ctx, client, session, turnID, message, normalizer, emit); handled || err != nil {
+			return events, err
+		}
+	}
 	if diagnostics := a.config.messageDiagnostics; diagnostics != nil &&
 		message.Method == diagnostics.method {
 		if diagnostics.observeMessage != nil {
@@ -324,6 +329,19 @@ func (a *standardACPAdapter) getSession(agentSessionID string) *standardACPSessi
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.sessions[agentSessionID]
+}
+
+func (a *standardACPAdapter) getUsableSession(agentSessionID string) *standardACPSession {
+	if a == nil {
+		return nil
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[strings.TrimSpace(agentSessionID)]
+	if session == nil || session.releasing || session.releaseFailed {
+		return nil
+	}
+	return session
 }
 
 func (a *standardACPAdapter) rememberSessionTurn(agentSessionID string, turnID string) {

@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -13,7 +14,7 @@ import (
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 const larkTestIntegrity = "sha512-qbJYoJtNch6dV8RvYBO2wpcKO9+6Io3Cuf5alYFzvLbtkSntOKqoc+xHI7p6wRq4oH4F9fydgNJbTGy79ibPdg=="
@@ -159,6 +160,44 @@ func TestNodePackageInstallerUsesOneManagedNodeAndSharedContentStore(t *testing.
 	}
 }
 
+func TestNodePackageInstallerRemoveCLIRejectsSymlinkParent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX symbolic-link removal coverage")
+	}
+	root := t.TempDir()
+	installer, err := NewNodePackageInstaller(NodePackageInstallerConfig{
+		RootDir: root, Runtimes: nodePackageRuntimeStub{}, Processes: &nodePackageProcessStub{},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	digest := strings.Repeat("a", 64)
+	victim := t.TempDir()
+	victimRelease := filepath.Join(victim, digest)
+	if err := os.MkdirAll(victimRelease, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(victimRelease, "keep")
+	if err := os.WriteFile(marker, []byte("keep"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "packages"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victim, filepath.Join(root, "packages", "lark")); err != nil {
+		t.Fatal(err)
+	}
+	err = installer.RemoveCLI(context.Background(), market.RemoveCLIRequest{
+		ConnectorKey: "lark", ReleaseDigest: digest,
+	})
+	if err == nil || !strings.Contains(err.Error(), "symbolic link") {
+		t.Fatalf("RemoveCLI() error = %v, want symbolic-link rejection", err)
+	}
+	if _, err := os.Stat(marker); err != nil {
+		t.Fatalf("RemoveCLI() followed a symlink parent: %v", err)
+	}
+}
+
 func TestNodeVersionSatisfiesComparatorRange(t *testing.T) {
 	if !nodeVersionSatisfies("22.22.3", ">=22.0.0 <23.0.0") {
 		t.Fatal("managed Node should satisfy connector range")
@@ -176,7 +215,7 @@ func testNodePackageRelease(connectorKey, digest string) market.Release {
 			SHA256: strings.Repeat("4", 64), SizeBytes: 1, MediaType: "application/zip"},
 		PublishedAt: time.Unix(1, 0).UTC(), Status: market.ReleaseStatusAvailable,
 		Manifest: market.Manifest{
-			SchemaVersion: "1", DisplayName: "Lark", IconURL: "data:image/png;base64,iVBORw0KGgo=", AuthorizationKind: "none",
+			SchemaVersion: "1", DisplayName: "Lark", IconURL: "https://cdn.example.test/tutti/connector-market/lark/1.0.0/lark-1.0.0-icon.svg", AuthorizationKind: "none",
 			Implementation: market.Implementation{
 				Kind: market.ImplementationKindManagedStdio,
 				ManagedStdio: &market.ManagedStdioImplementation{
@@ -249,4 +288,34 @@ func containsEnvironmentKey(environment []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func TestAllowedNodePackageInstallEnvironmentFoldsProxyKeyCase(t *testing.T) {
+	got := allowedNodePackageInstallEnvironment([]string{
+		"PATH=/usr/bin",
+		"http_proxy=http://127.0.0.1:7897",
+		"HTTP_PROXY=http://127.0.0.1:7897",
+		"https_proxy=http://127.0.0.1:7897",
+		"HTTPS_PROXY=http://127.0.0.1:7897",
+		"no_proxy=localhost",
+	})
+	want := []string{
+		"HTTPS_PROXY=http://127.0.0.1:7897",
+		"HTTP_PROXY=http://127.0.0.1:7897",
+		"NO_PROXY=localhost",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("environment = %#v, want %#v", got, want)
+	}
+}
+
+func TestAllowedNodePackageInstallEnvironmentKeepsLastValueForFoldedKey(t *testing.T) {
+	got := allowedNodePackageInstallEnvironment([]string{
+		"http_proxy=http://first.invalid:1",
+		"HTTP_PROXY=http://second.invalid:2",
+	})
+	want := []string{"HTTP_PROXY=http://second.invalid:2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("environment = %#v, want %#v", got, want)
+	}
 }

@@ -59,6 +59,9 @@ function createHostServices(): DesktopHostServices {
       }
     },
     preferences: {
+      async ensureInitialized() {
+        throw new Error("not used");
+      },
       getAgentCliUpdateCheckEnabled() {
         return true;
       },
@@ -121,6 +124,9 @@ function createHostServices(): DesktopHostServices {
       },
       subscribe() {
         return () => undefined;
+      },
+      syncAuthoritative() {
+        return undefined;
       },
       sync() {
         return undefined;

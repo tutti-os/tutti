@@ -14,6 +14,7 @@ type AuthStatus string
 
 const (
 	AuthAuthenticated AuthStatus = "authenticated"
+	AuthConfigured    AuthStatus = "configured"
 	AuthRequired      AuthStatus = "required"
 	AuthUnknown       AuthStatus = "unknown"
 )

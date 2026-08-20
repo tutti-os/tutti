@@ -1,5 +1,6 @@
 import {
   createWorkspaceFileManagerService,
+  normalizeWorkspaceFilePath,
   type WorkspaceFileExternalLocation,
   type WorkspaceFileEntry,
   type WorkspaceFileLocationSection,
@@ -160,7 +161,11 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     path: string;
     workspaceID: string;
   }): Promise<boolean> {
-    const targetPath = normalizeComparableWorkspaceFilePath(input.path);
+    const comparisonRoot = this.dependencies.platformApi.homeDirectory;
+    const targetPath = normalizeComparableWorkspaceFilePath(
+      input.path,
+      comparisonRoot
+    );
     if (!targetPath) {
       return false;
     }
@@ -175,15 +180,19 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
           }
         );
       if (
-        normalizeComparableWorkspaceFilePath(listing.directoryPath) ===
-          targetPath ||
-        normalizeComparableWorkspaceFilePath(listing.root) === targetPath
+        normalizeComparableWorkspaceFilePath(
+          listing.directoryPath,
+          comparisonRoot
+        ) === targetPath ||
+        normalizeComparableWorkspaceFilePath(listing.root, comparisonRoot) ===
+          targetPath
       ) {
         return true;
       }
       return listing.entries.some(
         (entry) =>
-          normalizeComparableWorkspaceFilePath(entry.path) === targetPath
+          normalizeComparableWorkspaceFilePath(entry.path, comparisonRoot) ===
+          targetPath
       );
     } catch {
       return false;
@@ -207,6 +216,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     }
     const locationSections = getCurrentDesktopWorkspaceFileLocationSections({
       homeDirectory: this.dependencies.platformApi.homeDirectory,
+      os: this.dependencies.platformApi.os,
       workspaceUserProjectService: this.dependencies.workspaceUserProjectService
     });
     const defaultLocationId = resolveDesktopWorkspaceFileDefaultLocationId({
@@ -331,6 +341,7 @@ export class WorkspaceFileManagerService implements IWorkspaceFileManagerService
     const locationSections = [
       ...(await loadDesktopWorkspaceFileLocationSections({
         homeDirectory: this.dependencies.platformApi.homeDirectory,
+        os: this.dependencies.platformApi.os,
         workspaceUserProjectService
       })),
       ...(await this.loadReferenceLocationSections(workspaceID))
@@ -464,19 +475,14 @@ function dirnameForWorkspaceFilePath(path: string): string {
   return /^\/[A-Za-z]:$/.test(directory) ? `${directory}/` : directory;
 }
 
-function normalizeComparableWorkspaceFilePath(path: string): string {
-  const normalized = path
-    .trim()
-    .replaceAll("\\", "/")
-    .replace(/\/+/g, "/")
-    .replace(/^\/?([A-Za-z]:)(?=\/|$)/, "/$1");
-  if (!normalized) {
+function normalizeComparableWorkspaceFilePath(
+  path: string,
+  rootPath?: string | null
+): string {
+  if (!path.trim()) {
     return "";
   }
-  if (normalized === "/") {
-    return "/";
-  }
-  return normalized.replace(/\/+$/g, "");
+  return normalizeWorkspaceFilePath(path, rootPath).replace(/\/+$/g, "") || "/";
 }
 
 function serializeWorkspaceFileLocationRefreshSnapshot(input: {

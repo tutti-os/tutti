@@ -562,6 +562,22 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.ResolveWorkspaceAgentSessionWorktreeSupport(w, r)
 	})
 
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-worktrees", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListWorkspaceManagedWorktrees(w, r)
+	})
+
+	mux.HandleFunc("/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.DeleteWorkspaceManagedWorktree(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/git-patch", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)
@@ -787,12 +803,26 @@ func registerConnectorMarketRoutes(mux *http.ServeMux, wrapper *tuttigenerated.S
 			tuttitypes.WriteMethodNotAllowed(w)
 		}
 	})
+	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/runtime", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.UpdateConnectorMarketConnectorRuntime(w, r)
+	})
 	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/authorization:start", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {
 			tuttitypes.WriteMethodNotAllowed(w)
 			return
 		}
 		wrapper.StartConnectorMarketAuthorization(w, r)
+	})
+	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/authorization:cancel", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.CancelConnectorMarketAuthorization(w, r)
 	})
 	mux.HandleFunc("/v1/connector-market/connectors/{connectorKey}/authorization:disconnect", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPost {

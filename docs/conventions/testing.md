@@ -152,7 +152,8 @@ The capture runner ships `provider-switch`, `session-switch`,
 `concurrent-agent-streaming`,
 `virtualized-scroll-locator`, `virtualized-session-cycle`,
 `virtualized-oversized-active-turn`, `browser-behind-agent-gui-pixels`,
-`rail-scope-reveal`, `composer-input`, `composer-overflow-resize`, `workbench-window-lifecycle`,
+`rail-scope-reveal`, `composer-input`, `composer-overflow-resize`,
+`workbench-dock-popup-preview`, `workbench-window-lifecycle`,
 `workbench-window-drag`, `workbench-fifty-window-stress`,
 `desktop-window-state`, and
 `provider-status-focus-refresh`. List them with
@@ -160,6 +161,12 @@ The capture runner ships `provider-switch`, `session-switch`,
 `--scenario <id>`. Scenario modules own preparation, completion conditions,
 semantic assertions, milestones, and metadata; runtime startup, trace capture,
 renderer analysis, and report rendering stay scenario-neutral.
+
+`workbench-dock-popup-preview` starts with an empty isolated Desktop preview
+cache, restores fifty non-minimized AgentGUI windows in the established stress
+layout, waits for renderer mutations and idle work to settle, opens the unified
+Agent Dock popup, validates all foreground and background preview PNG pixels,
+saves a screenshot, and enforces a 50 ms renderer-task budget.
 
 `concurrent-agent-streaming` selects two settled root Sessions, restores them
 into two non-overlapping visible AgentGUI windows, and routes each through an
@@ -443,58 +450,30 @@ read or expose host credential metadata.
 
 ## Unit Test Quality
 
-A unit test should protect behavior a reviewer could regress, not re-state the
-implementation or pin presentation details. Apply these guidelines when writing
-or reviewing a unit test:
+Agent work that writes, materially rewrites, reviews, or removes tests invokes
+`$tutti-test-audit`. The durable design rules live in
+[Unit Testing](./unit-testing.md); this document continues to own command and
+validation selection.
 
-**Test behavior, not presentation wiring.**
+A test must protect a product contract that a plausible implementation mistake
+could violate. It must execute the production owner and observe a stable result;
+test count, assertion count, and coverage percentage are not substitutes for
+that evidence. In particular:
 
-Prefer a test that performs an action and verifies its effect — a user event
-followed by a callback or state change — over a test that only asserts what a
-fixed set of props renders. A test whose body contains no interaction, no
-callback verification, and no state transition, and whose only assertions are
-DOM text/class/attribute presence, is a static snapshot: it breaks on any CSS or
-JSX reformat and never catches a behavioral regression. It belongs in a visual
-regression or component browser test, not a unit suite.
+- test behavior, invariants, state transitions, and important non-effects;
+- choose the lowest test level capable of crossing the boundary named by the
+  risk;
+- do not duplicate production logic or use source regexes to infer runtime
+  wiring;
+- cross a real isolated boundary when its semantics are the risk; otherwise use
+  narrow fail-closed doubles;
+- synchronize concurrency with events, channels, barriers, or latches rather
+  than short sleeps;
+- prove that platform-specific tests execute in a native blocking lane;
+- reject constant restatements, mock call-graph tests, style assertions, empty
+  or silently skipped evidence, and tests whose old bug would still pass.
 
-**Do not assert on styling details.**
-
-`className`, `toHaveClass`, svg `width`/`height`/`viewBox`/`path d`, and
-`toHaveStyle` assertions pin implementation details of styling and icon
-libraries. They add maintenance cost and no behavioral signal. If a visual
-variant matters, assert the variant-selection behavior (which state maps to
-which variant), not the CSS class.
-
-**Do not test the type system.**
-
-Trivial branches, boolean toggles, constants, and pure data-mapping tables are
-already constrained by TypeScript and by the call sites that consume them. A
-test that only re-states `input.isDev === true` or a lookup table duplicates the
-implementation. Prefer a type-level constraint, or no test, for these.
-
-**Exercise feature-state transitions.**
-
-When a component has states (loading, ready, disabled, pending), test that the
-state _changes_ the output or enables/ disables an action — not that a single
-static state happens to render some text. Prefer a `rerender` plus an
-interaction that verifies the transition over a lone presence check.
-
-**Keep data-transformation logic tested.**
-
-Functions that parse, format, project, or extract from nested structures carry
-real logic. Rendering tests that verify transformed output for non-trivial input
-(e.g. markdown parsing, nested `toolCall` payload extraction, projection) are
-valuable; keep them even when they assert text, because the text depends on
-computation.
-
-**One test file per module.**
-
-If the same module is covered by both a `*.test.*` and a `*.spec.*` file, or by
-multiple name-suffixed files, consolidate them. Name the file for the module it
-actually tests. Small helper tests belong in the module's main spec as a nested
-`describe`, not in a separate file.
-
-**Keep tiny tests meaningful.**
-
-A test file that only holds one or two trivial assertions provides no regression
-protection. Delete it or fold its coverage into a behavioral test.
+Organize tests by behavioral ownership. A small module usually has one colocated
+suite; a large seam may split lifecycle, recovery, concurrency, rendering, or
+platform scenarios into explicitly named files. Do not trade arbitrary file
+fragmentation for giant suites that a reviewer cannot reason about.

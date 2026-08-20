@@ -71,6 +71,7 @@ export interface AgentActivitySessionForkLineage {
 
 export interface AgentActivitySessionIsolation {
   mode: "worktree";
+  worktreeId?: string;
   worktreePath: string;
   branch: string;
   baseCommit: string;
@@ -114,6 +115,12 @@ export interface AgentActivitySession {
   forkedFrom: AgentActivitySessionForkLineage | null;
   usage: AgentActivitySessionUsage | null;
   goal: AgentActivitySessionGoal | null;
+  /**
+   * Optional host-owned projection of the durable Goal synchronization state.
+   * Absence means the host cannot prove operation progress; it is not an idle,
+   * failed, or synced assertion.
+   */
+  goalSyncState?: AgentActivitySessionGoalSyncState | null;
   /**
    * Read projection of the independent daemon-owned TuttiModeActivation.
    * The session does not own this lifecycle; activity-core normalizes it into
@@ -395,9 +402,11 @@ export interface AgentActivityCreateSessionInput {
   browserUse?: boolean | null;
   codexSaverMode?: boolean | null;
   model?: string | null;
+  modelExplicit?: boolean;
   planMode?: boolean | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
+  reasoningEffortExplicit?: boolean;
   speed?: string | null;
   title?: string | null;
   visible?: boolean | null;
@@ -431,6 +440,7 @@ export interface AgentActivitySubmitDiagnostics {
   promptLength?: number;
   queued?: boolean;
   source?: string;
+  uiMode?: "os" | "agent";
 }
 
 export type AgentActivitySendInputResult =
@@ -672,6 +682,14 @@ export type AgentActivitySessionGoalSyncStatus =
   | "diverged"
   | "unknown"
   | "failed";
+
+export interface AgentActivitySessionGoalSyncState {
+  revision: number;
+  syncStatus: AgentActivitySessionGoalSyncStatus;
+  pendingOperationId: string | null;
+  /** Optional for mixed-version hosts; true is authoritative Host evidence. */
+  executionPending?: boolean;
+}
 
 export interface AgentActivitySessionGoalState {
   desired?: AgentActivitySessionGoal | null;

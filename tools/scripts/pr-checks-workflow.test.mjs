@@ -18,7 +18,7 @@ const windowsWorkflows = [
   },
   {
     expectedPaths: ["packages/agent/daemon/**"],
-    expectedSetupSteps: ["Setup Go"],
+    expectedSetupSteps: ["Setup Go", "Setup Node"],
     path: ".github/workflows/windows-agent-adapters.yml"
   },
   {
@@ -131,6 +131,43 @@ test("Windows workflows route source changes without self-triggering", () => {
       assert.ok(paths.includes(expectedPath), `${path}: ${expectedPath}`);
     }
   }
+});
+
+test("Windows Desktop Alpha packages only packaging-relevant changes", () => {
+  const { workflow } = windowsWorkflows[0];
+  const [job] = Object.values(workflow.jobs);
+  const classification = job.steps.find(
+    (step) => step.name === "Classify changed files"
+  );
+  const bundleBuild = job.steps.find(
+    (step) => step.name === "Build Windows Desktop bundles"
+  );
+  const installerBuild = job.steps.find(
+    (step) => step.name === "Build unsigned Windows NSIS package"
+  );
+  const packagedSmoke = job.steps.find(
+    (step) =>
+      step.name === "Smoke test packaged Workspace App shell and Onboarding"
+  );
+  const installerUpload = job.steps.find(
+    (step) => step.name === "Upload Windows installer"
+  );
+  const packageCondition =
+    "github.event_name == 'workflow_dispatch' || steps.changed-files.outputs.build_windows_installer == 'true'";
+
+  assert.match(
+    classification.run,
+    /tools\/scripts\/change-classification\.mjs/u
+  );
+  assert.equal(
+    bundleBuild.if,
+    "github.event_name == 'pull_request' && steps.changed-files.outputs.build_windows_installer != 'true'"
+  );
+  assert.match(bundleBuild.run, /@tutti-os\/desktop build$/u);
+  assert.equal(installerBuild.if, packageCondition);
+  assert.match(installerBuild.run, /@tutti-os\/desktop build:win:prepared/u);
+  assert.equal(packagedSmoke.if, packageCondition);
+  assert.equal(installerUpload.if, packageCondition);
 });
 
 test("Windows adapter workflows warm default-branch caches", () => {

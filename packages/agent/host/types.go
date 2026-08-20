@@ -14,6 +14,22 @@ type SessionRef struct {
 	AgentSessionID string
 }
 
+// DisconnectWorkspaceRuntimeResult reports provider runtime connections
+// released without deleting their canonical or resumable session identity.
+type DisconnectWorkspaceRuntimeResult struct {
+	Scanned      int
+	Disconnected int
+	Failed       int
+}
+
+// RuntimeDisconnectTarget identifies an exact provider-connection incarnation
+// for deferred attachment cleanup.
+type RuntimeDisconnectTarget struct {
+	WorkspaceID          string
+	AgentSessionID       string
+	ConnectionGeneration uint64
+}
+
 // InteractionRef identifies one canonical interaction. Provider request IDs
 // are transport-local correlation values and are only unique within the Turn
 // that owns them.
@@ -109,6 +125,9 @@ type ComposerSettingsPatch struct {
 type ProviderRuntimeSession struct {
 	ID                      string
 	WorkspaceID             string
+	Scope                   RuntimeSessionScope
+	SourceAgentSessionID    string
+	SideRequestID           string
 	UserID                  string
 	AgentTargetID           string
 	Provider                string
@@ -116,6 +135,7 @@ type ProviderRuntimeSession struct {
 	Resumable               bool
 	Cwd                     string
 	Env                     []string
+	MCPServers              []MCPServerBinding
 	ProviderTargetRef       map[string]any
 	Settings                *ComposerSettings
 	Capabilities            *canonical.CapabilitySnapshot
@@ -272,6 +292,7 @@ type RuntimeStartInput struct {
 	Provider                string
 	Cwd                     string
 	Env                     []string
+	MCPServers              []MCPServerBinding
 	Title                   string
 	InitialTitleEstablished bool
 	PermissionModeID        string
@@ -287,27 +308,54 @@ type RuntimeStartInput struct {
 	ConversationDetailMode  string
 	Visible                 *bool
 	Provisional             bool
+	// CanonicalInitPending starts the provider runtime while keeping
+	// its activity reports and stream events behind the Host-owned canonical
+	// initialization barrier. Host releases that barrier only after the exact
+	// canonical Session (including immutable rail placement) is durable.
+	CanonicalInitPending bool
+}
+
+// RuntimeSessionInitializationPublishInput identifies the started Runtime
+// Session whose canonical initialization barrier may be released. Publication
+// is idempotent; it never creates or changes canonical rail placement itself.
+type RuntimeSessionInitializationPublishInput struct {
+	WorkspaceID    string
+	AgentSessionID string
+}
+
+// RuntimeStartResult distinguishes a provider Runtime created by this exact
+// call from an idempotently reused Runtime. CreateSession may compensate only
+// resources it owns; a conflicting retry must never close an earlier live
+// Session.
+type RuntimeStartResult struct {
+	Session ProviderRuntimeSession
+	Created bool
 }
 
 type RuntimeResumeInput struct {
-	WorkspaceID            string
-	AgentSessionID         string
-	AgentTargetID          string
-	Provider               string
-	ProviderSessionID      string
-	Resumable              bool
-	Cwd                    string
-	Env                    []string
-	Title                  string
-	Status                 string
-	Settings               ComposerSettings
-	CreatedAtUnixMS        int64
-	UpdatedAtUnixMS        int64
-	Visible                *bool
-	RuntimeContext         map[string]any
-	ProviderTargetRef      map[string]any
-	Metadata               storesqlite.SessionMetadata
-	InternalRuntimeContext map[string]any
+	WorkspaceID       string
+	AgentSessionID    string
+	AgentTargetID     string
+	Provider          string
+	ProviderSessionID string
+	Resumable         bool
+	Cwd               string
+	Env               []string
+	MCPServers        []MCPServerBinding
+	Title             string
+	Status            string
+	Settings          ComposerSettings
+	CreatedAtUnixMS   int64
+	UpdatedAtUnixMS   int64
+	Visible           *bool
+	RuntimeContext    map[string]any
+	// ProviderLaunchRuntimeContext is request-scoped context exposed only to
+	// provider launch preparation. Runtime implementations must not retain or
+	// publish it as canonical Session runtime context.
+	ProviderLaunchRuntimeContext map[string]any
+	ProviderTargetRef            map[string]any
+	Metadata                     storesqlite.SessionMetadata
+	InternalRuntimeContext       map[string]any
 	// GoalGenerationFences are loaded from durable Host state and retained by
 	// the Runtime before the resumed Session is exposed for Goal/Turn work.
 	GoalGenerationFences []RuntimeGoalGenerationFenceInput
@@ -315,6 +363,26 @@ type RuntimeResumeInput struct {
 	// when the existing one can't be restored locally (imported conversations),
 	// instead of surfacing a non-recoverable restore error.
 	RecreateIfMissing bool
+}
+
+// ReprepareRuntimeSessionInput requests a fresh provider connection for one
+// idle canonical Session. RuntimeContextOverlay is trusted, request-scoped
+// preparation input. Host does not persist it or install it as provider
+// runtime context; the preparation adapter may use it to mint an exact
+// Invocation-scoped MCP binding.
+type ReprepareRuntimeSessionInput struct {
+	WorkspaceID           string
+	AgentSessionID        string
+	RuntimeContextOverlay map[string]any
+}
+
+// ReprepareRuntimeSessionAndSendInputInput atomically replaces an idle
+// provider connection and admits the exact Turn that owns the replacement
+// bindings. This prevents another mutation lane from using request-scoped
+// launch authority between reprepare and Turn admission.
+type ReprepareRuntimeSessionAndSendInputInput struct {
+	Reprepare ReprepareRuntimeSessionInput
+	Send      SendInput
 }
 
 type RuntimeExecInput struct {
@@ -333,6 +401,11 @@ type RuntimeExecInput struct {
 	HistoryReplacement              bool
 	RequireProviderAcceptance       bool
 	TuttiModeSnapshot               *TuttiModeTurnSnapshot
+	// ConnectorRoutingUpdate carries the current connector alias index when it
+	// diverged from the index materialized into the session's instructions.
+	// The runtime renders it into provider-only content; canonical prompt
+	// content never includes it. Nil means the instructions are still current.
+	ConnectorRoutingUpdate *string
 }
 
 type CapabilityReference = storesqlite.CapabilityReference
@@ -384,22 +457,6 @@ const (
 	RuntimeAcceptanceSourceTurnStartResponse RuntimeAcceptanceSource = "turn_start_response"
 	RuntimeAcceptanceSourceHistoryRead       RuntimeAcceptanceSource = "history_read"
 )
-
-// RuntimeProviderAcceptanceReceipt is positive provider evidence that a
-// replacement turn crossed the provider delivery boundary.
-type RuntimeProviderAcceptanceReceipt struct {
-	ProviderSessionID string
-	ProviderTurnID    string
-	Source            RuntimeAcceptanceSource
-}
-
-// RuntimeProviderDispatchResult separates an explicit provider outcome from a
-// transport failure whose effect is unknown. Acceptance is present only when
-// the provider supplied positive evidence for the dispatched turn.
-type RuntimeProviderDispatchResult struct {
-	Disposition RuntimeDispatchDisposition
-	Acceptance  *RuntimeProviderAcceptanceReceipt
-}
 
 type RuntimeHistoryTurn struct {
 	ID                  string
@@ -508,10 +565,6 @@ type RuntimeSubmitInteractiveInput struct {
 	Payload            map[string]any
 }
 
-type RuntimeSubmitInteractiveResult struct {
-	Disposition RuntimeInteractiveDisposition
-}
-
 type RuntimeInteractiveDisposition string
 
 const (
@@ -578,10 +631,25 @@ type RailPlacement struct {
 	SectionKey  string            `json:"sectionKey"`
 }
 
+// ResolveRuntimeSessionRailPlacementInput identifies the final prepared
+// runtime context whose canonical rail placement must be known before a
+// provider process starts.
+type ResolveRuntimeSessionRailPlacementInput struct {
+	WorkspaceID                string
+	AgentSessionID             string
+	Cwd                        string
+	RuntimeContext             map[string]any
+	RailPlacement              *RailPlacement
+	RailPlacementAuthoritative bool
+}
+
 // CreateSessionInput is the provider-neutral create contract. Adapter-only
 // import paths, workspace resolution, identity, and transport state are not
 // part of this type.
 type CreateSessionInput struct {
+	// ActivationID correlates the caller's activation request across Engine,
+	// desktop transport, Host lifecycle diagnostics, and terminal failure.
+	ActivationID   string
 	AgentSessionID string
 	AgentTargetID  string
 	Provider       string
@@ -613,6 +681,11 @@ type CreateSessionInput struct {
 	ConversationDetailMode string
 	Visible                *bool
 	RailPlacement          *RailPlacement
+	// RailPlacementAuthoritative declares that RailPlacement was selected by
+	// an external canonical authority and may name a project absent from this
+	// Host's local project registry. It applies only to first initialization
+	// and never permits replacing an existing canonical placement.
+	RailPlacementAuthoritative bool
 }
 
 type SendInput struct {
@@ -626,6 +699,10 @@ type SendInput struct {
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string
 	Guidance       bool
+	// ConnectorRoutingUpdate is set by the service when the connector alias
+	// index changed after this session's instructions were prepared. See
+	// RuntimeExecInput.ConnectorRoutingUpdate.
+	ConnectorRoutingUpdate *string
 }
 
 type SubmitInteractiveInput struct {
@@ -830,8 +907,10 @@ type DeleteSessionResult struct {
 }
 
 type DeleteSessionsInput struct {
-	WorkspaceID string
-	SessionIDs  []string
+	WorkspaceID                string
+	SessionIDs                 []string
+	RequiredRootRailSectionKey string
+	ExcludePinnedRoots         bool
 }
 
 // DeleteSessionsPlan is the exact canonical deletion closure resolved by Host.
@@ -880,6 +959,10 @@ type RuntimeGoalControlResult struct {
 	Goal           map[string]any
 	Evidence       map[string]any
 	ProviderPhase  string
+	// ExecutionPending is explicit provider evidence that this Goal mutation
+	// will begin autonomous execution. Host persists it until the first exact
+	// Goal Turn is canonical or the Goal reaches a terminal state.
+	ExecutionPending bool
 }
 
 // RuntimeGoalControlAppliedInput is an internal runtime-to-Host lifecycle
@@ -895,6 +978,7 @@ type RuntimeGoalControlAppliedInput struct {
 	ProviderTurnID   string
 	Observed         map[string]any
 	OccurredAtUnixMS int64
+	ExecutionPending bool
 }
 
 type RuntimeGoalReconcileResult struct {
@@ -985,18 +1069,4 @@ type FenceGoalGenerationResult struct {
 	Fence          storesqlite.GoalGenerationFence
 	IntentAccepted bool
 	Settled        bool
-}
-
-type GoalReconcileRequiredInput struct {
-	WorkspaceID         string
-	AgentSessionID      string
-	RequestID           string
-	ProviderTurnID      string
-	Reason              string
-	FenceMode           string
-	ExpectedOperationID string
-	ExpectedRevision    int64
-	ExpectedRepairEpoch int64
-	QuiesceSucceeded    bool
-	QuiesceError        string
 }

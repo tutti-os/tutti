@@ -286,18 +286,56 @@ func projectBindingMatches(
 	actual storesqlite.Session,
 	expected agenthost.HistoricalSession,
 ) bool {
-	return strings.TrimSpace(actual.AgentTargetID) ==
-		strings.TrimSpace(expected.AgentTargetID) &&
-		strings.TrimSpace(actual.Provider) ==
-			strings.TrimSpace(expected.Provider) &&
-		storesqlite.NormalizeProjectPath(actual.Cwd) ==
-			storesqlite.NormalizeProjectPath(expected.Cwd) &&
-		strings.TrimSpace(actual.RailSectionKind) ==
-			strings.TrimSpace(expected.RailSectionKind) &&
-		storesqlite.NormalizeProjectPath(actual.RailProjectPath) ==
-			storesqlite.NormalizeProjectPath(expected.RailProjectPath) &&
-		storesqlite.NormalizeRailSectionKey(actual.RailSectionKey) ==
-			storesqlite.NormalizeRailSectionKey(expected.RailSectionKey)
+	if strings.TrimSpace(actual.AgentTargetID) !=
+		strings.TrimSpace(expected.AgentTargetID) ||
+		strings.TrimSpace(actual.Provider) !=
+			strings.TrimSpace(expected.Provider) ||
+		strings.TrimSpace(actual.RailSectionKind) !=
+			strings.TrimSpace(expected.RailSectionKind) ||
+		storesqlite.NormalizeProjectPath(actual.RailProjectPath) !=
+			storesqlite.NormalizeProjectPath(expected.RailProjectPath) ||
+		storesqlite.NormalizeRailSectionKey(actual.RailSectionKey) !=
+			storesqlite.NormalizeRailSectionKey(expected.RailSectionKey) {
+		return false
+	}
+	actualCWD := storesqlite.NormalizeProjectPath(actual.Cwd)
+	expectedCWD := storesqlite.NormalizeProjectPath(expected.Cwd)
+	if actualCWD == expectedCWD {
+		return true
+	}
+	// Shared-agent owner Host admission remaps logical /workspace/... cwd into
+	// /workspace/<roomId>/... while rail project metadata stays on the recorded
+	// logical path. Accept that confined remapping once rail fields already
+	// matched.
+	return sharedWorkspaceRemappedCWDEqual(actualCWD, expectedCWD)
+}
+
+// sharedWorkspaceRemappedCWDEqual reports whether actual is the TSH shared-agent
+// confined form of expected: /workspace/<roomId>/<tail> for expected
+// /workspace/<tail>.
+func sharedWorkspaceRemappedCWDEqual(actual, expected string) bool {
+	const workspacePrefix = "/workspace/"
+	if actual == "" || expected == "" {
+		return false
+	}
+	if !strings.HasPrefix(actual, workspacePrefix) ||
+		!strings.HasPrefix(expected, workspacePrefix) {
+		return false
+	}
+	expectedTail := strings.TrimPrefix(expected, workspacePrefix)
+	if expectedTail == "" || expectedTail == "." {
+		return false
+	}
+	rest := strings.TrimPrefix(actual, workspacePrefix)
+	slash := strings.IndexByte(rest, '/')
+	if slash <= 0 {
+		return false
+	}
+	roomID := rest[:slash]
+	if roomID == "" || strings.Contains(roomID, "/") {
+		return false
+	}
+	return rest[slash+1:] == expectedTail
 }
 
 func composerSettingsEqual(actual, expected map[string]any) bool {

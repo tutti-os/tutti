@@ -162,6 +162,36 @@ func TestMessageEventRequiresStableEventIDAndRole(t *testing.T) {
 	}
 }
 
+func TestBestEffortErrorCodePrefersStructuredProviderCode(t *testing.T) {
+	t.Parallel()
+
+	payload := EventPayload{
+		Metadata: map[string]any{
+			"errorCode": " quota_or_rate_limit ",
+			"error":     map[string]any{"code": "nested_code"},
+		},
+		Error: map[string]any{"code": "fallback_code"},
+	}
+	if got := BestEffortErrorCode(payload); got != "quota_or_rate_limit" {
+		t.Fatalf("BestEffortErrorCode() = %q, want quota_or_rate_limit", got)
+	}
+}
+
+func TestBestEffortErrorCodeReadsNestedAndPayloadErrors(t *testing.T) {
+	t.Parallel()
+
+	for name, payload := range map[string]EventPayload{
+		"nested metadata": {Metadata: map[string]any{"error": map[string]any{"error_code": "auth_required"}}},
+		"payload error":   {Error: map[string]any{"code": "request_timed_out"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := BestEffortErrorCode(payload); got == "" {
+				t.Fatalf("BestEffortErrorCode(%s) is empty", name)
+			}
+		})
+	}
+}
+
 func TestContextEventBuildersCreateMessagesAndCompactCalls(t *testing.T) {
 	t.Parallel()
 

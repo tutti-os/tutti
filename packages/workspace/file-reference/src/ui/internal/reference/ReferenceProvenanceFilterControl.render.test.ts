@@ -20,7 +20,7 @@ const require = createRequire(import.meta.url);
 const { JSDOM } = require("jsdom") as JsdomModule;
 const ts = require("typescript") as TypeScriptModule;
 
-test("provenance filter handles row clicks and disabled option visibility", async () => {
+test("provenance filter keeps its host palette open while filtering", async () => {
   const longMemberLabel = "Alice with a very long display name";
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   const tempDir = mkdtempSync(join(moduleDir, ".filter-render-test-"));
@@ -34,9 +34,12 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
   ).IS_REACT_ACT_ENVIRONMENT;
 
   let root: Root | null = null;
+  let testDocument: Document | null = null;
+  let hostPointerDownOutside: ((event: Event) => void) | null = null;
   try {
     const componentModuleUrl = buildFilterControlRenderModule(tempDir);
     const dom = new JSDOM('<!doctype html><div id="root"></div>');
+    testDocument = dom.window.document;
     globalThis.window = dom.window;
     globalThis.document = dom.window.document;
     globalThis.HTMLElement = dom.window.HTMLElement;
@@ -86,25 +89,25 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
       value: { agentTargetIds: ["codex"], memberIds: null }
     };
     const renderControl = (nextProps: ReferenceProvenanceFilterControlProps) =>
-      createElement(
-        "div",
-        {
-          onClickCapture(event: React.MouseEvent<HTMLDivElement>) {
-            if (
-              event.target instanceof Element &&
-              !event.target.closest(".nodrag")
-            ) {
-              event.stopPropagation();
-            }
-          }
-        },
-        createElement(ReferenceProvenanceFilterControl, nextProps)
-      );
+      createElement(ReferenceProvenanceFilterControl, nextProps);
 
     root = createRoot(container);
     await act(async () => {
       root?.render(renderControl(props));
     });
+
+    let hostPointerDownOutsideCount = 0;
+    hostPointerDownOutside = (event) => {
+      const target = event.target;
+      if (!(target instanceof Node) || !container.contains(target)) {
+        hostPointerDownOutsideCount += 1;
+      }
+    };
+    dom.window.document.addEventListener(
+      "pointerdown",
+      hostPointerDownOutside,
+      true
+    );
 
     assert.doesNotMatch(dom.window.document.body.textContent ?? "", /Cursor/);
     assert.doesNotMatch(dom.window.document.body.textContent ?? "", /Reset/);
@@ -112,12 +115,28 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
       'button[aria-label="Filtered sources"]'
     );
     assert.ok(filterTrigger);
+    assert.equal(filterTrigger.getAttribute("aria-expanded"), "false");
     assert.match(filterTrigger.className, /(?:^|\s)border-0(?:\s|$)/);
     assert.doesNotMatch(
       filterTrigger.className,
       /border-\[var\(--border-focus\)\]/
     );
-    const popover = dom.window.document.querySelector<HTMLElement>(".nodrag");
+    assert.equal(dom.window.document.querySelector('[role="menu"]'), null);
+
+    const triggerPointerDown = new dom.window.MouseEvent("pointerdown", {
+      bubbles: true,
+      cancelable: true
+    });
+    await act(async () => {
+      filterTrigger.dispatchEvent(triggerPointerDown);
+      filterTrigger.click();
+    });
+    assert.equal(triggerPointerDown.defaultPrevented, true);
+    assert.equal(hostPointerDownOutsideCount, 0);
+    assert.equal(filterTrigger.getAttribute("aria-expanded"), "true");
+
+    const popover =
+      dom.window.document.querySelector<HTMLElement>('[role="menu"]');
     assert.ok(popover);
     assert.equal(popover.style.zIndex, "var(--z-panel-popover)");
 
@@ -131,6 +150,8 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
     await act(async () => {
       allAgentsRow.click();
     });
+    assert.equal(hostPointerDownOutsideCount, 0);
+    assert.ok(dom.window.document.querySelector('[role="menu"]'));
 
     const codexRow = [
       ...dom.window.document.querySelectorAll<HTMLElement>(
@@ -196,6 +217,7 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
     });
 
     assert.deepEqual(calls, ["all:agent", "codex", "all:member", "member-1"]);
+    assert.equal(hostPointerDownOutsideCount, 0);
 
     const agentsTab = [
       ...dom.window.document.querySelectorAll<HTMLElement>('[role="tab"]')
@@ -221,7 +243,42 @@ test("provenance filter handles row clicks and disabled option visibility", asyn
     ].find((element) => element.textContent === "Cursor");
     assert.ok(cursorRow);
     assert.equal(cursorRow.getAttribute("aria-disabled"), "true");
+
+    const outside = dom.window.document.createElement("button");
+    dom.window.document.body.append(outside);
+    await act(async () => {
+      outside.dispatchEvent(
+        new dom.window.MouseEvent("pointerdown", {
+          bubbles: true,
+          cancelable: true
+        })
+      );
+    });
+    assert.equal(hostPointerDownOutsideCount, 1);
+    assert.equal(dom.window.document.querySelector('[role="menu"]'), null);
+
+    await act(async () => {
+      filterTrigger.click();
+    });
+    assert.ok(dom.window.document.querySelector('[role="menu"]'));
+    await act(async () => {
+      dom.window.document.dispatchEvent(
+        new dom.window.KeyboardEvent("keydown", {
+          bubbles: true,
+          cancelable: true,
+          key: "Escape"
+        })
+      );
+    });
+    assert.equal(dom.window.document.querySelector('[role="menu"]'), null);
   } finally {
+    if (hostPointerDownOutside && testDocument) {
+      testDocument.removeEventListener(
+        "pointerdown",
+        hostPointerDownOutside,
+        true
+      );
+    }
     if (root) {
       await act(async () => {
         root?.unmount();
@@ -247,26 +304,17 @@ function buildFilterControlRenderModule(tempDir: string): string {
       import { createElement, isValidElement } from "react";
       const h = createElement;
       function cleanProps(props = {}) {
-        const {
-          align,
-          asChild,
-          checked,
-          children,
-          disabled,
-          modal,
-          onCheckedChange,
-          onSelect,
-          onValueChange,
-          preventMouseDownDefault,
-          side,
-          sideOffset,
-          size,
-          segments,
-          tabs,
-          value,
-          variant,
-          ...rest
-        } = props;
+      const {
+        checked,
+        children,
+        disabled,
+        onValueChange,
+        segments,
+        size,
+        value,
+        variant,
+        ...rest
+      } = props;
         return rest;
       }
       function passthrough(tag) {
@@ -280,35 +328,6 @@ function buildFilterControlRenderModule(tempDir: string): string {
       export const Button = passthrough("button");
       export function ChevronDownIcon(props = {}) {
         return h("svg", cleanProps(props));
-      }
-      export const DropdownMenu = passthrough("div");
-      export const DropdownMenuContent = passthrough("div");
-      export const DropdownMenuGroup = passthrough("div");
-      export function DropdownMenuTrigger(props = {}) {
-        return props.asChild && isValidElement(props.children)
-          ? props.children
-          : h("span", cleanProps(props), props.children);
-      }
-      export function DropdownMenuCheckboxItem(props = {}) {
-        const { checked, disabled, onCheckedChange } = props;
-        return h("div", {
-          ...cleanProps(props),
-          "aria-checked": checked === "indeterminate" ? "mixed" : checked,
-          "aria-disabled": disabled || undefined,
-          role: "menuitemcheckbox",
-          onClick: disabled ? undefined : () => onCheckedChange?.(!checked)
-        }, props.children);
-      }
-      export function UnderlineTabs(props = {}) {
-        return h("div", { role: "tablist" }, props.tabs.map((tab) =>
-          h("button", {
-            key: tab.value,
-            "aria-selected": props.value === tab.value,
-            role: "tab",
-            type: "button",
-            onClick: () => props.onValueChange(tab.value)
-          }, tab.label)
-        ));
       }
       export function Checkbox(props = {}) {
         return h("span", cleanProps(props));
@@ -361,13 +380,7 @@ function buildFilterControlRenderModule(tempDir: string): string {
         Button,
         Checkbox,
         ChevronDownIcon,
-        DropdownMenu,
-        DropdownMenuCheckboxItem,
-        DropdownMenuContent,
-        DropdownMenuGroup,
-        DropdownMenuTrigger,
-        SegmentBar,
-        cn
+        SegmentBar
       } from "${uiSystemUrl}";`
     )
     .replace(

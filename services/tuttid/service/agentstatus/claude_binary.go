@@ -36,6 +36,7 @@ import (
 
 	"github.com/klauspost/compress/zstd"
 
+	"github.com/tutti-os/tutti/services/tuttid/service/usercommand"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -144,7 +145,7 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 	}
 	finalPath := filepath.Join(runtimeRoot, "versions", descriptor.ClaudeVersion, descriptor.BinaryName)
 	if claudeBinaryReady(finalPath, descriptor) {
-		if err := writeClaudeCodePointer(stateRoot, descriptor, finalPath); err != nil {
+		if err := s.activateClaudeCodeBinary(ctx, stateRoot, descriptor, finalPath); err != nil {
 			return ClaudeCodeBinaryStatus{}, err
 		}
 		return ClaudeCodeBinaryStatus{Path: finalPath, Version: descriptor.ClaudeVersion, Source: "installed"}, nil
@@ -176,7 +177,7 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 	}
 	defer releaseLock()
 	if claudeBinaryReady(finalPath, descriptor) {
-		if err := writeClaudeCodePointer(stateRoot, descriptor, finalPath); err != nil {
+		if err := s.activateClaudeCodeBinary(ctx, stateRoot, descriptor, finalPath); err != nil {
 			return ClaudeCodeBinaryStatus{}, err
 		}
 		return ClaudeCodeBinaryStatus{Path: finalPath, Version: descriptor.ClaudeVersion, Source: "installed"}, nil
@@ -186,11 +187,42 @@ func (s Service) EnsureClaudeCodeBinary(ctx context.Context) (ClaudeCodeBinarySt
 	if err != nil {
 		return ClaudeCodeBinaryStatus{}, err
 	}
-	if err := writeClaudeCodePointer(stateRoot, descriptor, finalPath); err != nil {
+	if err := s.activateClaudeCodeBinary(ctx, stateRoot, descriptor, finalPath); err != nil {
 		return ClaudeCodeBinaryStatus{}, err
 	}
 	cleanupClaudeCodeVersions(runtimeRoot, descriptor.ClaudeVersion)
 	return ClaudeCodeBinaryStatus{Path: finalPath, Version: descriptor.ClaudeVersion, Source: source}, nil
+}
+
+func (s Service) activateClaudeCodeBinary(
+	ctx context.Context,
+	stateRoot string,
+	descriptor claudeSDKRuntimeDescriptor,
+	executable string,
+) error {
+	if err := writeClaudeCodePointer(stateRoot, descriptor, executable); err != nil {
+		return err
+	}
+	userBinDir := strings.TrimSpace(s.UserCommandBinDir)
+	if userBinDir == "" {
+		return nil
+	}
+	entry, err := usercommand.NewEntry(s.ClaudeCodeRuntimeDir, userBinDir, "claude", executable)
+	if err != nil {
+		return fmt.Errorf("derive claude user command: %w", err)
+	}
+	if err := entry.Validate(); err != nil {
+		return fmt.Errorf("validate claude user command: %w", err)
+	}
+	if s.UserPathAdapter != nil {
+		if err := s.UserPathAdapter.Ensure(ctx, userBinDir); err != nil {
+			return fmt.Errorf("publish claude user command directory: %w", err)
+		}
+	}
+	if err := entry.Publish(); err != nil {
+		return fmt.Errorf("publish claude user command: %w", err)
+	}
+	return nil
 }
 
 // Per-source download budgets: a stalled primary source must not consume the

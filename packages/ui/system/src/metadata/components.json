@@ -1721,6 +1721,34 @@
       "iconVariant": "filled"
     },
     {
+      "id": "tutti-mark-new-filled-icon",
+      "layer": "base",
+      "name": "TuttiMarkNew",
+      "export": "TuttiMarkNew",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/tutti-mark-new.tsx",
+      "description": "Updated Tutti brand mark SVG icon.",
+      "useCases": ["Brand marks", "Application identity"],
+      "migrationHints": [],
+      "iconVariant": "filled"
+    },
+    {
+      "id": "change-lined-icon",
+      "layer": "base",
+      "name": "ChangeLined",
+      "export": "ChangeLined",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/change-lined.tsx",
+      "description": "Bidirectional change icon for transitions between connected surfaces.",
+      "useCases": ["Connection transitions", "Bidirectional changes"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
       "id": "launch-lined-icon",
       "layer": "base",
       "name": "LaunchIcon",
@@ -3041,6 +3069,20 @@
       "source": "src/icons/system-icons.tsx",
       "description": "System icon for links or connected resources.",
       "useCases": ["Links", "Connected resources"],
+      "migrationHints": [],
+      "iconVariant": "lined"
+    },
+    {
+      "id": "connector-lined-icon",
+      "layer": "base",
+      "name": "ConnectorLinedIcon",
+      "export": "ConnectorLinedIcon",
+      "from": "@tutti-os/ui-system/icons",
+      "category": "icon",
+      "status": "stable",
+      "source": "src/icons/system-icons.tsx",
+      "description": "Lined system icon for connector entry points.",
+      "useCases": ["Connector menus", "Integration entry points"],
       "migrationHints": [],
       "iconVariant": "lined"
     },

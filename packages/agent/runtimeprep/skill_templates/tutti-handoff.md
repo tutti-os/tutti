@@ -1,14 +1,21 @@
 ---
 name: tutti-handoff
-description: Use for any turn that mentions another agent (`mention://agent-target/...`) where work may move between agents, and for follow-up turns about work already handed to another agent session in this conversation — deciding whether to hand off, which task to hand off, how results come back, handling launch failures, and routing follow-up instructions after a delegation. A `mention://agent-session/...` link on its own is a context reference, not a handoff trigger.
+description: Use only for an explicit Tutti AgentGUI handoff, such as a `mention://agent-target/...` link, a direct request to start or message a separate Tutti AgentGUI session, or a follow-up to a handoff already created in this conversation. Generic provider-native subagent requests are not Tutti handoffs. A `mention://agent-session/...` link on its own is a context reference, not a handoff trigger.
 ---
 
 # Tutti Agent Handoff
 
-This skill is the handoff contract between agents: who executes, what gets handed off, how results return, and where follow-ups go. Use `$tutti-cli` for command syntax and the command guide; this skill decides behavior, not flags.
+This skill is the handoff contract for separate Tutti AgentGUI sessions: who executes, what gets handed off, how results return, and where follow-ups go. Use `$tutti-cli` for command syntax and the command guide; this skill decides behavior, not flags.
+
+## Scope Boundary
+
+Use this skill only when the current turn has an explicit `mention://agent-target/...` handoff, explicitly asks to start or message a separate Tutti AgentGUI/Host Agent session, or is a follow-up to a handoff already created by this skill. Do not activate it merely because the user says “agent”, “subagent”, “delegate”, “spawn a worker”, or similar.
+
+A generic request to use a subagent is provider-native delegation. Use the current provider's native subagent or collaboration mechanism when available. This skill and the `tutti agent ...` workflow apply only to an explicit separate Tutti AgentGUI/Host Agent handoff or an `agent-target` mention.
 
 {{if hasAll "agent-context.agent.list" "agent-context.agent.start"}}
 Before starting a new Agent session, run `{{command "agent-context.agent.list"}}`. Select the exact Agent id from the current result or verify the id carried by an `agent-target` mention. Do not infer an id from a provider name. Start it with `{{if hasInput "agent-context.agent.start" "show"}}{{command "agent-context.agent.start" (args "show" "true")}}{{else}}{{command "agent-context.agent.start"}}{{end}}`.
+{{if hasInput "agent-context.agent.start" "cwd"}}Omit `--cwd` to inherit the current Agent session's working directory and rail placement. Use `--cwd` only when the user explicitly requests a different working directory or project. Never set `TUTTI_AGENT_CWD` or `TUTTI_AGENT_RAIL_PLACEMENT` manually.{{end}}
 {{else}}
 The current Host does not advertise the complete Agent list/start workflow. Do not invent a launcher command.
 {{end}}

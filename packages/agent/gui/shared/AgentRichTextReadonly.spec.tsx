@@ -83,6 +83,22 @@ describe("AgentRichTextReadonly", () => {
     expect(onLinkClick).toHaveBeenCalledWith(href);
   });
 
+  it("delegates clicks from inside a mention pill", () => {
+    const onLinkClick = vi.fn();
+    const href = "mention://workspace-app/weather?workspaceId=workspace-1";
+    const { getByText } = render(
+      <AgentRichTextReadonly
+        value={`Run [@Weather](${href})`}
+        onLinkClick={onLinkClick}
+      />
+    );
+
+    fireEvent.click(getByText("Weather"));
+
+    expect(onLinkClick).toHaveBeenCalledOnce();
+    expect(onLinkClick).toHaveBeenCalledWith(href);
+  });
+
   it("renders historical browser-element hrefs whose entity id contains an unescaped colon", async () => {
     registerAgentCustomMentionKind({
       kind: "browser-element",

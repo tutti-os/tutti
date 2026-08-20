@@ -3,6 +3,10 @@ import {
   type ClaudeTurnBinding,
   type ClaudeTurnBindingResolver
 } from "./sessionFork.ts";
+import {
+  logClaudeProviderTurnDiagnostic,
+  providerTurnDiagnosticError
+} from "./providerTurnDiagnostics.ts";
 
 export type ProviderTurnPhase =
   | "queued"
@@ -21,6 +25,11 @@ export type ProviderTurnIdentityBindingDisposition =
   | "already_bound"
   | "conflict"
   | "missing";
+
+type ProviderTurnAcceptanceTriggerPhase = Extract<
+  ProviderTurnPhase,
+  "streaming" | "waiting_approval" | "waiting_input" | "running_tool"
+>;
 
 export type ProviderTurnAcceptanceTarget = {
   turnId: string;
@@ -104,10 +113,7 @@ export class ProviderTurnAcceptanceCoordinator {
   }
 
   async ensure(
-    nextPhase: Extract<
-      ProviderTurnPhase,
-      "streaming" | "waiting_approval" | "waiting_input" | "running_tool"
-    >,
+    nextPhase: ProviderTurnAcceptanceTriggerPhase,
     signal?: AbortSignal
   ): Promise<void> {
     const target = this.resolveTarget();
@@ -129,13 +135,15 @@ export class ProviderTurnAcceptanceCoordinator {
       active.controller.abort();
     }
     const controller = new AbortController();
-    const promise = this.resolveAndBind(target, controller.signal).finally(
-      () => {
-        if (this.active?.promise === promise) {
-          this.active = undefined;
-        }
+    const promise = this.resolveAndBind(
+      target,
+      nextPhase,
+      controller.signal
+    ).finally(() => {
+      if (this.active?.promise === promise) {
+        this.active = undefined;
       }
-    );
+    });
     this.active = { turnId: target.turnId, controller, promise };
     await raceWithAbort(promise, signal);
     this.setPhase(target.turnId, nextPhase);
@@ -166,21 +174,42 @@ export class ProviderTurnAcceptanceCoordinator {
 
   private async resolveAndBind(
     target: ProviderTurnAcceptanceTarget,
+    triggerPhase: ProviderTurnAcceptanceTriggerPhase,
     signal: AbortSignal
   ): Promise<void> {
+    const startedAtMs = this.now();
     const providerSessionId = this.getProviderSessionId().trim();
     const recoveryToken = target.promptCorrelationId.trim();
+    const basePayload = {
+      turnId: target.turnId,
+      providerSessionId,
+      promptCorrelationId: recoveryToken,
+      triggerPhase,
+      timeoutMs: this.resolutionTimeoutMs
+    };
     if (!providerSessionId || !recoveryToken) {
+      logClaudeProviderTurnDiagnostic("identity_recovery_failed", {
+        ...basePayload,
+        attempts: 0,
+        elapsedMs: 0,
+        reason: "missing_required_identity",
+        hasProviderSessionId: Boolean(providerSessionId),
+        hasPromptCorrelationId: Boolean(recoveryToken)
+      });
       throw new Error(
         "Claude provider turn identity resolution requires session and correlation identities"
       );
     }
     const deadline = this.now() + Math.max(0, this.resolutionTimeoutMs);
     let retryDelayMs = Math.max(1, this.retryDelayMs);
+    let attempts = 0;
+    let lastAbsent: ClaudeTurnBindingResolutionError | undefined;
     this.setPhase(target.turnId, "resolving_identity");
+    logClaudeProviderTurnDiagnostic("identity_recovery_started", basePayload);
     for (;;) {
-      throwIfAborted(signal);
       try {
+        throwIfAborted(signal);
+        attempts += 1;
         const binding = await raceWithAbort(
           this.resolveBinding({
             sessionId: providerSessionId,
@@ -191,25 +220,74 @@ export class ProviderTurnAcceptanceCoordinator {
         );
         this.acceptBinding(target.turnId, providerSessionId, binding);
         this.setPhase(target.turnId, "identity_resolved");
+        logClaudeProviderTurnDiagnostic("identity_recovery_resolved", {
+          ...basePayload,
+          attempts,
+          elapsedMs: Math.max(0, this.now() - startedAtMs),
+          providerTurnId: binding.providerTurnId.trim(),
+          providerCheckpointMessageId:
+            binding.providerCheckpointMessageId.trim(),
+          correlationIdRewritten:
+            binding.providerTurnId.trim() !== recoveryToken
+        });
         return;
       } catch (error) {
         if (signal.aborted) {
+          logClaudeProviderTurnDiagnostic("identity_recovery_failed", {
+            ...basePayload,
+            attempts,
+            elapsedMs: Math.max(0, this.now() - startedAtMs),
+            reason: "canceled",
+            ...resolutionDetails(lastAbsent),
+            error: providerTurnDiagnosticError(error)
+          });
           throw abortError();
         }
         if (
           !(error instanceof ClaudeTurnBindingResolutionError) ||
           error.reason !== "absent"
         ) {
+          logClaudeProviderTurnDiagnostic("identity_recovery_failed", {
+            ...basePayload,
+            attempts,
+            elapsedMs: Math.max(0, this.now() - startedAtMs),
+            reason: identityRecoveryFailureReason(error),
+            ...resolutionDetails(error),
+            error: providerTurnDiagnosticError(error)
+          });
           throw error;
         }
+        lastAbsent = error;
         const remainingMs = deadline - this.now();
         if (remainingMs <= 0) {
+          logClaudeProviderTurnDiagnostic("identity_recovery_failed", {
+            ...basePayload,
+            attempts,
+            elapsedMs: Math.max(0, this.now() - startedAtMs),
+            reason: "transcript_absent_at_deadline",
+            ...resolutionDetails(error),
+            error: providerTurnDiagnosticError(error)
+          });
           throw new Error(
             "Claude provider turn identity was not persisted before the acceptance deadline",
             { cause: error }
           );
         }
-        await this.wait(Math.min(retryDelayMs, remainingMs), signal);
+        try {
+          await this.wait(Math.min(retryDelayMs, remainingMs), signal);
+        } catch (waitError) {
+          if (signal.aborted) {
+            logClaudeProviderTurnDiagnostic("identity_recovery_failed", {
+              ...basePayload,
+              attempts,
+              elapsedMs: Math.max(0, this.now() - startedAtMs),
+              reason: "canceled",
+              ...resolutionDetails(lastAbsent),
+              error: providerTurnDiagnosticError(waitError)
+            });
+          }
+          throw waitError;
+        }
         retryDelayMs = Math.min(retryDelayMs * 2, MAX_RETRY_DELAY_MS);
       }
     }
@@ -245,6 +323,20 @@ export class ProviderTurnAcceptanceCoordinator {
     }
     this.phases.set(normalizedTurnId, phase);
   }
+}
+
+function identityRecoveryFailureReason(error: unknown): string {
+  if (error instanceof ClaudeTurnBindingResolutionError) {
+    return `transcript_${error.reason}`;
+  }
+  return "transcript_read_or_binding_failed";
+}
+
+function resolutionDetails(error: unknown): Record<string, unknown> {
+  if (!(error instanceof ClaudeTurnBindingResolutionError) || !error.details) {
+    return {};
+  }
+  return { ...error.details };
 }
 
 function abortableDelay(delayMs: number, signal: AbortSignal): Promise<void> {

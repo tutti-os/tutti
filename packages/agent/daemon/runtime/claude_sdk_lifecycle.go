@@ -12,6 +12,31 @@ import (
 const claudeSDKCloseTimeout = 10 * time.Minute
 
 func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]activityshared.Event, error) {
+	unlock := a.lockClaudeSDKSessionLifecycle(session.AgentSessionID)
+	defer unlock()
+	if err := a.admitClaudeSDKReplacementLocked(session.AgentSessionID); err != nil {
+		return nil, err
+	}
+	return a.replaceClaudeSDKSessionLocked(ctx, session)
+}
+
+func (a *ClaudeCodeSDKAdapter) replaceClaudeSDKSessionLocked(
+	ctx context.Context,
+	session Session,
+) ([]activityshared.Event, error) {
+	previous := a.getSession(session.AgentSessionID)
+	events, err := a.startClaudeSDKSession(ctx, session)
+	if err != nil && previous != nil {
+		a.restoreOwnedPreviousSession(session.AgentSessionID, previous)
+	}
+	if err == nil && previous != nil {
+		a.removeSession(session.AgentSessionID, previous)
+		a.closeOrRetainClaudeSDKSession(session.AgentSessionID, previous)
+	}
+	return events, err
+}
+
+func (a *ClaudeCodeSDKAdapter) startClaudeSDKSession(ctx context.Context, session Session) ([]activityshared.Event, error) {
 	if a == nil || a.transport == nil {
 		return nil, ErrSessionDisconnected
 	}
@@ -63,8 +88,8 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 	if processCassetteCaptureOrigin(conn) ==
 		ProcessCassetteCaptureOriginAttachedLiveConnection {
 		if !restore {
-			_ = conn.Close()
 			a.removeSession(session.AgentSessionID, adapterSession)
+			a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
 			return nil, errors.New(
 				"attached live Claude replay requires a restored provider session id",
 			)
@@ -85,6 +110,7 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		"permissionModeId":  session.PermissionModeID,
 		"settings":          claudeSDKSessionSettingsPayload(session),
 		"resumeCursor":      claudeSDKResumeCursorFromSession(session),
+		"mcpServers":        claudeSDKMCPServers(session.MCPServers),
 	}
 	for key, value := range claudeCodeSDKStartOptions(session) {
 		startPayload[key] = value
@@ -94,16 +120,23 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 		Type:    "start",
 		Payload: startPayload,
 	}); err != nil {
-		_ = conn.Close()
 		a.removeSession(session.AgentSessionID, adapterSession)
+		a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
 		return nil, err
 	}
 
 	for {
 		event, err := adapterSession.reader.next(ctx)
 		if err != nil {
-			_ = conn.Close()
 			a.removeSession(session.AgentSessionID, adapterSession)
+			a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
+			if errors.Is(err, context.DeadlineExceeded) {
+				// The process is already launched and the start request has been
+				// sent. A deadline at this boundary means the provider never
+				// established its runtime Session, rather than preparation or
+				// delivery timing out before provider readiness was observable.
+				err = errors.Join(ErrProviderStartTimeout, err)
+			}
 			return nil, err
 		}
 		eventCtx := context.Background()
@@ -141,31 +174,44 @@ func (a *ClaudeCodeSDKAdapter) Start(ctx context.Context, session Session) ([]ac
 			adapterSession.conn,
 			event,
 		); err != nil {
-			_ = conn.Close()
 			a.removeSession(session.AgentSessionID, adapterSession)
+			a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
 			return nil, err
 		}
 		if event.Type == "error" {
-			_ = conn.Close()
 			a.removeSession(session.AgentSessionID, adapterSession)
+			a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
 			return nil, errors.New(payloadString(event.Payload, "error"))
 		}
 	}
+}
+
+func claudeSDKMCPServers(bindings []MCPServerBinding) map[string]any {
+	result := make(map[string]any)
+	for _, binding := range bindings {
+		name := strings.TrimSpace(binding.Name)
+		if name == "" || strings.TrimSpace(binding.Type) != "http" || strings.TrimSpace(binding.URL) == "" {
+			continue
+		}
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		result[name] = map[string]any{"type": "http", "url": binding.URL, "headers": headers}
+	}
+	return result
 }
 
 func (a *ClaudeCodeSDKAdapter) Resume(ctx context.Context, session Session) error {
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		return ErrSessionDisconnected
 	}
-	previous := a.getSession(session.AgentSessionID)
-	_, err := a.Start(ctx, session)
-	if err != nil && previous != nil {
-		a.restorePreviousSession(session.AgentSessionID, previous)
+	unlock := a.lockClaudeSDKSessionLifecycle(session.AgentSessionID)
+	defer unlock()
+	if err := a.admitClaudeSDKReplacementLocked(session.AgentSessionID); err != nil {
+		return err
 	}
-	if err == nil && previous != nil {
-		a.removeSession(session.AgentSessionID, previous)
-		_ = previous.conn.Close()
-	}
+	_, err := a.replaceClaudeSDKSessionLocked(ctx, session)
 	return classifyClaudeSDKResumeError(session, err)
 }
 
@@ -174,6 +220,12 @@ func (*ClaudeCodeSDKAdapter) CanResume(session Session) bool {
 }
 
 func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error {
+	unlock := a.lockClaudeSDKSessionLifecycle(session.AgentSessionID)
+	defer unlock()
+	return a.closeClaudeSDKSession(ctx, session)
+}
+
+func (a *ClaudeCodeSDKAdapter) closeClaudeSDKSession(ctx context.Context, session Session) error {
 	adapterSession := a.getSession(session.AgentSessionID)
 	if adapterSession == nil {
 		return nil
@@ -184,7 +236,7 @@ func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error
 	if !readerStarted {
 		if err := a.startClaudeSDKReader(session.AgentSessionID, adapterSession); err != nil {
 			a.removeSession(session.AgentSessionID, adapterSession)
-			_ = adapterSession.conn.Close()
+			a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
 			return err
 		}
 	}
@@ -205,14 +257,18 @@ func (a *ClaudeCodeSDKAdapter) Close(ctx context.Context, session Session) error
 		},
 	}); err != nil {
 		a.removeSession(session.AgentSessionID, adapterSession)
-		_ = adapterSession.conn.Close()
+		a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
 		return err
 	}
 	a.removeSession(session.AgentSessionID, adapterSession)
 	if graceful, ok := adapterSession.conn.(GracefulProcessConnection); ok {
 		_ = graceful.CloseInput()
 	}
-	return adapterSession.conn.Close()
+	if err := adapterSession.conn.Close(); err != nil {
+		a.retainRetiredClaudeSDKSession(session.AgentSessionID, adapterSession)
+		return err
+	}
+	return nil
 }
 
 func (a *ClaudeCodeSDKAdapter) HasLiveSession(session Session) bool {
@@ -222,4 +278,28 @@ func (a *ClaudeCodeSDKAdapter) HasLiveSession(session Session) bool {
 
 func (a *ClaudeCodeSDKAdapter) ReleaseLiveSession(ctx context.Context, session Session) error {
 	return a.Close(ctx, session)
+}
+
+// DisconnectLiveSession terminalizes provider-owned work through the same
+// external-failure path as a broken sidecar connection, then closes only the
+// transport. It deliberately does not send the sidecar "close" request,
+// which is the graceful provider-session close contract.
+func (a *ClaudeCodeSDKAdapter) DisconnectLiveSession(_ context.Context, session Session) error {
+	unlock := a.lockClaudeSDKSessionLifecycle(session.AgentSessionID)
+	defer unlock()
+	adapterSession := a.getSession(session.AgentSessionID)
+	if adapterSession == nil {
+		return nil
+	}
+	a.failClaudeSDKReaderWithOwnership(
+		session.AgentSessionID,
+		adapterSession,
+		ErrSessionDisconnected,
+		true,
+	)
+	if err := adapterSession.conn.Close(); err != nil {
+		return err
+	}
+	a.removeSession(session.AgentSessionID, adapterSession)
+	return nil
 }

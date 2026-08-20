@@ -458,6 +458,9 @@ function capabilityOptionsFromValue(
     seen.add(id);
     const description = normalizeText(record.description);
     const iconUrl = normalizeText(record.iconUrl);
+    const installedAtUnixMs = normalizePositiveInteger(
+      record.installedAtUnixMs
+    );
     const source = normalizeText(record.source);
     const pluginName = normalizeText(record.pluginName);
     const serverName = normalizeText(record.serverName);
@@ -473,6 +476,7 @@ function capabilityOptionsFromValue(
       invocation,
       ...(description ? { description } : {}),
       ...(iconUrl ? { iconUrl } : {}),
+      ...(installedAtUnixMs ? { installedAtUnixMs } : {}),
       ...(source ? { source } : {}),
       ...(pluginName ? { pluginName } : {}),
       ...(serverName ? { serverName } : {}),
@@ -553,4 +557,10 @@ function recordValue(value: unknown): Record<string, unknown> {
 
 function normalizeText(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function normalizePositiveInteger(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
+    ? value
+    : null;
 }

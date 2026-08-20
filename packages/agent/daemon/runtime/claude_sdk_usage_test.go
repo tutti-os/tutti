@@ -37,6 +37,28 @@ func TestClaudeCodeSDKAdapterWaitsForContextWindowBeforePublishingUsage(t *testi
 	}
 }
 
+func TestClaudeSDKReportedUsageTokensKeepsAggregateSeparateFromLatestIteration(t *testing.T) {
+	usage := map[string]any{
+		"input_tokens":                int64(22),
+		"output_tokens":               int64(8_172),
+		"cache_read_input_tokens":     int64(5_054_371),
+		"cache_creation_input_tokens": int64(511_644),
+		"iterations": []any{
+			map[string]any{
+				"input_tokens":            int64(22),
+				"output_tokens":           int64(8_172),
+				"cache_read_input_tokens": int64(504_411),
+			},
+		},
+	}
+	if got := claudeSDKUsageTokens(usage); got != 512_605 {
+		t.Fatalf("latest iteration tokens = %d, want 512605", got)
+	}
+	if got := claudeSDKReportedUsageTokens(usage); got != 5_574_209 {
+		t.Fatalf("reported aggregate tokens = %d, want 5574209", got)
+	}
+}
+
 func TestClaudeCodeSDKAdapterMapsModelUsageContextWindowMap(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)

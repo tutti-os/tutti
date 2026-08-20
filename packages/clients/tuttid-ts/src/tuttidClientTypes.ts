@@ -24,9 +24,18 @@ import type {
   AgentQuickPrompt,
   AgentQuickPromptListResponse,
   AgentTargetSetupSnapshot,
+  AgentTargetAccountUsageProbeResult,
   AuthenticateAgentTargetRuntimeRequest,
   InstallAgentTargetRuntimeRequest,
   WorkspaceAgentTurnCancelResponse,
+  WorkspaceAgentSideCapabilities,
+  WorkspaceAgentSideConversation,
+  WorkspaceAgentSideInteractiveResponse,
+  WorkspaceAgentSideTurnCancelResponse,
+  WorkspaceAgentSideTurnResponse,
+  OpenWorkspaceAgentSideConversationRequest,
+  SendWorkspaceAgentSideConversationInputRequest,
+  SubmitWorkspaceAgentSideConversationInteractiveRequest,
   ClearWorkspaceAgentSessionsResponse,
   GoalControlWorkspaceAgentSessionResponse,
   GetWorkspaceAgentSessionGoalResponse,
@@ -158,6 +167,8 @@ import type {
   WorkspaceAgentSessionGitBranchesResponse,
   WorkspaceGitPatchSupportResponse,
   WorkspaceAgentSessionWorktreeSupportResponse,
+  WorkspaceManagedWorktreeListResponse,
+  DeleteWorkspaceManagedWorktreeResponse,
   WorkspaceAgentSessionPageResponse,
   WorkspaceAgentSessionSectionDeletionCandidatesResponse,
   WorkspaceAgentSessionSectionPageResponse,
@@ -246,6 +257,9 @@ export interface TuttidClient
     request: MoveAgentQuickPromptRequest
   ): Promise<AgentQuickPromptListResponse>;
   listAgentTargets(): Promise<ListAgentTargetsResponse>;
+  probeAgentTargetAccountUsage(
+    agentTargetID: string
+  ): Promise<AgentTargetAccountUsageProbeResult>;
   setSystemAgentTargetEnabled(
     agentTargetID: string,
     enabled: boolean
@@ -363,6 +377,36 @@ export interface TuttidClient
     request: ForkWorkspaceAgentSessionRequest,
     requestOptions?: TuttidRequestOptions
   ): Promise<WorkspaceAgentSessionForkOperation>;
+  resolveWorkspaceAgentSideCapabilities?(
+    workspaceID: string,
+    agentSessionID: string
+  ): Promise<WorkspaceAgentSideCapabilities>;
+  openWorkspaceAgentSideConversation?(
+    workspaceID: string,
+    agentSessionID: string,
+    request: OpenWorkspaceAgentSideConversationRequest
+  ): Promise<WorkspaceAgentSideConversation>;
+  closeWorkspaceAgentSideConversation?(
+    workspaceID: string,
+    sideAgentSessionID: string
+  ): Promise<void>;
+  sendWorkspaceAgentSideConversationInput?(
+    workspaceID: string,
+    sideAgentSessionID: string,
+    request: SendWorkspaceAgentSideConversationInputRequest
+  ): Promise<WorkspaceAgentSideTurnResponse>;
+  cancelWorkspaceAgentSideConversationTurn?(
+    workspaceID: string,
+    sideAgentSessionID: string,
+    turnID: string
+  ): Promise<WorkspaceAgentSideTurnCancelResponse>;
+  submitWorkspaceAgentSideConversationInteractive?(
+    workspaceID: string,
+    sideAgentSessionID: string,
+    turnID: string,
+    requestID: string,
+    request: SubmitWorkspaceAgentSideConversationInteractiveRequest
+  ): Promise<WorkspaceAgentSideInteractiveResponse>;
   getWorkspaceAgentSessionForkOperation(
     workspaceID: string,
     operationID: string,
@@ -462,6 +506,7 @@ export interface TuttidClient
       limit?: number;
       projectPath?: string;
       projectScope?: "unscoped";
+      railSectionKey?: string;
       searchQuery?: string;
     },
     requestOptions?: TuttidRequestOptions
@@ -1005,6 +1050,13 @@ export interface TuttidClient
     agentTargetId: string,
     cwd: string
   ): Promise<WorkspaceAgentSessionWorktreeSupportResponse>;
+  listWorkspaceManagedWorktrees(
+    workspaceID: string
+  ): Promise<WorkspaceManagedWorktreeListResponse>;
+  deleteWorkspaceManagedWorktree(
+    workspaceID: string,
+    worktreeID: string
+  ): Promise<DeleteWorkspaceManagedWorktreeResponse>;
   applyWorkspaceGitPatch(
     workspaceID: string,
     request: WorkspaceGitPatchRequest

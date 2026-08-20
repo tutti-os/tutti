@@ -47,6 +47,9 @@ func materializeStableProviderSkills(
 	storeRoot string,
 	input PrepareInput,
 ) (string, error) {
+	if input.SkipSkills {
+		return "", nil
+	}
 	storeRoot = filepath.Clean(strings.TrimSpace(storeRoot))
 	if storeRoot == "." || !filepath.IsAbs(storeRoot) {
 		return "", fmt.Errorf("stable provider skill bundle root must be absolute")

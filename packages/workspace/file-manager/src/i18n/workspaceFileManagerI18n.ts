@@ -226,7 +226,7 @@ export function createWorkspaceFileManagerI18nRuntime(
 
 export function resolveRevealInFolderLabel(
   copy: WorkspaceFileManagerI18nRuntime,
-  platform: NodeJS.Platform
+  platform: string
 ): string {
   if (platform === "darwin") {
     return copy.t("revealInFinderLabel");

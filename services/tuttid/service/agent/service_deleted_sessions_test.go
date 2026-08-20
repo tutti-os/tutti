@@ -41,12 +41,18 @@ func (s *deletedSessionAdapterStoreStub) PurgeDeletedSessionTrees(
 }
 
 func TestListDeletedSessionsMapsOpaqueCursorAndProjectOptions(t *testing.T) {
+	currentSectionKey := agentactivitybiz.RailSectionKeyForProject("/current/project")
+	removedSectionKey := agentactivitybiz.RailSectionKeyForProject("/removed/repo")
 	store := &deletedSessionAdapterStoreStub{page: agentactivitybiz.DeletedSessionPage{
 		Sessions: []agentactivitybiz.DeletedSessionSummary{{
-			AgentSessionID: "root-1", Title: "Deleted", ProjectPath: "/current/project",
+			AgentSessionID: "root-1", Title: "Deleted", RailSectionKey: currentSectionKey,
+			ProjectPath:     "/stale/original",
 			UpdatedAtUnixMS: 200, DeletedAtUnixMS: 300, Restorable: true,
 		}},
-		ProjectPaths:        []string{"/current/project", "/removed/repo"},
+		RailSections: []agentactivitybiz.DeletedSessionRailSection{
+			{RailSectionKey: currentSectionKey, ProjectPath: "/stale/original"},
+			{RailSectionKey: removedSectionKey, ProjectPath: "/removed/repo"},
+		},
 		TotalCount:          1,
 		WorkspaceTotalCount: 2,
 		HasMore:             true,
@@ -55,26 +61,28 @@ func TestListDeletedSessionsMapsOpaqueCursorAndProjectOptions(t *testing.T) {
 	service := NewService(newFakeRuntime())
 	service.SetApplicationHost(agenthost.New(agenthost.Config{DeletedSessions: store}))
 	service.UserProjectReader = fakeUserProjectReader{projects: []userprojectbiz.Project{{
-		Path: "/current/project", Label: "Current project",
+		Path: "/current/project", Label: "Current project", SectionKey: currentSectionKey,
 	}}}
-	unscoped := ""
+	unscoped := agentactivitybiz.RailSectionKeyConversations
 
 	page, err := service.ListDeletedSessions(context.Background(), " workspace-1 ", ListDeletedSessionsInput{
-		SearchQuery: " deleted ", ProjectPath: &unscoped, Cursor: "200|root-z", Limit: 25,
+		SearchQuery: " deleted ", RailSectionKey: &unscoped, Cursor: "200|root-z", Limit: 25,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if store.listInput.WorkspaceID != "workspace-1" || store.listInput.SearchQuery != "deleted" ||
 		store.listInput.CursorUpdatedAtUnixMS != 200 || store.listInput.CursorAgentSessionID != "root-z" ||
-		store.listInput.ProjectPath == nil || *store.listInput.ProjectPath != "" || store.listInput.Limit != 25 {
+		store.listInput.RailSectionKey == nil || *store.listInput.RailSectionKey != agentactivitybiz.RailSectionKeyConversations || store.listInput.Limit != 25 {
 		t.Fatalf("host input = %#v", store.listInput)
 	}
 	if len(page.Sessions) != 1 || page.TotalCount != 1 || page.WorkspaceTotalCount != 2 ||
-		!page.HasMore || page.NextCursor != "100|root-2" {
+		!page.HasMore || page.NextCursor != "100|root-2" ||
+		page.Sessions[0].RailSectionKey != currentSectionKey {
 		t.Fatalf("page = %#v", page)
 	}
 	if len(page.ProjectOptions) != 2 || !page.ProjectOptions[0].ProjectAvailable ||
+		page.ProjectOptions[0].RailSectionKey != currentSectionKey ||
 		page.ProjectOptions[0].ProjectLabel != "Current project" ||
 		page.ProjectOptions[1].ProjectAvailable || page.ProjectOptions[1].ProjectLabel != "repo" {
 		t.Fatalf("project options = %#v", page.ProjectOptions)

@@ -191,16 +191,21 @@ the consuming desktop app.
 Connector packages own host-neutral connector domain boundaries shared across
 desktop daemons.
 
-Current packages:
+Current owners:
 
-- `packages/connector/market`: TypeScript contracts, renderer state, reusable
-  UI, i18n, and local OpenAPI fragment
-- `packages/connector/host`: connector catalog, installation, authorization,
+- `packages/connector/contracts`: versioned authorization wire contracts and
+  the local OpenAPI fragment
+- `packages/connector/daemon/core`: connector catalog, installation, authorization,
   compatibility, operation, and recovery application core
-- `packages/connector/daemon`: reusable daemon lifecycle and workers
-- `packages/connector/store-sqlite`: canonical local persistence and outbox
+- `packages/connector/daemon/application`: reusable daemon lifecycle and workers
+- `packages/connector/daemon/adapters/sqlite`: canonical local persistence and outbox
+- `packages/connector/daemon/adapters/controlplane`: account-scoped authorization
+  HTTP and realtime protocol adapter
 - `packages/connector/runtime`: latest-only artifact caching, no-network archive
-  import, same-machine composition, and managed-runtime installation primitives
+  import, same-machine composition, managed-runtime installation primitives,
+  Connector route/MCP registries, and the session-bound loopback MCP server
+- `packages/connector/renderer`: React-free frontend application services plus
+  the only shared Connector-specific React and i18n owner
 
 Remote endpoint authentication, credentials, state-root selection, generated
 daemon clients, product command publication, and OS process integration remain
@@ -223,6 +228,15 @@ Client packages provide domain-specific access helpers for consumers.
 
 They should remain focused, named by responsibility, and free of hidden business rules.
 
+`packages/connector/daemon/adapters/controlplane` is the shared Go protocol client for
+account-scoped Connector authorization. It owns authorization session,
+snapshot, and realtime-event decoding plus bounded HTTPS transport. A product
+host supplies the API prefix, HTTP client, and per-account request authorizer;
+the package never stores account cookies, chooses an environment, or sends
+credentials to a runtime VM. `packages/connector/daemon/core` selects this client only
+for `remote_streamable_http` releases, while `managed_stdio` authorization
+stays with the injected local implementation host.
+
 `packages/clients/device-authority-go` is the shared Go client boundary for the
 Device Authority owner lifecycle across Tutti and TSH. The initial package is a
 staged cross-repository extraction from TSH: publish the stable module first,
@@ -236,6 +250,15 @@ account/session/device headers, durable identity storage, Relay demand and lease
 scheduling, logging, and retry policy. The client must not infer
 local-versus-remote deployment policy or import Relay transport lifecycle code.
 
+`packages/clients/market-go` is the market-neutral generated Go client boundary
+for TSH Market. It pins the provider-generated protobuf and HTTP artifacts to an
+exact `tsh-server` commit and SHA-256 values without importing the server
+application module or copying the remote schema into Tutti's local OpenAPI.
+The update tool verifies the source checkout commit before copying digest-matched
+files. Product adapters inject the HTTP transport, gateway base path, and request
+authorization. Connector consumers pass `itemType=connector`; future Skill
+consumers reuse the same client with `itemType=skill`.
+
 ### `packages/device-link`
 
 DeviceLink is the shared Go peer-transport boundary for Tutti Desktop, TSH
@@ -247,6 +270,21 @@ serialization, pooled stream ownership, connection racing, and annealed path
 probing. It also owns generic Relay byte-stream dialing and the reusable
 reference-counted WebSocket/yamux owner-tunnel mechanics, including liveness,
 readiness ordering, reconnect backoff, stream dispatch, and close ordering.
+
+Its `candidateexchange` subpackage also owns the Trickle ICE application
+mechanics shared by Go and gomobile consumers: immediate credential snapshots,
+candidate change coalescing, acknowledgement-bound exact-snapshot publication
+retry, gathering completion, and push-hint plus authoritative-poll remote
+refresh. Consumers provide rendezvous callbacks or execute facade actions and
+retain product retry classification; account authorization, attempt state,
+request signing, room/pairing semantics, and wire DTOs stay in their product
+adapter. The callback-free Go `ActionPump` owns both candidate workers and
+allows at most one unresolved action per worker, so a slow rendezvous read does
+not block local publication. The gomobile facade exports scalar/JSON start,
+next-action, resolve-action, notify, and stop/cancel operations. Mobile uses two
+identical action drainers to execute signed authoritative reads/writes without
+reimplementing ICE retry timing, wake cursors, polling, or worker cancellation
+in TypeScript, Kotlin, or Objective-C.
 
 It exposes authenticated bidirectional streams and generic Relay byte streams,
 and must remain independent of Agent, Session, Workspace, account, pairing,

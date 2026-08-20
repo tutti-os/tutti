@@ -1,4 +1,5 @@
 import {
+  type AgentActivityComposerOptions,
   type AgentActivityInitialGoalControl,
   type AgentActivityRailPlacement,
   isPendingActivationViable,
@@ -9,6 +10,7 @@ import {
 import { useCallback } from "react";
 import { translate } from "../../../i18n/index";
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
+import type { AgentSessionComposerSettings } from "../../../shared/agentSessionTypes";
 import { deriveAgentGUIOptimisticConversationTitle } from "../../../shared/agentConversationTitleProjection";
 import {
   agentPromptContentDisplayText,
@@ -17,11 +19,23 @@ import {
   snapshotAgentComposerDraft,
   textPromptContent
 } from "../model/agentComposerDraft";
-import { readNodeDefaultDraftSettings } from "./agentGuiController.composerHelpers";
+import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import {
+  type AgentGUIConversationUserProject,
+  resolveAgentGUISelectedUserProject
+} from "../model/agentGuiConversationProjectResolver";
+import {
+  normalizePermissionModeId,
+  permissionConfigFromComposerOptions,
+  readNodeDefaultDraftSettings
+} from "./agentGuiController.composerHelpers";
+import { effectiveComposerSettingsFromOptions } from "./agentGuiController.composerPresentation";
 import { toRuntimeSendContent } from "./agentGuiController.draftMessageHelpers";
 import {
   createAgentGUIConversationId,
-  normalizeOptionalPrompt
+  normalizeOptionalPrompt,
+  normalizeOptionalText
 } from "./agentGuiController.promptHelpers";
 import {
   agentSubmitTraceDiagnostics,
@@ -33,12 +47,6 @@ import {
   type AgentGUINewConversationActivationResult,
   type UseAgentGUINewConversationActivationInput
 } from "./agentGuiNewConversationActivation.types";
-import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
-import {
-  type AgentGUIConversationUserProject,
-  resolveAgentGUIConversationProject
-} from "../model/agentGuiConversationProjectResolver";
-import type { AgentComposerSubmitOptions } from "../composer/AgentComposer.types";
 
 interface ResolvedInitialTuttiModeActivation {
   activation: {
@@ -79,6 +87,122 @@ function normalizePreference(value: number | null | undefined) {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+function firstResolvedComposerText(
+  ...values: Array<string | null | undefined>
+): string | null {
+  for (const value of values) {
+    const normalized = normalizeOptionalText(value);
+    if (normalized) {
+      return normalized;
+    }
+  }
+  return null;
+}
+
+/**
+ * Resolve the sparse Create payload to match the home composer presentation.
+ *
+ * Remembered defaults can retire out of the optimistic draft after authority
+ * confirmation while the UI still shows them via effectiveSettings /
+ * permissionConfig.defaultValue. Create must send those presented values so
+ * the first turn does not fall back to the provider default (for Codex: auto /
+ * "Approve for me").
+ */
+export function resolveSparseNewConversationActivationSettings(input: {
+  draftSettings: AgentSessionComposerSettings;
+  composerOptions: AgentActivityComposerOptions | null;
+  requiredSettingsPatch?: Partial<AgentSessionComposerSettings> | null;
+  codexSaverModeEntryEnabled?: boolean;
+}): AgentSessionComposerSettings {
+  const draft = input.draftSettings ?? {};
+  const patch = input.requiredSettingsPatch ?? {};
+  const effective = effectiveComposerSettingsFromOptions(input.composerOptions);
+  const permissionConfig = permissionConfigFromComposerOptions(
+    input.composerOptions
+  );
+  const model = firstResolvedComposerText(
+    typeof patch.model === "string" ? patch.model : null,
+    draft.model,
+    effective?.model
+  );
+  const explicitReasoningEffort = firstResolvedComposerText(
+    typeof patch.reasoningEffort === "string" ? patch.reasoningEffort : null
+  );
+  const inheritedReasoningEffort = firstResolvedComposerText(
+    draft.reasoningEffort,
+    effective?.reasoningEffort
+  );
+  const reasoningEffort =
+    explicitReasoningEffort ??
+    resolveInheritedReasoningEffortForModel(
+      input.composerOptions,
+      model,
+      inheritedReasoningEffort
+    );
+  const speed = firstResolvedComposerText(
+    typeof patch.speed === "string" ? patch.speed : null,
+    draft.speed,
+    effective?.speed
+  );
+  const permissionModeId = firstResolvedComposerText(
+    typeof patch.permissionModeId === "string" ? patch.permissionModeId : null,
+    draft.permissionModeId,
+    effective?.permissionModeId,
+    permissionConfig?.defaultValue
+  );
+  return {
+    ...draft,
+    ...patch,
+    ...(model ? { model } : {}),
+    reasoningEffort: reasoningEffort ?? undefined,
+    ...(speed ? { speed } : {}),
+    ...(permissionModeId
+      ? { permissionModeId: normalizePermissionModeId(permissionModeId) }
+      : {}),
+    // Fail closed at the activation boundary. Presentation gating alone is
+    // insufficient because a remembered draft can outlive the lab flag.
+    codexSaverMode:
+      input.codexSaverModeEntryEnabled === true &&
+      input.composerOptions?.codexSaverModeSupported === true &&
+      (patch.codexSaverMode ??
+        draft.codexSaverMode ??
+        input.composerOptions.effectiveSettings?.codexSaverMode) === true
+  };
+}
+
+export function resolveNewConversationSettingProvenance(
+  requiredSettingsPatch?: Partial<AgentSessionComposerSettings> | null
+): { modelExplicit: boolean; reasoningEffortExplicit: boolean } {
+  return {
+    modelExplicit: typeof requiredSettingsPatch?.model === "string",
+    reasoningEffortExplicit:
+      typeof requiredSettingsPatch?.reasoningEffort === "string"
+  };
+}
+
+function resolveInheritedReasoningEffortForModel(
+  options: AgentActivityComposerOptions | null,
+  model: string | null,
+  selected: string | null
+): string | null {
+  if (options?.provider?.trim().toLowerCase() !== "opencode" || !model) {
+    return selected;
+  }
+  const profile = options.reasoningOptionsByModel?.[model];
+  if (!profile) {
+    // OpenCode's strict catalog is authoritative. Missing per-model metadata
+    // means there is no safe inherited dependent value to forward.
+    return null;
+  }
+  const supported = new Set(profile.options.map((option) => option.value));
+  if (selected && supported.has(selected)) return selected;
+  const advertisedDefault = profile.defaultValue?.trim() ?? "";
+  if (advertisedDefault && supported.has(advertisedDefault)) {
+    return advertisedDefault;
+  }
+  return profile.options[0]?.value ?? null;
+}
+
 export function resolveInitialRailPlacement(input: {
   selectedProjectPath: string | null | undefined;
   userProjects: readonly AgentGUIConversationUserProject[];
@@ -91,7 +215,7 @@ export function resolveInitialRailPlacement(input: {
       sectionKey: "conversations"
     };
   }
-  const selectedProject = resolveAgentGUIConversationProject(
+  const selectedProject = resolveAgentGUISelectedUserProject(
     selectedProjectPath,
     input.userProjects
   );
@@ -209,19 +333,22 @@ export function useAgentGUINewConversationActivation(
         drafts: draftSettingsBySessionIdRef.current
       });
       const snapshotComposerOptions = getCachedComposerOptions();
-      // Only sparse, explicit home intent crosses Create. Target defaults and
-      // final provider validation are resolved from the latest daemon state.
-      const settings = {
-        ...initialNodeSettings,
-        ...submitOptions?.requiredSettingsPatch,
-        // Fail closed at the activation boundary. Presentation gating alone is
-        // insufficient because a remembered draft can outlive the lab flag.
-        codexSaverMode:
-          codexSaverModeEntryEnabled === true &&
-          snapshotComposerOptions?.codexSaverModeSupported === true &&
-          (initialNodeSettings.codexSaverMode ??
-            snapshotComposerOptions.effectiveSettings?.codexSaverMode) === true
-      };
+      const requiredSettingsPatch = submitOptions?.requiredSettingsPatch as
+        | Partial<AgentSessionComposerSettings>
+        | undefined;
+      // Sparse Create settings must match the home presentation. Draft fields
+      // retired after remembered-default acknowledgement still appear in
+      // effectiveSettings / permissionConfig.defaultValue; resolve them here
+      // so the first turn does not fall back to the provider default.
+      const settings = resolveSparseNewConversationActivationSettings({
+        draftSettings: initialNodeSettings,
+        composerOptions: snapshotComposerOptions,
+        requiredSettingsPatch,
+        codexSaverModeEntryEnabled
+      });
+      const settingProvenance = resolveNewConversationSettingProvenance(
+        requiredSettingsPatch
+      );
       const prewarmedSessionId =
         normalizedInitialContent.length > 0 &&
         snapshotComposerOptions?.behavior?.prewarmDraftSession === true
@@ -247,7 +374,9 @@ export function useAgentGUINewConversationActivation(
       });
       const sourceScopeKey = resolveAgentComposerDraftScopeKey({});
       const submittedDraft =
-        draftByScopeKeyRef.current[sourceScopeKey] ?? emptyAgentComposerDraft();
+        submitOptions?.submittedDraft ??
+        draftByScopeKeyRef.current[sourceScopeKey] ??
+        emptyAgentComposerDraft();
       submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
         sourceScopeKey,
         content: snapshotAgentComposerDraft(submittedDraft)
@@ -284,6 +413,7 @@ export function useAgentGUINewConversationActivation(
         ...(submitOptions?.isolation
           ? { isolation: submitOptions.isolation }
           : {}),
+        ...settingProvenance,
         ...(submitOptions?.capabilityRefs?.length
           ? { capabilityRefs: submitOptions.capabilityRefs }
           : {}),
@@ -328,6 +458,7 @@ export function useAgentGUINewConversationActivation(
       currentUserId,
       data,
       defaultReasoningEffort,
+      getCachedComposerOptions,
       requestRailReveal,
       activation,
       conversationListQuery,

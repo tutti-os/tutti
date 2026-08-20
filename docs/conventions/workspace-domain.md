@@ -177,8 +177,9 @@ or the shared scoring logic in `packages/workspace/files`, keep these rules:
   penalty unless the query explicitly targets them
 - daemon-owned workspace file browse and search endpoints should own hidden-item
   filtering behind one shared `includeHidden` switch; default behavior should
-  exclude dot-prefixed files and directories, and renderer packages should not
-  re-implement that filtering in parallel
+  exclude dot-prefixed files and directories, platform-hidden/system/temporary
+  entries, Office `~$` lock files, and `.crdownload` partial downloads;
+  renderer packages should not re-implement that filtering in parallel
 - direct file-manager reveal or navigation requests whose target directory path
   already contains a dot-prefixed segment may set `includeHidden` for that
   request only; do not persist this as a global "show hidden files" mode

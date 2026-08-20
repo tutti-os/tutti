@@ -54,6 +54,7 @@ describe("shouldShowAgentGUIStopButton", () => {
     isCancelPending: false,
     isConversationBusy: false,
     isCreatingConversation: false,
+    hasPendingSubmitStopTarget: false,
     isInterrupting: false,
     isSubmitting: false,
     isUnavailable: false
@@ -73,6 +74,16 @@ describe("shouldShowAgentGUIStopButton", () => {
     expect(shouldShowAgentGUIStopButton({ ...idle, isSubmitting: true })).toBe(
       false
     );
+  });
+
+  it("shows Stop when Activity Core has an exact pending-submit target", () => {
+    expect(
+      shouldShowAgentGUIStopButton({
+        ...idle,
+        hasPendingSubmitStopTarget: true,
+        isSubmitting: true
+      })
+    ).toBe(true);
   });
 
   it("keeps authentication and availability gates authoritative", () => {
@@ -242,7 +253,7 @@ describe("Home status presentation", () => {
     ).toBe(inlineNoticeChrome);
   });
 
-  it("keeps Stop visible but disables it while active work is disconnected", () => {
+  it("keeps Stop actionable while submission commands are blocked", () => {
     expect(
       resolveAgentGUIStopControl({
         hasPendingApproval: false,
@@ -251,12 +262,12 @@ describe("Home status presentation", () => {
         isCancelPending: false,
         isConversationBusy: true,
         isCreatingConversation: false,
+        hasPendingSubmitStopTarget: false,
         isInterrupting: false,
         isSubmitting: false,
-        isUnavailable: false,
-        runtimeCommandsBlocked: true
+        isUnavailable: false
       })
-    ).toEqual({ disabled: true, visible: true });
+    ).toEqual({ disabled: false, visible: true });
   });
 });
 

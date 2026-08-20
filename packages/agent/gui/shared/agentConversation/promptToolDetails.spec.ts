@@ -154,4 +154,169 @@ describe("getPromptToolDetails", () => {
       }
     ]);
   });
+
+  it("surfaces web approval details from canonical root input", () => {
+    expect(
+      getPromptToolDetails({
+        requestId: "approval-web-1",
+        url: "https://example.com/docs",
+        prompt: "Summarize this page",
+        options: [{ optionId: "approve", label: "Allow" }],
+        toolCall: {
+          toolCallId: "call-web-1",
+          name: "WebFetch",
+          title: "WebFetch",
+          toolName: "WebFetch"
+        }
+      })
+    ).toEqual([
+      {
+        kind: "url",
+        value: "https://example.com/docs"
+      },
+      {
+        kind: "prompt",
+        value: "Summarize this page"
+      }
+    ]);
+  });
+
+  it("supports URI and instruction aliases in nested toolCall input", () => {
+    expect(
+      getPromptToolDetails({
+        toolCall: {
+          input: {
+            uri: "https://example.com/reference",
+            instruction: "Extract the compatibility requirements"
+          }
+        }
+      })
+    ).toEqual([
+      {
+        kind: "url",
+        value: "https://example.com/reference"
+      },
+      {
+        kind: "prompt",
+        value: "Extract the compatibility requirements"
+      }
+    ]);
+  });
+
+  it("merges web approval details split across root and nested input", () => {
+    expect(
+      getPromptToolDetails({
+        url: "https://example.com/root",
+        toolCall: {
+          input: {
+            prompt: "Use the nested prompt"
+          }
+        }
+      })
+    ).toEqual([
+      {
+        kind: "url",
+        value: "https://example.com/root"
+      },
+      {
+        kind: "prompt",
+        value: "Use the nested prompt"
+      }
+    ]);
+
+    expect(
+      getPromptToolDetails({
+        instruction: "Use the root instruction",
+        toolCall: {
+          input: {
+            uri: "https://example.com/nested"
+          }
+        }
+      })
+    ).toEqual([
+      {
+        kind: "url",
+        value: "https://example.com/nested"
+      },
+      {
+        kind: "prompt",
+        value: "Use the root instruction"
+      }
+    ]);
+  });
+
+  it("prefers nested values across equivalent detail aliases", () => {
+    expect(
+      getPromptToolDetails({
+        command: "root command",
+        grantRoot: "/root/scope",
+        query: "root query",
+        url: "https://root.example",
+        prompt: "root prompt",
+        fileChanges: [{ path: "root/file.ts" }],
+        toolCall: {
+          input: {
+            cmd: "nested command",
+            path: "/nested/scope",
+            searchQuery: "nested query",
+            uri: "https://nested.example",
+            instruction: "nested prompt",
+            changes: [{ path: "nested/file.ts" }]
+          }
+        }
+      })
+    ).toEqual([
+      {
+        kind: "files",
+        value: "nested/file.ts"
+      },
+      {
+        kind: "command",
+        value: "nested command"
+      },
+      {
+        kind: "path",
+        value: "/nested/scope"
+      },
+      {
+        kind: "query",
+        value: "nested query"
+      },
+      {
+        kind: "url",
+        value: "https://nested.example"
+      },
+      {
+        kind: "prompt",
+        value: "nested prompt"
+      }
+    ]);
+  });
+
+  it("keeps command and path metadata with their source detail layer", () => {
+    expect(
+      getPromptToolDetails({
+        command: "root command",
+        description: "root command description",
+        path: "/root/file.ts",
+        startLine: 10,
+        endLine: 11,
+        toolCall: {
+          input: {
+            cmd: "nested command",
+            filePath: "/nested/file.ts"
+          }
+        }
+      })
+    ).toEqual([
+      {
+        kind: "command",
+        value: "nested command"
+      },
+      {
+        kind: "path",
+        value: "/nested/file.ts"
+      }
+    ]);
+  });
 });

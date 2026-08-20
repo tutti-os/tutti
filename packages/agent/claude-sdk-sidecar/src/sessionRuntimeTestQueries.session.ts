@@ -14,15 +14,20 @@ import { fakeDelegatedTaskQuery } from "./sessionRuntimeTestQueries.delegated.ts
 export function fakeGuidancePromptQuery(
   prompt: AsyncIterable<SDKUserMessage>,
   prompts: string[],
-  interrupts?: { count: number }
+  interrupts?: {
+    count: number;
+    wait?: Promise<void>;
+    resultWait?: Promise<void>;
+  }
 ): AsyncIterable<SDKMessage> & { interrupt: () => Promise<void> } {
   let interrupted = false;
   return {
     async interrupt() {
-      interrupted = true;
       if (interrupts) {
         interrupts.count += 1;
+        await interrupts.wait;
       }
+      interrupted = true;
     },
     async *[Symbol.asyncIterator]() {
       const iterator = prompt[Symbol.asyncIterator]();
@@ -43,6 +48,7 @@ export function fakeGuidancePromptQuery(
       // interrupt, so emit the real Claude abort result before the steer text.
       const guidancePrompt = await iterator.next();
       if (interrupted) {
+        await interrupts?.resultWait;
         yield {
           type: "result",
           subtype: "error_during_execution",

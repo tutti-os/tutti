@@ -79,6 +79,17 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 			}
 			return CancelResult{AgentSessionID: session.AgentSessionID, TargetAbsent: true}, nil
 		}
+		if errors.Is(err, ErrCancelTargetMismatch) {
+			slog.Info("agent session exact cancel delivery is unconfirmed",
+				"event", "agent_session.cancel.delivery_unconfirmed",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"provider", session.Provider,
+				"turn_id", requestedRootTurnID,
+				"reason", reason,
+			)
+			return CancelResult{}, err
+		}
 		slog.Warn("agent session cancel adapter failed",
 			"event", "agent_session.cancel.adapter_failed",
 			"room_id", session.RoomID,

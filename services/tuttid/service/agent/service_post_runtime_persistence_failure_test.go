@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -103,6 +104,29 @@ func TestExactCancelCompletesFromTypedRuntimeTargetAbsentEvidence(t *testing.T) 
 	}
 	if !result.Canceled || store.operation.Status != agentactivitybiz.RuntimeOperationStatusCompleted {
 		t.Fatalf("CancelTurn() result=%#v operation=%#v", result, store.operation)
+	}
+}
+
+func TestCancelTurnReturnsCancelRequestedWhenCancelDeliveryIsUnconfirmed(t *testing.T) {
+	runtime := newFakeRuntime()
+	runtime.sessions["ws-1:session-1"] = ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "ws-1", Provider: "claude-code", Status: "working",
+	}
+	runtime.cancelErr = agenthost.ErrRuntimeCancelDeliveryUnconfirmed
+	store := &runtimeOperationMemoryStore{}
+	service := newIsolatedAgentService(runtime)
+	service.RuntimeOperationStore = store
+	service.RuntimeOperationOwner = "worker-a"
+	service.RuntimeOperationClock = func() time.Time { return time.UnixMilli(1000) }
+	service.TurnStore = runtimeOperationTurnStore("turn-1", "")
+
+	result, err := service.CancelTurn(context.Background(), "ws-1", "session-1", "turn-1")
+	if err != nil {
+		t.Fatalf("CancelTurn() error = %v", err)
+	}
+	if result.Canceled || result.Reason != CancelTurnReasonCancelRequested ||
+		store.operation.Status != agentactivitybiz.RuntimeOperationStatusPrepared || len(runtime.cancelCalls) != 1 {
+		t.Fatalf("CancelTurn() result=%#v operation=%#v calls=%d", result, store.operation, len(runtime.cancelCalls))
 	}
 }
 
@@ -454,9 +478,11 @@ type runtimeOperationMemoryStore struct {
 	operation         agentactivitybiz.RuntimeOperation
 	operations        map[string]agentactivitybiz.RuntimeOperation
 	interactionStore  runtimeOperationInteractionStore
+	turnIdentityStore runtimeOperationTurnIdentityStore
 	completeErr       error
 	events            []agentactivitybiz.RuntimeOperationEvent
 	confirmedTurnID   string
+	confirmedTurnIDs  map[string]string
 	checkpointSteps   []string
 	checkpointErr     error
 	cancelCompletions []agentactivitybiz.CompleteCancelRuntimeOperationInput
@@ -465,6 +491,10 @@ type runtimeOperationMemoryStore struct {
 type runtimeOperationInteractionStore interface {
 	interaction(sessionID, turnID, requestID string) (agentactivitybiz.Interaction, bool)
 	storeInteraction(agentactivitybiz.Interaction)
+}
+
+type runtimeOperationTurnIdentityStore interface {
+	bindTurnIdentityAnchor(workspaceID, sessionID, turnID, anchorTurnID string) error
 }
 
 func (s *runtimeOperationMemoryStore) operationsLocked() map[string]agentactivitybiz.RuntimeOperation {
@@ -526,8 +556,27 @@ func (s *runtimeOperationMemoryStore) CheckpointRuntimeOperation(_ context.Conte
 	return operation, true, nil
 }
 
-func (s *runtimeOperationMemoryStore) FindTurnByClientSubmitID(_ context.Context, _, _, _ string) (string, bool, error) {
+func (s *runtimeOperationMemoryStore) FindTurnByClientSubmitID(_ context.Context, _, _, clientSubmitID string) (string, bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if turnID := s.confirmedTurnIDs[strings.TrimSpace(clientSubmitID)]; turnID != "" {
+		return turnID, true, nil
+	}
 	return s.confirmedTurnID, s.confirmedTurnID != "", nil
+}
+
+func (s *runtimeOperationMemoryStore) recordConfirmedTurn(clientSubmitID, turnID string) {
+	clientSubmitID = strings.TrimSpace(clientSubmitID)
+	turnID = strings.TrimSpace(turnID)
+	if clientSubmitID == "" || turnID == "" {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.confirmedTurnIDs == nil {
+		s.confirmedTurnIDs = make(map[string]string)
+	}
+	s.confirmedTurnIDs[clientSubmitID] = turnID
 }
 
 type runtimeOperationFailingPublisher struct{ err error }
@@ -716,6 +765,17 @@ func (s *runtimeOperationMemoryStore) CompletePlanDecisionRuntimeOperation(_ con
 	operation, found := s.operationLocked(input.OperationID)
 	if !found {
 		return agentactivitybiz.RuntimeOperationCompletion{}, false, nil
+	}
+	confirmedTurnID := payloadText(operation.Payload, "confirmedTurnId")
+	if s.turnIdentityStore != nil && confirmedTurnID != "" {
+		if err := s.turnIdentityStore.bindTurnIdentityAnchor(
+			operation.WorkspaceID,
+			operation.AgentSessionID,
+			confirmedTurnID,
+			operation.TurnID,
+		); err != nil {
+			return agentactivitybiz.RuntimeOperationCompletion{}, false, err
+		}
 	}
 	operation.Status, operation.Result = agentactivitybiz.RuntimeOperationStatusCompleted, agentactivitybiz.RuntimeOperationResultApplied
 	operation.LeaseOwner, operation.LeaseExpiresAtMS = "", 0

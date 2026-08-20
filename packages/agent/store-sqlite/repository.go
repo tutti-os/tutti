@@ -128,13 +128,13 @@ const (
 
 // ListDeletedSessionsInput selects topmost tombstones in one workspace. A
 // topmost tombstone has no tombstoned parent, so it may anchor either a root
-// tree or a deleted child subtree. A nil ProjectPath means all project scopes,
-// a pointer to an empty string selects unscoped conversations, and a non-empty
-// value selects that exact original project path.
+// tree or a deleted child subtree. A nil RailSectionKey means every section;
+// a non-nil value selects that exact persisted rail section key, including the
+// fixed conversations key.
 type ListDeletedSessionsInput struct {
 	WorkspaceID           string
 	SearchQuery           string
-	ProjectPath           *string
+	RailSectionKey        *string
 	CursorUpdatedAtUnixMS int64
 	CursorAgentSessionID  string
 	Limit                 int
@@ -143,6 +143,7 @@ type ListDeletedSessionsInput struct {
 type DeletedSessionSummary struct {
 	AgentSessionID    string
 	Title             string
+	RailSectionKey    string
 	ProjectPath       string
 	UpdatedAtUnixMS   int64
 	DeletedAtUnixMS   int64
@@ -150,10 +151,15 @@ type DeletedSessionSummary struct {
 	UnavailableReason string
 }
 
+type DeletedSessionRailSection struct {
+	RailSectionKey string
+	ProjectPath    string
+}
+
 type DeletedSessionPage struct {
 	WorkspaceID         string
 	Sessions            []DeletedSessionSummary
-	ProjectPaths        []string
+	RailSections        []DeletedSessionRailSection
 	TotalCount          int
 	WorkspaceTotalCount int
 	HasMore             bool
@@ -324,9 +330,11 @@ type SessionSectionDeletionCandidates struct {
 }
 
 type DeleteSessionsBatchInput struct {
-	WorkspaceID        string
-	SessionIDs         []string
-	ExpectedSessionIDs []string
+	WorkspaceID                string
+	SessionIDs                 []string
+	ExpectedSessionIDs         []string
+	RequiredRootRailSectionKey string
+	ExcludePinnedRoots         bool
 }
 
 type DeleteSessionsPlan struct {
@@ -466,9 +474,14 @@ const (
 // provider-initiated interaction and carries both Goal provenance and the
 // root-provider completion projection.
 type Turn struct {
-	WorkspaceID                            string
-	AgentSessionID                         string
-	TurnID                                 string
+	WorkspaceID    string
+	AgentSessionID string
+	TurnID         string
+	// IdentityAnchorTurnID is the canonical Turn whose externally projected
+	// identity this Turn inherits. Empty means the Turn anchors itself. The
+	// field never replaces TurnID for lifecycle, provider, or interaction
+	// operations.
+	IdentityAnchorTurnID                   string
 	CapabilityRefs                         []CapabilityReference
 	Phase                                  string
 	Outcome                                string
@@ -668,11 +681,19 @@ type ListSessionInteractionsInput struct {
 // StaleTurnSettlement identifies one turn that startup reconciliation
 // force-settled with outcome interrupted.
 type StaleTurnSettlement struct {
-	TransactionID  string           `json:"-"`
-	CommitDelta    TransactionDelta `json:"-"`
-	WorkspaceID    string
-	AgentSessionID string
-	TurnID         string
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
+	// Turn is the complete canonical row after startup reconciliation commits
+	// its settled/interrupted transition. Consumers must use this copy instead
+	// of reconstructing provenance from the scalar notification identity.
+	Turn            Turn
+	WorkspaceID     string
+	AgentSessionID  string
+	TurnID          string
+	Provider        string
+	IsChildSession  bool
+	StartedAtUnixMS int64
+	SettledAtUnixMS int64
 }
 
 type SessionStateReport struct {
@@ -700,15 +721,19 @@ type SessionStateReport struct {
 	ImportProjectPath string
 	// RailPlacement is an explicit caller-selected placement for a newly
 	// created session. The first accepted value is immutable.
-	RailPlacement    *RailSection
-	Title            string
-	Status           string
-	CurrentPhase     string
-	LastError        string
-	OccurredAtUnixMS int64
-	StartedAtUnixMS  int64
-	EndedAtUnixMS    int64
-	CreatedAtUnixMS  int64
+	RailPlacement *RailSection
+	// RailPlacementAuthoritative accepts an explicit project placement even
+	// when it is absent from this store's local project registry. It does not
+	// permit changing an existing session's immutable placement.
+	RailPlacementAuthoritative bool
+	Title                      string
+	Status                     string
+	CurrentPhase               string
+	LastError                  string
+	OccurredAtUnixMS           int64
+	StartedAtUnixMS            int64
+	EndedAtUnixMS              int64
+	CreatedAtUnixMS            int64
 }
 
 type StateReportResult struct {
@@ -749,12 +774,17 @@ type MessageUpdate struct {
 }
 
 type MessageReportResult struct {
-	TransactionID    string           `json:"-"`
-	CommitDelta      TransactionDelta `json:"-"`
-	AcceptedCount    int
-	LatestVersion    uint64
-	Messages         []Message
-	RequestBodyBytes int
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
+	AcceptedCount int
+	LatestVersion uint64
+	Messages      []Message
+	// StatusTransitionedMessageIDs lists the accepted messages that actually
+	// moved to a new status in this report. Messages replays a stored snapshot
+	// unchanged as well, so observers that treat a terminal status as an
+	// incident must key on this list instead.
+	StatusTransitionedMessageIDs []string
+	RequestBodyBytes             int
 }
 
 type Message struct {

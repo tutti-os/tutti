@@ -10,39 +10,42 @@ import (
 )
 
 func TestOpenCodePreparerInjectsModelPlanConfig(t *testing.T) {
-	t.Parallel()
-
-	runtimeRoot := t.TempDir()
-	manifest := NewManifest(ManifestInput{
+	home := t.TempDir()
+	setTestHome(t, home)
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	preparer := newTestPreparer(stateDir)
+	prepareInput := PrepareInput{
+		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
+		AgentTargetID:  "local:opencode",
 		Provider:       "opencode",
-		Cwd:            runtimeRoot,
-		RuntimeRoot:    runtimeRoot,
-	})
-	result, err := OpenCodePreparer{}.Prepare(context.Background(), ProviderPrepareInput{
-		PrepareInput: PrepareInput{
-			Provider: "opencode",
-			Cwd:      runtimeRoot,
-			ModelEndpoint: &ModelEndpointConfig{
-				PlanName: "Volc Coding Plan",
-				Protocol: "openai",
-				BaseURL:  "https://relay.example/v1",
-				APIKey:   "sk-secret",
-				Model:    "tutti-model-plan/seed-code",
-				Models: []ModelEndpointModel{
-					{ID: "seed-code", Name: "Seed Code"},
-					{ID: "kimi-k2.5", Name: "Kimi K2.5"},
-				},
+		Cwd:            cwd,
+		ModelEndpoint: &ModelEndpointConfig{
+			PlanName: "Volc Coding Plan",
+			Protocol: "openai",
+			BaseURL:  "https://relay.example/v1",
+			APIKey:   "sk-secret",
+			Model:    "tutti-model-plan/seed-code",
+			Models: []ModelEndpointModel{
+				{ID: "seed-code", Name: "Seed Code"},
+				{ID: "kimi-k2.5", Name: "Kimi K2.5"},
 			},
 		},
-		RuntimeRoot: runtimeRoot,
-		Manifest:    manifest,
-	})
+	}
+	result, err := preparer.Prepare(context.Background(), prepareInput)
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
 	}
 
-	configPath := filepath.Join(runtimeRoot, "opencode", "opencode.json")
+	configDir := envValue(result.Env, "OPENCODE_CONFIG_DIR")
+	if configDir == "" {
+		t.Fatalf("OPENCODE_CONFIG_DIR missing from env: %#v", result.Env)
+	}
+	if _, err := os.Stat(filepath.Join(cwd, ".opencode")); !os.IsNotExist(err) {
+		t.Fatalf("OpenCode preparation must not write the workspace .opencode directory: %v", err)
+	}
+	configPath := filepath.Join(configDir, "opencode.json")
 	envIndex := map[string]string{}
 	for _, entry := range result.Env {
 		key, value, ok := strings.Cut(entry, "=")
@@ -57,6 +60,11 @@ func TestOpenCodePreparerInjectsModelPlanConfig(t *testing.T) {
 	if envIndex[ModelPlanAPIKeyEnv] != "sk-secret" {
 		t.Fatalf("%s = %q; want the plan credential", ModelPlanAPIKeyEnv, envIndex[ModelPlanAPIKeyEnv])
 	}
+	bundle, err := preparer.RenderSkillBundle(context.Background(), prepareInput)
+	if err != nil {
+		t.Fatalf("RenderSkillBundle() error = %v", err)
+	}
+	assertOpenCodeTuttiRuntime(t, configDir, len(bundle.Skills))
 
 	content, err := os.ReadFile(configPath)
 	if err != nil {
@@ -108,30 +116,84 @@ func TestOpenCodePreparerInjectsModelPlanConfig(t *testing.T) {
 	if provider.Models["seed-code"].Name != "Seed Code" || provider.Models["kimi-k2.5"].Name != "Kimi K2.5" {
 		t.Fatalf("provider models = %#v", provider.Models)
 	}
+	if err := preparer.Cleanup(context.Background(), CleanupInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "opencode",
+	}); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+	if _, err := os.Stat(configDir); !os.IsNotExist(err) {
+		t.Fatalf("OpenCode session config directory should be removed during cleanup: %v", err)
+	}
 }
 
-func TestOpenCodePreparerSkipsWithoutOpenAIPlan(t *testing.T) {
-	t.Parallel()
-
-	runtimeRoot := t.TempDir()
+func TestOpenCodePreparerInjectsTuttiRuntimeWithoutOpenAIPlan(t *testing.T) {
 	endpoints := []*ModelEndpointConfig{
 		nil,
 		{Protocol: "anthropic", BaseURL: "https://relay.example", APIKey: "sk-secret"},
 	}
-	for _, endpoint := range endpoints {
-		result, err := OpenCodePreparer{}.Prepare(context.Background(), ProviderPrepareInput{
-			PrepareInput: PrepareInput{Provider: "opencode", Cwd: runtimeRoot, ModelEndpoint: endpoint},
-			RuntimeRoot:  runtimeRoot,
-		})
+	for index, endpoint := range endpoints {
+		home := t.TempDir()
+		setTestHome(t, home)
+		stateDir := t.TempDir()
+		cwd := t.TempDir()
+		preparer := newTestPreparer(stateDir)
+		prepareInput := PrepareInput{
+			WorkspaceID:    "workspace-1",
+			AgentSessionID: []string{"session-1", "session-2"}[index],
+			AgentTargetID:  "local:opencode",
+			Provider:       "opencode",
+			Cwd:            cwd,
+			ModelEndpoint:  endpoint,
+		}
+		result, err := preparer.Prepare(context.Background(), prepareInput)
 		if err != nil {
 			t.Fatalf("Prepare() error = %v", err)
 		}
-		if len(result.Env) != 0 {
-			t.Fatalf("Prepare() env = %v; want none for endpoint %#v", result.Env, endpoint)
+		configDir := envValue(result.Env, "OPENCODE_CONFIG_DIR")
+		if configDir == "" {
+			t.Fatalf("Prepare() env = %v; want OPENCODE_CONFIG_DIR for endpoint %#v", result.Env, endpoint)
+		}
+		if envValue(result.Env, "OPENCODE_CONFIG") != "" || envValue(result.Env, ModelPlanAPIKeyEnv) != "" {
+			t.Fatalf("Prepare() env = %v; want no model-plan config for endpoint %#v", result.Env, endpoint)
+		}
+		bundle, err := preparer.RenderSkillBundle(context.Background(), prepareInput)
+		if err != nil {
+			t.Fatalf("RenderSkillBundle() error = %v", err)
+		}
+		assertOpenCodeTuttiRuntime(t, configDir, len(bundle.Skills))
+		if _, err := os.Stat(filepath.Join(configDir, "opencode.json")); !os.IsNotExist(err) {
+			t.Fatalf("session opencode config should not exist, stat err = %v", err)
 		}
 	}
-	if _, err := os.Stat(filepath.Join(runtimeRoot, "opencode", "opencode.json")); !os.IsNotExist(err) {
-		t.Fatalf("session opencode config should not exist, stat err = %v", err)
+}
+
+func assertOpenCodeTuttiRuntime(t *testing.T, configDir string, expectedSkillCount int) {
+	t.Helper()
+	instructions, err := os.ReadFile(filepath.Join(configDir, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read OpenCode runtime instructions: %v", err)
+	}
+	if !strings.Contains(string(instructions), "Agent handoff decisions belong to `$tutti-handoff`") ||
+		!strings.Contains(string(instructions), "`mention://agent-target/<targetId>?workspaceId=...`") ||
+		!strings.Contains(string(instructions), "`mention://workspace-reference/<id>?source=...&workspaceId=...`") {
+		t.Fatalf("OpenCode runtime instructions do not contain Tutti mention routing: %s", instructions)
+	}
+	entries, err := os.ReadDir(filepath.Join(configDir, "skills"))
+	if err != nil {
+		t.Fatalf("read OpenCode Tutti skills: %v", err)
+	}
+	if len(entries) != expectedSkillCount {
+		t.Fatalf("OpenCode Tutti Skill count = %d, want resolved bundle count %d", len(entries), expectedSkillCount)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(configDir, "skills", entry.Name(), "SKILL.md")); err != nil {
+			t.Fatalf("OpenCode materialized Skill %q missing SKILL.md: %v", entry.Name(), err)
+		}
 	}
 }
 

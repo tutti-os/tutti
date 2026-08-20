@@ -4,6 +4,41 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Hermes is ready but a new Windows session reports Agent failed to start
+
+- Symptom:
+  Hermes passes setup detection, but the new-conversation model picker is empty
+  and sending the first message reports `Agent failed to start`.
+- Quick checks:
+  In the daemon log, compare setup-probe configuration with the session-scoped
+  `HERMES_HOME`. The failing session typically reports no `.env` in its
+  `.tutti*/agent/runs/<session>/hermes` directory, followed by ACP `session/new`
+  returning `No LLM provider configured`. Check whether the working user config
+  is under `%LOCALAPPDATA%\hermes` while `%USERPROFILE%\.hermes` is absent.
+- Root cause:
+  The signed extension profile uses the portable default `.hermes`, but the
+  shared runtime preparer previously resolved it only relative to the Windows
+  user profile. Hermes itself uses the native Windows user cache location, so
+  discovery could see credentials while the isolated session home copied none.
+- Fix:
+  Keep an explicit `HERMES_HOME` as the highest-priority source. Otherwise,
+  preserve an existing `%USERPROFILE%\.hermes`; when it is absent, resolve the
+  resolve the portable leading-dot directory through the Windows user cache
+  root first, then fall back to a migrated `%USERPROFILE%\.hermes` only when the
+  native directory is absent. Copy only the files declared by the signed
+  runtime-preparation profile. Keep this behavior in the platform adapter rather
+  than branching on `acp:hermes`.
+- Validation:
+  With no user-level `HERMES_HOME`, place credentials in
+  `%LOCALAPPDATA%\hermes`, create a new session, and verify the model picker is
+  populated and the first message starts successfully. Confirm an explicit
+  source environment variable still takes precedence, and that a migrated
+  `%USERPROFILE%\.hermes` is used only when the native directory is absent.
+- References:
+  [agent-runtime-preparation.md](../../architecture/agent-runtime-preparation.md)
+  [windows-platform-support.md](../../architecture/windows-platform-support.md)
+  [extension_runtime.go](../../../packages/agent/runtimeprep/extension_runtime.go)
+
 ### Focusing a workspace repeatedly starts provider CLIs and raises CPU usage
 
 - Symptom:
@@ -47,6 +82,40 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [desktopAgentProviderStatusService.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.ts)
   [agent-provider-status-performance-scenario.mjs](../../../tools/scripts/agent-provider-status-performance-scenario.mjs)
 
+### Missing optional Agent CLIs inflate environment failure analytics
+
+- Symptom:
+  `agent.env_detected` reports many `cli_not_found` outcomes for providers the
+  user never selected, and an analytics view that treats every non-ready status
+  as a failure makes the Agent environment failure rate look much higher than
+  actual launch failures.
+- Quick checks:
+  Group `agent.env_detected` by `provider`, `reason_code`, and `cli_installed`.
+  If the dominant rows are `cli_not_found` with `cli_installed=false` across
+  several managed providers for the same users, compare them with the desktop's
+  background all-provider status request before investigating installation.
+- Root cause:
+  Desktop intentionally discovers every managed provider so Agent pickers and
+  setup surfaces can show local readiness. The automatic environment reporter
+  previously treated every changed status as failure telemetry, so the expected
+  absence of an optional CLI crossed the same reporting boundary as a provider
+  that was installed but failed its runtime probe.
+- Fix:
+  Keep `cli_not_found` in the canonical provider-status snapshot and continue
+  full catalog discovery, but exclude the exact `not_installed` +
+  `cli_not_found` + `cli.installed=false` state from automatic
+  `agent.env_detected` reporting. Preserve explicit consent-gated problem
+  reports and continue reporting installed-provider failures such as
+  `acp_adapter_launch_failed`.
+- Validation:
+  Reconcile one missing optional provider and one installed provider with a
+  runtime launch failure in the same response. Assert both remain visible in
+  the status snapshot while only the launch failure produces
+  `agent.env_detected`.
+- References:
+  [desktopAgentProviderStatusDiagnostics.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusDiagnostics.ts)
+  [desktopAgentProviderStatusService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopAgentProviderStatusService.test.ts)
+
 ### Loading Agent Targets repeatedly starts Extension CLIs
 
 - Symptom:
@@ -78,6 +147,38 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [agent-extensions.md](../../architecture/agent-extensions.md)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
   [runtime_version_cache.go](../../../services/tuttid/service/agentextension/runtime_version_cache.go)
+
+### A managed Extension runtime cannot be reused after an update on Windows
+
+- Symptom:
+  The first managed Extension install reaches `ready`, but after Extension
+  metadata changes the same compatible runtime falls back to `not_installed`
+  only on Windows. Logs or focused tests report that renaming the legacy runtime
+  directory failed because it is being used by another process.
+- Quick checks:
+  Confirm the package version, discovery profile, and runtime identity are still
+  compatible. Then inspect the adoption path around the legacy-directory rename;
+  if the source `managedRuntimeDirectory` is still open, the failure is a Windows
+  sharing violation rather than a package incompatibility.
+- Root cause:
+  POSIX permits renaming a directory while the process retains an open directory
+  handle. Windows does not. Keeping the verified candidate handle open across
+  `rename` made the portability test pass on macOS while the native Windows lane
+  rejected the same adoption.
+- Fix:
+  Verify and fingerprint the candidate, write the new activation, close the
+  source directory handle, rename it, then reopen the promoted directory and
+  repeat the integrity check. Rollback must close the promoted handle before
+  renaming it back and restoring the previous activation.
+- Validation:
+  On native Windows, install a managed npm runtime, move it to a legacy identity,
+  update the Extension without changing its runtime contract, and assert the
+  runtime is adopted without reinstalling. Keep the batch-launcher execution and
+  companion reconciliation assertions in the same Windows workflow.
+- References:
+  [windows-platform-support.md](../../architecture/windows-platform-support.md)
+  [managed_runtime.go](../../../services/tuttid/service/agentextension/managed_runtime.go)
+  [setup_test.go](../../../services/tuttid/service/agentextension/setup_test.go)
 
 ### Workspace Apps repeatedly probe extension authentication
 
@@ -716,20 +817,30 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   `cwd/AGENTS.md`, which dirtied tracked repositories.
 - Fix:
   Materialize Tutti Cursor skills as a session-scoped Cursor plugin with
-  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`; expose it through
-  `TUTTI_CURSOR_PLUGIN_DIR`, and start Cursor ACP as
+  `.cursor-plugin/plugin.json` and `skills/*/SKILL.md`. Generate the canonical
+  runtime policy and its materialized Skill catalog from the same resolved
+  capability profile instead of maintaining a Cursor-specific Skill catalog.
+  Reconcile the session-owned root on every prepare so resume replaces current
+  managed Skills and removes stale managed entries without touching unmanaged
+  directories.
+  Expose the plugin through `TUTTI_CURSOR_PLUGIN_DIR`, start Cursor ACP as
   `cursor-agent --plugin-dir <plugin-dir> acp`. Keep user/project
   `.cursor/skills` discoverable for composer options, but never write Tutti
   injected skills or Tutti runtime instructions into the workspace cwd for
-  Cursor sessions. Cursor Agent `2026.07.01-41b2de7` does not load plugin hooks
-  in ACP mode, so do not advertise the dormant background-Task guard in the
-  plugin manifest and do not claim that background Task is blocked. Do not
-  install the hook into user or project Cursor configuration as a workaround.
+  Cursor sessions. Cursor ACP does not project plugin Skills or Rules into the
+  model context, so append the prepared policy and dynamic catalog to the first
+  provider-only ACP prompt; never project it as user-visible content. Cursor
+  Agent `2026.07.01-41b2de7` does not load plugin hooks in ACP mode, so do not
+  advertise the dormant background-Task guard in the plugin manifest and do not
+  claim that background Task is blocked. Do not install the hook into user or
+  project Cursor configuration as a workaround.
 - Validation:
-  Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin
-  while leaving project `.cursor/skills` and `AGENTS.md` untouched, runtime
-  coverage that Cursor ACP includes `--plugin-dir`, and agent service coverage
-  that Cursor composer skill discovery includes plugin skills. Then run
+  Add `runtimeprep` coverage that Cursor prepare creates the runtime plugin and
+  dynamic prompt context while leaving project `.cursor/skills` and `AGENTS.md`
+  untouched; add runtime coverage that Cursor ACP includes `--plugin-dir` and
+  injects the prepared context only on its first provider prompt, and agent
+  service coverage that Cursor composer skill discovery includes plugin skills.
+  Then run
   `cd packages/agent/runtimeprep && go test ./...`,
   `cd services/tuttid && go test ./service/agent`, and
   `go test ./packages/agent/daemon/runtime`.
@@ -940,24 +1051,42 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   after the request, the canceled handler did not finish cleaning up its
   discovery subprocess.
 - Root cause:
-  Codex Composer Options needs both `model/list` and the app-server capability
-  catalog. Running those independent, individually bounded probes in series
-  can exceed the Desktop's aggregate request deadline. A second failure mode
-  occurs when timeout kills only the JavaScript launcher: its native child
-  inherits stdout, the response scanner never receives EOF, and deferred
-  `Wait` cannot run because it sits behind that scanner.
+  Codex Composer Options has two independent waits: `model/list` feeds the
+  model, reasoning, and speed controls, while app-server capability discovery
+  feeds skills and capability entries. A legacy combined response can still
+  wait for both, and repeated capability failures can otherwise start another
+  eight-second probe for every refresh.
 - Fix:
-  Start model-catalog loading before capability discovery so the two independent
-  app-server exchanges overlap. Run every short-lived Codex app-server in its
-  own process group, begin process reaping immediately, and make timeout cancel
-  the entire group. Keep the Desktop deadline unchanged so a genuinely stuck
-  daemon request still fails closed.
+  Desktop requests `section=core` for model controls. It requests
+  `section=capabilities` only when the user opens or uses a capability surface,
+  so the capability response and its eight-second provider timeout never block
+  the model controls. The legacy `section=full` response still starts both
+  catalogs concurrently. Capability loads use single-flight sharing plus a
+  short negative cache so identical callers do not stampede a broken app-server.
+  Run every short-lived Codex
+  app-server in its own process group, begin process reaping immediately, and
+  make timeout cancel the entire group. The daemon keeps one initialized Codex
+  app-server session warm per provider for up to two minutes, and refreshes the
+  five-minute model catalog in the background after expiry or an auth/config
+  invalidation. Identical atomic rewrites of Codex auth/config do not
+  invalidate the catalog because the watcher compares file content. Keep the
+  Desktop deadline unchanged so a genuinely stuck daemon request still fails
+  closed.
 - Validation:
   Block both catalog fixtures and assert both start before either is released.
   Use a fake app-server whose child retains stdout and assert model and
-  capability timeouts return promptly with no surviving child. Finally, time a
-  cold Composer Options request and confirm it completes within the Desktop
-  deadline.
+  capability timeouts return promptly with no surviving child. Assert concurrent
+  cold catalog callers share one fetch, stale options remain visible while the
+  background refresh runs, and repeated requests reuse one app-server process.
+  Finally, time a cold Composer Options request and confirm it completes within
+  the Desktop deadline. Useful logs are
+  `agent.model_catalog.fetch_start`, `stage_settled`, `fetch_settled`,
+  `request_settled`, `agent.composer_options.load`, and `process_idle_close`.
+  Composer telemetry reports section/stage, outcome, duration, and bounded
+  model identifiers without paths or settings. When an auth/config watcher
+  causes invalidation, `agent.model_catalog.invalidated` also includes the
+  exact changed file and change kind; use that field to distinguish Codex
+  auth/config churn from a provider-side fetch failure.
 - References:
   [composer_options.go](../../../services/tuttid/service/agent/composer_options.go)
   [codex_appserver_process.go](../../../services/tuttid/service/agent/codex_appserver_process.go)
@@ -988,7 +1117,9 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   boundary and replay the answer again in `turn/completed`, sometimes with
   whitespace polish; treating each report as a new segment creates duplicate
   bubbles. The model-metadata warning is runtime diagnostic noise rather than
-  an actionable user error.
+  an actionable user error. Persisted skill-context warnings may omit their
+  optional `source` metadata, and Codex has emitted both percentage and
+  non-percentage variants of that wording.
 - Fix:
   Treat Codex app-server `model/list` as the authoritative catalog regardless
   of `model_provider`. Preserve the full returned list and reasoning metadata;
@@ -997,7 +1128,10 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   for whitespace-equivalent item-finalization text and ignore turn-final text
   after an assistant segment has already completed. Filter the metadata
   fallback warning through the same AgentGUI diagnostic-notice projection used
-  for skills-context-budget warnings.
+  for skills-context-budget warnings. Match the optional percentage in the
+  skills warning as diagnostic context rather than as part of its identity;
+  accept a missing source only for that exact warning, preserve explicitly
+  non-runtime notices, and keep the metadata fallback warning runtime-only.
 - Validation:
   Run
   `go test ./packages/agent/daemon/runtime -run 'TestApplyAssistantFinalText|TestApplyAssistantTurnFinalText|TestCodexAppServerAdapterExecStreamsTurn'`,
@@ -1440,40 +1574,128 @@ invalid_grant`. Search `tuttid.log` for
   `session/prompt` then returns `stopReason: "end_turn"` without an assistant
   chunk or tool call, treat it as a hidden provider failure rather than a
   successful empty answer. Check that the signed Kimi Extension routes
-  `/status` and `/usage` to the runtime with the shared `submitImmediate`
-  effect. Those commands must remain runtime-owned: Tutti Desktop should
-  report its account-usage probe as `unsupported` for `acp:kimi-code` and must
-  not parse Kimi configuration or credentials itself.
+  `/status` to the native status panel with `showStatus` and `/usage` to the
+  runtime with `submitImmediate`.
 - Root cause:
   Kimi Code can create an ACP session while no model is configured. Its ACP
   adapter maps some underlying model, authentication, plan, and balance
   failures to a normal `end_turn` with no output because ACP has no failed stop
   reason. The setup guard previously recognized only the top-level `models`
-  shape. A provider-specific Desktop usage probe would also duplicate Kimi's
-  configuration, credential, endpoint, and quota semantics outside the signed
-  Extension/runtime boundary.
+  shape.
 - Fix:
   Reject both empty ACP model shapes during generic setup. A normal ACP
   terminal with neither assistant output nor tool activity must settle as
   `provider_empty_response`, producing a visible conversation error card that
   points users back to model and account setup. Turns with only thinking or a
   system notice remain valid because they produced observable assistant
-  output. Keep Kimi's `/status` and `/usage` behavior declarative in the signed
-  Extension and execute it through the Kimi ACP runtime, which remains the
-  owner of provider configuration, credentials, account APIs, and quota
-  interpretation.
+  output. Keep Kimi's slash-command behavior declarative in the signed
+  Extension.
 - Validation:
   Cover empty and populated `models`/`configOptions` selectors, thinking-only
   and notice-only ACP turns, and an otherwise normal empty ACP `end_turn`.
-  Assert that an explicit Kimi Desktop usage probe stays `unsupported`, and
-  validate in the Extension repository that `/status` and `/usage` both use
-  `submitImmediate` against the pinned real runtime.
+  Validate in the Extension repository that `/status` uses `showStatus` and
+  `/usage` uses `submitImmediate` against the pinned real runtime.
 - References:
   [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
   [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
   [createDesktopAgentStatusSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentStatusSource.ts)
   [Agent Extensions](../../architecture/agent-extensions.md)
   [Kimi Code Agent Extension](https://github.com/tutti-os/agent-extension-kimi-code)
+
+### CodeBuddy account panel does not distinguish API billing from Coding Plan
+
+- Symptom:
+  CodeBuddy `/status` opens the native account panel, but its limits row says
+  the current Agent does not provide quota limits. Ordinary API keys and Coding
+  Plan credentials also have the same presentation.
+- Quick checks:
+  Confirm the provider is `acp:codebuddy`. Inspect CodeBuddy's effective
+  `CODEBUDDY_API_KEY`, `CODEBUDDY_BASE_URL`, `CODEBUDDY_AUTH_TOKEN`, and
+  `apiKeyHelper` presence without copying credential values into logs. Coding
+  Plan keys use the `sk-sp-` prefix or an endpoint whose path contains
+  `coding`.
+- Root cause:
+  CodeBuddy's ACP `usage_update` reports context usage and per-request cost, but
+  the pinned runtime does not expose or document a complete account-level
+  credit-balance contract. Private product endpoints, filtered package queries,
+  and a single page of resource rows cannot prove a complete account balance.
+  Tutti previously had no CodeBuddy account probe, so the native panel treated
+  the provider as unsupported and could not identify the billing mode.
+- Fix:
+  CodeBuddy's Extension declares a separately published Provider-owned account
+  usage companion. The companion owns only CodeBuddy's effective configuration
+  precedence and billing-mode classification. Tutti executes the generic
+  `accountUsage` capability and consumes a closed Provider-neutral snapshot.
+  Ordinary API keys report `api` with quota state `not_applicable`; Coding Plan
+  reports `coding_plan` with quota state `unavailable`; native authentication
+  reports `provider_account` with quota state `unavailable`. The UI renders API
+  `not_applicable` as `—`; Coding Plan and native accounts render the localized
+  account-quota-unavailable copy. Neither presentation claims a verified credit
+  balance. Until the Provider publishes a contract that proves a complete
+  snapshot, the companion emits no exact Credits. It does not enumerate or read
+  native session files, decode JWTs, execute credential helpers, inspect local
+  `expiresAt`, or call private account endpoints. Runtime/ACP therefore remains
+  the only login and refresh authority. Tokens, account identifiers, paths, raw
+  Provider responses, and Provider messages never cross the daemon API or
+  renderer IPC and never enter logs.
+- Validation:
+  Cover ordinary API keys, Coding Plan keys, authentication tokens,
+  `apiKeyHelper`, effective settings precedence, and stable errors. Prove that
+  simultaneous expired and valid session files are never read, Runtime token
+  refresh cannot affect the probe, private package endpoints are never called,
+  incomplete package pagination cannot be presented as exact Credits,
+  concurrent probes coalesce at the Tutti boundary, and credentials or raw
+  errors are never projected. Also cover generic renderer labels and exact
+  amount validation for future Providers with a complete contract. Run the
+  Extension's Linux and Windows companion checks plus Tutti's daemon, Desktop,
+  typecheck, i18n, and changed-aware push-ready gates.
+- References:
+  [CodeBuddy Agent Extension](https://github.com/tutti-os/agent-extension-codebuddy)
+  [account_usage.go](../../../services/tuttid/service/agentextension/account_usage.go)
+  [agentTargetAccountUsageProbe.ts](../../../apps/desktop/src/main/agentTargetAccountUsageProbe.ts)
+
+### Kimi Code account panel says the Agent provides no quota limits
+
+- Symptom:
+  Kimi Code `/status` opens the native account panel, but its limits row says
+  the current Agent does not provide quota limits even though the selected
+  account uses Coding Plan.
+- Quick checks:
+  Confirm the provider is `acp:kimi-code`, the active model in
+  `$KIMI_CODE_HOME/config.toml` (or `~/.kimi-code/config.toml`) resolves to
+  `managed:kimi-code`, and the matching OAuth credential exists under the
+  Kimi-owned `credentials/` directory. Search Desktop logs for
+  `agent.usage_probe.result`; logs contain only strategy/error metadata and
+  must never contain credentials or raw responses.
+- Root cause:
+  Kimi Code 0.28 exposes session/context usage through ACP, but it does not
+  expose Coding Plan account windows as structured ACP data. The native panel
+  therefore had no account-level source and treated the extension provider as
+  unsupported.
+- Fix:
+  Kimi's Extension declares a separately published Provider-owned account usage
+  companion. It resolves the selected model's provider and Kimi credentials,
+  while Tutti executes the generic `accountUsage` capability and consumes only
+  Provider-neutral billing/quota fields. API-key providers return `api` with no
+  quota rows. The managed provider requests Coding Plan `/usages` and emits
+  normalized quota percentages/reset times. Kimi owns OAuth refresh, so the
+  companion does not treat point-in-time `expires_at` or an authorization
+  rejection as Agent login authority. It reloads the credential once after
+  401/403 and retries only when the token changed. Tokens, API keys, paths, raw
+  responses, and Provider messages never cross the daemon API or renderer IPC.
+- Validation:
+  Cover managed inline/nested OAuth configuration, Coding Plan summary/window
+  mapping, API billing without an account request, a concurrent credential
+  refresh, an unchanged unauthorized token that does not become
+  `session_expired`, and the renderer's localized API billing label. Run the
+  Desktop tests, typecheck, i18n check, build, and changed-aware push-ready
+  gate.
+- References:
+  [Kimi Code Agent Extension](https://github.com/tutti-os/agent-extension-kimi-code)
+  [account_usage.go](../../../services/tuttid/service/agentextension/account_usage.go)
+  [agentTargetAccountUsageProbe.ts](../../../apps/desktop/src/main/agentTargetAccountUsageProbe.ts)
+  [agentProviderUsageProbe.ts](../../../apps/desktop/src/main/agentProviderUsageProbe.ts)
+  [createDesktopAgentStatusSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentStatusSource.ts)
 
 ### Claude Code sessions fail with `effectiveSource: "none"` when CC-Switch or similar proxy tools are used
 

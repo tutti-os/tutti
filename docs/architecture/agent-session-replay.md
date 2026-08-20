@@ -161,6 +161,17 @@ SQLite database containing one transient Replay Surface per Cassette. It is runt
 composition, not another durable product Workspace and not a multi-root
 Cassette.
 
+Replay Workspace aligns every cassette's Activity clock to the earliest first
+Activity timestamp in the batch. This preserves the wall-clock offset between
+cassettes that were recorded concurrently. Realtime playback therefore keeps
+cross-Session ordering scenarios deterministic; fast-forward may intentionally
+skip elapsed waits while retaining each cassette's Activity order.
+
+Scenario screenshot settling remains limited to stable checkpoints by default.
+A scenario may opt into immediate `turn.working` settling with
+`settleForWorkingScreenshot: true` when it performs bounded DOM assertions for
+a transient cross-Session state; tool-start checkpoints remain excluded.
+
 After a Replay Workspace creates its Replay Surfaces, Desktop applies the
 Workbench balanced layout to exactly those AgentGUI Nodes. A single Surface
 receives the Workbench safe-area frame without locking the layout. A batch with

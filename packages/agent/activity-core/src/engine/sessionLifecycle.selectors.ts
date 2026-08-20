@@ -14,6 +14,10 @@ import {
   canonicalInteractionKey,
   canonicalTurnKey
 } from "./sessionEntityKeys.ts";
+import {
+  compareTurnsByOccurrence,
+  latestTurnForSession
+} from "./sessionTurnOrdering.ts";
 import { selectLatestActivationForSession } from "./pendingIntents.selectors.ts";
 import { isPendingActivationViable } from "./pendingIntents.types.ts";
 import {
@@ -262,16 +266,7 @@ export function selectEngineLatestTurn(
 ): AgentActivityTurn | null {
   const id = agentSessionId?.trim() ?? "";
   if (!state.sessionLifecycle.sessionsById[id]) return null;
-  let latestTurn: AgentActivityTurn | null = null;
-  for (const turn of Object.values(state.sessionLifecycle.turnsById)) {
-    if (
-      turn.agentSessionId === id &&
-      (!latestTurn || compareTurnsByOccurrence(latestTurn, turn) < 0)
-    ) {
-      latestTurn = turn;
-    }
-  }
-  return latestTurn;
+  return latestTurnForSession(state.sessionLifecycle.turnsById, id);
 }
 
 export function selectEngineInteractionsForSession(
@@ -506,11 +501,6 @@ export function selectAllWorkspaceAgentConsumerSessions(
       activeTurn,
       displayStatus: displayStatusFromCanonicalState({
         activeTurn,
-        initialActivationTurnPending: initialActivationTurnIsPending(
-          state,
-          session.agentSessionId,
-          latestTurn
-        ),
         latestTurn,
         pendingInteractions,
         runtimeActivity:
@@ -538,11 +528,6 @@ export function selectWorkspaceAgentConsumerSession(
     activeTurn,
     displayStatus: displayStatusFromCanonicalState({
       activeTurn,
-      initialActivationTurnPending: initialActivationTurnIsPending(
-        state,
-        id,
-        latestTurn
-      ),
       latestTurn,
       pendingInteractions,
       runtimeActivity: state.sessionLifecycle.operationBySessionId[id] ?? null
@@ -567,7 +552,6 @@ export function selectWorkspaceAgentConsumerCounts(
 
 function displayStatusFromCanonicalState(state: {
   activeTurn: AgentActivityTurn | null;
-  initialActivationTurnPending: boolean;
   latestTurn: AgentActivityTurn | null;
   pendingInteractions: readonly AgentActivityInteraction[];
   runtimeActivity: SessionOperationState | null;
@@ -577,9 +561,7 @@ function displayStatusFromCanonicalState(state: {
     return state.activeTurn.phase === "waiting" ? "waiting" : "working";
   }
   if (runtimeActivityCanOverrideCanonicalTurn(state)) return "working";
-  if (!state.latestTurn) {
-    return state.initialActivationTurnPending ? "working" : "idle";
-  }
+  if (!state.latestTurn) return "idle";
   if (state.latestTurn.phase !== "settled") return "idle";
   switch (state.latestTurn.outcome) {
     case "failed":
@@ -607,20 +589,6 @@ function runtimeActivityCanOverrideCanonicalTurn(state: {
   return (
     state.runtimeActivity.runtimeActivityOccurredAtUnixMs >
     canonicalTerminalAtUnixMs
-  );
-}
-
-function initialActivationTurnIsPending(
-  state: AgentSessionEngineStateBase,
-  agentSessionId: string,
-  latestTurn: AgentActivityTurn | null
-): boolean {
-  if (latestTurn) return false;
-  const activation = selectLatestActivationForSession(state, agentSessionId);
-  return (
-    activation?.mode === "new" &&
-    activation.initialTurnExpected &&
-    isPendingActivationViable(activation)
   );
 }
 
@@ -659,15 +627,5 @@ function compareSessionInteractionsByOccurrence(
   return (
     left.createdAtUnixMs - right.createdAtUnixMs ||
     left.requestId.localeCompare(right.requestId)
-  );
-}
-
-function compareTurnsByOccurrence(
-  left: AgentActivityTurn,
-  right: AgentActivityTurn
-): number {
-  return (
-    left.startedAtUnixMs - right.startedAtUnixMs ||
-    left.turnId.localeCompare(right.turnId)
   );
 }

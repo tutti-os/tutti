@@ -19,10 +19,10 @@ import {
   useStableSlashStatus
 } from "./agentGUIDetailModelHelpers";
 import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
+import { useBottomDockPromptDismissal } from "./useBottomDockPromptDismissal";
 import styles from "../AgentGUINode.styles";
 
 interface Input {
-  bottomDockDismissedPromptRequestId: string | null;
   labels: AgentGUIViewLabels;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
   slashStatusLimitsLoading: boolean;
@@ -48,7 +48,6 @@ export function resolveTuttiModeUpdateInlineNotice(input: {
 
 export function useAgentGUIDetailModel(input: Input) {
   const {
-    bottomDockDismissedPromptRequestId,
     labels,
     slashStatusLimits,
     slashStatusLimitsLoading,
@@ -90,6 +89,11 @@ export function useAgentGUIDetailModel(input: Input) {
       ? viewModel.interaction.isRespondingApproval
       : viewModel.interaction.isRespondingInteractivePrompt;
   const activePromptRequestId = activePrompt?.requestId ?? null;
+  const { dismissPrompt: dismissBottomDockPrompt, promptVisible } =
+    useBottomDockPromptDismissal(
+      viewModel.rail.activeConversationId,
+      activePromptRequestId
+    );
   const sessionChrome = useMemo<AgentGUISessionChrome>(
     () => ({ ...viewModel.interaction.sessionChrome, approval: null }),
     [viewModel.interaction.sessionChrome]
@@ -190,14 +194,12 @@ export function useAgentGUIDetailModel(input: Input) {
   });
   // Plan decisions replace the composer in the bottom dock: the card takes its slot
   // and the composer hides until it is acted on (optimistically cleared via
-  // bottomDockDismissedPromptRequestId) or otherwise resolves.
+  // bottomDockDismissedPrompt) or otherwise resolves.
   const activePromptIsPlanDecision =
     activePrompt?.kind === "exit-plan" ||
     activePrompt?.kind === "plan-implementation";
   const activePromptIsVisible =
-    activePrompt !== null &&
-    !homeStatusNoticeVisible &&
-    bottomDockDismissedPromptRequestId !== activePromptRequestId;
+    activePrompt !== null && !homeStatusNoticeVisible && promptVisible;
   const bottomDockReplacementPrompt =
     activePromptIsPlanDecision && activePromptIsVisible ? activePrompt : null;
   // Approval / ask-user prompts keep the original layout: they lift above the
@@ -221,6 +223,7 @@ export function useAgentGUIDetailModel(input: Input) {
   const activeConversationTurnBusy = viewModel.composer.gate.conversationBusy;
   const isComposerSending =
     activeConversationTurnBusy ||
+    viewModel.composer.gate.isAwaitingTurnStart === true ||
     (!hasActiveConversation &&
       viewModel.composer.gate.submission.status === "blocked" &&
       viewModel.composer.gate.submission.reason === "creating_conversation");
@@ -230,8 +233,6 @@ export function useAgentGUIDetailModel(input: Input) {
   const composerDisabledReason = isCollaboratorConversation
     ? labels.collaboratorSessionReadOnlyPlaceholder
     : null;
-  const runtimeCommandsBlocked =
-    viewModel.composer.gate.runtime.status === "blocked";
   const stopControl = resolveAgentGUIStopControl({
     hasPendingApproval: viewModel.interaction.pendingApproval !== null,
     hasPendingInteractivePrompt:
@@ -240,10 +241,11 @@ export function useAgentGUIDetailModel(input: Input) {
     isCancelPending: viewModel.composer.isCancelPending,
     isConversationBusy: activeConversationTurnBusy,
     isCreatingConversation: viewModel.composer.isCreatingConversation,
+    hasPendingSubmitStopTarget:
+      viewModel.composer.hasPendingSubmitStopTarget === true,
     isInterrupting: viewModel.composer.isInterrupting,
     isSubmitting: viewModel.composer.isSubmitting,
-    isUnavailable: viewModel.readiness.activeLiveState === "failed",
-    runtimeCommandsBlocked
+    isUnavailable: viewModel.readiness.activeLiveState === "failed"
   });
   const showStopButton = stopControl.visible;
   const stopDisabled = stopControl.disabled;
@@ -554,7 +556,9 @@ export function useAgentGUIDetailModel(input: Input) {
       addContentConnectorConnect: labels.addContentConnectorConnect,
       addContentConnectorAuthorize: labels.addContentConnectorAuthorize,
       addContentConnectorEmpty: labels.addContentConnectorEmpty,
+      addContentConnectorLoading: labels.addContentConnectorLoading,
       addContentConnectorMore: labels.addContentConnectorMore,
+      addContentConnectorSelected: labels.addContentConnectorSelected,
       referenceWorkspaceFiles: labels.referenceWorkspaceFiles,
       handoffConversation: labels.handoffConversation,
       handoffConversationTooltip: labels.handoffConversationTooltip,
@@ -589,7 +593,9 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.addContentConnectorConnect,
       labels.addContentConnectorAuthorize,
       labels.addContentConnectorEmpty,
+      labels.addContentConnectorLoading,
       labels.addContentConnectorMore,
+      labels.addContentConnectorSelected,
       labels.deleteQueuedPrompt,
       labels.editQueuedPrompt,
       labels.fileMentionEmpty,
@@ -751,6 +757,7 @@ export function useAgentGUIDetailModel(input: Input) {
   );
 
   return {
+    activePrompt,
     activeConversationTurnBusy,
     activePromptRequestId,
     activePromptResponsePending,
@@ -764,6 +771,7 @@ export function useAgentGUIDetailModel(input: Input) {
     conversation,
     conversationFlowEmpty,
     conversationFlowLabels,
+    dismissBottomDockPrompt,
     emptyProviderReadinessGate,
     goalBannerLabels,
     hasActiveConversation,

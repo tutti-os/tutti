@@ -31,7 +31,11 @@ func (localInstallCommandRunner) Run(ctx context.Context, command []string, cwd 
 	if len(command) == 0 || strings.TrimSpace(command[0]) == "" {
 		return errors.New("install command is required")
 	}
-	cmd := exec.CommandContext(ctx, command[0], command[1:]...)
+	executable := command[0]
+	if resolved, err := exec.LookPath(executable); err == nil {
+		executable = resolved
+	}
+	cmd := newAgentExtensionCommand(ctx, executable, command[1:]...)
 	cmd.Dir = cwd
 	cmd.Env = env
 	output := &boundedBuffer{limit: 128 << 10}
@@ -265,23 +269,25 @@ func (s *SetupService) executeInstall(
 			return fmt.Errorf("%w: derive user executable entry: %w", ErrRuntimeActivateFailed, err)
 		}
 		entry = &value
+		if err := validateManagedRuntimeEntry(value); err != nil {
+			return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
+		}
+		if err := s.Plans.Manager.ensureUserCommandPath(ctx); err != nil {
+			return fmt.Errorf("%w: publish user command directory: %w", ErrRuntimeActivateFailed, err)
+		}
 	}
 	if err := activateManagedRuntime(installation, workspace, stagingDir, plan, s.Plans.Manager.RuntimeInstallDir, entry, activation); err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
 	}
+	// Account usage is an optional provider-owned sidecar. Wake its independent
+	// reconciler only after ACP activation commits so sidecar latency or failure
+	// cannot delay or roll back Agent readiness.
+	s.WakeAccountUsageCompanionReconciler()
 	return nil
 }
 
 func stagedRuntimeExecutable(plan InstallPlan, staging string) (string, error) {
-	relative, err := filepath.Rel(filepath.Clean(plan.InstallRoot), filepath.Clean(plan.Executable))
-	if err != nil || relative == "." || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return "", errors.New("runtime executable escapes install root")
-	}
-	result := filepath.Join(staging, relative)
-	if !pathWithin(result, staging) {
-		return "", errors.New("staged runtime executable escapes staging root")
-	}
-	return result, nil
+	return stagedRuntimePath(plan.InstallRoot, plan.Executable, staging)
 }
 
 func verifiedPlanBinaryArtifact(installation Installation, plan InstallPlan) (RuntimeBinaryArtifact, error) {

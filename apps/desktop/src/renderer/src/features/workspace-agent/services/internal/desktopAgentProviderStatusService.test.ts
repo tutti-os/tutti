@@ -793,6 +793,56 @@ test("requestStatuses fires agent.env_detected once per detection outcome", asyn
   assert.equal(events[0]?.params?.availability_status, "ready");
 });
 
+test("background detection does not report an absent optional provider as an environment failure", async () => {
+  const events: ReporterEventInput[] = [];
+  const missingOptionalProvider = createProviderStatus({
+    actions: [],
+    availability: "not_installed",
+    cliInstalled: false,
+    provider: "cursor",
+    reasonCode: "cli_not_found"
+  });
+  const launchFailure = createProviderStatus({
+    actions: [],
+    adapterInstalled: false,
+    availability: "unknown",
+    cliInstalled: true,
+    provider: "opencode",
+    reasonCode: "acp_adapter_launch_failed"
+  });
+  const service = new DesktopAgentProviderStatusService({
+    tuttidClient: createTuttidClient({
+      snapshots: [
+        createStatusResponse([missingOptionalProvider, launchFailure])
+      ]
+    }),
+    reporterService: {
+      async trackEvents(nextEvents) {
+        events.push(
+          ...legacyAgentEvents(nextEvents).filter(
+            (event) => event.name === "agent.env_detected"
+          )
+        );
+      }
+    },
+    terminalCommandRunner: {
+      async runTerminalCommand() {}
+    }
+  });
+
+  await service.refresh();
+  await flushAsyncWork();
+
+  assert.equal(
+    service.getStatus("cursor")?.availability.reasonCode,
+    "cli_not_found"
+  );
+  assert.deepEqual(
+    events.map((event) => event.params?.provider),
+    ["opencode"]
+  );
+});
+
 test("automatic login requests reuse one terminal and one status poll", async () => {
   const commands: AgentProviderTerminalCommand[] = [];
   const statusCalls: Array<readonly WorkspaceAgentProvider[] | undefined> = [];
@@ -1573,7 +1623,7 @@ test("refresh uses the descriptor runtime-probe fallback for unknown status", as
   assert.equal(status?.cli.installed, true);
   assert.equal(status?.adapter.installed, true);
   assert.deepEqual(status?.adapter.command, ["agent", "acp"]);
-  assert.equal(status?.auth.status, "authenticated");
+  assert.equal(status?.auth.status, "configured");
   assert.deepEqual(status?.actions, []);
   assert.deepEqual(probeCalls, ["cursor"]);
 });

@@ -61,6 +61,9 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivity(
         }
       : {}),
     model: input.model ?? null,
+    ...(input.modelExplicit !== undefined
+      ? { modelExplicit: input.modelExplicit }
+      : {}),
     ...(input.noProject !== undefined
       ? { noProject: input.noProject ?? null }
       : {}),
@@ -71,6 +74,9 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivity(
     planMode: input.planMode ?? null,
     ...(options.recordingId ? { recordingId: options.recordingId } : {}),
     reasoningEffort: input.reasoningEffort ?? null,
+    ...(input.reasoningEffortExplicit !== undefined
+      ? { reasoningEffortExplicit: input.reasoningEffortExplicit }
+      : {}),
     speed: input.speed ?? null,
     title: input.title ?? null,
     visible: input.visible ?? null
@@ -106,10 +112,12 @@ export function tuttiCreateWorkspaceAgentSessionRequestFromActivation(
       ? { ...input.initialTuttiModeActivation }
       : undefined,
     model: input.settings?.model,
+    modelExplicit: input.modelExplicit,
     permissionModeId: input.settings?.permissionModeId,
     planMode: input.settings?.planMode,
     railPlacement: input.railPlacement ? { ...input.railPlacement } : undefined,
     reasoningEffort: input.settings?.reasoningEffort,
+    reasoningEffortExplicit: input.reasoningEffortExplicit,
     speed: input.settings?.speed,
     submitDiagnostics: input.submitDiagnostics
       ? { ...input.submitDiagnostics }
@@ -210,7 +218,8 @@ function tuttiSubmitDiagnosticsFromActivity(
     ...(input.source !== undefined ? { source: input.source } : {}),
     ...(input.submittedAtUnixMs !== undefined
       ? { submittedAtUnixMs: input.submittedAtUnixMs }
-      : {})
+      : {}),
+    ...(input.uiMode !== undefined ? { uiMode: input.uiMode } : {})
   };
 }
 

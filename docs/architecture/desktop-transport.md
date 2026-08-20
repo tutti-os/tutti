@@ -153,12 +153,13 @@ token in the HTTP `Authorization` header.
 
 The packaged desktop app repairs the canonical user-level CLI shim during
 startup. The canonical shim path derives from the same state root. To expose the
-command to external shells on macOS and Linux, desktop may also install or
-repair a Tutti-owned forwarding shim in `~/.local/bin` or `~/bin`, but only
-when that directory is already present in the user's login-shell `PATH` and
-writable. It must not overwrite a non-Tutti command, mutate shell profiles, or
-write to global locations such as `/usr/local/bin`. PATH exposure is a
-best-effort background startup task and must not delay desktop window creation.
+command to external shells on macOS, Linux, and Windows, desktop may also
+install or repair a Tutti-owned forwarding shim in `~/.local/bin`, `~/bin`, or
+the Windows equivalent user-owned PATH directory, but only when that directory
+is already present in the user's `PATH` and writable. Windows uses a `.cmd`
+shim. It must not overwrite a non-Tutti command, mutate shell profiles or the
+registry, or write to global locations. PATH exposure is a best-effort
+background startup task and must not delay desktop window creation.
 
 Local development scripts install a separate `tutti-dev` command so developer
 shells can target the development daemon without shadowing a packaged `tutti`
@@ -185,6 +186,14 @@ Current acceptable preload bootstrap helpers include:
 - resolved backend config for managed loopback HTTP access
 - resolved terminal stream URL helpers for terminal-specific WebSocket routes
 - resolved business-event stream URL helpers for `/v1/events/ws`
+
+Desktop preference recovery is a typed host capability rather than renderer
+transport policy. `host.preferences.ensureInitialized` crosses
+renderer -> preload -> main without input; main owns the single-flight recovery
+state and returns the generated `DesktopPreferencesStateResponse`. The daemon's
+`initializeIfAbsent` API and SQLite transaction remain the authoritative
+creation boundary. Web development, where Electron host IPC is absent, invokes
+the same daemon API directly with the renderer's complete bootstrapped candidate.
 
 ## Daemon-Side Rules
 

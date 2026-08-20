@@ -17,6 +17,16 @@ and are rendered only behind an explicit disclosure, never in the product error
 headline. Environment, authentication,
 network, and runtime errors are not overridable and remain AgentGUI policy.
 
+Hosts that render an Agent owned by somebody else must pass
+`hostCapabilities.visibleErrorPresentationScope: "shared_caller"`. AgentGUI
+then preserves structured failure reasons and diagnostic disclosure, replaces
+Owner-remediable guidance with caller-safe contact guidance, and suppresses
+current-device and current-account recovery actions. Omission defaults to
+`"local_owner"` for backward compatibility. The scope is presentation-only;
+it never changes a Turn, activity event, persistence, or provider error.
+Hosts that inject an application i18n runtime must also provide
+`agentHost.agentGui.visibleErrorSharedCallerHint` in every supported locale.
+
 This is an intentional public API break. The former `accountMenuState`,
 `commercePresentation`, `AgentGUIAccountMenu*`, and
 `AgentGUIAccountRewardToast` surfaces were removed instead of being retained as
@@ -215,6 +225,17 @@ The daemon DTO mapper belongs to
 `@tutti-os/agent-activity-tuttid-adapter`, so Desktop and Mobile do not keep
 separate parser implementations for Composer capabilities or option catalogs.
 
+## Performance Failure Events
+
+`AgentGUIPerformanceEvent` failure settlements carry a bounded `errorCode` and
+`failureStage` when the operation fails. `errorCode` comes from a stable
+machine-readable error field and falls back to `unknown`; raw error messages
+are never included. Composer option failures use `options_load`, Session
+activation uses `session_activation`, Prompt admission uses `prompt_admission`,
+and Turn failures use `turn_settlement`. Each settlement keeps its existing
+`operationId`, so hosts can deduplicate repeated observations without using
+provider names, timestamps, or error text.
+
 ## Quick Composer
 
 `@tutti-os/agent-gui/quick-composer` renders the canonical DOM Composer for a
@@ -347,6 +368,12 @@ is not a runtime or host capability and has no published package entrypoint.
 In-flight first-page results are fenced to the attached controller generation
 so stale mounts cannot mutate the Engine or cache.
 
+The `@tutti-os/agent-gui/abortable-single-flight` subpath exposes the generic
+`AbortableSingleFlight` lifecycle primitive for host adapters that need to
+coalesce keyed abortable reads while keeping caller cancellation independent.
+The primitive owns only request sharing and cancellation; cache, snapshot, and
+event ownership remain with the host adapter.
+
 Run this boundary check after changing AgentGUI data flow:
 
 ```sh
@@ -407,7 +434,7 @@ both properties keeps the filter off. An explicitly supplied catalog (including
 
 ## Home Suggestions
 
-The five starter entries below the empty new-session composer are enabled by
+The six starter entries below the empty new-session composer are enabled by
 default. External hosts can hide individual entries with the public
 `AgentGUI.disabled` array:
 
@@ -415,9 +442,9 @@ default. External hosts can hide individual entries with the public
 <AgentGUI disabled={["meet-tutti", "import-session"]} {...props} />
 ```
 
-The supported stable IDs are `meet-tutti`, `task-breakdown`, `quality-review`,
-`agent-interaction`, and `import-session`. Omitting `disabled` (or passing an
-empty array) renders all five entries.
+The supported stable IDs are `meet-tutti`, `clone-github-repository`,
+`task-breakdown`, `quality-review`, `agent-interaction`, and `import-session`.
+Omitting `disabled` (or passing an empty array) renders all six entries.
 
 ## Tutti Mode capability
 

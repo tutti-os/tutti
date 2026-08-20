@@ -115,6 +115,13 @@ Every provider status carries a provider-neutral `update` object. Nullable
 up-to-date result. Remote discovery errors belong in update `reasonCode` and
 must not turn a valid local readiness snapshot into an HTTP failure.
 
+Provider auth status distinguishes credential presence from remote proof:
+`configured` means local credentials exist, `authenticated` means a
+provider-backed operation succeeded, `required` means authentication is known
+to be missing or rejected, and `unknown` means no settled evidence exists.
+Clients may use `availability.status` to decide launchability; they must not
+coerce `configured` to `authenticated` for display or analytics.
+
 `update` is an explicit action id, not an alias for `install`. The daemon may
 offer it only when both the provider descriptor and the resolved installation
 prove a supported managed source. See [Agent Provider CLI Updates](../architecture/agent-provider-cli-updates.md).
@@ -167,6 +174,12 @@ Rules:
 `composer-options` follows this rule: request `settings` are input overrides,
 while response `effectiveSettings` is the only contract for resolved homepage
 composer defaults.
+
+The same endpoint accepts an optional `section`: `core` returns the model,
+reasoning, speed, permission, and effective-settings projection;
+`capabilities` returns skills, commands, and capability-catalog data; omitted
+or `full` preserves the combined response for compatibility. Sectioned
+responses are additive projections, not alternate sources of resolved settings.
 
 ## Desktop Agent Conversation Detail Mode
 

@@ -99,6 +99,86 @@ func TestInstallPlanServiceBuildsDeterministicTargetScopedPlan(t *testing.T) {
 	}
 }
 
+func TestBuildInstallPlanPinsAccountUsageCompanionToManagedRuntime(t *testing.T) {
+	manifest := testManifest()
+	manifest.Profiles.AccountUsage = "profiles/account-usage.json"
+	manager := &Manager{
+		Installations:     agentextensiondata.NewFileInstallationStore(t.TempDir()),
+		RuntimeInstallDir: filepath.Join(testResolvedTempDir(t), "agent-runtimes"),
+	}
+	installation, err := installTestPackage(
+		t,
+		manager,
+		Release{AgentKey: manifest.AgentKey, Version: manifest.Version},
+		testPackageZIPFor(
+			t,
+			manifest,
+			`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := buildInstallPlan(
+		"extension:gemini",
+		manager.RuntimeInstallDir,
+		installation,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantPackage := "@example/gemini-account-usage@1.0.0"
+	if plan.AccountUsage == nil || plan.AccountUsage.Package != wantPackage {
+		t.Fatalf("account usage install = %#v", plan.AccountUsage)
+	}
+	if got := plan.InstallCommand[len(plan.InstallCommand)-1]; got == wantPackage {
+		t.Fatalf("main install command contains companion: %#v", plan.InstallCommand)
+	}
+	if !pathWithin(plan.AccountUsage.Script, plan.AccountUsage.InstallRoot) ||
+		plan.AccountUsage.InstallRoot == plan.InstallRoot ||
+		plan.AccountUsage.InstallCommand[len(plan.AccountUsage.InstallCommand)-1] != wantPackage ||
+		plan.AccountUsage.TimeoutMS != 10_000 {
+		t.Fatalf("account usage independent install = %#v", plan.AccountUsage)
+	}
+}
+
+func TestBuildInstallPlanKeepsMainRuntimeWhenAccountUsageProfileCannotLoad(t *testing.T) {
+	manifest := testManifest()
+	manifest.Profiles.AccountUsage = "profiles/account-usage.json"
+	manager := &Manager{
+		Installations:     agentextensiondata.NewFileInstallationStore(t.TempDir()),
+		RuntimeInstallDir: filepath.Join(testResolvedTempDir(t), "agent-runtimes"),
+	}
+	installation, err := installTestPackage(
+		t,
+		manager,
+		Release{AgentKey: manifest.AgentKey, Version: manifest.Version},
+		testPackageZIPFor(
+			t,
+			manifest,
+			`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(installation.PackageDir, manifest.Profiles.AccountUsage),
+		[]byte(`{"schemaVersion":"broken"}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := buildInstallPlan("extension:gemini", manager.RuntimeInstallDir, installation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.AccountUsage != nil || plan.RuntimeIdentity == "" || len(plan.InstallCommand) == 0 {
+		t.Fatalf("main plan after optional profile failure = %#v", plan)
+	}
+}
+
 func TestValidateManagedRuntimeRootRejectsSymlinkedAncestor(t *testing.T) {
 	base := testResolvedTempDir(t)
 	foreign := testResolvedTempDir(t)
@@ -300,6 +380,19 @@ func TestValidateRuntimeContractAcceptsPinnedSignedBinaryArtifacts(t *testing.T)
 	invalid.Runtime.Install.Artifacts = append(invalid.Runtime.Install.Artifacts, invalid.Runtime.Install.Artifacts[0])
 	if err := validateRuntimeContract(invalid); err == nil || !strings.Contains(err.Error(), "duplicated") {
 		t.Fatalf("duplicate artifact platform error = %v", err)
+	}
+}
+
+func TestPublishesUserCommandDefaultsToEnabledAndHonorsOptOut(t *testing.T) {
+	manifest := testManifest()
+	manifest.Runtime.Launch.PublishUserCommand = nil
+	if !publishesUserCommand(manifest) {
+		t.Fatal("publishesUserCommand() = false, want platform-independent default publication")
+	}
+	publish := false
+	manifest.Runtime.Launch.PublishUserCommand = &publish
+	if publishesUserCommand(manifest) {
+		t.Fatal("publishesUserCommand() = true for explicit opt-out")
 	}
 }
 

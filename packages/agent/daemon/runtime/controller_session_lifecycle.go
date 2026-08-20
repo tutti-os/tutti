@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -44,12 +45,12 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	permissionModeID := settings.PermissionModeID
 	if agentSessionID == "" {
 		if existing, ok := c.findStartSession(roomID, strings.TrimSpace(input.AgentTargetID), provider, input.CWD, title, settings, input.ProviderTargetRef); ok {
-			return StartResult{Session: existing}, nil
+			return StartResult{Session: existing, Created: false}, nil
 		}
 		agentSessionID = newID()
 	}
 	if existing, ok := c.get(roomID, agentSessionID); ok {
-		return StartResult{Session: existing}, nil
+		return StartResult{Session: existing, Created: false}, nil
 	}
 	c.deleteRetainedGoalGenerationFences(roomID, agentSessionID)
 	session := Session{
@@ -61,6 +62,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		ProviderSessionID:       "",
 		CWD:                     strings.TrimSpace(input.CWD),
 		Env:                     append([]string(nil), input.Env...),
+		MCPServers:              cloneMCPServerBindings(input.MCPServers),
 		Status:                  SessionStatusReady,
 		Title:                   title,
 		InitialTitleEstablished: initialTitleEstablished,
@@ -77,13 +79,21 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	}
 	events, err := adapter.Start(ctx, session)
 	if err != nil {
-		detail := cleanVisibleErrorText(err.Error())
-		code := visibleFailureCode(detail)
-		startError := &AppError{
-			Code:         code,
-			Message:      visibleFailureContent(provider, "start", code),
-			DebugMessage: detail,
-			Cause:        err,
+		startError := err
+		if AppErrorCode(err) == "" {
+			detail := cleanVisibleErrorText(err.Error())
+			code := visibleFailureCode(detail)
+			if errors.Is(err, ErrProviderStartTimeout) {
+				// Provider-start ownership is carried separately in the error
+				// chain. Keep the established presentation/API vocabulary here.
+				code = "request_timed_out"
+			}
+			startError = &AppError{
+				Code:         code,
+				Message:      visibleFailureContent(provider, "start", code),
+				DebugMessage: detail,
+				Cause:        err,
+			}
 		}
 		// Provider adapters may emit command/config snapshots before Start returns.
 		// Roll those provisional side channels back with the failed transaction so
@@ -94,6 +104,7 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		c.mu.Unlock()
 		return StartResult{}, startError
 	}
+	c.advanceLiveConnectionGeneration(roomID, agentSessionID)
 	session = applySessionEvents(session, events)
 	c.mu.Lock()
 	key := sessionKey(roomID, agentSessionID)
@@ -102,9 +113,15 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 	if input.Provisional {
 		c.provisionalSessions[key] = true
 	}
+	if input.CanonicalInitPending {
+		c.sessionInitializations[key] = &controllerSessionInitialization{
+			events: append([]activityshared.Event(nil), events...),
+		}
+	}
+	publicationPending := c.sessionPublicationPendingLocked(key)
 	c.mu.Unlock()
-	if input.Provisional {
-		return StartResult{Session: session}, nil
+	if publicationPending {
+		return StartResult{Session: session, Created: true}, nil
 	}
 	c.publish(session, events)
 	c.publishPendingConfigOptionsUpdates(session)
@@ -112,7 +129,111 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		c.publishAdapterCommandSnapshot(session, adapter)
 	}
 	c.enqueueSessionReport(ctx, session, events)
-	return StartResult{Session: session}, nil
+	return StartResult{Session: session, Created: true}, nil
+}
+
+// PublishSessionInitialization releases the Runtime's report/event barrier
+// after Host has durably initialized the canonical Session. The transition is
+// idempotent. Prompt-provisional Sessions remain hidden until their submitted
+// intent crosses its separate durable barrier in Exec.
+func (c *Controller) PublishSessionInitialization(
+	ctx context.Context,
+	roomID string,
+	agentSessionID string,
+) (Session, error) {
+	roomID = strings.TrimSpace(roomID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	if roomID == "" || agentSessionID == "" {
+		return Session{}, fmt.Errorf("room id and agent session id are required")
+	}
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(ctx, roomID, agentSessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	defer releaseLifecycleLock()
+
+	key := sessionKey(roomID, agentSessionID)
+	c.mu.Lock()
+	session, found := c.sessions[key]
+	initialization, pending := c.sessionInitializations[key]
+	provisional := c.provisionalSessions[key]
+	if pending && provisional {
+		// Canonical rail initialization is complete, but the initial-content
+		// submit barrier still owns visibility. Preserve the historical
+		// provisional behavior: provider callbacks stay hidden until Exec
+		// durably publishes the submitted Turn.
+		delete(c.sessionInitializations, key)
+	}
+	c.mu.Unlock()
+	if !found {
+		return Session{}, ErrSessionNotFound
+	}
+	if !pending || provisional {
+		return session, nil
+	}
+	if err := ctx.Err(); err != nil {
+		return Session{}, err
+	}
+
+	for {
+		c.mu.Lock()
+		current, stillPending := c.sessionInitializations[key]
+		session, found = c.sessions[key]
+		if !found {
+			c.mu.Unlock()
+			return Session{}, ErrSessionNotFound
+		}
+		if !stillPending || current != initialization {
+			c.mu.Unlock()
+			return session, nil
+		}
+
+		events := append([]activityshared.Event(nil), initialization.events...)
+		initialization.events = nil
+		configUpdates := append([]AgentSessionConfigOptionsUpdate(nil), c.pendingConfigOptionsUpdates[key]...)
+		delete(c.pendingConfigOptionsUpdates, key)
+		commandSnapshot, hasCommandSnapshot := c.pendingCommandSnapshots[agentSessionID]
+		if hasCommandSnapshot {
+			delete(c.pendingCommandSnapshots, agentSessionID)
+			initialization.commandSnapshotResolved = true
+		}
+		resolveAdapterCommandSnapshot := !initialization.commandSnapshotResolved
+		if resolveAdapterCommandSnapshot {
+			initialization.commandSnapshotResolved = true
+		}
+		if !initialization.initialEventsPublished {
+			if len(events) == 0 {
+				events = []activityshared.Event{
+					newSessionActivityEvent(session, EventSessionStarted, session.Status, nil),
+				}
+			}
+			initialization.initialEventsPublished = true
+		}
+		if len(events) == 0 && len(configUpdates) == 0 && !hasCommandSnapshot && !resolveAdapterCommandSnapshot {
+			// This lock transition is the ordering fence: callbacks that acquire
+			// c.mu before deletion are drained above; callbacks that acquire it
+			// afterwards observe a published Session and may fan out directly.
+			delete(c.sessionInitializations, key)
+			c.mu.Unlock()
+			return session, nil
+		}
+		c.mu.Unlock()
+
+		if len(events) > 0 {
+			c.publish(session, events)
+			c.enqueueInitializedSessionReport(ctx, session, events)
+		}
+		if len(configUpdates) > 0 {
+			c.publishConfigOptionsUpdates(session, configUpdates)
+		}
+		if hasCommandSnapshot {
+			c.applyCommandSnapshot(session, commandSnapshot)
+		} else if resolveAdapterCommandSnapshot {
+			if adapter := c.adapter(session.Provider); adapter != nil {
+				c.publishAdapterCommandSnapshot(session, adapter)
+			}
+		}
+	}
 }
 
 func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, error) {
@@ -148,50 +269,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	if adapter == nil {
 		return Session{}, fmt.Errorf("unsupported agent session provider %q", provider)
 	}
-	timestamp := unixMS(now())
-	createdAtUnixMS := input.CreatedAtUnixMS
-	if createdAtUnixMS <= 0 {
-		createdAtUnixMS = timestamp
-	}
-	updatedAtUnixMS := input.UpdatedAtUnixMS
-	if updatedAtUnixMS <= 0 {
-		updatedAtUnixMS = timestamp
-	}
-	initialTitleEstablished := initialTitleEstablishedFromRuntimeContext(
-		input.RuntimeContext,
-		input.Title,
-	)
-	session := Session{
-		RoomID:                  roomID,
-		AgentSessionID:          agentSessionID,
-		RootAgentSessionID:      agentSessionID,
-		AgentTargetID:           strings.TrimSpace(input.AgentTargetID),
-		Provider:                provider,
-		ProviderSessionID:       providerSessionID,
-		Resumable:               input.Resumable,
-		CWD:                     strings.TrimSpace(input.CWD),
-		Env:                     append([]string(nil), input.Env...),
-		Status:                  firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady),
-		Title:                   strings.TrimSpace(input.Title),
-		InitialTitleEstablished: initialTitleEstablished,
-		// UserTitleSet fails closed on resume: the persisted title (or a legacy
-		// fail-closed marker) is treated as user-established so a late provider
-		// title cannot clobber a title the user set before restart.
-		UserTitleSet: initialTitleEstablished,
-		Visible:      sessionVisible(input.Visible),
-		RuntimeContext: runtimeContextWithInitialTitleEstablished(
-			input.RuntimeContext,
-			initialTitleEstablished,
-		),
-		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
-		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
-		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
-		CreatedAtUnixMS:   createdAtUnixMS,
-		UpdatedAtUnixMS:   updatedAtUnixMS,
-	}
-	if session.Settings != nil {
-		session.PermissionModeID = session.Settings.PermissionModeID
-	}
+	session := resumedSession(input, unixMS(now()))
 	normalizedFences := make([]GoalGenerationFenceInput, 0, len(input.GoalGenerationFences))
 	for _, inputFence := range input.GoalGenerationFences {
 		fence, fenceErr := normalizeRetainedGoalGenerationFenceInput(inputFence)
@@ -204,7 +282,8 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		c.retainGoalGenerationFence(session, fence)
 	}
 	c.invalidateAppliedGoalGenerationFences(session)
-	if err := adapter.Resume(ctx, session); err != nil {
+	launchCtx := withProviderLaunchRuntimeContext(ctx, input.ProviderLaunchRuntimeContext)
+	if err := adapter.Resume(launchCtx, session); err != nil {
 		if !input.RecreateIfMissing || !isResumeRecreatableError(err) {
 			return Session{}, err
 		}
@@ -213,7 +292,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		// start a fresh provider session bound to the same agent session. This is
 		// what keeps imported conversations continuable instead of forcing the
 		// user into a brand new conversation.
-		if err := c.recreateAdapterSession(ctx, session, adapter); err != nil {
+		if err := c.recreateAdapterSession(launchCtx, session, adapter); err != nil {
 			return Session{}, err
 		}
 		if refreshed, ok := c.get(session.RoomID, session.AgentSessionID); ok {
@@ -221,6 +300,7 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		}
 		return session, nil
 	}
+	c.advanceLiveConnectionGeneration(roomID, agentSessionID)
 	if err := c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter); err != nil {
 		return Session{}, err
 	}
@@ -233,8 +313,124 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 	return session, nil
 }
 
+// Reprepare replaces one idle Session's provider connection using updated
+// launch and MCP bindings. It preserves both canonical and provider session
+// identity and never emits a canonical lifecycle report.
+func (c *Controller) Reprepare(ctx context.Context, input ResumeInput) (Session, error) {
+	roomID := strings.TrimSpace(input.RoomID)
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	provider := strings.TrimSpace(input.Provider)
+	providerSessionID := strings.TrimSpace(input.ProviderSessionID)
+	if roomID == "" || agentSessionID == "" || provider == "" || providerSessionID == "" {
+		return Session{}, fmt.Errorf("room, agent session, provider, and provider session ids are required")
+	}
+	releaseStartupLock, err := c.acquireStartupLockContext(ctx, roomID, agentSessionID, provider)
+	if err != nil {
+		return Session{}, err
+	}
+	defer releaseStartupLock()
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(ctx, roomID, agentSessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	defer releaseLifecycleLock()
+
+	current, adapter, err := c.sessionAndAdapter(roomID, agentSessionID)
+	if err != nil {
+		return Session{}, err
+	}
+	if current.Provider != provider ||
+		strings.TrimSpace(current.ProviderSessionID) != providerSessionID ||
+		strings.TrimSpace(current.AgentTargetID) != strings.TrimSpace(input.AgentTargetID) ||
+		strings.TrimSpace(current.CWD) != strings.TrimSpace(input.CWD) ||
+		!providerTargetRefsEqual(current.ProviderTargetRef, input.ProviderTargetRef) {
+		return Session{}, errors.New("agent session reprepare identity mismatch")
+	}
+	key := sessionKey(roomID, agentSessionID)
+	c.mu.Lock()
+	turn, active := c.turns[key]
+	activeTurnID := strings.TrimSpace(turn.turnID)
+	c.mu.Unlock()
+	if (active && activeTurnID != "") ||
+		(current.TurnLifecycle != nil && current.TurnLifecycle.ActiveTurnID != nil && strings.TrimSpace(*current.TurnLifecycle.ActiveTurnID) != "") {
+		return Session{}, ErrSessionActiveTurn
+	}
+	probe, probeOK := adapter.(LiveSessionProbeAdapter)
+	releaser, releaseOK := adapter.(LiveSessionReleaseAdapter)
+	if !probeOK || !releaseOK {
+		return Session{}, errors.New("agent provider does not support live session reprepare")
+	}
+
+	replacement := resumedSession(input, unixMS(now()))
+	normalizedFences := make([]GoalGenerationFenceInput, 0, len(input.GoalGenerationFences))
+	for _, inputFence := range input.GoalGenerationFences {
+		fence, fenceErr := normalizeRetainedGoalGenerationFenceInput(inputFence)
+		if fenceErr != nil {
+			return Session{}, fenceErr
+		}
+		normalizedFences = append(normalizedFences, fence)
+	}
+	for _, fence := range normalizedFences {
+		c.retainGoalGenerationFence(replacement, fence)
+	}
+	if probe.HasLiveSession(current) {
+		if err := releaser.ReleaseLiveSession(ctx, current); err != nil {
+			return Session{}, err
+		}
+	}
+	c.invalidateAppliedGoalGenerationFences(replacement)
+	if err := adapter.Resume(withProviderLaunchRuntimeContext(ctx, input.ProviderLaunchRuntimeContext), replacement); err != nil {
+		return Session{}, err
+	}
+	c.advanceLiveConnectionGeneration(roomID, agentSessionID)
+	if err := c.applyRetainedGoalGenerationFences(ctx, replacement, adapter); err != nil {
+		_ = releaser.ReleaseLiveSession(context.WithoutCancel(ctx), replacement)
+		return Session{}, err
+	}
+	replacement.Status = SessionStatusReady
+	c.store(replacement)
+	c.publishPendingConfigOptionsUpdates(replacement)
+	if !c.publishPendingCommandSnapshot(replacement) {
+		c.publishAdapterCommandSnapshot(replacement, adapter)
+	}
+	return replacement, nil
+}
+
+func resumedSession(input ResumeInput, timestamp int64) Session {
+	createdAtUnixMS := input.CreatedAtUnixMS
+	if createdAtUnixMS <= 0 {
+		createdAtUnixMS = timestamp
+	}
+	updatedAtUnixMS := input.UpdatedAtUnixMS
+	if updatedAtUnixMS <= 0 {
+		updatedAtUnixMS = timestamp
+	}
+	provider := strings.TrimSpace(input.Provider)
+	initialTitleEstablished := initialTitleEstablishedFromRuntimeContext(input.RuntimeContext, input.Title)
+	session := Session{
+		RoomID: strings.TrimSpace(input.RoomID), AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		RootAgentSessionID: strings.TrimSpace(input.AgentSessionID), AgentTargetID: strings.TrimSpace(input.AgentTargetID),
+		Provider: provider, ProviderSessionID: strings.TrimSpace(input.ProviderSessionID), Resumable: input.Resumable,
+		CWD: strings.TrimSpace(input.CWD), Env: append([]string(nil), input.Env...), MCPServers: cloneMCPServerBindings(input.MCPServers),
+		Status: firstNonEmpty(normalizeSessionStatus(input.Status), SessionStatusReady), Title: strings.TrimSpace(input.Title),
+		InitialTitleEstablished: initialTitleEstablished, UserTitleSet: initialTitleEstablished,
+		Visible: sessionVisible(input.Visible), RuntimeContext: runtimeContextWithInitialTitleEstablished(input.RuntimeContext, initialTitleEstablished),
+		ProviderTargetRef: clonePayload(input.ProviderTargetRef),
+		PermissionModeID:  normalizePermissionModeIDWithFallback(provider, input.PermissionModeID, defaultPermissionModeIDForProvider(provider)),
+		Settings:          normalizeOptionalSessionSettings(input.Settings, provider, firstNonEmpty(input.PermissionModeID, defaultPermissionModeIDForProvider(provider))),
+		CreatedAtUnixMS:   createdAtUnixMS, UpdatedAtUnixMS: updatedAtUnixMS,
+	}
+	if session.Settings != nil {
+		session.PermissionModeID = session.Settings.PermissionModeID
+	}
+	return session
+}
+
 func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, error) {
-	releaseLifecycleLock := c.acquireLifecycleLock(input.RoomID, input.AgentSessionID)
+	releaseLifecycleLock, err := c.acquireLifecycleLockContext(ctx, input.RoomID, input.AgentSessionID)
+	if err != nil {
+		return CloseResult{}, err
+	}
 	defer releaseLifecycleLock()
 
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
@@ -242,27 +438,38 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 		return CloseResult{}, err
 	}
 	key := sessionKey(session.RoomID, session.AgentSessionID)
+	if quiescer, ok := adapter.(CloseQuiesceAdapter); ok {
+		if err := quiescer.QuiesceForClose(ctx, session); err != nil {
+			return CloseResult{}, err
+		}
+	}
 	c.cancelActiveTurn(session.RoomID, session.AgentSessionID)
 	closeErr := adapter.Close(ctx, session)
 	if closeErr != nil && !input.PreserveCanonicalState {
 		return CloseResult{}, closeErr
 	}
 	c.mu.Lock()
-	provisional := c.provisionalSessions[key]
-	if provisional || input.PreserveCanonicalState {
+	publicationPending := c.sessionPublicationPendingLocked(key)
+	if publicationPending || input.PreserveCanonicalState {
 		delete(c.provisionalSessions, key)
+		delete(c.sessionInitializations, key)
 		delete(c.sessions, key)
+		delete(c.liveConnectionGenerations, key)
 		delete(c.turns, key)
 		delete(c.commands, key)
 		delete(c.pendingCommandSnapshots, session.AgentSessionID)
 		delete(c.pendingConfigOptionsUpdates, key)
 		delete(c.goalGenerationFences, key)
+		delete(c.pendingSideEvents, key)
 	}
 	c.mu.Unlock()
+	if publicationPending || input.PreserveCanonicalState {
+		c.forgetSideStreamEvents(session)
+	}
 	if closeErr != nil {
 		return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, closeErr
 	}
-	if provisional || input.PreserveCanonicalState {
+	if publicationPending || input.PreserveCanonicalState {
 		return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
 	}
 	session.Status = SessionStatusCompleted
@@ -275,13 +482,17 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	c.enqueueSessionReport(ctx, session, events)
 	c.mu.Lock()
 	delete(c.sessions, key)
+	delete(c.liveConnectionGenerations, key)
 	delete(c.turns, key)
 	delete(c.commands, key)
 	delete(c.pendingCommandSnapshots, session.AgentSessionID)
 	delete(c.pendingConfigOptionsUpdates, key)
 	delete(c.provisionalSessions, key)
+	delete(c.sessionInitializations, key)
 	delete(c.goalGenerationFences, key)
+	delete(c.pendingSideEvents, key)
 	c.mu.Unlock()
+	c.forgetSideStreamEvents(session)
 	return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
 }
 

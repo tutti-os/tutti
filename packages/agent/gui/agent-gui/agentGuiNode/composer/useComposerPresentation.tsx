@@ -260,7 +260,7 @@ export function useComposerPresentation(input: Input) {
         dismiss: setDismissedPromptRequestId
       });
     },
-    [onSubmitInteractivePrompt]
+    [activePromptRequestId, onSubmitInteractivePrompt]
   );
 
   // While the empty-send override is active (plan review) the send button

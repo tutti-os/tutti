@@ -10,6 +10,8 @@ export const zhCNMessages = {
     "这段对话已导入成功，新开会话并 @ 这段对话，接着继续聊。",
   agentSessionReconnecting: "正在重新连接 Agent 会话…",
   agentSettingsRequireNewSession: "为了保留上下文，这个模型只能在新会话中使用",
+  agentProcessCleanupPending:
+    "上一个 Agent 进程仍在退出。为避免重复启动，本次操作已停止，请稍后重试",
   agentConfigDependencyUnavailable:
     "{{provider}} 的配置引用了当前不可用的文件，请检查本机配置后重试",
   agentSessionTitleTooLong: "会话标题不能超过 {{maxCharacters}} 个字符。",

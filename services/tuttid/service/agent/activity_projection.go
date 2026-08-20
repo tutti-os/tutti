@@ -6,16 +6,16 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	replay "github.com/tutti-os/tutti/packages/agent/session-replay"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
-	"github.com/tutti-os/tutti/services/tuttid/biz/agentanalytics"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
-	agentnoderesult "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/node_result"
 )
 
 type ActivityProjection struct {
@@ -31,6 +31,10 @@ type ActivityProjection struct {
 	rootTurnObserver             RootTurnObserver
 	turnForkabilityResolver      TurnForkabilityResolver
 	replayCommitObserver         ReplayCommitObserver
+	terminalFailureObserver      agenthost.TerminalFailureObserver
+	terminalAnalyticsOwner       string
+	terminalAnalyticsWake        chan struct{}
+	terminalAnalyticsDrainMu     sync.Mutex
 	// rootTurnSettleStateObserver is the dedicated, opt-in consumer list for
 	// synthesized canonical root-turn settlement states. It is deliberately
 	// separate from sessionStateObserver: the general observers historically
@@ -47,7 +51,11 @@ var (
 )
 
 func NewActivityProjection(repo agentactivitybiz.Repository) *ActivityProjection {
-	return &ActivityProjection{repo: repo}
+	return &ActivityProjection{
+		repo:                   repo,
+		terminalAnalyticsOwner: uuid.NewString(),
+		terminalAnalyticsWake:  make(chan struct{}, 1),
+	}
 }
 
 type ActivityUpdatePublisher interface {
@@ -346,117 +354,10 @@ func (p *ActivityProjection) reportSessionState(
 	}
 	if notify {
 		delta := agenthost.ActivityStateDelta(input, reply, activityResult)
-		agenthost.NotifyCommitted(ctx, p, delta)
+		p.observeCommittedOutsideHost(ctx, delta)
 		p.notifyReplayCommitted(ctx, delta, replayContext)
 	}
 	return reply, nil
-}
-
-func canonicalRailSection(placement *canonical.RailPlacement) *agentactivitybiz.RailSection {
-	if placement == nil {
-		return nil
-	}
-	return &agentactivitybiz.RailSection{
-		Kind:        strings.TrimSpace(placement.Kind),
-		ProjectPath: strings.TrimSpace(placement.ProjectPath),
-		Key:         strings.TrimSpace(placement.SectionKey),
-	}
-}
-
-func (p *ActivityProjection) reportFailedRuntimeNodeResult(ctx context.Context, input canonical.ReportSessionStateInput) {
-	if p == nil || p.analyticsReporter == nil {
-		return
-	}
-	if !isFailedAgentLifecycleStatus(input.State.LifecycleStatus) {
-		return
-	}
-	errorMessage := strings.TrimSpace(input.State.LastError)
-	if errorMessage == "" {
-		errorMessage = "Agent runtime session failed."
-	}
-	agentnoderesult.Track(ctx, p.analyticsReporter, agentnoderesult.BuildParams(agentnoderesult.NodeResultInput{
-		AgentSessionID: input.AgentSessionID,
-		ErrorCode:      classifyRuntimeNodeErrorCode(errorMessage),
-		ErrorMessage:   errorMessage,
-		Flow:           "runtime_activity",
-		Node:           "runtime_exec",
-		Provider:       firstNonEmptyString(input.State.Provider, input.Source.Provider),
-		Status:         "failure",
-	}))
-}
-
-func sessionStateTitle(state canonical.WorkspaceAgentSessionStateUpdate) string {
-	return firstNonEmptyString(
-		state.Title,
-		payloadString(state.RuntimeContext, "title"),
-	)
-}
-
-func activitySessionUpdateEventPayload(workspaceID string, agentSessionID string, lastEventUnixMS int64, agentTargetID ...string) map[string]any {
-	if lastEventUnixMS <= 0 {
-		lastEventUnixMS = time.Now().UnixMilli()
-	}
-	payload := map[string]any{
-		"agentSessionId":  strings.TrimSpace(agentSessionID),
-		"eventType":       "session_reconcile_required",
-		"lastEventUnixMs": lastEventUnixMS,
-		"workspaceId":     strings.TrimSpace(workspaceID),
-	}
-	if len(agentTargetID) > 0 {
-		if value := strings.TrimSpace(agentTargetID[0]); value != "" {
-			payload["agentTargetId"] = value
-		}
-	}
-	return payload
-}
-
-func activitySessionDeletedEventPayload(workspaceID string, agentSessionID string) map[string]any {
-	return map[string]any{
-		"agentSessionId":  strings.TrimSpace(agentSessionID),
-		"deletedAtUnixMs": time.Now().UnixMilli(),
-		"eventType":       "session_deleted",
-		"workspaceId":     strings.TrimSpace(workspaceID),
-	}
-}
-
-func activitySessionRestoredEventPayload(workspaceID string, agentSessionID string) map[string]any {
-	return map[string]any{
-		"agentSessionId":   strings.TrimSpace(agentSessionID),
-		"eventType":        "session_restored",
-		"restoredAtUnixMs": time.Now().UnixMilli(),
-		"workspaceId":      strings.TrimSpace(workspaceID),
-	}
-}
-
-func (p *ActivityProjection) PublishSessionDeleted(ctx context.Context, workspaceID string, agentSessionID string) {
-	p.publishActivityUpdated(ctx, workspaceID, agentSessionID,
-		"session_deleted", activitySessionDeletedEventPayload(workspaceID, agentSessionID))
-}
-
-func isFailedAgentLifecycleStatus(status string) bool {
-	switch strings.ToLower(strings.TrimSpace(status)) {
-	case "failed", "failure", "error", "errored":
-		return true
-	default:
-		return false
-	}
-}
-
-func classifyRuntimeNodeErrorCode(message string) string {
-	normalized := strings.ToLower(strings.TrimSpace(message))
-	if strings.Contains(normalized, "network") ||
-		strings.Contains(normalized, "connection") ||
-		strings.Contains(normalized, "disconnected") ||
-		strings.Contains(normalized, "econnreset") ||
-		strings.Contains(normalized, "socket") {
-		return agentanalytics.ErrorCodeRuntimeNetworkDisconnected
-	}
-	if strings.Contains(normalized, "process") ||
-		strings.Contains(normalized, "exit") ||
-		strings.Contains(normalized, "exited") {
-		return agentanalytics.ErrorCodeRuntimeProcessExited
-	}
-	return agentanalytics.ErrorCodeRuntimeExecFailed
 }
 
 func (p *ActivityProjection) ReportSessionMessages(
@@ -509,7 +410,16 @@ func (p *ActivityProjection) reportSessionMessages(
 		RequestBodyBytes: result.RequestBodyBytes,
 	}
 	delta := agenthost.SessionMessagesDelta(input, reply, result)
-	agenthost.NotifyCommitted(ctx, p, delta)
+	if delta.SessionMessages != nil {
+		// A message report carries no session state, so terminal-failure identity
+		// for failed tool calls has to come from the canonical session.
+		provider, isChildSession := p.sessionTerminalFailureIdentity(
+			ctx, input.WorkspaceID, canonicalMessageUpdateSessionID(input.AgentSessionID, result.Messages),
+		)
+		delta.SessionMessages.Provider = strings.TrimSpace(firstNonEmptyString(provider, delta.SessionMessages.Provider))
+		delta.SessionMessages.IsChildSession = isChildSession
+	}
+	p.observeCommittedOutsideHost(ctx, delta)
 	p.notifyReplayCommitted(ctx, delta, replayContext)
 	return reply, nil
 }

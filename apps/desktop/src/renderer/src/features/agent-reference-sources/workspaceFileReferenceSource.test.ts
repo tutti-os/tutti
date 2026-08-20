@@ -90,6 +90,32 @@ test("local source lists up to 100 recent references", async () => {
   assert.equal(observedRecentLimit, 100);
 });
 
+test("local source hides recent on Windows and keeps it on macOS", async () => {
+  const adapter: WorkspaceFileReferenceAdapter = {};
+  const windowsSource = createWorkspaceFileReferenceSource({
+    adapter,
+    label: "Local",
+    os: "win32"
+  });
+  const macSource = createWorkspaceFileReferenceSource({
+    adapter,
+    label: "Local",
+    os: "darwin"
+  });
+
+  const windowsGroups = await windowsSource.loadSidebarGroups?.(scope, {});
+  const macGroups = await macSource.loadSidebarGroups?.(scope, {});
+
+  assert.equal(
+    windowsGroups?.entries.some((entry) => entry.ref.nodeId === "__recent__"),
+    false
+  );
+  assert.equal(
+    macGroups?.entries.some((entry) => entry.ref.nodeId === "__recent__"),
+    true
+  );
+});
+
 test("local source recent search only matches file names", async () => {
   const adapter: WorkspaceFileReferenceAdapter = {
     async listRecentReferences() {

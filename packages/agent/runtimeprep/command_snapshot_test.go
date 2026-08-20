@@ -79,6 +79,45 @@ func TestRenderSkillBundleUsesOneHostCommandSnapshot(t *testing.T) {
 	}
 }
 
+func TestRenderSkillBundleOmitsConnectorPolicyWhenCLICommandIsNotRegistered(t *testing.T) {
+	capabilities := testCommandCapabilities()
+	filtered := make([]CommandCapability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		if capability.ID != "connector.available" {
+			filtered = append(filtered, capability)
+		}
+	}
+	preparer := NewDefaultPreparer(t.TempDir())
+	preparer.CommandCatalog = staticCommandCatalog(filtered)
+	preparer.CLICommand = "tutti-dev"
+
+	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.RecommendedSystemPrompt == nil {
+		t.Fatal("missing recommended system prompt")
+	}
+	for _, forbidden := range []string{
+		"connector available",
+		"injected `connector` MCP server",
+		"connector-specific command",
+	} {
+		if strings.Contains(bundle.RecommendedSystemPrompt.Content, forbidden) {
+			t.Fatalf("recommended system prompt leaked disabled connector policy %q: %s", forbidden, bundle.RecommendedSystemPrompt.Content)
+		}
+	}
+	guide := bundleSkillFileContent(t, bundle, "tutti/tutti-cli", commandGuideReferencePath)
+	if strings.Contains(guide, "connector available") {
+		t.Fatalf("command guide leaked disabled connector CLI: %s", guide)
+	}
+}
+
 func TestRuntimeTemplateFailsOnUnknownCommandOrInput(t *testing.T) {
 	resolver, err := newCommandResolver("tutti", []CommandCapability{{
 		ID:          "known",

@@ -29,10 +29,15 @@ or editing even when the target files are not known.
 
 If you are editing `packages/ui/*`, also read [packages/ui/AGENTS.md](ui/AGENTS.md).
 
+Connector work under `packages/connector/*`, or work that changes Connector
+contracts, daemon lifecycle, runtime execution, or shared React surfaces, must
+read [packages/connector/AGENTS.md](connector/AGENTS.md) before planning or
+editing.
+
 ## Package groups
 
 - `clients/*`: shared domain-specific clients
-- `connector/*`: reusable connector-domain contracts and application cores shared by daemon hosts
+- `connector/*`: Connector contracts, daemon core/application/adapters, runtime execution, and shared Renderer application/UI
 - `device-link`: shared ICE/QUIC peer transport, product-neutral Relay stream mechanics, and gomobile boundary
 - `events/*`: shared schema-first business event protocol contracts and generated transport metadata
 - `agent/*`: Agent lifecycle Host, canonical store, frontend activity engine, replication contract, and GUI boundaries

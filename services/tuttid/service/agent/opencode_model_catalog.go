@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
@@ -139,7 +140,7 @@ func normalizeVerboseOpenCodeModel(modelID string, metadata map[string]any) Agen
 	reasoningEfforts := make([]AgentModelReasoningEffortOption, 0, len(variants))
 	for value := range variants {
 		value = strings.TrimSpace(value)
-		if value != "" {
+		if value != "" && providerregistry.OpenCodeModelSupportsReasoningEffort(modelID, value) {
 			reasoningEfforts = append(reasoningEfforts, AgentModelReasoningEffortOption{Value: value})
 		}
 	}

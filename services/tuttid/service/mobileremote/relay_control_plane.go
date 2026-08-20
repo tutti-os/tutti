@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	agenthttpx "github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	deviceauthority "github.com/tutti-os/tutti/packages/clients/device-authority-go"
 )
 
@@ -35,7 +36,7 @@ func NewDeviceAuthorityClient(
 	return deviceauthority.NewClient(deviceauthority.Config{
 		BaseURL:    controlBase,
 		APIPrefix:  apiPrefix,
-		HTTPClient: &http.Client{Timeout: 15 * time.Second},
+		HTTPClient: agenthttpx.NewClient(15 * time.Second),
 		Identities: deviceAuthorityIdentitySource{store: identities},
 		PrepareRequest: func(req *http.Request, _ deviceauthority.RequestMetadata) error {
 			session, err := account.ReadSession()

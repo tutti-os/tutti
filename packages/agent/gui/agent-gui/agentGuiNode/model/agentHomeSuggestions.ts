@@ -42,6 +42,12 @@ export function buildAgentHomeSuggestions(
       prompt: t(key("about.prompt"))
     },
     {
+      id: "clone-github-repository",
+      icon: "github",
+      label: t(key("cloneGithubRepository.title")),
+      prompt: t(key("cloneGithubRepository.prompt"))
+    },
+    {
       id: "task-breakdown",
       icon: "breakdown",
       label: t(key("breakdown.title")),

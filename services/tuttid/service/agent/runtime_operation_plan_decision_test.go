@@ -196,6 +196,71 @@ func TestPlanDecisionRecoveryResumesDurableSessionBeforeSettings(t *testing.T) {
 	}
 }
 
+func TestPlanDecisionRuntimeMutationWaitsForWorkspaceDisconnectAdmission(t *testing.T) {
+	t.Parallel()
+
+	t.Run("submit", func(t *testing.T) {
+		now := time.UnixMilli(1_000)
+		service, runtime, _ := planDecisionTestService(now)
+		_, releaseFence, err := service.ApplicationHost().BeginWorkspaceRuntimeDisconnect(t.Context(), "ws-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		canceled, cancel := context.WithCancel(t.Context())
+		cancel()
+		_, err = service.SubmitPlanDecision(canceled, "ws-1", "session-1", "plan-turn", "plan-turn", SubmitPlanDecisionInput{
+			PromptKind: "plan-implementation", Action: "implement", IdempotencyKey: "decision-1",
+		})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("SubmitPlanDecision error=%v, want context canceled", err)
+		}
+		if len(runtime.resumeCalls) != 0 || len(runtime.updateSettingsCalls) != 0 || len(runtime.execCalls) != 0 {
+			t.Fatalf("runtime mutated behind disconnect fence: resume=%d settings=%d exec=%d", len(runtime.resumeCalls), len(runtime.updateSettingsCalls), len(runtime.execCalls))
+		}
+		releaseFence()
+		if err := service.ApplicationHost().StepRuntimeOperationWorker(t.Context(), false); err != nil {
+			t.Fatal(err)
+		}
+		if len(runtime.updateSettingsCalls) != 1 || len(runtime.execCalls) != 1 {
+			t.Fatalf("runtime did not continue after fence release: settings=%d exec=%d", len(runtime.updateSettingsCalls), len(runtime.execCalls))
+		}
+	})
+
+	t.Run("durable worker", func(t *testing.T) {
+		now := time.UnixMilli(1_000)
+		service, runtime, store := planDecisionTestService(now)
+		operationID := runtimeOperationID("ws-1", "session-1", agentactivitybiz.RuntimeOperationKindPlanDecision, "plan-turn")
+		store.operation = agentactivitybiz.RuntimeOperation{
+			OperationID: operationID, WorkspaceID: "ws-1", AgentSessionID: "session-1",
+			TurnID: "plan-turn", RequestID: "plan-turn", Kind: agentactivitybiz.RuntimeOperationKindPlanDecision,
+			Status: agentactivitybiz.RuntimeOperationStatusPrepared, NextAttemptAtMS: now.UnixMilli(),
+			Payload: map[string]any{
+				"promptKind": "plan-implementation", "action": "implement", "idempotencyKey": "decision-1",
+				"clientSubmitId": "plan-decision:" + operationID, "step": "prepared",
+			},
+		}
+		_, releaseFence, err := service.ApplicationHost().BeginWorkspaceRuntimeDisconnect(t.Context(), "ws-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		canceled, cancel := context.WithCancel(t.Context())
+		cancel()
+		if err := service.ApplicationHost().StepRuntimeOperationWorker(canceled, false); !errors.Is(err, context.Canceled) {
+			t.Fatalf("StepRuntimeOperationWorker error=%v, want context canceled", err)
+		}
+		if len(runtime.resumeCalls) != 0 || len(runtime.updateSettingsCalls) != 0 || len(runtime.execCalls) != 0 {
+			t.Fatalf("worker mutated runtime behind disconnect fence: resume=%d settings=%d exec=%d", len(runtime.resumeCalls), len(runtime.updateSettingsCalls), len(runtime.execCalls))
+		}
+		releaseFence()
+		if err := service.ApplicationHost().StepRuntimeOperationWorker(t.Context(), false); err != nil {
+			t.Fatal(err)
+		}
+		if len(runtime.updateSettingsCalls) != 1 || len(runtime.execCalls) != 1 {
+			t.Fatalf("worker did not continue after fence release: settings=%d exec=%d", len(runtime.updateSettingsCalls), len(runtime.execCalls))
+		}
+	})
+}
+
 func TestCraftedInvalidPlanDecisionFailsBeforeProviderCalls(t *testing.T) {
 	now := time.UnixMilli(1_000)
 	service, runtime, store := planDecisionTestService(now)

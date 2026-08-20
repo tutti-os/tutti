@@ -203,34 +203,56 @@ func TestAgentModelCatalogDoesNotReturnClaudeStaticModels(t *testing.T) {
 	}
 }
 
-func TestAgentModelCatalogInvalidateDropsCodexCacheBeforeTTL(t *testing.T) {
-	now := time.UnixMilli(1000)
-	lister := &fakeAgentModelLister{
-		models: []AgentModelOption{{ID: "gpt-5.2-codex", DisplayName: "gpt-5.2-codex", IsDefault: true}},
+func TestAgentModelCatalogInvalidateServesStaleModelsWhileRefreshing(t *testing.T) {
+	lister := &sequencedAgentModelLister{
+		models: []AgentModelListResult{
+			{Models: []AgentModelOption{{ID: "gpt-5.2-codex", DisplayName: "Old", IsDefault: true}}},
+			{Models: []AgentModelOption{{ID: "gpt-5.3-codex", DisplayName: "New", IsDefault: true}}},
+		},
+		secondStarted: make(chan struct{}),
+		secondRelease: make(chan struct{}),
 	}
+	refreshed := make(chan string, 1)
 	catalog := &CachedAgentModelCatalog{
 		Codex: lister,
-		Now: func() time.Time {
-			return now
+		OnRefresh: func(provider string) {
+			refreshed <- provider
 		},
 	}
 
-	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
+	first, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
+	if err != nil {
 		t.Fatalf("first ListModels returned error: %v", err)
-	}
-	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
-		t.Fatalf("second ListModels returned error: %v", err)
-	}
-	if lister.calls != 1 {
-		t.Fatalf("lister calls before invalidate = %d, want 1", lister.calls)
 	}
 
 	catalog.Invalidate("codex")
-	if _, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"}); err != nil {
+	stale, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
+	if err != nil {
 		t.Fatalf("ListModels after invalidate returned error: %v", err)
 	}
-	if lister.calls != 2 {
-		t.Fatalf("lister calls after invalidate = %d, want 2", lister.calls)
+	if !stale.Stale || stale.Models[0].ID != first.Models[0].ID {
+		t.Fatalf("stale result = %#v, want old catalog marked stale", stale)
+	}
+	select {
+	case <-lister.secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("background refresh did not start")
+	}
+	close(lister.secondRelease)
+	select {
+	case provider := <-refreshed:
+		if provider != "codex" {
+			t.Fatalf("refresh provider = %q, want codex", provider)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("background refresh did not settle")
+	}
+	fresh, err := catalog.ListModels(context.Background(), AgentModelCatalogInput{Provider: "codex"})
+	if err != nil {
+		t.Fatalf("fresh ListModels returned error: %v", err)
+	}
+	if fresh.Stale || fresh.Models[0].ID != "gpt-5.3-codex" {
+		t.Fatalf("fresh result = %#v, want new catalog", fresh)
 	}
 }
 

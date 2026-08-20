@@ -23,7 +23,9 @@ Use the focused runtime index or open one area directly:
   Also covers Kimi Code ACP sessions that advertise no model or hide provider
   failures behind an empty `end_turn`.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
-  probes, extension release refresh delaying daemon startup, and CPU spikes.
+  probes, Windows managed-runtime adoption sharing violations, optional Provider
+  absence misclassified as an environment failure, extension release refresh
+  delaying daemon startup, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, capability snapshots, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
   Also covers new or derived conversations that silently fail or lose
@@ -41,11 +43,14 @@ Use the focused runtime index or open one area directly:
   legacy startup wakes, provider-completed submissions reported as delivery
   unknown after canonical message provenance conflicts, completed Claude Code
   Turns that lack a Fork entry because provider identity was not observed from
-  the durable transcript, and Claude Fork operations that fail because an empty
-  query never creates a durable provider child. It also covers a Claude Query
-  that keeps returning connection errors after the machine network recovers.
+  the durable transcript, Claude failures before provider Turn identity that
+  leave AgentGUI thinking, and Claude Fork operations that fail because an
+  empty query never creates a durable provider child. It also covers a Claude
+  Query that keeps returning connection errors after the machine network recovers.
   Also covers inactive Claude Resume timing out the queue send and leaving later
-  prompts stuck as 排队中 behind `uncertainDelivery`.
+  prompts stuck as 排队中 behind `uncertainDelivery`, and Standard ACP process
+  cleanup failures that stop a send before provider dispatch while preserving
+  the composer draft.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.
@@ -107,6 +112,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 - [Renderer component repeatedly re-renders without visible changes](./workbench-renderer.md#renderer-component-repeatedly-re-renders-without-visible-changes)
 - [Renderer services initialize twice and consume one event twice](./workbench-renderer.md#renderer-services-initialize-twice-and-consume-one-event-twice)
 - [Inline custom-header menu is clipped to the Workbench title bar](./workbench-renderer.md#inline-custom-header-menu-is-clipped-to-the-workbench-title-bar)
+- [Overflowing custom header widens the Workbench body](./workbench-renderer.md#overflowing-custom-header-widens-the-workbench-body)
 - [Dialog action reacts to Enter but ignores pointer clicks](./workbench-renderer.md#dialog-action-reacts-to-enter-but-ignores-pointer-clicks)
 - [Daemon validation error appears as untranslated developer text](./workbench-renderer.md#daemon-validation-error-appears-as-untranslated-developer-text)
 - [Mask-backed icon renders as a solid color block](./workbench-renderer.md#mask-backed-icon-renders-as-a-solid-color-block)
@@ -130,6 +136,14 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 - [Agent generated files under system temp do not open](./workspace-apps-files.md#agent-generated-files-under-system-temp-do-not-open)
 - [FileManager home-relative paths break only the list pane](./workspace-apps-files.md#filemanager-home-relative-paths-break-only-the-list-pane)
 - [Windows FileManager paths exist but fail validation or selection](./workspace-apps-files.md#windows-filemanager-paths-exist-but-fail-validation-or-selection)
+
+## [Connector Market](./connector-market.md)
+
+Connector catalog, installation, account authorization, and runtime convergence.
+
+- [A second authorize click starts another OAuth session](./connector-market.md#a-second-authorize-click-starts-another-oauth-session)
+- [OAuth finishes in the browser but does not return to the initiating desktop build](./connector-market.md#oauth-finishes-in-the-browser-but-does-not-return-to-the-initiating-desktop-build)
+- [Composer install stays spinning on an OAuth remote connector](./connector-market.md#composer-install-stays-spinning-on-an-oauth-remote-connector)
 
 ## [Toolchain, Browser, And Terminal](./toolchain-browser-terminal.md)
 
@@ -172,6 +186,7 @@ Android app login, native bridge, secure identity, and mobile transport diagnost
 - [Browser login completes but leaves the browser in front](./mobile.md#browser-login-completes-but-leaves-the-browser-in-front)
 - [Browser login returns to the App but remains signed out](./mobile.md#browser-login-returns-to-the-app-but-remains-signed-out)
 - [Android DeviceLink opens a session and then repeatedly restarts](./mobile.md#android-devicelink-opens-a-session-and-then-repeatedly-restarts)
+- [Mobile direct DeviceLink consistently takes about ten seconds](./mobile.md#mobile-direct-devicelink-consistently-takes-about-ten-seconds)
 - [Mobile shows output from a completed Session after foreground resume](./mobile.md#mobile-shows-output-from-a-completed-session-after-foreground-resume)
 - [Mobile stays connected after a long lock-screen interval but sends fail](./mobile.md#mobile-stays-connected-after-a-long-lock-screen-interval-but-sends-fail)
 - [iOS App crashes after loading the JavaScript bundle](./mobile.md#ios-app-crashes-after-loading-the-javascript-bundle)

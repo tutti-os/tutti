@@ -1,0 +1,73 @@
+{
+  "name": "@tutti-os/connector-renderer",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    "./application": "./src/application/index.ts",
+    "./i18n": "./src/ui/i18n/index.ts",
+    "./ui": "./src/ui/index.ts"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/connector/renderer"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "tsx --test \"./src/**/*.test.ts\" && vitest run",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "@tutti-os/connector-contracts": "workspace:*",
+    "@tutti-os/infra": "0.1.0",
+    "@tutti-os/ui-i18n-runtime": "workspace:*",
+    "@tutti-os/ui-system": "workspace:*",
+    "qrcode-generator": "2.0.4",
+    "valtio": "^2.3.2"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.0",
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "@types/react": "^19.1.6",
+    "@types/react-dom": "^19.1.5",
+    "jsdom": "^27.2.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "tsx": "^4.22.3",
+    "typescript": "^5.8.3",
+    "vitest": "^4.0.13",
+    "valtio": "^2.3.2"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "valtio": "^2.3.2"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./application": {
+        "types": "./dist/application/index.d.ts",
+        "import": "./dist/application/index.js"
+      },
+      "./i18n": {
+        "types": "./dist/i18n/index.d.ts",
+        "import": "./dist/i18n/index.js"
+      },
+      "./ui": {
+        "types": "./dist/ui/index.d.ts",
+        "import": "./dist/ui/index.js"
+      }
+    }
+  },
+  "tutti": {
+    "tailwindSourceRoot": "src"
+  }
+}

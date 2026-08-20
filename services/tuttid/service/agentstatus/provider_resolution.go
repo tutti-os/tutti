@@ -258,24 +258,26 @@ func (s Service) resolveManagedNPMPackageBinary(spec ProviderSpec) string {
 	if managed == nil || strings.TrimSpace(managed.PackageName) == "" || strings.TrimSpace(managed.BinaryName) == "" {
 		return ""
 	}
-	installBinDir := strings.TrimSpace(managed.InstallDir)
-	if installBinDir == "" {
+	installBinDirs := []string{strings.TrimSpace(managed.InstallDir)}
+	if installBinDirs[0] == "" {
 		home, err := s.homeDir()
 		if err != nil || strings.TrimSpace(home) == "" {
 			return ""
 		}
-		installBinDir = filepath.Join(home, ".local", "bin")
+		installBinDirs = runtimecmd.UserManagedNPMExecutableDirs(home)
 	}
-	prefix := runtimecmd.ResolveNPMGlobalLayout(installBinDir).PrefixDir
-	packageDir, ok := managedNPMGlobalPackageDir(prefix, managed.PackageName)
-	if !ok {
-		return ""
+	for _, installBinDir := range installBinDirs {
+		prefix := runtimecmd.ResolveNPMGlobalLayout(installBinDir).PrefixDir
+		packageDir, ok := managedNPMGlobalPackageDir(prefix, managed.PackageName)
+		if !ok {
+			continue
+		}
+		path := installedNPMPackageBinaryPath(packageDir, managed.PackageName, managed.BinaryName)
+		if path != "" && s.executableFile(path) {
+			return path
+		}
 	}
-	path := installedNPMPackageBinaryPath(packageDir, managed.PackageName, managed.BinaryName)
-	if path == "" || !s.executableFile(path) {
-		return ""
-	}
-	return path
+	return ""
 }
 
 func installedNPMPackageBinaryPath(packageDir, packageName, binaryName string) string {

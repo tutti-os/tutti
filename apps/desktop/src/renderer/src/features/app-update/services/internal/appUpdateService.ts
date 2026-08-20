@@ -1,10 +1,11 @@
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
+import type { DesktopLocale } from "../../../../../../shared/i18n/index.ts";
 import { AppUpdateActionClickedReporter } from "../../../analytics/reporters/app-update-action-clicked/appUpdateActionClickedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
 import { isSameAppUpdateState } from "../../../../../../shared/contracts/appUpdateState.ts";
 import type { AppUpdateState } from "@shared/contracts/ipc";
-import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IAppUpdateService } from "../appUpdateService.interface";
 import type { DesktopAppUpdateClient } from "./adapters/desktopAppUpdateClient";
 import { createAppUpdateStore } from "./appUpdateStore.ts";
@@ -14,6 +15,13 @@ let nextAppUpdateServiceInstanceNumber = 0;
 
 function formatError(error: unknown): string {
   return resolveDesktopErrorMessage(error, getActiveLocale());
+}
+
+/** Map the desktop locale to the public changelog; new locales intentionally fall back to English. */
+export function resolveOfficialChangelogUrl(locale: DesktopLocale): string {
+  return locale === "zh-CN"
+    ? "https://tutti.sh/zh/changelog"
+    : "https://tutti.sh/en/changelog";
 }
 
 export class AppUpdateService implements IAppUpdateService {
@@ -33,19 +41,24 @@ export class AppUpdateService implements IAppUpdateService {
     "logRendererDiagnostic"
   >;
   private readonly updateClient: DesktopAppUpdateClient;
+  private readonly hostFilesApi?: Pick<DesktopHostFilesApi, "openExternal">;
 
   constructor(
     updateClient: DesktopAppUpdateClient,
     reporterService: Pick<IReporterService, "trackEvents"> | null = null,
     reporterNow?: () => number,
     runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">,
-    options: { supportsReleaseChannels?: boolean } = {}
+    options: {
+      hostFilesApi?: Pick<DesktopHostFilesApi, "openExternal">;
+      supportsReleaseChannels?: boolean;
+    } = {}
   ) {
     this.store = createAppUpdateStore(options.supportsReleaseChannels ?? true);
     this.updateClient = updateClient;
     this.reporterService = reporterService;
     this.reporterNow = reporterNow;
     this.runtimeApi = runtimeApi;
+    this.hostFilesApi = options.hostFilesApi;
   }
 
   async load(): Promise<void> {
@@ -109,6 +122,14 @@ export class AppUpdateService implements IAppUpdateService {
         this.updateView();
         this.recordDiagnostic("app_update.check_finished");
       }
+    }
+  }
+
+  async openReleaseNotes(): Promise<void> {
+    if (this.hostFilesApi) {
+      await this.hostFilesApi.openExternal(
+        resolveOfficialChangelogUrl(getActiveLocale())
+      );
     }
   }
 

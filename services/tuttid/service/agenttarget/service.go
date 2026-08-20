@@ -21,7 +21,7 @@ type Service struct {
 }
 
 type AvailabilityResolver interface {
-	ResolveAgentTargetAvailability(context.Context, agenttargetbiz.Target) (status string, reason string)
+	ResolveAgentTargetAvailability(context.Context, agenttargetbiz.Target) (status string, reason string, executablePath string)
 }
 
 type PutInput struct {
@@ -48,7 +48,7 @@ func (s Service) List(ctx context.Context) ([]agenttargetbiz.Target, error) {
 	for index := range targets {
 		launchRef, launchRefErr := agenttargetbiz.RuntimeProviderTargetRef(targets[index])
 		if launchRefErr == nil && launchRef["kind"] == agenttargetbiz.LaunchRefTypeAgentExtension {
-			targets[index].AvailabilityStatus, targets[index].AvailabilityReason = s.AvailabilityResolver.ResolveAgentTargetAvailability(ctx, targets[index])
+			targets[index].AvailabilityStatus, targets[index].AvailabilityReason, targets[index].ExecutablePath = s.AvailabilityResolver.ResolveAgentTargetAvailability(ctx, targets[index])
 		}
 	}
 	return targets, nil

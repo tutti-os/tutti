@@ -21,7 +21,7 @@ func Dial(ctx context.Context, request DialRequest) (net.Conn, error) {
 	if err != nil {
 		return nil, err
 	}
-	return newWebSocketByteConn(ws), nil
+	return newDialWebSocketByteConn(ws, request.Liveness), nil
 }
 
 func dialWebSocket(ctx context.Context, request DialRequest) (*websocket.Conn, error) {

@@ -6,7 +6,10 @@ import type {
 import type { WorkbenchContribution } from "@tutti-os/workbench-surface";
 
 export interface WorkspaceTerminalSurfaceRuntime {
-  createSession(): Promise<TerminalSessionDescriptor>;
+  createSession(input?: {
+    cwd?: string | null;
+    initialInput?: string | null;
+  }): Promise<TerminalSessionDescriptor>;
   feature: TerminalNodeFeature;
   getExternalState(sessionId: string | null): TerminalNodeExternalState | null;
   subscribe(listener: () => void): () => void;

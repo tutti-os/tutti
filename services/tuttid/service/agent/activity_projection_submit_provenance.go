@@ -11,10 +11,12 @@ import (
 )
 
 // ReportSubmitProvenance is a deliberately narrower contract than Report.
-// It commits the canonical client-submit message together with the session and
-// optional new-turn patch in one repository transaction. The ordinary Report
-// compatibility path persists state and messages separately and therefore
-// cannot acknowledge provider dispatch safely.
+// It commits the canonical user message together with the session and optional
+// new-turn patch in one repository transaction. A client-submit id is carried
+// when the caller has one; internally allocated turns use a generated message
+// id instead. The ordinary Report compatibility path persists state and
+// messages separately and therefore cannot acknowledge provider dispatch
+// safely.
 func (p *ActivityProjection) ReportSubmitProvenance(
 	ctx context.Context,
 	input agentsessionstore.ReportActivityInput,
@@ -56,8 +58,8 @@ func (p *ActivityProjection) ReportSubmitProvenance(
 	update := messageInput.Updates[0]
 	clientSubmitID, _ := update.Payload["clientSubmitId"].(string)
 	clientSubmitID = strings.TrimSpace(clientSubmitID)
-	if strings.TrimSpace(update.MessageID) == "" || strings.TrimSpace(update.TurnID) == "" || clientSubmitID == "" {
-		return fmt.Errorf("atomic submit provenance requires message id, turn id, and client submit id")
+	if strings.TrimSpace(update.MessageID) == "" || strings.TrimSpace(update.TurnID) == "" {
+		return fmt.Errorf("atomic submit provenance requires message id and turn id")
 	}
 
 	activityReport, canonicalTargetID, err := p.activityStateReport(ctx, stateInput)
@@ -81,7 +83,7 @@ func (p *ActivityProjection) ReportSubmitProvenance(
 	}
 	message := result.Messages.Messages[0]
 	if strings.TrimSpace(message.TurnID) != strings.TrimSpace(update.TurnID) ||
-		strings.TrimSpace(payloadString(message.Payload, "clientSubmitId")) != clientSubmitID {
+		(clientSubmitID != "" && strings.TrimSpace(payloadString(message.Payload, "clientSubmitId")) != clientSubmitID) {
 		return fmt.Errorf("atomic submit provenance did not preserve canonical message identity")
 	}
 

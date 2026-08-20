@@ -116,7 +116,7 @@ export function canonicalConversationRailSummaries(
   conversations: AgentGUINodeViewModel["rail"]["conversations"]
 ): AgentGUINodeViewModel["rail"]["conversations"] {
   return conversations.filter(
-    (conversation) => conversation.projectionSource !== "pending_activation"
+    (conversation) => conversation.projectionSource === undefined
   );
 }
 
@@ -130,6 +130,8 @@ export function projectConversationRailSectionsWithTransientConversations(input:
   const transientConversations = input.conversations.filter(
     (conversation) =>
       conversation.projectionSource === "pending_activation" ||
+      conversation.status === "working" ||
+      conversation.status === "waiting" ||
       reconcilingSessionIds.has(conversation.id)
   );
   if (transientConversations.length === 0) {
@@ -139,9 +141,13 @@ export function projectConversationRailSectionsWithTransientConversations(input:
     input.sections.flatMap((section) => section.items.map((item) => item.id))
   );
   const transientSections = projectConversationsByExactRailSectionKey({
-    conversations: transientConversations.filter(
-      (conversation) => !loadedIds.has(conversation.id)
-    ),
+    conversations: transientConversations
+      .filter((conversation) => !loadedIds.has(conversation.id))
+      .map((conversation) =>
+        conversation.projectionSource === "pending_activation"
+          ? conversation
+          : { ...conversation, projectionSource: "runtime_overlay" as const }
+      ),
     labels: input.labels,
     sections: input.sections
   });
@@ -210,6 +216,25 @@ export function resolveConversationRailActiveConversation(input: {
     (input.activeConversation?.id === activeConversationId
       ? input.activeConversation
       : null)
+  );
+}
+
+export function conversationRailActiveOverlayCountsTowardTotal(input: {
+  activeConversation: AgentGUINodeViewModel["rail"]["activeConversation"];
+  matchesFilter: boolean;
+  sectionItems: ConversationSection["items"];
+}): boolean {
+  const activeConversation = input.activeConversation;
+  if (
+    !activeConversation ||
+    activeConversation.projectionSource !== undefined ||
+    !input.matchesFilter
+  ) {
+    return false;
+  }
+  return !input.sectionItems.some(
+    (item) =>
+      item.id === activeConversation.id && item.projectionSource !== undefined
   );
 }
 
@@ -470,17 +495,8 @@ export function projectConversationRailMemberships(input: {
       (conversation) => [conversation.id, conversation] as const
     )
   );
-  return input.sections.map((section) => ({
-    id: section.id,
-    kind: section.kind,
-    label:
-      section.kind === "pinned"
-        ? input.labels.sectionPinned
-        : section.kind === "project"
-          ? (section.project?.label ?? section.id)
-          : input.labels.sectionConversations,
-    project: section.project,
-    items: section.sessionIds.flatMap((id) => {
+  return input.sections.map((section) => {
+    const items = section.sessionIds.flatMap((id) => {
       const conversation = conversationsById.get(id);
       if (!conversation) return [];
       const exactSectionId = conversationRailSectionId(conversation);
@@ -490,8 +506,20 @@ export function projectConversationRailMemberships(input: {
           ? { ...conversation, project: section.project }
           : { ...conversation, project: null }
       ];
-    })
-  }));
+    });
+    return {
+      id: section.id,
+      kind: section.kind,
+      label:
+        section.kind === "pinned"
+          ? input.labels.sectionPinned
+          : section.kind === "project"
+            ? (section.project?.label ?? section.id)
+            : input.labels.sectionConversations,
+      project: section.project,
+      items: section.kind === "pinned" ? items : sortConversations(items)
+    };
+  });
 }
 
 export function projectConversationRailSearchSections(input: {

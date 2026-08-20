@@ -40,6 +40,7 @@ export interface IpcRegistrationDependencies {
     | "getAgentSessionReplayTransportPlayback"
     | "importAgentSessionCassettes"
     | "prepareAgentSessionReplayWorkspace"
+    | "probeAgentTargetAccountUsage"
     | "updateAgentSessionReplayTransportPlayback"
   >;
   openWorkspaceAppFolder?: (
@@ -91,6 +92,7 @@ export async function registerIpcHandlers(
   registerHostIpc({
     fileDialogs: deps.fileDialogs,
     openWorkspaceAppFolder: deps.openWorkspaceAppFolder,
+    preferences: deps.preferences,
     workspaceFileIconCache: deps.workspaceFileIconCache,
     workspaceLaunch: deps.workspaceLaunch
   });

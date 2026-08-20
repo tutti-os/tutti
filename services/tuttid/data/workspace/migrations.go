@@ -96,6 +96,7 @@ const schemaMigrationAgentSessionReplayV2 = "agent_session_replay_v2"
 const schemaMigrationAgentProviderRuntimeSelectionsV1 = "agent_provider_runtime_selections_v1"
 const schemaMigrationAgentSessionReplayV3 = "agent_session_replay_v3"
 const schemaMigrationAgentSessionReplayV4 = "agent_session_replay_v4"
+const schemaMigrationAgentTurnTerminalAnalyticsV1 = "agent_turn_terminal_analytics_v1"
 
 func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if s == nil || s.writeDB == nil {
@@ -210,6 +211,9 @@ INSERT OR IGNORE INTO tuttid_schema_migrations (id, applied_at_unix_ms)
 	// store. They must run after user_projects_v1: the rail section backfill
 	// reads project paths through userProjectPathsQuerier.
 	if err := s.agentStore().Migrate(ctx); err != nil {
+		return err
+	}
+	if err := s.applyAgentTurnTerminalAnalyticsV1(ctx); err != nil {
 		return err
 	}
 	if err := s.applyAgentDataMaintenanceV3(ctx); err != nil {

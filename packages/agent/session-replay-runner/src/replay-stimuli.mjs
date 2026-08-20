@@ -85,6 +85,7 @@ export async function replayStimuli(
         })
     : undefined;
   const playback = createReplayPlaybackController({
+    activityClockOriginUnixMs: input.activityClockOriginUnixMs,
     baseURL,
     checkpoints: input.checkpoints,
     controlPath: input.controlPath,

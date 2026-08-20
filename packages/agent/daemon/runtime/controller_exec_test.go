@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -13,6 +14,79 @@ import (
 
 func boolPtr(value bool) *bool {
 	return &value
+}
+
+func TestControllerExecCleanupBackpressurePrecedesTurnAndProviderDispatch(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-exec-backpressure",
+		supportsAgentLoadSession: true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	controller := NewController([]Adapter{adapter}, &recordingReporter{})
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-exec-backpressure",
+		AgentSessionID: "agent-exec-backpressure",
+		Provider:       "acp:kimi-code",
+		CWD:            "/workspace",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	transport.mu.Lock()
+	oldConnection := transport.conns[0]
+	transport.mu.Unlock()
+	oldConnection.mu.Lock()
+	oldConnection.closeFailures = 3
+	oldConnection.mu.Unlock()
+
+	if err := adapter.ReleaseLiveSession(context.Background(), started.Session); err == nil {
+		t.Fatal("ReleaseLiveSession error = nil, want injected close failure")
+	}
+	if err := adapter.Resume(context.Background(), started.Session); err != nil {
+		t.Fatalf("first replacement Resume: %v", err)
+	}
+	if err := adapter.ReleaseLiveSession(context.Background(), started.Session); err != nil {
+		t.Fatalf("replacement release: %v", err)
+	}
+	spawnedBefore, _ := transport.snapshot()
+
+	result, err := controller.Exec(context.Background(), ExecInput{
+		RoomID:                          started.Session.RoomID,
+		AgentSessionID:                  started.Session.AgentSessionID,
+		ClientSubmitID:                  "submit-exec-backpressure",
+		CanonicalSubmitOccurredAtUnixMS: time.Now().UnixMilli(),
+		Content:                         textPrompt("keep this draft"),
+		RequireProviderAcceptance:       true,
+		TurnID:                          "turn-must-not-exist",
+	})
+	if AppErrorCode(err) != AppErrorProcessCleanupPending {
+		t.Fatalf("Exec error code = %q (err=%v), want %q", AppErrorCode(err), err, AppErrorProcessCleanupPending)
+	}
+	if result.ProviderDispatch == nil || result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("provider dispatch = %#v, want not dispatched", result.ProviderDispatch)
+	}
+	if controller.HasActiveTurn(started.Session.RoomID, started.Session.AgentSessionID) {
+		t.Fatal("cleanup backpressure created an active Turn")
+	}
+	if session, ok := controller.Session(started.Session.RoomID, started.Session.AgentSessionID); !ok || session.Status != SessionStatusReady {
+		t.Fatalf("session after blocked Exec = %#v (ok=%v), want ready canonical session", session, ok)
+	}
+	spawnedAfter, _ := transport.snapshot()
+	if spawnedAfter != spawnedBefore {
+		t.Fatalf("spawned processes after blocked Exec = %d, want %d", spawnedAfter, spawnedBefore)
+	}
+	transport.mu.Lock()
+	replacementConnection := transport.conns[1]
+	transport.mu.Unlock()
+	replacementConnection.mu.Lock()
+	promptCalls := replacementConnection.promptCallCount
+	replacementConnection.mu.Unlock()
+	if promptCalls != 0 {
+		t.Fatalf("provider prompt calls = %d, want 0", promptCalls)
+	}
 }
 
 func TestControllerHiddenSessionPublishesLiveEventsAndReportsActivity(t *testing.T) {
@@ -120,6 +194,20 @@ func TestControllerStartExecPublishesAndReports(t *testing.T) {
 	if execResult.SessionStatus != SessionStatusWorking {
 		t.Fatalf("exec session status = %q, want %q", execResult.SessionStatus, SessionStatusWorking)
 	}
+	submitReports := reporter.waitForReports(t, "initial user submission report", func(calls []reportCall) bool {
+		_, found := reportWithTimelineItem(reportInputs(calls), "message.user")
+		return found
+	})
+	submitReport, ok := reportWithTimelineItem(reportInputs(submitReports), "message.user")
+	if !ok {
+		t.Fatalf("submit reports = %#v, want user message report", submitReports)
+	}
+	if len(submitReport.StatePatches) != 1 {
+		t.Fatalf("initial submit state patches = %#v, want one combined patch", submitReport.StatePatches)
+	}
+	if submitReport.StatePatches[0].Title != "hello" {
+		t.Fatalf("initial submit title = %q, want %q", submitReport.StatePatches[0].Title, "hello")
+	}
 	waitForStatePatchTitle(t, events, "hello")
 	deadline := time.After(2 * time.Second)
 	for {
@@ -168,6 +256,25 @@ userMessagePublished:
 	}
 	if !hasSessionStartedPatch {
 		t.Fatalf("report calls = %#v, want session started state patch", reportCalls)
+	}
+	var userMessageIDs []string
+	for _, call := range reportCalls {
+		for _, update := range call.report.MessageUpdates {
+			if update.Role == string(activityshared.MessageRoleUser) && update.TurnID == execResult.TurnID {
+				userMessageIDs = append(userMessageIDs, update.MessageID)
+			}
+		}
+	}
+	if len(userMessageIDs) == 0 {
+		t.Fatalf("report calls = %#v, want user message update for turn", reportCalls)
+	}
+	if userMessageIDs[0] == "" || !strings.HasPrefix(userMessageIDs[0], turnUserMessageIDPrefix) {
+		t.Fatalf("user message IDs = %#v, want a generated turn-user message ID", userMessageIDs)
+	}
+	for _, messageID := range userMessageIDs[1:] {
+		if messageID != userMessageIDs[0] {
+			t.Fatalf("user message IDs = %#v, want every update keyed by %q", userMessageIDs, userMessageIDs[0])
+		}
 	}
 	turnReport, ok := reportWithTimelineItem(reportInputs(reportCalls), "message.user")
 	if !ok || !hasTimelineItem(turnReport, "message.user", "completed", "hello") {
@@ -538,6 +645,106 @@ func TestControllerExecGuidanceRejectsChangedExactTargetBeforeProviderCall(t *te
 	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
 }
 
+func TestControllerExecGuidanceProviderErrorHasUnknownDeliveryOutcome(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("provider guidance acknowledgement lost")
+	adapter := &guidanceBlockingAdapter{
+		blockingExecAdapter: newBlockingExecAdapter(),
+		guidanceErr:         wantErr,
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	first, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("first prompt"),
+	})
+	if err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "first prompt")
+
+	result, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         first.TurnID,
+		Content:        textPrompt("guide current turn"),
+		Guidance:       true,
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("guidance error = %v, want %v", err, wantErr)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionOutcomeUnknown {
+		t.Fatalf("guidance result = %#v, want outcome unknown", result)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 1 {
+		t.Fatalf("provider guidance calls = %d, want 1", got)
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
+func TestControllerExecGuidanceAdapterPreflightFailureIsNotDispatched(t *testing.T) {
+	t.Parallel()
+
+	wantErr := errors.New("provider session disconnected before guidance dispatch")
+	adapter := &guidanceDispatchAdapter{
+		guidanceBlockingAdapter: &guidanceBlockingAdapter{
+			blockingExecAdapter: newBlockingExecAdapter(),
+			guidanceErr:         wantErr,
+		},
+		disposition: DispatchDispositionNotDispatched,
+	}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	first, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content:        textPrompt("first prompt"),
+	})
+	if err != nil {
+		t.Fatalf("first Exec: %v", err)
+	}
+	adapter.waitForPrompt(t, "first prompt")
+
+	result, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         first.TurnID,
+		Content:        textPrompt("guide current turn"),
+		Guidance:       true,
+	})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("guidance error = %v, want %v", err, wantErr)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance result = %#v, want not dispatched", result)
+	}
+
+	adapter.releaseNext()
+	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
+}
+
 func TestControllerExecGuidanceRequiresActiveTurn(t *testing.T) {
 	t.Parallel()
 
@@ -552,13 +759,58 @@ func TestControllerExecGuidanceRequiresActiveTurn(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
-	if _, err := controller.Exec(context.Background(), ExecInput{
+	result, err := controller.Exec(context.Background(), ExecInput{
 		RoomID:         started.Session.RoomID,
 		AgentSessionID: started.Session.AgentSessionID,
 		Content:        textPrompt("guide without active turn"),
 		Guidance:       true,
-	}); !errors.Is(err, ErrSessionNoActiveTurn) {
+	})
+	if !errors.Is(err, ErrSessionNoActiveTurn) {
 		t.Fatalf("guidance without active turn error = %v, want %v", err, ErrSessionNoActiveTurn)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance result = %#v, want not dispatched", result)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 0 {
+		t.Fatalf("provider guidance calls = %d, want 0", got)
+	}
+}
+
+func TestControllerExecExactGuidanceTreatsSettledTargetAsNotDispatched(t *testing.T) {
+	t.Parallel()
+
+	adapter := &guidanceBlockingAdapter{blockingExecAdapter: newBlockingExecAdapter()}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID:         "room-1",
+		AgentSessionID: "agent-session-1",
+		Provider:       ProviderCodex,
+		Title:          "Codex",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	result, err := controller.Exec(t.Context(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		TurnID:         "turn-settled-after-precheck",
+		Content:        textPrompt("guide settled turn"),
+		Guidance:       true,
+	})
+	if !errors.Is(err, ErrActiveTurnTargetMismatch) || !errors.Is(err, ErrSessionNoActiveTurn) {
+		t.Fatalf("guidance error = %v, want target mismatch joined with no active turn", err)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance result = %#v, want not dispatched", result)
+	}
+	if result.TurnID != "turn-settled-after-precheck" {
+		t.Fatalf("guidance result turn = %q, want exact settled target", result.TurnID)
+	}
+	if got := adapter.guidanceCalls.Load(); got != 0 {
+		t.Fatalf("provider guidance calls = %d, want 0", got)
 	}
 }
 
@@ -655,10 +907,35 @@ func (returnOnlyFinalAdapter) Cancel(context.Context, Session, string) ([]activi
 type guidanceBlockingAdapter struct {
 	*blockingExecAdapter
 	guidanceCalls atomic.Int64
+	guidanceErr   error
+}
+
+type guidanceDispatchAdapter struct {
+	*guidanceBlockingAdapter
+	disposition DispatchDisposition
+}
+
+func (a *guidanceDispatchAdapter) GuideActiveTurnWithProviderDispatch(
+	ctx context.Context,
+	session Session,
+	content []PromptContentBlock,
+	displayPrompt string,
+	turnID string,
+	emit EventSink,
+	emitCommands CommandSnapshotSink,
+	reportDispatch ProviderDispatchSink,
+) ([]activityshared.Event, error) {
+	if reportDispatch != nil {
+		reportDispatch(ProviderDispatchResult{Disposition: a.disposition})
+	}
+	return a.GuideActiveTurn(ctx, session, content, displayPrompt, turnID, emit, emitCommands)
 }
 
 func (a *guidanceBlockingAdapter) GuideActiveTurn(ctx context.Context, session Session, content []PromptContentBlock, _ string, turnID string, emit EventSink, _ CommandSnapshotSink) ([]activityshared.Event, error) {
 	a.guidanceCalls.Add(1)
+	if a.guidanceErr != nil {
+		return nil, a.guidanceErr
+	}
 	events := []activityshared.Event{
 		newTurnActivityEvent(session, EventMessage, turnID, "", RoleUser, promptDisplayText(content), userPromptActivityPayload(content, "", userPromptActivityPayloadExtraFromExecMetadata(ctx, map[string]any{
 			"guidance": true,

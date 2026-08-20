@@ -102,33 +102,34 @@ Activity View 的核心价值是把 Conversation Rail 从“目录”临时切�
 
 ## 4. 关键产品决策
 
-| 编号 | 决策                                                             | 理由                                                              |
-| ---- | ---------------------------------------------------------------- | ----------------------------------------------------------------- |
-| D1   | 功能名称为 Activity View；Priority 是视图顶部的固定标题区段      | 不再把整个能力称为 Priority View                                  |
-| D2   | Desktop 默认关闭，由用户显式开启；Mobile 会话首页固定开启        | Desktop 保留既有项目目录心智；Mobile 直接采用已批准的新首页承载   |
-| D3   | 最近范围固定为最近 7 个自然日                                    | 覆盖一周工作上下文，避免无边界加载历史                            |
-| D4   | Priority 顺序复刻 Codex：`waiting`、`unread`、`active`           | 不按失败/成功再创造一套 Tutti 排序标准                            |
-| D5   | `waiting` 由 Tutti canonical `needsUserAction` 映射              | UI 语义跟随 Codex，事实来源仍由 Tutti lifecycle 保证              |
-| D6   | 子 Session 不作为左栏独立行                                      | Codex 将子线程作为独立实体管理，但左栏由根线程代表                |
-| D7   | Priority 与近期日期段之间去重                                    | 一个 Session 只在最靠前的可见位置出现一次                         |
-| D8   | 搜索临时接管内容区，清空搜索后恢复 Activity View                 | 搜索是明确查找意图，避免搜索结果与工作队列结构混杂                |
-| D9   | Activity View 不新增或改造通用筛选器                             | 当前 Engine 是完整输入边界，不增加 host context 契约              |
-| D10  | Activity View 开启本身仅投影当前 Engine 内存态，不因开启视图补页 | Desktop Activity View 聚焦当前工作；Mobile 的显式搜索另走分页查询 |
-| D11  | Activity View 不提供批量归档或批量删除入口                       | Archive chats 映射为 Tutti 删除，但首期不纳入标题菜单             |
+| 编号 | 决策                                                                | 理由                                                              |
+| ---- | ------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| D1   | 功能名称为 Activity View；Priority 是视图顶部的固定标题区段         | 不再把整个能力称为 Priority View                                  |
+| D2   | Desktop 默认关闭，由用户显式开启；Mobile 会话首页固定开启           | Desktop 保留既有项目目录心智；Mobile 直接采用已批准的新首页承载   |
+| D3   | 最近范围固定为最近 7 个自然日                                       | 覆盖一周工作上下文，避免无边界加载历史                            |
+| D4   | Priority 顺序复刻 Codex：`waiting`、`unread`、`active`              | 不按失败/成功再创造一套 Tutti 排序标准                            |
+| D5   | `waiting` 由根会话 canonical `needsUserAction` 映射                 | 与普通 Rail 一致，包含后代 pending Interaction，但保留精确子身份  |
+| D6   | 子 Session 不作为左栏独立行，其 lifecycle 不改变根行 lifecycle 状态 | 子 Agent 运行状态留在详情中；待处理提醒仍汇总到根会话             |
+| D7   | Priority 与近期日期段之间去重                                       | 一个 Session 只在最靠前的可见位置出现一次                         |
+| D8   | 搜索临时接管内容区，清空搜索后恢复 Activity View                    | 搜索是明确查找意图，避免搜索结果与工作队列结构混杂                |
+| D9   | Activity View 不新增或改造通用筛选器                                | 当前 Engine 是完整输入边界，不增加 host context 契约              |
+| D10  | Activity View 开启本身仅投影当前 Engine 内存态，不因开启视图补页    | Desktop Activity View 聚焦当前工作；Mobile 的显式搜索另走分页查询 |
+| D11  | Activity View 不提供批量归档或批量删除入口                          | Archive chats 映射为 Tutti 删除，但首期不纳入标题菜单             |
 
 ### 4.1 已识别的体验差异与数据映射
 
-| Codex 行为/概念                   | Tutti 特有事实                                     | 处理方式                                               | 是否改变体验                 |
-| --------------------------------- | -------------------------------------------------- | ------------------------------------------------------ | ---------------------------- |
-| 本地 task attention `waiting`     | Tutti 用 pending Interaction / `needsUserAction`   | adapter 映射为 waiting                                 | 否                           |
-| `threadId` / `parentThreadId`     | Tutti 用 `agentSessionId` / `parentAgentSessionId` | identity adapter，保留根行/子行关系                    | 否                           |
-| ChatGPT 模式可筛 Work / Chat      | Tutti Agent GUI 只有 Agent Session                 | 不显示无意义的 Work/Chat 选项                          | 是；最小差异，数据类型不存在 |
-| Scheduled 选项                    | Tutti 没有 canonical scheduled Session 类型        | 不显示 Scheduled 选项                                  | 是；数据类型不存在           |
-| Activity View options             | 首期明确不纳入范围                                 | 不显示标题菜单；不实现 Pinned、Mark all as read 等操作 | 是；已批准的首期范围裁剪     |
-| 首次使用 coachmark                | 首期明确不纳入范围                                 | 不展示引导，也不保存“已看过引导” preference            | 是；已批准的首期范围裁剪     |
-| 前 9 个 Priority 快捷导航         | Tutti 没有 Rail 级会话快捷导航基础设施             | 首期不实现，也不新增全局快捷键                         | 是；已批准的首期范围裁剪     |
-| Codex `Archive chats`             | Tutti 对应现有 delete 会话语义                     | 复用现有单条删除；首期 Activity View 不新增批量入口    | 是；首期裁剪批量操作         |
-| Codex 本地 catalog 已提供全局摘要 | Tutti 只保证 Engine 当前内存态                     | 不补历史；对内存态会话投影并接收 daemon 实时增量       | 是；覆盖范围较窄             |
+| Codex 行为/概念                   | Tutti 特有事实                                     | 处理方式                                                       | 是否改变体验                 |
+| --------------------------------- | -------------------------------------------------- | -------------------------------------------------------------- | ---------------------------- |
+| 本地 task attention `waiting`     | Tutti 用 pending Interaction / `needsUserAction`   | adapter 映射为 waiting                                         | 否                           |
+| 子 Agent 仍在工作或等待           | 子 Session 有独立 lifecycle 和 pending Interaction | lifecycle 留在详情；pending Interaction 汇总为根会话 attention | 是；状态与提醒分别投影       |
+| `threadId` / `parentThreadId`     | Tutti 用 `agentSessionId` / `parentAgentSessionId` | identity adapter，保留根行/子行关系                            | 否                           |
+| ChatGPT 模式可筛 Work / Chat      | Tutti Agent GUI 只有 Agent Session                 | 不显示无意义的 Work/Chat 选项                                  | 是；最小差异，数据类型不存在 |
+| Scheduled 选项                    | Tutti 没有 canonical scheduled Session 类型        | 不显示 Scheduled 选项                                          | 是；数据类型不存在           |
+| Activity View options             | 首期明确不纳入范围                                 | 不显示标题菜单；不实现 Pinned、Mark all as read 等操作         | 是；已批准的首期范围裁剪     |
+| 首次使用 coachmark                | 首期明确不纳入范围                                 | 不展示引导，也不保存“已看过引导” preference                    | 是；已批准的首期范围裁剪     |
+| 前 9 个 Priority 快捷导航         | Tutti 没有 Rail 级会话快捷导航基础设施             | 首期不实现，也不新增全局快捷键                                 | 是；已批准的首期范围裁剪     |
+| Codex `Archive chats`             | Tutti 对应现有 delete 会话语义                     | 复用现有单条删除；首期 Activity View 不新增批量入口            | 是；首期裁剪批量操作         |
+| Codex 本地 catalog 已提供全局摘要 | Tutti 只保证 Engine 当前内存态                     | 不补历史；对内存态会话投影并接收 daemon 实时增量               | 是；覆盖范围较窄             |
 
 除本表外当前没有批准的体验差异。新增差异必须更新本表、验收标准和 parity 测试后才能实现。
 
@@ -169,7 +170,7 @@ flowchart TD
 - **activation instance**：每次开启 Activity View 创建的 surface-local 快照实例；关闭时丢弃，重新开启时重建。
 - **轻量会话数据**：Session、latest Turn、pending Interactions、attention/read marker、项目归属和标题等列表投影，不含完整消息历史。
 - **根 Session**：`kind = root` 的顶层会话，是 Conversation Rail 的展示单位。
-- **子 Session**：由另一个 Session 派生、`kind = child` 且带 `parentAgentSessionId` 的协作/子 Agent 会话；可独立读取和导航，但不在 Rail 中单列。
+- **子 Session**：由另一个 Session 派生、`kind = child` 且带 `parentAgentSessionId` 的协作/子 Agent 会话；可独立读取，但不在 Rail 中单列，当前通过父会话中的活动卡片展开查看。
 
 ### 6.2 事实来源
 
@@ -230,11 +231,11 @@ Priority 内部不再增加多层可折叠标题，避免窄 Rail 产生过多 c
 
 每个根 Session 先映射为 Codex 同构的 attention state，再计算纯 presentation rank：
 
-| rank | Codex 同构状态 | Tutti canonical 映射                                       | 行内原因                         |
-| ---- | -------------- | ---------------------------------------------------------- | -------------------------------- |
-| 0    | `waiting`      | `needsUserAction=true`，通常来自 pending Interaction       | 需要处理                         |
-| 1    | `unread`       | 现有 attention/read state 表示存在未读结果                 | 未读；不再细分失败或成功的优先级 |
-| 2    | `active`       | 根 Session 或其子 Session 仍有 active lifecycle projection | 进行中                           |
+| rank | Codex 同构状态 | Tutti canonical 映射                                        | 行内原因                         |
+| ---- | -------------- | ----------------------------------------------------------- | -------------------------------- |
+| 0    | `waiting`      | 根会话 `needsUserAction=true`，包含后代 pending Interaction | 需要处理                         |
+| 1    | `unread`       | 现有 attention/read state 表示存在未读结果                  | 未读；不再细分失败或成功的优先级 |
+| 2    | `active`       | 根 Session 自身仍有 active lifecycle projection             | 进行中                           |
 
 普通 idle 不进入 Priority，由近期日期范围决定是否出现在某个日期段。Activity View 运行期间晚到的 canonical idle summary 也不会被视为 activity，不会改变 Priority；它只可在下一次 toggle 的初始快照中按近期日期进入日期段。仅因用户选择历史会话而临时注入的 idle summary 同样不属于 Activity candidate。已经进入当前 Priority snapshot 的会话即使随后标记已读或变为 idle，也保留原成员和相对顺序，直到下一次 toggle；删除 tombstone 是唯一的即时移除例外。
 
@@ -259,10 +260,11 @@ Priority 内部不再增加多层可折叠标题，避免窄 Rail 产生过多 c
 
 Codex.app 同时采用了“实体独立、导航聚合”的设计，Tutti 首期照此实现：
 
-- 子 Session 有自己的 `agentSessionId`、`parentAgentSessionId`、状态和 transcript，可通过父会话中的子 Agent 活动入口直接打开；
+- 子 Session 有自己的 `agentSessionId`、`parentAgentSessionId`、状态和 transcript；当前可在父会话的子 Agent 活动卡片中展开查看；
 - 普通 Rail 和 Activity View 都过滤 `kind = child` 的条目，不把子 Session 当成与根 Session 并列的会话行；
-- 子 Session 的运行变化应触发根 Session 的 aggregate activity projection，使根行可表现为 active/有子 Agent 活动；
-- 根行的标题、未读和“需要处理”不通过拼接子 Session 文案推测，仍取 canonical aggregate selector；
+- 子 Session 的 working/waiting lifecycle 不覆盖根 Session 的 lifecycle 状态，根行仅在根 Session 自身运行时表现为 active；
+- 子 Session 的 pending Interaction 通过 canonical root-attention selector 让根行表现为“需要处理”，但提交仍使用精确子 Session/Turn/Interaction 身份；
+- 根行的标题和未读不通过拼接子 Session 文案推测，继续读取各自 canonical selector；
 - 父会话协作详情沿用现有子 Session 加载机制；该机制不属于本 PRD，也不得把加载到的子 Session 自动插入普通 Rail 或 Activity View。
 
 ### 7.7 项目上下文
@@ -416,7 +418,7 @@ interface AgentConversationActivityViewModel {
 - 去重使用 exact `agentSessionId`；
 - 未知 enum 或缺失 identity 必须 fail closed；
 - rank 是 presentation policy，不写回 Session；
-- 子 Session 在 projection 入口被过滤；其 activity 只通过根 Session 的 canonical aggregate 进入排序；
+- 子 Session 在 projection 入口被过滤；其 lifecycle 不进入根行状态，只有 pending Interaction 通过 canonical root-attention selector 进入 waiting 排序；
 - projection 仅服务本 PRD 的 Desktop Rail；不在此处承诺其他终端复用。
 
 ## 11. 组件和架构落点
@@ -435,28 +437,28 @@ interface AgentConversationActivityViewModel {
 
 ## 12. 功能需求清单
 
-| ID    | 需求                                                                  | 优先级 |
-| ----- | --------------------------------------------------------------------- | ------ |
-| FR-01 | Rail 提供可发现、可访问的 Activity View 切换入口                      | P0     |
-| FR-02 | 首帧基于 Engine 已知会话立即投影                                      | P0     |
-| FR-03 | 只展示根 Session；子 Session activity 投影到根行                      | P0     |
-| FR-04 | waiting/unread/active 事实可投影                                      | P0     |
-| FR-05 | 近期日期段只使用当前 Engine 内存态，不触发补页                        | P0     |
-| FR-06 | Priority 按 waiting/unread/active 和 recency 排序                     | P0     |
-| FR-07 | Priority 与近期日期段全局去重                                         | P0     |
-| FR-08 | 不新增筛选入口、筛选条件、组合状态或通用 filter API                   | P0     |
-| FR-09 | 搜索接管与恢复行为逐项沿用 Codex                                      | P0     |
-| FR-10 | daemon 推送先写入 Engine，再按 snapshot 规则增量入队/移除             | P0     |
-| FR-11 | 开启 Activity View 不触发 Session 查询、补页或 transcript hydration   | P0     |
-| FR-12 | 普通视图状态、scroll 和分页不受破坏                                   | P0     |
-| FR-13 | 复用现有 Rail scroll；不设独立 visible limit                          | P0     |
-| FR-14 | 不提供 Activity view options 标题菜单                                 | P0     |
-| FR-15 | 不提供批量已读、批量归档或批量删除                                    | P0     |
-| FR-16 | 现有 pin/unpin、单条标记已读和单条删除能力保持原样                    | P0     |
-| FR-17 | 首期不展示 coachmark，也不保存引导 preference                         | P0     |
-| FR-18 | 首期不提供前 9 个 Priority 会话快捷导航                               | P0     |
-| FR-19 | 会话行按 Codex 两层布局展示标题、项目上下文、状态及 secondary content | P0     |
-| FR-20 | 外部 host 可通过默认关闭的 runtime capability 禁用全部能力            | P0     |
+| ID    | 需求                                                                                 | 优先级 |
+| ----- | ------------------------------------------------------------------------------------ | ------ |
+| FR-01 | Rail 提供可发现、可访问的 Activity View 切换入口                                     | P0     |
+| FR-02 | 首帧基于 Engine 已知会话立即投影                                                     | P0     |
+| FR-03 | 只展示根 Session；子 lifecycle 留在详情，子 pending Interaction 投影为根行 attention | P0     |
+| FR-04 | waiting/unread/active 事实可投影                                                     | P0     |
+| FR-05 | 近期日期段只使用当前 Engine 内存态，不触发补页                                       | P0     |
+| FR-06 | Priority 按 waiting/unread/active 和 recency 排序                                    | P0     |
+| FR-07 | Priority 与近期日期段全局去重                                                        | P0     |
+| FR-08 | 不新增筛选入口、筛选条件、组合状态或通用 filter API                                  | P0     |
+| FR-09 | 搜索接管与恢复行为逐项沿用 Codex                                                     | P0     |
+| FR-10 | daemon 推送先写入 Engine，再按 snapshot 规则增量入队/移除                            | P0     |
+| FR-11 | 开启 Activity View 不触发 Session 查询、补页或 transcript hydration                  | P0     |
+| FR-12 | 普通视图状态、scroll 和分页不受破坏                                                  | P0     |
+| FR-13 | 复用现有 Rail scroll；不设独立 visible limit                                         | P0     |
+| FR-14 | 不提供 Activity view options 标题菜单                                                | P0     |
+| FR-15 | 不提供批量已读、批量归档或批量删除                                                   | P0     |
+| FR-16 | 现有 pin/unpin、单条标记已读和单条删除能力保持原样                                   | P0     |
+| FR-17 | 首期不展示 coachmark，也不保存引导 preference                                        | P0     |
+| FR-18 | 首期不提供前 9 个 Priority 会话快捷导航                                              | P0     |
+| FR-19 | 会话行按 Codex 两层布局展示标题、项目上下文、状态及 secondary content                | P0     |
+| FR-20 | 外部 host 可通过默认关闭的 runtime capability 禁用全部能力                           | P0     |
 
 ## 13. 非功能需求
 
@@ -502,7 +504,7 @@ interface AgentConversationActivityViewModel {
 1. 开启 Activity View 只投影 Engine 当前内存态；不调用 Session list/page、SQLite 或 transcript 接口。
 2. Engine 已知、距离现在超过 7 天但为 waiting 的根 Session 仍出现在 Priority。
 3. Engine 已知、距离现在超过 7 天但为 unread 的根 Session 仍出现在 Priority。
-4. Tutti 的 `needsUserAction=true` 映射为 waiting；普通运行映射为 active。
+4. 根会话 canonical `needsUserAction=true` 映射为 waiting，包含后代 pending Interaction；根 Session 自身运行映射为 active；子 Session 的 lifecycle working/waiting 不改变根行 lifecycle 状态。
 5. waiting 排在 unread 前，unread 排在 active 前；unread 不按结果成功/失败二次排序。
 6. 同 rank 两条会话按 recency 倒序；时间相同保留输入顺序。
 7. 同时满足 Priority 与近期日期范围的 Session 只出现在 Priority。
@@ -533,7 +535,7 @@ interface AgentConversationActivityViewModel {
 
 ### 15.3 实时与异常
 
-1. 新 pending Interaction 到达时会话进入 Priority，且不需要手动刷新。
+1. 根或子 Session 的新 pending Interaction 到达时，根会话以 waiting 进入 Priority 且不需要手动刷新；子 Session 的 lifecycle 状态仍不覆盖根行状态。
 2. Interaction 处理完后行状态立即更新，但本次 snapshot 中的既有成员与顺序保持；重新开启后按剩余 facts 重建。
 3. Turn 完成或失败生成新 unread completion 时，新候选增量进入 Priority；既有成员不因该事件全量重排。
 4. Desktop daemon 推送的新建/更新根 Session 先进入 Engine；符合规则时无需刷新即可增量入队，重复事件不产生重复行。
@@ -556,9 +558,9 @@ interface AgentConversationActivityViewModel {
 ### 16.1 单元测试
 
 - rank 判定矩阵；
-- Tutti `needsUserAction` 到 waiting、普通运行到 active 的映射；
+- 根会话 canonical `needsUserAction` 到 waiting、根 Session 普通运行到 active 的映射；
 - waiting/unread/active 的排序，以及已读后既有 Priority 成员的 snapshot retention；
-- child Session 过滤与 child activity 到 root 的投影；
+- child Session 过滤、child lifecycle 不改变 root Rail status，以及 child pending Interaction 保留 root attention；
 - Priority 与日期段去重；
 - 7 日 cutoff 和本地午夜边界；
 - imported、hidden、deleted、unknown enum；
@@ -577,7 +579,7 @@ interface AgentConversationActivityViewModel {
 ### 16.3 Engine 与 adapter 测试
 
 - Desktop daemon DTO mapper 不丢 latest Turn、pending Interaction、parent/root 或 rail identity；
-- daemon 推送的 child Session 只更新根行 aggregate，不形成独立 Rail 行；
+- daemon 推送的 child Session 不形成独立 Rail 行；child lifecycle 不覆盖根 status，pending Interaction 只更新根 attention；
 - 删除 tombstone 从 Engine 和 Priority 投影移除 exact Session；
 - 不新增 OpenAPI、SQLite query 或 generated client 变更。
 
@@ -637,16 +639,16 @@ interface AgentConversationActivityViewModel {
 
 ## 18. 风险与缓解
 
-| 风险                         | 后果                          | 缓解                                                             |
-| ---------------------------- | ----------------------------- | ---------------------------------------------------------------- |
-| 只读取当前 DOM 行            | 漏掉已在 Engine、但未挂载的行 | projection 输入取 Engine 内存态，不读取 DOM                      |
-| 用户误以为覆盖全部历史       | 未加载旧会话不会出现          | 产品定位为当前工作队列；不开启历史查询，不展示 coverage 承诺     |
-| daemon 推送重复或乱序        | 重复行或状态回退              | Engine canonical reconciliation、exact ID 去重、activation fence |
-| 子 Session 与根 Session 并列 | 左栏重复、状态难理解          | Rail 过滤 child；根行接收 aggregate activity projection          |
-| 实时更新造成列表移动         | 用户需重新定位                | 复刻 Codex activation snapshot；既有成员不全量重排               |
-| 批量执行 Tutti 删除          | 产生不可恢复的高风险批量操作  | Archive chats 虽映射为删除，首期仍不提供 archive/delete 批量入口 |
-| 多 surface 状态互相影响      | 一个窗口切换另一个窗口        | activation 保持 surface-local                                    |
-| 共享包升级影响外部 host      | 意外出现入口或触发查询        | optional capability 默认关闭；disabled-path consumer tests       |
+| 风险                         | 后果                          | 缓解                                                                               |
+| ---------------------------- | ----------------------------- | ---------------------------------------------------------------------------------- |
+| 只读取当前 DOM 行            | 漏掉已在 Engine、但未挂载的行 | projection 输入取 Engine 内存态，不读取 DOM                                        |
+| 用户误以为覆盖全部历史       | 未加载旧会话不会出现          | 产品定位为当前工作队列；不开启历史查询，不展示 coverage 承诺                       |
+| daemon 推送重复或乱序        | 重复行或状态回退              | Engine canonical reconciliation、exact ID 去重、activation fence                   |
+| 子 Session 与根 Session 并列 | 左栏重复、状态难理解          | Rail 过滤 child；根 status 只读根 lifecycle，根 attention 汇总 pending Interaction |
+| 实时更新造成列表移动         | 用户需重新定位                | 复刻 Codex activation snapshot；既有成员不全量重排                                 |
+| 批量执行 Tutti 删除          | 产生不可恢复的高风险批量操作  | Archive chats 虽映射为删除，首期仍不提供 archive/delete 批量入口                   |
+| 多 surface 状态互相影响      | 一个窗口切换另一个窗口        | activation 保持 surface-local                                                      |
+| 共享包升级影响外部 host      | 意外出现入口或触发查询        | optional capability 默认关闭；disabled-path consumer tests                         |
 
 ## 19. 已确认的范围边界
 
@@ -687,4 +689,4 @@ interface AgentConversationActivityViewModel {
 - Message Center 已存在 priority/status/agent/time 分组，可复用其产品语义，但不能成为 Rail 的第二数据源；
 - attention/read state 已在 Engine 中按用户与 workspace 分区，并由 Desktop local storage 持久化 completion keys。
 
-这些基础能力使首期重点集中在“内存态 Codex 同构 Activity View presentation + daemon 实时入队 + 子 Session 根行聚合”，无需新增 Activity View API、数据库查询或 Session lifecycle。
+这些基础能力使首期重点集中在“内存态 Codex 同构 Activity View presentation + daemon 实时入队 + 根 lifecycle/会话树 attention 分离投影”，无需新增 Activity View API、数据库查询或 Session lifecycle。

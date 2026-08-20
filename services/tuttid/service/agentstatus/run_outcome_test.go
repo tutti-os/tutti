@@ -1,10 +1,10 @@
 package agentstatus
 
 import (
-	"context"
 	"testing"
 	"time"
 
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -21,6 +21,10 @@ func TestRunOutcomeStoreIsProviderScoped(t *testing.T) {
 	if store.AuthInvalidated(agentprovider.ClaudeCode) {
 		t.Fatal("a success should clear the invalidation")
 	}
+	evidence, _, ok := store.AuthEvidence(agentprovider.ClaudeCode)
+	if !ok || evidence.Kind != providerstatus.AuthEvidenceRemoteSuccess {
+		t.Fatalf("success evidence = %#v, %v", evidence, ok)
+	}
 }
 
 func TestRunOutcomeStoreNilSafe(t *testing.T) {
@@ -31,7 +35,7 @@ func TestRunOutcomeStoreNilSafe(t *testing.T) {
 	}
 }
 
-func TestResolveAuthOverriddenByRuntimeAuthFailure(t *testing.T) {
+func TestReduceProviderAuthUsesRuntimeAuthFailure(t *testing.T) {
 	store := NewRunOutcomeStore()
 	svc := Service{
 		RunOutcomes: store,
@@ -40,17 +44,17 @@ func TestResolveAuthOverriddenByRuntimeAuthFailure(t *testing.T) {
 	// No marker paths / command → baseline is unknown.
 	spec := ProviderSpec{Provider: agentprovider.ClaudeCode}
 
-	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthUnknown {
+	if got := svc.reduceProviderAuth(spec, AuthInfo{Status: AuthUnknown}, false, providerstatus.AuthEvidenceAuthorityLocal); got.Status != AuthUnknown {
 		t.Fatalf("baseline auth = %q, want unknown", got.Status)
 	}
 
 	store.RecordAuthFailure(agentprovider.ClaudeCode)
-	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthRequired {
+	if got := svc.reduceProviderAuth(spec, AuthInfo{Status: AuthUnknown}, false, providerstatus.AuthEvidenceAuthorityLocal); got.Status != AuthRequired {
 		t.Fatalf("after runtime auth failure = %q, want required (override)", got.Status)
 	}
 
 	store.ClearAuthInvalidated(agentprovider.ClaudeCode)
-	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthUnknown {
+	if got := svc.reduceProviderAuth(spec, AuthInfo{Status: AuthUnknown}, false, providerstatus.AuthEvidenceAuthorityLocal); got.Status != AuthUnknown {
 		t.Fatalf("after re-auth clear = %q, want unknown", got.Status)
 	}
 }
@@ -58,7 +62,7 @@ func TestResolveAuthOverriddenByRuntimeAuthFailure(t *testing.T) {
 // A re-login rewrites the credential file after the failure was recorded; the
 // probe must self-heal (clear the stale flag and detect normally) instead of
 // sticking on "needs login" until the next successful run.
-func TestResolveAuthSelfHealsAfterCredentialRefresh(t *testing.T) {
+func TestReduceProviderAuthSelfHealsAfterCredentialRefresh(t *testing.T) {
 	store := NewRunOutcomeStore()
 	store.RecordAuthFailure(agentprovider.Codex)
 	refreshed := time.Now().Add(time.Hour) // marker newer than the recorded failure
@@ -70,8 +74,8 @@ func TestResolveAuthSelfHealsAfterCredentialRefresh(t *testing.T) {
 	}
 	spec := ProviderSpec{Provider: agentprovider.Codex, AuthMarkerPaths: []string{"~/.codex/auth.json"}}
 
-	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthAuthenticated {
-		t.Fatalf("after re-login refresh = %q, want authenticated (self-healed)", got.Status)
+	if got := svc.reduceProviderAuth(spec, AuthInfo{Status: AuthAuthenticated}, false, providerstatus.AuthEvidenceAuthorityLocal); got.Status != AuthConfigured {
+		t.Fatalf("after re-login refresh = %q, want configured (self-healed)", got.Status)
 	}
 	if store.AuthInvalidated(agentprovider.Codex) {
 		t.Fatal("the stale flag should be cleared once credentials are refreshed")
@@ -80,7 +84,7 @@ func TestResolveAuthSelfHealsAfterCredentialRefresh(t *testing.T) {
 
 // A failure with no newer credential file (token genuinely still broken) must
 // keep reporting "needs login".
-func TestResolveAuthKeepsFailureWhenCredentialStale(t *testing.T) {
+func TestReduceProviderAuthKeepsFailureWhenCredentialStale(t *testing.T) {
 	store := NewRunOutcomeStore()
 	store.RecordAuthFailure(agentprovider.Codex)
 	stale := time.Now().Add(-time.Hour) // marker older than the recorded failure
@@ -92,7 +96,7 @@ func TestResolveAuthKeepsFailureWhenCredentialStale(t *testing.T) {
 	}
 	spec := ProviderSpec{Provider: agentprovider.Codex, AuthMarkerPaths: []string{"~/.codex/auth.json"}}
 
-	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthRequired {
+	if got := svc.reduceProviderAuth(spec, AuthInfo{Status: AuthAuthenticated}, false, providerstatus.AuthEvidenceAuthorityLocal); got.Status != AuthRequired {
 		t.Fatalf("stale credential after failure = %q, want required", got.Status)
 	}
 	if !store.AuthInvalidated(agentprovider.Codex) {
@@ -100,7 +104,7 @@ func TestResolveAuthKeepsFailureWhenCredentialStale(t *testing.T) {
 	}
 }
 
-func TestResolveAuthOverrideAppliesToCodexToo(t *testing.T) {
+func TestReduceProviderAuthOverrideAppliesToCodexToo(t *testing.T) {
 	store := NewRunOutcomeStore()
 	store.RecordAuthFailure(agentprovider.Codex)
 	svc := Service{
@@ -108,7 +112,19 @@ func TestResolveAuthOverrideAppliesToCodexToo(t *testing.T) {
 		HomeDir:     func() (string, error) { return t.TempDir(), nil },
 	}
 	spec := ProviderSpec{Provider: agentprovider.Codex}
-	if got := svc.resolveAuth(context.Background(), spec, true, ""); got.Status != AuthRequired {
+	if got := svc.reduceProviderAuth(spec, AuthInfo{Status: AuthUnknown}, false, providerstatus.AuthEvidenceAuthorityLocal); got.Status != AuthRequired {
 		t.Fatalf("codex auth after failure = %q, want required", got.Status)
+	}
+}
+
+func TestReduceProviderAuthPromotesConfiguredCredentialsAfterRuntimeSuccess(t *testing.T) {
+	store := NewRunOutcomeStore()
+	store.RecordSuccess(agentprovider.ClaudeCode)
+	svc := Service{RunOutcomes: store}
+	spec := ProviderSpec{Provider: agentprovider.ClaudeCode}
+
+	got := svc.reduceProviderAuth(spec, AuthInfo{Status: AuthAuthenticated, AuthMethod: "oauth"}, false, providerstatus.AuthEvidenceAuthorityLocal)
+	if got.Status != AuthAuthenticated || got.AuthMethod != "oauth" {
+		t.Fatalf("auth after runtime success = %#v, want authenticated oauth", got)
 	}
 }

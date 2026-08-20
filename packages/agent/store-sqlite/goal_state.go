@@ -14,7 +14,7 @@ import (
 const sessionGoalStateSelectSQL = `
 SELECT workspace_id, agent_session_id, desired_json, observed_json, revision,
        tombstoned, sync_status, COALESCE(pending_operation_id, ''),
-       last_evidence_json, last_error, COALESCE(observed_at_unix_ms, 0),
+       execution_pending, last_evidence_json, last_error, COALESCE(observed_at_unix_ms, 0),
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_session_goals`
 
@@ -140,15 +140,16 @@ WHERE workspace_id = ? AND operation_id = ? AND status IN (?, ?)
 	if _, err := tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_session_goals (
   workspace_id, agent_session_id, desired_json, observed_json, revision,
-  tombstoned, sync_status, pending_operation_id, last_evidence_json,
+  tombstoned, sync_status, pending_operation_id, execution_pending, last_evidence_json,
   last_error, observed_at_unix_ms, created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '', ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, '', ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id) DO UPDATE SET
   desired_json = excluded.desired_json,
   revision = excluded.revision,
   tombstoned = excluded.tombstoned,
   sync_status = excluded.sync_status,
   pending_operation_id = excluded.pending_operation_id,
+  execution_pending = 0,
   last_error = '',
   updated_at_unix_ms = excluded.updated_at_unix_ms
 `, input.WorkspaceID, input.AgentSessionID, desiredJSON, nullableJSONMap(state.Observed), revision,
@@ -167,7 +168,7 @@ INSERT INTO workspace_agent_goal_control_operations (
 		input.OccurredAtUnixMS, input.OccurredAtUnixMS, input.ClientSubmitID); err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, fmt.Errorf("insert goal control operation: %w", err)
 	}
-	auditMessage, accepted, err := s.upsertAgentMessageTx(
+	auditMessage, accepted, _, err := s.upsertAgentMessageTx(
 		ctx,
 		tx,
 		input.WorkspaceID,
@@ -332,9 +333,10 @@ WHERE workspace_id = ? AND operation_id = ? AND status = ?
 	}
 	if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_goals
-SET sync_status = ?, last_evidence_json = ?, updated_at_unix_ms = ?
+SET sync_status = ?, execution_pending = ?, last_evidence_json = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND pending_operation_id = ?
-`, GoalSyncStatusApplying, evidenceJSON, input.OccurredAtUnixMS, input.WorkspaceID, op.AgentSessionID, input.OperationID); err != nil {
+`, GoalSyncStatusApplying, boolInt(input.ExecutionPending), evidenceJSON, input.OccurredAtUnixMS,
+		input.WorkspaceID, op.AgentSessionID, input.OperationID); err != nil {
 		return GoalControlOperation{}, SessionGoalState{}, false, err
 	}
 	op, _, err = getGoalControlOperationTx(ctx, tx, input.WorkspaceID, input.OperationID)
@@ -577,10 +579,11 @@ func (s *Store) ReconcileSessionGoalObservation(ctx context.Context, input GoalO
 		result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_goals
 SET observed_json = ?, sync_status = ?, pending_operation_id = ?, last_evidence_json = ?,
-    last_error = ?, observed_at_unix_ms = ?, updated_at_unix_ms = ?
+    execution_pending = ?, last_error = ?, observed_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND revision = ?
   AND COALESCE(pending_operation_id, '') = ? AND COALESCE(observed_at_unix_ms, 0) = ?
-`, nullableJSONMap(input.Observed), syncStatus, pendingValue, marshalJSONMapOrEmpty(input.Evidence), lastError,
+`, nullableJSONMap(input.Observed), syncStatus, pendingValue, marshalJSONMapOrEmpty(input.Evidence),
+			boolInt(goalExecutionPendingAfterObservation(state.ExecutionPending, input.Observed, syncStatus)), lastError,
 			input.OccurredAtUnixMS, input.OccurredAtUnixMS, input.WorkspaceID, input.AgentSessionID,
 			state.Revision, expectedPending, state.ObservedAtUnixMS)
 		if err != nil {
@@ -733,12 +736,13 @@ INSERT INTO workspace_agent_session_goals (
 	_, err = tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_goals
 SET observed_json = ?, sync_status = ?, last_evidence_json = ?, last_error = ?,
-    observed_at_unix_ms = ?, updated_at_unix_ms = ?
+    execution_pending = ?, observed_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND revision = ?
   AND COALESCE(pending_operation_id, '') = ? AND COALESCE(observed_at_unix_ms, 0) = ?
 `, nullableJSONMap(observed), syncStatus,
 		`{"source":"runtime_session_report","confidence":"provider_observed"}`,
-		lastError, occurredAt, occurredAt, workspaceID, agentSessionID, state.Revision,
+		lastError, boolInt(goalExecutionPendingAfterObservation(state.ExecutionPending, observed, syncStatus)),
+		occurredAt, occurredAt, workspaceID, agentSessionID, state.Revision,
 		state.PendingOperationID, state.ObservedAtUnixMS)
 	return err
 }
@@ -771,10 +775,10 @@ func scanSessionGoalState(row *sql.Row) (SessionGoalState, bool, error) {
 	var state SessionGoalState
 	var desiredJSON, observedJSON sql.NullString
 	var evidenceJSON string
-	var tombstoned int
+	var tombstoned, executionPending int
 	if err := row.Scan(&state.WorkspaceID, &state.AgentSessionID, &desiredJSON, &observedJSON,
 		&state.Revision, &tombstoned, &state.SyncStatus, &state.PendingOperationID,
-		&evidenceJSON, &state.LastError, &state.ObservedAtUnixMS,
+		&executionPending, &evidenceJSON, &state.LastError, &state.ObservedAtUnixMS,
 		&state.CreatedAtUnixMS, &state.UpdatedAtUnixMS); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return SessionGoalState{}, false, nil
@@ -782,6 +786,7 @@ func scanSessionGoalState(row *sql.Row) (SessionGoalState, bool, error) {
 		return SessionGoalState{}, false, err
 	}
 	state.Tombstoned = tombstoned != 0
+	state.ExecutionPending = executionPending != 0
 	state.Desired = unmarshalNullableJSONMap(desiredJSON)
 	state.Observed = unmarshalNullableJSONMap(observedJSON)
 	state.LastEvidence, _ = unmarshalJSONMap(evidenceJSON)

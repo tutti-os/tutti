@@ -3,7 +3,6 @@ import type { UiLanguage } from "../../../contexts/settings/domain/agentSettings
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import type { AgentGUIConversationRailLabels } from "./agentGUIConversationRailLabels";
-import type { AgentGUIProjectActionDialog } from "./agentGUIConversationRailTypes";
 import { AgentGUIConversationRailItem } from "./AgentGUIConversationRailItem";
 import { AgentGUIConversationRailSectionHeader } from "./AgentGUIConversationRailSectionHeader";
 import { insertConversationRailSectionOverlay } from "../model/agentGuiConversationRail";
@@ -44,7 +43,11 @@ interface AgentGUIConversationRailSectionProps {
   onToggleProjectSectionCollapsed: (sectionId: string) => void;
   onVisibleItemLimitChange: (sectionId: string, limit: number) => void;
   onRequestSectionBatchDeletion: (section: ConversationSection) => void;
-  setPendingProjectAction: (action: AgentGUIProjectActionDialog | null) => void;
+  onRequestProjectRemoval: (
+    section: ConversationSection,
+    path: string,
+    label: string
+  ) => void;
   onSelectConversation: (agentSessionId: string) => void;
   onLoadMoreConversations: (section: ConversationSection) => void;
   onToggleConversationPinned: (agentSessionId: string, pinned: boolean) => void;
@@ -101,7 +104,7 @@ export const AgentGUIConversationRailSection = memo(
     onSelectConversation,
     onLoadMoreConversations,
     onRequestSectionBatchDeletion,
-    setPendingProjectAction,
+    onRequestProjectRemoval,
     onToggleConversationPinned,
     onToggleProjectPinned,
     onMarkConversationUnread,
@@ -121,7 +124,7 @@ export const AgentGUIConversationRailSection = memo(
     const projectId = section.project?.id?.trim() ?? "";
     const hasProjectPath = Boolean(projectPath);
     const pageableItems = section.items.filter(
-      (item) => item.projectionSource !== "pending_activation"
+      (item) => item.projectionSource === undefined
     );
     const visibleItemCount = isSectionCollapsed
       ? 0
@@ -129,16 +132,35 @@ export const AgentGUIConversationRailSection = memo(
     const baseItems = isSectionCollapsed
       ? []
       : section.items
-          .filter((item) => item.projectionSource !== "pending_activation")
+          .filter((item) => item.projectionSource === undefined)
           .slice(0, visibleItemCount);
     let visibleItems = isSectionCollapsed
       ? []
       : [
           ...section.items.filter(
-            (item) => item.projectionSource === "pending_activation"
+            (item) => item.projectionSource !== undefined
           ),
           ...baseItems
         ];
+    // Pagination must never make live work disappear. Pending activations are
+    // already projected above; keep every durable working conversation visible
+    // as an overlay as well, even when it falls outside the current history
+    // page or is not the selected conversation.
+    for (const conversation of section.items) {
+      if (
+        !isSectionCollapsed &&
+        conversation.projectionSource !== "pending_activation" &&
+        (conversation.status === "working" ||
+          conversation.status === "waiting") &&
+        !visibleItems.some((item) => item.id === conversation.id)
+      ) {
+        visibleItems = insertConversationRailSectionOverlay(
+          section.kind,
+          visibleItems,
+          conversation
+        );
+      }
+    }
     const activeId = activeConversation?.id.trim() ?? "";
     if (
       activeConversation &&
@@ -153,7 +175,9 @@ export const AgentGUIConversationRailSection = memo(
       );
     }
     const visiblePageableIds = new Set(
-      pageableItems.slice(0, visibleItemCount).map((item) => item.id)
+      visibleItems
+        .filter((item) => item.projectionSource !== "pending_activation")
+        .map((item) => item.id)
     );
     const visibleCountTowardTotal =
       visiblePageableIds.size +
@@ -275,11 +299,11 @@ export const AgentGUIConversationRailSection = memo(
     });
     const handleRemoveProject = useStableEventCallback(() => {
       if (isProjectActionLocked()) return;
-      setPendingProjectAction({
-        kind: "remove",
-        label: projectLabel || projectPath,
-        path: projectPath
-      });
+      onRequestProjectRemoval(
+        section,
+        projectPath,
+        projectLabel || projectPath
+      );
     });
     return (
       <section

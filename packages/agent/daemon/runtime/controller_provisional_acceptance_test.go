@@ -3,14 +3,110 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 
+	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 type rejectingProviderAcceptanceAdapter struct {
 	recordingStartAdapter
 	failure error
+}
+
+// providerlessTerminalAcceptanceAdapter models a provider invocation that
+// reaches an authoritative canonical terminal before a provider Turn identity
+// can be bound. The dispatch result remains providerless; the exact terminal
+// event is the lifecycle authority.
+type providerlessTerminalAcceptanceAdapter struct {
+	recordingStartAdapter
+	failure error
+}
+
+func (*providerlessTerminalAcceptanceAdapter) ForkCapabilities(
+	context.Context,
+	Session,
+) (SessionForkCapabilities, error) {
+	return SessionForkCapabilities{ThroughTurn: true}, nil
+}
+
+func (*providerlessTerminalAcceptanceAdapter) Fork(
+	context.Context,
+	SessionForkInput,
+) (SessionForkResult, error) {
+	return SessionForkResult{}, nil
+}
+
+func (a *providerlessTerminalAcceptanceAdapter) ExecWithProviderAcceptance(
+	_ context.Context,
+	session Session,
+	_ []PromptContentBlock,
+	_ string,
+	turnID string,
+	_ EventSink,
+	_ CommandSnapshotSink,
+	_ ProviderDispatchSink,
+	_ ProviderAcceptanceBarrier,
+) ([]activityshared.Event, error) {
+	return []activityshared.Event{newTurnActivityEvent(
+		session,
+		EventTurnFailed,
+		turnID,
+		SessionStatusFailed,
+		"",
+		"",
+		map[string]any{
+			"error":      a.failure.Error(),
+			"stopReason": "failed_before_provider_acceptance",
+		},
+	)}, a.failure
+}
+
+func (*providerlessTerminalAcceptanceAdapter) UsesRootProviderTurnLifecycle() bool {
+	return true
+}
+
+type retryingTerminalReporter struct {
+	recordingReporter
+	attemptMu                sync.Mutex
+	terminalAttempts         int
+	commitBeforeFirstFailure bool
+}
+
+func (r *retryingTerminalReporter) Report(
+	ctx context.Context,
+	report agentsessionstore.ReportActivityInput,
+) error {
+	terminal := false
+	for _, patch := range report.StatePatches {
+		if patch.Turn != nil && patch.Turn.Phase == "settled" {
+			terminal = true
+			break
+		}
+	}
+	if !terminal {
+		return r.recordingReporter.Report(ctx, report)
+	}
+
+	r.attemptMu.Lock()
+	r.terminalAttempts++
+	attempt := r.terminalAttempts
+	commitBeforeFailure := attempt == 1 && r.commitBeforeFirstFailure
+	r.attemptMu.Unlock()
+	if commitBeforeFailure {
+		_ = r.recordingReporter.Report(ctx, report)
+	}
+	if attempt == 1 {
+		return errors.New("terminal report unavailable")
+	}
+	return r.recordingReporter.Report(ctx, report)
+}
+
+func (r *retryingTerminalReporter) attempts() int {
+	r.attemptMu.Lock()
+	defer r.attemptMu.Unlock()
+	return r.terminalAttempts
 }
 
 func (*rejectingProviderAcceptanceAdapter) ForkCapabilities(
@@ -111,6 +207,146 @@ func TestControllerProvisionalSessionPublishesPromptAndSettlesRejectedFirstTurn(
 	}
 	if !foundSubmitted || !foundFailed {
 		t.Fatalf("reports = %#v, want visible submitted and failed Turn reports", reports)
+	}
+}
+
+func TestControllerProviderlessCanonicalTerminalSettlesRootTurn(t *testing.T) {
+	t.Parallel()
+
+	providerFailure := errors.New("provider failed before durable acceptance")
+	adapter := &providerlessTerminalAcceptanceAdapter{
+		recordingStartAdapter: recordingStartAdapter{provider: ProviderClaudeCode},
+		failure:               providerFailure,
+	}
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
+	if _, err := controller.Start(t.Context(), StartInput{
+		RoomID: "room-1", AgentSessionID: "session-providerless-terminal",
+		Provider: ProviderClaudeCode, CWD: "/workspace", Provisional: true,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := controller.Exec(t.Context(), ExecInput{
+		RoomID: "room-1", AgentSessionID: "session-providerless-terminal",
+		TurnID: "turn-providerless-terminal", Content: textPrompt("hello"),
+		RequireProviderAcceptance: true,
+	})
+	if err != nil {
+		t.Fatalf("Exec() error = %v, want canonical submit retained", err)
+	}
+	if result.ProviderDispatch == nil ||
+		result.ProviderDispatch.Disposition != DispatchDispositionAppliedWithoutProviderTurn ||
+		result.ProviderDispatch.Acceptance != nil {
+		t.Fatalf(
+			"provider dispatch = %#v, want applied_without_provider_turn",
+			result.ProviderDispatch,
+		)
+	}
+	waitForCondition(t, func() bool {
+		return !controller.HasActiveTurn("room-1", "session-providerless-terminal")
+	})
+	sessions := controller.Sessions("room-1")
+	if len(sessions) != 1 || sessions[0].AgentSessionID != "session-providerless-terminal" {
+		t.Fatalf("visible sessions = %#v, want providerless-terminal session retained", sessions)
+	}
+	if sessions[0].Status != SessionStatusFailed {
+		t.Fatalf("providerless-terminal session status = %q, want failed", sessions[0].Status)
+	}
+
+	reports := reporter.waitForCalls(t, 2)
+	var foundSubmitted, foundFailed bool
+	for _, report := range reports {
+		for _, patch := range report.report.StatePatches {
+			if patch.Turn == nil || patch.Turn.TurnID != "turn-providerless-terminal" {
+				continue
+			}
+			if patch.Turn.Phase == "submitted" && patch.RuntimeContext["visible"] == true {
+				foundSubmitted = true
+			}
+			if patch.Turn.Phase == "settled" && patch.Turn.Outcome == "failed" {
+				foundFailed = true
+			}
+		}
+	}
+	if !foundSubmitted || !foundFailed {
+		t.Fatalf("reports = %#v, want visible submitted and failed Turn reports", reports)
+	}
+}
+
+func TestControllerProviderlessCanonicalTerminalCommitRetryConverges(t *testing.T) {
+	t.Parallel()
+
+	for _, test := range []struct {
+		name                     string
+		commitBeforeFirstFailure bool
+	}{
+		{name: "write failure"},
+		{name: "commit success acknowledgment lost", commitBeforeFirstFailure: true},
+	} {
+		test := test
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+
+			adapter := &providerlessTerminalAcceptanceAdapter{
+				recordingStartAdapter: recordingStartAdapter{provider: ProviderClaudeCode},
+				failure: errors.New(
+					"provider failed before durable acceptance",
+				),
+			}
+			reporter := &retryingTerminalReporter{
+				commitBeforeFirstFailure: test.commitBeforeFirstFailure,
+			}
+			controller := NewController([]Adapter{adapter}, reporter)
+			sessionID := "session-providerless-terminal-commit-retry"
+			turnID := "turn-providerless-terminal-commit-retry"
+			if _, err := controller.Start(t.Context(), StartInput{
+				RoomID: "room-1", AgentSessionID: sessionID,
+				Provider: ProviderClaudeCode, CWD: "/workspace", Provisional: true,
+			}); err != nil {
+				t.Fatal(err)
+			}
+
+			result, err := controller.Exec(t.Context(), ExecInput{
+				RoomID: "room-1", AgentSessionID: sessionID,
+				TurnID: turnID, Content: textPrompt("hello"),
+				RequireProviderAcceptance: true,
+			})
+			if err != nil {
+				t.Fatalf("Exec() error = %v, want canonical submit retained", err)
+			}
+			if result.ProviderDispatch == nil ||
+				result.ProviderDispatch.Disposition != DispatchDispositionAppliedWithoutProviderTurn {
+				t.Fatalf(
+					"provider dispatch = %#v, want applied_without_provider_turn",
+					result.ProviderDispatch,
+				)
+			}
+			waitForCondition(t, func() bool {
+				return reporter.attempts() >= 1
+			})
+			if !controller.HasActiveTurn("room-1", sessionID) {
+				t.Fatal("active-turn fence released before terminal retry committed")
+			}
+			waitForCondition(t, func() bool {
+				return reporter.attempts() >= 2 &&
+					!controller.HasActiveTurn("room-1", sessionID)
+			})
+
+			reports := reporter.snapshot()
+			foundFailed := false
+			for _, call := range reports {
+				for _, patch := range call.report.StatePatches {
+					if patch.Turn != nil && patch.Turn.TurnID == turnID &&
+						patch.Turn.Phase == "settled" && patch.Turn.Outcome == "failed" {
+						foundFailed = true
+					}
+				}
+			}
+			if !foundFailed {
+				t.Fatalf("reports = %#v, want durable failed Turn", reports)
+			}
+		})
 	}
 }
 
@@ -229,6 +465,13 @@ func TestControllerCancelBeforeProviderAcceptanceDoesNotLeaveDeliveryUnknown(t *
 	if outcome.result.TurnID != "turn-cancel-before-accept" {
 		t.Fatalf("turn id = %q, want turn-cancel-before-accept", outcome.result.TurnID)
 	}
+	assertRootTurnFenceAwaitsCanonicalSettlement(
+		t,
+		controller,
+		"session-cancel-before-accept",
+		"turn-cancel-before-accept",
+		"canceled",
+	)
 }
 
 // preAcceptanceOutcomeUnknownAdapter reports outcome_unknown then returns
@@ -313,6 +556,13 @@ func TestControllerPreAcceptanceOutcomeUnknownDoesNotLeaveDeliveryUnknown(t *tes
 			result.ProviderDispatch,
 		)
 	}
+	assertRootTurnFenceAwaitsCanonicalSettlement(
+		t,
+		controller,
+		"session-outcome-unknown",
+		"turn-outcome-unknown",
+		"failed",
+	)
 }
 
 func TestControllerCallerCancelDuringAcceptanceDoesNotLeaveDeliveryUnknown(t *testing.T) {
@@ -373,4 +623,37 @@ func TestControllerCallerCancelDuringAcceptanceDoesNotLeaveDeliveryUnknown(t *te
 			outcome.result.ProviderDispatch,
 		)
 	}
+	if !controller.HasActiveTurn("room-1", "session-caller-cancel") {
+		t.Fatal("caller cancellation released root Turn before canonical settlement")
+	}
+	controller.cancelActiveTurn("room-1", "session-caller-cancel")
+	assertRootTurnFenceAwaitsCanonicalSettlement(
+		t,
+		controller,
+		"session-caller-cancel",
+		"turn-caller-cancel",
+		"canceled",
+	)
+}
+
+func assertRootTurnFenceAwaitsCanonicalSettlement(
+	t *testing.T,
+	controller *Controller,
+	sessionID string,
+	turnID string,
+	outcome string,
+) {
+	t.Helper()
+	if !controller.HasActiveTurn("room-1", sessionID) {
+		t.Fatalf("root Turn %q released before canonical settlement", turnID)
+	}
+	controller.ReconcileRootTurnSettlement(RootTurnSettlement{
+		RoomID:         "room-1",
+		AgentSessionID: sessionID,
+		TurnID:         turnID,
+		Outcome:        outcome,
+	})
+	waitForCondition(t, func() bool {
+		return !controller.HasActiveTurn("room-1", sessionID)
+	})
 }

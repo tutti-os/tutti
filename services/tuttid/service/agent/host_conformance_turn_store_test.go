@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"fmt"
 	"sort"
 
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
@@ -11,6 +12,29 @@ type legacyHostConformanceTurnStore struct {
 	sessions     map[string]agentactivitybiz.Session
 	turns        map[string]agentactivitybiz.Turn
 	interactions map[string][]agentactivitybiz.Interaction
+}
+
+func (s *legacyHostConformanceTurnStore) bindTurnIdentityAnchor(
+	workspaceID string,
+	sessionID string,
+	turnID string,
+	anchorTurnID string,
+) error {
+	turnKey := sessionID + ":" + turnID
+	turn, turnFound := s.turns[turnKey]
+	anchor, anchorFound := s.turns[sessionID+":"+anchorTurnID]
+	if !turnFound || !anchorFound ||
+		turn.WorkspaceID != workspaceID || anchor.WorkspaceID != workspaceID ||
+		turn.AgentSessionID != sessionID || anchor.AgentSessionID != sessionID {
+		return fmt.Errorf("bind turn identity anchor: turn or anchor not found")
+	}
+	if anchor.IdentityAnchorTurnID != "" ||
+		(turn.IdentityAnchorTurnID != "" && turn.IdentityAnchorTurnID != anchorTurnID) {
+		return agentactivitybiz.ErrTurnIdentityAnchorConflict
+	}
+	turn.IdentityAnchorTurnID = anchorTurnID
+	s.turns[turnKey] = turn
+	return nil
 }
 
 func (s *legacyHostConformanceTurnStore) GetLatestTurn(_ context.Context, _ string, sessionID string) (agentactivitybiz.Turn, bool, error) {

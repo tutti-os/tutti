@@ -51,6 +51,7 @@ type scriptedAppServerConnection struct {
 	closed               chan struct{}
 	closeOnce            sync.Once
 	closeCount           int
+	closeFailures        int
 	server               *fakeCodexAppServer
 	providerProgressWait func(context.Context, time.Duration) error
 }
@@ -130,6 +131,14 @@ func (c *scriptedAppServerConnection) notify(method string, params map[string]an
 	c.sendJSON(map[string]any{"method": method, "params": params})
 }
 
+func (c *scriptedAppServerConnection) sendStderr(data []byte) {
+	select {
+	case <-c.closed:
+		return
+	case c.recv <- ProcessFrame{Stderr: append([]byte(nil), data...)}:
+	}
+}
+
 func (c *scriptedAppServerConnection) Recv() (ProcessFrame, error) {
 	return c.recvWithWaitSignal(nil)
 }
@@ -155,6 +164,11 @@ func (c *scriptedAppServerConnection) recvWithWaitSignal(waitEntered chan<- stru
 func (c *scriptedAppServerConnection) Close() error {
 	c.mu.Lock()
 	c.closeCount++
+	if c.closeFailures > 0 {
+		c.closeFailures--
+		c.mu.Unlock()
+		return errors.New("injected app-server close failure")
+	}
 	c.mu.Unlock()
 	c.closeOnce.Do(func() { close(c.closed) })
 	return nil

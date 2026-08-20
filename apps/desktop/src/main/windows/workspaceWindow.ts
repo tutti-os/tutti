@@ -13,7 +13,10 @@ import { resolveDesktopWindowBackgroundColor } from "../desktopTheme";
 import { resolveDesktopPerformanceHeadless } from "../defaults.ts";
 import { getDesktopLogger } from "../logging";
 import type { DesktopLocale } from "../../shared/i18n";
-import type { DesktopDockPlacement } from "../../shared/preferences/index.ts";
+import type {
+  DesktopDockPlacement,
+  DesktopWorkspaceUiMode
+} from "../../shared/preferences/index.ts";
 import type { DesktopThemeState } from "../../shared/theme/index.ts";
 import {
   applyDesktopWindowIntent,
@@ -25,6 +28,7 @@ import {
   desktopIpcChannels,
   type DesktopHostWindowCloseRequestPayload
 } from "../../shared/contracts/ipc";
+import { randomUUID } from "node:crypto";
 import { installWorkspaceWindowDevelopmentReloadShortcut } from "./workspaceWindowReload.ts";
 import { resolvePackagedWorkspaceRendererIndexPath } from "./workspaceWindowPaths.ts";
 import { createPrimaryWindowAnalyticsClaim } from "./primaryWindowAnalyticsClaim.ts";
@@ -35,6 +39,7 @@ import {
 } from "./standaloneAgentWindowBounds.ts";
 import { WorkspaceWindowRegistry } from "./workspaceWindowRegistry.ts";
 import { resolveWorkspaceWindowChromeOptions } from "./workspaceWindowChrome.ts";
+import { supportsWorkspaceWindowCloseGuard } from "./workspaceWindowCloseGuard.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
 
@@ -54,6 +59,11 @@ export interface CreateWorkspaceWindowOptions {
 }
 
 const workspaceWindows = new WorkspaceWindowRegistry<BrowserWindow>();
+const workspaceWindowCloseGuardEnabled = new WeakSet<BrowserWindow>();
+const pendingWorkspaceWindowCloseRequests = new WeakMap<
+  BrowserWindow,
+  string
+>();
 // DAU/PV belongs to the first workspace renderer for the lifetime of this main
 // process. Do not derive this from current registry membership: closing the
 // owner must not let a later window report another process-level open/pageview.
@@ -239,7 +249,29 @@ export function createWorkspaceWindow(
     kind: windowKind,
     workspaceID: options.workspaceID
   });
+  workspaceWindow.on("close", (event) => {
+    if (
+      !supportsWorkspaceWindowCloseGuard(process.platform) ||
+      !workspaceWindowCloseGuardEnabled.has(workspaceWindow)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    if (pendingWorkspaceWindowCloseRequests.has(workspaceWindow)) {
+      return;
+    }
+
+    const requestId = randomUUID();
+    pendingWorkspaceWindowCloseRequests.set(workspaceWindow, requestId);
+    sendWorkspaceWindowCloseRequest(workspaceWindow, {
+      reason: "native-window-close",
+      requestId
+    });
+  });
   workspaceWindow.once("closed", () => {
+    workspaceWindowCloseGuardEnabled.delete(workspaceWindow);
+    pendingWorkspaceWindowCloseRequests.delete(workspaceWindow);
     workspaceWindows.unregister(workspaceWindow);
   });
 
@@ -309,6 +341,35 @@ export function createWorkspaceWindow(
   return workspaceWindow;
 }
 
+export function setWorkspaceWindowCloseGuardEnabled(
+  workspaceWindow: BrowserWindow,
+  enabled: boolean
+): void {
+  if (enabled) {
+    workspaceWindowCloseGuardEnabled.add(workspaceWindow);
+    return;
+  }
+
+  workspaceWindowCloseGuardEnabled.delete(workspaceWindow);
+  pendingWorkspaceWindowCloseRequests.delete(workspaceWindow);
+}
+
+export function resolveWorkspaceWindowCloseRequest(
+  workspaceWindow: BrowserWindow,
+  input: { outcome: "approved" | "blocked"; requestId: string }
+): void {
+  if (
+    pendingWorkspaceWindowCloseRequests.get(workspaceWindow) !== input.requestId
+  ) {
+    return;
+  }
+
+  pendingWorkspaceWindowCloseRequests.delete(workspaceWindow);
+  if (input.outcome === "approved" && !workspaceWindow.isDestroyed()) {
+    workspaceWindow.destroy();
+  }
+}
+
 export function getWorkspaceWindowKind(
   workspaceWindow: BrowserWindow
 ): "agent" | "workspace" | null {
@@ -344,6 +405,7 @@ export function loadAgentWindowContent(
     provider?: string | null;
     theme: DesktopThemeState;
     userProjectPath?: string | null;
+    workspaceUiMode: DesktopWorkspaceUiMode;
   }
 ): void {
   const windowIntentSearchOptions = {
@@ -352,7 +414,8 @@ export function loadAgentWindowContent(
     reportPredefinePageview:
       reportPredefinePageviewByWindow.get(agentWindow) === true,
     themeAppearance: options.theme.appearance,
-    themeSource: options.theme.source
+    themeSource: options.theme.source,
+    workspaceUiMode: options.workspaceUiMode
   };
   const intent = createAgentWindowIntent({
     agentDirectorySnapshot: options.agentDirectorySnapshot,
@@ -392,6 +455,7 @@ export function loadWorkspaceWindowContent(
   > & {
     dockPlacement: DesktopDockPlacement;
     theme: DesktopThemeState;
+    workspaceUiMode: DesktopWorkspaceUiMode;
   }
 ): void {
   const windowIntentSearchOptions = {
@@ -400,7 +464,8 @@ export function loadWorkspaceWindowContent(
     reportPredefinePageview:
       reportPredefinePageviewByWindow.get(workspaceWindow) === true,
     themeAppearance: options.theme.appearance,
-    themeSource: options.theme.source
+    themeSource: options.theme.source,
+    workspaceUiMode: options.workspaceUiMode
   };
   if (options.rendererUrl) {
     void workspaceWindow.loadURL(

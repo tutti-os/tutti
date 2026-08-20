@@ -16,9 +16,15 @@ Current examples include:
   configured signed remote releases by default. The command clears inherited
   Kimi Code package overrides so stale shell or launchd state cannot shadow the
   release used by the shipped product; set `DEV_GUI_KIMI_CODE_PACKAGE_DIR` to
-  an explicit unpacked package path only when testing a local package. The
-  script canonicalizes the path and fails before launch when the directory or
-  `tutti.agent.json` is missing
+  an explicit unpacked package path only when testing a local package. When the
+  package comes from the standard Kimi Extension repository layout, the script
+  also discovers its local account-usage Helper so an unpublished development
+  package can exercise API billing without weakening the production install
+  contract. `DEV_GUI_KIMI_CODE_ACCOUNT_USAGE_EXECUTABLE` selects an explicit
+  Helper when the layout differs. The standard layout points at the Helper's
+  self-contained `dist/cli.cjs` build. The script canonicalizes these paths and
+  fails before launch when an account-usage profile declares a Helper but its
+  executable build is missing
 - `renderer-dev-warmup.mjs` for moving cold Vite and React Compiler transforms
   ahead of the Electron launch during desktop development
 - `setup-dev.mjs` for checking local developer prerequisites such as pinned lint tooling

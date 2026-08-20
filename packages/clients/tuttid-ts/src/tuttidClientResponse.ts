@@ -1,4 +1,4 @@
-import { normalizeTuttidError } from "./errors.ts";
+import { normalizeTuttidError, TuttidTransportError } from "./errors.ts";
 
 interface ClientResponse<TResult> {
   data?: TResult;
@@ -51,6 +51,10 @@ function parseTuttidError(
 
   if (typeof error === "string" && error.trim()) {
     return new Error(error);
+  }
+
+  if (error instanceof Error) {
+    return new TuttidTransportError(fallback, error);
   }
 
   return new Error(fallback);

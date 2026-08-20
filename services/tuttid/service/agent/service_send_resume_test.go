@@ -487,8 +487,17 @@ func TestServiceResumesPersistedSessionWithPreparedRuntime(t *testing.T) {
 	if resume.Cwd != "/prepared/workdir" {
 		t.Fatalf("resume cwd = %q, want prepared cwd", resume.Cwd)
 	}
-	if len(resume.Env) != 1 || resume.Env[0] != "CODEX_HOME=/prepared/codex-home" {
-		t.Fatalf("resume env = %#v, want prepared env", resume.Env)
+	if got := envValue(resume.Env, "CODEX_HOME"); got != "/prepared/codex-home" {
+		t.Fatalf("resume CODEX_HOME = %q, env=%#v", got, resume.Env)
+	}
+	if got := envValue(resume.Env, agenthost.AgentCWDEnvironmentVariable); got != "/prepared/workdir" {
+		t.Fatalf("resume caller cwd = %q, env=%#v", got, resume.Env)
+	}
+	placement, parseErr := agenthost.ParseAgentRailPlacementEnvironment(
+		envValue(resume.Env, agenthost.AgentRailPlacementEnvironmentVariable),
+	)
+	if parseErr != nil || placement.Kind != agenthost.RailPlacementKindConversations {
+		t.Fatalf("resume rail placement = %#v error=%v, env=%#v", placement, parseErr, resume.Env)
 	}
 	if resume.Settings.Model != "gpt-5" ||
 		resume.Settings.PermissionModeID != "auto" ||

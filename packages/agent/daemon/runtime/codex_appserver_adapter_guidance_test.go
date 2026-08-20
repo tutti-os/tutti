@@ -4,11 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
 
 func TestCodexAppServerAdapterExecSteersActiveTurn(t *testing.T) {
@@ -91,27 +92,56 @@ func TestCodexAppServerAdapterGuideActiveTurnUsesTurnSteer(t *testing.T) {
 		return adapter.sessionActiveTurnID(session.AgentSessionID) == "turn-1"
 	})
 
-	events, err := adapter.GuideActiveTurn(context.Background(), session, textPrompt("guide current turn"), "", "turn-guidance", nil, nil)
+	returned, err := adapter.GuideActiveTurn(
+		context.Background(), session, textPrompt("guide current turn"), "", "turn-local-1", nil, nil,
+	)
 	if err != nil {
 		t.Fatalf("GuideActiveTurn: %v", err)
 	}
 	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
-	if asString(steer["expectedTurnId"]) != "turn-1" {
+	if asString(steer["threadId"]) != "codex-thread-1" || asString(steer["expectedTurnId"]) != "turn-1" {
 		t.Fatalf("turn/steer params = %#v", steer)
 	}
-	messages := eventsOfType(events, activityshared.EventMessageAppended)
-	if len(messages) != 1 {
-		t.Fatalf("guidance events = %#v, want one message", events)
+	if interrupts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt); len(interrupts) != 0 {
+		t.Fatalf("turn/interrupt requests = %#v, want non-interrupting guidance", interrupts)
 	}
-	if guidance, ok := messages[0].Payload.Metadata["guidance"].(bool); !ok || !guidance {
-		t.Fatalf("guidance metadata = %#v, want guidance=true", messages[0].Payload.Metadata)
+	if starts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(starts) != 1 {
+		t.Fatalf("turn/start requests = %#v, want only the original provider turn", starts)
+	}
+	messages := eventsOfType(returned, activityshared.EventMessageAppended)
+	if len(messages) != 1 || messages[0].Payload.Role != activityshared.MessageRoleUser {
+		t.Fatalf("guidance events = %#v, want one user message", returned)
+	}
+	if messages[0].Payload.Metadata["guidance"] != true || messages[0].Payload.Metadata["steered"] != true {
+		t.Fatalf("guidance metadata = %#v, want guidance+steered", messages[0].Payload.Metadata)
 	}
 
 	transport.server.completePendingTurn()
 	select {
 	case <-execDone:
 	case <-time.After(5 * time.Second):
-		t.Fatalf("Exec did not finish after guidance")
+		t.Fatalf("original Exec did not finish")
+	}
+}
+
+func TestCodexAppServerAdapterGuidancePreflightFailureIsNotDispatched(t *testing.T) {
+	adapter := NewCodexAppServerAdapter(nil)
+	dispatches := make(chan ProviderDispatchResult, 1)
+	_, err := adapter.GuideActiveTurnWithProviderDispatch(
+		t.Context(),
+		standardTestSession(ProviderCodex),
+		textPrompt("guide current turn"),
+		"",
+		"turn-guidance",
+		nil,
+		nil,
+		func(result ProviderDispatchResult) { dispatches <- result },
+	)
+	if !errors.Is(err, ErrSessionDisconnected) {
+		t.Fatalf("GuideActiveTurn error = %v, want ErrSessionDisconnected", err)
+	}
+	if dispatch := <-dispatches; dispatch.Disposition != DispatchDispositionNotDispatched {
+		t.Fatalf("guidance dispatch = %#v, want not dispatched", dispatch)
 	}
 }
 
@@ -135,26 +165,35 @@ func TestCodexAppServerAdapterGuideMaterializesRemoteImageAtProviderBoundary(t *
 	if _, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{
 		{Type: "text", Text: "use this screenshot"},
 		{Type: "image", MimeType: "image/png", URL: imageURL},
-	}, "", "turn-guidance", nil, nil); err != nil {
+	}, "", "turn-local-1", nil, nil); err != nil {
 		t.Fatalf("GuideActiveTurn: %v", err)
 	}
 
 	steer := appServerRequestParams(t, transport.conn, appServerMethodTurnSteer)
 	input, _ := steer["input"].([]any)
 	if len(input) != 2 {
-		t.Fatalf("turn/steer input = %#v, want text+image", steer["input"])
+		t.Fatalf("guidance turn/steer input = %#v, want text+image", steer["input"])
 	}
 	image := payloadObject(input[1])
 	if got := asString(image["url"]); got != "data:image/png;base64,aGk=" {
-		t.Fatalf("turn/steer image URL = %q, want inline data URL", got)
+		t.Fatalf("guidance turn/steer image URL = %q, want inline data URL", got)
+	}
+	if interrupts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnInterrupt); len(interrupts) != 0 {
+		t.Fatalf("turn/interrupt requests = %#v, want non-interrupting guidance", interrupts)
+	}
+	if starts := appServerRequestParamsList(t, transport.conn, appServerMethodTurnStart); len(starts) != 1 {
+		t.Fatalf("turn/start requests = %#v, want only the original provider turn", starts)
 	}
 
 	transport.server.completePendingTurn()
 	select {
 	case <-execDone:
 	case <-time.After(5 * time.Second):
-		t.Fatal("Exec did not finish after guidance")
+		t.Fatal("original Exec did not finish after guidance steer")
 	}
+	waitForCondition(t, func() bool {
+		return adapter.sessionActiveTurnID(session.AgentSessionID) == ""
+	})
 }
 
 func TestCodexAppServerAdapterGuidanceStartsProviderContinuationOnSameRootTurn(t *testing.T) {

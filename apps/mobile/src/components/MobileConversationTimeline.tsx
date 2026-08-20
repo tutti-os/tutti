@@ -123,7 +123,17 @@ function MobileMessageRow({
       {messageBodies.map((message) => (
         <View key={message.id} style={styles.messageContent}>
           {message.systemNotice ? (
-            <Text style={styles.noticeTitle}>{message.systemNotice.title}</Text>
+            <Text
+              style={[
+                styles.noticeTitle,
+                message.systemNotice.semanticKind ===
+                  "context-handoff-required" && styles.noticeErrorTitle
+              ]}
+            >
+              {message.systemNotice.semanticKind === "context-handoff-required"
+                ? t("contextHandoffRequired")
+                : message.systemNotice.title}
+            </Text>
           ) : null}
           {message.body.trim() ? (
             <MobileMarkdownText
@@ -138,7 +148,13 @@ function MobileMessageRow({
           {message.images?.length ? (
             <MobileConversationImages images={message.images} media={media} />
           ) : null}
-          {message.systemNotice?.detail ? (
+          {message.systemNotice?.semanticKind === "context-handoff-required" ? (
+            <Text style={styles.noticeDetail}>
+              {[t("contextHandoffRequiredDetail"), message.systemNotice.detail]
+                .filter(Boolean)
+                .join("\n")}
+            </Text>
+          ) : message.systemNotice?.detail ? (
             <Text style={styles.noticeDetail}>
               {message.systemNotice.detail}
             </Text>
@@ -587,6 +603,7 @@ function createStyles(theme: NativeTheme) {
       fontSize: 14,
       lineHeight: 21
     },
+    noticeErrorTitle: { color: theme.color.danger },
     noticeTitle: { color: theme.color.text, fontSize: 14, fontWeight: "700" },
     pressed: { opacity: 0.72 },
     processing: {

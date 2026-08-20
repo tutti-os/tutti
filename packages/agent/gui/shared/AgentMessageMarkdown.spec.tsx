@@ -7,6 +7,11 @@ import {
   waitFor
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
+import type {
+  RichTextMentionService,
+  RichTextMentionSnapshot
+} from "@tutti-os/ui-rich-text/service";
 import {
   AgentMessageMarkdown,
   resetCachedMarkdownImagesForTests,
@@ -20,6 +25,7 @@ import {
   parsedDocumentCacheStatsForTests,
   resetParsedDocumentCacheForTests
 } from "./parsedDocumentCache";
+import { resolveMarkdownWorkspaceMediaPath } from "./agentMessageMarkdownLinks";
 
 describe("AgentMessageMarkdown", () => {
   afterEach(() => {
@@ -114,6 +120,37 @@ describe("AgentMessageMarkdown", () => {
     expect(mentions[0]).toHaveTextContent("user");
     expect(mentions[1]).toHaveTextContent("auth_api.py");
     expect(screen.queryByText(/\]\(\/Users\/Sun\/Documents/)).toBeNull();
+  });
+
+  it("renders a Windows output file mention as a clickable file chip", () => {
+    const onLinkAction = vi.fn();
+    const { container } = render(
+      <AgentMessageMarkdown
+        content={
+          "Created [@output.docx](<C:/Users/local%20user/.tutti/apps/output.docx>)"
+        }
+        onLinkAction={onLinkAction}
+        workspaceLinkContext={{
+          workspaceRoot: "C:/Users/local user/project",
+          basePath: "C:/Users/local user/project",
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    const fileChip = screen.getByRole("link", { name: "output.docx" });
+    expect(fileChip).toHaveAttribute("data-agent-mention-kind", "file");
+    expect(container).not.toHaveTextContent("C:/Users/local user/.tutti");
+
+    fireEvent.click(fileChip);
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-file",
+      path: "/C:/Users/local user/.tutti/apps/output.docx",
+      directoryPath: "/C:/Users/local user/.tutti/apps",
+      workspaceRoot: "/C:/Users/local user/project",
+      source: "agent-markdown"
+    });
   });
 
   it("renders markdown links, inline code, and lists", () => {
@@ -497,9 +534,9 @@ describe("AgentMessageMarkdown", () => {
 
     expect(onLinkAction).toHaveBeenCalledWith({
       type: "open-workspace-file",
-      path: "C:/Users/local/project/docs/README.md",
-      directoryPath: "C:/Users/local/project/docs",
-      workspaceRoot: "C:/Users/local/project",
+      path: "/C:/Users/local/project/docs/README.md",
+      directoryPath: "/C:/Users/local/project/docs",
+      workspaceRoot: "/C:/Users/local/project",
       source: "agent-markdown"
     });
   });
@@ -606,6 +643,90 @@ describe("AgentMessageMarkdown", () => {
     expect(readFile).toHaveBeenCalledWith({
       path: "/workspace/可爱小狗.png"
     });
+  });
+
+  it("renders Windows markdown image paths from workspace file bytes", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tsh-windows-markdown-image")
+    });
+    Object.defineProperty(URL, "revokeObjectURL", {
+      configurable: true,
+      value: vi.fn()
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={String.raw`![generated image](X:\screenshots\browser.png)`}
+      />
+    );
+
+    expect(readFile).toHaveBeenCalledWith({
+      path: "X:/screenshots/browser.png"
+    });
+    expect(
+      await screen.findByRole("img", {
+        name: "generated image"
+      })
+    ).toHaveAttribute("src", "blob:tsh-windows-markdown-image");
+  });
+
+  it("recognizes Windows backslash media paths", () => {
+    const path = String.raw`C:\Users\local user\project\image.png`;
+    expect(resolveMarkdownWorkspaceMediaPath(path)).toBe(path);
+    expect(
+      resolveMarkdownWorkspaceMediaPath(
+        "C:/Users/local%20user/project/image.png"
+      )
+    ).toBe("C:/Users/local user/project/image.png");
+  });
+
+  it("preserves dots after Windows path separators in markdown media", async () => {
+    const readFile = vi.fn().mockResolvedValue({
+      bytes: new Uint8Array([137, 80, 78, 71])
+    });
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        readFile
+      }
+    } as typeof window.agentHostApi;
+    Object.defineProperty(URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => "blob:tutti-state-image")
+    });
+
+    render(
+      <AgentMessageMarkdown
+        content={String.raw`![generated](C:\Users\moche\.tutti-dev\apps\image.png)`}
+      />
+    );
+
+    await screen.findByRole("img", { name: "generated" });
+    expect(readFile).toHaveBeenCalledWith({
+      path: "C:/Users/moche/.tutti-dev/apps/image.png"
+    });
+  });
+
+  it("does not pass unknown one-letter media protocols to the DOM", () => {
+    const { container } = render(
+      <AgentMessageMarkdown content={"![unsafe](x://example.com/image.png)"} />
+    );
+
+    expect(
+      container.querySelector('img[src="x://example.com/image.png"]')
+    ).toBeNull();
   });
 
   it("renders workspace markdown videos from workspace file bytes", async () => {
@@ -1483,6 +1604,33 @@ describe("AgentMessageMarkdown", () => {
     expect(mention).toHaveTextContent("Weather");
   });
 
+  it("opens workspace app mentions without file path context", () => {
+    const onLinkAction = vi.fn();
+    const onLinkClick = vi.fn();
+    render(
+      <AgentMessageMarkdown
+        content="打开 [@Weather](mention://workspace-app/weather?workspaceId=room-1)"
+        onLinkAction={onLinkAction}
+        onLinkClick={onLinkClick}
+        workspaceLinkContext={{
+          workspaceRoot: null,
+          basePath: null,
+          source: "agent-markdown"
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByText("Weather"));
+
+    expect(onLinkAction).toHaveBeenCalledWith({
+      type: "open-workspace-app",
+      workspaceId: "room-1",
+      appId: "weather",
+      source: "agent-markdown"
+    });
+    expect(onLinkClick).not.toHaveBeenCalled();
+  });
+
   it("renders agent target mentions with managed agent icons", () => {
     const iconUrl = MANAGED_AGENT_ICON_ROUNDED_URLS["claude-code"];
     const { container } = render(
@@ -1550,6 +1698,106 @@ describe("AgentMessageMarkdown", () => {
     expect(
       mention?.querySelector(".tsh-agent-object-token__icon")
     ).not.toBeInTheDocument();
+  });
+
+  it("hydrates shared agent-target mention icons from the presentation catalog", () => {
+    const iconUrl = "data:image/png;base64,shared-codex";
+    const { container } = render(
+      <AgentMessageMarkdown
+        agentTargets={[
+          {
+            agentTargetId: "shared-agent:jun-codex",
+            iconUrl,
+            name: "Jun Sun 的 Codex",
+            provider: "codex",
+            workspaceId: "room-1"
+          }
+        ]}
+        content="[@Jun Sun 的 Codex](mention://agent-target/shared-agent:jun-codex?workspaceId=room-1) what is this"
+      />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute("data-agent-mention-kind", "agent-target");
+    expect(mention).toHaveAttribute("data-agent-mention-icon-url", iconUrl);
+    expect(mention?.querySelector("img")).toHaveAttribute("src", iconUrl);
+  });
+
+  it("keeps exact target-directory icons over stale mention-service presentations", () => {
+    const currentIconUrl = "data:image/png;base64,current-codex";
+    const staleUnifiedIconUrl = "data:image/png;base64,stale-unified";
+    const snapshot: RichTextMentionSnapshot = {
+      state: "ready",
+      resolved: {
+        label: "Stale Unified Agent",
+        presentation: { iconUrl: staleUnifiedIconUrl }
+      }
+    };
+    const mentionService: RichTextMentionService = {
+      dispose: vi.fn(),
+      getProvider: () => undefined,
+      getSnapshot: () => snapshot,
+      invalidate: vi.fn(),
+      listProviders: () => [],
+      listTriggerConfigs: () => [],
+      query: async () => [],
+      resolve: async () => snapshot,
+      subscribe: () => () => {}
+    };
+    const { container } = render(
+      <RichTextMentionServiceProvider service={mentionService}>
+        <AgentMessageMarkdown
+          agentTargets={[
+            {
+              agentTargetId: "shared-agent:rv4no-codex",
+              iconUrl: currentIconUrl,
+              name: "rv4no's Codex",
+              provider: "codex",
+              workspaceId: "room-1"
+            }
+          ]}
+          content={
+            "[@rv4no's Codex](mention://agent-target/shared-agent:rv4no-codex?workspaceId=room-1) [@Build session](mention://agent-session/session-1?agentTargetId=shared-agent%3Arv4no-codex&workspaceId=room-1) [@Missing target](mention://agent-target/shared-agent:missing?workspaceId=room-1)"
+          }
+        />
+      </RichTextMentionServiceProvider>
+    );
+
+    const targetMention = container.querySelector(
+      '[data-agent-mention-kind="agent-target"]'
+    );
+    const sessionMention = container.querySelector(
+      '[data-agent-mention-kind="session"]'
+    );
+    const missingTargetMention = container.querySelector(
+      '[data-agent-mention-href*="shared-agent:missing"]'
+    );
+    expect(targetMention).toHaveTextContent("rv4no's Codex");
+    expect(targetMention?.querySelector("img")).toHaveAttribute(
+      "src",
+      currentIconUrl
+    );
+    expect(sessionMention?.querySelector("img")).toHaveAttribute(
+      "src",
+      currentIconUrl
+    );
+    expect(missingTargetMention).toHaveTextContent("Stale Unified Agent");
+    expect(missingTargetMention?.querySelector("img")).toHaveAttribute(
+      "src",
+      staleUnifiedIconUrl
+    );
+  });
+
+  it("falls back to a scoped provider icon when the presentation catalog misses", () => {
+    const { container } = render(
+      <AgentMessageMarkdown content="[@Jun Sun 的 Codex](mention://agent-target/shared-agent:jun-codex?workspaceId=room-1&agentProviderId=codex) what is this" />
+    );
+
+    const mention = container.querySelector('[data-agent-file-mention="true"]');
+    expect(mention).toHaveAttribute(
+      "data-agent-mention-icon-url",
+      managedAgentRoundedIconUrl("codex")
+    );
   });
 
   it("renders workspace app factory mentions as object tokens", () => {

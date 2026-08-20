@@ -2,10 +2,27 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TooltipProvider } from "@tutti-os/ui-system";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
+import type { ConversationSection } from "../agentGuiNodeViewConversation";
 import { AgentGUIConversationRailSection } from "./AgentGUIConversationRailSection";
 import { AgentGUIConversationRailSectionPresentationProvider } from "./agentGUIConversationRailSectionPresentationContext";
 
 describe("AgentGUIConversationRailSection project pin presentation", () => {
+  it("keeps every live conversation visible outside the history page", () => {
+    renderProjectSection({
+      items: [
+        conversation("newest", "Newest", "ready", 30),
+        conversation("running-a", "Running A", "working", 20),
+        conversation("waiting-b", "Waiting B", "waiting", 10)
+      ],
+      pinnedAtUnixMs: 0,
+      visibleItemLimit: 1,
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
+    });
+
+    expect(screen.getByText("Newest")).toBeInTheDocument();
+    expect(screen.getByText("Running A")).toBeInTheDocument();
+    expect(screen.getByText("Waiting B")).toBeInTheDocument();
+  });
   it("requests an explicit no-project scope from the conversations section", () => {
     const onCreateConversation = vi.fn();
     renderProjectSection({
@@ -172,7 +189,9 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
 
 function renderProjectSection(input: {
   hasMore?: boolean;
+  items?: ConversationSection["items"];
   pinnedAtUnixMs: number;
+  visibleItemLimit?: number;
   searchActive?: boolean;
   sectionKind?: "conversations" | "project";
   projectActionLocked?: boolean;
@@ -190,7 +209,9 @@ function renderProjectSection(input: {
 
 function renderProjectSectionElement(input: {
   hasMore?: boolean;
+  items?: ConversationSection["items"];
   pinnedAtUnixMs: number;
+  visibleItemLimit?: number;
   searchActive?: boolean;
   sectionKind?: "conversations" | "project";
   projectActionLocked?: boolean;
@@ -234,7 +255,7 @@ function renderProjectSectionElement(input: {
               input.sectionKind === "conversations"
                 ? "conversations"
                 : "project:/alpha",
-            items: [],
+            items: input.items ?? [],
             kind: input.sectionKind ?? "project",
             label:
               input.sectionKind === "conversations" ? "Conversations" : "Alpha",
@@ -252,7 +273,7 @@ function renderProjectSectionElement(input: {
           sectionHasMore={input.hasMore ?? false}
           sectionTotalCount={input.hasMore ? 1 : 0}
           uiLanguage="en"
-          visibleItemLimit={5}
+          visibleItemLimit={input.visibleItemLimit ?? 5}
           workspaceId="workspace-1"
           onCancelDeleteConversation={() => {}}
           onConfirmDeleteConversation={() => {}}
@@ -269,16 +290,32 @@ function renderProjectSectionElement(input: {
           onRequestDeleteConversation={() => {}}
           onRequestRenameConversation={() => {}}
           onRequestSectionBatchDeletion={() => {}}
+          onRequestProjectRemoval={() => {}}
           onSelectConversation={() => {}}
           onToggleConversationPinned={() => {}}
           onToggleProjectPinned={input.onToggleProjectPinned}
           onToggleProjectSectionCollapsed={() => {}}
           onVisibleItemLimitChange={() => {}}
-          setPendingProjectAction={() => {}}
         />
       </AgentGUIConversationRailSectionPresentationProvider>
     </TooltipProvider>
   );
+}
+
+function conversation(
+  id: string,
+  title: string,
+  status: ConversationSection["items"][number]["status"],
+  updatedAtUnixMs: number
+): ConversationSection["items"][number] {
+  return {
+    id,
+    provider: "codex",
+    title,
+    status,
+    cwd: "/alpha",
+    updatedAtUnixMs
+  };
 }
 
 const LABELS = {
@@ -291,6 +328,12 @@ const LABELS = {
   projectSectionMoreActions: "Project actions",
   projectSectionViewFiles: "Open folder",
   removeProject: "Remove project",
+  relativeTimeDays: (count: number) => `${count}d`,
+  relativeTimeHours: (count: number) => `${count}h`,
+  relativeTimeJustNow: "now",
+  relativeTimeMinutes: (count: number) => `${count}m`,
+  relativeTimeMonths: (count: number) => `${count}mo`,
+  relativeTimeYears: (count: number) => `${count}y`,
   showLessConversations: "Show less",
   showMoreConversations: "Show more",
   unpinProject: "Unpin project"

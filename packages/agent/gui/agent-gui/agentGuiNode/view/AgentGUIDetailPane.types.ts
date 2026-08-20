@@ -38,7 +38,7 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
   homeTargetProjection: AgentGUIManagedHomeTargetProjection;
   referenceProvenanceFilters?: AgentComposerProps["referenceProvenanceFilters"];
   sessionInputHistoryEnabled?: boolean;
-  sessionForkEnabled?: boolean;
+  sideConversationEnabled?: boolean;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>
@@ -76,6 +76,7 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  projectSelectOptions?: AgentComposerProps["projectSelectOptions"];
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];

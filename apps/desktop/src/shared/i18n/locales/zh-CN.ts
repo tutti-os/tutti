@@ -78,6 +78,7 @@ export const zhCN = {
     errorTitle: "无法检查更新",
     restartAction: "重启安装",
     retryAction: "重试",
+    releaseNotesAction: "更新日志",
     storeManaged: "更新由 Microsoft Store 管理"
   },
   desktop: {
@@ -269,6 +270,7 @@ export const zhCN = {
       settings: "设置",
       free: "Free",
       signIn: "登录",
+      signInFailed: "无法发起登录",
       signOut: "退出登录",
       copyUserId: "复制用户 ID",
       copyUserIdSuccess: "已复制用户 ID",
@@ -357,6 +359,9 @@ export const zhCN = {
       stageInstallDone: "已安装 CLI",
       stageAdapterDone: "已安装适配器",
       stageLoginDone: "已登录账号",
+      apiUsageBilling: "API Usage Billing",
+      codingPlanBilling: "Coding Plan",
+      providerAccountBilling: "{{provider}} 账号",
       stageLoginDoneApiBilling: "已配置 API 计费",
       stageReadyDone: "已就绪",
       networkCheckRegistry: "安装源",
@@ -1245,9 +1250,9 @@ export const zhCN = {
         agentSessionRecordingDescription:
           "在 Agent 首页显示会话录制与回放开发入口",
         agentSessionRecordingLabel: "Agent 会话录制",
-        agentSessionForkDescription:
-          "允许从支持的已完成轮次创建新的 Agent 会话",
-        agentSessionForkLabel: "会话 Fork",
+        agentSideConversationDescription:
+          "在 Agent 对话中启用 /side、Side 临时会话和选中文本浮动操作栏",
+        agentSideConversationLabel: "Side 临时会话",
         codexSaverModeDescription:
           "在 Codex 输入框显示可记忆的省额度开关，将合适的子任务交给 Luna Max",
         codexSaverModeLabel: "Codex 省额度模式",
@@ -1257,10 +1262,6 @@ export const zhCN = {
         referenceProvenanceFilterDescription:
           "在 Agent 对话的引用选择器中启用智能体来源筛选",
         referenceProvenanceFilterLabel: "智能体来源筛选",
-        quickPromptLibraryDescription:
-          "在 Agent 输入框中显示个人快捷提示词库入口",
-        quickPromptLibraryLabel: "快捷提示词库",
-        quickPromptLibrarySaveFailed: "暂时无法更新快捷提示词库可用状态",
         releaseChannelOptions: {
           rc: "预览版",
           stable: "稳定版"
@@ -1289,6 +1290,9 @@ export const zhCN = {
         previewAgentsDescription: "显示仍在 Tutti 中测试和验证的 Agent 集成",
         previewAgentsLabel: "抢先体验 Agent 集成",
         shortcutUnbound: "未绑定",
+        tuttiModeDescription:
+          "在 Agent 对话中显示 Tutti Mode 开关与 /tutti 命令",
+        tuttiModeLabel: "Tutti Mode",
         workbenchShortcutsDescription: "启用可配置的工作台快捷键操作",
         workbenchShortcutsLabel: "工作台快捷键",
         workbenchShortcutsManageLabel: "配置键盘快捷键"
@@ -1384,12 +1388,14 @@ export const zhCN = {
         manageStatusAuthRequired: "需要登录",
         manageStatusAvailable: "可连接",
         manageStatusChecking: "检测中",
+        manageStatusConfigured: "凭据已配置",
         manageStatusConnected: "已连接",
         manageStatusSelectionRequired: "发现多个安装，请选择",
+        manageStatusTemporarilyUnsupported: "暂未支持",
         manageStatusUnknown: "状态不可用",
-        manageStatusUnsupported: "后台更新中",
+        manageStatusUnsupported: "不受支持",
         manageTitle: "管理智能体",
-        manageUnsupportedTooltip: "本地支持正在更新中，这个智能体暂时不可用。",
+        manageUnsupportedTooltip: "当前本地智能体运行环境不受支持",
         refresh: "重新检测",
         unknown: "暂时无法确认本地 CLI 状态，请刷新重新检测"
       },

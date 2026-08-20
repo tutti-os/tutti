@@ -41,7 +41,13 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 		MessageVersion:         11,
 		LatestTurn:             &latest,
 		LatestTurnInteractions: latestInteractions,
-		Capabilities:           canonical.NewCapabilitySnapshot([]string{"planMode", "planImplementation"}),
+		GoalSyncState: &agentservice.SessionGoalSyncState{
+			PendingOperationID: "goal-operation-1",
+			Revision:           3,
+			SyncStatus:         agentactivitybiz.GoalSyncStatusApplying,
+			ExecutionPending:   true,
+		},
+		Capabilities: canonical.NewCapabilitySnapshot([]string{"planMode", "planImplementation"}),
 		Metadata: agentactivitybiz.SessionMetadata{
 			Usage: &agentactivitybiz.SessionUsage{
 				ContextWindow: &agentactivitybiz.SessionUsageContextWindow{UsedTokens: 7_460, TotalTokens: 200_000},
@@ -75,6 +81,14 @@ func TestGeneratedAgentSessionIncludesIndependentLatestTurnProjection(t *testing
 	}
 	if generated.RailSectionKey != "project:repo-1" {
 		t.Fatalf("rail section key = %q, want project:repo-1", generated.RailSectionKey)
+	}
+	if generated.GoalSyncState == nil ||
+		generated.GoalSyncState.Revision != 3 ||
+		generated.GoalSyncState.SyncStatus != "applying" ||
+		generated.GoalSyncState.PendingOperationId == nil ||
+		*generated.GoalSyncState.PendingOperationId != "goal-operation-1" ||
+		!generated.GoalSyncState.ExecutionPending {
+		t.Fatalf("goal sync state = %#v", generated.GoalSyncState)
 	}
 	encoded, err := json.Marshal(generated)
 	if err != nil {

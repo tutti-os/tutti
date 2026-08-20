@@ -41,11 +41,28 @@ jobs:
             packages/agent/daemon/go.mod
             packages/agent/daemon/go.sum
 
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+
+      - name: Install pinned Codex app-server contract binary
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $contractRoot = Join-Path $env:RUNNER_TEMP 'tutti-codex-contract'
+          npm install --prefix $contractRoot --no-save --no-audit --no-fund --include=optional @openai/codex@0.147.0
+          $binaries = @(Get-ChildItem -Path $contractRoot -Recurse -Filter codex.exe)
+          if ($binaries.Count -ne 1) {
+            throw "Expected one native codex.exe, found $($binaries.Count)"
+          }
+          "TUTTI_CODEX_APP_SERVER_CONTRACT_BIN=$($binaries[0].FullName)" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Test Windows agent process adapters
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           Push-Location packages/agent/daemon
-          go test ./runtime ./runtimecmd -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement|ResolverResolveAllReturnsEveryExecutableMatchInPathOrder|ResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant|ResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims|ResolverFindsWindowsNPMGlobalShim)$'
+          go test ./runtime ./runtimecmd -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|RunVerifiedNodeScriptBoundedExecutesVerifiedScript|VerifiedNodeScriptRunnerExecutesLockedSnapshot|VerifiedNodeScriptRunnerReusesLockedSnapshotAcrossRunsAndRestart|VerifiedNodeScriptRunnerCancelsBeforeSnapshotConstruction|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement|LocalProcessTransportUsesWindowsEnvironmentKeySemantics|ResolverResolveAllReturnsEveryExecutableMatchInPathOrder|ResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant|ResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims|ResolverFindsWindowsNPMGlobalShim|CodexAppServerWindowsTurnStartContract)$' -count=1
           Pop-Location

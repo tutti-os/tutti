@@ -95,6 +95,7 @@ func (c *Controller) CanResume(input ResumeInput) bool {
 		ProviderSessionID: strings.TrimSpace(input.ProviderSessionID),
 		CWD:               strings.TrimSpace(input.CWD),
 		Env:               append([]string(nil), input.Env...),
+		MCPServers:        cloneMCPServerBindings(input.MCPServers),
 		Status:            normalizeSessionStatus(input.Status),
 		Title:             strings.TrimSpace(input.Title),
 		Visible:           sessionVisible(input.Visible),
@@ -130,7 +131,10 @@ func (c *Controller) Sessions(roomID string) []Session {
 		if strings.TrimSpace(session.RoomID) != roomID {
 			continue
 		}
-		if c.provisionalSessions[key] {
+		if session.IsSideConversation() {
+			continue
+		}
+		if c.sessionPublicationPendingLocked(key) {
 			continue
 		}
 		session = c.reconcileSessionStatusLocked(key, session)
@@ -138,6 +142,61 @@ func (c *Controller) Sessions(roomID string) []Session {
 		result = append(result, session)
 	}
 	return result
+}
+
+// RuntimeSessions lists every registered runtime Session in a Workspace,
+// including sessions still behind the canonical initialization publication
+// barrier. Lifecycle teardown uses this broader view so a provider process
+// cannot outlive the Workspace merely because its canonical report is pending.
+func (c *Controller) RuntimeSessions(ctx context.Context, roomID string) ([]Session, error) {
+	if c == nil {
+		return nil, nil
+	}
+	roomID = strings.TrimSpace(roomID)
+	if err := c.waitForWorkspaceStartupOperations(ctx, roomID); err != nil {
+		return nil, err
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	result := make([]Session, 0)
+	for key, session := range c.sessions {
+		if strings.TrimSpace(session.RoomID) != roomID {
+			continue
+		}
+		session = c.reconcileSessionStatusLocked(key, session)
+		c.sessions[key] = session
+		result = append(result, session)
+	}
+	return result, nil
+}
+
+// waitForWorkspaceStartupOperations waits only for startup operations that had
+// entered before this call took its snapshot. A later Start is intentionally
+// outside this barrier; the caller must fence new transport admission first.
+func (c *Controller) waitForWorkspaceStartupOperations(ctx context.Context, roomID string) error {
+	if c == nil {
+		return nil
+	}
+	roomID = strings.TrimSpace(roomID)
+	c.mu.Lock()
+	operations := make([]<-chan struct{}, 0)
+	for key, lock := range c.startupLocks {
+		if key.roomID != roomID || lock == nil {
+			continue
+		}
+		for done := range lock.startupOperations {
+			operations = append(operations, done)
+		}
+	}
+	c.mu.Unlock()
+	for _, done := range operations {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-done:
+		}
+	}
+	return nil
 }
 
 func (c *Controller) adapter(provider string) Adapter {
@@ -274,32 +333,45 @@ func (c *Controller) acquireStartupLockContext(
 	c.mu.Lock()
 	lock := c.startupLocks[key]
 	if lock == nil {
-		lock = &controllerLifecycleLock{gate: make(chan struct{}, 1)}
+		lock = &controllerLifecycleLock{
+			gate:              make(chan struct{}, 1),
+			startupOperations: make(map[chan struct{}]struct{}),
+		}
 		lock.gate <- struct{}{}
 		c.startupLocks[key] = lock
 	}
+	operationDone := make(chan struct{})
+	lock.startupOperations[operationDone] = struct{}{}
 	lock.refs++
 	c.mu.Unlock()
 
 	select {
 	case <-ctx.Done():
-		c.releaseStartupLockReference(key, lock)
+		c.releaseStartupLockReference(key, lock, operationDone)
 		return func() {}, ctx.Err()
 	case <-lock.gate:
 	}
 	if err := ctx.Err(); err != nil {
 		lock.gate <- struct{}{}
-		c.releaseStartupLockReference(key, lock)
+		c.releaseStartupLockReference(key, lock, operationDone)
 		return func() {}, err
 	}
 	return func() {
 		lock.gate <- struct{}{}
-		c.releaseStartupLockReference(key, lock)
+		c.releaseStartupLockReference(key, lock, operationDone)
 	}, nil
 }
 
-func (c *Controller) releaseStartupLockReference(key startupLockKey, lock *controllerLifecycleLock) {
+func (c *Controller) releaseStartupLockReference(
+	key startupLockKey,
+	lock *controllerLifecycleLock,
+	operationDone chan struct{},
+) {
 	c.mu.Lock()
+	if _, ok := lock.startupOperations[operationDone]; ok {
+		delete(lock.startupOperations, operationDone)
+		close(operationDone)
+	}
 	lock.refs--
 	if lock.refs <= 0 && c.startupLocks[key] == lock {
 		delete(c.startupLocks, key)
@@ -389,6 +461,19 @@ func (c *Controller) store(session Session) {
 	c.mu.Unlock()
 }
 
+func (c *Controller) advanceLiveConnectionGeneration(roomID, agentSessionID string) uint64 {
+	if c == nil {
+		return 0
+	}
+	key := sessionKey(strings.TrimSpace(roomID), strings.TrimSpace(agentSessionID))
+	c.mu.Lock()
+	c.nextLiveConnectionGeneration++
+	generation := c.nextLiveConnectionGeneration
+	c.liveConnectionGenerations[key] = generation
+	c.mu.Unlock()
+	return generation
+}
+
 func (c *Controller) notifySessionAvailableLocked(key string) {
 	waiter := c.sessionAvailabilityWaiters[key]
 	if waiter == nil {
@@ -414,7 +499,14 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 		delete(c.pendingConfigOptionsUpdates, key)
 	}
 	c.mu.Unlock()
-	if len(pending) == 0 {
+	c.publishConfigOptionsUpdates(session, pending)
+}
+
+func (c *Controller) publishConfigOptionsUpdates(
+	session Session,
+	pending []AgentSessionConfigOptionsUpdate,
+) {
+	if c == nil || len(pending) == 0 {
 		return
 	}
 	events := make([]StreamEvent, 0, len(pending))
@@ -423,7 +515,7 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 		c.recordConfigOptionsUpdate(session, update)
 		events = append(events, configOptionsUpdateStreamEvent(update))
 	}
-	c.publishStreamEvents(roomID, agentSessionID, events)
+	c.publishStreamEvents(session.RoomID, session.AgentSessionID, events)
 	c.enqueueSessionSnapshotReport(context.Background(), session)
 }
 
@@ -552,16 +644,16 @@ func (c *Controller) applyCommandSnapshotByAgentSessionID(snapshot AgentSessionC
 	c.mu.Lock()
 	var session Session
 	found := false
-	provisional := false
+	publicationPending := false
 	for key, candidate := range c.sessions {
 		if strings.TrimSpace(candidate.AgentSessionID) == agentSessionID {
 			session = candidate
 			found = true
-			provisional = c.provisionalSessions[key]
+			publicationPending = c.sessionPublicationPendingLocked(key)
 			break
 		}
 	}
-	if !found || provisional {
+	if !found || publicationPending {
 		snapshot.AgentSessionID = agentSessionID
 		snapshot.Commands = cloneAgentSessionCommands(snapshot.Commands)
 		c.pendingCommandSnapshots[agentSessionID] = snapshot
@@ -642,8 +734,35 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 	}
 	c.sessions[foundKey] = session
 	provisional := c.provisionalSessions[foundKey]
+	if provisional && session.IsSideConversation() {
+		c.pendingSideEvents[foundKey] = append(
+			c.pendingSideEvents[foundKey],
+			events...,
+		)
+	}
+	if initialization := c.sessionInitializations[foundKey]; initialization != nil {
+		initialization.events = append(initialization.events, events...)
+	}
+	publicationPending := c.sessionPublicationPendingLocked(foundKey)
 	c.mu.Unlock()
-	if provisional {
+	if publicationPending {
+		return
+	}
+	// Session-scoped adapter callbacks can carry child terminals after the
+	// owning root Turn emitter has detached. They still cross the same durable
+	// commit-before-publish barrier as terminals emitted by an active Turn.
+	if eventsRequireDurablePublish(events) {
+		if err := c.reportSessionBeforePublish(context.Background(), session, events); err != nil {
+			slog.Error(
+				"agent session sink terminal activity report failed before publish",
+				"event", "agent_session.activity_report.session_sink_terminal_barrier_failed",
+				"room_id", session.RoomID,
+				"agent_session_id", session.AgentSessionID,
+				"error", err,
+			)
+			return
+		}
+		c.publish(session, events)
 		return
 	}
 	c.publish(session, events)
@@ -669,25 +788,25 @@ func (c *Controller) applyConfigOptionsUpdateByAgentSessionID(update AgentSessio
 	c.mu.Lock()
 	var session Session
 	found := false
-	provisional := false
+	publicationPending := false
 	if roomID != "" {
 		key := sessionKey(roomID, agentSessionID)
 		if candidate, ok := c.sessions[key]; ok {
 			session = candidate
 			found = true
-			provisional = c.provisionalSessions[key]
+			publicationPending = c.sessionPublicationPendingLocked(key)
 		}
 	} else {
 		for key, candidate := range c.sessions {
 			if strings.TrimSpace(candidate.AgentSessionID) == agentSessionID {
 				session = candidate
 				found = true
-				provisional = c.provisionalSessions[key]
+				publicationPending = c.sessionPublicationPendingLocked(key)
 				break
 			}
 		}
 	}
-	if !found || provisional {
+	if !found || publicationPending {
 		pendingRoomID := firstNonEmpty(roomID, session.RoomID)
 		if pendingRoomID != "" {
 			key := sessionKey(pendingRoomID, agentSessionID)

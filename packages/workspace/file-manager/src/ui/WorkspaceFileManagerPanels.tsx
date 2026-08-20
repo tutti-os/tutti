@@ -39,6 +39,7 @@ import {
 import {
   formatWorkspaceFileBytes,
   formatWorkspaceFileModifiedTime,
+  formatWorkspaceFilePathForDisplay,
   splitWorkspaceFileName
 } from "../services/workspaceFileManagerModel.ts";
 import type {
@@ -106,6 +107,7 @@ export function WorkspaceFileManagerPanels({
   inlineRenameValidation,
   isRenaming,
   layoutMode,
+  pathDisplayPlatform,
   pendingDirectoryPath,
   previewActions,
   previewState,
@@ -140,6 +142,7 @@ export function WorkspaceFileManagerPanels({
   inlineRenameValidation: WorkspaceFileManagerInlineRenameValidation | null;
   isRenaming: boolean;
   layoutMode: WorkspaceFileManagerLayoutMode;
+  pathDisplayPlatform?: string | null;
   pendingDirectoryPath: string | null;
   previewActions?: readonly WorkspaceFileManagerPreviewAction[];
   previewState: WorkspaceFilePreviewState;
@@ -750,6 +753,7 @@ export function WorkspaceFileManagerPanels({
         copy={copy}
         dateLocale={dateLocale}
         entry={selectedEntry}
+        pathDisplayPlatform={pathDisplayPlatform}
         previewActions={previewActions}
         previewState={previewState}
       />
@@ -1655,12 +1659,14 @@ function PreviewPane({
   copy,
   dateLocale,
   entry,
+  pathDisplayPlatform,
   previewActions,
   previewState
 }: {
   copy: WorkspaceFileManagerI18nRuntime;
   dateLocale?: TuttiDateLocale;
   entry: WorkspaceFileEntry | null;
+  pathDisplayPlatform?: string | null;
   previewActions?: readonly WorkspaceFileManagerPreviewAction[];
   previewState: WorkspaceFilePreviewState;
 }): ReactElement {
@@ -1687,7 +1693,7 @@ function PreviewPane({
             {entry.name}
           </strong>
           <p className="min-w-0 truncate text-xs text-[var(--text-secondary)]">
-            {entry.path}
+            {formatWorkspaceFilePathForDisplay(entry.path, pathDisplayPlatform)}
           </p>
         </div>
         <dl className="border-t border-[var(--border-1)]">

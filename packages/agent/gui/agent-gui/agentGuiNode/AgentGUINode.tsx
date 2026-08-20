@@ -101,6 +101,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     capabilityControlsReadOnly = false,
     agentTargets,
     agentTargetsLoading = false,
+    mentionAgentTargets,
     handoffAgentTargets,
     handoffAgentTargetsLoading = false,
     showHandoffTargetOwnershipLabels = false,
@@ -119,7 +120,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false,
     sessionInputHistoryEnabled = false,
-    sessionForkEnabled = false,
+    sideConversationEnabled = false,
     sessionWorktreeEnabled = false,
     sessionLaunchModesByProjectSectionKey,
     codexSaverModeEntryEnabled = false
@@ -156,6 +157,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     composerFooterAccessory: renderComposerFooterAccessory,
     projectDirectoryPickerHeaderActions:
       renderProjectDirectoryPickerHeaderActions,
+    projectSelectOptions,
+    referencePickerSidebarActions: renderReferencePickerSidebarActions,
     providerRailEmpty: renderProviderRailEmpty,
     sidebarFooter: renderSidebarFooter
   } = renderSlots;
@@ -281,6 +284,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
   const { viewModel, actions } = useAgentGUINodeController({
     nodeId,
+    isSurfaceActive: isActive,
+    isSurfaceVisible: isVisible,
     workspaceId,
     currentUserId,
     workspacePath,
@@ -476,6 +481,7 @@ export const AgentGUINode = memo(function AgentGUINode({
           return (
             <AgentGUINodeView
               viewModel={viewModel}
+              mentionAgentTargets={mentionAgentTargets}
               renderAgentTargetInfo={renderAgentTargetInfo}
               renderSidebarFooter={renderSidebarFooter}
               renderProviderRailEmpty={renderProviderRailEmpty}
@@ -577,7 +583,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilters={referenceProvenanceFilters}
               sessionInputHistoryEnabled={sessionInputHistoryEnabled}
-              sessionForkEnabled={sessionForkEnabled}
+              sideConversationEnabled={sideConversationEnabled}
               sessionWorktreeEnabled={sessionWorktreeEnabled}
               sessionLaunchModesByProjectSectionKey={
                 sessionLaunchModesByProjectSectionKey
@@ -587,6 +593,10 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               renderProjectDirectoryPickerHeaderActions={
                 renderProjectDirectoryPickerHeaderActions
+              }
+              projectSelectOptions={projectSelectOptions}
+              renderReferencePickerSidebarActions={
+                renderReferencePickerSidebarActions
               }
               renderComposerFooterAccessory={renderComposerFooterAccessory}
             />

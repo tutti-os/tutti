@@ -20,6 +20,7 @@ var ErrAttemptNotFound = errors.New("account login attempt not found")
 type Service struct {
 	AuthJSONPath                       string
 	AccountBaseURL                     string
+	AccountHeaders                     http.Header
 	AppCallbackURL                     string
 	AuthLoginURL                       string
 	CommerceBaseURL                    string
@@ -56,9 +57,14 @@ type LoginStart struct {
 }
 
 func NewService(authJSONPath string) *Service {
+	accountHeaders := make(http.Header)
+	if lane := strings.TrimSpace(os.Getenv("TUTTI_PPE_LANE")); lane != "" {
+		accountHeaders.Set("x-zk-ppe-lane", lane)
+	}
 	return &Service{
 		AuthJSONPath:    firstNonEmpty(authJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
 		AccountBaseURL:  os.Getenv("TUTTI_ACCOUNT_BASE_URL"),
+		AccountHeaders:  accountHeaders,
 		AppCallbackURL:  tuttitypes.DesktopLoginCallbackURL(),
 		AuthLoginURL:    os.Getenv("TUTTI_AUTH_LOGIN_URL"),
 		CommerceBaseURL: os.Getenv("TUTTI_COMMERCE_BASE_URL"),
@@ -300,6 +306,7 @@ func (s *Service) authClient() (*authbridge.Client, error) {
 	}
 	client, err := authbridge.NewClient(authbridge.Config{
 		AccountBaseURL: s.AccountBaseURL,
+		AccountHeaders: s.AccountHeaders,
 		AuthJSONPath:   firstNonEmpty(s.AuthJSONPath, filepath.Join(tuttitypes.DefaultStateDir(), "account", "auth.json")),
 		AppCallbackURL: firstNonEmpty(s.AppCallbackURL, tuttitypes.DesktopLoginCallbackURL()),
 		AuthLoginURL:   s.AuthLoginURL,

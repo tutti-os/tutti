@@ -288,13 +288,14 @@ func TestAgentRuntimeAdapterPreservesProviderAcceptanceRequirement(t *testing.T)
 		reporter,
 	)
 	adapter := newAgentRuntimeAdapter(controller)
-	session, err := adapter.Start(t.Context(), agentservice.RuntimeStartInput{
+	startResult, err := adapter.Start(t.Context(), agentservice.RuntimeStartInput{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
 		Provider: provider.Provider(),
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+	session := startResult.Session
 	result, err := adapter.Exec(t.Context(), agentservice.RuntimeExecInput{
 		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
 		TurnID: "canonical-turn-1", ClientSubmitID: "opaque-submit-1",
@@ -399,7 +400,7 @@ func TestAgentRuntimeAdapterReturnsClaudeSDKModelConfigOptions(t *testing.T) {
 		nil,
 	)
 	adapter := newAgentRuntimeAdapter(controller)
-	session, err := adapter.Start(ctx, agentservice.RuntimeStartInput{
+	startResult, err := adapter.Start(ctx, agentservice.RuntimeStartInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "agent-session-1",
 		Provider:       agentruntime.ProviderClaudeCode,
@@ -410,6 +411,7 @@ func TestAgentRuntimeAdapterReturnsClaudeSDKModelConfigOptions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Start() error = %v", err)
 	}
+	session := startResult.Session
 	defer func() {
 		_ = adapter.Close(context.Background(), agentservice.RuntimeCloseInput{
 			WorkspaceID:    session.WorkspaceID,

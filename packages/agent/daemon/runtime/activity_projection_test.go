@@ -44,6 +44,35 @@ func TestACPNormalizerProjectsSemanticMessageDeltaWithoutSnapshotDiff(t *testing
 	}
 }
 
+func TestProjectActivityEventsUsesCanonicalSessionIdentityForMessageDelta(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	events := newACPTurnNormalizer().AppendAssistantChunk(session, "turn-1", "hello")
+	if len(events) != 1 {
+		t.Fatalf("normalized events = %#v, want one event", events)
+	}
+	// The projection derives the canonical identity from the session source when
+	// the provider event omits its identity. The live delta must use that same
+	// identity instead of serializing the raw, empty provider field.
+	events[0].AgentSessionID = ""
+	stream := ProjectActivityEventsToStreamEvents(session, events)
+	if len(stream) != 1 {
+		t.Fatalf("stream = %#v, want one message delta", stream)
+	}
+	delta, ok := stream[0].Data.(liveprotocol.Event)
+	if !ok {
+		t.Fatalf("stream data = %T, want live protocol event", stream[0].Data)
+	}
+	var data liveprotocol.MessageDeltaData
+	if err := json.Unmarshal(delta.Data, &data); err != nil {
+		t.Fatal(err)
+	}
+	if data.AgentSessionID != session.AgentSessionID {
+		t.Fatalf("message delta agent session id = %q, want canonical %q", data.AgentSessionID, session.AgentSessionID)
+	}
+}
+
 func TestSnapshotNormalizerProjectsSuffixAppendAndFullRewrite(t *testing.T) {
 	t.Parallel()
 	session := reportTestSession()
@@ -709,12 +738,36 @@ func TestRootProviderTurnFailurePersistsVisibleErrorCode(t *testing.T) {
 	completed := report.StatePatches[0].RootProviderTurn
 	if completed == nil {
 		t.Fatal("root provider turn transition is nil")
+		return
 	}
 	if completed.ErrorMessage != errorMessage {
 		t.Fatalf("root provider turn error message = %q, want %q", completed.ErrorMessage, errorMessage)
 	}
 	if completed.ErrorCode != "insufficient_credits" {
 		t.Fatalf("root provider turn error code = %q, want insufficient_credits", completed.ErrorCode)
+	}
+}
+
+func TestRootProviderTurnFailurePersistsUnknownCodeWithoutDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	session := reportTestSession()
+	ctx, ok := activityEventContext(session, "root-provider-turn-failed", "root-turn-1")
+	if !ok {
+		t.Fatal("activityEventContext() returned !ok")
+	}
+	failed := activityshared.NewRootProviderTurnCompleted(ctx, "root-turn-1", "provider-turn-1", activityshared.TurnOutcomeFailed)
+
+	report := reportActivityInput(session, []activityshared.Event{failed})
+	if len(report.StatePatches) != 1 {
+		t.Fatalf("state patches = %#v, want one root provider failure", report.StatePatches)
+	}
+	completed := report.StatePatches[0].RootProviderTurn
+	if completed == nil {
+		t.Fatal("root provider turn transition is nil")
+	}
+	if completed.ErrorCode != "unknown" || completed.ErrorMessage != "" {
+		t.Fatalf("root provider turn error = %q/%q, want unknown/empty", completed.ErrorCode, completed.ErrorMessage)
 	}
 }
 

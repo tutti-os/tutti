@@ -17,6 +17,7 @@ const readyInput: ResolveAgentGUIComposerGateInput = {
   isCollaboratorConversation: false,
   isCreatingConversation: false,
   isInterrupting: false,
+  isAwaitingTurnStart: false,
   isSubmitting: false,
   pendingApproval: false,
   pendingInteractivePrompt: false,
@@ -35,6 +36,7 @@ describe("resolveAgentGUIComposerGate", () => {
     });
     expect(connecting).toEqual({
       conversationBusy: false,
+      isAwaitingTurnStart: false,
       runtime: {
         status: "blocked",
         reason: "target_connection",
@@ -47,6 +49,7 @@ describe("resolveAgentGUIComposerGate", () => {
     const ready = resolveAgentGUIComposerGate(readyInput);
     expect(ready).toEqual({
       conversationBusy: false,
+      isAwaitingTurnStart: false,
       runtime: {
         status: "ready",
         reason: null,
@@ -127,17 +130,19 @@ describe("resolveAgentGUIComposerGate", () => {
     });
   });
 
-  it("keeps submitting in the same busy/queue gate snapshot", () => {
+  it("blocks a prompt awaiting Turn start without exposing queue semantics", () => {
     expect(
       resolveAgentGUIComposerGate({
         ...readyInput,
+        isAwaitingTurnStart: true,
         isSubmitting: true
       })
     ).toMatchObject({
-      conversationBusy: true,
+      conversationBusy: false,
+      isAwaitingTurnStart: true,
       runtime: { status: "ready" },
-      editor: { status: "editable", reason: null },
-      submission: { status: "queue", reason: "conversation_busy" }
+      editor: { status: "blocked", reason: "submitting" },
+      submission: { status: "blocked", reason: "submitting" }
     });
   });
 

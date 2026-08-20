@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -175,14 +176,15 @@ function unavailableClaudeProbe(strategy: string): AgentProbeProvider {
 }
 
 async function loadClaudeCustomAPISettings(): Promise<ClaudeCustomAPISettings | null> {
+  const envAuthToken =
+    stringValue(process.env.ANTHROPIC_AUTH_TOKEN) ||
+    stringValue(process.env.ANTHROPIC_API_KEY);
   const envBaseUrl =
     stringValue(process.env.ANTHROPIC_BASE_URL) ||
     stringValue(process.env.ANTHROPIC_API_BASE_URL);
-  if (envBaseUrl) {
+  if (envBaseUrl || envAuthToken) {
     return {
-      authToken:
-        stringValue(process.env.ANTHROPIC_AUTH_TOKEN) ||
-        stringValue(process.env.ANTHROPIC_API_KEY),
+      authToken: envAuthToken,
       source: "env"
     };
   }
@@ -194,16 +196,17 @@ async function loadClaudeCustomAPISettings(): Promise<ClaudeCustomAPISettings | 
       await readFile(join(configDir, "settings.json"), "utf8")
     ) as ClaudeSettingsFile;
     const settingsEnv = objectValue(parsed.env);
+    const settingsAuthToken =
+      stringValue(settingsEnv?.ANTHROPIC_AUTH_TOKEN) ||
+      stringValue(settingsEnv?.ANTHROPIC_API_KEY);
     const baseUrl =
       stringValue(settingsEnv?.ANTHROPIC_BASE_URL) ||
       stringValue(settingsEnv?.ANTHROPIC_API_BASE_URL);
-    if (!baseUrl) {
+    if (!baseUrl && !settingsAuthToken) {
       return null;
     }
     return {
-      authToken:
-        stringValue(settingsEnv?.ANTHROPIC_AUTH_TOKEN) ||
-        stringValue(settingsEnv?.ANTHROPIC_API_KEY),
+      authToken: settingsAuthToken,
       source: "settings"
     };
   } catch {
@@ -212,15 +215,16 @@ async function loadClaudeCustomAPISettings(): Promise<ClaudeCustomAPISettings | 
 }
 
 async function loadClaudeOAuthCredentials(): Promise<ClaudeOAuthCredentials> {
-  const errors: unknown[] = [];
   if (process.platform === "darwin") {
-    try {
-      return parseClaudeOAuthCredentials(
-        await claudeOAuthKeychainReader(),
-        "keychain"
-      );
-    } catch (error) {
-      errors.push(error);
+    const configDir =
+      process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+    for (const service of claudeOAuthKeychainServices(configDir)) {
+      try {
+        return parseClaudeOAuthCredentials(
+          await claudeOAuthKeychainReader(service),
+          "keychain"
+        );
+      } catch {}
     }
   }
   const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
@@ -229,22 +233,17 @@ async function loadClaudeOAuthCredentials(): Promise<ClaudeOAuthCredentials> {
       await readFile(join(configDir, ".credentials.json"), "utf8"),
       "credentials-file"
     );
-  } catch (error) {
-    errors.push(error);
-  }
-  const expired = errors.find((error) =>
-    errorMessage(error).toLowerCase().includes("expired")
-  );
-  if (expired) {
-    throw expired instanceof Error ? expired : new Error(errorMessage(expired));
-  }
+  } catch {}
   throw new Error("Claude OAuth credentials were not found.");
 }
 
-let claudeOAuthKeychainReader = readClaudeOAuthCredentialsFromKeychain;
+type ClaudeOAuthKeychainReader = (service: string) => Promise<string>;
+
+let claudeOAuthKeychainReader: ClaudeOAuthKeychainReader =
+  readClaudeOAuthCredentialsFromKeychain;
 
 export function setClaudeOAuthKeychainReaderForTesting(
-  reader: (() => Promise<string>) | null
+  reader: ClaudeOAuthKeychainReader | null
 ): void {
   claudeOAuthKeychainReader = reader ?? readClaudeOAuthCredentialsFromKeychain;
 }
@@ -259,10 +258,6 @@ function parseClaudeOAuthCredentials(
   if (!accessToken) {
     throw new Error("Claude OAuth credentials do not contain an access token.");
   }
-  const expiresAt = numberValue(oauth?.expiresAt);
-  if (expiresAt !== null && expiresAt > 0 && expiresAt <= Date.now()) {
-    throw new Error("Claude OAuth access token is expired.");
-  }
   return {
     accessToken,
     rateLimitTier: stringValue(oauth?.rateLimitTier) || undefined,
@@ -271,10 +266,22 @@ function parseClaudeOAuthCredentials(
   };
 }
 
-async function readClaudeOAuthCredentialsFromKeychain(): Promise<string> {
+function claudeOAuthKeychainServices(configDir: string): string[] {
+  const normalized = configDir.trim();
+  if (!normalized) return [CLAUDE_KEYCHAIN_SERVICE];
+  const suffix = createHash("sha256")
+    .update(normalized)
+    .digest("hex")
+    .slice(0, 8);
+  return [`${CLAUDE_KEYCHAIN_SERVICE}-${suffix}`, CLAUDE_KEYCHAIN_SERVICE];
+}
+
+async function readClaudeOAuthCredentialsFromKeychain(
+  service: string
+): Promise<string> {
   const { stdout } = await execFileAsync(
     "/usr/bin/security",
-    ["find-generic-password", "-s", CLAUDE_KEYCHAIN_SERVICE, "-w"],
+    ["find-generic-password", "-s", service, "-w"],
     { timeout: 10_000, windowsHide: true }
   );
   const content = stdout.trim();
@@ -388,6 +395,9 @@ function numberValue(value: unknown): number | null {
 
 function claudeProbeErrorCode(error: unknown): string {
   const message = errorMessage(error).toLowerCase();
+  if (message.includes("rate limit") || message.includes("429")) {
+    return "rate_limited";
+  }
   if (message.includes("unauthorized") || message.includes("expired")) {
     return "session_expired";
   }

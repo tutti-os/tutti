@@ -128,12 +128,12 @@ function renderSectionElement(
         onRequestDeleteConversation={noop}
         onRequestRenameConversation={noop}
         onRequestSectionBatchDeletion={requestSectionBatchDeletion}
+        onRequestProjectRemoval={noop}
         onSelectConversation={noop}
         onToggleConversationPinned={noop}
         onToggleProjectPinned={toggleProjectPinned}
         onToggleProjectSectionCollapsed={noop}
         onVisibleItemLimitChange={noop}
-        setPendingProjectAction={noop}
       />
     </AgentGUIConversationRailSectionPresentationProvider>
   );

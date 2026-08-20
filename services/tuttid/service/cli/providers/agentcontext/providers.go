@@ -162,14 +162,17 @@ func (p Provider) applyExtensionSetupAvailability(
 		go func(index int) {
 			defer probes.Done()
 			target := items[index].Target
+			executablePath := items[index].Availability.ExecutablePath
 			snapshot, setupErr := p.extensionAvailabilityCache.load(ctx, agentextensionservice.InstallPlanInput{
 				WorkspaceID: workspaceID, AgentTargetID: target.ID,
 			}, refresh)
 			if setupErr != nil {
 				items[index].Availability = unknownExtensionSetupAvailability(target.Provider, setupErr)
+				items[index].Availability.ExecutablePath = executablePath
 				return
 			}
 			items[index].Availability = extensionSetupAvailability(target.Provider, snapshot)
+			items[index].Availability.ExecutablePath = executablePath
 		}(index)
 	}
 	probes.Wait()
@@ -323,7 +326,11 @@ func extensionTargetAvailability(target agenttargetbiz.Target) agentservice.Prov
 	case "not_installed", "auth_required", "unsupported":
 		status = agentservice.ProviderAvailabilityUnavailable
 	}
-	result := agentservice.ProviderAvailability{Provider: target.Provider, Status: status}
+	result := agentservice.ProviderAvailability{
+		Provider:       target.Provider,
+		Status:         status,
+		ExecutablePath: strings.TrimSpace(target.ExecutablePath),
+	}
 	if reason := strings.TrimSpace(target.AvailabilityReason); reason != "" {
 		result.LastError = &agentservice.ProviderAvailabilityError{Code: reason, Message: reason}
 	}

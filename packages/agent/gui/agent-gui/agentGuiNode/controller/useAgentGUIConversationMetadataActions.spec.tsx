@@ -56,6 +56,52 @@ describe("useAgentGUIConversationMetadataActions project pin", () => {
   });
 });
 
+describe("useAgentGUIConversationMetadataActions project removal", () => {
+  it("waits for the authoritative removal before changing the local snapshot", async () => {
+    let finishRemoval!: () => void;
+    const remove = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          finishRemoval = resolve;
+        })
+    );
+    const setUserProjectsSnapshot = vi.fn();
+    const { result } = renderHook(() =>
+      useAgentGUIConversationMetadataActions({
+        agentActivityRuntime: {} as never,
+        agentHostApi: {
+          toast: { error: vi.fn() },
+          userProjects: { remove }
+        } as never,
+        currentUserId: "user-1",
+        dataRef: { current: { provider: "codex" } } as never,
+        sessionEngine: {} as never,
+        setDetailError: vi.fn(),
+        setListError: vi.fn(),
+        setUserProjectsSnapshot,
+        userProjectsRef: {
+          current: [
+            { id: "remove", path: "/workspace/remove" },
+            { id: "keep", path: "/workspace/keep" }
+          ]
+        } as never,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    let removal!: Promise<boolean>;
+    act(() => {
+      removal = result.current.removeProject("/workspace/remove");
+    });
+    expect(setUserProjectsSnapshot).not.toHaveBeenCalled();
+    finishRemoval();
+    await expect(removal).resolves.toBe(true);
+    expect(setUserProjectsSnapshot).toHaveBeenCalledWith([
+      expect.objectContaining({ id: "keep" })
+    ]);
+  });
+});
+
 describe("useAgentGUIConversationMetadataActions fork identity", () => {
   it("leaves identity reuse to the Engine facade and selects its authoritative target", async () => {
     const unsupported = Object.assign(new Error("unsupported"), {

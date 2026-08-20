@@ -114,10 +114,10 @@ func (d *serviceAdapterDeletedSessionLifecycleConformanceDriver) ListDeletedSess
 		cursor = strconv.FormatInt(input.CursorUpdatedAtUnixMS, 10) + "|" + input.CursorAgentSessionID
 	}
 	page, err := d.service.ListDeletedSessions(ctx, input.WorkspaceID, ListDeletedSessionsInput{
-		SearchQuery: input.SearchQuery,
-		ProjectPath: input.ProjectPath,
-		Cursor:      cursor,
-		Limit:       input.Limit,
+		SearchQuery:    input.SearchQuery,
+		RailSectionKey: input.RailSectionKey,
+		Cursor:         cursor,
+		Limit:          input.Limit,
 	})
 	if err != nil {
 		return agenthost.DeletedSessionPage{}, err
@@ -127,6 +127,7 @@ func (d *serviceAdapterDeletedSessionLifecycleConformanceDriver) ListDeletedSess
 		sessions = append(sessions, agenthost.DeletedSessionSummary{
 			AgentSessionID:    session.AgentSessionID,
 			Title:             session.Title,
+			RailSectionKey:    session.RailSectionKey,
 			ProjectPath:       session.ProjectPath,
 			UpdatedAtUnixMS:   session.UpdatedAtUnixMS,
 			DeletedAtUnixMS:   session.DeletedAtUnixMS,

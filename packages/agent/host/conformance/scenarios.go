@@ -1,16 +1,33 @@
 package conformance
 
 var (
-	createEmptySessionScenario       = Scenario{Name: "create empty session", run: runCreateEmptySession}
-	createWithInitialContentScenario = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
-	createWithInitialGoalScenario    = Scenario{Name: "create with typed initial goal", run: runCreateWithInitialGoal}
-	createWithRailPlacementScenario  = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
-	resumePersistedSessionScenario   = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
-	sendInputScenario                = Scenario{Name: "send input", run: runSendInput}
-	sendConnectorOnlyInputScenario   = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
-	providerAcceptanceScenario       = Scenario{
+	createEmptySessionScenario          = Scenario{Name: "create empty session", run: runCreateEmptySession}
+	createWithInitialContentScenario    = Scenario{Name: "create with initial content", run: runCreateWithInitialContent}
+	createWithInitialGoalScenario       = Scenario{Name: "create with typed initial goal", run: runCreateWithInitialGoal}
+	initialGoalExecutionPendingScenario = Scenario{Name: "initial Goal exposes execution pending", run: runInitialGoalExecutionPending}
+	typedInitialGoalRailBarrierScenario = Scenario{
+		Name: "typed initial goal waits for canonical rail initialization",
+		run:  runTypedInitialGoalWaitsForCanonicalRailInitialization,
+	}
+	failedCanonicalInitializationScenario = Scenario{
+		Name: "failed canonical initialization aborts unpublished runtime",
+		run:  runFailedCanonicalInitializationAbortsUnpublishedRuntime,
+	}
+	createWithRailPlacementScenario              = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
+	createWithAuthoritativeRailPlacementScenario = Scenario{
+		Name: "create with authoritative rail placement outside local project registry",
+		run:  runCreateWithAuthoritativeRailPlacement,
+	}
+	resumePersistedSessionScenario = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	sendInputScenario              = Scenario{Name: "send input", run: runSendInput}
+	sendConnectorOnlyInputScenario = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
+	providerAcceptanceScenario     = Scenario{
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
+	}
+	providerlessCanonicalTerminalScenario = Scenario{
+		Name: "providerless canonical terminal settles and replays submission",
+		run:  runProviderlessCanonicalTerminalSettlesAndReplaysSubmission,
 	}
 	rejectedInitialSubmitScenario = Scenario{
 		Name: "rejected initial submit discards runtime without completing canonical session",
@@ -18,9 +35,11 @@ var (
 	}
 	duplicateClientSubmitIDScenario     = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
 	exactTurnCancelScenario             = Scenario{Name: "exact turn cancel", run: runExactTurnCancel}
+	unconfirmedTurnCancelScenario       = Scenario{Name: "exact turn cancel keeps delivery-unconfirmed intent pending", run: runUnconfirmedTurnCancel}
 	interactiveResponseScenario         = Scenario{Name: "interactive response", run: runInteractiveResponse}
 	interactiveResponseReusedIDScenario = Scenario{Name: "interactive response reuses provider request id across turns", run: runInteractiveResponseReusedRequestID}
 	interactiveResponseRaceScenario     = Scenario{Name: "interactive response race", run: runInteractiveResponseRace}
+	interactiveFollowUpRecoveryScenario = Scenario{Name: "interactive follow-up recovers through Host admission", run: runInteractiveFollowUpRecovery}
 	planDecisionScenario                = Scenario{Name: "plan decision", run: runPlanDecision}
 	initialTitleCASScenario             = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
 	getSessionScenario                  = Scenario{Name: "get session", run: runGetSession}
@@ -56,7 +75,11 @@ func Scenarios() []Scenario {
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
 		createWithInitialGoalScenario,
+		initialGoalExecutionPendingScenario,
+		typedInitialGoalRailBarrierScenario,
+		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
+		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
@@ -64,6 +87,7 @@ func Scenarios() []Scenario {
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		providerlessCanonicalTerminalScenario,
 		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		exactTurnCancelScenario,
@@ -103,6 +127,15 @@ func TitlePolicyScenarios() []Scenario {
 	return []Scenario{{Name: "clear canonical title", run: runClearCanonicalTitle}}
 }
 
+// RailPlacementRecoveryScenarios verifies the Host-owned immutable rail proof
+// used by application adapters during idempotent recovery.
+func RailPlacementRecoveryScenarios() []RailPlacementRecoveryScenario {
+	return []RailPlacementRecoveryScenario{{
+		Name: "recover canonical session only on matching rail",
+		run:  runRecoverCanonicalSessionOnlyOnMatchingRail,
+	}}
+}
+
 // DeletionAdmissionScenarios verifies the provider-neutral guard around the
 // exact canonical closure owned and replanned by Host.
 func DeletionAdmissionScenarios() []Scenario {
@@ -118,12 +151,13 @@ func DeletionAdmissionScenarios() []Scenario {
 func CoordinatorScenarios() []Scenario {
 	return []Scenario{
 		exactTurnCancelScenario,
+		unconfirmedTurnCancelScenario,
 		interactiveResponseScenario,
 		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
+		interactiveFollowUpRecoveryScenario,
 		planDecisionScenario,
-		{Name: "recover operations before stale turns and worktree sweep", run: runRecoveryOrder},
-		{Name: "worktree sweep failure propagates", run: runWorktreeSweepFailure},
+		{Name: "recover operations before stale turns", run: runRecoveryOrder},
 	}
 }
 
@@ -178,6 +212,16 @@ func InteractionTreeScenarios() []InteractionTreeScenario {
 	}}
 }
 
+// SideConversationScenarios fixes the provider-neutral contract: the source
+// remains untouched, Side output is transient, a Side survives source Turn
+// settlement, and explicit close releases the child.
+func SideConversationScenarios() []SideConversationScenario {
+	return []SideConversationScenario{{
+		Name: "active parent side stays transient",
+		run:  runActiveParentSideStaysTransient,
+	}}
+}
+
 // CommitObserverScenarios verify the typed post-commit seam independently of
 // any adapter-specific event transport. They intentionally include a failing
 // observer because observer delivery is advisory after the durable commit.
@@ -195,7 +239,11 @@ func ApplicationCoreScenarios() []Scenario {
 		createEmptySessionScenario,
 		createWithInitialContentScenario,
 		createWithInitialGoalScenario,
+		initialGoalExecutionPendingScenario,
+		typedInitialGoalRailBarrierScenario,
+		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
+		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
@@ -203,6 +251,7 @@ func ApplicationCoreScenarios() []Scenario {
 		guidanceExactTargetScenario,
 		guidanceTargetMismatchScenario,
 		providerAcceptanceScenario,
+		providerlessCanonicalTerminalScenario,
 		rejectedInitialSubmitScenario,
 		duplicateClientSubmitIDScenario,
 		initialTitleCASScenario,

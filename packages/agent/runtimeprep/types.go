@@ -30,11 +30,15 @@ type SkillBundleRenderer interface {
 }
 
 type PrepareInput struct {
-	WorkspaceID            string
-	AgentSessionID         string
-	AgentTargetID          string
-	Provider               string
-	Cwd                    string
+	WorkspaceID    string
+	AgentSessionID string
+	AgentTargetID  string
+	Provider       string
+	Cwd            string
+	// SkipSkills keeps provider preparation limited to the runtime data needed
+	// by a model-only probe. It must not be used when launching a live Agent
+	// Session or when the caller needs the provider's Skill catalog.
+	SkipSkills             bool
 	CLICommand             string
 	CodexSaverMode         bool
 	Title                  string
@@ -62,6 +66,12 @@ type PrepareInput struct {
 	// SkillRoot points at the active release's verified, content-addressed Skill
 	// tree and remains stable across Connector runtime restarts.
 	ConnectorRoutingHints []ConnectorRoutingHint
+	// MCPServers are daemon-issued, session-scoped native MCP bindings. They
+	// are typed runtime configuration and must never be rendered into prompts.
+	MCPServers []MCPServerBinding
+	// Connector is the complete, session-bound Connector projection. The
+	// preparer expands it into provider-native MCP, PATH, and Skill inputs.
+	Connector *ConnectorAgentContext
 	// ExtensionSkillRoots carries the skill root paths declared by an agent
 	// extension's composer profile (Skills.Roots[].Path). When non-empty,
 	// native tutti skills materialize into these roots instead of the
@@ -110,8 +120,24 @@ type ConnectorRoutingHint struct {
 }
 
 type PreparedRuntime struct {
-	Cwd string
-	Env []string
+	Cwd        string
+	Env        []string
+	MCPServers []MCPServerBinding
+}
+
+type MCPServerBinding struct {
+	Name    string
+	Type    string
+	URL     string
+	Headers map[string]string
+}
+
+type ConnectorAgentContext struct {
+	MCPServers      []MCPServerBinding
+	RoutingHints    []ConnectorRoutingHint
+	CLIBinDir       string
+	SkillRoots      []string
+	RuntimeRevision uint64
 }
 
 type ExtensionRuntimePrep struct {

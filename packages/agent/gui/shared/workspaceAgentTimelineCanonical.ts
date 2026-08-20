@@ -226,6 +226,7 @@ export function buildCanonicalWorkspaceAgentDetailView({
 
   enrichProjectedTurnsWithCanonicalErrors({
     turns,
+    latestTurnId: session.latestTurn?.turnId ?? null,
     sessionTurns:
       sessionTurns.length > 0
         ? sessionTurns

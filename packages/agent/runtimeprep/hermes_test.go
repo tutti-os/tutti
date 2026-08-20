@@ -313,6 +313,7 @@ func TestExtensionRuntimePreparerSkipsGlobalCopiesWhenHomeUnavailable(t *testing
 	t.Setenv("HERMES_HOME", "")
 	t.Setenv("HOME", "")
 	t.Setenv("USERPROFILE", "")
+	t.Setenv("LOCALAPPDATA", "")
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
 	for _, name := range []string{"config.yaml", "auth.json", ".env"} {

@@ -14,7 +14,9 @@ export type DesktopAgentProviderManageRowStatus =
   | "auth_required"
   | "available"
   | "checking"
+  | "configured"
   | "connected"
+  | "temporarily_unsupported"
   | "unknown"
   | "unsupported";
 
@@ -34,6 +36,12 @@ export interface DesktopAgentProviderManageRow {
   // status enum so callers that do not care keep treating the row as "unknown".
   runtimeSelectionRequired: boolean;
   status: DesktopAgentProviderManageRowStatus;
+}
+
+export function canConfigureDesktopAgentProvider(
+  status: DesktopAgentProviderManageRowStatus
+): boolean {
+  return status !== "temporarily_unsupported";
 }
 
 // The daemon reports availability "unknown" with one of these reason codes when
@@ -113,13 +121,16 @@ function resolveDesktopAgentProviderManageRowStatus(
 
   switch (status.availability.status) {
     case "ready":
-      return "connected";
+      return status.auth.status === "configured" ? "configured" : "connected";
     case "not_installed":
       return "available";
     case "auth_required":
       return "auth_required";
     case "unsupported":
-      return "unsupported";
+      return status.availability.reasonCode ===
+        "provider_temporarily_unsupported"
+        ? "temporarily_unsupported"
+        : "unsupported";
     case "unknown":
       return "unknown";
   }

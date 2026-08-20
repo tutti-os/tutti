@@ -1,7 +1,7 @@
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 
 export interface AgentGUIProjectChangeMetadata {
-  action: "clear" | "create_new" | "select_existing";
+  action: "clear" | "create_new" | "import_directory" | "select_existing";
 }
 
 export function trackAgentGUISettingsProjectChange(input: {

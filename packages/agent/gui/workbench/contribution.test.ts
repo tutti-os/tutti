@@ -844,6 +844,74 @@ describe("agent GUI workbench contribution copy", () => {
     );
   });
 
+  it("contributes a window close effect only for an active canonical session", async () => {
+    const sessionEngine = createTestAgentSessionEngine("workspace-1");
+    sessionEngine.dispatch({
+      sessions: [
+        {
+          activeTurn: {
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "waiting",
+            startedAtUnixMs: 10,
+            turnId: "turn-1",
+            updatedAtUnixMs: 10
+          },
+          activeTurnId: "turn-1",
+          agentSessionId: "session-1",
+          agentTargetId: "local:codex",
+          createdAtUnixMs: 1,
+          cwd: "/workspace",
+          latestTurnInteractions: [],
+          pendingInteractions: [],
+          provider: "codex",
+          title: "Waiting session",
+          workspaceId: "workspace-1"
+        }
+      ],
+      type: "session/snapshotReceived"
+    });
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: () => null,
+      sessionEngine,
+      workspaceId: "workspace-1"
+    });
+    const context = {
+      externalNodeState: {
+        lastActiveAgentSessionId: "session-1"
+      },
+      externalWorkspaceState: null,
+      instanceId: "agent-gui:codex:panel:test-1",
+      node: {
+        data: { typeId: agentGuiWorkbenchTypeId },
+        id: "agent-gui-node-1",
+        title: "Agent"
+      },
+      workspaceId: "workspace-1"
+    } as never;
+
+    await expect(
+      Promise.resolve(
+        contribution.nodes?.[0]?.getWindowCloseEffect?.(context)
+      )
+    ).resolves.toEqual({
+      nodeId: "agent-gui-node-1",
+      title: "Agent",
+      typeId: agentGuiWorkbenchTypeId
+    });
+
+    sessionEngine.dispatch({
+      sessions: [createWorkbenchSession("Settled session", 20)],
+      type: "session/snapshotReceived"
+    });
+
+    await expect(
+      Promise.resolve(
+        contribution.nodes?.[0]?.getWindowCloseEffect?.(context)
+      )
+    ).resolves.toBeNull();
+  });
+
   it("lets hosts override only the copy they own", () => {
     expect(
       resolveAgentGuiWorkbenchContributionCopy({

@@ -24,6 +24,7 @@ import {
 } from "@tutti-os/ui-system";
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import type { WorkspaceFileManagerI18nRuntime } from "../i18n/workspaceFileManagerI18n.ts";
+import { formatWorkspaceFilePathForDisplay } from "../services/workspaceFileManagerModel.ts";
 import type { WorkspaceFileManagerArrangeMode } from "./workspaceFileManagerArrangeMode.ts";
 import type { WorkspaceFileManagerLayoutMode } from "./workspaceFileManagerLayoutMode.ts";
 import type { RenderWorkspaceFileManagerToolbarTrailingActions } from "./workspaceFileManagerToolbarTypes.ts";
@@ -35,6 +36,7 @@ export function WorkspaceFileManagerToolbar({
   canGoForward,
   copy,
   currentDirectoryPath,
+  pathDisplayPlatform,
   isBusy,
   isLoading,
   isMutating,
@@ -58,6 +60,7 @@ export function WorkspaceFileManagerToolbar({
   canGoForward: boolean;
   copy: WorkspaceFileManagerI18nRuntime;
   currentDirectoryPath: string;
+  pathDisplayPlatform?: string | null;
   isBusy: boolean;
   isLoading: boolean;
   isMutating: boolean;
@@ -76,6 +79,10 @@ export function WorkspaceFileManagerToolbar({
   onSearchQueryChange: (query: string) => void;
 }): ReactElement {
   const [refreshAnimationKey, setRefreshAnimationKey] = useState(0);
+  const displayPath = formatWorkspaceFilePathForDisplay(
+    currentDirectoryPath,
+    pathDisplayPlatform
+  );
 
   const handleRefresh = (): void => {
     setRefreshAnimationKey((currentKey) => currentKey + 1);
@@ -101,7 +108,7 @@ export function WorkspaceFileManagerToolbar({
         <ArrowRightIcon className="size-4" />
       </ToolbarIconButton>
       <nav
-        aria-label={currentDirectoryPath}
+        aria-label={displayPath}
         className="@max-[600px]/workspace-file-manager:flex-auto flex min-w-0 flex-1 overflow-hidden pr-2"
         data-workspace-file-manager-path=""
       >

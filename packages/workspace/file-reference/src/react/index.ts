@@ -23,6 +23,14 @@ export {
   type ReferenceSourcePickerSnapshot,
   type ReferenceSourceTabState
 } from "./internal/reference/referenceSourcePickerController.ts";
+export type {
+  ReferenceSearchResultBlock,
+  ReferenceSearchResultIndex
+} from "./internal/reference/referenceSearchResultIndex.ts";
+export {
+  invalidateReferenceSourcePickerRuntimeCache,
+  invalidateReferenceSourceTabRuntimeCache
+} from "./internal/reference/referenceSourceTabRuntimeCache.ts";
 export {
   createReferenceProvenanceFilterController,
   type ReferenceProvenanceFilterController,

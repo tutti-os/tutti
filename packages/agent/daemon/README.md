@@ -152,9 +152,33 @@ The same package exposes narrow helpers for explicit Codex and Claude API
 billing configuration. Credential-file or token presence must not be used as
 proof that an OAuth session is still authenticated.
 
-`providerstatus` returns an observation only. Each host remains responsible for
-runtime coordination, freshness, failure ordering, and projecting the result
-through its own authoritative provider-status registry.
+`providerstatus` also owns the provider-neutral evidence reduction contract.
+Local status commands and credential files produce `configured`; a successful
+provider request produces `authenticated`; an explicit remote auth failure
+produces `required`. Remote evidence outranks stale local files until the host
+crosses an explicit account, credential, or runtime boundary. Transient probe
+failures preserve a settled observation.
+
+`tuttid` consumes this reducer in its provider-status service. It combines the
+local probe with real agent-run outcomes, owns freshness and credential-change
+reset, and projects the same public status to Tutti Desktop and AgentGUI.
+External hosts consume the same reducer only when their runtime cannot use the
+`tuttid` status service. `DesktopIntegrationDescriptor` declares when such a
+host must wait for credential projection before probing; the host maps that
+semantic barrier to its own synchronization mechanism.
+
+`StatusDescriptor.RemoteAuthProbe` owns the provider-backed strategy without
+owning credential storage. Claude Code declares its OAuth usage request to
+`https://api.anthropic.com/api/oauth/usage`; hosts resolve the OAuth access
+token from their own credential authority and never send an API key or
+`ANTHROPIC_AUTH_TOKEN` to that endpoint. Codex declares the provider-usage
+strategy, which invokes `account/rateLimits/read` through the provider runtime
+without publishing credential bytes. A successful request authenticates the
+session, an explicit authentication rejection requires login, and throttling,
+server, or transport failures preserve the local `configured` state. `tuttid`
+expires this remote evidence after 15 minutes; Desktop asks again only while
+its window is visible and focused. OAuth refresh-token rotation remains
+credential-owner policy and is not performed by this status probe.
 
 ## Live Session Recycling
 
@@ -169,6 +193,33 @@ completes the session, publishes completion activity, and removes the in-memory
 record. Idle live-session release must not emit completion activity, clear the
 provider session id, remove runtime directories, or interrupt active turns and
 pending interactive requests.
+
+Standard ACP Agent Extensions participate in the default idle reaper only when
+their live `initialize` handshake advertises `session/load` or
+`session/resume`. After 30 minutes of inactivity, release closes only the ACP
+transport and its CLI process; it does not send `session/close`. The next
+`Exec` launches a replacement CLI process and restores the preserved provider
+session. Extensions that do not advertise a restore method remain live, and a
+pending interactive request makes the session busy rather than releasable.
+Replacement processes continue the durable Session's lifecycle snapshot
+sequence so restored activity cannot be rejected as stale. Release, resume,
+and live settings RPCs (including permission changes) share the per-Session
+lifecycle fence; a failed transport close keeps the live handle registered so
+a later release can retry.
+The local process transport serializes concurrent close attempts and retries
+termination after a failed attempt instead of caching that failure forever.
+An ACP client whose release failed remains owned as a physical handle but is
+not considered usable. One replacement may reconnect the durable provider
+session, but the old client's inbound handler is quarantined before close so
+late output cannot enter the replacement Turn. If that old handle still cannot
+close, later Start/Resume attempts spend one bounded cleanup attempt and return
+`agent.process_cleanup_pending` without spawning another process while the
+retired handle remains.
+The Controller also sweeps adapter-owned retired handles independently of its
+canonical Session registry, so provisional or preserve-state removal cannot
+orphan cleanup ownership. Each sweep gives every cleanup-capable adapter at
+most one failed Close budget across canonical and detached handles, and reports
+resource counters separately from canonical idle-session release results.
 
 Claude Code SDK sessions keep the SDK `session_id` in `ProviderSessionID` and
 mirror the opaque SDK resume cursor in `runtimeContext.resumeCursor`. The sidecar
@@ -209,19 +260,23 @@ projection contracts; they are not sufficient to host a runtime controller
 because their state and message writes may use separate transactions.
 `agentdaemon.Config.Reporter` requires `DurableActivityReporter`, whose
 `ReportSubmitProvenance` method must atomically persist the canonical
-client-submit message against an already-durable Turn and return only after
-that message can be queried by `clientSubmitId`. A host decorator embeds or
-otherwise preserves this required interface; there is no optional capability
-probe to forward manually.
+client-submit message and the submitted Turn admission before provider
+dispatch, and return only after that message can be queried by
+`clientSubmitId`. A host decorator embeds or otherwise preserves this required
+interface; there is no optional capability probe to forward manually.
 
 The daemon service passes `ClientSubmitID` through typed create/send and runtime
-inputs. After `Exec` reports provider acceptance, the service explicitly calls
-the required `RuntimeController.DurablyReportSubmitProvenance` method before it
-accepts any submit claim. The runtime adapter delegates that call to the
-controller after `Exec` has released the session lifecycle lock; the controller
-places the uncoalesced barrier behind earlier reports in the same FIFO. A
-barrier failure is delivery-unknown, and provider work is never blindly
-replayed.
+inputs. `Exec` uses `ReportSubmitProvenance` as the pre-dispatch admission
+barrier. After `Exec` returns, the service explicitly calls the required
+`RuntimeController.DurablyReportSubmitProvenance` method as an idempotent
+reconciliation barrier before it accepts any submit claim; this second call
+does not represent a second provider admission. The runtime adapter delegates
+that call to the controller after `Exec` has released the session lifecycle
+lock; the controller places the uncoalesced barrier behind earlier reports in
+the same FIFO. A barrier failure is delivery-unknown, and provider work is
+never blindly replayed. Host-owned user submissions, including follow-up
+submissions, carry a stable `ClientSubmitID`; standalone internal runtime
+calls may retain their generated prompt-message identity.
 
 ```go
 client := agentsessionstore.NewClient(agentsessionstore.Config{

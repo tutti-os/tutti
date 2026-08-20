@@ -172,7 +172,10 @@ export type MobileDiagnosticEvent =
       stage:
         | "direct_attempt_created"
         | "direct_attempt_ready"
+        | "direct_credentials_ready"
         | "direct_connected"
+        | "direct_first_candidate_published"
+        | "direct_remote_candidate_received"
         | "relay_descriptor_ready"
         | "relay_probe_ready";
     }

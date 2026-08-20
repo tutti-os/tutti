@@ -3,7 +3,6 @@ import {
   Suspense,
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -45,8 +44,11 @@ import {
   type IWorkspaceAppCenterService
 } from "@renderer/features/workspace-app-center";
 import { useService } from "@tutti-os/infra/di";
-import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
-import { openConnectorDialogFromComposer } from "../services/openConnectorDialogFromComposer.ts";
+import {
+  IConnectorMarketModule,
+  installAndOpenConnectorMarketDialog,
+  openConnectorMarketDialog
+} from "@tutti-os/connector-renderer/application";
 import { IWorkspaceFileManagerService } from "@renderer/features/workspace-file-manager";
 import { IWorkspaceFilePreviewSurfaceHost } from "@renderer/features/workspace-file-preview";
 import type {
@@ -99,6 +101,7 @@ import { Toast } from "@renderer/lib/toast";
 import { useStandaloneAgentWindowLayout } from "./useStandaloneAgentWindowLayout.ts";
 import { createStandaloneAgentWorkspaceAppSurfacePresenter } from "../services/standaloneAgentWorkspaceAppSurfacePresenter.ts";
 import { createStandaloneAgentWorkspaceFilePreviewPresenter } from "../services/standaloneAgentWorkspaceFilePreviewPresenter.ts";
+import { registerWorkspaceFilesLaunchHandler } from "../services/workspaceFilesLaunchCoordinator.ts";
 
 const LazyWorkspaceAccountMenu = lazy(() =>
   import("./WorkspaceAccountMenu").then(({ WorkspaceAccountMenu }) => ({
@@ -442,11 +445,17 @@ export function StandaloneAgentWindow({
     return workspaceFilePreviewSurfaceHost.registerPresenter(
       workspaceId,
       createStandaloneAgentWorkspaceFilePreviewPresenter({
-        hostFilesApi: desktopApi.host.files,
-        workspaceId
+        openFile: (path) => openFileInSidebar(path, true)
       })
     );
-  }, [desktopApi.host.files, workspaceFilePreviewSurfaceHost, workspaceId]);
+  }, [openFileInSidebar, workspaceFilePreviewSurfaceHost, workspaceId]);
+  useEffect(
+    () =>
+      registerWorkspaceFilesLaunchHandler(workspaceId, (request) =>
+        openFileInSidebar(request.path, request.validateExists)
+      ),
+    [openFileInSidebar, workspaceId]
+  );
   useEffect(() => {
     return workspaceAppSurfaceHost.registerPresenter(
       createStandaloneAgentWorkspaceAppSurfacePresenter({
@@ -519,6 +528,14 @@ export function StandaloneAgentWindow({
       agentGuiHostInput.createAgentGUIEngagementEventSink("standalone_agent"),
     [agentGuiHostInput]
   );
+  const agentSideConversationRuntime = useMemo(
+    () => agentGuiHostInput.createAgentSideConversationRuntime(),
+    [agentGuiHostInput]
+  );
+  useEffect(
+    () => () => agentSideConversationRuntime?.dispose?.(),
+    [agentSideConversationRuntime]
+  );
   const dockPreviewCache = useMemo(
     () => createStandaloneAgentDockPreviewCache(desktopApi.dockPreviewCache),
     [desktopApi.dockPreviewCache]
@@ -564,7 +581,7 @@ export function StandaloneAgentWindow({
   const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const minimumAgentGuiViewportWidthPx =
     resolveStandaloneAgentGUIViewportMinimumWidthPx({
-      conversationRailCollapsed: nodeState.conversationRailCollapsed === true,
+      conversationRailCollapsed: isConversationRailCollapsed,
       conversationRailWidthPx: nodeState.conversationRailWidthPx
     });
   const host = useMemo(
@@ -580,9 +597,23 @@ export function StandaloneAgentWindow({
       }),
     []
   );
-  useLayoutEffect(
-    () => agentEnvService.bindWorkbenchHost(host),
-    [agentEnvService, host]
+  const releaseAgentEnvHostRef = useRef<(() => void) | null>(null);
+  const handleToolHostReady = useCallback(
+    (toolHost: WorkbenchHostHandle | null) => {
+      releaseAgentEnvHostRef.current?.();
+      releaseAgentEnvHostRef.current = toolHost
+        ? agentEnvService.bindWorkbenchHost(toolHost)
+        : null;
+      toolWorkbench.onHostReady(toolHost);
+    },
+    [agentEnvService, toolWorkbench]
+  );
+  useEffect(
+    () => () => {
+      releaseAgentEnvHostRef.current?.();
+      releaseAgentEnvHostRef.current = null;
+    },
+    []
   );
   const surface = useMemo<DesktopAgentGUISurfaceContext>(
     () => ({
@@ -690,8 +721,20 @@ export function StandaloneAgentWindow({
         if (!isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)) {
           return;
         }
+        if (target.action === "set_runtime_enabled") {
+          return connectorMarketModule.root.market.setRuntimeEnabled(
+            target.connectorKey,
+            target.enabled
+          );
+        }
+        if (target.action === "install") {
+          return installAndOpenConnectorMarketDialog(
+            connectorMarketModule.root,
+            target.connectorKey
+          ).then(() => undefined);
+        }
         if (target.action === "open") {
-          void openConnectorDialogFromComposer(
+          void openConnectorMarketDialog(
             connectorMarketModule.root,
             target.connectorKey
           ).catch(() => undefined);
@@ -767,7 +810,6 @@ export function StandaloneAgentWindow({
       >
         <StandaloneAgentToolSidebar
           activityService={workspaceAgentActivityService}
-          agentSessionId={nodeState.lastActiveAgentSessionId}
           appOpenId={openAppId}
           appI18n={toolWorkbench.appI18n}
           browserApi={desktopApi.browser}
@@ -849,8 +891,9 @@ export function StandaloneAgentWindow({
           onAppsOpen={ensureWorkspaceAppPolling}
           onAppendBrowserElementMention={appendBrowserElementMention}
           onBrowserElementError={Toast.Error}
-          onToolHostReady={toolWorkbench.onHostReady}
+          onToolHostReady={handleToolHostReady}
           resizeWindowContentWidth={resizeStandaloneAgentWindowContentWidth}
+          runtimeApi={desktopApi.runtime}
           workspaceId={workspaceId}
         >
           <StandaloneAgentWindowContentReady
@@ -860,6 +903,7 @@ export function StandaloneAgentWindow({
           >
             <DesktopAgentGUISurface
               agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
+              agentSideConversationRuntime={agentSideConversationRuntime}
               agentHostApi={agentGuiHostInput.agentHostApi}
               agentSessionReplayService={
                 agentGuiHostInput.agentSessionReplayService

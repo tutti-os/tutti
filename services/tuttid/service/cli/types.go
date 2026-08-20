@@ -78,6 +78,8 @@ type InvokeContext struct {
 	WorkspaceID                    string
 	ParentCommandID                string
 	AgentSessionID                 string
+	AgentCWD                       string
+	AgentRailPlacementJSON         string
 	SkipCapabilityFilters          bool
 	IncludeIntegrationCapabilities bool
 }

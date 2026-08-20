@@ -25,6 +25,7 @@ import type {
   IAgentsService
 } from "../../workspace-agent/services/agentsService.interface.ts";
 import {
+  canConfigureDesktopAgentProvider,
   desktopAgentProviderManageDialogProviders,
   projectDesktopAgentProviderManageRows,
   type DesktopAgentProviderManageRow
@@ -459,6 +460,8 @@ export function WorkspaceAgentsSettingsTab({
           {visibleProviders.map((provider) => {
             const row = rowByProvider.get(provider);
             const status = row?.status ?? "unknown";
+            const canConfigureProvider =
+              canConfigureDesktopAgentProvider(status);
             const label = resolveWorkspaceAgentGuiLabel(provider);
             const targetID = agentTargetId(provider);
             const agentTarget = targetID ? agentTargetByID.get(targetID) : null;
@@ -543,7 +546,11 @@ export function WorkspaceAgentsSettingsTab({
                       environmentLabel={environmentLabel}
                       label={t(statusLabelKeys[status])}
                       status={status}
-                      onOpenEnvironment={() => onOpenEnvironment(provider)}
+                      onOpenEnvironment={
+                        canConfigureProvider
+                          ? () => onOpenEnvironment(provider)
+                          : undefined
+                      }
                     />
                   </span>
                 </div>
@@ -556,7 +563,11 @@ export function WorkspaceAgentsSettingsTab({
                     environmentLabel={environmentLabel}
                     label={t(statusLabelKeys[status])}
                     status={status}
-                    onOpenEnvironment={() => onOpenEnvironment(provider)}
+                    onOpenEnvironment={
+                      canConfigureProvider
+                        ? () => onOpenEnvironment(provider)
+                        : undefined
+                    }
                   />
                 </div>
                 <div
@@ -580,6 +591,7 @@ export function WorkspaceAgentsSettingsTab({
                       agentsSnapshot.status === "loading" ||
                       !agentTarget ||
                       alwaysEnabled ||
+                      !canConfigureProvider ||
                       agentEnabledPending
                     }
                     size="sm"

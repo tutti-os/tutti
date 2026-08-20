@@ -7,6 +7,18 @@ import (
 	"time"
 )
 
+func (h *Host) cleanupRejectedPreparedRuntime(
+	ctx context.Context,
+	ref SessionRef,
+	provider string,
+	cause error,
+) error {
+	if h.preparation == nil {
+		return cause
+	}
+	return h.discardRejectedPreparedRuntime(ctx, cause, ref.WorkspaceID, ref.AgentSessionID, provider)
+}
+
 func (h *Host) discardRejectedPreparedRuntime(
 	ctx context.Context,
 	cause error,
@@ -44,6 +56,7 @@ func (h *Host) persistRuntimeSubmitOutcome(
 	prepared preparedPromptContent,
 	displayPrompt string,
 	capabilityRefs []CapabilityReference,
+	metadata map[string]any,
 	tuttiModeSnapshot *TuttiModeTurnSnapshot,
 ) error {
 	return h.persistSubmitAfterRuntimeOutcome(
@@ -58,6 +71,7 @@ func (h *Host) persistRuntimeSubmitOutcome(
 		displayPrompt,
 		false,
 		capabilityRefs,
+		metadata,
 		tuttiModeSnapshot,
 	)
 }
@@ -78,6 +92,7 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 	displayPrompt string,
 	guidance bool,
 	capabilityRefs []CapabilityReference,
+	metadata map[string]any,
 	tuttiModeSnapshot *TuttiModeTurnSnapshot,
 ) error {
 	if h == nil || strings.TrimSpace(turnID) == "" {
@@ -114,6 +129,7 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 		persistedContent,
 		displayPrompt,
 		capabilityRefs,
+		metadata,
 		tuttiModeSnapshot,
 	)
 }

@@ -3,6 +3,7 @@ import type {
   AgentContextMentionItem,
   AgentMentionFileItem
 } from "./agentRichText/agentFileMentionExtension";
+import { dirnameFromPath } from "./agentRichText/agentMentionMarkdown";
 
 export function presentWorkspaceFileDirectoryMentionItems(input: {
   browsePath: string;
@@ -26,10 +27,5 @@ function createWorkspaceFileFolderBackItem(
 }
 
 function parentWorkspaceFileDirectoryPath(path: string): string {
-  const normalized = path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
-  const index = normalized.lastIndexOf("/");
-  if (index <= 0) {
-    return "/";
-  }
-  return normalized.slice(0, index);
+  return dirnameFromPath(path);
 }

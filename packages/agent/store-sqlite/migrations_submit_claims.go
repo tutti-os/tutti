@@ -114,3 +114,39 @@ CREATE INDEX idx_workspace_agent_submit_claims_canonical_turn
 	}
 	return nil
 }
+
+// V4 retains the small submission-metadata envelope that must cross the
+// provider-admission barrier. The complete TurnSubmission is still persisted
+// after Exec, but metadata needed by durable post-commit consumers must survive
+// a process crash between provider settlement and that later envelope write.
+func (s *Store) applyWorkspaceAgentSubmitClaimsV4(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentSubmitClaimsV4)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent submit claims v4 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	hasMetadata, err := hasColumnTx(ctx, tx, "workspace_agent_submit_claims", "metadata_json")
+	if err != nil {
+		return err
+	}
+	if !hasMetadata {
+		if _, err := tx.ExecContext(ctx, `
+ALTER TABLE workspace_agent_submit_claims
+  ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'
+  CHECK (json_valid(metadata_json) AND json_type(metadata_json) = 'object');
+`); err != nil {
+			return fmt.Errorf("migrate workspace agent submit claims v4: %w", err)
+		}
+	}
+	if err := recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentSubmitClaimsV4); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace agent submit claims v4 migration: %w", err)
+	}
+	return nil
+}

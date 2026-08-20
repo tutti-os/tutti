@@ -26,7 +26,7 @@ func TestLocalFilesAdapterListsLogicalChildren(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	listing, err := adapter.ListDirectory(context.Background(), localFilesRoot(rootDir), "/workspace", false)
 	if err != nil {
 		t.Fatalf("ListDirectory() error = %v", err)
@@ -138,6 +138,49 @@ func TestLocalFilesAdapterListDirectorySkipsHiddenEntriesByDefault(t *testing.T)
 	}
 	if len(listing.Entries) != 1 || listing.Entries[0].Path != "/workspace/docs" {
 		t.Fatalf("entries = %#v, want only visible docs directory", listing.Entries)
+	}
+}
+
+func TestLocalFilesAdapterHidesKnownTransientFilesUnlessRequested(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	for _, name := range []string{
+		"~$draft.docx",
+		"download.crdownload",
+		"ordinary.tmp",
+		"~notes.md",
+		"report.docx",
+	} {
+		if err := os.WriteFile(filepath.Join(rootDir, name), []byte(name), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	adapter := LocalFilesAdapter{}
+	listing, err := adapter.ListDirectory(context.Background(), localFilesRoot(rootDir), "/workspace", false)
+	if err != nil {
+		t.Fatalf("ListDirectory() error = %v", err)
+	}
+	paths := make([]workspacefiles.LogicalPath, 0, len(listing.Entries))
+	for _, entry := range listing.Entries {
+		paths = append(paths, entry.Path)
+	}
+	want := []workspacefiles.LogicalPath{
+		"/workspace/ordinary.tmp",
+		"/workspace/report.docx",
+		"/workspace/~notes.md",
+	}
+	if !slices.Equal(paths, want) {
+		t.Fatalf("entries = %#v, want %v", listing.Entries, want)
+	}
+
+	includingHidden, err := adapter.ListDirectory(context.Background(), localFilesRoot(rootDir), "/workspace", true)
+	if err != nil {
+		t.Fatalf("ListDirectory(includeHidden) error = %v", err)
+	}
+	if len(includingHidden.Entries) != 5 {
+		t.Fatalf("includeHidden entries = %#v, want all five files", includingHidden.Entries)
 	}
 }
 
@@ -735,7 +778,7 @@ func TestLocalFilesAdapterSearchSkipsHiddenNoiseDirectoriesForNormalQueries(t *t
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{MaxSearchCandidates: 1}
+	adapter := testLocalFilesAdapter(1)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        "package.json",
 		Limit:        5,
@@ -773,7 +816,7 @@ func TestLocalFilesAdapterSearchKeepsShallowMatchesBeforeDeepCandidateCap(t *tes
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{MaxSearchCandidates: 2}
+	adapter := testLocalFilesAdapter(2)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        "郑伟斌",
 		Limit:        5,
@@ -813,7 +856,7 @@ func TestLocalFilesAdapterSearchTypeFilterKeepsFilenameAndParentPathMatches(t *t
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:   "22",
 		Limit:   20,
@@ -865,7 +908,7 @@ func TestLocalFilesAdapterSearchScopesToWithinSubdirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:  "report",
 		Limit:  20,
@@ -900,7 +943,7 @@ func TestLocalFilesAdapterSearchWithoutWithinSpansWholeRoot(t *testing.T) {
 		}
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query: "report",
 		Limit: 20,
@@ -925,7 +968,7 @@ func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathQuery(t *testing.T
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query: target,
 		Limit: 20,
@@ -956,7 +999,7 @@ func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathWithRelativeRoot(t
 	}
 	root := localFilesRoot(relativeRoot)
 
-	result, err := (LocalFilesAdapter{}).Search(context.Background(), root, workspacefiles.SearchInput{
+	result, err := testLocalFilesAdapter(0).Search(context.Background(), root, workspacefiles.SearchInput{
 		Query: target,
 		Limit: 20,
 	})
@@ -968,7 +1011,7 @@ func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathWithRelativeRoot(t
 	}
 }
 
-func TestLocalFilesAdapterSearchReturnsPartialResultsWhenDeadlineExpires(t *testing.T) {
+func TestLocalFilesAdapterSearchReturnsDeadlineErrorWhenIndexQueryExpires(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
@@ -980,17 +1023,14 @@ func TestLocalFilesAdapterSearchReturnsPartialResultsWhenDeadlineExpires(t *test
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
-	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+	adapter := testLocalFilesAdapter(0)
+	_, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Deadline: time.Now().Add(-time.Second),
 		Query:    "README",
 		Limit:    5,
 	})
-	if err != nil {
-		t.Fatalf("Search() error = %v", err)
-	}
-	if result.Entries == nil {
-		t.Fatalf("entries = nil, want empty slice")
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Search() error = %v, want context deadline exceeded", err)
 	}
 }
 
@@ -1014,7 +1054,7 @@ func TestLocalFilesAdapterSearchDoesNotMatchExplicitHiddenPathWhenFilenameDiffer
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{MaxSearchCandidates: 1}
+	adapter := testLocalFilesAdapter(1)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        ".git/config",
 		Limit:        5,
@@ -1045,7 +1085,7 @@ func TestLocalFilesAdapterSearchSkipsHiddenFilesForNormalQueries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        "env",
 		Limit:        5,
@@ -1061,6 +1101,47 @@ func TestLocalFilesAdapterSearchSkipsHiddenFilesForNormalQueries(t *testing.T) {
 	}
 	if len(result.Entries) == 0 || result.Entries[0].Path != "/workspace/docs/env.md" {
 		t.Fatalf("entries = %#v, want visible env.md result first", result.Entries)
+	}
+}
+
+func TestLocalFilesAdapterSearchSkipsKnownTransientFiles(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	for name, content := range map[string]string{
+		"~$draft.docx":     "office lock",
+		"draft.crdownload": "partial download",
+		"draft.docx":       "visible document",
+		"~notes.md":        "visible tilde file",
+	} {
+		if err := os.WriteFile(filepath.Join(rootDir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	adapter := testLocalFilesAdapter(0)
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query:        "draft",
+		Limit:        10,
+		IncludeKinds: []workspacefiles.EntryKind{workspacefiles.EntryKindFile},
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) != 1 || result.Entries[0].Path != "/workspace/draft.docx" {
+		t.Fatalf("entries = %#v, want only visible draft.docx", result.Entries)
+	}
+
+	tildeResult, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query:        "notes",
+		Limit:        10,
+		IncludeKinds: []workspacefiles.EntryKind{workspacefiles.EntryKindFile},
+	})
+	if err != nil {
+		t.Fatalf("Search() tilde file error = %v", err)
+	}
+	if len(tildeResult.Entries) != 1 || tildeResult.Entries[0].Path != "/workspace/~notes.md" {
+		t.Fatalf("entries = %#v, want ordinary tilde file", tildeResult.Entries)
 	}
 }
 
@@ -1081,7 +1162,7 @@ func TestLocalFilesAdapterSearchSkipsHiddenFilesWhenQueryExplicitlyTargetsThemWi
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        ".env",
 		Limit:        5,
@@ -1120,7 +1201,7 @@ func TestLocalFilesAdapterSearchDoesNotDescendHiddenDirsForDotLiteralQuery(t *te
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        ".dmg",
 		Limit:        5,
@@ -1157,7 +1238,7 @@ func TestLocalFilesAdapterSearchDoesNotDescendHiddenDirsForMultiTokenDotLiteralQ
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{MaxSearchCandidates: 1}
+	adapter := testLocalFilesAdapter(1)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        "chrome .dmg",
 		Limit:        5,
@@ -1194,7 +1275,7 @@ func TestLocalFilesAdapterSearchDoesNotDescendHiddenDirsForPathExtensionQuery(t 
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{MaxSearchCandidates: 1}
+	adapter := testLocalFilesAdapter(1)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:        ".dmg",
 		Limit:        5,
@@ -1228,7 +1309,7 @@ func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenIncludeHiddenIsTrue(t *te
 		t.Fatal(err)
 	}
 
-	adapter := LocalFilesAdapter{}
+	adapter := testLocalFilesAdapter(0)
 	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
 		Query:         "env",
 		Limit:         5,
@@ -1257,11 +1338,90 @@ func TestLocalFilesAdapterSearchIncludesHiddenFilesWhenIncludeHiddenIsTrue(t *te
 	}
 }
 
+func TestLocalFileSearchCandidatesFilterIndexedNoiseAsFallback(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	noisePath := filepath.Join(rootDir, "node_modules", "package", "index.ts")
+	buildPath := filepath.Join(rootDir, "build", "generated", "index.ts")
+	visiblePath := filepath.Join(rootDir, "src", "index.ts")
+	for _, candidatePath := range []string{noisePath, buildPath, visiblePath} {
+		if err := os.MkdirAll(filepath.Dir(candidatePath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(candidatePath, []byte("index"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	candidates, stats := localFileSearchCandidates(
+		rootDir,
+		rootDir,
+		[]string{noisePath, buildPath, visiblePath},
+		workspacefiles.SearchInput{IncludeKinds: []workspacefiles.EntryKind{workspacefiles.EntryKindFile}},
+	)
+	if len(candidates) != 1 || candidates[0].RelativePath != "src/index.ts" {
+		t.Fatalf("candidates = %#v, want visible path only", candidates)
+	}
+	if stats.skippedIgnoredCount != 2 {
+		t.Fatalf("skippedIgnoredCount = %d, want 2", stats.skippedIgnoredCount)
+	}
+
+	candidates, _ = localFileSearchCandidates(
+		rootDir,
+		rootDir,
+		[]string{noisePath},
+		workspacefiles.SearchInput{
+			IncludeHidden: true,
+			IncludeKinds:  []workspacefiles.EntryKind{workspacefiles.EntryKindFile},
+		},
+	)
+	if len(candidates) != 1 || candidates[0].RelativePath != "node_modules/package/index.ts" {
+		t.Fatalf("candidates = %#v, want noise path with IncludeHidden", candidates)
+	}
+}
+
 func localFilesRoot(rootDir string) workspacefiles.WorkspaceRoot {
 	return workspacefiles.WorkspaceRoot{
 		WorkspaceID:  "ws-1",
 		LogicalRoot:  "/workspace",
 		PhysicalRoot: rootDir,
+	}
+}
+
+func TestWorkspacePathVisibilityCacheReusesSharedAncestors(t *testing.T) {
+	rootDir := t.TempDir()
+	sharedDir := filepath.Join(rootDir, "shared")
+	if err := os.MkdirAll(sharedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	first := filepath.Join(sharedDir, "first.txt")
+	second := filepath.Join(sharedDir, "second.txt")
+	for _, path := range []string{first, second} {
+		if err := os.WriteFile(path, []byte("visible"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	cache := make(map[string]bool)
+	if shouldHideWorkspacePathCached(rootDir, first, cache) {
+		t.Fatal("first path unexpectedly hidden")
+	}
+	if got := len(cache); got != 2 {
+		t.Fatalf("cache entries after first candidate = %d, want shared ancestor and leaf", got)
+	}
+	if shouldHideWorkspacePathCached(rootDir, second, cache) {
+		t.Fatal("second path unexpectedly hidden")
+	}
+	if got := len(cache); got != 3 {
+		t.Fatalf("cache entries after sibling = %d, want one reused ancestor and two leaves", got)
+	}
+}
+
+func testLocalFilesAdapter(maxCandidates int) LocalFilesAdapter {
+	return LocalFilesAdapter{
+		MaxSearchCandidates: maxCandidates,
+		searchProvider:      testFilesystemSearchProvider{},
 	}
 }
 

@@ -1,5 +1,5 @@
-import { FileText, X } from "lucide-react";
 import { Spinner } from "@tutti-os/ui-system";
+import { FileText, X } from "lucide-react";
 import { cn } from "../../../app/renderer/lib/utils";
 import { translate } from "../../../i18n/index";
 import { pastedTextPreview } from "../model/agentComposerDraft";

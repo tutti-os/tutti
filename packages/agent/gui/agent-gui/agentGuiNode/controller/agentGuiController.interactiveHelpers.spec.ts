@@ -174,6 +174,29 @@ describe("AgentGUI user-project snapshot projection", () => {
     ).toBe(false);
   });
 
+  it("treats Windows slash and case differences as the same project", () => {
+    expect(
+      areAgentGUIUserProjectsEqual(
+        [
+          {
+            id: "project",
+            label: "Project",
+            path: "C:\\Users\\Demo\\Repo",
+            pinnedAtUnixMs: 0
+          }
+        ],
+        [
+          {
+            id: "project",
+            label: "Project",
+            path: "c:/users/demo/repo/",
+            pinnedAtUnixMs: 0
+          }
+        ]
+      )
+    ).toBe(true);
+  });
+
   it("treats a pin-state-only change as a new AgentGUI snapshot", () => {
     expect(
       areAgentGUIUserProjectsEqual(

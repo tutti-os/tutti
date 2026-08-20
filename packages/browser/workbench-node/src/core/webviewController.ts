@@ -3,8 +3,10 @@ import { browserNodeGuestInteractionHostChannel } from "./guestInteraction.ts";
 import { resolveBrowserSessionPartition } from "./session.ts";
 import type {
   BrowserNodeAutomationTargetMetadata,
+  BrowserNodeHostApi,
   BrowserNodeLifecycle,
   BrowserNodeNavigationPolicy,
+  BrowserNodePrepareSessionInput,
   BrowserNodeSessionMode
 } from "./types.ts";
 import type { BrowserNodeWebviewTag } from "../react/webviewTag.ts";
@@ -58,11 +60,18 @@ interface BrowserNodeWebviewControllerEntry {
   context: BrowserNodeWebviewControllerContext;
   controller: BrowserNodeWebviewController;
   listeners: Set<() => void>;
+  lastAutomationTargetSync: BrowserNodeHostEffectSnapshot<BrowserNodeAutomationTargetMetadata> | null;
+  lastSessionPreparation: BrowserNodeHostEffectSnapshot<BrowserNodePrepareSessionInput> | null;
   refCount: number;
   registeredGuestId: number | null;
   registeringGuestId: number | null;
   state: BrowserNodeWebviewControllerState;
   webview: BrowserNodeWebviewTag | null;
+}
+
+interface BrowserNodeHostEffectSnapshot<T> {
+  hostApi: BrowserNodeHostApi;
+  payload: T;
 }
 
 interface BrowserNodeGuestInteractionEvent extends Event {
@@ -137,6 +146,8 @@ function createBrowserNodeWebviewControllerEntry(
     context,
     controller: null as unknown as BrowserNodeWebviewController,
     listeners: new Set(),
+    lastAutomationTargetSync: null,
+    lastSessionPreparation: null,
     refCount: 0,
     registeredGuestId: null,
     registeringGuestId: null,
@@ -256,15 +267,9 @@ function reconcileBrowserNodeWebviewControllerState(
     entry.state.webviewSrc !== nextState.webviewSrc;
 
   if (options.allowHostEffects) {
-    if (entry.context.automationTarget) {
-      void entry.context.feature.hostApi
-        .updateAutomationTarget?.({
-          automationTarget: entry.context.automationTarget,
-          nodeId: entry.context.nodeId
-        })
-        .catch(() => undefined);
-    }
+    syncBrowserNodeAutomationTarget(entry);
     if (entry.context.lifecycle === "cold") {
+      entry.lastSessionPreparation = null;
       scheduleBrowserNodeGuestUnregister(entry);
     } else {
       const pendingGuestId = clearPendingBrowserNodeGuestUnregister(
@@ -273,16 +278,7 @@ function reconcileBrowserNodeWebviewControllerState(
       if (entry.registeredGuestId === null && pendingGuestId !== null) {
         entry.registeredGuestId = pendingGuestId;
       }
-      void entry.context.feature.hostApi
-        .prepareSession({
-          navigationPolicy: entry.context.navigationPolicy,
-          nodeId: entry.context.nodeId,
-          profileId: entry.context.profileId,
-          sessionMode: entry.context.sessionMode,
-          sessionPartition: entry.context.sessionPartition,
-          url: entry.context.initialUrl
-        })
-        .catch(() => undefined);
+      prepareBrowserNodeSession(entry);
     }
   }
 
@@ -303,6 +299,151 @@ function reconcileBrowserNodeWebviewControllerState(
   if (options.notifyListeners) {
     notifyBrowserNodeWebviewControllerListeners(entry);
   }
+}
+
+function syncBrowserNodeAutomationTarget(
+  entry: BrowserNodeWebviewControllerEntry
+): void {
+  const automationTarget = entry.context.automationTarget;
+  const hostApi = entry.context.feature.hostApi;
+  if (!automationTarget || !hostApi.updateAutomationTarget) {
+    entry.lastAutomationTargetSync = null;
+    return;
+  }
+  const previous = entry.lastAutomationTargetSync;
+  if (
+    previous?.hostApi === hostApi &&
+    areBrowserNodeAutomationTargetsEqual(previous.payload, automationTarget)
+  ) {
+    return;
+  }
+
+  const snapshot: BrowserNodeHostEffectSnapshot<BrowserNodeAutomationTargetMetadata> =
+    {
+      hostApi,
+      payload: { ...automationTarget }
+    };
+  entry.lastAutomationTargetSync = snapshot;
+  void hostApi
+    .updateAutomationTarget({
+      automationTarget: snapshot.payload,
+      nodeId: entry.context.nodeId
+    })
+    .catch(() => {
+      if (entry.lastAutomationTargetSync === snapshot) {
+        entry.lastAutomationTargetSync = null;
+      }
+    });
+}
+
+function prepareBrowserNodeSession(
+  entry: BrowserNodeWebviewControllerEntry
+): void {
+  const hostApi = entry.context.feature.hostApi;
+  const payload: BrowserNodePrepareSessionInput = {
+    automationTarget: cloneBrowserNodeAutomationTarget(
+      entry.context.automationTarget
+    ),
+    navigationPolicy: cloneBrowserNodeNavigationPolicy(
+      entry.context.navigationPolicy
+    ),
+    nodeId: entry.context.nodeId,
+    profileId: entry.context.profileId,
+    sessionMode: entry.context.sessionMode,
+    sessionPartition: entry.context.sessionPartition,
+    url: entry.context.initialUrl
+  };
+  const previous = entry.lastSessionPreparation;
+  if (
+    previous?.hostApi === hostApi &&
+    areBrowserNodeSessionPreparationsEqual(previous.payload, payload)
+  ) {
+    return;
+  }
+
+  const snapshot: BrowserNodeHostEffectSnapshot<BrowserNodePrepareSessionInput> =
+    {
+      hostApi,
+      payload
+    };
+  entry.lastSessionPreparation = snapshot;
+  void hostApi.prepareSession(payload).catch(() => {
+    if (entry.lastSessionPreparation === snapshot) {
+      entry.lastSessionPreparation = null;
+    }
+  });
+}
+
+function cloneBrowserNodeAutomationTarget(
+  value: BrowserNodeAutomationTargetMetadata | null | undefined
+): BrowserNodeAutomationTargetMetadata | null | undefined {
+  return value ? { ...value } : value;
+}
+
+function cloneBrowserNodeNavigationPolicy(
+  value: BrowserNodeNavigationPolicy | null | undefined
+): BrowserNodeNavigationPolicy | null | undefined {
+  return value ? { ...value } : value;
+}
+
+function areBrowserNodeSessionPreparationsEqual(
+  left: BrowserNodePrepareSessionInput,
+  right: BrowserNodePrepareSessionInput
+): boolean {
+  return (
+    left.nodeId === right.nodeId &&
+    left.profileId === right.profileId &&
+    left.sessionMode === right.sessionMode &&
+    left.sessionPartition === right.sessionPartition &&
+    left.url === right.url &&
+    areBrowserNodeNavigationPoliciesEqual(
+      left.navigationPolicy,
+      right.navigationPolicy
+    ) &&
+    areBrowserNodeAutomationTargetsEqual(
+      left.automationTarget,
+      right.automationTarget
+    )
+  );
+}
+
+function areBrowserNodeNavigationPoliciesEqual(
+  left: BrowserNodeNavigationPolicy | null | undefined,
+  right: BrowserNodeNavigationPolicy | null | undefined
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  return (
+    left !== null &&
+    left !== undefined &&
+    right !== null &&
+    right !== undefined &&
+    left.mode === right.mode &&
+    left.originUrl === right.originUrl
+  );
+}
+
+function areBrowserNodeAutomationTargetsEqual(
+  left: BrowserNodeAutomationTargetMetadata | null | undefined,
+  right: BrowserNodeAutomationTargetMetadata | null | undefined
+): boolean {
+  if (left === right) {
+    return true;
+  }
+  return (
+    left !== null &&
+    left !== undefined &&
+    right !== null &&
+    right !== undefined &&
+    left.agentSessionId === right.agentSessionId &&
+    left.focused === right.focused &&
+    left.selected === right.selected &&
+    left.surfaceId === right.surfaceId &&
+    left.surfaceRole === right.surfaceRole &&
+    left.tabId === right.tabId &&
+    left.workspaceId === right.workspaceId
+  );
 }
 
 function setBrowserNodeDevToolsContextMenu(

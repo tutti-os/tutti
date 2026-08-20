@@ -678,6 +678,14 @@ func renderServerRequests(methods []rpcMethod, codexCommit string) []byte {
 	b.WriteString("func IsKnownServerRequestMethod(method string) bool {\n")
 	b.WriteString("\t_, ok := serverRequestParsers[method]\n\treturn ok\n}\n\n")
 
+	b.WriteString("// ServerRequestMethods returns the generated server request surface in stable order.\n")
+	b.WriteString("func ServerRequestMethods() []string {\n")
+	b.WriteString("\treturn []string{\n")
+	for _, method := range methods {
+		fmt.Fprintf(&b, "\t\t%q,\n", method.Method)
+	}
+	b.WriteString("\t}\n}\n\n")
+
 	b.WriteString("func dispatchServerRequest(ctx context.Context, handler ServerRequestHandler, req JSONRPCRequest) (any, error) {\n")
 	b.WriteString("\tswitch req.Method {\n")
 	for _, method := range methods {

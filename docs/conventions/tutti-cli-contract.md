@@ -79,6 +79,28 @@ The old `agent cancel --session-id <id>` path remains an integration-only
 compatibility alias. It resolves the currently active Turn, emits a
 `deprecated_agent_cancel` warning, and must not be used by new integrations.
 
+## Agent Session References
+
+Each item returned by `agent sessions` carries the raw `agentSessionId` plus
+`workspaceId` and a canonical `mentionUri`. Singleton `agent get`, `agent
+start`, `agent send`, `agent open`, and `agent wait` JSON results expose the
+same three fields at the top level so consumers do not need command-specific
+nested lookup:
+
+```json
+{
+  "agentSessionId": "session-1",
+  "workspaceId": "workspace-1",
+  "mentionUri": "mention://agent-session/session-1?workspaceId=workspace-1"
+}
+```
+
+Agents should use `mentionUri` as the destination of a descriptive Markdown
+link when returning a session reference. Consumers must treat it as internal
+data for Tutti mention routing, not as a web URL, filesystem path, or command.
+Nested session objects retain the same reference fields for compatibility, and
+raw ids remain available for CLI continuation and automation.
+
 ## Boundaries
 
 The daemon has two CLI command surfaces:
@@ -380,10 +402,18 @@ wins; for example, a runtime `superseded` result must not be rewritten to
 ## Tutti Mode Plan Commands
 
 `tutti plan` is the Agent-callable observation and proposal surface for the
-Tutti-owned workspace workflow. It is available independently of the current
-Tutti Mode activation badge and independently of a provider's Default or Plan
-collaboration mode. The badge is host preference state; it is not CLI
-authorization and it is not evidence that a workflow exists.
+Tutti-owned workspace workflow. Its capabilities are discoverable independently
+of the current Tutti Mode activation badge and independently of a provider's
+Default or Plan collaboration mode. The badge is host preference state and is
+not evidence that a workflow exists. Plan and execution mutations nevertheless
+require the caller Session's current user-controlled activation to be active.
+
+Activation itself is not Agent-callable. The builtin registry exposes no
+`tutti mode set` command, and the activation service rejects the legacy
+`agent_command` source for new writes. When a gated mutation finds Tutti Mode
+inactive, it tells the Agent to ask the user to turn it on manually; the Agent
+must not attempt to change the toggle through another CLI or tool path. Stored
+legacy `agent_command` revisions remain readable for upgrade compatibility.
 
 The flow is single-shot: one `propose` submits the complete plan and opens the
 single user review checkpoint. There is no separate configuration phase and no
@@ -632,26 +662,24 @@ the normal visible default; only an explicit `--hidden` launcher input should
 create a hidden session.
 
 `agent start --isolation worktree` creates the session in
-`<state-dir>/agent/worktrees/<session-id>` on branch `tutti/<session-id>`, based
+`<state-dir>/agent/worktrees/<worktree-id>` on branch
+`tutti/worktree/<worktree-id>`, based
 on the resolved launch cwd's `HEAD`. The resolved cwd follows the normal
 explicit-cwd then caller-session-cwd chain. Isolation is fail-closed: a missing
 git executable, non-git cwd, nested repository or submodule, or failed
 `git worktree add` rejects the launch before a session is created. Source
 checkout changes are not copied; a dirty source checkout produces a warning.
-The session runtime context persists the worktree path, branch, and base commit,
-and compact session/action JSON exposes those coordinates as `isolation`.
+The session runtime context persists the independent worktree id, path, branch,
+and base commit, and compact session/action JSON exposes those coordinates as
+`isolation`. This is a runtime fact, not ownership: Session deletion, restore,
+Fork, and purge never retain or release a worktree.
 
-Successful isolated worktrees are reclaimed only by the startup and periodic
-agent worktree GC. GC retains a tree when it is dirty, its branch is ahead of
-the recorded base commit, its creating session remains resumable, or another
-session cwd points inside it. Runtime idleness, turn completion, and session
-end timestamps must not trigger worktree deletion. Every session create is
-synchronized with GC from cwd resolution through canonical session persistence
-or failure rollback. This prevents a sweep both from observing an isolated tree
-as an in-progress orphan and from deleting a managed tree while a non-isolated
-session is adopting a cwd inside it. Session creates remain concurrent with one
-another; only a GC sweep takes the exclusive side of this synchronization
-boundary.
+Successful managed worktrees have an explicit lifecycle. Startup recovery and
+periodic Host workers never remove them. The Workspace managed-worktree API
+lists resources and deletes one only on an explicit request; deletion refuses
+a dirty checkout or a branch with commits beyond the recorded base commit.
+Failure before the creating Session transaction commits still rolls back the
+new worktree as part of that transaction.
 
 ## Naming Rules
 

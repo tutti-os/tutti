@@ -2,7 +2,16 @@ import { extractAgentMcpToolTarget } from "../agentMcpToolTarget";
 import { fileChangePathsFromChanges } from "../workspaceAgentFileChangePayload";
 
 export interface PromptToolDetail {
-  kind: "command" | "directory" | "files" | "mcp" | "path" | "query" | "reason";
+  kind:
+    | "command"
+    | "directory"
+    | "files"
+    | "mcp"
+    | "path"
+    | "prompt"
+    | "query"
+    | "reason"
+    | "url";
   value: string;
   meta?: string;
 }
@@ -23,9 +32,9 @@ export function getPromptToolDetails(
         }
       ]
     : [];
-  const detailInput = resolveToolDetailInput(input);
+  const detailInputs = resolveToolDetailInputs(input);
   const details: PromptToolDetail[] = [...mcpDetails];
-  const fileChanges = fileChangePaths(detailInput);
+  const fileChanges = fileChangePathsFromInputs(detailInputs);
   const fileChangePresentation = presentFileChangePaths(fileChanges);
   if (fileChanges.length > 0) {
     details.push({
@@ -39,44 +48,79 @@ export function getPromptToolDetails(
       });
     }
   }
-  const command =
-    commandStringValue(detailInput.command) ??
-    commandStringValue(detailInput.cmd);
-  if (command) {
+  const commandDetail = firstDetailEntry(
+    detailInputs,
+    (detailInput) =>
+      commandStringValue(detailInput.command) ??
+      commandStringValue(detailInput.cmd)
+  );
+  if (commandDetail) {
+    const description = stringValue(commandDetail.input.description);
     details.push({
       kind: "command",
-      value: command,
-      ...(stringValue(detailInput.description)
-        ? { meta: stringValue(detailInput.description) as string }
-        : {})
+      value: commandDetail.value,
+      ...(description ? { meta: description } : {})
     });
   }
-  const filePath =
-    stringValue(detailInput.grantRoot) ??
-    stringValue(detailInput.file_path) ??
-    stringValue(detailInput.filePath) ??
-    stringValue(detailInput.path) ??
-    stringValue(detailInput.notebook_path);
-  if (filePath && !isRedundantFileChangePath(filePath, fileChanges)) {
-    const lineRange = formatLineRange(detailInput);
+  const filePathDetail = firstDetailEntry(
+    detailInputs,
+    (detailInput) =>
+      stringValue(detailInput.grantRoot) ??
+      stringValue(detailInput.file_path) ??
+      stringValue(detailInput.filePath) ??
+      stringValue(detailInput.path) ??
+      stringValue(detailInput.notebook_path)
+  );
+  if (
+    filePathDetail &&
+    !isRedundantFileChangePath(filePathDetail.value, fileChanges)
+  ) {
+    const lineRange = formatLineRange(filePathDetail.input);
     details.push({
       kind: "path",
-      value: filePath,
+      value: filePathDetail.value,
       ...(lineRange ? { meta: lineRange } : {})
     });
   }
-  const query =
-    stringValue(detailInput.query) ??
-    stringValue(detailInput.search_query) ??
-    stringValue(detailInput.searchQuery) ??
-    stringValue(detailInput.pattern);
+  const query = firstDetailValue(
+    detailInputs,
+    (detailInput) =>
+      stringValue(detailInput.query) ??
+      stringValue(detailInput.search_query) ??
+      stringValue(detailInput.searchQuery) ??
+      stringValue(detailInput.pattern)
+  );
   if (query) {
     details.push({
       kind: "query",
       value: query
     });
   }
-  const reason = stringValue(detailInput.reason);
+  const url = firstDetailValue(
+    detailInputs,
+    (detailInput) =>
+      stringValue(detailInput.url) ?? stringValue(detailInput.uri)
+  );
+  if (url) {
+    details.push({
+      kind: "url",
+      value: url
+    });
+  }
+  const prompt = firstDetailValue(
+    detailInputs,
+    (detailInput) =>
+      stringValue(detailInput.prompt) ?? stringValue(detailInput.instruction)
+  );
+  if (prompt) {
+    details.push({
+      kind: "prompt",
+      value: prompt
+    });
+  }
+  const reason = firstDetailValue(detailInputs, (detailInput) =>
+    stringValue(detailInput.reason)
+  );
   if (reason) {
     details.push({
       kind: "reason",
@@ -90,32 +134,38 @@ export function isPromptRequestIdTitle(value: string): boolean {
   return /^requestid\s*:/iu.test(value.trim());
 }
 
-function resolveToolDetailInput(
+function resolveToolDetailInputs(
   input: Record<string, unknown>
-): Record<string, unknown> {
-  if (fileChangePaths(input).length > 0) {
-    return input;
-  }
+): readonly Record<string, unknown>[] {
   const toolCall = objectValue(input.toolCall);
-  return (
-    firstObjectValue(input, [
-      "command",
-      "cmd",
-      "reason",
-      "grantRoot",
-      "file_path",
-      "filePath",
-      "path",
-      "notebook_path",
-      "query",
-      "search_query",
-      "searchQuery",
-      "pattern"
-    ]) ??
-    firstObjectValue(toolCall, ["input", "arguments", "args"]) ??
-    toolCall ??
-    input
-  );
+  const nestedInput =
+    firstObjectValue(toolCall, ["input", "arguments", "args"]) ?? toolCall;
+  if (!nestedInput) {
+    return [input];
+  }
+  // Canonical nested input is authoritative within each semantic alias group;
+  // root input remains a field-by-field compatibility fallback.
+  return [nestedInput, input];
+}
+
+function firstDetailValue<T>(
+  inputs: readonly Record<string, unknown>[],
+  resolve: (input: Record<string, unknown>) => T | null
+): T | null {
+  return firstDetailEntry(inputs, resolve)?.value ?? null;
+}
+
+function firstDetailEntry<T>(
+  inputs: readonly Record<string, unknown>[],
+  resolve: (input: Record<string, unknown>) => T | null
+): { input: Record<string, unknown>; value: T } | null {
+  for (const input of inputs) {
+    const value = resolve(input);
+    if (value !== null) {
+      return { input, value };
+    }
+  }
+  return null;
 }
 
 function firstObjectValue(
@@ -184,6 +234,18 @@ function fileChangePaths(input: Record<string, unknown>): string[] {
   ];
   for (const candidate of candidates) {
     const paths = fileChangePathsFromChanges(candidate);
+    if (paths.length > 0) {
+      return paths;
+    }
+  }
+  return [];
+}
+
+function fileChangePathsFromInputs(
+  inputs: readonly Record<string, unknown>[]
+): string[] {
+  for (const input of inputs) {
+    const paths = fileChangePaths(input);
     if (paths.length > 0) {
       return paths;
     }

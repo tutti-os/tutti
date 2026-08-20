@@ -2,7 +2,7 @@
   "name": "@tutti-os/desktop",
   "version": "0.0.0",
   "productName": "Tutti",
-  "description": "Tutti local-first desktop shell.",
+  "description": "Where people and agents build in tune.",
   "author": "Tutti",
   "private": true,
   "packageManager": "pnpm@10.11.0",
@@ -105,6 +105,10 @@
         }
       ]
     },
+    "nsis": {
+      "include": "build/installer.nsh",
+      "deleteAppDataOnUninstall": false
+    },
     "appx": {
       "applicationId": "Tutti",
       "artifactName": "${productName}-${version}-store-${arch}.${ext}",
@@ -116,7 +120,9 @@
       "languages": [
         "en-US",
         "zh-CN"
-      ]
+      ],
+      "minVersion": "10.0.17763.0",
+      "maxVersionTested": "10.0.26100.0"
     },
     "linux": {
       "target": [
@@ -133,6 +139,7 @@
     "build:unpack": "bash ../../tools/scripts/build-desktop-package.sh unpack",
     "build:win": "bash ../../tools/scripts/build-desktop-package.sh win",
     "predev": "node scripts/prepare-managed-posix-shell-dev.mjs",
+    "build:win:prepared": "bash ../../tools/scripts/build-desktop-package.sh win --prepared-builtin-apps",
     "build:win:store": "bash ../../tools/scripts/build-desktop-package.sh win-store",
     "dev": "electron-vite dev",
     "dev:web": "vite --config vite.web.config.mjs",
@@ -158,7 +165,7 @@
     "@tutti-os/browser-node": "workspace:*",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/commerce": "workspace:*",
-    "@tutti-os/connector-market": "workspace:*",
+    "@tutti-os/connector-renderer": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
     "@tutti-os/desktop-update-admission": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",

@@ -1,5 +1,8 @@
 import type { DesktopLocale } from "../i18n";
-import type { DesktopDockPlacement } from "../preferences/index.ts";
+import type {
+  DesktopDockPlacement,
+  DesktopWorkspaceUiMode
+} from "../preferences/index.ts";
 import type {
   DesktopThemeAppearance,
   DesktopThemeSource
@@ -39,6 +42,7 @@ export interface DesktopWindowIntentSearchOptions {
   reportPredefinePageview?: boolean;
   themeAppearance?: DesktopThemeAppearance;
   themeSource?: DesktopThemeSource;
+  workspaceUiMode?: DesktopWorkspaceUiMode;
 }
 
 export function createWorkspaceWindowIntent(
@@ -108,6 +112,9 @@ export function encodeDesktopWindowIntent(
   }
   if (options.themeAppearance) {
     params.set("theme", options.themeAppearance);
+  }
+  if (options.workspaceUiMode) {
+    params.set("workspaceUiMode", options.workspaceUiMode);
   }
 
   if (intent.kind === "agent") {

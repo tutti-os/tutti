@@ -219,6 +219,12 @@ func callMessageUpdateFromSessionEvent(
 			payload["error"] = canonicalToolBodyPayload(event.Payload.Error)
 		}
 	}
+	// Preserve an explicit nil until the canonical deep merge so a terminal
+	// snapshot can clear reconstructible text left by an earlier running
+	// update. Detect the alias while the raw stream still has its full prefix;
+	// independent per-field truncation can otherwise make equal values diverge.
+	canonical.TombstoneTerminalCommandOutputAliases(status, payload)
+	truncateCanonicalToolMessagePayload(payload)
 	update := agentsessionstore.WorkspaceAgentMessageUpdate{
 		AgentSessionID:   strings.TrimSpace(sessionID),
 		MessageID:        messageID,
@@ -255,17 +261,34 @@ func canonicalToolBodyPayload(value any) any {
 			body["text"] = text
 		}
 	}
-	return canonical.TruncateToolOutputBody(body)
+	return body
 }
 
 func canonicalToolMetadataPayload(metadata map[string]any) map[string]any {
-	result := clonePayload(metadata)
-	if result == nil || result["steps"] == nil {
-		return result
+	return clonePayload(metadata)
+}
+
+func truncateCanonicalToolMessagePayload(payload map[string]any) {
+	for _, key := range []string{"output", "error"} {
+		body, _ := payload[key].(map[string]any)
+		if body != nil {
+			payload[key] = canonical.TruncateToolOutputBody(body)
+		}
 	}
-	truncated := canonical.TruncateToolOutputBody(map[string]any{"steps": result["steps"]})
-	result["steps"] = truncated["steps"]
-	return result
+	if steps := payload["steps"]; steps != nil {
+		truncated := canonical.TruncateToolOutputBody(map[string]any{
+			"steps": steps,
+		})
+		payload["steps"] = truncated["steps"]
+	}
+	metadata, _ := payload["metadata"].(map[string]any)
+	if metadata == nil || metadata["steps"] == nil {
+		return
+	}
+	truncated := canonical.TruncateToolOutputBody(map[string]any{
+		"steps": metadata["steps"],
+	})
+	metadata["steps"] = truncated["steps"]
 }
 
 func canonicalToolBodyText(body map[string]any) string {

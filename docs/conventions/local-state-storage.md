@@ -20,6 +20,8 @@ This rule applies to local databases, logs, caches, temporary runtime metadata, 
 - `TUTTI_ENV=development` uses `~/.tutti-dev`
 - `TUTTI_ENV=production` uses `~/.tutti`
 - `TUTTI_STATE_DIR=/custom/path` overrides both defaults
+- `TUTTI_AGENT_RUNTIME_DIR=/custom/path` overrides the managed Agent Extension
+  runtime root
 - `TUTTI_DESKTOP_USER_DATA_DIR=/custom/path` overrides Electron `userData`
   only, for isolated desktop diagnostics
 
@@ -38,6 +40,7 @@ Current supported override surface for local state and closely-related runtime p
 
 - `TUTTI_ENV`
 - `TUTTI_STATE_DIR`
+- `TUTTI_AGENT_RUNTIME_DIR`
 - `TUTTI_LOG_DIR`
 - `TUTTI_DESKTOP_USER_DATA_DIR`
 - `TUTTID_DB_PATH`
@@ -52,6 +55,9 @@ Rules:
 - prefer `TUTTI_STATE_DIR` over adding new per-file overrides
 - keep `TUTTI_DESKTOP_USER_DATA_DIR` paired with an isolated
   `TUTTI_STATE_DIR`; it does not redirect daemon-owned state
+- `TUTTI_STATE_DIR` does not redirect the managed Agent Extension runtime,
+  whose compatibility location is `~/.local/share/tutti/agent-runtimes`; pair
+  isolated Desktop diagnostics with an explicit `TUTTI_AGENT_RUNTIME_DIR`
 - do not add a new environment variable when an existing shared root or generated default can express the same rule
 - if a new override is truly needed, update this document and the matching transport or logging convention document in the same change
 
@@ -129,6 +135,22 @@ Device-global desktop preferences are durable daemon state in the
 must be changed through the preferences service/API so the daemon can persist,
 normalize, and publish the authoritative preferences event.
 
+Fresh-profile creation is daemon-owned. A client uses the desktop preferences
+`initializeIfAbsent` write mode. Before the atomic write, the preferences
+service applies the daemon's fresh-profile workspace-mode default to the
+normalized client candidate, so the Agent default cannot vary by caller while
+other candidate fields and feature flags are preserved. The store writes that
+complete row with a single `INSERT ... ON CONFLICT DO NOTHING` and returns the
+authoritative stored row. If a concurrent initializer created the row first,
+that stored row wins without being overwritten. Only `initializeIfAbsent` may
+create this identity row. Field-specific writers fail without side effects when
+the row is missing, so a partial patch can never decide whether the identity is
+new or accidentally replace the complete initialization contract. The normal
+omitted/`replace` write mode remains the full preference update. The daemon-owned
+complete default uses the stable desktop update channel; packaged RC builds may
+subsequently align that preference from their installed version. Existing rows
+are never backfilled by initialization.
+
 `agent_cli_update_check_enabled` stores the
 `agentCliUpdateCheckEnabled` preference as a non-null SQLite boolean and
 defaults to `true`, including for existing databases upgraded by migration. It
@@ -187,9 +209,9 @@ Migrated agent runtime state should derive from the same root:
     sessions/
       <date>-<sequence>/
     worktrees/
-      <agent-session-id>/
+      <worktree-id>/
       .metadata/
-        <agent-session-id>.json
+        <worktree-id>.json
     runs/
       <agent-session-id>/
         sidecar-manifest.json
@@ -362,10 +384,8 @@ filesystem cleanup fails. Cleanup is limited to the two Session-scoped roots
 above; it never deletes a user project, arbitrary Session cwd, provider
 installation, shared provider home, or custom external provider home. A future
 migration to Workspace-scoped physical paths is outside this change.
-Worktrees continue through their separate metadata-backed GC policy: a
-recoverable tombstone protects its worktree, while hard deletion merely makes
-the record eligible for the existing clean/non-ahead check. Dirty and ahead
-worktrees remain preserved.
+Managed worktrees are independent Workspace resources. Recoverable deletion,
+restore, hard deletion, and purge do not retain, release, or remove them.
 
 Deleted SQLite pages are immediately reusable by the database. After an
 explicit manual sweep only, the daemon may additionally run a three-second
@@ -374,19 +394,25 @@ best-effort `VACUUM` when the whole database is no larger than 64 MiB, at least
 Automatic maintenance never performs this compaction; a busy, timed-out, or
 failed attempt does not roll back the committed purge.
 
-`agent/worktrees/<agent-session-id>` is a daemon-managed Git checkout for a
-worktree-isolated agent session. The tuttid agent adapter owns the corresponding
-`.metadata/<agent-session-id>.json` record used for enumeration, failed-create
-rollback, and orphan recovery; it records the repository root, branch, base
-commit, session scope, and selected repository-relative working directory. An
-exact retried launch may reuse that checkout; a Workspace, repository, Session,
-or relative-directory mismatch fails closed. Canonical isolation coordinates
-remain in the session's existing runtime-context/metadata JSON, so this layout
-does not add a SQLite schema. Host startup recovery and the periodic Host worker
-only schedule cleanup through the adapter port. A tree is deleted only when it
-is clean with no commits ahead of its base, its creator is absent or not
-resumable, and no session cwd is inside the tree. Turn/runtime completion and
-session end times must never trigger this cleanup.
+`agent/worktrees/<worktree-id>` is a daemon-managed Git checkout with its own
+resource identity and explicit lifecycle. The tuttid agent adapter owns the
+corresponding `.metadata/<worktree-id>.json` record used for enumeration,
+creation-transaction recovery, and explicit deletion. It records the Workspace,
+repository root, branch, base commit, selected repository-relative working
+directory, and opaque creation-request hash; new records never persist a
+Session id. Metadata moves from `creating` to `ready` after `git worktree add`
+and cwd validation. An exact retry repairs an interrupted `creating` transaction
+or reuses its ready checkout; a Workspace, repository, or relative-directory
+mismatch fails closed. Legacy Session-keyed records remain readable but their
+Session id is compatibility data, not ownership.
+
+Canonical Session isolation JSON references the independent worktree id and Git
+coordinates as runtime facts. Fork copies the prepared cwd and runtime context
+without validating a Session-to-worktree ownership relation. Session deletion,
+restore, and purge never remove a worktree, and Host startup or periodic work
+never sweeps this directory. The Workspace managed-worktree API is the only
+normal deletion entrypoint. It refuses dirty or ahead resources and deletes the
+branch with an expected-object-id compare so a concurrent commit is preserved.
 
 `agent/extensions` is daemon-owned verified Agent Extension state. Version
 directories are immutable after installation; `active.json` selects the
@@ -437,8 +463,16 @@ Agent Extension setup uses these daemon-owned state paths:
 
 ```text
 <state-dir>/agent/extension-runtime-actions/<scope-sha256>.json
+<state-dir>/agent/extension-account-usage-companion-failures/<scope-sha256>.json
+<state-dir>/agent/account-usage-node-snapshots/<node-sha256>.exe
 <state-dir>/agent/discovery/agent-extensions/
 ```
+
+Account-usage companion failure records contain only stable identities, an
+error code, a failure count, and retry timestamps. Raw installer/provider
+errors, paths, output, and credentials are never persisted. Recovery deletes
+the record. Windows stores content-addressed Node snapshots here and keeps each
+verified snapshot read-locked while it is reusable.
 
 Connector CLI packages use daemon-owned state rather than the user's global
 npm prefix. All CLI Connector installations bind to the one signed
@@ -455,8 +489,10 @@ npm prefix. All CLI Connector installations bind to the one signed
 The shared directories deduplicate registry downloads and physical dependency
 content. The release directory remains isolated and contains only its lock,
 links/hardlinks, package metadata, generated bin entry, and installation
-receipt. Uninstall removes the release directory but preserves shared content
-for other installed connectors.
+receipt. A release-scoped rollback removes only the target release. Explicit
+Connector uninstall removes every private release directory and prepared or
+download-cached artifact for that Connector, while preserving shared package
+content, account authorization, and user/workspace state.
 
 The action filename hashes exact Target plus fixed extension installation
 identity; workspace identity remains inside the record, not in a directory
@@ -497,6 +533,14 @@ Tutti provider startup.
 - desktop-to-daemon listener publication defaults to `<state-dir>/run/tuttid.listener.json`
 - the bundled CLI discovers the managed daemon by reading `<state-dir>/run/tuttid.listener.json`
 - packaged desktop shim install or repair uses `<state-dir>/bin/tutti` as the canonical user-level command path and points it at the packaged CLI binary; on macOS and Linux, when the login-shell `PATH` already contains writable `~/.local/bin` or `~/bin`, desktop also maintains a Tutti-owned forwarding shim there without replacing third-party commands
+- packaged Windows uninstall preserves the `.tutti` state root by default but
+  removes canonical and user-PATH `tutti.cmd` shims only when their marker line
+  identifies them as Tutti-owned; uninstall must not delete an unmarked
+  third-party command with the same name; interactive uninstall asks whether
+  to preserve or delete all user state, while silent uninstall preserves it
+  unless explicitly invoked with `--delete-app-data`; the delete path removes
+  daemon state, Electron user data, updater cache, and the per-user `tutti`
+  protocol registration
 - local development scripts install or repair `<state-dir>/bin/tutti-dev` as the development CLI command and default it to `TUTTI_ENV=development`
 - workspace app package cache, per-installation runtime/data/database/log state, and
   app factory job working directories live under `<state-dir>/apps`

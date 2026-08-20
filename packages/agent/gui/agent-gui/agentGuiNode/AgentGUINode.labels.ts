@@ -20,6 +20,7 @@ import { agentQuickPromptLabels } from "./composer/quickPrompts/agentQuickPrompt
 import { agentSlashPaletteLabels } from "./composer/agentSlashPaletteLabels";
 import { agentGUIProjectLaunchLabels } from "./composer/agentGUIProjectLaunchLabels";
 import { agentGUITuttiModeLabels } from "./view/agentGUITuttiModeLabels";
+import { agentGUIConnectorLabels } from "./composer/agentGUIConnectorLabels";
 
 export { buildAgentHomeSuggestions };
 
@@ -399,6 +400,10 @@ export function useAgentGUIViewLabels(input: {
       ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       continuedFromTask: t("agentHost.agentGui.continuedFromTask"),
+      selectionAddToConversation: t(
+        "agentHost.agentGui.selectionAddToConversation"
+      ),
+      selectionAskInSide: t("agentHost.agentGui.selectionAskInSide"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
       untitledConversationTitle: t(
@@ -746,20 +751,7 @@ export function useAgentGUIViewLabels(input: {
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
       addContentResourcePanel: t("agentHost.agentGui.addContentResourcePanel"),
-      addContentConnectors: t("agentHost.agentGui.addContentConnectors"),
-      addContentConnectorConnected: t(
-        "agentHost.agentGui.addContentConnectorConnected"
-      ),
-      addContentConnectorConnect: t(
-        "agentHost.agentGui.addContentConnectorConnect"
-      ),
-      addContentConnectorAuthorize: t(
-        "agentHost.agentGui.addContentConnectorAuthorize"
-      ),
-      addContentConnectorEmpty: t(
-        "agentHost.agentGui.addContentConnectorEmpty"
-      ),
-      addContentConnectorMore: t("agentHost.agentGui.addContentConnectorMore"),
+      ...agentGUIConnectorLabels(t),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
       handoffConversationTooltip: t(

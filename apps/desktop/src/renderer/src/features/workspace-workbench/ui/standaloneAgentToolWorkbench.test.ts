@@ -31,16 +31,31 @@ test("standalone Agent Files keeps the complete Open With menu", () => {
     standaloneAgentToolSidebarPanelSource,
     /showInternalOpenWithActions=\{false\}/
   );
+  assert.match(
+    standaloneAgentToolSidebarPanelSource,
+    /<LazyWorkspaceFileManagerPane[\s\S]*?showPreviewPanel(?:\s|\/|>)/
+  );
 });
 
-test("standalone Agent browser automation reveals the session Browser panel", () => {
+test("standalone Agent manual Browser tabs do not claim automation sessions", () => {
   assert.match(
-    standaloneAgentToolSidebarSource,
-    /request\.action === "create" &&[\s\S]*?request\.reveal !== false[\s\S]*?openPanel\("browser", sessionId\)/
+    standaloneAgentToolSidebarPanelSource,
+    /<StandaloneAgentBrowserToolPanel[\s\S]*?agentSessionId=\{tab\.resourceId \?\? null\}/
   );
   assert.doesNotMatch(
+    standaloneAgentToolSidebarPanelSource,
+    /resolveStandaloneAgentBrowserSessionId/
+  );
+  assert.match(
     standaloneAgentToolSidebarSource,
-    /request\.action === "create"[\s\S]*?ensurePanel\("browser", sessionId\)/
+    /const controller = await waitForBrowserTabController\(tabId\)[\s\S]*?controller\.createPage\(request\.url\)/
+  );
+});
+
+test("standalone Agent browser automation honors the requested reveal mode", () => {
+  assert.match(
+    standaloneAgentToolSidebarSource,
+    /request\.reveal === false[\s\S]*?ensurePanel\("browser", sessionId\)[\s\S]*?openPanel\("browser", sessionId\)/
   );
 });
 

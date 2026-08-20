@@ -61,7 +61,7 @@ func (a *CodexAppServerAdapter) appServerInteractiveRequestScope(
 	params map[string]any,
 ) (Session, string, *codexAppServerThreadContext, error) {
 	rootProviderThreadID := strings.TrimSpace(root.ProviderSessionID)
-	requestThreadID := strings.TrimSpace(asString(params["threadId"]))
+	requestThreadID := appServerMessageThreadID(params)
 	if requestThreadID == "" || rootProviderThreadID == "" || requestThreadID == rootProviderThreadID {
 		return root, rootTurnID, nil, nil
 	}
@@ -194,6 +194,9 @@ func (a *CodexAppServerAdapter) appServerApprovalRequested(
 	}
 	if method == appServerMethodRequestUserInput {
 		return a.appServerUserInputRequested(session, turnID, requestID, params)
+	}
+	if method == appServerMethodMCPElicitation {
+		return a.appServerMCPElicitationRequested(session, turnID, requestID, params)
 	}
 	toolCall := appServerApprovalToolCall(method, params)
 	options := appServerApprovalOptions(method)
@@ -482,6 +485,8 @@ func appServerApprovalResult(method string, params map[string]any, selection pen
 		return map[string]any{
 			"answers": appServerUserInputAnswers(params, selection),
 		}, nil
+	case appServerMethodMCPElicitation:
+		return appServerMCPElicitationResult(selection), nil
 	default:
 		return map[string]any{}, nil
 	}

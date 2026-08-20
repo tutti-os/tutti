@@ -17,6 +17,7 @@ import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions"
 import type {
   AgentGUIProvider,
   AgentGUIProviderRailAllPresentation,
+  AgentGUIAgentTarget,
   AgentGUIAgentTargetInfoRenderer
 } from "../../../types";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
@@ -46,6 +47,7 @@ import type {
 import type { TuttiWorkflowDockLabels } from "../TuttiWorkflowDock";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
 import type { AgentGUISessionLaunchMode } from "../model/agentSessionLaunchMode";
+import type { AgentProjectDropdownOptions } from "../AgentComposerProjectMenu";
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
 ) => ReferenceLocateTarget | null;
@@ -67,6 +69,8 @@ export interface AgentGUIConversationRailLayout {
 // Provider-gate labels live on AgentGUIProviderReadinessLabels; extend it
 // rather than restating every key here.
 export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
+  selectionAddToConversation: string;
+  selectionAskInSide: string;
   initialPlaceholder: string;
   followupPlaceholder: string;
   installRequiredPlaceholder: string;
@@ -430,7 +434,9 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   addContentConnectorConnect: string;
   addContentConnectorAuthorize: string;
   addContentConnectorEmpty: string;
+  addContentConnectorLoading: string;
   addContentConnectorMore: string;
+  addContentConnectorSelected: string;
   referenceWorkspaceFiles: string;
   handoffConversation: string;
   handoffConversationTooltip: string;
@@ -567,9 +573,11 @@ type AgentGUIComposerExternalPromptProps = Pick<
 >;
 export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptProps {
   viewModel: AgentGUINodeViewModel;
+  /** Complete presentation-only catalog for exact Agent mention identity. */
+  mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
-  sessionForkEnabled?: boolean;
+  sideConversationEnabled?: boolean;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>
@@ -581,6 +589,12 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   /** Host-owned presentation for exact Agent targets; tooltip behavior stays AgentGUI-owned. */
   renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
   renderProjectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
+  projectSelectOptions?: AgentProjectDropdownOptions;
+  renderReferencePickerSidebarActions?: (
+    context: Parameters<
+      NonNullable<ReferenceSourcePickerProps["renderSidebarActions"]>
+    >[0] & { purpose: "directory" | "reference" }
+  ) => ReactNode;
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
   renderProviderRailEmpty?: AgentGUIAgentsEmptyRenderer;
@@ -675,7 +689,9 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       permissionMode?: string;
     }) => void;
     /** Re-issues the composer-options load after a terminal error state. */
-    retryComposerOptions: () => void;
+    retryComposerOptions: NonNullable<
+      AgentComposerProps["onRetryComposerOptions"]
+    >;
     setTuttiModeActive: (active: boolean) => void;
     setTuttiModeEffect: (value: number) => void;
     setTuttiModeSpeed: (value: number) => void;
@@ -701,7 +717,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       turnId: string
     ) => Promise<void>;
     openForkSourceConversation: (agentSessionId: string) => Promise<void>;
-    removeProject: (path: string) => void;
+    removeProject: (path: string) => Promise<boolean>;
     moveProject: (
       projectId: string,
       beforeProjectId: string | null
@@ -711,7 +727,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       sectionKey?: string,
       agentTargetId?: string | null
     ) => Promise<string[]>;
-    confirmDeleteConversations: (agentSessionIds: string[]) => void;
+    confirmDeleteConversations: (agentSessionIds: string[]) => Promise<boolean>;
     requestDeleteConversation: (agentSessionId: string) => void;
     cancelDeleteConversation: () => void;
     confirmDeleteConversation: () => void;

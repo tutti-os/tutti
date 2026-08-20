@@ -158,6 +158,10 @@ func Validate(descriptor ProviderDescriptor) error {
 	if !descriptor.Desktop.Managed && (descriptor.Desktop.InstallBootstrap || descriptor.Desktop.RefreshOnAccountChange) {
 		return fmt.Errorf("provider %q desktop bootstrap and account refresh require managed status", providerID)
 	}
+	if descriptor.Desktop.AuthProbeAfterCredentialSync &&
+		(!descriptor.Desktop.Managed || len(descriptor.Status.AuthStatusCommand) == 0) {
+		return fmt.Errorf("provider %q desktop credential auth barrier requires managed auth status", providerID)
+	}
 	if descriptor.Desktop.DefaultProviderPriority < 0 {
 		return fmt.Errorf("provider %q desktop default provider priority must be non-negative", providerID)
 	}
@@ -426,6 +430,9 @@ func Validate(descriptor ProviderDescriptor) error {
 	}
 	if err := validateAuthWatch(descriptor.Status.AuthWatch); err != nil {
 		return fmt.Errorf("provider %q auth watch: %w", providerID, err)
+	}
+	if err := validateRemoteAuthProbe(descriptor.Status.RemoteAuthProbe); err != nil {
+		return fmt.Errorf("provider %q remote auth probe: %w", providerID, err)
 	}
 	switch descriptor.ComposerProfile.ModelCatalog {
 	case "", ModelCatalogKindCodexCLI, ModelCatalogKindOpenCodeCLI, ModelCatalogKindTuttiCLI:

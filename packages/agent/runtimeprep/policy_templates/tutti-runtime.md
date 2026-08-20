@@ -14,13 +14,13 @@
 
 ### Routes
 
-| URI                                                             | Skill            | Fallback                                                                                                                           |
-| --------------------------------------------------------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
-| `mention://workspace-issue/<issueId>?workspaceId=...`           | `$issue-manager` | {{if has "issue-manager.issue.get"}}`{{command "issue-manager.issue.get"}}`{{else}}unavailable{{end}}                              |
-| `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                                                           |
-| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | {{if has "references.task.list"}}`{{command "references.task.list" (args "source" "task" "id" "<id>")}}`{{else}}unavailable{{end}} |
-| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-cli`     | {{if has "agent-context.agent.wait"}}`{{command "agent-context.agent.wait"}}`{{else}}unavailable{{end}}                            |
-| `mention://agent-target/<targetId>?workspaceId=...`             | `$tutti-handoff` | {{if has "agent-context.agent.list"}}verify with `{{command "agent-context.agent.list"}}`{{else}}unavailable{{end}}                |
+| URI                                                             | Skill            | Fallback                                                                                                                                                                                                      |
+| --------------------------------------------------------------- | ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mention://workspace-issue/<issueId>?workspaceId=...`           | `$issue-manager` | {{if has "issue-manager.issue.get"}}`{{command "issue-manager.issue.get"}}`{{else}}unavailable{{end}}                                                                                                         |
+| `mention://workspace-app/<appId>?workspaceId=...`               | `$workspace-app` | match `App id: <appId>` in command guide                                                                                                                                                                      |
+| `mention://workspace-reference/<id>?source=...&workspaceId=...` | `$reference`     | {{if has "references.task.list"}}`{{command "references.task.list" (args "source" "task" "id" "<id>")}}`{{else}}unavailable{{end}}                                                                            |
+| `mention://agent-session/<sessionId>?workspaceId=...`           | `$tutti-cli`     | {{if has "agent-context.agent.session-summary"}}`{{command "agent-context.agent.session-summary"}}`{{else if has "agent-context.agent.get"}}`{{command "agent-context.agent.get"}}`{{else}}unavailable{{end}} |
+| `mention://agent-target/<targetId>?workspaceId=...`             | `$tutti-handoff` | {{if has "agent-context.agent.list"}}verify with `{{command "agent-context.agent.list"}}`{{else}}unavailable{{end}}                                                                                           |
 
 ### Rules
 
@@ -29,7 +29,8 @@
 - If a provider Skill tool exists, call the exact visible name.
 - If the Skill is unavailable, read its materialized `SKILL.md`.
 - Use the table fallback only when that Skill is unavailable.
-- Agent handoff decisions belong to `$tutti-handoff`; `$tutti-cli` is only its command reference.
+- Agent handoff decisions belong to `$tutti-handoff`.
+- Generic subagents use native tools; Tutti handoffs use `$tutti-handoff`.
 
 {{PROVIDER_SPECIFIC_MENTION_ROUTING}}
 

@@ -1,0 +1,18 @@
+{
+  "schemaVersion": "tutti.agent.account-usage.v1",
+  "outcome": "available",
+  "capturedAtUnixMs": 1770000000000,
+  "billingMode": "subscription",
+  "quotas": [
+    {
+      "quotaType": "weekly",
+      "percentRemaining": 72,
+      "resetsAtUnixMs": 1787270400000
+    },
+    {
+      "quotaType": "session",
+      "percentRemaining": 25,
+      "resetsAtUnixMs": 1770000060000
+    }
+  ]
+}

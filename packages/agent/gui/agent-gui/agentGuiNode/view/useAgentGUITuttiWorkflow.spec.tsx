@@ -179,7 +179,6 @@ function renderWorkflow(
 ) {
   let projection = initial;
   const submitPromptPassthrough = vi.fn();
-  const submitGuidancePromptPassthrough = vi.fn();
   const updateDraftContent = vi.fn();
   mocks.useTuttiModePlanPanels.mockImplementation(() => ({
     assignmentCatalog: {
@@ -204,15 +203,13 @@ function renderWorkflow(
         setTuttiModeEffect: vi.fn(),
         setTuttiModeSpeed: vi.fn(),
         updateDraftContent,
-        submitPromptPassthrough,
-        submitGuidancePromptPassthrough
+        submitPromptPassthrough
       }),
     { initialProps: { activeConversationId: "session-a" } }
   );
   return {
     ...rendered,
     submitPromptPassthrough,
-    submitGuidancePromptPassthrough,
     updateDraftContent,
     setProjection(next: PlanPanelsProjection): void {
       projection = next;
@@ -241,7 +238,8 @@ function emptyProjection(): PlanPanelsProjection {
 }
 
 describe("useAgentGUITuttiWorkflow materialization bridge", () => {
-  it("uses the legacy intensity as effect only when preference snapshots are absent", () => {
+  it("only reports a real preference change when the plan carries both frozen values", () => {
+    decide.mockClear();
     const legacyPanel = panel();
     legacyPanel.execution = {
       ...legacyPanel.execution,
@@ -249,8 +247,10 @@ describe("useAgentGUITuttiWorkflow materialization bridge", () => {
     };
     const legacy = renderWorkflow(reviewProjection(legacyPanel));
     expect(legacy.result.current.composer.planReviewPreferencesDiverged).toBe(
-      true
+      false
     );
+    act(() => legacy.result.current.composer.requestPendingPlanChanges());
+    expect(decide).not.toHaveBeenCalled();
     legacy.unmount();
 
     const currentPanel = panel();
@@ -263,6 +263,107 @@ describe("useAgentGUITuttiWorkflow materialization bridge", () => {
     const current = renderWorkflow(reviewProjection(currentPanel));
     expect(current.result.current.composer.planReviewPreferencesDiverged).toBe(
       false
+    );
+  });
+
+  it("accepts the reviewed plan explicitly even when current preferences diverge", () => {
+    decide.mockClear();
+    const divergentPanel = panel();
+    divergentPanel.execution = {
+      ...divergentPanel.execution,
+      effect: 90,
+      speed: 55
+    };
+    const rendered = renderWorkflow(reviewProjection(divergentPanel));
+
+    act(() => rendered.result.current.composer.acceptPendingPlan());
+
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(decide).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "accepted" })
+    );
+  });
+
+  it("requests a replacement plan only through the explicit current-preferences action", () => {
+    decide.mockClear();
+    const divergentPanel = panel();
+    divergentPanel.execution = {
+      ...divergentPanel.execution,
+      effect: 90,
+      speed: 55
+    };
+    const rendered = renderWorkflow(reviewProjection(divergentPanel));
+
+    act(() => rendered.result.current.composer.requestPendingPlanChanges());
+
+    expect(decide).toHaveBeenCalledTimes(1);
+    expect(decide).toHaveBeenCalledWith(
+      expect.objectContaining({ decision: "rejected", reason: "Re-plan" })
+    );
+  });
+
+  it("uses the empty composer action to accept the visible plan regardless of preference changes", () => {
+    decide.mockClear();
+    const divergentPanel = panel();
+    divergentPanel.execution = {
+      ...divergentPanel.execution,
+      effect: 90,
+      speed: 55
+    };
+    const divergent = renderWorkflow(reviewProjection(divergentPanel));
+
+    act(() => divergent.result.current.composer.acceptPendingPlan());
+
+    expect(decide).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        checkpointId: "checkpoint-a",
+        decision: "accepted",
+        workflowId: "workflow-a"
+      })
+    );
+    divergent.unmount();
+
+    decide.mockClear();
+    const matching = renderWorkflow(reviewProjection());
+
+    act(() => matching.result.current.composer.acceptPendingPlan());
+
+    expect(decide).toHaveBeenLastCalledWith(
+      expect.objectContaining({ decision: "accepted" })
+    );
+  });
+
+  it("accepts the checkpoint belonging to the latest visible plan revision", () => {
+    decide.mockClear();
+    const rendered = renderWorkflow(reviewProjection());
+    const revisedPanel = panel("checkpoint-b");
+    revisedPanel.revision = {
+      ...revisedPanel.revision,
+      id: "revision-b",
+      sequence: 2,
+      sha256: "b".repeat(64)
+    };
+    revisedPanel.title = "Latest visible plan";
+
+    rendered.setProjection(reviewProjection(revisedPanel));
+    rendered.rerender({ activeConversationId: "session-a" });
+    expect(rendered.result.current.workflowDock.phase).toMatchObject({
+      kind: "review",
+      panel: {
+        checkpoint: { id: "checkpoint-b" },
+        revision: { id: "revision-b" },
+        title: "Latest visible plan"
+      }
+    });
+
+    act(() => rendered.result.current.composer.acceptPendingPlan());
+
+    expect(decide).toHaveBeenCalledWith(
+      expect.objectContaining({
+        checkpointId: "checkpoint-b",
+        decision: "accepted",
+        workflowId: "workflow-a"
+      })
     );
   });
 
@@ -354,41 +455,38 @@ describe("useAgentGUITuttiWorkflow execution composer", () => {
     planIssue: issue("workflow-a", { taskStatus: "running" })
   });
 
-  it("steers an active source Turn when exact guidance is supported", () => {
-    const rendered = renderWorkflow(executionProjection(), {
-      activeTurn: true,
-      activeTurnGuidance: true
-    });
-
-    act(() =>
-      rendered.result.current.composer.submitPromptOrDecidePlan([
-        { type: "text", text: "Adjust the approach" }
-      ])
-    );
-
-    expect(rendered.submitGuidancePromptPassthrough).toHaveBeenCalledTimes(1);
-    expect(rendered.submitPromptPassthrough).not.toHaveBeenCalled();
-  });
-
   it.each([
-    { activeTurn: false, activeTurnGuidance: true, name: "source is idle" },
     {
-      activeTurn: true,
-      activeTurnGuidance: false,
-      name: "guidance is unsupported"
+      content: "Adjust the approach",
+      name: "ordinary text"
+    },
+    {
+      content: "/compact",
+      name: "compact command"
+    },
+    {
+      content: "/goal clear",
+      name: "Goal control command"
     }
-  ])("uses an ordinary submit when $name", (options) => {
-    const rendered = renderWorkflow(executionProjection(), options);
+  ])(
+    "uses an ordinary submit for $name during active execution",
+    ({ content }) => {
+      const rendered = renderWorkflow(executionProjection(), {
+        activeTurn: true,
+        activeTurnGuidance: true
+      });
 
-    act(() =>
-      rendered.result.current.composer.submitPromptOrDecidePlan([
-        { type: "text", text: "Adjust the approach" }
-      ])
-    );
+      act(() =>
+        rendered.result.current.composer.submitPromptOrDecidePlan([
+          { type: "text", text: content }
+        ])
+      );
 
-    expect(rendered.submitPromptPassthrough).toHaveBeenCalledTimes(1);
-    expect(rendered.submitGuidancePromptPassthrough).not.toHaveBeenCalled();
-  });
+      expect(rendered.submitPromptPassthrough).toHaveBeenCalledWith([
+        { type: "text", text: content }
+      ]);
+    }
+  );
 
   it.each([
     ["accept", "Accept"],

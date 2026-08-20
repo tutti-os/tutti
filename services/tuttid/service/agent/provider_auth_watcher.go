@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -36,6 +37,15 @@ type ProviderAuthWatchEntry struct {
 	// state file and is rewritten continuously while any session runs, but its
 	// auth-relevant fields only change on a real credential switch.
 	ContentFingerprint func(path string, data []byte) string
+}
+
+// ProviderAuthChange identifies the exact watched file that caused a provider
+// catalog invalidation. Paths are diagnostics only; file contents are never
+// included.
+type ProviderAuthChange struct {
+	Provider string
+	Path     string
+	Kind     string
 }
 
 // DefaultProviderAuthWatchEntries returns the auth/config marker files for the
@@ -186,6 +196,60 @@ func hashProviderAuthFileContent(_ string, data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
+// providerAuthFingerprint returns a stable, opaque fingerprint for the files
+// that define the active provider credentials/configuration. It is shared by
+// the persisted model catalog so a catalog from a different account is never
+// presented after restart.
+func providerAuthFingerprint(provider string) string {
+	provider = agentprovider.Normalize(provider)
+	if provider == "" {
+		return ""
+	}
+	entries := DefaultProviderAuthWatchEntries()
+	hasher := sha256.New()
+	found := false
+	seen := make(map[string]struct{})
+	for _, entry := range entries {
+		if agentprovider.Normalize(entry.Provider) != provider {
+			continue
+		}
+		for _, path := range entry.Paths {
+			path = filepath.Clean(path)
+			if _, ok := seen[path]; ok {
+				continue
+			}
+			seen[path] = struct{}{}
+			found = true
+			fingerprint := statProviderAuthFile(path)
+			if entry.ContentFingerprint != nil && fingerprint.exists {
+				fingerprint.contentKey = readProviderAuthContentKey(
+					path,
+					fingerprint.size,
+					entry.ContentFingerprint,
+				)
+			}
+			hasher.Write([]byte(path))
+			hasher.Write([]byte{0})
+			hasher.Write([]byte(strconv.FormatBool(fingerprint.exists)))
+			hasher.Write([]byte{0})
+			if fingerprint.contentKey != "" {
+				// The watcher treats an identical-content rewrite as unchanged;
+				// keep persisted cache identity consistent with that rule.
+				hasher.Write([]byte(fingerprint.contentKey))
+			} else {
+				hasher.Write([]byte(strconv.FormatInt(fingerprint.modTime.UnixNano(), 10)))
+				hasher.Write([]byte{0})
+				hasher.Write([]byte(strconv.FormatInt(fingerprint.size, 10)))
+			}
+			hasher.Write([]byte{0})
+		}
+	}
+	if !found {
+		return ""
+	}
+	return hex.EncodeToString(hasher.Sum(nil))
+}
+
 // jsonSubsetFingerprint hashes the raw values of the given top-level keys of a
 // JSON object. Returns false when the payload is not a JSON object.
 func jsonSubsetFingerprint(data []byte, keys []string) (string, bool) {
@@ -219,10 +283,18 @@ type ProviderAuthWatcher struct {
 	// Called from the watcher goroutine; implementations must not block for
 	// long.
 	OnChange func(providers []string)
+	// OnChangeDetailed receives the same coalesced change with the triggering
+	// paths attached. It is optional so existing consumers can keep using
+	// OnChange while diagnostics opt into the richer signal.
+	OnChangeDetailed func(changes []ProviderAuthChange)
+	// OnClose releases resources attached to the watcher, such as persistent
+	// provider processes owned by the same composition root.
+	OnClose func()
 
-	stopOnce sync.Once
-	stop     chan struct{}
-	done     chan struct{}
+	stopOnce      sync.Once
+	closeHookOnce sync.Once
+	stop          chan struct{}
+	done          chan struct{}
 }
 
 type providerAuthFileFingerprint struct {
@@ -243,7 +315,7 @@ func (f providerAuthFileFingerprint) statEqual(other providerAuthFileFingerprint
 // Start begins polling in a background goroutine. The first poll only records
 // the baseline fingerprints; changes are reported from the second poll on.
 func (w *ProviderAuthWatcher) Start() {
-	if w == nil || w.OnChange == nil || len(w.Entries) == 0 {
+	if w == nil || (w.OnChange == nil && w.OnChangeDetailed == nil) || len(w.Entries) == 0 {
 		return
 	}
 	w.stop = make(chan struct{})
@@ -260,6 +332,11 @@ func (w *ProviderAuthWatcher) Close() {
 		close(w.stop)
 	})
 	<-w.done
+	w.closeHookOnce.Do(func() {
+		if w.OnClose != nil {
+			w.OnClose()
+		}
+	})
 }
 
 func (w *ProviderAuthWatcher) interval() time.Duration {
@@ -285,6 +362,7 @@ func (w *ProviderAuthWatcher) run() {
 	ticker := time.NewTicker(w.interval())
 	defer ticker.Stop()
 	pendingProviders := make(map[string]struct{})
+	pendingChanges := make(map[string]ProviderAuthChange)
 	var coalesceTimer *time.Timer
 	var coalesceTimerC <-chan time.Time
 	stopCoalesceTimer := func() {
@@ -301,19 +379,36 @@ func (w *ProviderAuthWatcher) run() {
 		coalesceTimerC = nil
 	}
 	flushPendingProviders := func() {
-		if len(pendingProviders) == 0 {
+		if len(pendingProviders) == 0 && len(pendingChanges) == 0 {
 			return
 		}
 		providers := providerAuthPendingProviders(w.Entries, pendingProviders)
+		changes := make([]ProviderAuthChange, 0, len(pendingChanges))
+		for _, change := range pendingChanges {
+			changes = append(changes, change)
+		}
+		sort.Slice(changes, func(i, j int) bool {
+			if changes[i].Provider != changes[j].Provider {
+				return changes[i].Provider < changes[j].Provider
+			}
+			return changes[i].Path < changes[j].Path
+		})
 		pendingProviders = make(map[string]struct{})
-		if len(providers) > 0 {
+		pendingChanges = make(map[string]ProviderAuthChange)
+		if len(providers) > 0 && w.OnChange != nil {
 			w.OnChange(providers)
 		}
+		if len(changes) > 0 && w.OnChangeDetailed != nil {
+			w.OnChangeDetailed(changes)
+		}
 	}
-	scheduleProviderChanges := func(changed []string) {
-		for _, provider := range changed {
-			if normalized := agentprovider.Normalize(provider); normalized != "" {
-				pendingProviders[normalized] = struct{}{}
+	scheduleProviderChanges := func(changed []ProviderAuthChange) {
+		for _, change := range changed {
+			provider := agentprovider.Normalize(change.Provider)
+			if provider != "" {
+				pendingProviders[provider] = struct{}{}
+				change.Provider = provider
+				pendingChanges[provider+"\x00"+change.Path] = change
 			}
 		}
 		if len(pendingProviders) == 0 {
@@ -336,7 +431,7 @@ func (w *ProviderAuthWatcher) run() {
 			return
 		case <-ticker.C:
 			next := w.collectFingerprints(fingerprints)
-			changed := changedProviders(w.Entries, fingerprints, next)
+			changed := changedProviderAuthFiles(w.Entries, fingerprints, next)
 			fingerprints = next
 			if len(changed) > 0 {
 				scheduleProviderChanges(changed)
@@ -444,26 +539,61 @@ func changedProviders(
 	previous map[string]providerAuthFileFingerprint,
 	next map[string]providerAuthFileFingerprint,
 ) []string {
-	changed := make([]string, 0, len(entries))
-	seen := make(map[string]struct{}, len(entries))
+	changes := changedProviderAuthFiles(entries, previous, next)
+	providers := make([]string, 0, len(changes))
+	seen := make(map[string]struct{}, len(changes))
+	for _, change := range changes {
+		if _, ok := seen[change.Provider]; ok {
+			continue
+		}
+		seen[change.Provider] = struct{}{}
+		providers = append(providers, change.Provider)
+	}
+	return providers
+}
+
+func changedProviderAuthFiles(
+	entries []ProviderAuthWatchEntry,
+	previous map[string]providerAuthFileFingerprint,
+	next map[string]providerAuthFileFingerprint,
+) []ProviderAuthChange {
+	changed := make([]ProviderAuthChange, 0, len(entries))
+	seenPaths := make(map[string]struct{})
 	for _, entry := range entries {
 		provider := agentprovider.Normalize(entry.Provider)
 		if provider == "" {
 			continue
 		}
-		if _, ok := seen[provider]; ok {
-			continue
-		}
 		for _, path := range entry.Paths {
+			path = filepath.Clean(path)
+			if _, ok := seenPaths[path]; ok {
+				continue
+			}
+			seenPaths[path] = struct{}{}
 			if !providerAuthFileChanged(previous[path], next[path]) {
 				continue
 			}
-			seen[provider] = struct{}{}
-			changed = append(changed, provider)
-			break
+			changed = append(changed, ProviderAuthChange{
+				Provider: provider,
+				Path:     path,
+				Kind:     providerAuthFileChangeKind(previous[path], next[path]),
+			})
 		}
 	}
 	return changed
+}
+
+func providerAuthFileChangeKind(previous, next providerAuthFileFingerprint) string {
+	switch {
+	case !previous.exists && next.exists:
+		return "created"
+	case previous.exists && !next.exists:
+		return "deleted"
+	case previous.contentKey != "" && next.contentKey != "":
+		return "content_changed"
+	default:
+		return "metadata_changed"
+	}
 }
 
 func providerAuthFileChanged(previous, next providerAuthFileFingerprint) bool {

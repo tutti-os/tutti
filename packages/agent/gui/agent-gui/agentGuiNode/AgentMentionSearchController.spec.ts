@@ -2936,6 +2936,192 @@ describe("AgentMentionSearchController", () => {
     setAgentGuiI18nTestLocale("en");
   });
 
+  it("keeps an entered workspace folder when the cleared editor query repeats", async () => {
+    const queryFiles = vi.fn(
+      async ({ directoryPath }: { directoryPath?: string }) => ({
+        entries: directoryPath
+          ? [
+              {
+                path: `${directoryPath}/Button.tsx`,
+                name: "Button.tsx",
+                kind: "file"
+              }
+            ]
+          : [
+              {
+                path: "/workspace/src",
+                name: "src",
+                kind: "directory",
+                childCount: 1
+              }
+            ]
+      })
+    );
+    const controller = new AgentMentionSearchController({
+      queryFiles,
+      debounceMs: 0
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.setFilter("file");
+    controller.updateQuery({ workspaceId: "room-1", query: "src" });
+
+    await waitForFast(() =>
+      expect(states.at(-1)).toMatchObject({
+        mode: "results",
+        groups: [
+          expect.objectContaining({
+            items: [
+              expect.objectContaining({
+                mentionNavigation: "workspace-folder",
+                path: "/workspace/src"
+              })
+            ]
+          })
+        ]
+      })
+    );
+    const folder = states.at(-1)?.groups[0]?.items[0];
+    expect(folder).toBeDefined();
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+
+    await waitForFast(() => {
+      expect(states.at(-1)).toMatchObject({
+        status: "ready",
+        mode: "browse",
+        filter: "file"
+      });
+      expect(
+        states.at(-1)?.groups.find((group) => group.id === "opened_files")
+          ?.items
+      ).toEqual([
+        expect.objectContaining({
+          mentionNavigation: "workspace-folder-back"
+        }),
+        expect.objectContaining({
+          path: "/workspace/src/Button.tsx"
+        })
+      ]);
+    });
+    expect(queryFiles).toHaveBeenCalledWith(
+      expect.objectContaining({ directoryPath: "/workspace/src" })
+    );
+
+    controller.setProvenanceFilters({
+      session: null,
+      file: { agentTargetIds: ["agent-1"], memberIds: null },
+      issue: null,
+      agent: null,
+      app: null
+    });
+    expect(controller.exitFileMentionBrowse()).toBe(false);
+
+    controller.dispose();
+  });
+
+  it("keeps an entered agent-generated folder when the cleared editor query repeats", async () => {
+    const queryAgentGeneratedFiles = vi.fn().mockResolvedValue({
+      entries: [
+        {
+          path: "/workspace/demo/static/app.js",
+          name: "app.js"
+        },
+        {
+          path: "/workspace/demo/static/index.html",
+          name: "index.html"
+        },
+        {
+          path: "/workspace/demo/static/styles.css",
+          name: "styles.css"
+        }
+      ]
+    });
+    const controller = new AgentMentionSearchController({
+      queryAgentGeneratedFiles,
+      queryFiles: vi.fn().mockResolvedValue({
+        workspaceId: "room-1",
+        root: "/workspace",
+        entries: []
+      }),
+      queryIssues: vi.fn().mockResolvedValue({
+        issues: [],
+        totalCount: 0,
+        statusCounts: undefined
+      }),
+      querySessions: vi.fn().mockResolvedValue({ presences: [], sessions: [] }),
+      loadSessionMessages: vi
+        .fn()
+        .mockResolvedValue({ messages: [], latestVersion: 0, hasMore: false }),
+      loadSessionSummary: vi.fn(),
+      loadUserProfiles: vi.fn().mockResolvedValue({ users: [] })
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+    controller.setFilter("file");
+
+    await waitForFast(() => {
+      const folder = states
+        .at(-1)
+        ?.groups.find((group) => group.id === "agent_generated_files")
+        ?.items.find(
+          (item) =>
+            item.kind === "file" &&
+            item.mentionNavigation === "agent-generated-folder"
+        );
+      expect(folder).toEqual(
+        expect.objectContaining({
+          path: "/workspace/demo/static",
+          childCount: 3
+        })
+      );
+    });
+
+    const folder = states
+      .at(-1)
+      ?.groups.find((group) => group.id === "agent_generated_files")
+      ?.items.find(
+        (item) =>
+          item.kind === "file" &&
+          item.mentionNavigation === "agent-generated-folder"
+      );
+    expect(folder).toBeDefined();
+    expect(controller.selectFileMentionNavigationItem(folder!)).toBe(true);
+
+    // The editor emits this duplicate empty query after the click. It must
+    // not reset the agent-generated browse path back to the root folder list.
+    controller.updateQuery({ workspaceId: "room-1", query: "" });
+
+    await waitForFast(() => {
+      expect(states.at(-1)?.groups).toEqual([
+        expect.objectContaining({
+          id: "opened_files"
+        }),
+        expect.objectContaining({
+          id: "agent_generated_files",
+          items: [
+            expect.objectContaining({
+              mentionNavigation: "agent-generated-folder-back"
+            }),
+            expect.objectContaining({ path: "/workspace/demo/static/app.js" }),
+            expect.objectContaining({
+              path: "/workspace/demo/static/index.html"
+            }),
+            expect.objectContaining({
+              path: "/workspace/demo/static/styles.css"
+            })
+          ]
+        })
+      ]);
+    });
+
+    controller.dispose();
+  });
+
   it("keeps a directory request alive beyond the provider search timeout", async () => {
     let resolveDirectory:
       | ((value: {

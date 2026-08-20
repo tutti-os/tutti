@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -30,9 +30,11 @@ describe("AgentModelReasoningDropdown", () => {
     const onSettingsChange = vi.fn();
     render(
       <AgentModelReasoningDropdown
-        composerSettings={composerModelSettings()}
+        composerSettings={{
+          ...composerModelSettings(),
+          modelChoiceHistory: { targetId: "target-1", catalog: null }
+        }}
         labels={modelSettingsLabels}
-        modelHistoryTargetId="target-1"
         onSettingsChange={onSettingsChange}
       />
     );
@@ -65,6 +67,11 @@ describe("AgentModelReasoningDropdown", () => {
         "agent-gui:composer-model-favorites:target-1"
       )
     ).toBe('["gpt-5.4"]');
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-favorites:default"
+      )
+    ).toBeNull();
     expect(screen.getByText("Model selection")).toBeInTheDocument();
   });
 
@@ -99,6 +106,29 @@ describe("AgentModelReasoningDropdown", () => {
       )
     ).toBe('["gpt-5.4"]');
     expect(screen.getByText("Model selection")).toBeInTheDocument();
+  });
+
+  it("hides favorite controls when model history has no exact target", async () => {
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={{
+          ...composerModelSettings(),
+          modelChoiceHistory: { targetId: null, catalog: null }
+        }}
+        labels={modelSettingsLabels}
+        onSettingsChange={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+
+    expect(await screen.findByText("Model selection")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Add to favorites" })
+    ).not.toBeInTheDocument();
   });
 
   it("retries composer options from the compact error state", async () => {
@@ -137,6 +167,28 @@ describe("AgentModelReasoningDropdown", () => {
 
     expect(onRetryComposerOptions).toHaveBeenCalledTimes(1);
     expect(screen.queryByText("Model selection")).not.toBeInTheDocument();
+  });
+
+  it("requests a fresh model catalog when the model picker opens", async () => {
+    const onRetryComposerOptions = vi.fn();
+    render(
+      <AgentModelReasoningDropdown
+        composerSettings={composerModelSettings()}
+        labels={modelSettingsLabels}
+        onRetryComposerOptions={onRetryComposerOptions}
+        onSettingsChange={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByRole("button", { name: "Model / Reasoning" }),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+
+    expect(await screen.findByText("Model selection")).toBeInTheDocument();
+    expect(onRetryComposerOptions).toHaveBeenCalledWith({
+      waitForFreshModelCatalog: true
+    });
   });
 
   it("disables the compact retry while composer options are loading", () => {
@@ -223,7 +275,14 @@ describe("AgentPermissionModeDropdown", () => {
       type: "open-url",
       url: "https://deploymentsafety.openai.com/gpt-5-6"
     });
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Enable full access?" })
+      ).not.toBeInTheDocument();
+    });
+    expect(onSettingsChange).not.toHaveBeenCalled();
 
+    await selectPermissionOption("Full access");
     fireEvent.click(screen.getByRole("button", { name: "Enable full access" }));
 
     expect(onSettingsChange).toHaveBeenCalledTimes(1);

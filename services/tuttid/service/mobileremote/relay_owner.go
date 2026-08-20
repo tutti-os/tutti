@@ -27,6 +27,14 @@ const (
 	defaultRelayLeaseRenew  = 30 * time.Second
 	defaultRelayLeaseWindow = 5 * time.Second
 	defaultRelayTokenTTL    = 10 * time.Minute
+	defaultLeaseRequest     = 5 * time.Second
+	defaultLeaseRetry       = 100 * time.Millisecond
+	maxLeaseRetry           = 2 * time.Second
+)
+
+var (
+	errRelayLeaseExpired  = errors.New("mobile remote Relay lease expired")
+	errRelayLeaseResponse = errors.New("mobile remote Relay lease response is invalid")
 )
 
 // NewRelayOwner creates the product adapter for the shared Relay owner host.
@@ -127,29 +135,40 @@ func (l *relayOwnerLifecycle) Prepare(ctx context.Context) (relaytransport.Owner
 	return session, nil
 }
 
-func (l *relayOwnerLifecycle) Activate(ctx context.Context, _ relaytransport.OwnerSession) (func(), error) {
+func (l *relayOwnerLifecycle) Activate(ctx context.Context, _ relaytransport.OwnerSession) (relaytransport.OwnerActivation, error) {
 	l.mu.Lock()
 	authority := l.authority
 	ownerUserID := l.ownerUserID
 	l.mu.Unlock()
 	if strings.TrimSpace(authority.AuthorityID) == "" {
-		return nil, errors.New("mobile remote Relay authority is unavailable")
+		return relaytransport.OwnerActivation{}, errors.New("mobile remote Relay authority is unavailable")
 	}
 	activationCtx, cancel := context.WithTimeout(ctx, defaultRelayLeaseWindow)
-	_, err := l.renewLease(activationCtx, authority, ownerUserID)
+	lease, err := l.renewLease(activationCtx, authority, ownerUserID)
 	cancel()
 	if err != nil {
-		return nil, fmt.Errorf("activate mobile remote Relay lease: %w", err)
+		l.handleLeaseFailure(err)
+		return relaytransport.OwnerActivation{}, fmt.Errorf("activate mobile remote Relay lease: %w", err)
 	}
-	renewCtx, renewCancel := context.WithCancel(ctx)
+	if _, err := parseLeaseExpiry(lease.ExpiresAt, l.service.now()); err != nil {
+		l.handleLeaseFailure(err)
+		return relaytransport.OwnerActivation{}, fmt.Errorf("activate mobile remote Relay lease: %w", err)
+	}
+	readiness, cancelReadiness := context.WithCancelCause(ctx)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		l.maintainLease(renewCtx, authority, ownerUserID)
+		l.maintainLease(readiness, authority, ownerUserID, lease, cancelReadiness)
 	}()
-	return func() {
-		renewCancel()
-		<-done
+	var deactivateOnce sync.Once
+	return relaytransport.OwnerActivation{
+		Readiness: readiness,
+		Deactivate: func() {
+			deactivateOnce.Do(func() {
+				cancelReadiness(context.Canceled)
+				<-done
+			})
+		},
 	}, nil
 }
 
@@ -296,39 +315,157 @@ func (l *relayOwnerLifecycle) renewLease(
 		return deviceauthority.RenewDeviceAuthorityLeaseResult{}, err
 	}
 	if lease.AuthorityID != authority.AuthorityID || strings.TrimSpace(lease.State) != "online" {
-		return deviceauthority.RenewDeviceAuthorityLeaseResult{}, errors.New("mobile remote Relay lease is not online")
+		return deviceauthority.RenewDeviceAuthorityLeaseResult{}, fmt.Errorf("%w: authority or state mismatch", errRelayLeaseResponse)
 	}
 	return lease, nil
 }
 
-func (l *relayOwnerLifecycle) maintainLease(ctx context.Context, authority deviceauthority.DeviceAuthorityResult, ownerUserID string) {
-	intervalSeconds := authority.Lease.RenewIntervalSeconds
-	if intervalSeconds <= 0 && authority.Lease.TTLSeconds > 0 {
-		intervalSeconds = authority.Lease.TTLSeconds / 2
-		if intervalSeconds <= 0 {
-			intervalSeconds = 1
-		}
+func (l *relayOwnerLifecycle) maintainLease(
+	ctx context.Context,
+	authority deviceauthority.DeviceAuthorityResult,
+	ownerUserID string,
+	initialLease deviceauthority.RenewDeviceAuthorityLeaseResult,
+	cancelReadiness context.CancelCauseFunc,
+) {
+	expiresAt, err := parseLeaseExpiry(initialLease.ExpiresAt, l.service.now())
+	if err != nil {
+		cancelReadiness(err)
+		return
 	}
-	interval := time.Duration(intervalSeconds) * time.Second
+	retryDelay := time.Duration(0)
+	for {
+		now := l.service.now()
+		if !expiresAt.After(now) {
+			cancelReadiness(errRelayLeaseExpired)
+			return
+		}
+		wait := leaseRenewWait(now, expiresAt, authority.Lease)
+		if retryDelay > 0 && retryDelay < wait {
+			wait = retryDelay
+		}
+		if err := waitLease(ctx, wait); err != nil {
+			return
+		}
+		requestNow := l.service.now()
+		if !expiresAt.After(requestNow) {
+			cancelReadiness(errRelayLeaseExpired)
+			return
+		}
+		requestTimeout := defaultLeaseRequest
+		if remaining := expiresAt.Sub(requestNow); remaining < requestTimeout {
+			requestTimeout = remaining
+		}
+		requestCtx, cancel := context.WithTimeout(ctx, requestTimeout)
+		lease, renewErr := l.renewLease(requestCtx, authority, ownerUserID)
+		cancel()
+		if renewErr == nil {
+			newExpiresAt, parseErr := parseLeaseExpiry(lease.ExpiresAt, l.service.now())
+			if parseErr != nil {
+				if !expiresAt.After(l.service.now()) {
+					cancelReadiness(errRelayLeaseExpired)
+					return
+				}
+				l.handleLeaseFailure(parseErr)
+				cancelReadiness(parseErr)
+				return
+			}
+			expiresAt = newExpiresAt
+			retryDelay = 0
+			continue
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if !expiresAt.After(l.service.now()) {
+			cancelReadiness(errRelayLeaseExpired)
+			return
+		}
+		l.handleLeaseFailure(renewErr)
+		if !isTransientLeaseError(renewErr) {
+			cancelReadiness(renewErr)
+			return
+		}
+		retryDelay = nextLeaseRetryDelay(retryDelay)
+	}
+}
+
+func parseLeaseExpiry(value string, now time.Time) (time.Time, error) {
+	expiresAt, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value))
+	if err != nil || !expiresAt.After(now) {
+		return time.Time{}, fmt.Errorf("%w: expiresAt is missing or expired", errRelayLeaseResponse)
+	}
+	return expiresAt, nil
+}
+
+func leaseRenewWait(now, expiresAt time.Time, policy deviceauthority.LeasePolicy) time.Duration {
+	interval := time.Duration(policy.RenewIntervalSeconds) * time.Second
 	if interval <= 0 {
 		interval = defaultRelayLeaseRenew
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if _, err := l.renewLease(ctx, authority, ownerUserID); err != nil && !errors.Is(err, context.Canceled) {
-				// The owner tunnel remains transport-owned. Clear the cached token so
-				// the next reconnect cannot reuse credentials issued before a failed
-				// lease renewal.
-				l.mu.Lock()
-				l.token = deviceauthority.Token{}
-				l.mu.Unlock()
-			}
+		if policy.TTLSeconds > 0 {
+			interval = time.Duration(policy.TTLSeconds) * time.Second / 2
 		}
+	}
+	remaining := expiresAt.Sub(now)
+	if interval >= remaining {
+		interval = remaining / 2
+	}
+	if interval <= 0 {
+		return time.Nanosecond
+	}
+	return interval
+}
+
+func waitLease(ctx context.Context, delay time.Duration) error {
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func nextLeaseRetryDelay(previous time.Duration) time.Duration {
+	if previous <= 0 {
+		return defaultLeaseRetry
+	}
+	next := previous * 2
+	if next > maxLeaseRetry || next <= previous {
+		return maxLeaseRetry
+	}
+	return next
+}
+
+func isTransientLeaseError(err error) bool {
+	if errors.Is(err, context.Canceled) ||
+		errors.Is(err, deviceauthority.ErrResponseBinding) ||
+		errors.Is(err, errRelayLeaseResponse) {
+		return false
+	}
+	var httpErr *deviceauthority.HTTPError
+	if !errors.As(err, &httpErr) {
+		return true
+	}
+	return httpErr.StatusCode == http.StatusRequestTimeout ||
+		httpErr.StatusCode == http.StatusTooEarly ||
+		httpErr.StatusCode == http.StatusTooManyRequests ||
+		httpErr.StatusCode >= http.StatusInternalServerError
+}
+
+func (l *relayOwnerLifecycle) handleLeaseFailure(err error) {
+	var httpErr *deviceauthority.HTTPError
+	if errors.As(err, &httpErr) && (httpErr.StatusCode == http.StatusUnauthorized || httpErr.StatusCode == http.StatusForbidden) {
+		l.mu.Lock()
+		l.token = deviceauthority.Token{}
+		l.mu.Unlock()
+	}
+	if errors.Is(err, errRelayLeaseResponse) || errors.Is(err, deviceauthority.ErrResponseBinding) {
+		l.mu.Lock()
+		l.authority = deviceauthority.DeviceAuthorityResult{}
+		l.identityEnrolled = false
+		l.token = deviceauthority.Token{}
+		l.mu.Unlock()
 	}
 }
 

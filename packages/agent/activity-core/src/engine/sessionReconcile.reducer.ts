@@ -25,10 +25,12 @@ export function sessionReconcileReducer(
   intent: EngineIntent,
   context: {
     deletedSessionIds: Readonly<Record<string, true>>;
+    pendingNewSessionIds?: ReadonlySet<string>;
     sessionsById: Readonly<Record<string, CanonicalAgentSession>>;
     workspaceReconcileCommandId: string | null;
   } = {
     deletedSessionIds: {},
+    pendingNewSessionIds: new Set<string>(),
     sessionsById: {},
     workspaceReconcileCommandId: null
   }
@@ -71,6 +73,10 @@ export function sessionReconcileReducer(
             intent.eventType !== "session_audit") ||
           !intent.hasInlineMessages,
         live: intent.eventType === "turn_update",
+        waitForSessionCommit: shouldWaitForSessionCommit(
+          context,
+          intent.agentSessionId
+        ),
         workspaceId: intent.workspaceId
       });
     case "turn/projectionReceived":
@@ -82,13 +88,28 @@ export function sessionReconcileReducer(
         needsMessages: intent.turn.phase === "settled",
         needsState: true,
         live: true,
+        waitForSessionCommit: shouldWaitForSessionCommit(
+          context,
+          intent.turn.agentSessionId
+        ),
         workspaceId: intent.workspaceId
       });
     case "session/reconcileRequested":
       if (context.deletedSessionIds[intent.agentSessionId.trim()]) {
         return unchanged(state);
       }
-      return requestReconcile(state, intent);
+      return requestReconcile(state, {
+        ...intent,
+        waitForSessionCommit: shouldWaitForSessionCommit(
+          context,
+          intent.agentSessionId
+        )
+      });
+    case "session/upserted":
+      return releaseReconcileAfterSessionCommit(
+        state,
+        intent.session.agentSessionId
+      );
     case "session/removed":
       return removeRecord(state, intent.agentSessionId);
     case "engine/intentExpired":
@@ -111,10 +132,17 @@ export function sessionReconcileReducer(
 
 function receiveDetailSnapshot(
   state: SessionReconcileState,
-  intent: Extract<EngineIntent, { type: "session/detailSnapshotReceived" }>
+  intent: Extract<EngineIntent, { type: "session/detailSnapshotReceived" }>,
+  liveTurnId?: string
 ): EngineReducerResult<SessionReconcileState> {
   const followUpIntents: EngineIntent[] = [
-    { session: intent.session, type: "session/upserted" }
+    {
+      session: intent.session,
+      ...(intent.observedAtUnixMs === undefined
+        ? {}
+        : { observedAtUnixMs: intent.observedAtUnixMs }),
+      type: "session/upserted"
+    }
   ];
   if (intent.editRetry) {
     followUpIntents.push({
@@ -125,8 +153,13 @@ function receiveDetailSnapshot(
     });
   }
   if (intent.live && intent.session.latestTurn) {
+    const replayAcceptedLiveCompletion =
+      !liveTurnId || intent.session.latestTurn.turnId === liveTurnId;
     followUpIntents.push({
       live: true,
+      ...(replayAcceptedLiveCompletion
+        ? { replayAcceptedLiveCompletion: true as const }
+        : {}),
       turn: intent.session.latestTurn,
       type: "turn/upserted"
     });
@@ -159,16 +192,20 @@ function receiveAuthoritativeHistorySnapshot(
     { type: "session/historyAuthoritativeSnapshotReceived" }
   >
 ): EngineReducerResult<SessionReconcileState> {
-  const detail = receiveDetailSnapshot(state, {
-    childSessions: intent.childSessions,
-    editRetry: intent.editRetry,
-    messages: intent.messages,
-    session: intent.session,
-    sessionMessageWindows: intent.sessionMessageWindows,
-    turns: intent.turns,
-    type: "session/detailSnapshotReceived",
-    workspaceId: intent.workspaceId
-  });
+  const detail = receiveDetailSnapshot(
+    state,
+    {
+      childSessions: intent.childSessions,
+      editRetry: intent.editRetry,
+      messages: intent.messages,
+      session: intent.session,
+      sessionMessageWindows: intent.sessionMessageWindows,
+      turns: intent.turns,
+      type: "session/detailSnapshotReceived",
+      workspaceId: intent.workspaceId
+    },
+    intent.liveTurnId
+  );
   const checkpoint = applyHistoryCheckpoint(
     state,
     {
@@ -225,6 +262,7 @@ function requestReconcile(
     needsMessages: boolean;
     needsState: boolean;
     requiredHistoryRevision?: number;
+    waitForSessionCommit?: boolean;
     workspaceId: string;
   }
 ): EngineReducerResult<SessionReconcileState> {
@@ -305,6 +343,9 @@ function requestReconcile(
           )
   };
   const next = replaceRecord(state, record);
+  if (input.waitForSessionCommit === true) {
+    return { commands: NO_COMMANDS, state: next };
+  }
   if (record.inFlightCommandId || !hasReconcileDemand(record)) {
     return { commands: NO_COMMANDS, state: next };
   }
@@ -331,6 +372,54 @@ function requestReconcile(
   return deferMessages
     ? scheduleStreamingMessageReconcile(next, record)
     : startReconcile(next, record);
+}
+
+function shouldWaitForSessionCommit(
+  context: {
+    pendingNewSessionIds?: ReadonlySet<string>;
+    sessionsById: Readonly<Record<string, CanonicalAgentSession>>;
+  },
+  rawAgentSessionId: string
+): boolean {
+  const agentSessionId = rawAgentSessionId.trim();
+  return (
+    agentSessionId !== "" &&
+    context.sessionsById[agentSessionId] === undefined &&
+    context.pendingNewSessionIds?.has(agentSessionId) === true
+  );
+}
+
+function releaseReconcileAfterSessionCommit(
+  state: SessionReconcileState,
+  rawAgentSessionId: string
+): EngineReducerResult<SessionReconcileState> {
+  const agentSessionId = rawAgentSessionId.trim();
+  const record = state.recordsBySessionId[agentSessionId];
+  if (
+    !record ||
+    record.inFlightCommandId !== null ||
+    !hasReconcileDemand(record)
+  ) {
+    return unchanged(state);
+  }
+  const ready = record.messageRefreshScheduled
+    ? { ...record, messageRefreshScheduled: false }
+    : record;
+  const started = startReconcile(replaceRecord(state, ready), ready);
+  return {
+    commands: [
+      ...(record.messageRefreshScheduled
+        ? [
+            {
+              expiryId: streamingMessageReconcileExpiryId(agentSessionId),
+              type: "engine/cancelExpiry" as const
+            }
+          ]
+        : []),
+      ...started.commands
+    ],
+    state: started.state
+  };
 }
 
 function settleReconcile(

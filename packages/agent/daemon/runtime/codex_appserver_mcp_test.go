@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"reflect"
 	"testing"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -81,5 +82,70 @@ func TestAppServerMCPToolCallPreservesStructuredErrorResult(t *testing.T) {
 		event.Payload.Output["isError"] != true ||
 		event.Payload.Output["structuredContent"] == nil {
 		t.Fatalf("failed MCP payload = error:%#v output:%#v", event.Payload.Error, event.Payload.Output)
+	}
+}
+
+func TestCodexAppServerReducerProjectsMCPStartupStatus(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	statusEvents := make(chan activityshared.Event, 16)
+	adapter.SetSessionEventSink(func(_ string, events []activityshared.Event) {
+		for _, event := range events {
+			statusEvents <- event
+		}
+	})
+	appSession := adapter.getSession(session.AgentSessionID)
+	if appSession == nil {
+		t.Fatal("missing app-server session")
+	}
+
+	newCodexAppServerReducer(adapter).ReduceNotification(
+		appSession.client,
+		session,
+		"",
+		acpMessage{
+			Method: appServerNotifyMCPServerStartupStatusUpdated,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"threadId":      session.ProviderSessionID,
+				"name":          "figma",
+				"status":        "failed",
+				"failureReason": "reauthenticationRequired",
+				"error":         "MCP server requires authentication",
+			}),
+		},
+		nil,
+		nil,
+	)
+
+	statusFound := false
+	warningFound := false
+	deadline := time.After(time.Second)
+	for {
+		select {
+		case event := <-statusEvents:
+			status, ok := event.Payload.Metadata["mcpServerStartupStatus"].(map[string]any)
+			if ok {
+				if event.Type != EventSessionUpdated || asString(status["name"]) != "figma" ||
+					asString(status["status"]) != "failed" ||
+					asString(status["failureReason"]) != "reauthenticationRequired" {
+					t.Fatalf("MCP status event = %#v", event)
+				}
+				statusFound = true
+			}
+			metadata := event.Payload.Metadata
+			if asString(metadata["kind"]) == "agent_system_notice" {
+				if asString(metadata["noticeKind"]) != "warning" ||
+					asString(metadata["severity"]) != "warning" ||
+					asString(metadata["detail"]) != "MCP server requires authentication" ||
+					asString(metadata["code"]) != "mcp_server_startup_failed" {
+					t.Fatalf("MCP warning event = %#v", event)
+				}
+				warningFound = true
+			}
+			if statusFound && warningFound {
+				return
+			}
+		case <-deadline:
+			t.Fatalf("MCP startup status/warning projection missing: status=%t warning=%t", statusFound, warningFound)
+		}
 	}
 }

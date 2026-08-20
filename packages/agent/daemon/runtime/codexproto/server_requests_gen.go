@@ -139,6 +139,22 @@ func IsKnownServerRequestMethod(method string) bool {
 	return ok
 }
 
+// ServerRequestMethods returns the generated server request surface in stable order.
+func ServerRequestMethods() []string {
+	return []string{
+		"account/chatgptAuthTokens/refresh",
+		"applyPatchApproval",
+		"attestation/generate",
+		"execCommandApproval",
+		"item/commandExecution/requestApproval",
+		"item/fileChange/requestApproval",
+		"item/permissions/requestApproval",
+		"item/tool/call",
+		"item/tool/requestUserInput",
+		"mcpServer/elicitation/request",
+	}
+}
+
 func dispatchServerRequest(ctx context.Context, handler ServerRequestHandler, req JSONRPCRequest) (any, error) {
 	switch req.Method {
 	case "account/chatgptAuthTokens/refresh":

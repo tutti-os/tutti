@@ -7,6 +7,7 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
+import type { AgentProjectDropdownOptions } from "./AgentComposerProjectMenu";
 import type { AgentGuiWorkbenchCommandBridge } from "../../workbench/commands";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
@@ -42,7 +43,10 @@ import type {
   AgentMentionReferenceTargetResolver,
   AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
-import type { AgentVisibleErrorOverrides } from "../../shared/agentEnv/agentErrorPresentation";
+import type {
+  AgentVisibleErrorOverrides,
+  AgentVisibleErrorPresentationScope
+} from "../../shared/agentEnv/agentErrorPresentation";
 import type {
   AgentComposerCapabilityMenuState,
   AgentComposerCapabilitySettingsTarget,
@@ -127,8 +131,8 @@ export interface AgentGUINodeHostCapabilities {
   referenceProvenanceFilterEnabled?: boolean;
   /** Host-owned experimental opt-in for current-Session composer history. */
   sessionInputHistoryEnabled?: boolean;
-  /** Host-owned experimental opt-in for creating Session forks. */
-  sessionForkEnabled?: boolean;
+  /** Host-owned experimental opt-in for Side and transcript selection actions. */
+  sideConversationEnabled?: boolean;
   /** Host-owned opt-in for launching self-owned local Sessions in git worktrees. */
   sessionWorktreeEnabled?: boolean;
   /** Host-owned durable launch preference projection for this workspace. */
@@ -148,8 +152,15 @@ export interface AgentGUINodeHostCapabilities {
    * AgentGUI owns the generic card; product domains own product semantics.
    */
   visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null;
+  /**
+   * Presentation-only remediation authority for visible errors. Omission
+   * retains local-owner behavior for backwards compatibility.
+   */
+  visibleErrorPresentationScope?: AgentVisibleErrorPresentationScope;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
+  /** Complete presentation-only catalog for resolving Agent mention identity. */
+  mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   /** Launch-only targets for active-conversation handoff. */
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
   handoffAgentTargetsLoading?: boolean;
@@ -191,7 +202,7 @@ export interface AgentGUINodeHostActions {
   }) => void | Promise<void>;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
-  ) => void;
+  ) => void | Promise<void>;
   onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
   /**
@@ -251,6 +262,12 @@ export interface AgentGUINodeRenderSlots {
    */
   agentConfigAccount?: (context: AgentGUIAgentConfigMenuContext) => ReactNode;
   projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
+  projectSelectOptions?: AgentProjectDropdownOptions;
+  referencePickerSidebarActions?: (
+    context: Parameters<
+      NonNullable<ReferenceSourcePickerProps["renderSidebarActions"]>
+    >[0] & { purpose: "directory" | "reference" }
+  ) => ReactNode;
   providerRailEmpty?: AgentGUIAgentsEmptyRenderer;
   sidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
 }
@@ -418,7 +435,7 @@ export function areAgentGUINodePropsEqual(
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
-    pc.sessionForkEnabled === nc.sessionForkEnabled &&
+    pc.sideConversationEnabled === nc.sideConversationEnabled &&
     pc.sessionWorktreeEnabled === nc.sessionWorktreeEnabled &&
     pc.sessionLaunchModesByProjectSectionKey ===
       nc.sessionLaunchModesByProjectSectionKey &&
@@ -491,6 +508,8 @@ export function areAgentGUINodePropsEqual(
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.projectDirectoryPickerHeaderActions ===
       ns.projectDirectoryPickerHeaderActions &&
+    ps.projectSelectOptions === ns.projectSelectOptions &&
+    ps.referencePickerSidebarActions === ns.referencePickerSidebarActions &&
     ps.sidebarFooter === ns.sidebarFooter
   );
 }

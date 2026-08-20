@@ -1,6 +1,6 @@
 {
   "schemaVersion": "tutti.app.runtime-lock.v1",
-  "runtimeVersion": "2026.07.0",
+  "runtimeVersion": "2026.08.0",
   "uv": {
     "version": "0.11.19"
   },
@@ -9,9 +9,10 @@
     "sourceUrl": "https://www.python.org/ftp/python/3.12.13/Python-3.12.13.tgz",
     "sourceSha256": "0816c4761c97ecdb3f50a3924de0a93fd78cb63ee8e6c04201ddfaedca500b0b",
     "windows": {
-      "archiveUrl": "https://github.com/astral-sh/python-build-standalone/releases/download/20260728/cpython-3.12.13%2B20260728-x86_64-pc-windows-msvc-install_only.tar.gz",
-      "archiveSha256": "86617be5b7f23e36263e1a6b3f27d8a0cd6e0eb2293f06b690de531720d9f59b",
-      "archiveRoot": "python"
+      "version": "3.12.10",
+      "archiveUrl": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+      "archiveSha256": "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+      "archiveRoot": "."
     }
   },
   "node": {

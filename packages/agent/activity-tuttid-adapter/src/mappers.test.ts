@@ -56,6 +56,7 @@ test("session mapping requires and preserves the host-owned user identity", () =
   );
   assert.equal(session.userId, "account-user-1");
   assert.equal(session.messageVersion, 7);
+  assert.equal(session.goalSyncState, null);
   assert.deepEqual(session.forkedFrom, {
     forkedAtUnixMs: 9,
     operationId: "operation-1",
@@ -63,6 +64,66 @@ test("session mapping requires and preserves the host-owned user identity", () =
     sourceTurnId: "turn-1",
     targetTurnId: "target-turn-1"
   });
+});
+
+test("session mapping preserves durable Goal synchronization evidence", () => {
+  const session = agentActivitySessionFromTuttidSession(
+    "workspace-1",
+    {
+      ...createSession(),
+      goalSyncState: {
+        executionPending: true,
+        pendingOperationId: " goal-operation-1 ",
+        revision: 4,
+        syncStatus: "applying"
+      }
+    },
+    { currentUserId: "account-user-1" }
+  );
+
+  assert.deepEqual(session.goalSyncState, {
+    executionPending: true,
+    pendingOperationId: "goal-operation-1",
+    revision: 4,
+    syncStatus: "applying"
+  });
+});
+
+test("session mapping rejects malformed Goal synchronization evidence", () => {
+  for (const goalSyncState of [
+    {
+      executionPending: false,
+      pendingOperationId: 42,
+      revision: 1,
+      syncStatus: "applying"
+    },
+    {
+      executionPending: false,
+      pendingOperationId: null,
+      revision: -1,
+      syncStatus: "applying"
+    },
+    {
+      executionPending: false,
+      pendingOperationId: null,
+      revision: 1,
+      syncStatus: "future"
+    },
+    { pendingOperationId: null, revision: 1, syncStatus: "synced" }
+  ]) {
+    assert.throws(
+      () =>
+        agentActivitySessionFromTuttidSession(
+          "workspace-1",
+          {
+            ...createSession(),
+            goalSyncState
+          } as unknown as WorkspaceAgentSession,
+          { currentUserId: "account-user-1" }
+        ),
+      /goalSyncState is invalid/
+    );
+  }
 });
 
 test("session mapping rejects an invalid message cursor", () => {
@@ -179,6 +240,7 @@ function createSession(): WorkspaceAgentSession {
     cwd: "/",
     endedAtUnixMs: null,
     goal: null,
+    goalSyncState: null,
     id: "session-1",
     imported: false,
     kind: "root",

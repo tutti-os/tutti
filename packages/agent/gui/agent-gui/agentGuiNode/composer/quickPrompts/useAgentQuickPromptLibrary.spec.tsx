@@ -370,12 +370,14 @@ describe("useAgentQuickPromptLibrary", () => {
     const quickPrompts = createQuickPrompts();
     hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
     const onInsertPrompt = vi.fn(() => true);
+    const onQuickPromptUsed = vi.fn();
     const rendered = renderHook(() =>
       useAgentQuickPromptLibrary({
         disabled: false,
         labels,
         onBeforeOpen: vi.fn(),
-        onInsertPrompt
+        onInsertPrompt,
+        onQuickPromptUsed
       })
     );
 
@@ -386,7 +388,10 @@ describe("useAgentQuickPromptLibrary", () => {
           title: "Template title",
           content: "Template content"
         },
-        { insertIntoComposerAfterSave: true }
+        {
+          insertIntoComposerAfterSave: true,
+          usagePromptType: "recommended_template"
+        }
       )
     );
     await act(async () => {
@@ -404,6 +409,8 @@ describe("useAgentQuickPromptLibrary", () => {
     });
     expect(onInsertPrompt).toHaveBeenCalledOnce();
     expect(onInsertPrompt).toHaveBeenCalledWith("Edited template content");
+    expect(onQuickPromptUsed).toHaveBeenCalledOnce();
+    expect(onQuickPromptUsed).toHaveBeenCalledWith("recommended_template");
     expect(rendered.result.current.mode).toBe("closed");
   });
 
@@ -413,12 +420,14 @@ describe("useAgentQuickPromptLibrary", () => {
     const onInsertPrompt = vi.fn(() => {
       throw new Error("editor unavailable");
     });
+    const onQuickPromptUsed = vi.fn();
     const rendered = renderHook(() =>
       useAgentQuickPromptLibrary({
         disabled: false,
         labels,
         onBeforeOpen: vi.fn(),
-        onInsertPrompt
+        onInsertPrompt,
+        onQuickPromptUsed
       })
     );
 
@@ -426,7 +435,10 @@ describe("useAgentQuickPromptLibrary", () => {
     act(() =>
       rendered.result.current.openCreate(
         { title: "Template", content: "Template content" },
-        { insertIntoComposerAfterSave: true }
+        {
+          insertIntoComposerAfterSave: true,
+          usagePromptType: "recommended_template"
+        }
       )
     );
     await act(async () => {
@@ -442,6 +454,7 @@ describe("useAgentQuickPromptLibrary", () => {
     expect(onInsertPrompt).toHaveBeenCalledWith("Edited content");
     expect(rendered.result.current.mutationError).toBeNull();
     expect(rendered.result.current.insertionError).toBe(true);
+    expect(onQuickPromptUsed).not.toHaveBeenCalled();
     expect(rendered.result.current.mode).toBe("popover");
   });
 
@@ -452,12 +465,14 @@ describe("useAgentQuickPromptLibrary", () => {
     );
     hostApi = { quickPrompts: quickPrompts.api } as AgentHostRuntimeApi;
     const onInsertPrompt = vi.fn(() => true);
+    const onQuickPromptUsed = vi.fn();
     const rendered = renderHook(() =>
       useAgentQuickPromptLibrary({
         disabled: false,
         labels,
         onBeforeOpen: vi.fn(),
-        onInsertPrompt
+        onInsertPrompt,
+        onQuickPromptUsed
       })
     );
 
@@ -465,7 +480,10 @@ describe("useAgentQuickPromptLibrary", () => {
     act(() =>
       rendered.result.current.openCreate(
         { title: "Template", content: "Template content" },
-        { insertIntoComposerAfterSave: true }
+        {
+          insertIntoComposerAfterSave: true,
+          usagePromptType: "recommended_template"
+        }
       )
     );
     await act(async () => {
@@ -477,6 +495,7 @@ describe("useAgentQuickPromptLibrary", () => {
       ).toBe(false);
     });
     expect(onInsertPrompt).not.toHaveBeenCalled();
+    expect(onQuickPromptUsed).not.toHaveBeenCalled();
     expect(rendered.result.current.mode).toBe("create");
 
     await act(async () => {
@@ -488,6 +507,8 @@ describe("useAgentQuickPromptLibrary", () => {
       ).toBe(true);
     });
     expect(onInsertPrompt).toHaveBeenCalledOnce();
+    expect(onQuickPromptUsed).toHaveBeenCalledOnce();
+    expect(onQuickPromptUsed).toHaveBeenCalledWith("recommended_template");
     expect(onInsertPrompt).toHaveBeenCalledWith("Edited again");
     expect(rendered.result.current.mode).toBe("closed");
   });

@@ -37,4 +37,50 @@ describe("buildAgentTurnSummaryPatchDiff", () => {
       "diff --git a/src/new.ts b/src/new.ts\nnew file mode 100644\n--- /dev/null\n+++ b/src/new.ts\n@@ -0,0 +1,1 @@\n+export const ready = true;\n"
     );
   });
+
+  it("makes Windows absolute paths relative to the patch cwd", () => {
+    const diff = buildAgentTurnSummaryPatchDiff({
+      cwd: "C:\\Users\\17940\\Documents\\tutti\\test_git",
+      toolCallId: "call-1",
+      changes: [
+        {
+          path: "C:/Users/17940/Documents/tutti/test_git/today.txt",
+          changeType: "created",
+          content: "2026-08-12\n"
+        }
+      ]
+    });
+
+    expect(diff).toBe(
+      "diff --git a/today.txt b/today.txt\nnew file mode 100644\n--- /dev/null\n+++ b/today.txt\n@@ -0,0 +1,1 @@\n+2026-08-12\n"
+    );
+  });
+
+  it("rebases Windows paths in complete unified diffs case-insensitively", () => {
+    const absolutePath = "C:/Users/17940/Documents/tutti/test_git/today.txt";
+    const diff = buildAgentTurnSummaryPatchDiff({
+      cwd: "c:/users/17940/documents/tutti/test_git",
+      toolCallId: "call-1",
+      changes: [
+        {
+          path: absolutePath,
+          changeType: "modified",
+          unifiedDiff: [
+            `diff --git a/${absolutePath} b/${absolutePath}`,
+            `--- a/${absolutePath}`,
+            `+++ b/${absolutePath}`,
+            "@@ -1,2 +1,2 @@",
+            "--- old option",
+            "+++ new option",
+            "-old",
+            "+new"
+          ].join("\n")
+        }
+      ]
+    });
+
+    expect(diff).toBe(
+      "diff --git a/today.txt b/today.txt\n--- a/today.txt\n+++ b/today.txt\n@@ -1,2 +1,2 @@\n--- old option\n+++ new option\n-old\n+new\n"
+    );
+  });
 });

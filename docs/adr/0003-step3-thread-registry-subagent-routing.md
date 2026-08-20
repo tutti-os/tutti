@@ -30,8 +30,11 @@ parent turn (t3code's re-tag path, rejected — see Concurrency).
    the collab card's final status/output (`appServerCollabAgentRawOutput`); Step 0
    `TestAppServerCollabAgentCompletedCarriesResultOutput` stays green untouched.
 5. **Unknown/foreign threads** (not in the child map, e.g. grandchildren — nested
-   spawns are suppressed so we never learn their mapping) fall through to the
-   ADR-0002 unknown-fallback (log + drop), same net effect as today's mismatch.
+   spawns are suppressed so we never learn their mapping) keep the ADR-0002
+   unknown-fallback (log + drop) for ordinary progress. A bounded one-entry-per-
+   thread terminal buffer retains `turn/completed` and non-retry `error` until
+   `receiverThreadIds` registers the child, then replays the terminal with the
+   child identity. Threads that never register still age out and are dropped.
 
 ### Data-model change (seam into Step 4)
 
@@ -77,10 +80,11 @@ parent turn (t3code's re-tag path, rejected — see Concurrency).
   `OwnerThreadID` lane → future UI renders separate cards, no garble.
 - **Parent + child simultaneous:** parent deltas flow on the parent stream;
   child deltas carry `OwnerThreadID` → never corrupt the parent's text.
-- **Ordering:** mapping is known at child announce time (`receiverThreadIds`
-  required on item/started). Early child event before the announce → unknown-fallback
-  (log+drop), validate against real logs. Registry map is owned by the single
-  sequential reducer (or mutex-guarded).
+- **Ordering:** mapping is normally known at child announce time
+  (`receiverThreadIds` required on item/started). Early ordinary child progress
+  before the announce → unknown-fallback (log+drop); early terminal evidence is
+  retained in the bounded terminal buffer and replayed only after registration.
+  Registry map and pending terminal buffer are mutex-guarded.
 
 ## Ordering verification (2026-07-02, Phase 0)
 
@@ -95,9 +99,10 @@ ADR question: can child-thread events arrive before the parent
 - **Empirical:** across all four exported log bundles (2026-07-02 sessions with
   4-5 concurrent children each), every declared receiver had a complete row
   set; no early-drop evidence.
-- **Permanent telemetry:** the daemon now tracks unknown-thread drops per
-  session (bounded) and, when a child registers late, logs
+- **Permanent telemetry:** the daemon tracks unknown-thread drops per session
+  (bounded) and, when a child registers late, logs
   `child events arrived before registration` with the lost-event count and
   records it on the thread context (`droppedBeforeRegistration`, pinned by
-  `TestCodexAppServerChildRegistrationReportsEarlyDrops`). If real deployments
-  ever hit the window, the log answers it; no speculative buffer added.
+  `TestCodexAppServerChildRegistrationReportsEarlyDrops`). Terminal evidence is
+  separately replayed exactly once when available, pinned by
+  `TestCodexAppServerChildTerminalBeforeRegistrationIsReplayed`.

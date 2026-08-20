@@ -7,8 +7,11 @@ import {
   useSyncExternalStore
 } from "react";
 import { useService } from "@tutti-os/infra/di";
-import { IConnectorMarketModule } from "@tutti-os/connector-market/services";
-import { openConnectorDialogFromComposer } from "../services/openConnectorDialogFromComposer.ts";
+import {
+  IConnectorMarketModule,
+  installAndOpenConnectorMarketDialog,
+  openConnectorMarketDialog
+} from "@tutti-os/connector-renderer/application";
 import type {
   WorkspaceAgentProvider,
   WorkspaceSummary
@@ -190,8 +193,20 @@ export function useWorkspaceWorkbenchShellRuntime({
         if (!isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)) {
           return;
         }
+        if (target.action === "set_runtime_enabled") {
+          return connectorMarketModule.root.market.setRuntimeEnabled(
+            target.connectorKey,
+            target.enabled
+          );
+        }
+        if (target.action === "install") {
+          return installAndOpenConnectorMarketDialog(
+            connectorMarketModule.root,
+            target.connectorKey
+          ).then(() => undefined);
+        }
         if (target.action === "open") {
-          void openConnectorDialogFromComposer(
+          void openConnectorMarketDialog(
             connectorMarketModule.root,
             target.connectorKey
           ).catch(() => undefined);
@@ -440,20 +455,41 @@ export function useWorkspaceWorkbenchShellRuntime({
       return;
     }
 
-    return workbenchHostService.onWindowCloseRequest((payload) => {
-      void shellRuntimeController
-        .requestWindowClose({
-          reason: payload.reason
-        })
-        .then((outcome) => {
-          if (payload.requestId) {
-            workbenchHostService.resolveWindowCloseRequest({
-              outcome,
-              requestId: payload.requestId
-            });
-          }
-        });
+    const disposeCloseRequestListener =
+      workbenchHostService.onWindowCloseRequest((payload) => {
+        void shellRuntimeController
+          .requestWindowClose({
+            reason: payload.reason
+          })
+          .then((outcome) => {
+            if (payload.requestId) {
+              workbenchHostService.resolveWindowCloseRequest({
+                outcome,
+                requestId: payload.requestId
+              });
+            }
+          })
+          .catch(() => {
+            if (payload.requestId) {
+              workbenchHostService.resolveWindowCloseRequest({
+                outcome: "blocked",
+                requestId: payload.requestId
+              });
+            }
+          });
+      });
+
+    void workbenchHostService.setWindowCloseGuardEnabled(true).catch(() => {
+      // Older preload clients do not expose the native close interception
+      // handshake. The renderer-side guard remains usable in that case.
     });
+
+    return () => {
+      disposeCloseRequestListener();
+      void workbenchHostService
+        .setWindowCloseGuardEnabled(false)
+        .catch(() => undefined);
+    };
   }, [enableWindowCloseGuard, shellRuntimeController, workbenchHostService]);
 
   const handleWorkbenchHostReady = useCallback(

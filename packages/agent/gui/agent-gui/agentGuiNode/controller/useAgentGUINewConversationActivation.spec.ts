@@ -1,8 +1,25 @@
 import { describe, expect, it } from "vitest";
 import {
   resolveInitialRailPlacement,
-  resolveInitialTuttiModeActivation
+  resolveInitialTuttiModeActivation,
+  resolveNewConversationSettingProvenance,
+  resolveSparseNewConversationActivationSettings
 } from "./useAgentGUINewConversationActivation";
+
+describe("resolveNewConversationSettingProvenance", () => {
+  it("marks presented draft values inherited and required values explicit", () => {
+    expect(resolveNewConversationSettingProvenance()).toEqual({
+      modelExplicit: false,
+      reasoningEffortExplicit: false
+    });
+    expect(
+      resolveNewConversationSettingProvenance({
+        model: "gpt-selected",
+        reasoningEffort: "high"
+      })
+    ).toEqual({ modelExplicit: true, reasoningEffortExplicit: true });
+  });
+});
 
 describe("resolveInitialRailPlacement", () => {
   it("uses the selected caller project section", () => {
@@ -121,5 +138,152 @@ describe("resolveInitialTuttiModeActivation", () => {
       },
       source: "engine_draft"
     });
+  });
+});
+
+describe("resolveSparseNewConversationActivationSettings", () => {
+  it("keeps presented full-access after the optimistic draft was retired", () => {
+    expect(
+      resolveSparseNewConversationActivationSettings({
+        draftSettings: { model: "gpt-5.4" },
+        composerOptions: {
+          effectiveSettings: {
+            model: "gpt-5.4",
+            permissionModeId: "full-access"
+          },
+          permissionConfig: {
+            configurable: true,
+            defaultValue: "full-access",
+            modes: [
+              { id: "auto", label: "Approve for me", semantic: "auto" },
+              {
+                id: "full-access",
+                label: "Full access",
+                semantic: "full-access"
+              }
+            ]
+          },
+          models: [],
+          reasoningEfforts: [],
+          speeds: [],
+          capabilities: {},
+          behavior: {},
+          skills: [],
+          loadedAtUnixMs: 1
+        } as never
+      }).permissionModeId
+    ).toBe("full-access");
+  });
+
+  it("prefers an explicit draft permission over remembered presentation", () => {
+    expect(
+      resolveSparseNewConversationActivationSettings({
+        draftSettings: { permissionModeId: "auto" },
+        composerOptions: {
+          effectiveSettings: { permissionModeId: "full-access" },
+          permissionConfig: {
+            configurable: true,
+            defaultValue: "full-access",
+            modes: [
+              { id: "auto", label: "Approve for me", semantic: "auto" },
+              {
+                id: "full-access",
+                label: "Full access",
+                semantic: "full-access"
+              }
+            ]
+          },
+          models: [],
+          reasoningEfforts: [],
+          speeds: [],
+          capabilities: {},
+          behavior: {},
+          skills: [],
+          loadedAtUnixMs: 1
+        } as never
+      }).permissionModeId
+    ).toBe("auto");
+  });
+
+  it("clamps inherited OpenCode reasoning to the selected model catalog", () => {
+    expect(
+      resolveSparseNewConversationActivationSettings({
+        draftSettings: {
+          model: "openai/gpt-5.3-codex-spark",
+          reasoningEffort: "none"
+        },
+        composerOptions: {
+          provider: "opencode",
+          effectiveSettings: {},
+          reasoningOptionsByModel: {
+            "openai/gpt-5.3-codex-spark": {
+              defaultValue: "medium",
+              options: [
+                { label: "Low", value: "low" },
+                { label: "Medium", value: "medium" }
+              ]
+            }
+          },
+          models: [],
+          reasoningEfforts: [],
+          speeds: [],
+          capabilities: {},
+          behavior: {},
+          skills: [],
+          loadedAtUnixMs: 1
+        } as never
+      }).reasoningEffort
+    ).toBe("medium");
+  });
+
+  it("drops inherited OpenCode reasoning when model metadata is unavailable", () => {
+    expect(
+      resolveSparseNewConversationActivationSettings({
+        draftSettings: {
+          model: "openai/gpt-5.3-codex-spark",
+          reasoningEffort: "none"
+        },
+        composerOptions: {
+          provider: "opencode",
+          effectiveSettings: {},
+          models: [],
+          reasoningEfforts: [],
+          speeds: [],
+          capabilities: {},
+          behavior: {},
+          skills: [],
+          loadedAtUnixMs: 1
+        } as never
+      }).reasoningEffort
+    ).toBeUndefined();
+  });
+
+  it("keeps an explicit required reasoning patch strict for Create", () => {
+    expect(
+      resolveSparseNewConversationActivationSettings({
+        draftSettings: {
+          model: "openai/gpt-5.3-codex-spark",
+          reasoningEffort: "medium"
+        },
+        requiredSettingsPatch: { reasoningEffort: "none" },
+        composerOptions: {
+          provider: "opencode",
+          effectiveSettings: {},
+          reasoningOptionsByModel: {
+            "openai/gpt-5.3-codex-spark": {
+              defaultValue: "medium",
+              options: [{ label: "Medium", value: "medium" }]
+            }
+          },
+          models: [],
+          reasoningEfforts: [],
+          speeds: [],
+          capabilities: {},
+          behavior: {},
+          skills: [],
+          loadedAtUnixMs: 1
+        } as never
+      }).reasoningEffort
+    ).toBe("none");
   });
 });

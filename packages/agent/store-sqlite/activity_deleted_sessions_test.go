@@ -16,7 +16,7 @@ func TestRecoverableDeletePreservesGraphAndRestoresWholeTree(t *testing.T) {
 	seedChildSessionTree(t, store)
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
-SET title='Recover me', rail_project_path='/projects/removed', cwd='/managed/root', updated_at_unix_ms=3000
+SET title='Recover me', rail_section_key='project:/projects/removed', rail_project_path='/projects/removed', cwd='/managed/root', updated_at_unix_ms=3000
 WHERE workspace_id='ws-1' AND agent_session_id='root';
 UPDATE workspace_agent_sessions SET cwd='/managed/child-1' WHERE workspace_id='ws-1' AND agent_session_id='child-1';
 UPDATE workspace_agent_sessions SET cwd='/managed/child-2' WHERE workspace_id='ws-1' AND agent_session_id='child-2';
@@ -75,8 +75,11 @@ FROM workspace_agent_sessions WHERE workspace_id='ws-1' AND agent_session_id='ro
 	page, err := store.ListDeletedSessions(ctx, ListDeletedSessionsInput{WorkspaceID: "ws-1"})
 	if err != nil || len(page.Sessions) != 1 || !page.Sessions[0].Restorable ||
 		page.Sessions[0].Title != "Recover me" || page.Sessions[0].ProjectPath != "/projects/removed" ||
+		page.Sessions[0].RailSectionKey != "project:/projects/removed" ||
 		page.Sessions[0].UpdatedAtUnixMS != 3000 || page.TotalCount != 1 || page.WorkspaceTotalCount != 1 ||
-		!reflect.DeepEqual(page.ProjectPaths, []string{"/projects/removed"}) {
+		!reflect.DeepEqual(page.RailSections, []DeletedSessionRailSection{{
+			RailSectionKey: "project:/projects/removed", ProjectPath: "/projects/removed",
+		}}) {
 		t.Fatalf("ListDeletedSessions()=%#v err=%v", page, err)
 	}
 	resources, err := store.ListRecoverableDeletedSessionResources(ctx)
@@ -124,7 +127,7 @@ func TestRecoverableChildSubtreeIsListedAndRestoredAsTopmostDeletedComponent(t *
 	seedChildSessionTree(t, store)
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
-SET title='Recover child subtree', rail_project_path='/project/child'
+SET title='Recover child subtree', rail_section_key='project:/project/child', rail_project_path='/project/child'
 WHERE workspace_id='ws-1' AND agent_session_id='child-1'
 `); err != nil {
 		t.Fatal(err)
@@ -170,13 +173,13 @@ func TestDeletingLiveAncestorAbsorbsCompleteRecoverableChildComponent(t *testing
 	seedChildSessionTree(t, store)
 	if _, err := store.db.ExecContext(ctx, `
 UPDATE workspace_agent_sessions
-SET title='Root metadata', rail_project_path='/project/root', cwd='/cwd/root', updated_at_unix_ms=101
+SET title='Root metadata', rail_section_key='project:/project/root', rail_project_path='/project/root', cwd='/cwd/root', updated_at_unix_ms=101
 WHERE workspace_id='ws-1' AND agent_session_id='root';
 UPDATE workspace_agent_sessions
-SET title='Child metadata', rail_project_path='/project/child', cwd='/cwd/child', updated_at_unix_ms=202
+SET title='Child metadata', rail_section_key='project:/project/child', rail_project_path='/project/child', cwd='/cwd/child', updated_at_unix_ms=202
 WHERE workspace_id='ws-1' AND agent_session_id='child-1';
 UPDATE workspace_agent_sessions
-SET title='Leaf metadata', rail_project_path='/project/leaf', cwd='/cwd/leaf', updated_at_unix_ms=303
+SET title='Leaf metadata', rail_section_key='project:/project/leaf', rail_project_path='/project/leaf', cwd='/cwd/leaf', updated_at_unix_ms=303
 WHERE workspace_id='ws-1' AND agent_session_id='child-2';
 INSERT INTO workspace_agent_messages (
  workspace_id,agent_session_id,message_id,version,turn_id,role,kind,status,
@@ -589,7 +592,7 @@ func TestDeletedSessionListFiltersAndUsesStableUpdatedCursor(t *testing.T) {
 		if _, err := store.ReportSessionState(ctx, SessionStateReport{WorkspaceID: "ws-list", AgentSessionID: row.id, Provider: "codex", Title: row.title, OccurredAtUnixMS: row.updated}); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := store.db.ExecContext(ctx, `UPDATE workspace_agent_sessions SET rail_project_path=?,updated_at_unix_ms=? WHERE workspace_id='ws-list' AND agent_session_id=?`, row.project, row.updated, row.id); err != nil {
+		if _, err := store.db.ExecContext(ctx, `UPDATE workspace_agent_sessions SET rail_section_key=?,rail_project_path=?,updated_at_unix_ms=? WHERE workspace_id='ws-list' AND agent_session_id=?`, RailSectionKeyForProject(row.project), row.project, row.updated, row.id); err != nil {
 			t.Fatal(err)
 		}
 		if _, err := store.DeleteSession(ctx, "ws-list", row.id); err != nil {
@@ -607,10 +610,68 @@ func TestDeletedSessionListFiltersAndUsesStableUpdatedCursor(t *testing.T) {
 	if err != nil || len(second.Sessions) != 1 || second.Sessions[0].AgentSessionID != "beta" || second.HasMore {
 		t.Fatalf("second page=%#v err=%v", second, err)
 	}
-	unscoped := ""
-	filtered, err := store.ListDeletedSessions(ctx, ListDeletedSessionsInput{WorkspaceID: "ws-list", ProjectPath: &unscoped})
+	unscoped := RailSectionKeyConversations
+	filtered, err := store.ListDeletedSessions(ctx, ListDeletedSessionsInput{WorkspaceID: "ws-list", RailSectionKey: &unscoped})
 	if err != nil || len(filtered.Sessions) != 1 || filtered.Sessions[0].AgentSessionID != "beta" || filtered.TotalCount != 1 {
 		t.Fatalf("unscoped page=%#v err=%v", filtered, err)
+	}
+}
+
+func TestDeletedSessionListUsesRailSectionKeyWhenPersistedPathsDisagree(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	projectSectionKey := RailSectionKeyForProject("/project/right")
+	for _, sessionID := range []string{"project-session", "conversation-session"} {
+		if _, err := store.ReportSessionState(ctx, SessionStateReport{
+			WorkspaceID: "ws-key-authority", AgentSessionID: sessionID,
+			Provider: "codex", Title: sessionID, OccurredAtUnixMS: 100,
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_sessions
+SET rail_section_key=?, rail_project_path='/project/wrong', cwd='/project/wrong/.tutti/agent/worktrees/project-session'
+WHERE workspace_id='ws-key-authority' AND agent_session_id='project-session';
+UPDATE workspace_agent_sessions
+SET rail_section_key='conversations', rail_project_path='/project/wrong', cwd='/project/right'
+WHERE workspace_id='ws-key-authority' AND agent_session_id='conversation-session';
+`, projectSectionKey); err != nil {
+		t.Fatal(err)
+	}
+	for _, sessionID := range []string{"project-session", "conversation-session"} {
+		if _, err := store.DeleteSession(ctx, "ws-key-authority", sessionID); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	projectPage, err := store.ListDeletedSessions(ctx, ListDeletedSessionsInput{
+		WorkspaceID: "ws-key-authority", RailSectionKey: &projectSectionKey,
+	})
+	if err != nil || len(projectPage.Sessions) != 1 ||
+		projectPage.Sessions[0].AgentSessionID != "project-session" ||
+		projectPage.Sessions[0].RailSectionKey != projectSectionKey ||
+		projectPage.Sessions[0].ProjectPath != "/project/wrong" ||
+		!reflect.DeepEqual(projectPage.RailSections, []DeletedSessionRailSection{{
+			RailSectionKey: projectSectionKey, ProjectPath: "/project/wrong",
+		}}) {
+		t.Fatalf("project page=%#v error=%v", projectPage, err)
+	}
+	wrongPathKey := RailSectionKeyForProject("/project/wrong")
+	wrongPathPage, err := store.ListDeletedSessions(ctx, ListDeletedSessionsInput{
+		WorkspaceID: "ws-key-authority", RailSectionKey: &wrongPathKey,
+	})
+	if err != nil || len(wrongPathPage.Sessions) != 0 {
+		t.Fatalf("wrong-path page=%#v error=%v", wrongPathPage, err)
+	}
+	conversations := RailSectionKeyConversations
+	conversationPage, err := store.ListDeletedSessions(ctx, ListDeletedSessionsInput{
+		WorkspaceID: "ws-key-authority", RailSectionKey: &conversations,
+	})
+	if err != nil || len(conversationPage.Sessions) != 1 ||
+		conversationPage.Sessions[0].AgentSessionID != "conversation-session" {
+		t.Fatalf("conversation page=%#v error=%v", conversationPage, err)
 	}
 }
 

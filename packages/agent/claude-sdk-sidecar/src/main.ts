@@ -2,6 +2,10 @@ import * as readline from "node:readline/promises";
 import { stdin } from "node:process";
 import { pathToFileURL } from "node:url";
 import { errorMessage } from "./errors.ts";
+import {
+  cancellationErrorPayload,
+  logClaudeCodeCancellation
+} from "./cancelDiagnostics.ts";
 import { emit } from "./eventSink.ts";
 import { numberValue, recordValue } from "./normalizer.ts";
 import { sidecarClaudeOptionsFromPayload } from "./options.ts";
@@ -114,7 +118,7 @@ export async function handleRequest(
       case "guide": {
         const payload = request.payload ?? {};
         const session = requireSession(stringValue(payload.agentSessionId));
-        session.guide(
+        await session.guide(
           // Prefer structured content; prompt is the legacy text fallback.
           stringValue(payload.prompt),
           payload.content
@@ -124,9 +128,56 @@ export async function handleRequest(
       }
       case "cancel": {
         const payload = request.payload ?? {};
-        const session = requireSession(stringValue(payload.agentSessionId));
-        const canceled = await session.cancel(stringValue(payload.turnId));
-        emit({ id, type: "ok", payload: { canceled } });
+        const agentSessionId = stringValue(payload.agentSessionId);
+        const turnId = stringValue(payload.turnId);
+        const interruptTimeoutMs = requiredPositiveInteger(
+          payload.interruptTimeoutMs,
+          "cancel interruptTimeoutMs"
+        );
+        const drainTimeoutMs = requiredPositiveInteger(
+          payload.drainTimeoutMs,
+          "cancel drainTimeoutMs"
+        );
+        const session = requireSession(agentSessionId);
+        const diagnosticContext = {
+          requestId: id ?? "",
+          agentSessionId,
+          providerSessionId: session.providerSessionId,
+          turnId
+        };
+        const startedAt = Date.now();
+        logClaudeCodeCancellation("cancel_received", {
+          ...diagnosticContext,
+          interruptTimeoutMs,
+          drainTimeoutMs
+        });
+        try {
+          const result = await session.cancel(turnId, {
+            interruptTimeoutMs,
+            drainTimeoutMs,
+            observe: (stage, stagePayload) =>
+              logClaudeCodeCancellation(stage, {
+                ...diagnosticContext,
+                ...stagePayload
+              })
+          });
+          logClaudeCodeCancellation("cancel_responded", {
+            ...diagnosticContext,
+            durationMs: Date.now() - startedAt,
+            canceled: result.canceled,
+            disposition: result.disposition,
+            dispatchPhase: result.dispatchPhase,
+            providerTurnId: result.providerTurnId
+          });
+          emit({ id, type: "ok", payload: result });
+        } catch (error) {
+          logClaudeCodeCancellation("cancel_failed", {
+            ...diagnosticContext,
+            durationMs: Date.now() - startedAt,
+            error: cancellationErrorPayload(error)
+          });
+          throw error;
+        }
         return;
       }
       case "stop_task": {
@@ -229,6 +280,13 @@ function requireSession(agentSessionId: string): SessionRuntime {
     throw new Error(`session ${agentSessionId} is not started`);
   }
   return session;
+}
+
+function requiredPositiveInteger(value: unknown, label: string): number {
+  if (!Number.isSafeInteger(value) || Number(value) <= 0) {
+    throw new Error(`${label} must be a positive integer`);
+  }
+  return Number(value);
 }
 
 async function runMain(): Promise<void> {

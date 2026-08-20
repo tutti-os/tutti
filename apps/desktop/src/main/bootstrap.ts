@@ -54,7 +54,8 @@ import { prepareDesktopCliTarget } from "./cli/cliInstaller.ts";
 import { ensureSingleInstance } from "./singleInstance";
 import {
   completeDesktopLoginCallbackUrl,
-  findDesktopLoginCallbackUrl
+  findDesktopLoginCallbackUrl,
+  isDesktopAppOpenUrl
 } from "./desktopLoginCallback";
 import { getSystemDesktopLocale } from "./desktopLocale";
 import { openDesktopWorkspaceAppFolder } from "./host/workspaceAppFolderAccess";
@@ -124,11 +125,18 @@ export async function bootstrapDesktopApp(): Promise<void> {
     void completeDesktopLoginCallbackUrl(url).catch(() => undefined);
   };
   app.on("open-url", (event, url) => {
-    if (url.startsWith(loginCallbackUrl)) {
-      event.preventDefault();
-      handleLoginCallbackUrl(url);
-      focusPrimaryDesktopWindow();
+    const isLoginCallback = url.startsWith(loginCallbackUrl);
+    if (
+      !isLoginCallback &&
+      !isDesktopAppOpenUrl(url, protocolClientRegistration.scheme)
+    ) {
+      return;
     }
+    event.preventDefault();
+    if (isLoginCallback) {
+      handleLoginCallbackUrl(url);
+    }
+    focusPrimaryDesktopWindow();
   });
   const appName = app.getName();
   const userDataPath = resolveDesktopUserDataPath({

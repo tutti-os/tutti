@@ -153,7 +153,8 @@ test("search 把结果类型约束下推给 backend", async () => {
         observedRequest = request;
         return {
           items: [{ type: "reference", reference: { path: "/ws/notes.md" } }],
-          nextCursor: null
+          nextCursor: null,
+          searchPagination: "legacy"
         };
       }
     }
@@ -172,6 +173,7 @@ test("search 把结果类型约束下推给 backend", async () => {
     limit: 20
   });
   assert.equal(result?.entries[0]?.kind, "file");
+  assert.equal(result?.searchPagination, "legacy");
 });
 
 test("group.parentLabel 透传为节点 contextLabel,避免 UI 展示不透明 nodeId", async () => {

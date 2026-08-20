@@ -127,6 +127,36 @@ test("unrelated UI changes do not select the Agent Session Replay closed loop", 
   assert.equal(classification.runAgentSessionReplay, false);
 });
 
+test("ordinary Desktop source changes skip the Windows installer", () => {
+  for (const file of [
+    "apps/desktop/src/main/index.ts",
+    "apps/desktop/src/preload/index.ts",
+    "apps/desktop/src/renderer/src/main.tsx",
+    "apps/desktop/test/register-asset-stub.mjs",
+    "apps/desktop/electron.vite.config.ts",
+    "apps/desktop/tsconfig.json"
+  ]) {
+    const classification = classifyChangedFiles([file], { releasePackages });
+
+    assert.equal(classification.buildWindowsInstaller, false, file);
+  }
+});
+
+test("Windows packaging inputs select the Windows installer", () => {
+  for (const file of [
+    "package.json",
+    "pnpm-lock.yaml",
+    "apps/desktop/package.json",
+    "apps/desktop/build/icon.png",
+    "apps/desktop/scripts/vendor-managed-posix-shell.mjs",
+    "services/tuttid/builtin-apps/tutti-onboarding/src/main.ts"
+  ]) {
+    const classification = classifyChangedFiles([file], { releasePackages });
+
+    assert.equal(classification.buildWindowsInstaller, true, file);
+  }
+});
+
 test("published CSS and assets select package packing and UI boundaries", () => {
   for (const file of [
     "packages/agent/gui/app/renderer/agentactivity.css",

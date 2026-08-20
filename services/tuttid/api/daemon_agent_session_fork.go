@@ -15,11 +15,6 @@ func (api DaemonAPI) ForkWorkspaceAgentSession(
 	ctx context.Context,
 	request tuttigenerated.ForkWorkspaceAgentSessionRequestObject,
 ) (tuttigenerated.ForkWorkspaceAgentSessionResponseObject, error) {
-	if !api.agentSessionForkWritesEnabled(ctx) {
-		return tuttigenerated.ForkWorkspaceAgentSession400JSONResponse{
-			InvalidRequestErrorJSONResponse: agentSessionForkWriteDisabledError(),
-		}, nil
-	}
 	if api.AgentSessionService == nil {
 		return tuttigenerated.ForkWorkspaceAgentSession503JSONResponse{
 			ServiceUnavailableErrorJSONResponse: agentSessionServiceUnavailableError(),

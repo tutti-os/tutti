@@ -37,22 +37,37 @@ func (s *Service) GetSkillBundle(ctx context.Context, workspaceID string, input 
 		return SkillBundle{}, err
 	}
 	provider := launch.Provider
+	var connector *runtimeprep.ConnectorAgentContext
+	if sessionID := strings.TrimSpace(input.AgentSessionID); sessionID != "" {
+		if session, ok := s.controller().Session(workspaceID, sessionID); ok && sessionHasConnectorBinding(session) {
+			connector = &runtimeprep.ConnectorAgentContext{RoutingHints: s.activeConnectorRoutingHints()}
+		}
+	}
 	return renderer.RenderSkillBundle(ctx, runtimeprep.PrepareInput{
-		WorkspaceID:           workspaceID,
-		AgentSessionID:        strings.TrimSpace(input.AgentSessionID),
-		AgentTargetID:         agentTargetID,
-		Provider:              provider,
-		BrowserUse:            input.BrowserUse,
-		ComputerUse:           input.ComputerUse,
-		ConnectorRoutingHints: s.activeConnectorRoutingHints(),
+		WorkspaceID:    workspaceID,
+		AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+		AgentTargetID:  agentTargetID,
+		Provider:       provider,
+		BrowserUse:     input.BrowserUse,
+		ComputerUse:    input.ComputerUse,
+		Connector:      connector,
 	})
 }
 
+func sessionHasConnectorBinding(session ProviderRuntimeSession) bool {
+	for _, binding := range session.MCPServers {
+		if strings.TrimSpace(binding.Name) == "connector" && strings.TrimSpace(binding.Type) == "http" {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *Service) activeConnectorRoutingHints() []runtimeprep.ConnectorRoutingHint {
-	if s == nil || s.ConnectorRoutingHints == nil {
+	if s == nil || s.ConnectorRuntime == nil {
 		return nil
 	}
-	hints := s.ConnectorRoutingHints()
+	hints := s.ConnectorRuntime.RoutingHints()
 	result := make([]runtimeprep.ConnectorRoutingHint, 0, len(hints))
 	for _, hint := range hints {
 		hint.Aliases = append([]string(nil), hint.Aliases...)

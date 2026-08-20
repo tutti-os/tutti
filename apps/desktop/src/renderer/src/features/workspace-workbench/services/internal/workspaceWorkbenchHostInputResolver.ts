@@ -183,7 +183,7 @@ export class WorkspaceWorkbenchHostInputResolver {
         hostWindowApi: this.dependencies.hostWindowApi,
         i18n: input.i18n,
         onCapabilitySettingsRequest: (target) => {
-          capabilitySettingsRequestRef.current?.(target);
+          return capabilitySettingsRequestRef.current?.(target);
         },
         agentsService: this.dependencies.agentsService,
         comingSoonAgentProviders: input.comingSoonAgentProviders,

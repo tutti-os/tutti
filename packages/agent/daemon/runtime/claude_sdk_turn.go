@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"errors"
 	"sort"
 	"strings"
 
@@ -249,6 +250,28 @@ func (a *ClaudeCodeSDKAdapter) finishClaudeSDKTurnLifecycle(
 	default:
 		return append(events, normalizer.FinishInterrupted(session, turnID, firstNonEmpty(strings.TrimSpace(reason), "interrupted"))...)
 	}
+}
+
+func (a *ClaudeCodeSDKAdapter) finishClaudeSDKGuidanceResponse(
+	adapterSession *claudeSDKAdapterSession,
+	session Session,
+	turnIDs ...string,
+) ([]activityshared.Event, bool, error) {
+	turnID := firstNonEmptyString(turnIDs...)
+	if turnID == "" {
+		return nil, false, errors.New("claude SDK guidance interruption omitted turn identity")
+	}
+	// Guidance interrupts one provider response, not the canonical Turn. Close
+	// its open thinking/assistant/tool projections so the UI cannot keep the
+	// previous response streaming; later guidance output starts a fresh
+	// normalizer on this same Turn.
+	return a.finishClaudeSDKTurnLifecycle(
+		adapterSession,
+		session,
+		turnID,
+		claudeSDKTurnFinishInterrupted,
+		"guidance_interrupted",
+	), false, nil
 }
 
 // finishAllClaudeSDKTurnLifecycles settles every still-open Claude turn

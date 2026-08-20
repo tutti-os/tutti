@@ -1,0 +1,44 @@
+{
+  "name": "@tutti-os/connector-contracts",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "exports": {
+    "./authorization/v1": "./src/authorization/v1/index.ts",
+    "./openapi/connector-market.v1.yaml": "./openapi/connector-market.v1.yaml"
+  },
+  "scripts": {
+    "build": "tsup --config tsup.config.ts",
+    "test": "tsx --test \"./src/**/*.test.ts\"",
+    "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
+  },
+  "dependencies": {
+    "valibot": "^1.1.0"
+  },
+  "devDependencies": {
+    "@tutti-os/config-tsconfig": "workspace:*",
+    "@types/node": "^24.0.1",
+    "tsx": "^4.22.3",
+    "typescript": "^5.8.3"
+  },
+  "files": [
+    "dist",
+    "openapi",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tutti-os/tutti.git",
+    "directory": "packages/connector/contracts"
+  },
+  "publishConfig": {
+    "access": "public",
+    "exports": {
+      "./authorization/v1": {
+        "types": "./dist/authorization/v1/index.d.ts",
+        "import": "./dist/authorization/v1/index.js"
+      },
+      "./openapi/connector-market.v1.yaml": "./openapi/connector-market.v1.yaml"
+    }
+  }
+}

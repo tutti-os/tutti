@@ -1,8 +1,8 @@
 # Mobile AgentGUI And DeviceLink Design
 
-Status: accepted product direction; Personal direct-lane MVP in implementation
+Status: accepted product direction; Personal direct-lane MVP currently disabled
 
-## Implementation progress (2026-07-27)
+## Implementation progress (2026-08-11)
 
 The release-enabled `packages/device-link` core now preserves the production ICE,
 QUIC, certificate-pinning, candidate filtering and privacy behavior extracted
@@ -13,6 +13,15 @@ adapters still own room/device identity, rendezvous, Relay credentials and
 fallback policy. Personal Desktop and Android consume the same authenticated
 facade; the direct lane includes paired-device rendezvous, framed Agent HTTP,
 request deadlines, event streaming and foreground/background close behavior.
+The shared `candidateexchange` coordinator now owns immediate ICE credential
+publication, local candidate coalescing and exact-snapshot retries, plus remote
+push-with-poll reconciliation. Personal Desktop consumes it directly; the
+gomobile `ActionPump` facade lets Android and iOS start `Connect` before STUN
+gathering finishes while Go owns publication/refresh workers, retry timers, and
+polling. TypeScript performs signed rendezvous I/O and validates the returned
+authoritative attempt before resolving an action. TSH still consumes the
+lower-level Trickle primitives and remains a post-release adapter migration
+rather than a workspace replacement.
 Android 15 ARM64 emulator build/install/start and authenticated loopback
 integration pass. Mobile's Relay stream race and native consumer integration are
 now implemented; real-account physical-device network transitions and end-to-end
@@ -166,10 +175,10 @@ Mobile 使用稳定 Bootstrap container。未登录 child 与登录后 child 互
 
 设备级快捷提示词由登录后的设备 scope 中的独立 service 读取，不进入 workspace
 `AgentSessionEngine`、Session 或移动端持久存储。该 service 通过生成客户端读取电脑端
-`agent.quickPromptLibrary` 开关和 canonical 提示词顺序；开关打开时，Composer 的 `+`
-菜单提供搜索与只读选择，点选后在当前输入位置添加文本，不替换已有草稿，恢复输入焦点且不自动发送。
-新增、编辑、删除和排序仍由电脑端负责。DeviceLink 只为此能力开放精确的桌面偏好和
-快捷提示词列表 GET 路由，不开放 mutation 或单条记录路由。
+canonical 提示词顺序；Composer 的 `+` 菜单提供搜索与只读选择，点选后在当前输入位置
+添加文本，不替换已有草稿，恢复输入焦点且不自动发送。
+新增、编辑、删除和排序仍由电脑端负责。DeviceLink 只为此能力开放精确的快捷提示词
+列表 GET 路由，不开放 mutation 或单条记录路由。
 
 ## 7. DeviceLink 边界
 
@@ -255,12 +264,10 @@ Cookie，也不新增移动端账号实体。Android 在浏览器 provider 支�
 5. tsh-server 校验同账号和 challenge 状态；
 6. Desktop 显式确认配对。
 
-Desktop 的账号登录入口与手机远程访问入口独立发布。Tutti Agent 及工作区账号菜单
-默认显示且不再提供独立的开发者可见性开关。独立持久化的
-`mobile.remoteAccessSettings` feature flag 控制手机远程访问能力和「连接」设置入口；
-关闭时 `tuttid` owner host 不得轮询账号、配对或 DeviceLink attempt 控制面，并关闭
-已有远程链路；开启时立即开始 owner-side discovery。「连接」页承载账号登录、退出、
-刷新、手机配对和远程访问能力。该开关不创建第二套登录态、设备实体或协议能力。
+Desktop 的账号登录入口与手机远程访问入口独立发布。手机远程访问当前已停用；
+`mobile.remoteAccessSettings` 仅作为旧 profile 的持久化兼容键保留，desktop daemon
+会强制忽略它，不启动 owner-side discovery，也不提供手机配对 UI。「连接」页仍承载
+账号登录、退出和刷新。该开关不创建第二套登录态、设备实体或协议能力。
 
 QR 不包含 bearer token、私钥、原始候选或可长期使用的连接凭据。
 
@@ -538,9 +545,13 @@ Wi-Fi/蜂窝切换和 VPN/TUN 失败分类仍待验证。
 当前进度：共享 facade、Desktop owner host、Android caller bridge、真实
 authenticated stream 集成测试，以及代际隔离、连接池、建连去重、连接竞速和探测
 退避的 product-neutral manager 均已完成；Tutti Desktop `mobileremote` owner
-已经作为首个 adapter 接管共享 manager，TSH adapter 切换和真机跨网络验证仍待
-完成。Relay 身份认证、控制面、fallback 产品策略和 TSH 产品诊断继续由消费端
-拥有。
+已经作为首个 adapter 接管共享 manager 和 `candidateexchange`；Android/iOS 通过
+同一 Go coordinator 的 gomobile start、next/resolve action、notify 与 stop/cancel
+边界接入。初始 ICE 凭据允许携带空 candidate 立即发布，双方在 `Connect` 运行期间继续
+增量交换 candidate，不再串行等待两轮 STUN gathering；retry snapshot、500ms poll
+timer 与 worker lifecycle 不再由 TypeScript 维护第二份，服务端返回的权威 attempt
+确认 candidate 已落库后才完成 publication ACK。TSH adapter 切换和真机跨网络验证仍待
+完成。Relay 身份认证、控制面、fallback 产品策略和 TSH 产品诊断继续由消费端拥有。
 
 ### M2 — 设备、配对和控制面
 
@@ -581,8 +592,10 @@ challenge claim/poll，并只展示属于当前 Mobile identity 的配对设备�
 allowlist 和 Android fetch adapter，并直接复用生成的
 `@tutti-os/client-tuttid-ts`；workspace、Agent Target catalog、Session
 list/get/create/send/cancel/Interaction 均沿用现有 HTTP contract。owner host 会在
-caller 获得 response-only STUN endpoints 并二次发布 ICE 后再认领 attempt，避免
-连接旧 fingerprint。
+caller 获得 response-only STUN endpoints、替换临时 Participant 并立即二次发布 ICE
+凭据后再认领 attempt，避免连接旧 fingerprint；该初始快照可以没有 candidate。
+owner 与 caller 随后在 `Connect` 已运行时通过权威 attempt 快照增量补齐 candidate，
+WebSocket 只负责唤醒，丢失时继续使用 500ms HTTP 校准。
 
 Relay Agent lane 已接入同一套应用帧协议：Desktop `mobileremote` 只在用户打开
 移动端连接开关后获取 Relay owner demand，按 Device Authority 完成 identity

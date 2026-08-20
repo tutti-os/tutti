@@ -89,6 +89,9 @@ type ServerInterface interface {
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(w http.ResponseWriter, r *http.Request)
+	// Probe provider-owned account usage for one Agent Target
+	// (POST /v1/agent-targets/{agentTargetID}/account-usage)
+	ProbeAgentTargetAccountUsage(w http.ResponseWriter, r *http.Request, agentTargetID string)
 	// Enable or disable one daemon-owned system Agent Target
 	// (PATCH /v1/agent-targets/{agentTargetID}/enabled)
 	SetSystemAgentTargetEnabled(w http.ResponseWriter, r *http.Request, agentTargetID string)
@@ -110,16 +113,22 @@ type ServerInterface interface {
 	// Get one connector projection
 	// (GET /v1/connector-market/connectors/{connectorKey})
 	GetConnectorMarketConnector(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
+	// Cancel a pending connector authorization attempt
+	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:cancel)
+	CancelConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
 	// Disconnect connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:disconnect)
 	DisconnectConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
-	// Start connector authorization
+	// Start or replace connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:start)
 	StartConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
+	// Enable or disable an installed connector runtime
+	// (PUT /v1/connector-market/connectors/{connectorKey}/runtime)
+	UpdateConnectorMarketConnectorRuntime(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
 	// Install or update one connector
 	// (POST /v1/connector-market/connectors/{connectorKey}:install)
 	InstallConnectorMarketConnector(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
-	// Uninstall one connector
+	// Uninstall one connector from this device
 	// (POST /v1/connector-market/connectors/{connectorKey}:uninstall)
 	UninstallConnectorMarketConnector(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey)
 	// Get one durable connector-market operation
@@ -347,6 +356,12 @@ type ServerInterface interface {
 	// Update one workspace agent session settings
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/settings)
 	UpdateWorkspaceAgentSessionSettings(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID, params UpdateWorkspaceAgentSessionSettingsParams)
+	// Resolve transient Side support for a live agent session
+	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-capabilities)
+	ResolveWorkspaceAgentSideCapabilities(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
+	// Open one runtime-only Side conversation from a live source session
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-conversations)
+	OpenWorkspaceAgentSideConversation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
 	// Update one workspace agent session title
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title)
 	UpdateWorkspaceAgentSessionTitle(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
@@ -368,6 +383,18 @@ type ServerInterface interface {
 	// Update one workspace agent session visibility
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility)
 	UpdateWorkspaceAgentSessionVisibility(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID)
+	// Close and release one runtime-only Side conversation
+	// (DELETE /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID})
+	CloseWorkspaceAgentSideConversation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string)
+	// Send one input to a runtime-only Side conversation
+	// (POST /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns)
+	SendWorkspaceAgentSideConversationInput(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string)
+	// Cancel the exact active turn in a runtime-only Side conversation
+	// (POST /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/cancel)
+	CancelWorkspaceAgentSideConversationTurn(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string, turnID AgentTurnID)
+	// Respond to one live interactive request in a Side conversation
+	// (POST /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/interactive/{requestID})
+	SubmitWorkspaceAgentSideConversationInteractive(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string, turnID AgentTurnID, requestID AgentPermissionRequestID)
 	// Resolve Agent Target setup state
 	// (GET /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup)
 	GetAgentTargetSetup(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentTargetID string)
@@ -686,6 +713,12 @@ type ServerInterface interface {
 	// Switch a failed independent Tutti Mode Goal Review to self review
 	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self)
 	SwitchTuttiModeGoalReviewToSelf(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, issueID IssueID)
+	// List explicitly managed Git worktrees for a workspace
+	// (GET /v1/workspaces/{workspaceID}/managed-worktrees)
+	ListWorkspaceManagedWorktrees(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
+	// Explicitly delete one clean managed Git worktree
+	// (DELETE /v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID})
+	DeleteWorkspaceManagedWorktree(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, worktreeID string)
 	// List workspace model access plans
 	// (GET /v1/workspaces/{workspaceID}/model-plans)
 	ListModelPlans(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID)
@@ -1490,6 +1523,38 @@ func (siw *ServerInterfaceWrapper) ListAgentTargets(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// ProbeAgentTargetAccountUsage operation middleware
+func (siw *ServerInterfaceWrapper) ProbeAgentTargetAccountUsage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "agentTargetID" -------------
+	var agentTargetID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentTargetID", r.PathValue("agentTargetID"), &agentTargetID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentTargetID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ProbeAgentTargetAccountUsage(w, r, agentTargetID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetSystemAgentTargetEnabled operation middleware
 func (siw *ServerInterfaceWrapper) SetSystemAgentTargetEnabled(w http.ResponseWriter, r *http.Request) {
 
@@ -1680,6 +1745,19 @@ func (siw *ServerInterfaceWrapper) ListConnectorMarketCatalog(w http.ResponseWri
 		return
 	}
 
+	// ------------- Optional query parameter "installation" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "installation", r.URL.Query(), &params.Installation, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "installation"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "installation", Err: err})
+		}
+		return
+	}
+
 	// ------------- Optional query parameter "pageSize" -------------
 
 	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", r.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
@@ -1769,6 +1847,38 @@ func (siw *ServerInterfaceWrapper) GetConnectorMarketConnector(w http.ResponseWr
 	handler.ServeHTTP(w, r)
 }
 
+// CancelConnectorMarketAuthorization operation middleware
+func (siw *ServerInterfaceWrapper) CancelConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "connectorKey" -------------
+	var connectorKey ConnectorMarketConnectorKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connectorKey", r.PathValue("connectorKey"), &connectorKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connectorKey", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelConnectorMarketAuthorization(w, r, connectorKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // DisconnectConnectorMarketAuthorization operation middleware
 func (siw *ServerInterfaceWrapper) DisconnectConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request) {
 
@@ -1824,6 +1934,38 @@ func (siw *ServerInterfaceWrapper) StartConnectorMarketAuthorization(w http.Resp
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.StartConnectorMarketAuthorization(w, r, connectorKey)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateConnectorMarketConnectorRuntime operation middleware
+func (siw *ServerInterfaceWrapper) UpdateConnectorMarketConnectorRuntime(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "connectorKey" -------------
+	var connectorKey ConnectorMarketConnectorKey
+
+	err = runtime.BindStyledParameterWithOptions("simple", "connectorKey", r.PathValue("connectorKey"), &connectorKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "connectorKey", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateConnectorMarketConnectorRuntime(w, r, connectorKey)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -4856,6 +4998,88 @@ func (siw *ServerInterfaceWrapper) UpdateWorkspaceAgentSessionSettings(w http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ResolveWorkspaceAgentSideCapabilities operation middleware
+func (siw *ServerInterfaceWrapper) ResolveWorkspaceAgentSideCapabilities(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentSessionID" -------------
+	var agentSessionID AgentSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionID", r.PathValue("agentSessionID"), &agentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ResolveWorkspaceAgentSideCapabilities(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OpenWorkspaceAgentSideConversation operation middleware
+func (siw *ServerInterfaceWrapper) OpenWorkspaceAgentSideConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "agentSessionID" -------------
+	var agentSessionID AgentSessionID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "agentSessionID", r.PathValue("agentSessionID"), &agentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OpenWorkspaceAgentSideConversation(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // UpdateWorkspaceAgentSessionTitle operation middleware
 func (siw *ServerInterfaceWrapper) UpdateWorkspaceAgentSessionTitle(w http.ResponseWriter, r *http.Request) {
 
@@ -5218,6 +5442,197 @@ func (siw *ServerInterfaceWrapper) UpdateWorkspaceAgentSessionVisibility(w http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateWorkspaceAgentSessionVisibility(w, r, workspaceID, agentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CloseWorkspaceAgentSideConversation operation middleware
+func (siw *ServerInterfaceWrapper) CloseWorkspaceAgentSideConversation(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sideAgentSessionID" -------------
+	var sideAgentSessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sideAgentSessionID", r.PathValue("sideAgentSessionID"), &sideAgentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sideAgentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CloseWorkspaceAgentSideConversation(w, r, workspaceID, sideAgentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SendWorkspaceAgentSideConversationInput operation middleware
+func (siw *ServerInterfaceWrapper) SendWorkspaceAgentSideConversationInput(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sideAgentSessionID" -------------
+	var sideAgentSessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sideAgentSessionID", r.PathValue("sideAgentSessionID"), &sideAgentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sideAgentSessionID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SendWorkspaceAgentSideConversationInput(w, r, workspaceID, sideAgentSessionID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CancelWorkspaceAgentSideConversationTurn operation middleware
+func (siw *ServerInterfaceWrapper) CancelWorkspaceAgentSideConversationTurn(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sideAgentSessionID" -------------
+	var sideAgentSessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sideAgentSessionID", r.PathValue("sideAgentSessionID"), &sideAgentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sideAgentSessionID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "turnID" -------------
+	var turnID AgentTurnID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "turnID", r.PathValue("turnID"), &turnID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "turnID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CancelWorkspaceAgentSideConversationTurn(w, r, workspaceID, sideAgentSessionID, turnID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SubmitWorkspaceAgentSideConversationInteractive operation middleware
+func (siw *ServerInterfaceWrapper) SubmitWorkspaceAgentSideConversationInteractive(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "sideAgentSessionID" -------------
+	var sideAgentSessionID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "sideAgentSessionID", r.PathValue("sideAgentSessionID"), &sideAgentSessionID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sideAgentSessionID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "turnID" -------------
+	var turnID AgentTurnID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "turnID", r.PathValue("turnID"), &turnID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "turnID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "requestID" -------------
+	var requestID AgentPermissionRequestID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "requestID", r.PathValue("requestID"), &requestID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "requestID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SubmitWorkspaceAgentSideConversationInteractive(w, r, workspaceID, sideAgentSessionID, turnID, requestID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7364,6 +7779,19 @@ func (siw *ServerInterfaceWrapper) ListWorkspaceDeletedAgentSessions(w http.Resp
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "searchQuery"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "searchQuery", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "railSectionKey" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "railSectionKey", r.URL.Query(), &params.RailSectionKey, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "railSectionKey"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "railSectionKey", Err: err})
 		}
 		return
 	}
@@ -9884,6 +10312,79 @@ func (siw *ServerInterfaceWrapper) SwitchTuttiModeGoalReviewToSelf(w http.Respon
 	handler.ServeHTTP(w, r)
 }
 
+// ListWorkspaceManagedWorktrees operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkspaceManagedWorktrees(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkspaceManagedWorktrees(w, r, workspaceID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWorkspaceManagedWorktree operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorkspaceManagedWorktree(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "workspaceID" -------------
+	var workspaceID WorkspaceID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "workspaceID", r.PathValue("workspaceID"), &workspaceID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "workspaceID", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "worktreeID" -------------
+	var worktreeID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "worktreeID", r.PathValue("worktreeID"), &worktreeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "worktreeID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWorkspaceManagedWorktree(w, r, workspaceID, worktreeID)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListModelPlans operation middleware
 func (siw *ServerInterfaceWrapper) ListModelPlans(w http.ResponseWriter, r *http.Request) {
 
@@ -11269,6 +11770,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-session-replay/cassettes/{cassetteID}/transport/playback", wrapper.UpdateAgentSessionReplayTransportPlayback)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-session-replay/cassettes/{cassetteID}/transport/verify", wrapper.VerifyAgentSessionReplayTransport)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-targets", wrapper.ListAgentTargets)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-targets/{agentTargetID}/account-usage", wrapper.ProbeAgentTargetAccountUsage)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/agent-targets/{agentTargetID}/enabled", wrapper.SetSystemAgentTargetEnabled)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/cli/capabilities", wrapper.ListCliCapabilities)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/cli/commands/{commandID}/invoke", wrapper.InvokeCliCommand)
@@ -11276,8 +11778,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market/catalog", wrapper.ListConnectorMarketCatalog)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market/categories", wrapper.ListConnectorMarketCategories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}", wrapper.GetConnectorMarketConnector)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}/authorization:cancel", wrapper.CancelConnectorMarketAuthorization)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}/authorization:disconnect", wrapper.DisconnectConnectorMarketAuthorization)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}/authorization:start", wrapper.StartConnectorMarketAuthorization)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}/runtime", wrapper.UpdateConnectorMarketConnectorRuntime)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}:install", wrapper.InstallConnectorMarketConnector)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/connector-market/connectors/{connectorKey}:uninstall", wrapper.UninstallConnectorMarketConnector)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/connector-market/operations/{operationID}", wrapper.GetConnectorMarketOperation)
@@ -11355,6 +11859,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/model-policy-override", wrapper.SetAgentSessionModelPolicyOverride)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/pin", wrapper.UpdateWorkspaceAgentSessionPin)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/settings", wrapper.UpdateWorkspaceAgentSessionSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-capabilities", wrapper.ResolveWorkspaceAgentSideCapabilities)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-conversations", wrapper.OpenWorkspaceAgentSideConversation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title", wrapper.UpdateWorkspaceAgentSessionTitle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/cancel", wrapper.CancelWorkspaceAgentTurn)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/edit-retry", wrapper.EditRetryWorkspaceAgentTurn)
@@ -11362,6 +11868,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation", wrapper.GetWorkspaceAgentSessionTuttiModeActivation)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/tutti-mode-activation", wrapper.UpdateWorkspaceAgentSessionTuttiModeActivation)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility", wrapper.UpdateWorkspaceAgentSessionVisibility)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}", wrapper.CloseWorkspaceAgentSideConversation)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns", wrapper.SendWorkspaceAgentSideConversationInput)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/cancel", wrapper.CancelWorkspaceAgentSideConversationTurn)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/interactive/{requestID}", wrapper.SubmitWorkspaceAgentSideConversationInteractive)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup", wrapper.GetAgentTargetSetup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/authenticate", wrapper.AuthenticateAgentTargetRuntime)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup/install", wrapper.InstallAgentTargetRuntime)
@@ -11468,6 +11978,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID}", wrapper.GetWorkspaceIssueTaskRun)
 	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tasks/{taskID}/runs/{runID}", wrapper.CompleteWorkspaceIssueTaskRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self", wrapper.SwitchTuttiModeGoalReviewToSelf)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/managed-worktrees", wrapper.ListWorkspaceManagedWorktrees)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}", wrapper.DeleteWorkspaceManagedWorktree)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans", wrapper.ListModelPlans)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans", wrapper.CreateModelPlan)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/workspaces/{workspaceID}/model-plans/detect", wrapper.DetectModelPlan)
@@ -11502,6 +12014,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 
 	return m
 }
+
+type AgentInteractiveConflictErrorJSONResponse ApiErrorResponse
 
 type AgentQuickPromptConflictErrorJSONResponse ApiErrorResponse
 
@@ -13509,6 +14023,114 @@ func (response ListAgentTargets503JSONResponse) VisitListAgentTargetsResponse(w 
 	return err
 }
 
+type ProbeAgentTargetAccountUsageRequestObject struct {
+	AgentTargetID string `json:"agentTargetID"`
+}
+
+type ProbeAgentTargetAccountUsageResponseObject interface {
+	VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error
+}
+
+type ProbeAgentTargetAccountUsage200JSONResponse AgentTargetAccountUsageProbeResult
+
+func (t ProbeAgentTargetAccountUsage200JSONResponse) MarshalJSON() ([]byte, error) {
+	return AgentTargetAccountUsageProbeResult(t).MarshalJSON()
+}
+
+func (t *ProbeAgentTargetAccountUsage200JSONResponse) UnmarshalJSON(b []byte) error {
+	return (*AgentTargetAccountUsageProbeResult)(t).UnmarshalJSON(b)
+}
+
+func (response ProbeAgentTargetAccountUsage200JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage400JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ProbeAgentTargetAccountUsage401JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage404JSONResponse struct {
+	AgentTargetNotFoundErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage404JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage405JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ProbeAgentTargetAccountUsage503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ProbeAgentTargetAccountUsage503JSONResponse) VisitProbeAgentTargetAccountUsageResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SetSystemAgentTargetEnabledRequestObject struct {
 	AgentTargetID string `json:"agentTargetID"`
 	Body          *SetSystemAgentTargetEnabledJSONRequestBody
@@ -14071,6 +14693,70 @@ func (response GetConnectorMarketConnector503JSONResponse) VisitGetConnectorMark
 	return err
 }
 
+type CancelConnectorMarketAuthorizationRequestObject struct {
+	ConnectorKey ConnectorMarketConnectorKey `json:"connectorKey"`
+}
+
+type CancelConnectorMarketAuthorizationResponseObject interface {
+	VisitCancelConnectorMarketAuthorizationResponse(w http.ResponseWriter) error
+}
+
+type CancelConnectorMarketAuthorization204Response struct {
+}
+
+func (response CancelConnectorMarketAuthorization204Response) VisitCancelConnectorMarketAuthorizationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CancelConnectorMarketAuthorization401JSONResponse struct {
+	ConnectorMarketUnauthorizedErrorJSONResponse
+}
+
+func (response CancelConnectorMarketAuthorization401JSONResponse) VisitCancelConnectorMarketAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelConnectorMarketAuthorization404JSONResponse struct {
+	ConnectorMarketNotFoundErrorJSONResponse
+}
+
+func (response CancelConnectorMarketAuthorization404JSONResponse) VisitCancelConnectorMarketAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelConnectorMarketAuthorization503JSONResponse struct {
+	ConnectorMarketUnavailableErrorJSONResponse
+}
+
+func (response CancelConnectorMarketAuthorization503JSONResponse) VisitCancelConnectorMarketAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type DisconnectConnectorMarketAuthorizationRequestObject struct {
 	ConnectorKey ConnectorMarketConnectorKey `json:"connectorKey"`
 	Body         *DisconnectConnectorMarketAuthorizationJSONRequestBody
@@ -14266,6 +14952,109 @@ type StartConnectorMarketAuthorization503JSONResponse struct {
 }
 
 func (response StartConnectorMarketAuthorization503JSONResponse) VisitStartConnectorMarketAuthorizationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateConnectorMarketConnectorRuntimeRequestObject struct {
+	ConnectorKey ConnectorMarketConnectorKey `json:"connectorKey"`
+	Body         *UpdateConnectorMarketConnectorRuntimeJSONRequestBody
+}
+
+type UpdateConnectorMarketConnectorRuntimeResponseObject interface {
+	VisitUpdateConnectorMarketConnectorRuntimeResponse(w http.ResponseWriter) error
+}
+
+type UpdateConnectorMarketConnectorRuntime202JSONResponse ConnectorMarketConnector
+
+func (response UpdateConnectorMarketConnectorRuntime202JSONResponse) VisitUpdateConnectorMarketConnectorRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(202)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateConnectorMarketConnectorRuntime400JSONResponse struct {
+	ConnectorMarketInvalidRequestErrorJSONResponse
+}
+
+func (response UpdateConnectorMarketConnectorRuntime400JSONResponse) VisitUpdateConnectorMarketConnectorRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateConnectorMarketConnectorRuntime401JSONResponse struct {
+	ConnectorMarketUnauthorizedErrorJSONResponse
+}
+
+func (response UpdateConnectorMarketConnectorRuntime401JSONResponse) VisitUpdateConnectorMarketConnectorRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateConnectorMarketConnectorRuntime404JSONResponse struct {
+	ConnectorMarketNotFoundErrorJSONResponse
+}
+
+func (response UpdateConnectorMarketConnectorRuntime404JSONResponse) VisitUpdateConnectorMarketConnectorRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateConnectorMarketConnectorRuntime409JSONResponse struct {
+	ConnectorMarketConflictErrorJSONResponse
+}
+
+func (response UpdateConnectorMarketConnectorRuntime409JSONResponse) VisitUpdateConnectorMarketConnectorRuntimeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type UpdateConnectorMarketConnectorRuntime503JSONResponse struct {
+	ConnectorMarketUnavailableErrorJSONResponse
+}
+
+func (response UpdateConnectorMarketConnectorRuntime503JSONResponse) VisitUpdateConnectorMarketConnectorRuntimeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -21261,6 +22050,22 @@ func (response SubmitWorkspaceAgentInteractive405JSONResponse) VisitSubmitWorksp
 	return err
 }
 
+type SubmitWorkspaceAgentInteractive409JSONResponse struct {
+	AgentInteractiveConflictErrorJSONResponse
+}
+
+func (response SubmitWorkspaceAgentInteractive409JSONResponse) VisitSubmitWorkspaceAgentInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type SubmitWorkspaceAgentInteractive502JSONResponse struct {
 	WorkspaceOperationErrorJSONResponse
 }
@@ -21856,6 +22661,269 @@ type UpdateWorkspaceAgentSessionSettings503JSONResponse struct {
 }
 
 func (response UpdateWorkspaceAgentSessionSettings503JSONResponse) VisitUpdateWorkspaceAgentSessionSettingsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilitiesRequestObject struct {
+	WorkspaceID    WorkspaceID    `json:"workspaceID"`
+	AgentSessionID AgentSessionID `json:"agentSessionID"`
+}
+
+type ResolveWorkspaceAgentSideCapabilitiesResponseObject interface {
+	VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error
+}
+
+type ResolveWorkspaceAgentSideCapabilities200JSONResponse WorkspaceAgentSideCapabilitiesResponse
+
+func (response ResolveWorkspaceAgentSideCapabilities200JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilities400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ResolveWorkspaceAgentSideCapabilities400JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilities401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ResolveWorkspaceAgentSideCapabilities401JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilities404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response ResolveWorkspaceAgentSideCapabilities404JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilities405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ResolveWorkspaceAgentSideCapabilities405JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilities409JSONResponse ApiErrorResponse
+
+func (response ResolveWorkspaceAgentSideCapabilities409JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilities502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ResolveWorkspaceAgentSideCapabilities502JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ResolveWorkspaceAgentSideCapabilities503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ResolveWorkspaceAgentSideCapabilities503JSONResponse) VisitResolveWorkspaceAgentSideCapabilitiesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversationRequestObject struct {
+	WorkspaceID    WorkspaceID    `json:"workspaceID"`
+	AgentSessionID AgentSessionID `json:"agentSessionID"`
+	Body           *OpenWorkspaceAgentSideConversationJSONRequestBody
+}
+
+type OpenWorkspaceAgentSideConversationResponseObject interface {
+	VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error
+}
+
+type OpenWorkspaceAgentSideConversation200JSONResponse WorkspaceAgentSideConversationResponse
+
+func (response OpenWorkspaceAgentSideConversation200JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversation400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response OpenWorkspaceAgentSideConversation400JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversation401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response OpenWorkspaceAgentSideConversation401JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversation404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response OpenWorkspaceAgentSideConversation404JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversation405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response OpenWorkspaceAgentSideConversation405JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversation409JSONResponse ApiErrorResponse
+
+func (response OpenWorkspaceAgentSideConversation409JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversation502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response OpenWorkspaceAgentSideConversation502JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type OpenWorkspaceAgentSideConversation503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response OpenWorkspaceAgentSideConversation503JSONResponse) VisitOpenWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -22742,6 +23810,515 @@ type UpdateWorkspaceAgentSessionVisibility503JSONResponse struct {
 }
 
 func (response UpdateWorkspaceAgentSessionVisibility503JSONResponse) VisitUpdateWorkspaceAgentSessionVisibilityResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseWorkspaceAgentSideConversationRequestObject struct {
+	WorkspaceID        WorkspaceID `json:"workspaceID"`
+	SideAgentSessionID string      `json:"sideAgentSessionID"`
+}
+
+type CloseWorkspaceAgentSideConversationResponseObject interface {
+	VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error
+}
+
+type CloseWorkspaceAgentSideConversation204Response struct {
+}
+
+func (response CloseWorkspaceAgentSideConversation204Response) VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type CloseWorkspaceAgentSideConversation400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CloseWorkspaceAgentSideConversation400JSONResponse) VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseWorkspaceAgentSideConversation401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CloseWorkspaceAgentSideConversation401JSONResponse) VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseWorkspaceAgentSideConversation404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response CloseWorkspaceAgentSideConversation404JSONResponse) VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseWorkspaceAgentSideConversation405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CloseWorkspaceAgentSideConversation405JSONResponse) VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseWorkspaceAgentSideConversation502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CloseWorkspaceAgentSideConversation502JSONResponse) VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CloseWorkspaceAgentSideConversation503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CloseWorkspaceAgentSideConversation503JSONResponse) VisitCloseWorkspaceAgentSideConversationResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInputRequestObject struct {
+	WorkspaceID        WorkspaceID `json:"workspaceID"`
+	SideAgentSessionID string      `json:"sideAgentSessionID"`
+	Body               *SendWorkspaceAgentSideConversationInputJSONRequestBody
+}
+
+type SendWorkspaceAgentSideConversationInputResponseObject interface {
+	VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error
+}
+
+type SendWorkspaceAgentSideConversationInput200JSONResponse WorkspaceAgentSideTurnResponse
+
+func (response SendWorkspaceAgentSideConversationInput200JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInput400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SendWorkspaceAgentSideConversationInput400JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInput401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SendWorkspaceAgentSideConversationInput401JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInput404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response SendWorkspaceAgentSideConversationInput404JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInput405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SendWorkspaceAgentSideConversationInput405JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInput409JSONResponse ApiErrorResponse
+
+func (response SendWorkspaceAgentSideConversationInput409JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInput502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SendWorkspaceAgentSideConversationInput502JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SendWorkspaceAgentSideConversationInput503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SendWorkspaceAgentSideConversationInput503JSONResponse) VisitSendWorkspaceAgentSideConversationInputResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurnRequestObject struct {
+	WorkspaceID        WorkspaceID `json:"workspaceID"`
+	SideAgentSessionID string      `json:"sideAgentSessionID"`
+	TurnID             AgentTurnID `json:"turnID"`
+}
+
+type CancelWorkspaceAgentSideConversationTurnResponseObject interface {
+	VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error
+}
+
+type CancelWorkspaceAgentSideConversationTurn200JSONResponse WorkspaceAgentSideTurnCancelResponse
+
+func (response CancelWorkspaceAgentSideConversationTurn200JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurn400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentSideConversationTurn400JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurn401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response CancelWorkspaceAgentSideConversationTurn401JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurn404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentSideConversationTurn404JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurn405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentSideConversationTurn405JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurn409JSONResponse ApiErrorResponse
+
+func (response CancelWorkspaceAgentSideConversationTurn409JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurn502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentSideConversationTurn502JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CancelWorkspaceAgentSideConversationTurn503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response CancelWorkspaceAgentSideConversationTurn503JSONResponse) VisitCancelWorkspaceAgentSideConversationTurnResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractiveRequestObject struct {
+	WorkspaceID        WorkspaceID              `json:"workspaceID"`
+	SideAgentSessionID string                   `json:"sideAgentSessionID"`
+	TurnID             AgentTurnID              `json:"turnID"`
+	RequestID          AgentPermissionRequestID `json:"requestID"`
+	Body               *SubmitWorkspaceAgentSideConversationInteractiveJSONRequestBody
+}
+
+type SubmitWorkspaceAgentSideConversationInteractiveResponseObject interface {
+	VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive200JSONResponse WorkspaceAgentSideInteractiveResponse
+
+func (response SubmitWorkspaceAgentSideConversationInteractive200JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response SubmitWorkspaceAgentSideConversationInteractive400JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response SubmitWorkspaceAgentSideConversationInteractive401JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive404JSONResponse struct {
+	WorkspaceNotFoundErrorJSONResponse
+}
+
+func (response SubmitWorkspaceAgentSideConversationInteractive404JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response SubmitWorkspaceAgentSideConversationInteractive405JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive409JSONResponse ApiErrorResponse
+
+func (response SubmitWorkspaceAgentSideConversationInteractive409JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response SubmitWorkspaceAgentSideConversationInteractive502JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SubmitWorkspaceAgentSideConversationInteractive503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response SubmitWorkspaceAgentSideConversationInteractive503JSONResponse) VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -35440,6 +37017,235 @@ func (response SwitchTuttiModeGoalReviewToSelf503JSONResponse) VisitSwitchTuttiM
 	return err
 }
 
+type ListWorkspaceManagedWorktreesRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+}
+
+type ListWorkspaceManagedWorktreesResponseObject interface {
+	VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error
+}
+
+type ListWorkspaceManagedWorktrees200JSONResponse WorkspaceManagedWorktreeListResponse
+
+func (response ListWorkspaceManagedWorktrees200JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees400JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListWorkspaceManagedWorktrees401JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees405JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees502JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListWorkspaceManagedWorktrees503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListWorkspaceManagedWorktrees503JSONResponse) VisitListWorkspaceManagedWorktreesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktreeRequestObject struct {
+	WorkspaceID WorkspaceID `json:"workspaceID"`
+	WorktreeID  string      `json:"worktreeID"`
+}
+
+type DeleteWorkspaceManagedWorktreeResponseObject interface {
+	VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error
+}
+
+type DeleteWorkspaceManagedWorktree200JSONResponse DeleteWorkspaceManagedWorktreeResponse
+
+func (response DeleteWorkspaceManagedWorktree200JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree400JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response DeleteWorkspaceManagedWorktree401JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree404JSONResponse ApiErrorResponse
+
+func (response DeleteWorkspaceManagedWorktree404JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree405JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree409JSONResponse ApiErrorResponse
+
+func (response DeleteWorkspaceManagedWorktree409JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree502JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteWorkspaceManagedWorktree503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response DeleteWorkspaceManagedWorktree503JSONResponse) VisitDeleteWorkspaceManagedWorktreeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListModelPlansRequestObject struct {
 	WorkspaceID WorkspaceID `json:"workspaceID"`
 }
@@ -39135,6 +40941,9 @@ type StrictServerInterface interface {
 	// List daemon-owned Agent Targets
 	// (GET /v1/agent-targets)
 	ListAgentTargets(ctx context.Context, request ListAgentTargetsRequestObject) (ListAgentTargetsResponseObject, error)
+	// Probe provider-owned account usage for one Agent Target
+	// (POST /v1/agent-targets/{agentTargetID}/account-usage)
+	ProbeAgentTargetAccountUsage(ctx context.Context, request ProbeAgentTargetAccountUsageRequestObject) (ProbeAgentTargetAccountUsageResponseObject, error)
 	// Enable or disable one daemon-owned system Agent Target
 	// (PATCH /v1/agent-targets/{agentTargetID}/enabled)
 	SetSystemAgentTargetEnabled(ctx context.Context, request SetSystemAgentTargetEnabledRequestObject) (SetSystemAgentTargetEnabledResponseObject, error)
@@ -39156,16 +40965,22 @@ type StrictServerInterface interface {
 	// Get one connector projection
 	// (GET /v1/connector-market/connectors/{connectorKey})
 	GetConnectorMarketConnector(ctx context.Context, request GetConnectorMarketConnectorRequestObject) (GetConnectorMarketConnectorResponseObject, error)
+	// Cancel a pending connector authorization attempt
+	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:cancel)
+	CancelConnectorMarketAuthorization(ctx context.Context, request CancelConnectorMarketAuthorizationRequestObject) (CancelConnectorMarketAuthorizationResponseObject, error)
 	// Disconnect connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:disconnect)
 	DisconnectConnectorMarketAuthorization(ctx context.Context, request DisconnectConnectorMarketAuthorizationRequestObject) (DisconnectConnectorMarketAuthorizationResponseObject, error)
-	// Start connector authorization
+	// Start or replace connector authorization
 	// (POST /v1/connector-market/connectors/{connectorKey}/authorization:start)
 	StartConnectorMarketAuthorization(ctx context.Context, request StartConnectorMarketAuthorizationRequestObject) (StartConnectorMarketAuthorizationResponseObject, error)
+	// Enable or disable an installed connector runtime
+	// (PUT /v1/connector-market/connectors/{connectorKey}/runtime)
+	UpdateConnectorMarketConnectorRuntime(ctx context.Context, request UpdateConnectorMarketConnectorRuntimeRequestObject) (UpdateConnectorMarketConnectorRuntimeResponseObject, error)
 	// Install or update one connector
 	// (POST /v1/connector-market/connectors/{connectorKey}:install)
 	InstallConnectorMarketConnector(ctx context.Context, request InstallConnectorMarketConnectorRequestObject) (InstallConnectorMarketConnectorResponseObject, error)
-	// Uninstall one connector
+	// Uninstall one connector from this device
 	// (POST /v1/connector-market/connectors/{connectorKey}:uninstall)
 	UninstallConnectorMarketConnector(ctx context.Context, request UninstallConnectorMarketConnectorRequestObject) (UninstallConnectorMarketConnectorResponseObject, error)
 	// Get one durable connector-market operation
@@ -39393,6 +41208,12 @@ type StrictServerInterface interface {
 	// Update one workspace agent session settings
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/settings)
 	UpdateWorkspaceAgentSessionSettings(ctx context.Context, request UpdateWorkspaceAgentSessionSettingsRequestObject) (UpdateWorkspaceAgentSessionSettingsResponseObject, error)
+	// Resolve transient Side support for a live agent session
+	// (GET /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-capabilities)
+	ResolveWorkspaceAgentSideCapabilities(ctx context.Context, request ResolveWorkspaceAgentSideCapabilitiesRequestObject) (ResolveWorkspaceAgentSideCapabilitiesResponseObject, error)
+	// Open one runtime-only Side conversation from a live source session
+	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-conversations)
+	OpenWorkspaceAgentSideConversation(ctx context.Context, request OpenWorkspaceAgentSideConversationRequestObject) (OpenWorkspaceAgentSideConversationResponseObject, error)
 	// Update one workspace agent session title
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/title)
 	UpdateWorkspaceAgentSessionTitle(ctx context.Context, request UpdateWorkspaceAgentSessionTitleRequestObject) (UpdateWorkspaceAgentSessionTitleResponseObject, error)
@@ -39414,6 +41235,18 @@ type StrictServerInterface interface {
 	// Update one workspace agent session visibility
 	// (POST /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/visibility)
 	UpdateWorkspaceAgentSessionVisibility(ctx context.Context, request UpdateWorkspaceAgentSessionVisibilityRequestObject) (UpdateWorkspaceAgentSessionVisibilityResponseObject, error)
+	// Close and release one runtime-only Side conversation
+	// (DELETE /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID})
+	CloseWorkspaceAgentSideConversation(ctx context.Context, request CloseWorkspaceAgentSideConversationRequestObject) (CloseWorkspaceAgentSideConversationResponseObject, error)
+	// Send one input to a runtime-only Side conversation
+	// (POST /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns)
+	SendWorkspaceAgentSideConversationInput(ctx context.Context, request SendWorkspaceAgentSideConversationInputRequestObject) (SendWorkspaceAgentSideConversationInputResponseObject, error)
+	// Cancel the exact active turn in a runtime-only Side conversation
+	// (POST /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/cancel)
+	CancelWorkspaceAgentSideConversationTurn(ctx context.Context, request CancelWorkspaceAgentSideConversationTurnRequestObject) (CancelWorkspaceAgentSideConversationTurnResponseObject, error)
+	// Respond to one live interactive request in a Side conversation
+	// (POST /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/interactive/{requestID})
+	SubmitWorkspaceAgentSideConversationInteractive(ctx context.Context, request SubmitWorkspaceAgentSideConversationInteractiveRequestObject) (SubmitWorkspaceAgentSideConversationInteractiveResponseObject, error)
 	// Resolve Agent Target setup state
 	// (GET /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup)
 	GetAgentTargetSetup(ctx context.Context, request GetAgentTargetSetupRequestObject) (GetAgentTargetSetupResponseObject, error)
@@ -39732,6 +41565,12 @@ type StrictServerInterface interface {
 	// Switch a failed independent Tutti Mode Goal Review to self review
 	// (POST /v1/workspaces/{workspaceID}/issues/{issueID}/tutti-mode-review/self)
 	SwitchTuttiModeGoalReviewToSelf(ctx context.Context, request SwitchTuttiModeGoalReviewToSelfRequestObject) (SwitchTuttiModeGoalReviewToSelfResponseObject, error)
+	// List explicitly managed Git worktrees for a workspace
+	// (GET /v1/workspaces/{workspaceID}/managed-worktrees)
+	ListWorkspaceManagedWorktrees(ctx context.Context, request ListWorkspaceManagedWorktreesRequestObject) (ListWorkspaceManagedWorktreesResponseObject, error)
+	// Explicitly delete one clean managed Git worktree
+	// (DELETE /v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID})
+	DeleteWorkspaceManagedWorktree(ctx context.Context, request DeleteWorkspaceManagedWorktreeRequestObject) (DeleteWorkspaceManagedWorktreeResponseObject, error)
 	// List workspace model access plans
 	// (GET /v1/workspaces/{workspaceID}/model-plans)
 	ListModelPlans(ctx context.Context, request ListModelPlansRequestObject) (ListModelPlansResponseObject, error)
@@ -40511,6 +42350,32 @@ func (sh *strictHandler) ListAgentTargets(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// ProbeAgentTargetAccountUsage operation middleware
+func (sh *strictHandler) ProbeAgentTargetAccountUsage(w http.ResponseWriter, r *http.Request, agentTargetID string) {
+	var request ProbeAgentTargetAccountUsageRequestObject
+
+	request.AgentTargetID = agentTargetID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ProbeAgentTargetAccountUsage(ctx, request.(ProbeAgentTargetAccountUsageRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ProbeAgentTargetAccountUsage")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ProbeAgentTargetAccountUsageResponseObject); ok {
+		if err := validResponse.VisitProbeAgentTargetAccountUsageResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // SetSystemAgentTargetEnabled operation middleware
 func (sh *strictHandler) SetSystemAgentTargetEnabled(w http.ResponseWriter, r *http.Request, agentTargetID string) {
 	var request SetSystemAgentTargetEnabledRequestObject
@@ -40707,6 +42572,32 @@ func (sh *strictHandler) GetConnectorMarketConnector(w http.ResponseWriter, r *h
 	}
 }
 
+// CancelConnectorMarketAuthorization operation middleware
+func (sh *strictHandler) CancelConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey) {
+	var request CancelConnectorMarketAuthorizationRequestObject
+
+	request.ConnectorKey = connectorKey
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelConnectorMarketAuthorization(ctx, request.(CancelConnectorMarketAuthorizationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelConnectorMarketAuthorization")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelConnectorMarketAuthorizationResponseObject); ok {
+		if err := validResponse.VisitCancelConnectorMarketAuthorizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // DisconnectConnectorMarketAuthorization operation middleware
 func (sh *strictHandler) DisconnectConnectorMarketAuthorization(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey) {
 	var request DisconnectConnectorMarketAuthorizationRequestObject
@@ -40770,6 +42661,41 @@ func (sh *strictHandler) StartConnectorMarketAuthorization(w http.ResponseWriter
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(StartConnectorMarketAuthorizationResponseObject); ok {
 		if err := validResponse.VisitStartConnectorMarketAuthorizationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateConnectorMarketConnectorRuntime operation middleware
+func (sh *strictHandler) UpdateConnectorMarketConnectorRuntime(w http.ResponseWriter, r *http.Request, connectorKey ConnectorMarketConnectorKey) {
+	var request UpdateConnectorMarketConnectorRuntimeRequestObject
+
+	request.ConnectorKey = connectorKey
+
+	var body UpdateConnectorMarketConnectorRuntimeJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateConnectorMarketConnectorRuntime(ctx, request.(UpdateConnectorMarketConnectorRuntimeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateConnectorMarketConnectorRuntime")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateConnectorMarketConnectorRuntimeResponseObject); ok {
+		if err := validResponse.VisitUpdateConnectorMarketConnectorRuntimeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -43076,6 +45002,69 @@ func (sh *strictHandler) UpdateWorkspaceAgentSessionSettings(w http.ResponseWrit
 	}
 }
 
+// ResolveWorkspaceAgentSideCapabilities operation middleware
+func (sh *strictHandler) ResolveWorkspaceAgentSideCapabilities(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
+	var request ResolveWorkspaceAgentSideCapabilitiesRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentSessionID = agentSessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ResolveWorkspaceAgentSideCapabilities(ctx, request.(ResolveWorkspaceAgentSideCapabilitiesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ResolveWorkspaceAgentSideCapabilities")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ResolveWorkspaceAgentSideCapabilitiesResponseObject); ok {
+		if err := validResponse.VisitResolveWorkspaceAgentSideCapabilitiesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// OpenWorkspaceAgentSideConversation operation middleware
+func (sh *strictHandler) OpenWorkspaceAgentSideConversation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
+	var request OpenWorkspaceAgentSideConversationRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.AgentSessionID = agentSessionID
+
+	var body OpenWorkspaceAgentSideConversationJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.OpenWorkspaceAgentSideConversation(ctx, request.(OpenWorkspaceAgentSideConversationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "OpenWorkspaceAgentSideConversation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(OpenWorkspaceAgentSideConversationResponseObject); ok {
+		if err := validResponse.VisitOpenWorkspaceAgentSideConversationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // UpdateWorkspaceAgentSessionTitle operation middleware
 func (sh *strictHandler) UpdateWorkspaceAgentSessionTitle(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, agentSessionID AgentSessionID) {
 	var request UpdateWorkspaceAgentSessionTitleRequestObject
@@ -43309,6 +45298,135 @@ func (sh *strictHandler) UpdateWorkspaceAgentSessionVisibility(w http.ResponseWr
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(UpdateWorkspaceAgentSessionVisibilityResponseObject); ok {
 		if err := validResponse.VisitUpdateWorkspaceAgentSessionVisibilityResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CloseWorkspaceAgentSideConversation operation middleware
+func (sh *strictHandler) CloseWorkspaceAgentSideConversation(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string) {
+	var request CloseWorkspaceAgentSideConversationRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.SideAgentSessionID = sideAgentSessionID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CloseWorkspaceAgentSideConversation(ctx, request.(CloseWorkspaceAgentSideConversationRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CloseWorkspaceAgentSideConversation")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CloseWorkspaceAgentSideConversationResponseObject); ok {
+		if err := validResponse.VisitCloseWorkspaceAgentSideConversationResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SendWorkspaceAgentSideConversationInput operation middleware
+func (sh *strictHandler) SendWorkspaceAgentSideConversationInput(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string) {
+	var request SendWorkspaceAgentSideConversationInputRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.SideAgentSessionID = sideAgentSessionID
+
+	var body SendWorkspaceAgentSideConversationInputJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SendWorkspaceAgentSideConversationInput(ctx, request.(SendWorkspaceAgentSideConversationInputRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SendWorkspaceAgentSideConversationInput")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SendWorkspaceAgentSideConversationInputResponseObject); ok {
+		if err := validResponse.VisitSendWorkspaceAgentSideConversationInputResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CancelWorkspaceAgentSideConversationTurn operation middleware
+func (sh *strictHandler) CancelWorkspaceAgentSideConversationTurn(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string, turnID AgentTurnID) {
+	var request CancelWorkspaceAgentSideConversationTurnRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.SideAgentSessionID = sideAgentSessionID
+	request.TurnID = turnID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CancelWorkspaceAgentSideConversationTurn(ctx, request.(CancelWorkspaceAgentSideConversationTurnRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CancelWorkspaceAgentSideConversationTurn")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CancelWorkspaceAgentSideConversationTurnResponseObject); ok {
+		if err := validResponse.VisitCancelWorkspaceAgentSideConversationTurnResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SubmitWorkspaceAgentSideConversationInteractive operation middleware
+func (sh *strictHandler) SubmitWorkspaceAgentSideConversationInteractive(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, sideAgentSessionID string, turnID AgentTurnID, requestID AgentPermissionRequestID) {
+	var request SubmitWorkspaceAgentSideConversationInteractiveRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.SideAgentSessionID = sideAgentSessionID
+	request.TurnID = turnID
+	request.RequestID = requestID
+
+	var body SubmitWorkspaceAgentSideConversationInteractiveJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SubmitWorkspaceAgentSideConversationInteractive(ctx, request.(SubmitWorkspaceAgentSideConversationInteractiveRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SubmitWorkspaceAgentSideConversationInteractive")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SubmitWorkspaceAgentSideConversationInteractiveResponseObject); ok {
+		if err := validResponse.VisitSubmitWorkspaceAgentSideConversationInteractiveResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -46627,6 +48745,59 @@ func (sh *strictHandler) SwitchTuttiModeGoalReviewToSelf(w http.ResponseWriter, 
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SwitchTuttiModeGoalReviewToSelfResponseObject); ok {
 		if err := validResponse.VisitSwitchTuttiModeGoalReviewToSelfResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListWorkspaceManagedWorktrees operation middleware
+func (sh *strictHandler) ListWorkspaceManagedWorktrees(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID) {
+	var request ListWorkspaceManagedWorktreesRequestObject
+
+	request.WorkspaceID = workspaceID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListWorkspaceManagedWorktrees(ctx, request.(ListWorkspaceManagedWorktreesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListWorkspaceManagedWorktrees")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListWorkspaceManagedWorktreesResponseObject); ok {
+		if err := validResponse.VisitListWorkspaceManagedWorktreesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteWorkspaceManagedWorktree operation middleware
+func (sh *strictHandler) DeleteWorkspaceManagedWorktree(w http.ResponseWriter, r *http.Request, workspaceID WorkspaceID, worktreeID string) {
+	var request DeleteWorkspaceManagedWorktreeRequestObject
+
+	request.WorkspaceID = workspaceID
+	request.WorktreeID = worktreeID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteWorkspaceManagedWorktree(ctx, request.(DeleteWorkspaceManagedWorktreeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteWorkspaceManagedWorktree")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteWorkspaceManagedWorktreeResponseObject); ok {
+		if err := validResponse.VisitDeleteWorkspaceManagedWorktreeResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

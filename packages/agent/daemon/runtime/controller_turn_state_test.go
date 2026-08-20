@@ -1,6 +1,7 @@
 package agentruntime
 
 import (
+	"context"
 	"testing"
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
@@ -11,22 +12,124 @@ import (
 func TestSubmittedTurnActivityEventProjectsCapabilityReferences(t *testing.T) {
 	t.Parallel()
 	session := Session{Provider: ProviderCodex, AgentSessionID: "agent-1", RoomID: "room-1"}
-	events := submittedTurnActivityEvents(session, "turn-1", []CapabilityReference{
+	events := submittedTurnActivityEvents(context.Background(), session, textPrompt("hello"), "", "turn-1", []CapabilityReference{
 		{Capability: " tutti ", Source: "slash_command"},
 		{Capability: "tutti", Source: "slash_command"},
-	})
-	if len(events) != 1 {
+	}, "")
+	if len(events) != 2 {
 		t.Fatalf("submitted events = %#v", events)
+	}
+	if events[0].Type != activityshared.EventMessageAppended ||
+		events[0].Payload.Role != activityshared.MessageRoleUser ||
+		events[0].Payload.TurnID != "turn-1" {
+		t.Fatalf("submitted prompt event = %#v", events[0])
 	}
 	patch, ok := statePatchFromSessionEvent(
 		canonical.EventSource{Provider: ProviderCodex},
-		events[0],
+		events[1],
 		"agent-1",
 		100,
 	)
 	if !ok || patch.Turn == nil || len(patch.Turn.CapabilityRefs) != 1 ||
 		patch.Turn.CapabilityRefs[0] != (agentsessionstore.WorkspaceAgentCapabilityReference{Capability: "tutti", Source: "slash_command"}) {
 		t.Fatalf("submitted turn patch = %#v ok=%v", patch.Turn, ok)
+	}
+}
+
+func TestFailedTurnActivityEventProjectsStableErrorDetails(t *testing.T) {
+	t.Parallel()
+
+	session := Session{Provider: ProviderCodex, AgentSessionID: "agent-1", RoomID: "room-1"}
+	event := newTurnActivityEvent(
+		session,
+		EventTurnFailed,
+		"turn-1",
+		SessionStatusFailed,
+		"",
+		"",
+		map[string]any{"error": "rate limit exceeded"},
+	)
+	patch, ok := statePatchFromSessionEvent(
+		canonical.EventSource{Provider: ProviderCodex},
+		event,
+		"agent-1",
+		200,
+	)
+	if !ok || patch.Turn == nil {
+		t.Fatalf("failed turn patch = %#v ok=%v", patch, ok)
+	}
+	if patch.Turn.ErrorCode != FailureCodeQuotaOrRateLimit || patch.Turn.ErrorMessage != "rate limit exceeded" {
+		t.Fatalf("failed turn error = %q/%q", patch.Turn.ErrorCode, patch.Turn.ErrorMessage)
+	}
+}
+
+func TestFailedTurnActivityEventProjectsProviderStopReason(t *testing.T) {
+	t.Parallel()
+
+	session := Session{Provider: ProviderCodex, AgentSessionID: "agent-1", RoomID: "room-1"}
+	event := newTurnActivityEvent(
+		session,
+		EventTurnFailed,
+		"turn-1",
+		SessionStatusFailed,
+		"",
+		"",
+		map[string]any{"stopReason": "max_tokens"},
+	)
+	patch, ok := statePatchFromSessionEvent(
+		canonical.EventSource{Provider: ProviderCodex},
+		event,
+		"agent-1",
+		200,
+	)
+	if !ok || patch.Turn == nil {
+		t.Fatalf("failed turn patch = %#v ok=%v", patch, ok)
+	}
+	if patch.Turn.ErrorCode != "provider_max_tokens" || patch.Turn.ErrorMessage != "" {
+		t.Fatalf("failed turn error = %q/%q", patch.Turn.ErrorCode, patch.Turn.ErrorMessage)
+	}
+}
+
+func TestFailedTurnActivityEventProjectsUnknownCodeWithoutDiagnostics(t *testing.T) {
+	t.Parallel()
+
+	session := Session{Provider: ProviderCodex, AgentSessionID: "agent-1", RoomID: "room-1"}
+	event := newTurnActivityEvent(
+		session,
+		EventTurnFailed,
+		"turn-1",
+		SessionStatusFailed,
+		"",
+		"",
+		nil,
+	)
+	patch, ok := statePatchFromSessionEvent(
+		canonical.EventSource{Provider: ProviderCodex},
+		event,
+		"agent-1",
+		200,
+	)
+	if !ok || patch.Turn == nil {
+		t.Fatalf("failed turn patch = %#v ok=%v", patch, ok)
+	}
+	if patch.Turn.ErrorCode != "unknown" || patch.Turn.ErrorMessage != "" {
+		t.Fatalf("failed turn error = %q/%q, want unknown/empty", patch.Turn.ErrorCode, patch.Turn.ErrorMessage)
+	}
+}
+
+func TestProviderStopFailureCodeUsesClosedVocabulary(t *testing.T) {
+	t.Parallel()
+
+	for reason, expected := range map[string]string{
+		"refusal":           "provider_refusal",
+		"max_tokens":        "provider_max_tokens",
+		"max_turn_requests": "provider_max_turn_requests",
+		"end_turn":          "",
+		"future_reason":     "",
+	} {
+		if actual := providerStopFailureCode(reason); actual != expected {
+			t.Fatalf("providerStopFailureCode(%q) = %q, want %q", reason, actual, expected)
+		}
 	}
 }
 

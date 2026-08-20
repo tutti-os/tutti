@@ -534,12 +534,13 @@ func TestControllerSubmitInteractiveStartsDenyFollowUpAfterActiveTurn(t *testing
 		t.Fatalf("submit result = %#v, want accepted", result)
 	}
 
-	adapter.releaseNext()
-	adapter.waitForPrompt(t, "Please split the work into smaller steps.")
+	if result.FollowUpPrompt != "Please split the work into smaller steps." {
+		t.Fatalf("follow-up prompt = %q, want Host-owned follow-up intent", result.FollowUpPrompt)
+	}
 	adapter.releaseNext()
 	waitForSessionStatus(t, controller, "room-1", started.Session.AgentSessionID, SessionStatusReady)
-	if got := adapter.prompts(); len(got) != 2 || got[0] != "run tests" || got[1] != "Please split the work into smaller steps." {
-		t.Fatalf("adapter prompts = %#v, want initial prompt then deny follow-up", got)
+	if got := adapter.prompts(); len(got) != 1 || got[0] != "run tests" {
+		t.Fatalf("adapter prompts = %#v, want only the original prompt", got)
 	}
 }
 

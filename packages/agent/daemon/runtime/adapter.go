@@ -65,12 +65,32 @@ type ProcessFrame struct {
 	RecordingID  string
 	ConnectionID string
 	ChunkSeq     uint64
+	// Synthetic marks optional-probe / startup-metadata responses invented by
+	// replay. They are not cassette units and must not advance the provider
+	// input barrier (ChunkSeq is unset / zero).
+	Synthetic bool
 }
 
 type ProcessConnection interface {
 	Send([]byte) error
 	Recv() (ProcessFrame, error)
 	Close() error
+}
+
+// RuntimeTransportFailure carries a bounded machine-readable failure code
+// from a host-owned process transport into canonical Agent failure events.
+// Implementations must not encode raw paths, request payloads, or credentials
+// in the code.
+type RuntimeTransportFailure interface {
+	error
+	RuntimeTransportFailureCode() string
+}
+
+// RuntimeTransportGRPCFailure optionally preserves the bounded gRPC status
+// code for transport diagnostics without exposing the raw status message.
+type RuntimeTransportGRPCFailure interface {
+	RuntimeTransportFailure
+	RuntimeTransportGRPCCode() string
 }
 
 // ProcessCassetteCheckpointConnection is implemented by replay connections so
@@ -162,6 +182,25 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+// CloseQuiesceAdapter lets a shared provider connection stop session-owned
+// work before Controller cancels the local Exec context and detaches the
+// session. Without this phase a local cancellation can erase the provider Turn
+// handle while the shared process remains alive for another session.
+type CloseQuiesceAdapter interface {
+	QuiesceForClose(context.Context, Session) error
+}
+
+// ConnectorCapabilityAdapter reports whether this exact provider runtime can
+// accept Tutti's session-scoped Connector binding. Implementations must return
+// false unless support is explicit; a missing implementation is unsupported.
+type ConnectorCapabilityAdapter interface {
+	ConnectorCapabilities(context.Context, Session) (ConnectorCapabilities, error)
+}
+
+type ConnectorCapabilities struct {
+	HTTPMCP bool
+}
+
 // SessionForkAdapter is an optional provider-native capability. Providers that
 // cannot prove an exact fork boundary do not implement it.
 type SessionForkAdapter interface {
@@ -187,6 +226,24 @@ type ProviderTurnBindingRecoveryAdapter interface {
 		context.Context,
 		ProviderTurnBindingRecoveryInput,
 	) (ProviderTurnBindingRecoveryResult, error)
+}
+
+// SideConversationAdapter is the provider-specific open surface for
+// runtime-only side conversations. The adapter decides whether a live source
+// connection or persisted provider identity can satisfy the request;
+// interactive Side flows additionally require the ordinary InteractiveAdapter
+// contract. Once OpenSide returns, the Controller
+// reuses Adapter Exec/Cancel/Close and the configured event/command/config
+// sinks against the returned side-scoped Session.
+//
+// OpenSide owns its failure cleanup: before returning an error it must
+// quiesce callbacks and release any provider child it created. Ownership
+// transfers to Adapter.Close only when the Controller validates the exact
+// side-scoped identity in the successful result; an invalid result remains
+// the provider's cleanup responsibility and is never passed to ordinary Close.
+type SideConversationAdapter interface {
+	SideCapabilities(context.Context, Session) (SideConversationCapabilities, error)
+	OpenSide(context.Context, SideConversationAdapterOpenInput) (SideConversationOpenResult, error)
 }
 
 // TargetedCancelAdapter maps canonical root/child targets onto provider-native
@@ -295,9 +352,30 @@ type RootProviderTurnLifecycleAdapter interface {
 }
 
 type ActiveTurnGuidanceAdapter interface {
-	// GuideActiveTurn appends guidance to the exact controller turn identified
-	// by turnID. The guidance submit does not own a separate turn lifecycle.
+	// GuideActiveTurn applies guidance to the exact controller turn identified
+	// by turnID. It must terminate the provider's current response and close its
+	// streaming projections before admitting the guided response, while keeping
+	// the same canonical turn lifecycle.
 	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
+}
+
+// ActiveTurnGuidanceProviderDispatchAdapter adds the provider-dispatch verdict
+// needed to distinguish adapter-local preflight failures from a request whose
+// provider acknowledgement is unknown. Adapters that do not implement this
+// optional seam retain the conservative legacy behavior: any returned error is
+// treated as outcome_unknown.
+type ActiveTurnGuidanceProviderDispatchAdapter interface {
+	ActiveTurnGuidanceAdapter
+	GuideActiveTurnWithProviderDispatch(
+		context.Context,
+		Session,
+		[]PromptContentBlock,
+		string,
+		string,
+		EventSink,
+		CommandSnapshotSink,
+		ProviderDispatchSink,
+	) ([]activityshared.Event, error)
 }
 
 type ResumeProbeAdapter interface {
@@ -308,8 +386,36 @@ type LiveSessionProbeAdapter interface {
 	HasLiveSession(Session) bool
 }
 
+type LiveSessionResourceCleanupResult struct {
+	Attempted int
+	Cleaned   int
+	Failed    int
+}
+
+// LiveSessionResourceCleanupAdapter owns physical handles that can outlive a
+// canonical runtime Session after a failed close. Cleanup is bounded by limit
+// so one reaper or shutdown pass cannot block on every retired process.
+type LiveSessionResourceCleanupAdapter interface {
+	CleanupLiveSessionResources(context.Context, int) LiveSessionResourceCleanupResult
+}
+
 type LiveSessionReleaseAdapter interface {
 	ReleaseLiveSession(context.Context, Session) error
+}
+
+// LiveSessionDisconnectAdapter force-releases a live provider transport when
+// its owning Workspace runtime becomes unavailable. Unlike Adapter.Close it
+// must not send a destructive provider session-close operation; unlike the
+// idle reaper it must settle active work and pending interactions.
+type LiveSessionDisconnectAdapter interface {
+	DisconnectLiveSession(context.Context, Session) error
+}
+
+// LiveSessionReleaseCapabilityAdapter narrows live-session release for
+// adapters whose ability to resume is learned from the current provider
+// handshake rather than known statically by adapter type.
+type LiveSessionReleaseCapabilityAdapter interface {
+	CanReleaseLiveSession(Session) bool
 }
 
 type StateAdapter interface {
@@ -384,6 +490,10 @@ type ConfigOptionsUpdateSinkAdapter interface {
 }
 
 type InteractiveAdapter interface {
+	// SubmitInteractive returns ErrInteractiveResponseInvalid for malformed or
+	// unavailable response options, ErrInteractiveRequestNotLive for stale
+	// requests, and ErrInteractiveAlreadyAnswered after terminal resolution.
+	// This taxonomy is part of the provider-neutral Host/API contract.
 	SubmitInteractive(context.Context, Session, SubmitInteractiveInput) (SubmitInteractiveResult, error)
 }
 
@@ -460,6 +570,9 @@ type GoalAdapterResult struct {
 	// ProviderPhase separates transport acceptance from evidence that the
 	// provider actually consumed/applied the command.
 	ProviderPhase string
+	// ExecutionPending is set only when the provider accepted a command that
+	// is expected to start autonomous Goal execution.
+	ExecutionPending bool
 }
 
 // GoalApplyInput carries the durable control identity allocated above the

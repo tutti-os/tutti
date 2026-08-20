@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
@@ -20,6 +22,13 @@ import (
 func (s *Service) Create(ctx context.Context, workspaceID string, input CreateSessionInput) (Session, error) {
 	result, err := s.CreateWithResult(ctx, workspaceID, input)
 	return result.Session, err
+}
+
+func explicitSettingValue(explicit *bool, setting *string) bool {
+	if explicit != nil {
+		return *explicit
+	}
+	return strings.TrimSpace(value(setting)) != ""
 }
 
 // CreateWithResult creates a session while retaining the exact Turn identity
@@ -37,6 +46,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	}
 	input.Provider = provider
 	input.ProviderTargetRef = launch.ProviderTargetRef
+	ctx = withRequestScopedAgentModelCatalog(ctx, s.ModelCatalog)
 	isolationMode := strings.TrimSpace(input.Isolation)
 	if isolationMode != "" && isolationMode != WorktreeIsolationMode {
 		return createSessionFailureResult(input, fmt.Errorf("%w: unsupported session isolation mode %q", ErrInvalidArgument, isolationMode))
@@ -53,9 +63,9 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if !input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider) {
 		input.CodexSaverMode = nil
 	}
-	modelExplicit := strings.TrimSpace(value(input.Model)) != ""
+	modelExplicit := explicitSettingValue(input.ModelExplicit, input.Model)
 	permissionModeExplicit := strings.TrimSpace(value(input.PermissionModeID)) != ""
-	reasoningEffortExplicit := strings.TrimSpace(value(input.ReasoningEffort)) != ""
+	reasoningEffortExplicit := explicitSettingValue(input.ReasoningEffortExplicit, input.ReasoningEffort)
 	if err := s.applyCreateSessionComposerDefaults(ctx, &input); err != nil {
 		return createSessionFailureResult(input, err)
 	}
@@ -107,9 +117,51 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "content_normalized", provider, nodeStartedAt)
 	}
 	logAgentSubmitTrace("service.create.content_normalized", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{"content_block_count": len(normalizedContent)})
-	requestedModel := value(input.Model)
+	// Resolve the launch directory before any cwd-sensitive model catalog call.
+	// In particular, a no-project Create allocates its session directory here
+	// instead of querying OpenCode from the daemon process directory. Worktree
+	// launches intentionally query from the selected source checkout; the
+	// isolated checkout does not exist until the transaction below and contains
+	// the same tracked provider configuration at creation time.
 	nodeStartedAt := time.Now()
+	requestedCwdMissing := strings.TrimSpace(value(input.Cwd)) == ""
+	if isolationMode == WorktreeIsolationMode && requestedCwdMissing {
+		err := &WorktreeIsolationError{Kind: ErrNotAGitRepo}
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
+		return createSessionFailureResult(input, err)
+	}
+	cwd, err := s.resolveCwd(ctx, input.Cwd)
+	if err != nil {
+		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
+		return createSessionFailureResult(input, err)
+	}
+	input.Cwd = stringPointer(cwd)
+	allocatedSessionDirectory := requestedCwdMissing && s.SessionDirectoryAllocator != nil && strings.TrimSpace(cwd) != ""
+	keepSessionDirectory := !allocatedSessionDirectory
+	if allocatedSessionDirectory {
+		allocatedSessionDirectory := cwd
+		defer func() {
+			if !keepSessionDirectory {
+				_ = s.SessionDirectoryAllocator.ReleaseSessionDirectory(context.Background(), allocatedSessionDirectory)
+			}
+		}()
+	}
+	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt)
+	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
+		"cwd": cwd,
+	})
+	requestedModel := value(input.Model)
+	nodeStartedAt = time.Now()
 	planResolution, err := s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	var invalidRememberedModel *InvalidModelError
+	if !modelExplicit && errors.As(err, &invalidRememberedModel) {
+		// Target-scoped defaults are fallback preferences. A provider catalog can
+		// retire a remembered model between launches, so retry resolution without
+		// that preference while keeping explicit caller selections strict.
+		input.Model = nil
+		requestedModel = ""
+		planResolution, err = s.resolveCreateSessionModelForPlanOrProvider(ctx, workspaceID, provider, requestedModel, &input)
+	}
 	if err != nil {
 		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "model_validated", provider, nodeStartedAt, err)
 		return createSessionFailureResult(input, err)
@@ -122,31 +174,39 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if err := s.applyCreateSessionReasoningIntensity(ctx, provider, value(input.Model), &input); err != nil {
 		return createSessionFailureResult(input, err)
 	}
-	input.ReasoningEffort = s.clampReasoningEffortPointerForLaunch(
-		ctx,
-		provider,
-		input.ProviderTargetRef,
-		value(input.Model),
-		input.ReasoningEffort,
-	)
-	worktreeLock := s.worktreeLock()
-	worktreeLock.RLock()
-	defer worktreeLock.RUnlock()
-	nodeStartedAt = time.Now()
-	if isolationMode == WorktreeIsolationMode && strings.TrimSpace(value(input.Cwd)) == "" {
-		err := &WorktreeIsolationError{Kind: ErrNotAGitRepo}
-		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
-		return createSessionFailureResult(input, err)
+	if reasoningEffortExplicit {
+		// Direct Create callers own explicit dependent settings. Keep strict
+		// catalog validation visible instead of silently rewriting a value that
+		// may express user intent.
+		if err := s.validateExplicitReasoningEffortForLaunch(
+			ctx,
+			provider,
+			input.ProviderTargetRef,
+			value(input.Cwd),
+			value(input.Model),
+			value(input.ReasoningEffort),
+		); err != nil {
+			return createSessionFailureResult(input, err)
+		}
 	}
-	cwd, err := s.resolveCwd(ctx, input.Cwd)
-	if err != nil {
-		s.reportAgentServiceNodeFailure(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt, err)
-		return createSessionFailureResult(input, err)
+	if !reasoningEffortExplicit || composerProfileFor(provider).ReasoningEffortOptions != providerregistry.ReasoningEffortOptionsStrictModelCatalog {
+		input.ReasoningEffort = s.clampReasoningEffortPointerForLaunch(
+			ctx,
+			provider,
+			input.ProviderTargetRef,
+			value(input.Cwd),
+			value(input.Model),
+			input.ReasoningEffort,
+		)
 	}
-	s.reportAgentServiceNodeSuccess(ctx, input.AgentSessionID, "session_create", "cwd_resolved", provider, nodeStartedAt)
-	logAgentSubmitTrace("service.create.cwd_resolved", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, map[string]any{
-		"cwd": cwd,
-	})
+	if isolationMode == WorktreeIsolationMode {
+		// Serialize the explicit worktree create transaction with worktree
+		// management operations. Ordinary Session creation has no worktree
+		// lifecycle relationship and does not take this lock.
+		worktreeLock := s.worktreeLock()
+		worktreeLock.Lock()
+		defer worktreeLock.Unlock()
+	}
 	var isolation *SessionIsolation
 	var isolationWarnings []SessionWarning
 	keepWorktree := false
@@ -231,7 +291,8 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		RuntimeContext:         stampAgentExtensionComposerScope(input.RuntimeContext, input.ProviderTargetRef, cwd, runtimeSettings),
 		Speed:                  stringPointer(runtimeSettings.Speed),
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
-		RailPlacement: input.RailPlacement,
+		RailPlacement:              input.RailPlacement,
+		RailPlacementAuthoritative: input.RailPlacementAuthoritative,
 	}
 	if err := s.applyInitialTuttiModeActivation(ctx, workspaceID, input.AgentSessionID, input.InitialTuttiModeActivation); err != nil {
 		return createSessionFailureResult(input, err)
@@ -273,6 +334,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		// whole creation as absent.
 		if hostResult.SessionStatus == agenthost.CreateSessionStatusCreated {
 			keepWorktree = true
+			keepSessionDirectory = true
 			created, getErr := s.Get(ctx, workspaceID, input.AgentSessionID)
 			if getErr == nil {
 				return CreateSessionResult{
@@ -304,10 +366,13 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		// reconciles instead of double-dispatching.
 		if !errors.Is(err, ErrSubmitDeliveryUnknown) {
 			_ = s.deleteTuttiModeActivationSessionState(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
+		} else {
+			keepSessionDirectory = true
 		}
 		return createSessionFailureResult(input, err)
 	}
 	keepWorktree = true
+	keepSessionDirectory = true
 	session := hostResult.Session
 	logAgentSubmitTrace("service.create.runtime_start_resolved", workspaceID, session.ID, input.ClientSubmitID, input.Metadata, map[string]any{"provider_runtime_status": session.Status})
 	persistedSession := persistedSessionFromHost(hostResult.Canonical)
@@ -447,7 +512,7 @@ func normalizePermissionModeIDForLaunch(provider string, providerTargetRef map[s
 }
 
 func normalizeReasoningEffortForLaunch(provider string, providerTargetRef map[string]any, value string) string {
-	if providerTargetRefKind(providerTargetRef) == "agent_extension" {
+	if providerTargetRefKind(providerTargetRef) == "agent_extension" && agentprovider.Normalize(provider) == "" {
 		return strings.TrimSpace(value)
 	}
 	return normalizeReasoningEffortForProvider(provider, value)
@@ -513,7 +578,7 @@ func (s *Service) resolveCreateSessionLaunch(ctx context.Context, workspaceID st
 func (s *Service) resolveCreateSessionModel(ctx context.Context, provider string, providerTargetRef map[string]any, cwd string, model *string) *string {
 	resolved := clampComposerModelForLaunch(provider, providerTargetRef, value(model))
 	if resolved == "" {
-		resolved = composerDefaultModel(ctx, provider, cwd, s.ModelCatalog)
+		resolved = composerDefaultModel(ctx, provider, cwd, s.modelCatalogForContext(ctx))
 	}
 	if resolved == "" {
 		return nil
@@ -532,6 +597,7 @@ func agentSessionIDOrNew(agentSessionID string) string {
 type preparedRuntime struct {
 	Cwd         string
 	Env         []string
+	MCPServers  []runtimeprep.MCPServerBinding
 	BrowserUse  *bool
 	ComputerUse *bool
 }
@@ -598,7 +664,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 	}
 	effectiveBrowserUse := s.clampComposerBrowserUseForLaunch(ctx, provider, input.ProviderTargetRef, input.BrowserUse)
 	effectiveComputerUse := s.clampComposerComputerUseForLaunch(ctx, provider, input.ProviderTargetRef, input.ComputerUse)
-	prepared, err := s.RuntimePreparer.Prepare(ctx, runtimeprep.PrepareInput{
+	prepareInput := runtimeprep.PrepareInput{
 		WorkspaceID:               workspaceID,
 		AgentSessionID:            strings.TrimSpace(input.AgentSessionID),
 		AgentTargetID:             strings.TrimSpace(input.AgentTargetID),
@@ -624,13 +690,13 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		AgentSkills:               append([]string(nil), input.AgentSkills...),
 		AgentTools:                append([]string(nil), input.AgentTools...),
 		ExtraSkills:               sessionSkillBundlesToProviderSkillBundles(input.ExtraSkills),
-		ConnectorRoutingHints:     s.activeConnectorRoutingHints(),
 		Metadata:                  input.Metadata,
 		CommandCapabilityProjection: cloneCommandCapabilityProjection(
 			input.CommandCapabilityProjection,
 		),
 		ExternalRolloutSourcePath: input.ExternalRolloutSourcePath,
-	})
+	}
+	prepared, err := s.RuntimePreparer.Prepare(ctx, prepareInput)
 	if err != nil {
 		if gatewayRegistered {
 			s.ModelGateway.Unregister(context.WithoutCancel(ctx), workspaceID, input.AgentSessionID)
@@ -640,12 +706,102 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 	if strings.TrimSpace(prepared.Cwd) == "" {
 		prepared.Cwd = cwd
 	}
+	// Every non-Connector preparation outcome below leaves the session without
+	// a materialized alias index, so drop any stale routing baseline first and
+	// re-record it only when Connector enhancement succeeds.
+	s.connectorRoutingBaselines.clear(workspaceID, strings.TrimSpace(input.AgentSessionID))
+	if s.ConnectorRuntime != nil && s.ConnectorCapabilities != nil {
+		httpMCP, capabilityErr := s.ConnectorCapabilities.ConnectorHTTPMCPSupported(ctx, ConnectorCapabilityInput{
+			WorkspaceID: workspaceID, AgentSessionID: strings.TrimSpace(input.AgentSessionID),
+			AgentTargetID: strings.TrimSpace(input.AgentTargetID), Provider: provider,
+			Cwd: prepared.Cwd, Env: append([]string(nil), prepared.Env...),
+			ProviderTargetRef: clonePayload(input.ProviderTargetRef), PermissionModeID: value(input.PermissionModeID),
+			Settings: ComposerSettings{
+				Model: value(input.Model), ReasoningEffort: value(input.ReasoningEffort),
+				PlanMode: valueBool(input.PlanMode), BrowserUse: effectiveCapabilitySetting(input.BrowserUse, effectiveBrowserUse),
+				ComputerUse:    effectiveCapabilitySetting(input.ComputerUse, effectiveComputerUse),
+				CodexSaverMode: valueBool(input.CodexSaverMode), ConversationDetailMode: input.ConversationDetailMode,
+			},
+		})
+		if capabilityErr != nil {
+			slog.WarnContext(ctx, "Connector capability probe failed; continuing without Connector",
+				"event", "agent.connector.capability_probe_failed", "provider", provider,
+				"agent_session_id", input.AgentSessionID, "error", capabilityErr)
+		} else if httpMCP {
+			contextBinding, bindingErr := s.ConnectorRuntime.BindSession(workspaceID, strings.TrimSpace(input.AgentSessionID))
+			if bindingErr != nil {
+				slog.WarnContext(ctx, "Connector session binding failed; continuing without Connector",
+					"event", "agent.connector.binding_failed", "provider", provider,
+					"agent_session_id", input.AgentSessionID, "error", bindingErr)
+			} else {
+				contextBinding = cloneConnectorAgentContext(contextBinding)
+				prepareInput.Connector = &contextBinding
+				enhanced, enhanceErr := s.RuntimePreparer.Prepare(ctx, prepareInput)
+				if enhanceErr != nil {
+					s.ConnectorRuntime.RevokeSession(workspaceID, strings.TrimSpace(input.AgentSessionID))
+					slog.WarnContext(ctx, "Connector runtime enhancement failed; continuing without Connector",
+						"event", "agent.connector.runtime_enhancement_failed", "provider", provider,
+						"agent_session_id", input.AgentSessionID, "error", enhanceErr)
+					if restored, restoreErr := s.RuntimePreparer.Prepare(ctx, prepareInputWithoutConnector(prepareInput)); restoreErr == nil {
+						prepared = restored
+					} else {
+						slog.WarnContext(ctx, "restore ordinary Agent runtime after Connector enhancement failure",
+							"event", "agent.connector.runtime_restore_failed", "provider", provider,
+							"agent_session_id", input.AgentSessionID, "error", restoreErr)
+					}
+				} else {
+					prepared = enhanced
+					s.connectorRoutingBaselines.record(
+						workspaceID, strings.TrimSpace(input.AgentSessionID),
+						runtimeprep.ConnectorRoutingIndex(contextBinding.RoutingHints),
+					)
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(prepared.Cwd) == "" {
+		prepared.Cwd = cwd
+	}
 	return preparedRuntime{
 		Cwd:         prepared.Cwd,
 		Env:         append([]string(nil), prepared.Env...),
+		MCPServers:  cloneRuntimeMCPServerBindings(prepared.MCPServers),
 		BrowserUse:  effectiveCapabilitySetting(input.BrowserUse, effectiveBrowserUse),
 		ComputerUse: effectiveCapabilitySetting(input.ComputerUse, effectiveComputerUse),
 	}, nil
+}
+
+func prepareInputWithoutConnector(input runtimeprep.PrepareInput) runtimeprep.PrepareInput {
+	input.Connector = nil
+	input.ConnectorRoutingHints = nil
+	input.MCPServers = nil
+	return input
+}
+
+func cloneRuntimeMCPServerBindings(input []runtimeprep.MCPServerBinding) []runtimeprep.MCPServerBinding {
+	if len(input) == 0 {
+		return nil
+	}
+	result := make([]runtimeprep.MCPServerBinding, 0, len(input))
+	for _, binding := range input {
+		headers := make(map[string]string, len(binding.Headers))
+		for key, value := range binding.Headers {
+			headers[key] = value
+		}
+		binding.Headers = headers
+		result = append(result, binding)
+	}
+	return result
+}
+
+func cloneConnectorAgentContext(input runtimeprep.ConnectorAgentContext) runtimeprep.ConnectorAgentContext {
+	input.MCPServers = cloneRuntimeMCPServerBindings(input.MCPServers)
+	input.RoutingHints = append([]runtimeprep.ConnectorRoutingHint(nil), input.RoutingHints...)
+	for index := range input.RoutingHints {
+		input.RoutingHints[index].Aliases = append([]string(nil), input.RoutingHints[index].Aliases...)
+	}
+	input.SkillRoots = append([]string(nil), input.SkillRoots...)
+	return input
 }
 
 func modelEndpointUsesOpenAIProtocol(endpoint *runtimeprep.ModelEndpointConfig) bool {

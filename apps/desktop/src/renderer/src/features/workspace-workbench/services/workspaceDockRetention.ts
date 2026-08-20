@@ -1,4 +1,5 @@
 import type { WorkbenchSnapshot } from "@tutti-os/workbench-snapshot";
+import type { WorkbenchHostDockEntry } from "@tutti-os/workbench-surface";
 
 const workspaceDockMetadataKey = "workspaceDock";
 const workspaceDockMetadataSchemaVersion = 1;
@@ -6,6 +7,27 @@ const workspaceDockMetadataSchemaVersion = 1;
 interface WorkspaceDockSnapshotMetadata {
   retainedByEntryId: Record<string, boolean>;
   schemaVersion: typeof workspaceDockMetadataSchemaVersion;
+}
+
+export function resolveWorkspaceDockRetentionDefault(
+  entry: WorkbenchHostDockEntry
+): boolean {
+  return (entry.visibility ?? "always") === "always";
+}
+
+export function resolveWorkspaceDockRetentionState(
+  entry: WorkbenchHostDockEntry,
+  retainedByEntryId: Readonly<Record<string, boolean>>
+): {
+  retained: boolean;
+  visibility: NonNullable<WorkbenchHostDockEntry["visibility"]>;
+} {
+  const retained =
+    retainedByEntryId[entry.id] ?? resolveWorkspaceDockRetentionDefault(entry);
+  return {
+    retained,
+    visibility: retained ? "always" : "when-open"
+  };
 }
 
 export function readWorkspaceDockRetentionByEntryId(

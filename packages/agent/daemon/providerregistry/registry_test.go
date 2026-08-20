@@ -90,13 +90,14 @@ func TestMigratedTuttiAgentDescriptorRequiresRefreshCapableVersion(t *testing.T)
 	}
 	if !slices.Equal(
 		descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands,
-		[]string{"plan", "goal", "review"},
+		[]string{"compact", "plan", "goal", "review"},
 	) {
 		t.Fatalf("SlashCommandPolicy.FallbackCommands = %#v", descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands)
 	}
 	if !slices.Equal(
 		descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects,
 		[]SlashCommandEffectDescriptor{
+			{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
 			{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
 			{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
 			{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
@@ -166,6 +167,51 @@ func TestValidateRejectsUnsafeProviderUpdateDeclarations(t *testing.T) {
 	})
 }
 
+func TestValidateRejectsUnsafeRemoteAuthProbeDeclarations(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*RemoteAuthProbeDescriptor)
+	}{
+		{name: "disabled with settings", mutate: func(value *RemoteAuthProbeDescriptor) {
+			value.Kind = ""
+		}},
+		{name: "unsupported kind", mutate: func(value *RemoteAuthProbeDescriptor) {
+			value.Kind = "shell"
+		}},
+		{name: "unsupported credential", mutate: func(value *RemoteAuthProbeDescriptor) {
+			value.CredentialKind = "api-key"
+		}},
+		{name: "insecure endpoint", mutate: func(value *RemoteAuthProbeDescriptor) {
+			value.Endpoint = "http://api.anthropic.com/api/oauth/usage"
+		}},
+		{name: "unsupported method", mutate: func(value *RemoteAuthProbeDescriptor) {
+			value.Method = "POST"
+		}},
+		{name: "missing timeout", mutate: func(value *RemoteAuthProbeDescriptor) {
+			value.TimeoutSeconds = 0
+		}},
+		{name: "descriptor authorization", mutate: func(value *RemoteAuthProbeDescriptor) {
+			value.Headers["Authorization"] = "Bearer secret"
+		}},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			descriptor := claudeCodeDescriptor()
+			test.mutate(&descriptor.Status.RemoteAuthProbe)
+			if err := Validate(descriptor); err == nil {
+				t.Fatal("Validate() error = nil")
+			}
+		})
+	}
+	t.Run("provider usage with HTTP settings", func(t *testing.T) {
+		descriptor := codexDescriptor()
+		descriptor.Status.RemoteAuthProbe.Endpoint = "https://chatgpt.com/backend-api/wham/usage"
+		if err := Validate(descriptor); err == nil {
+			t.Fatal("Validate() error = nil")
+		}
+	})
+}
+
 func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	if err := ValidateMigrated(); err != nil {
 		t.Fatalf("ValidateMigrated() error = %v", err)
@@ -179,6 +225,9 @@ func TestMigratedCodexDescriptorIsComplete(t *testing.T) {
 	}
 	if descriptor.Runtime.Kind != RuntimeKindCodexAppServer {
 		t.Fatalf("Runtime.Kind = %q", descriptor.Runtime.Kind)
+	}
+	if descriptor.Status.RemoteAuthProbe.Kind != RemoteAuthProbeKindProviderUsage {
+		t.Fatalf("remote auth probe = %#v", descriptor.Status.RemoteAuthProbe)
 	}
 	if descriptor.Runtime.AppServerFork != (AppServerForkDescriptor{
 		UserAgentBrand:        "codex",
@@ -320,8 +369,8 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 
 func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 	want := map[string]DesktopIntegrationDescriptor{
-		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
-		ClaudeCodeProviderID: {Managed: true, ManagedOrder: 1, StatusProbePriority: 2, UsageProbeKind: DesktopUsageProbeClaudeCode, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 3},
+		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, AuthProbeAfterCredentialSync: true, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
+		ClaudeCodeProviderID: {Managed: true, ManagedOrder: 1, StatusProbePriority: 2, UsageProbeKind: DesktopUsageProbeClaudeCode, AuthProbeAfterCredentialSync: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 3},
 		CursorProviderID:     {Managed: true, ManagedOrder: 3, StatusProbePriority: 3, RuntimeProbeFallback: DesktopRuntimeProbeFallbackDirect, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 4},
 		TuttiAgentProviderID: {Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, CommandNetworkAccess: true, InstallBootstrap: true, RefreshOnAccountChange: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
 		OpenCodeProviderID:   {Managed: true, ManagedOrder: 5, StatusProbePriority: 5, DefaultProviderEligible: true, DefaultProviderPriority: 5},
@@ -374,9 +423,14 @@ func TestMigratedOpenCodeDescriptorIsComplete(t *testing.T) {
 		descriptor.ComposerProfile.ConfigOptionIDs.Reasoning != "effort" {
 		t.Fatalf("ComposerProfile = %#v", descriptor.ComposerProfile)
 	}
-	if !slices.Equal(descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands, []string{"compact", "goal", "review"}) ||
-		len(descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects) != 4 {
+	if !slices.Equal(descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands, []string{"compact", "review"}) ||
+		len(descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects) != 3 {
 		t.Fatalf("SlashCommandPolicy = %#v", descriptor.ComposerProfile.SlashCommandPolicy)
+	}
+	for _, effect := range descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects {
+		if effect.Command == "goal" || effect.Effect == SlashCommandEffectActivateGoalMode {
+			t.Fatalf("OpenCode must not advertise unsupported goal control: %#v", effect)
+		}
 	}
 	if descriptor.Target.ID != OpenCodeTargetID || descriptor.Events.TurnLifecycleProjection != TurnLifecycleProjectionExplicit {
 		t.Fatalf("target/events = %#v %#v", descriptor.Target, descriptor.Events)
@@ -403,6 +457,11 @@ func TestMigratedClaudeCodeDescriptorIsComplete(t *testing.T) {
 		descriptor.Status.AuthStatusCommandTimeoutSeconds != 600 {
 		t.Fatalf("target/status = %#v / %#v", descriptor.Target, descriptor.Status)
 	}
+	if descriptor.Status.RemoteAuthProbe.Kind != RemoteAuthProbeKindHTTPBearer ||
+		descriptor.Status.RemoteAuthProbe.CredentialKind != RemoteAuthCredentialKindClaudeOAuth ||
+		descriptor.Status.RemoteAuthProbe.Endpoint != "https://api.anthropic.com/api/oauth/usage" {
+		t.Fatalf("remote auth probe = %#v", descriptor.Status.RemoteAuthProbe)
+	}
 	if !descriptor.ComposerProfile.Behavior.ModelOptionsAuthoritative ||
 		!descriptor.ComposerProfile.Behavior.RefreshModelOptionsAfterSettings ||
 		!descriptor.ComposerProfile.Behavior.PrewarmDraftSession ||
@@ -420,10 +479,14 @@ func TestMigratedReturnsClones(t *testing.T) {
 	first[0].ComposerProfile.SlashCommandPolicy.FallbackCommands[0] = "mutated"
 	first[0].ComposerProfile.SlashCommandPolicy.CommandEffects[0].Command = "mutated"
 	first[1].Status.AuthWatch.Sources[0].Paths[0] = "mutated"
+	first[1].Status.RemoteAuthProbe.Headers["User-Agent"] = "mutated"
 
 	second := Migrated()
 	if second[0].Runtime.Command[0] != "codex" {
 		t.Fatalf("Runtime.Command leaked mutation: %#v", second[0].Runtime.Command)
+	}
+	if second[1].Status.RemoteAuthProbe.Headers["User-Agent"] != "claude-code/2.1.0" {
+		t.Fatalf("Status.RemoteAuthProbe.Headers leaked mutation: %#v", second[1].Status.RemoteAuthProbe.Headers)
 	}
 	if second[0].Runtime.Endpoint.BaseURLEnvVars[0] != "OPENAI_BASE_URL" {
 		t.Fatalf("Runtime.Endpoint.BaseURLEnvVars leaked mutation: %#v", second[0].Runtime.Endpoint.BaseURLEnvVars)
@@ -570,6 +633,12 @@ func TestValidateRejectsUnsupportedDescriptorStrategies(t *testing.T) {
 		{name: "status auth command", mutate: func(value *ProviderDescriptor) { value.Status.AuthStatusCommand[0] = " " }},
 		{name: "status auth marker", mutate: func(value *ProviderDescriptor) { value.Status.AuthMarkerPaths[0] = " " }},
 		{name: "status login args", mutate: func(value *ProviderDescriptor) { value.Status.LoginArgs[0] = " " }},
+		{name: "credential auth barrier without managed status", mutate: func(value *ProviderDescriptor) {
+			value.Desktop.AuthProbeAfterCredentialSync = true
+			value.Desktop.Managed = false
+			value.Desktop.ManagedOrder = 0
+			value.Desktop.StatusProbePriority = 0
+		}},
 		{name: "status npm package", mutate: func(value *ProviderDescriptor) { value.Status.NPMRegistryPackage = " " }},
 		{name: "installer kind", mutate: func(value *ProviderDescriptor) { value.Status.Install.Kind = "poison" }},
 		{name: "installer package mismatch", mutate: func(value *ProviderDescriptor) { value.Status.Install.PackageName = "poison" }},

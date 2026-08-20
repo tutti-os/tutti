@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -349,7 +350,7 @@ func (c *HTTPControlPlane) doJSON(ctx context.Context, method, path, cookie stri
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return fmt.Errorf("send mobile remote control-plane request: %w", err)
+		return sanitizedControlPlaneTransportError(err)
 	}
 	defer response.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(response.Body, maxControlPlaneResponse+1))
@@ -369,6 +370,41 @@ func (c *HTTPControlPlane) doJSON(ctx context.Context, method, path, cookie stri
 		return fmt.Errorf("decode mobile remote control-plane response: %w", err)
 	}
 	return nil
+}
+
+// sanitizedControlPlaneTransportError preserves retry-relevant error traits
+// without retaining net/http's URL string. Some DeviceLink requests carry a
+// short-lived identity signature in the query, so the original *url.Error must
+// never reach diagnostics or logs.
+func sanitizedControlPlaneTransportError(err error) error {
+	if err == nil {
+		return nil
+	}
+	for {
+		requestErr, ok := err.(*url.Error)
+		if !ok {
+			break
+		}
+		err = requestErr.Err
+	}
+	return &controlPlaneTransportError{err: err}
+}
+
+type controlPlaneTransportError struct {
+	err error
+}
+
+func (e *controlPlaneTransportError) Error() string {
+	return "send mobile remote control-plane request: " + e.err.Error()
+}
+
+func (e *controlPlaneTransportError) Unwrap() error {
+	return e.err
+}
+
+func (e *controlPlaneTransportError) Timeout() bool {
+	var networkErr net.Error
+	return errors.As(e.err, &networkErr) && networkErr.Timeout()
 }
 
 func controlPlaneError(statusCode int, raw []byte) error {
@@ -435,9 +471,13 @@ func normalizeDeviceLinkAttempt(attempt DeviceLinkAttempt) (DeviceLinkAttempt, e
 	attempt.OwnerDeviceID = strings.TrimSpace(attempt.OwnerDeviceID)
 	attempt.OwnerFingerprint = strings.TrimSpace(attempt.OwnerFingerprint)
 	attempt.State = strings.TrimSpace(attempt.State)
+	attempt.ExpiresAt = strings.TrimSpace(attempt.ExpiresAt)
 	if attempt.AttemptID == "" || attempt.PairingID == "" || attempt.CallerDeviceID == "" ||
-		attempt.OwnerDeviceID == "" || attempt.State == "" || attempt.CallerICE == nil {
+		attempt.OwnerDeviceID == "" || attempt.State == "" || attempt.CallerICE == nil || attempt.ExpiresAt == "" {
 		return DeviceLinkAttempt{}, errors.New("control-plane device-link attempt is incomplete")
+	}
+	if _, err := time.Parse(time.RFC3339Nano, attempt.ExpiresAt); err != nil {
+		return DeviceLinkAttempt{}, fmt.Errorf("parse control-plane device-link attempt expiry: %w", err)
 	}
 	attempt.STUNEndpoints = append([]string(nil), attempt.STUNEndpoints...)
 	attempt.CallerICE.Candidates = append([]string(nil), attempt.CallerICE.Candidates...)

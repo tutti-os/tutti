@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
@@ -431,6 +431,47 @@ func TestServiceGetComposerOptionsUsesLocalInstalledConnectorCatalog(t *testing.
 	connector := options.CapabilityCatalog[0]
 	if connector.ID != "connector:notion" || connector.Source != "local-db" || connector.Status != "authRequired" {
 		t.Fatalf("connector = %#v", connector)
+	}
+}
+
+func TestServiceGetComposerOptionsUsesCurrentAccountConnectorAuthorization(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newIsolatedAgentService(runtime)
+	service.DesktopPreferencesReader = connectorCatalogPreferencesReader(true)
+	snapshots := &scopedConnectorMarketSnapshotStub{
+		snapshot: market.Snapshot{Connectors: []market.Connector{
+			localConnectorFixture(
+				"github",
+				market.InstallationStateInstalled,
+				market.AuthorizationStateDisconnected,
+				market.CompatibilityStateSupported,
+			),
+		}},
+		scopedSnapshot: market.Snapshot{Connectors: []market.Connector{
+			localConnectorFixture(
+				"github",
+				market.InstallationStateInstalled,
+				market.AuthorizationStateConnected,
+				market.CompatibilityStateSupported,
+			),
+		}},
+	}
+	service.ConnectorMarketSnapshots = snapshots
+	service.ConnectorMarketCurrentScope = func() market.OperationScope {
+		return market.OperationScope{AccountID: "account-1"}
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	if len(options.CapabilityCatalog) != 1 || options.CapabilityCatalog[0].Status != "available" {
+		t.Fatalf("capability catalog = %#v, want current account connector available", options.CapabilityCatalog)
+	}
+	if snapshots.requestedScope.AccountID != "account-1" {
+		t.Fatalf("connector snapshot scope = %#v, want current account", snapshots.requestedScope)
 	}
 }
 

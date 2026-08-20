@@ -351,18 +351,25 @@
   missing, fails to select the revealed entry, loses the matching sidebar
   location, or adds a duplicate back-navigation entry.
 - Quick checks:
-  Compare the desktop launch path with `tuttid`'s directory response. Native
-  input commonly arrives as `C:\\Users\\...` or `C:/Users/...`, while the
-  workspace API intentionally transports the same path as `/C:/Users/...`.
+  Compare the AgentGUI or desktop launch path with `tuttid`'s directory
+  response. Native input commonly arrives as `C:\\Users\\...` or
+  `C:/Users/...`; Git Bash-shaped input may arrive as `/c/Users/...`; the
+  workspace API intentionally transports all of these as `/C:/Users/...`.
 - Root cause:
-  Workspace file paths are logical API paths. Normalizing separators without
-  also adding the logical leading slash leaves native Windows input unequal to
-  daemon roots, directory paths, and entry paths.
+  Workspace file paths are logical API paths. Multiple local normalizers can
+  preserve different drive casing or omit the logical leading slash, leaving
+  native Windows input unequal to daemon roots, directory paths, and entry
+  paths.
 - Fix:
-  Canonicalize drive-qualified paths to `/C:/...` at the shared FileManager
-  path-model boundary. Strip that transport slash only at a native Electron or
-  operating-system file API boundary.
+  Reuse the shared FileManager path model and canonicalize drive-qualified
+  paths to `/C:/...` at the AgentGUI and daemon boundaries. Treat `/c/...` as
+  a Windows drive alias only when the active workspace root is Windows-shaped.
+  Keep `/C:/...` for API and state values. Convert it to `C:\\Users\\...`
+  only at native Electron/operating-system adapters or Windows user-facing
+  display boundaries; POSIX and daemon-facing values keep their logical
+  separators.
 - Validation:
-  Cover native Windows inputs against daemon-shaped `/C:/...` responses in
-  existence, directory navigation, and reveal-selection tests. Then run
-  `pnpm check:changed`.
+  Cover native and Git Bash-shaped Windows inputs against daemon-shaped
+  `/C:/...` responses in projection, existence, directory navigation, and
+  reveal-selection tests. Keep POSIX `/c/...` paths unchanged on a POSIX root.
+  Then run `pnpm check:changed`.

@@ -11,26 +11,13 @@ import (
 	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
-type serviceHostSessionForkContextPolicy struct {
-	runtimePreparer runtimeprep.Preparer
-}
+type serviceHostSessionForkContextPolicy struct{}
 
-func (p serviceHostSessionForkContextPolicy) PrepareSessionForkTargetContext(
+func (serviceHostSessionForkContextPolicy) PrepareSessionForkTargetContext(
 	_ context.Context,
-	source storesqlite.Session,
+	_ storesqlite.Session,
 	prepared agenthost.ProviderRuntimeSession,
 ) (agenthost.SessionForkTargetContext, error) {
-	runtimeContext := clonePayload(source.InternalRuntimeContext)
-	if _, hasIsolationOwnership := runtimeContext[worktreeIsolationContextKey]; hasIsolationOwnership {
-		// A provider-native thread fork continues in the provider's existing
-		// cwd. Reusing Tutti's source-owned worktree lease for a second
-		// canonical session would make cleanup and ownership ambiguous, while
-		// silently changing cwd would diverge from the provider thread.
-		return agenthost.SessionForkTargetContext{}, agenthost.ErrSessionForkUnsupported
-	}
-	if p.runtimePreparer == nil {
-		return agenthost.SessionForkTargetContext{}, agenthost.ErrSessionForkUnsupported
-	}
 	return agenthost.SessionForkTargetContext{
 		Cwd:            strings.TrimSpace(prepared.Cwd),
 		RuntimeContext: clonePayload(prepared.RuntimeContext),

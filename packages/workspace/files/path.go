@@ -16,7 +16,7 @@ func NormalizeLogicalRoot(root string) LogicalPath {
 	if normalized == "." || normalized == "/" {
 		return DefaultLogicalRoot
 	}
-	return LogicalPath(normalized)
+	return LogicalPath(canonicalizeWindowsDriveLogicalPath(normalized))
 }
 
 func NormalizeLogicalPath(value string) (LogicalPath, error) {
@@ -47,7 +47,9 @@ func NormalizeLogicalPathWithinRoot(value string, root string) (LogicalPath, err
 	if !strings.HasPrefix(candidate, "/") {
 		candidate = "/" + candidate
 	}
-	if logicalRoot.String() != "/" && candidate != logicalRoot.String() && !strings.HasPrefix(candidate, logicalRoot.String()+"/") {
+	candidate = canonicalizeWindowsDriveLogicalPath(candidate)
+	candidate = normalizeGitBashDriveLogicalPath(candidate, logicalRoot.String())
+	if logicalRoot.String() != "/" && !isLogicalPathWithinRoot(candidate, logicalRoot.String()) {
 		return "", fmt.Errorf("%w: %q", ErrPathEscapesRoot, value)
 	}
 	return LogicalPath(candidate), nil
@@ -105,7 +107,51 @@ func LogicalRelativePath(value LogicalPath, root string) (string, error) {
 	if logicalRoot.String() == "/" {
 		return strings.TrimPrefix(normalized.String(), "/"), nil
 	}
+	if isWindowsDriveLogicalPath(logicalRoot.String()) {
+		prefix := logicalRoot.String() + "/"
+		if strings.HasPrefix(strings.ToLower(normalized.String()), strings.ToLower(prefix)) {
+			return normalized.String()[len(prefix):], nil
+		}
+	}
 	return strings.TrimPrefix(normalized.String(), logicalRoot.String()+"/"), nil
+}
+
+func canonicalizeWindowsDriveLogicalPath(value string) string {
+	if !isWindowsDriveLogicalPath(value) {
+		return value
+	}
+	return "/" + strings.ToUpper(value[1:2]) + value[2:]
+}
+
+func normalizeGitBashDriveLogicalPath(value string, root string) string {
+	if !isWindowsDriveLogicalPath(root) || len(value) < 2 || value[0] != '/' || !isASCIIAlpha(value[1]) {
+		return value
+	}
+	if len(value) > 2 && value[2] != '/' {
+		return value
+	}
+	drive := strings.ToUpper(root[1:2])
+	if !strings.EqualFold(value[1:2], drive) {
+		return value
+	}
+	return "/" + drive + ":" + value[2:]
+}
+
+func isLogicalPathWithinRoot(value string, root string) bool {
+	if isWindowsDriveLogicalPath(root) || isWindowsDriveLogicalPath(value) {
+		value = strings.ToLower(value)
+		root = strings.ToLower(root)
+	}
+	return value == root || strings.HasPrefix(value, root+"/")
+}
+
+func isWindowsDriveLogicalPath(value string) bool {
+	return len(value) >= 3 && value[0] == '/' && isASCIIAlpha(value[1]) && value[2] == ':' &&
+		(len(value) == 3 || value[3] == '/')
+}
+
+func isASCIIAlpha(value byte) bool {
+	return (value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z')
 }
 
 func JoinPhysicalPath(root WorkspaceRoot, value LogicalPath) (string, error) {

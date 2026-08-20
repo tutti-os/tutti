@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   act,
   fireEvent,
@@ -5,7 +7,11 @@ import {
   screen,
   waitFor
 } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  resetAgentHostApiForTests,
+  setAgentHostApiForTests
+} from "../../../agentActivityHost";
 import { AgentEnvPanelActionProvider } from "../../agentEnv";
 import type { AgentGUIRuntime } from "../../../agentActivityRuntime";
 import { AgentMessageBlock } from "./AgentMessageBlock";
@@ -21,6 +27,16 @@ const mockState = vi.hoisted(() => ({
   markdownStreamingFlags: [] as Array<boolean | undefined>,
   toolGroupOnLinkClicks: [] as Array<((href: string) => void) | undefined>
 }));
+const agentActivityStyles = readFileSync(
+  resolve(process.cwd(), "app/renderer/agentactivity.css"),
+  "utf8"
+);
+const agentActivityStyleElement = document.createElement("style");
+agentActivityStyleElement.textContent = agentActivityStyles;
+
+afterEach(() => {
+  agentActivityStyleElement.remove();
+});
 
 vi.mock("../../../i18n/index", () => ({
   getActiveUiLanguage: () => "en",
@@ -205,6 +221,43 @@ describe("AgentTranscriptItemView render stability", () => {
       appId: "ai-canvas",
       source: "agent-markdown"
     });
+  });
+
+  it("toasts when a sent composer-file mention can no longer be resolved", () => {
+    const onLinkAction = vi.fn();
+    const hostToastError = vi.fn();
+    setAgentHostApiForTests({
+      toast: { error: hostToastError }
+    } as never);
+
+    try {
+      render(
+        <AgentMessageBlock
+          workspaceRoot="/workspace/demo"
+          basePath="/workspace/demo"
+          row={userMessageRow({
+            kind: "message-content",
+            id: "user-composer-file-1",
+            turnId: "turn-1",
+            body: "[diagnostics.md](mention://composer-file/file-1?status=ready)",
+            occurredAtUnixMs: 1
+          })}
+          onLinkAction={onLinkAction}
+          thinkingLabel="Thought process"
+        />
+      );
+
+      mockState.markdownOnLinkClicks.at(-1)?.(
+        "mention://composer-file/file-1?status=ready"
+      );
+
+      expect(onLinkAction).not.toHaveBeenCalled();
+      expect(hostToastError).toHaveBeenCalledWith(
+        "agentHost.agentGui.composerFileOpenUnavailable"
+      );
+    } finally {
+      resetAgentHostApiForTests();
+    }
   });
 
   it("keeps markdown streaming for active turns and unsettled messages", () => {
@@ -589,13 +642,110 @@ describe("AgentTranscriptItemView render stability", () => {
         attachmentId: "attachment-1"
       });
     });
+    const image = await screen.findByRole("img", { name: "screen.png" });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
+    fireEvent.load(image);
     await waitFor(() => {
-      const image = screen.getByRole("img", { name: "screen.png" });
-      expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
       expect(
         screen.getByRole("button", { name: "common.expandImage" })
       ).toBeTruthy();
     });
+
+    delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
+  });
+
+  it("offers retry for an ordinary prompt image read failure", async () => {
+    const readSessionAttachment = vi.fn(async () => {
+      throw new Error("attachment not found");
+    });
+    Object.defineProperty(window, "agentGUIRuntime", {
+      configurable: true,
+      value: {
+        readSessionAttachment
+      } as Partial<AgentGUIRuntime>
+    });
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-read-failed",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "read-failed-image",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              attachmentId: "attachment-read-failed",
+              mimeType: "image/png",
+              name: "screen.png"
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(
+      await screen.findByText("agentHost.agentGui.imageLoadFailed")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "agentHost.agentGui.retryImage" })
+    ).toBeInTheDocument();
+
+    delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
+  });
+
+  it("does not offer retry when the prompt image belongs to another VM", async () => {
+    const readSessionAttachment = vi.fn(async () => {
+      throw Object.assign(new Error("attachment is on another VM"), {
+        code: "agent_session_attachment_vm_unavailable"
+      });
+    });
+    Object.defineProperty(window, "agentGUIRuntime", {
+      configurable: true,
+      value: {
+        readSessionAttachment
+      } as Partial<AgentGUIRuntime>
+    });
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-vm-unavailable",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "vm-unavailable-image",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              attachmentId: "attachment-from-another-vm",
+              mimeType: "image/png",
+              name: "screen.png"
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(
+      await screen.findByText("agentHost.agentGui.imageTemporarilyUnavailable")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "agentHost.agentGui.retryImage" })
+    ).toBeNull();
 
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
   });
@@ -671,6 +821,12 @@ describe("AgentTranscriptItemView render stability", () => {
       "src",
       "data:image/png;base64,b3B0aW1pc3RpYw=="
     );
+    fireEvent.load(optimisticImage);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-gui-message-image-loading")
+      ).toBeNull();
+    });
 
     rerender(
       <AgentMessageBlock
@@ -691,7 +847,8 @@ describe("AgentTranscriptItemView render stability", () => {
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
   });
 
-  it("renders a user prompt image directly from its remote HTTPS URL", () => {
+  it("reserves a loading slot until a remote HTTPS image loads", async () => {
+    document.head.append(agentActivityStyleElement);
     const readPromptAsset = vi.fn();
     Object.defineProperty(window, "agentGUIRuntime", {
       configurable: true,
@@ -726,10 +883,34 @@ describe("AgentTranscriptItemView render stability", () => {
       />
     );
 
-    expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
+    const image = screen.getByRole("img", { name: "screen.png" });
+    expect(image).toHaveAttribute(
       "src",
       "https://objects.example.test/signed/screen.png"
     );
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
+    expect(image.closest("[data-image-state]")).toHaveAttribute(
+      "data-image-state",
+      "loading"
+    );
+    const imageSlot = image.closest("[data-image-state]");
+    expect(imageSlot).not.toBeNull();
+    expect(window.getComputedStyle(imageSlot as Element).height).toBe("80px");
+
+    fireEvent.load(image);
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("agent-gui-message-image-loading")
+      ).toBeNull();
+      expect(image.closest("[data-image-state]")).toHaveAttribute(
+        "data-image-state",
+        "loaded"
+      );
+      expect(window.getComputedStyle(imageSlot as Element).height).toBe("80px");
+    });
     expect(readPromptAsset).not.toHaveBeenCalled();
 
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
@@ -765,10 +946,16 @@ describe("AgentTranscriptItemView render stability", () => {
     );
 
     const image = screen.getByRole("img", { name: "screen.png" });
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
     fireEvent.error(image);
 
     expect(
       await screen.findByTestId("agent-gui-message-image-failed")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("agentHost.agentGui.imageLoadFailed")
     ).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "agentHost.agentGui.retryImage" })
@@ -782,9 +969,106 @@ describe("AgentTranscriptItemView render stability", () => {
     });
     expect(retriedImage).not.toBe(image);
     expect(retriedImage).toHaveAttribute("src", signedUrl);
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
     fireEvent.load(retriedImage);
 
     expect(screen.queryByTestId("agent-gui-message-image-failed")).toBeNull();
+    expect(screen.queryByTestId("agent-gui-message-image-loading")).toBeNull();
+  });
+
+  it("does not offer retry when a prompt image is unavailable in this host", async () => {
+    delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
+
+    render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-unavailable",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "unavailable-image",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              attachmentId: "attachment-from-another-host",
+              mimeType: "image/png",
+              name: "screen.png"
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    expect(
+      await screen.findByTestId("agent-gui-message-image-failed")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("agentHost.agentGui.imageTemporarilyUnavailable")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "agentHost.agentGui.retryImage" })
+    ).toBeNull();
+  });
+
+  it("starts a fresh load when a failed remote image URL changes", async () => {
+    const firstUrl = "https://objects.example.test/signed/screen-v1.png";
+    const secondUrl = "https://objects.example.test/signed/screen-v2.png";
+    const renderMessage = (url: string) => (
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={userMessageRow({
+          kind: "message-content",
+          id: "user-images-url-refreshed",
+          turnId: "turn-1",
+          body: "",
+          contentKind: "image-grid",
+          images: [
+            {
+              id: "remote-image-refreshed",
+              workspaceId: "room-1",
+              agentSessionId: "session-1",
+              mimeType: "image/png",
+              name: "screen.png",
+              url
+            }
+          ],
+          occurredAtUnixMs: 1
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+    const { rerender } = render(renderMessage(firstUrl));
+
+    const firstImage = screen.getByRole("img", { name: "screen.png" });
+    fireEvent.error(firstImage);
+    expect(
+      await screen.findByTestId("agent-gui-message-image-failed")
+    ).toBeInTheDocument();
+
+    rerender(renderMessage(secondUrl));
+
+    const refreshedImage = await screen.findByRole("img", {
+      name: "screen.png"
+    });
+    expect(refreshedImage).not.toBe(firstImage);
+    expect(refreshedImage).toHaveAttribute("src", secondUrl);
+    expect(screen.queryByTestId("agent-gui-message-image-failed")).toBeNull();
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
+
+    fireEvent.load(refreshedImage);
+
+    expect(screen.queryByTestId("agent-gui-message-image-loading")).toBeNull();
   });
 
   it("shows a loading spinner while a user prompt image is being read", async () => {
@@ -856,14 +1140,18 @@ describe("AgentTranscriptItemView render stability", () => {
       name: "screen.png"
     });
 
+    const image = await screen.findByRole("img", { name: "screen.png" });
+    expect(image).toHaveAttribute("src", "data:image/png;base64,aW1hZ2U=");
+    expect(
+      screen.getByTestId("agent-gui-message-image-loading")
+    ).toBeInTheDocument();
+
+    fireEvent.load(image);
+
     await waitFor(() => {
       expect(
         screen.queryByTestId("agent-gui-message-image-loading")
       ).toBeNull();
-      expect(screen.getByRole("img", { name: "screen.png" })).toHaveAttribute(
-        "src",
-        "data:image/png;base64,aW1hZ2U="
-      );
     });
 
     delete (window as { agentGUIRuntime?: unknown }).agentGUIRuntime;
@@ -1141,6 +1429,47 @@ describe("AgentTranscriptItemView render stability", () => {
     const detail = getByText("Not enough messages to compact.");
     expect(detail.className).toContain("break-words");
     expect(detail.className).not.toContain("whitespace-nowrap");
+  });
+
+  it("renders context overflow as an error with new-conversation handoff guidance", () => {
+    const { getByRole } = render(
+      <AgentMessageBlock
+        workspaceRoot="/workspace/demo"
+        basePath="/workspace/demo"
+        row={assistantMessageRow({
+          kind: "message-content",
+          id: "assistant-notice-context-handoff",
+          turnId: "turn-1",
+          body: "Context compaction interrupted.",
+          occurredAtUnixMs: 1,
+          systemNotice: {
+            noticeKind: "context_handoff_required",
+            semanticKind: "context-handoff-required",
+            severity: "error",
+            command: "compact",
+            commandStatus: "failed",
+            title: "Provider compact failure",
+            detail: "Maximum context length exceeded.",
+            retryable: false
+          }
+        })}
+        thinkingLabel="Thought process"
+      />
+    );
+
+    const notice = getByRole("alert");
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextHandoffRequired"
+    );
+    expect(notice.textContent).toContain(
+      "agentHost.agentGui.contextHandoffRequiredDetail"
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "agentHost.agentGui.visibleErrorDetails"
+      })
+    );
+    expect(screen.getByText("Maximum context length exceeded.")).toBeTruthy();
   });
 
   it("does not let a legacy title override canonical compact status", () => {

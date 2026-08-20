@@ -53,6 +53,19 @@ jobs:
             services/tuttid/go.mod
             services/tuttid/go.sum
 
+      - name: Classify changed files
+        if: github.event_name == 'pull_request'
+        id: changed-files
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: >-
+          node ./tools/scripts/change-classification.mjs
+          --base "${env:BASE_SHA}"
+          --head "${env:HEAD_SHA}"
+          --github-output "${env:GITHUB_OUTPUT}"
+
       - name: Install dependencies
         shell: pwsh
         run: pnpm install --frozen-lockfile
@@ -67,7 +80,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $PSNativeCommandUseErrorActionPreference = $true
           Push-Location packages/agent/daemon
-          go test ./runtime -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement)$'
+          go test ./runtime -run 'Test(RunVerifiedExecutableUsesVerifiedIdentity|RunVerifiedNodeScriptBoundedExecutesVerifiedScript|PrepareProcessExecutableExecutesVerifiedDescriptorAfterPathReplacement|LocalProcessTransportUsesWindowsEnvironmentKeySemantics)$'
           go test ./runtimecmd -run 'Test(ResolverResolveAllReturnsEveryExecutableMatchInPathOrder|ResolverResolveAllNamesKeepsDirectoryOrderBeforeLauncherVariant|ResolveNPMGlobalLayoutUsesPrefixRootForWindowsShims|ResolverFindsWindowsNPMGlobalShim)$'
           Pop-Location
 
@@ -80,6 +93,8 @@ jobs:
           go test ./data/workspace -run 'Test(SQLiteDSNPathUsesFileURLFormOnWindows|SQLiteStoreListEmptyDatabase)$'
           go test ./service/managedruntime -run 'TestNodeReadyAcceptsOfficialWindowsCorepackLayout$'
           go test ./service/agentstatus -run 'Test(NewInstallShellCommandUsesCmdInterpreter|PlatformExecutableFileAcceptsPlainWindowsFile|RunDefaultInstallCommandPreservesStructuredArguments)$'
+          $env:TUTTI_RUN_NPM_ACCOUNT_USAGE_E2E = '1'
+          go test ./service/agentextension -run 'Test(AgentExtensionCommandUsesCmdForNPMShim|AgentExtensionCommandExecutesBatchLauncher|BuildInstallPlanUsesNativeWindowsNPMLauncher|AccountUsageProbeE2EInstallsActualNPMPackage|AgentTargetSetupReusesManagedRuntimeAcrossExtensionVersions|AgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails)$' -count=1
           go test ./service/browser -run 'TestStableChromeDevToolsActivePortPathUsesLocalAppDataOnWindows$'
           go test ./service/workspace -run 'Test(PlatformAppShellAdapter|NormalizeWindowsTerminalInput|TerminalServiceCreatesLocalPTY|TerminalServiceAttachStream|AppCenterServiceInitializesBuiltinCatalogAndInstallState|WorkspaceAppCLI)'
           go test ./integration -run 'TestTuttidBlackBoxWorkspaceTerminalWebSocketStreamsInputAndOutput$'
@@ -96,13 +111,20 @@ jobs:
         shell: pwsh
         run: pnpm --filter @tutti-os/desktop typecheck
 
+      - name: Build Windows Desktop bundles
+        if: github.event_name == 'pull_request' && steps.changed-files.outputs.build_windows_installer != 'true'
+        shell: pwsh
+        run: pnpm --filter @tutti-os/desktop build
+
       - name: Build unsigned Windows NSIS package
+        if: github.event_name == 'workflow_dispatch' || steps.changed-files.outputs.build_windows_installer == 'true'
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm --filter @tutti-os/desktop build:win
+        run: pnpm --filter @tutti-os/desktop build:win:prepared
 
       - name: Smoke test packaged Workspace App shell and Onboarding
+        if: github.event_name == 'workflow_dispatch' || steps.changed-files.outputs.build_windows_installer == 'true'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
@@ -161,6 +183,7 @@ jobs:
           }
 
       - name: Upload Windows installer
+        if: github.event_name == 'workflow_dispatch' || steps.changed-files.outputs.build_windows_installer == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: tutti-windows-amd64-alpha

@@ -238,13 +238,15 @@ func applyAgentReplayRuntimeComposition(
 func startProviderAuthWatcher(
 	replay bool,
 	onChange func([]string),
+	onChangeDetailed func([]agentservice.ProviderAuthChange),
 ) *agentservice.ProviderAuthWatcher {
 	if replay {
 		return nil
 	}
 	watcher := &agentservice.ProviderAuthWatcher{
-		Entries:  agentservice.DefaultProviderAuthWatchEntries(),
-		OnChange: onChange,
+		Entries:          agentservice.DefaultProviderAuthWatchEntries(),
+		OnChange:         onChange,
+		OnChangeDetailed: onChangeDetailed,
 	}
 	watcher.Start()
 	return watcher

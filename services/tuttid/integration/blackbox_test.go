@@ -176,6 +176,8 @@ func startTestDaemon(t *testing.T) *testDaemon {
 		"TUTTID_ACCESS_TOKEN="+accessToken,
 		"TUTTID_ADDR=127.0.0.1:0",
 		"TUTTID_LOG_OUTPUT=tee",
+		"TUTTI_AGENT_EXTENSION_HERMES_PACKAGE_DIR="+testAgentExtensionPackageDir(t, "hermes"),
+		"TUTTI_AGENT_EXTENSION_KIMI_CODE_PACKAGE_DIR="+testAgentExtensionPackageDir(t, "kimi-code"),
 	)
 
 	daemon := &testDaemon{
@@ -198,6 +200,12 @@ func startTestDaemon(t *testing.T) *testDaemon {
 	daemon.baseURL = "http://" + waitForListenerInfo(t, daemon)
 	waitForHealth(t, daemon)
 	return daemon
+}
+
+func testAgentExtensionPackageDir(t *testing.T, key string) string {
+	t.Helper()
+
+	return filepath.Join(serviceRoot(t), "integration", "testdata", "agent-extensions", key)
 }
 
 func mustBuildDaemonBinary(t *testing.T) string {

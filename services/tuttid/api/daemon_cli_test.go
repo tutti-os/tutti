@@ -167,6 +167,21 @@ func TestWriteInvokeCliCommandErrorPreservesStableInvalidInputReason(t *testing.
 	}
 }
 
+func TestServiceCliContextCarriesAgentRuntimeContext(t *testing.T) {
+	cwd := "/workspace/project/worktree"
+	railPlacementJSON := `{"version":1,"kind":"project","projectPath":"/workspace/project","sectionKey":"project:/workspace/project"}`
+
+	contextValue := serviceCliContext(&tuttigenerated.CliInvokeContext{
+		Source:                 "cli",
+		AgentCwd:               &cwd,
+		AgentRailPlacementJSON: &railPlacementJSON,
+	})
+
+	if contextValue.AgentCWD != cwd || contextValue.AgentRailPlacementJSON != railPlacementJSON {
+		t.Fatalf("service CLI context = %#v", contextValue)
+	}
+}
+
 type testFilteringCLIProvider struct{}
 
 func (testFilteringCLIProvider) AppID() string {

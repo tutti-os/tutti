@@ -70,6 +70,7 @@ export interface DeriveAgentSetupStagesInput {
   adapterInstalled: boolean;
   adapterVersionMismatch: boolean;
   authenticated: boolean;
+  credentialsConfigured?: boolean;
   authRequired: boolean;
   ready: boolean;
   activePhase: CodexSetupPhase | null;
@@ -167,11 +168,12 @@ export function deriveAgentSetupStages(
         ? "error"
         : "pending";
 
-  const loginStatus: CodexSetupStepStatus = input.authenticated
-    ? "ok"
-    : input.loginPending
-      ? "running"
-      : "pending";
+  const loginStatus: CodexSetupStepStatus =
+    input.authenticated || input.credentialsConfigured
+      ? "ok"
+      : input.loginPending
+        ? "running"
+        : "pending";
 
   const readyStatus: CodexSetupStepStatus = input.ready ? "ok" : "pending";
 

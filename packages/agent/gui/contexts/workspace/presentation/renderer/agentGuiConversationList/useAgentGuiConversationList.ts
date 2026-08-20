@@ -27,6 +27,7 @@ import {
 } from "../../../../../shared/agentConversationTitleProjection.ts";
 import { createAgentGUIConversationRailTitlePromptSelector } from "../../../../../shared/agentConversationRailTitlePromptSelector.ts";
 import { projectCanonicalAgentGUIConversationSummaries } from "../../../../../shared/agentGUIConversationSummaryProjection.ts";
+import { selectRootAgentSessionIdsAwaitingPlanImplementation } from "../../../../../shared/agentConversation/planImplementationAwaiting";
 
 export interface AgentGUIConversationListQuery {
   conversationFilter?: AgentGUIConversationFilter | null;
@@ -57,6 +58,11 @@ export function useAgentGuiConversationList(
     selectRootAgentSessionIdsWithPendingInteractions,
     stringArraysEqual
   );
+  const rootAgentSessionIdsAwaitingPlanImplementation = useEngineSelector(
+    engine,
+    selectRootAgentSessionIdsAwaitingPlanImplementation,
+    stringArraysEqual
+  );
   const pendingActivations = useEngineSelector(
     engine,
     selectPendingActivations,
@@ -73,9 +79,10 @@ export function useAgentGuiConversationList(
   );
   return useMemo(() => {
     if (!query) return null;
-    const rootSessionIdsAwaitingUserAction = new Set(
-      rootAgentSessionIdsWithPendingInteractions
-    );
+    const rootSessionIdsAwaitingUserAction = new Set([
+      ...rootAgentSessionIdsWithPendingInteractions,
+      ...rootAgentSessionIdsAwaitingPlanImplementation
+    ]);
     const canonicalIds = new Set(
       sessions.map((item) => item.session.agentSessionId)
     );
@@ -127,7 +134,7 @@ export function useAgentGuiConversationList(
           id: activation.agentSessionId,
           provider,
           sortTimeUnixMs: activation.requestedAtUnixMs,
-          status: "working",
+          status: activation.initialTurnExpected ? "working" : "ready",
           projectionSource: "pending_activation",
           railSectionKey: activation.railSectionKey,
           title,
@@ -233,6 +240,7 @@ export function useAgentGuiConversationList(
     firstUserDisplayPromptsBySessionId,
     pendingActivations,
     query,
+    rootAgentSessionIdsAwaitingPlanImplementation,
     rootAgentSessionIdsWithPendingInteractions,
     sessions,
     workspaceReconcile

@@ -41,10 +41,11 @@ func TestTuttiAgentComposerProfileUsesSkillsOnlyAppServerCatalog(t *testing.T) {
 	if profile.CapabilityCatalogKind != providerregistry.CapabilityCatalogKindAppServerSkills {
 		t.Fatalf("capability catalog profile = %#v", profile)
 	}
-	if !reflect.DeepEqual(profile.SlashCommandPolicy.FallbackCommands, []string{"plan", "goal", "review"}) {
+	if !reflect.DeepEqual(profile.SlashCommandPolicy.FallbackCommands, []string{"compact", "plan", "goal", "review"}) {
 		t.Fatalf("fallbackCommands = %#v", profile.SlashCommandPolicy.FallbackCommands)
 	}
 	wantEffects := []providerregistry.SlashCommandEffectDescriptor{
+		{Command: "compact", Effect: providerregistry.SlashCommandEffectSubmitImmediate},
 		{Command: "plan", Effect: providerregistry.SlashCommandEffectTogglePlanMode},
 		{Command: "goal", Effect: providerregistry.SlashCommandEffectActivateGoalMode},
 		{Command: "review", Effect: providerregistry.SlashCommandEffectShowReviewPicker},

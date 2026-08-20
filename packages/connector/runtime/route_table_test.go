@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 type routeTableStub struct {
@@ -62,5 +62,45 @@ func TestRouteTableRejectsGenerationAtOrBehindFence(t *testing.T) {
 		if err := table.Commit(route); err == nil {
 			t.Fatalf("generation %d unexpectedly crossed fence", candidate)
 		}
+	}
+}
+
+func TestRouteTablePublishesReadyCandidateBeforeOldRouteCleanup(t *testing.T) {
+	table := NewRouteTable()
+	key := "workspace\x00github"
+	old := &routeTableStub{id: key, digest: "release-1", generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 1}, closeErrs: 1}
+	next := &routeTableStub{id: key, digest: "release-2", generation: market.HostGeneration{BootEpoch: "boot-1", Generation: 2}}
+	if err := table.Commit(old); err != nil {
+		t.Fatal(err)
+	}
+	if err := table.Commit(next); err == nil {
+		t.Fatal("old route cleanup failure was not reported")
+	}
+	if table.Route(key) != next || !table.IsCurrent(next) || old.fenced == false {
+		t.Fatalf("candidate was not retained after cleanup failure: current=%v oldFenced=%t", table.Route(key) == next, old.fenced)
+	}
+}
+
+func TestRouteTableRemoveMatchingClosesEverySelectedConnection(t *testing.T) {
+	table := NewRouteTable()
+	generation := market.HostGeneration{BootEpoch: "boot-1", Generation: 4}
+	first := &routeTableStub{id: "connection-a\x00github", digest: "release-1", generation: generation}
+	second := &routeTableStub{id: "connection-b\x00github", digest: "release-1", generation: generation}
+	unrelated := &routeTableStub{id: "connection-a\x00notion", digest: "release-2", generation: generation}
+	for _, route := range []*routeTableStub{first, second, unrelated} {
+		if err := table.Commit(route); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := table.RemoveMatching(func(route ManagedRoute) bool {
+		return route.RouteReleaseDigest() == "release-1"
+	}, generation, time.Now().Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	if table.Route(first.id) != nil || table.Route(second.id) != nil || first.closeCalls != 1 || second.closeCalls != 1 {
+		t.Fatalf("matching routes were not closed: first=%d second=%d", first.closeCalls, second.closeCalls)
+	}
+	if table.Route(unrelated.id) != unrelated || unrelated.closeCalls != 0 {
+		t.Fatalf("unrelated route changed: route=%v closes=%d", table.Route(unrelated.id), unrelated.closeCalls)
 	}
 }

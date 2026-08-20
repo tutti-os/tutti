@@ -344,6 +344,8 @@ type WorkspaceAgentTurnPatch struct {
 	ActiveTurnID            *string                             `json:"activeTurnId,omitempty"`
 	Phase                   string                              `json:"phase,omitempty"`
 	Outcome                 string                              `json:"outcome,omitempty"`
+	ErrorCode               string                              `json:"errorCode,omitempty"`
+	ErrorMessage            string                              `json:"errorMessage,omitempty"`
 	Settling                bool                                `json:"settling,omitempty"`
 	CompletedCommand        *WorkspaceAgentCompletedCommand     `json:"completedCommand,omitempty"`
 	SubmitAvailability      *WorkspaceAgentSubmitAvailability   `json:"submitAvailability,omitempty"`

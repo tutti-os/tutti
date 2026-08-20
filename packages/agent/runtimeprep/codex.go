@@ -139,19 +139,21 @@ func prepareCodexHome(codexHome string, input PrepareInput) error {
 		return err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.session_config_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
-	if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
-		return err
+	if !input.SkipSkills {
+		logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
+		if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
+			return err
+		}
+		logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
+		logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
+		skillPaths, err := installProviderNativeSkillsSessionScoped(filepath.Join(codexHome, "skills"), input)
+		if err != nil {
+			return err
+		}
+		logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
+			"skill_count": len(skillPaths),
+		})
 	}
-	logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
-	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
-	skillPaths, err := installProviderNativeSkills(filepath.Join(codexHome, "skills"), input)
-	if err != nil {
-		return err
-	}
-	logRuntimePrepareTrace("runtime_prepare.codex.native_skills_resolved", input, map[string]any{
-		"skill_count": len(skillPaths),
-	})
 	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", input, nil)
 	if err := installCodexApprovalRules(codexHome, input); err != nil {
 		return err
@@ -366,6 +368,10 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 	}
 	if planNext, planChanged := codexConfigWithModelPlanEndpoint(next, input.ModelEndpoint); planChanged {
 		next = planNext
+		changed = true
+	}
+	if mcpNext, mcpChanged := codexConfigWithConnectorMCP(next, input.MCPServers); mcpChanged {
+		next = mcpNext
 		changed = true
 	}
 	// Tutti launches the Codex app-server from the non-elevated desktop daemon.

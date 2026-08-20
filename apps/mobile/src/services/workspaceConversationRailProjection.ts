@@ -36,7 +36,12 @@ export function projectWorkspaceConversationRail(input: {
     (membership): WorkspaceConversationRailSection => {
       const items = membership.sessionIds.flatMap((id) => {
         const conversation = conversationsById.get(id);
-        if (!conversation) return [];
+        if (
+          !conversation ||
+          !conversationMatchesRailMembership(conversation, membership)
+        ) {
+          return [];
+        }
         placedIds.add(id);
         return [conversation];
       });
@@ -64,8 +69,14 @@ export function projectWorkspaceConversationRail(input: {
       target.totalCount = Math.max(target.totalCount, target.items.length);
       continue;
     }
-    const kind = conversation.pinnedAtUnixMs ? "pinned" : "conversations";
-    const sectionKey = conversation.railSectionKey?.trim() ?? "conversations";
+    const pinned = (conversation.pinnedAtUnixMs ?? 0) > 0;
+    const sectionKey = conversation.railSectionKey?.trim() ?? "";
+    if (!pinned && !sectionKey) continue;
+    const kind = pinned
+      ? "pinned"
+      : sectionKey === "conversations"
+        ? "conversations"
+        : "project";
     sections.push({
       hasMore: false,
       id: kind === "pinned" ? "pinned" : `section:${sectionKey}`,
@@ -98,6 +109,20 @@ function findExactSection(
   if (!sectionKey) return null;
   return (
     sections.find((section) => section.id === `section:${sectionKey}`) ?? null
+  );
+}
+
+function conversationMatchesRailMembership(
+  conversation: AgentConversationRailSummary,
+  membership: WorkspaceConversationRailMembership
+): boolean {
+  const pinned = (conversation.pinnedAtUnixMs ?? 0) > 0;
+  if (membership.kind === "pinned") return pinned;
+  if (pinned) return false;
+  const railSectionKey = conversation.railSectionKey?.trim() ?? "";
+  return (
+    railSectionKey !== "" &&
+    railSectionKey === (membership.sectionKey?.trim() ?? "")
   );
 }
 

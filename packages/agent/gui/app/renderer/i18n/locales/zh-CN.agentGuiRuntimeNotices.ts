@@ -4,6 +4,7 @@ export const zhCNAgentGuiRuntimeNotices = {
   visibleErrorAuthRequired: "{{provider}} 需要认证或配置",
   visibleErrorAuthRequiredLocalAgentHint:
     "请在本地登录 {{provider}}，然后重试。",
+  visibleErrorSharedCallerHint: "请联系分享者完成处理后再试。",
   visibleErrorRequestTimedOut: "{{provider}} 请求超时",
   visibleErrorRuntimeUnavailable: "{{provider}} 因运行环境不可用而无法启动",
   visibleErrorQuotaOrRateLimit: "{{provider}} 请求失败：额度或频率限制已触发",
@@ -40,6 +41,12 @@ export const zhCNAgentGuiRuntimeNotices = {
   systemNoticePlanImplementationCompleted: "计划实现已开始",
   systemNoticeWarning: "Agent 警告",
   systemNoticeDefault: "Agent 通知",
+  contextCompactionInProgress: "正在压缩上下文",
+  contextCompactionCompleted: "已压缩上下文",
+  contextCompactionInterrupted: "上下文压缩已中断",
+  contextHandoffRequired: "当前对话已达到上下文上限",
+  contextHandoffRequiredDetail:
+    "当前对话无法继续，请新建对话，并在新对话中 @当前对话 以交接上下文",
   sharedDeviceLabel: "共享设备",
   agentSharingRevoked: "{{owner}} 已取消共享该智能体",
   runtimeConnecting: "正在连接 {{device}}…",

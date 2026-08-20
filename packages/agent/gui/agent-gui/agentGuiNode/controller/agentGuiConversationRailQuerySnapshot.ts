@@ -1,9 +1,11 @@
 import {
+  selectRootAgentSessionIdsWithPendingInteractions,
   selectWorkspaceAgentConsumerSessions,
   type AgentSessionEngineState
 } from "@tutti-os/agent-activity-core";
 import { projectCanonicalAgentGUIConversationSummaries } from "../../../shared/agentGUIConversationSummaryProjection";
 import { createAgentGUIConversationRailTitlePromptSelector } from "../../../shared/agentConversationRailTitlePromptSelector";
+import { selectRootAgentSessionIdsAwaitingPlanImplementation } from "../../../shared/agentConversation/planImplementationAwaiting";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import type { AgentGUIConversationRailQuerySnapshot } from "./agentConversationRailQuerySnapshot";
 
@@ -42,13 +44,30 @@ export function createConversationRailConversationsSelector(): (
     for (const sessionId of input.querySnapshot.railSearch.sessionIds) {
       projectionSessionIds.add(sessionId);
     }
+    const scopedAgentTargetId = input.querySnapshot.agentTargetId;
+    for (const item of workspaceSessions) {
+      if (
+        item.session.kind === "root" &&
+        item.activeTurn?.phase !== undefined &&
+        item.activeTurn.phase !== "settled" &&
+        (!scopedAgentTargetId ||
+          item.session.agentTargetId?.trim() === scopedAgentTargetId)
+      ) {
+        projectionSessionIds.add(item.session.agentSessionId);
+      }
+    }
+    const rootSessionIdsAwaitingUserAction = new Set([
+      ...selectRootAgentSessionIdsWithPendingInteractions(input.engineState),
+      ...selectRootAgentSessionIdsAwaitingPlanImplementation(input.engineState)
+    ]);
     return stabilizeConversationSectionItems(
       previous,
       projectCanonicalAgentGUIConversationSummaries(
         workspaceSessions.filter((session) =>
           projectionSessionIds.has(session.session.agentSessionId)
         ),
-        selectRailTitlePrompts(input.engineState)
+        selectRailTitlePrompts(input.engineState),
+        rootSessionIdsAwaitingUserAction
       )
     );
   };

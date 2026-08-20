@@ -6,7 +6,6 @@ import (
 	"log/slog"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
-	"github.com/tutti-os/tutti/packages/agent/daemon/runtime/codexproto"
 )
 
 // handleAppServerMessage routes codex app-server server->client traffic.
@@ -28,27 +27,24 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 		return nil, nil
 	}
 	if len(message.ID) > 0 {
-		switch message.Method {
-		case appServerMethodCommandApproval,
-			appServerMethodFileChangeApproval,
-			appServerMethodPermissionsApproval,
-			appServerMethodRequestUserInput,
-			appServerMethodExecApprovalV1,
-			appServerMethodPatchApprovalV1:
+		switch appServerServerRequestDispositionForMethod(message.Method) {
+		case appServerServerRequestInteractive:
 			return a.appServerServerRequest(ctx, client, session, turnID, message, normalizer, emit)
-		default:
+		case appServerServerRequestUnsupportedBackground:
 			err := fmt.Errorf("server request method %q is not supported", message.Method)
-			if codexproto.IsKnownServerRequestMethod(message.Method) {
-				// Schema-known background requests the daemon deliberately
-				// declines (auth token refresh, attestation, sandbox setup)
-				// get a silent -32601; a transcript failure card would show
-				// users spurious red cards for background operations.
-				slog.Debug(
-					"agent session app-server declined known server request",
-					"agent_session_id", session.AgentSessionID,
-					"method", message.Method,
-				)
-			} else if emit != nil {
+			// These requests are explicit initialize-time capabilities that this
+			// client does not advertise. Decline them without manufacturing a
+			// foreground failure card.
+			slog.Debug(
+				"agent session app-server declined background server request",
+				"agent_session_id", session.AgentSessionID,
+				"method", message.Method,
+			)
+			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32601, Message: err.Error()})
+			return nil, nil
+		case appServerServerRequestUnsupportedForeground, appServerServerRequestUnknown:
+			err := fmt.Errorf("server request method %q is not supported", message.Method)
+			if emit != nil {
 				emit(appServerUnsupportedServerRequestEvents(session, turnID, message, err))
 			}
 			_ = client.Respond(ctx, message.ID, nil, &acpError{Code: -32601, Message: err.Error()})
@@ -65,6 +61,34 @@ func (a *CodexAppServerAdapter) handleAppServerMessage(
 	}
 	reduction := newCodexAppServerReducer(a).ReduceNotification(client, session, turnID, message, normalizer, emitCommands)
 	return reduction.Events, nil
+}
+
+type appServerServerRequestDisposition uint8
+
+const (
+	appServerServerRequestUnknown appServerServerRequestDisposition = iota
+	appServerServerRequestInteractive
+	appServerServerRequestUnsupportedBackground
+	appServerServerRequestUnsupportedForeground
+)
+
+func appServerServerRequestDispositionForMethod(method string) appServerServerRequestDisposition {
+	switch method {
+	case appServerMethodCommandApproval,
+		appServerMethodFileChangeApproval,
+		appServerMethodPermissionsApproval,
+		appServerMethodRequestUserInput,
+		appServerMethodMCPElicitation,
+		appServerMethodExecApprovalV1,
+		appServerMethodPatchApprovalV1:
+		return appServerServerRequestInteractive
+	case "account/chatgptAuthTokens/refresh", "attestation/generate":
+		return appServerServerRequestUnsupportedBackground
+	case "item/tool/call":
+		return appServerServerRequestUnsupportedForeground
+	default:
+		return appServerServerRequestUnknown
+	}
 }
 
 func appServerNotificationUsesNormalizer(method string) bool {

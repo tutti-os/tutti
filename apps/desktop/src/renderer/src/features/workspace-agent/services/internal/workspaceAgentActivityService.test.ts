@@ -202,7 +202,7 @@ test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready 
   assert.equal(snapshotSession?.activeTurn, null);
 });
 
-test("Desktop Engine applies send results without a host-side Session dispatch", async () => {
+test("Desktop Engine applies send results without a host-side Session dispatch", async (t) => {
   const readySession = workspaceAgentSession({ status: "ready" });
   const observedIntentTypes: string[] = [];
   const service = new WorkspaceAgentActivityService({
@@ -222,6 +222,7 @@ test("Desktop Engine applies send results without a host-side Session dispatch",
     runtimeApi: { logTerminalDiagnostic: async () => {} },
     sessionReplayEnabled: true
   });
+  t.after(() => service.dispose());
   await service.load("ws-1");
   service.addSessionEngineActivityObserver("ws-1", {
     observeCommand() {},
@@ -296,6 +297,7 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   });
 
   await service.activateSession({
+    activationId: "submit-activate-codex",
     agentSessionId: "11111111-1111-4111-8111-111111111111",
     agentTargetId: "local:codex",
     capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
@@ -352,7 +354,7 @@ test("WorkspaceAgentActivityService.activateSession creates target-backed sessio
   });
 });
 
-test("Desktop Engine applies activation results through its authoritative projection", async () => {
+test("Desktop Engine applies activation results through its authoritative projection", async (t) => {
   const observedIntentTypes: string[] = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -362,6 +364,7 @@ test("Desktop Engine applies activation results through its authoritative projec
     runtimeApi: { logTerminalDiagnostic: async () => {} },
     sessionReplayEnabled: true
   });
+  t.after(() => service.dispose());
   service.addSessionEngineActivityObserver("ws-1", {
     observeCommand() {},
     observeIntent(intent) {
@@ -521,7 +524,7 @@ test("WorkspaceAgentActivityService does not report a cached availability snapsh
   );
 });
 
-test("WorkspaceAgentActivityService confirms engine activation from the realtime session upsert", async () => {
+test("WorkspaceAgentActivityService confirms engine activation from the realtime session upsert", async (t) => {
   const createRequests: unknown[] = [];
   const service = new WorkspaceAgentActivityService({
     tuttidClient: {
@@ -543,6 +546,7 @@ test("WorkspaceAgentActivityService confirms engine activation from the realtime
     } as unknown as TuttidClient,
     runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
+  t.after(() => service.dispose());
   const engine = service.getSessionEngine("ws-1");
   const requestedAtUnixMs = Date.now();
   engine.dispatch({
@@ -973,6 +977,7 @@ test("WorkspaceAgentActivityService reads existing session settings from the dae
   });
 
   const activation = await service.activateSession({
+    activationId: "submit-activate-claude",
     agentSessionId: "session-1",
     agentTargetId: "local:claude-code",
     clientSubmitId: "submit-activate-claude",
@@ -1020,6 +1025,7 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
   });
 
   const created = await service.activateSession({
+    activationId: "submit-create-failed-turn",
     agentSessionId: "session-1",
     agentTargetId: "local:codex",
     clientSubmitId: "submit-create-failed-turn",
@@ -1029,6 +1035,7 @@ test("WorkspaceAgentActivityService does not reinterpret a failed Turn as activa
     workspaceId: "ws-1"
   });
   const reopened = await service.activateSession({
+    activationId: "activation-reopen-failed-turn",
     agentSessionId: "session-1",
     mode: "existing",
     signal: controller.signal,
@@ -2051,8 +2058,8 @@ test("WorkspaceAgentActivityService preserves realtime turn provenance for atten
       historical.getSessionEngine("ws-2").getSnapshot(),
       "local",
       "session-1"
-    )?.isUnread,
-    false
+    ),
+    null
   );
 });
 
@@ -3531,7 +3538,7 @@ test("WorkspaceAgentActivityService does not tombstone a missing reconcile witho
   });
 });
 
-test("WorkspaceAgentActivityService preserves a pending new session when the Tutti event races create visibility", async (t) => {
+test("WorkspaceAgentActivityService preserves a pending new session when activity races create visibility", async (t) => {
   const diagnostics: unknown[] = [];
   const listenersByTopic = new Map<string, (event: unknown) => void>();
   let getSessionCalls = 0;
@@ -3602,6 +3609,23 @@ test("WorkspaceAgentActivityService preserves a pending new session when the Tut
     requestedAtUnixMs,
     requestId: "activation-1",
     workspaceId: "ws-1"
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const activityUpdated = listenersByTopic.get("agent.activity.updated");
+  assert.ok(activityUpdated);
+  activityUpdated({
+    payload: {
+      agentSessionId: "session-1",
+      data: {
+        agentSessionId: "session-1",
+        eventType: "session_reconcile_required",
+        lastEventUnixMs: requestedAtUnixMs,
+        workspaceId: "ws-1"
+      },
+      eventType: "session_reconcile_required",
+      workspaceId: "ws-1"
+    }
   });
   await new Promise((resolve) => setImmediate(resolve));
 
@@ -3933,6 +3957,7 @@ function workspaceAgentSession(overrides: {
     endedAtUnixMs: null,
     forkedFrom: null,
     goal: null,
+    goalSyncState: null,
     id: "session-1",
     imported: false,
     kind: "root",

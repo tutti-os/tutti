@@ -9,7 +9,12 @@ func (a *standardACPAdapter) ApplyPermissionMode(ctx context.Context, session Se
 	if a != nil && a.config.launchPermission != nil {
 		return nil
 	}
-	acpSession := a.getSession(session.AgentSessionID)
+	// Permission changes are live settings RPCs too. Keep their client lookup
+	// and protocol call in the same lifecycle fence as other settings updates
+	// so idle release cannot close the transport between them.
+	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
+	defer unlockLifecycle()
+	acpSession := a.getUsableSession(session.AgentSessionID)
 	if acpSession == nil || acpSession.client == nil {
 		return nil
 	}

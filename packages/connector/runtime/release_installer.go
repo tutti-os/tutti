@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 // ReleaseInstaller composes the same-machine artifact and optional CLI
@@ -79,6 +79,75 @@ func (installer *ReleaseInstaller) InstallRelease(
 	return receipt, nil
 }
 
+func (installer *ReleaseInstaller) InspectReleaseInstallation(
+	ctx context.Context,
+	request market.InspectReleaseInstallationRequest,
+) (market.ReleaseInstallationObservation, error) {
+	observation := market.ReleaseInstallationObservation{
+		ConnectorKey:  request.Release.ConnectorKey,
+		ReleaseDigest: request.Release.ReleaseDigest,
+	}
+	if installer == nil || installer.artifacts == nil {
+		observation.State = market.ReleaseInstallationIndeterminate
+		observation.ReasonCode = "installation_manager_unavailable"
+		return observation, nil
+	}
+	if err := market.ValidateRuntimeReleaseShape(request.Release); err != nil {
+		return market.ReleaseInstallationObservation{}, err
+	}
+	prepared, err := installer.artifacts.ResolvePrepared(ctx, request.Release)
+	if err != nil {
+		return classifyReleaseInstallationError(observation, "artifact", err)
+	}
+	receipt := market.ReleaseInstallationReceipt{
+		OperationID:    prepared.OperationID,
+		ConnectorKey:   request.Release.ConnectorKey,
+		Version:        request.Release.Version,
+		ReleaseID:      request.Release.ReleaseID,
+		ReleaseDigest:  request.Release.ReleaseDigest,
+		ArtifactSHA256: request.Release.Artifact.SHA256,
+		Artifact:       prepared,
+	}
+	if releaseRequiresCLIInstallation(request.Release) {
+		if installer.cli == nil {
+			observation.State = market.ReleaseInstallationInvalid
+			observation.ReasonCode = "cli_inspector_unavailable"
+			return observation, nil
+		}
+		cliReceipt, resolveErr := installer.cli.ResolveCLI(ctx, request.Release)
+		if resolveErr != nil {
+			return classifyReleaseInstallationError(observation, "cli", resolveErr)
+		}
+		receipt.CLIInstallation = &cliReceipt
+	}
+	observation.State = market.ReleaseInstallationPresent
+	observation.Receipt = &receipt
+	return observation, nil
+}
+
+func classifyReleaseInstallationError(
+	observation market.ReleaseInstallationObservation,
+	component string,
+	err error,
+) (market.ReleaseInstallationObservation, error) {
+	switch {
+	case errors.Is(err, market.ErrReleaseInstallationAbsent):
+		observation.State = market.ReleaseInstallationAbsent
+		observation.ReasonCode = component + "_absent"
+		return observation, nil
+	case errors.Is(err, market.ErrReleaseInstallationInvalid):
+		observation.State = market.ReleaseInstallationInvalid
+		observation.ReasonCode = component + "_invalid"
+		return observation, nil
+	case errors.Is(err, context.Canceled), errors.Is(err, context.DeadlineExceeded):
+		observation.State = market.ReleaseInstallationIndeterminate
+		observation.ReasonCode = component + "_inspection_interrupted"
+		return observation, nil
+	default:
+		return market.ReleaseInstallationObservation{}, err
+	}
+}
+
 func (installer *ReleaseInstaller) UninstallRelease(
 	ctx context.Context,
 	request market.UninstallReleaseRequest,
@@ -86,31 +155,24 @@ func (installer *ReleaseInstaller) UninstallRelease(
 	if installer == nil || installer.artifacts == nil {
 		return errors.New("connector release installer is unavailable")
 	}
-	if err := market.ValidateRuntimeReleaseShape(request.Release); err != nil {
-		return err
-	}
+	// Removal is keyed only by connector identity, which each storage boundary
+	// validates before deleting. Do not require obsolete presentation metadata
+	// to clean up an otherwise unsupported local installation.
 	var cleanupErrors []error
-	if releaseRequiresCLIInstallation(request.Release) {
-		if installer.cli == nil {
-			cleanupErrors = append(cleanupErrors, errors.New("connector CLI installation manager is unavailable"))
-		} else {
-			cleanupErrors = append(cleanupErrors, installer.cli.RemoveCLI(ctx, market.RemoveCLIRequest{
-				OperationID:   request.OperationID,
-				Scope:         request.Scope,
-				Generation:    request.Generation,
-				ConnectorKey:  request.Release.ConnectorKey,
-				ReleaseDigest: request.Release.ReleaseDigest,
-			}))
-		}
+	connectorRemoval := market.RemoveConnectorInstallationRequest{
+		OperationID:  request.OperationID,
+		Scope:        request.Scope,
+		Generation:   request.Generation,
+		ConnectorKey: request.Release.ConnectorKey,
 	}
-	cleanupErrors = append(cleanupErrors, installer.artifacts.Remove(ctx, market.RemoveArtifactRequest{
-		OperationID:   request.OperationID,
-		Scope:         request.Scope,
-		Generation:    request.Generation,
-		ConnectorKey:  request.Release.ConnectorKey,
-		Version:       request.Release.Version,
-		ReleaseDigest: request.Release.ReleaseDigest,
-	}))
+	if installer.cli == nil {
+		if releaseRequiresCLIInstallation(request.Release) {
+			cleanupErrors = append(cleanupErrors, errors.New("connector CLI installation manager is unavailable"))
+		}
+	} else {
+		cleanupErrors = append(cleanupErrors, installer.cli.RemoveConnector(ctx, connectorRemoval))
+	}
+	cleanupErrors = append(cleanupErrors, installer.artifacts.RemoveConnector(ctx, connectorRemoval))
 	return errors.Join(cleanupErrors...)
 }
 

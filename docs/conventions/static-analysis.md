@@ -69,7 +69,12 @@ adapter workflows in parallel; `services/tuttid` changes run only the daemon
 adapter workflow. The Agent process lane needs only Go, while the daemon lane
 prepares the builtin Onboarding package before its Go tests. Each lane invokes
 its selected Go packages together so independent packages can build and test in
-parallel.
+parallel. The Agent process lane also crosses a native Windows child-process
+boundary to verify case-insensitive environment-key precedence.
+It also proves that the account-usage Node boundary reuses a read-locked,
+content-addressed snapshot across calls and runner recreation, and that
+snapshot construction observes cancellation. The daemon lane covers durable
+companion failure backoff and recovery through a real restart.
 
 Both adapter workflows also run for matching pushes to `main`. Those trusted
 runs maintain default-branch Go and pnpm caches that new pull requests can
@@ -276,6 +281,16 @@ renderer-boundary lane selected by `check:changed`, and `check:full`. Changes
 to the renderer-boundary checker or its fixture suite also select that
 `check:changed` lane, so policy edits validate both their fixtures and the live
 renderer tree.
+
+Connector ownership is checked by `pnpm check:connector-boundaries`. The check
+keeps Contracts independent from Renderer, keeps Renderer Application free of
+React and host runtimes, prevents Connector packages from importing product
+owners, keeps Daemon Core independent from Application/adapters, and prevents
+Runtime from depending on Daemon Application, SQLite, or Control Plane. It also
+rejects a Renderer root barrel so Application and UI remain separately
+importable. Connector package, AgentGUI Connector integration, Desktop
+Connector adapter, or checker changes select this lane through
+`repository-checks.mjs`.
 
 `pnpm check:ui-boundaries` has a package-scoped temporary migration exception
 for `packages/agent/gui` while the carried agent activity renderer is
@@ -485,10 +500,12 @@ The current root entrypoint runs the linter from:
 - `packages/agent/store-sqlite/canonical`
 - `packages/appcli/core`
 - `packages/clients/device-authority-go`
-- `packages/connector/daemon`
-- `packages/connector/host`
+- `packages/clients/market-go`
+- `packages/connector/daemon/application`
+- `packages/connector/daemon/core`
 - `packages/connector/runtime`
-- `packages/connector/store-sqlite`
+- `packages/connector/daemon/adapters/sqlite`
+- `packages/connector/daemon/adapters/controlplane`
 - `packages/device-link`
 - `packages/agent/runtimeprep`
 - `packages/workspace/files`
@@ -509,7 +526,8 @@ Changed-aware Go validation includes the nested
 `packages/agent/host`,
 `packages/agent/runtimeprep`, `packages/agent/store-sqlite`, and
 `packages/agent/store-sqlite/canonical`, `packages/clients/device-authority-go`,
-the four `packages/connector/*` Go modules, and `packages/device-link` modules.
+`packages/clients/market-go`,
+the five Connector Go modules, and `packages/device-link` modules.
 Codex app-server protocol changes should also run
 `pnpm check:codexproto-generated` when schema, generator, or generated protocol
 files are touched.

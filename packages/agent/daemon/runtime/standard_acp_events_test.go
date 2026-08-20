@@ -50,6 +50,33 @@ func TestStandardACPToolCallEventInfersFailedStatusFromRawOutput(t *testing.T) {
 	}
 }
 
+func TestStandardACPNonzeroToolExitDoesNotFailCompletedAssistantTurn(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(hermesExtensionTestProvider)
+	normalizer := newACPTurnNormalizer()
+	toolEvents := standardACPUpdateEvents(standardACPConfig{provider: hermesExtensionTestProvider}, session, "turn-1", json.RawMessage(`{
+		"update": {
+			"sessionUpdate": "tool_call_update",
+			"toolCallId": "git-check-1",
+			"title": "Run command",
+			"kind": "execute",
+			"rawInput": {"command": "powershell.exe -Command 'git status; git diff; git diff --no-index -- /dev/null README.md'"},
+			"rawOutput": {"exitCode": 1, "stdout": "diff --git a/README.md b/README.md"}
+		}
+	}`), normalizer)
+	if len(toolEvents) != 1 || toolEvents[0].Type != activityshared.EventCallFailed {
+		t.Fatalf("tool events = %#v, want one call.failed", toolEvents)
+	}
+
+	normalizer.ApplyAssistantFinalText("The comparison completed and found differences.")
+	turnEvents := normalizer.FinishCompleted(session, "turn-1")
+	assistant := activityMessagesWithRole(turnEvents, activityshared.MessageRoleAssistant)
+	if len(assistant) != 1 || assistant[0].Payload.Metadata["streamState"] != messageStreamStateCompleted {
+		t.Fatalf("assistant events = %#v, want completed assistant response", assistant)
+	}
+}
+
 func TestStandardACPNormalizerKeepsCanonicalToolIdentityAcrossDynamicTitles(t *testing.T) {
 	t.Parallel()
 

@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"encoding/json"
+	"runtime"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -63,6 +64,13 @@ func appServerTurnStartParams(
 	params := map[string]any{
 		"threadId": threadID,
 		"input":    userInput,
+	}
+	if cwd := projectCodexWorkspaceCWD(strings.TrimSpace(session.CWD), session.RoomID); cwd != "" {
+		// Keep the provider-visible working directory explicit even when it
+		// matches the thread cwd so provider state cannot drift across resumed
+		// turns. A persisted room-scoped mount path must use the same logical
+		// workspace projection as thread/start and the provider process.
+		params["cwd"] = cwd
 	}
 	if collaborationMode := appServerCollaborationMode(settings, planModeMask, defaultModeMask, defaultModel, tuttiModeHostContext); collaborationMode != nil {
 		params["collaborationMode"] = collaborationMode
@@ -344,12 +352,27 @@ func codexAppServerSandboxMode(modeID string) string {
 }
 
 func codexAppServerSandboxPolicy(modeID string, commandNetworkAccess bool) map[string]any {
+	return codexAppServerSandboxPolicyForPlatform(modeID, commandNetworkAccess, runtime.GOOS)
+}
+
+func codexAppServerSandboxPolicyForPlatform(
+	modeID string,
+	commandNetworkAccess bool,
+	platform string,
+) map[string]any {
 	var policy map[string]any
 	switch codexACPModeID(modeID) {
 	case "read-only":
 		policy = map[string]any{"type": "readOnly"}
 	case "auto":
 		policy = map[string]any{"type": "workspaceWrite"}
+		// /sandbox-tmp is the POSIX projection used for logical /tmp writes.
+		// It is not a Windows absolute host path, and adding an extra Windows
+		// writable root can also make the restricted-token sandbox reject the
+		// split root set. Windows Codex owns its native temporary roots.
+		if platform != "windows" {
+			policy["writableRoots"] = []string{"/sandbox-tmp"}
+		}
 	case "full-access":
 		return map[string]any{"type": "dangerFullAccess"}
 	default:

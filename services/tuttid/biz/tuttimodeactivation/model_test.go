@@ -32,8 +32,8 @@ func TestNormalizeRevisionEnforcesStateSourcePairs(t *testing.T) {
 	}{
 		{name: "activate by slash command", state: StateActive, source: SourceSlashCommand, valid: true},
 		{name: "deactivate by badge removal", state: StateInactive, source: SourceBadgeRemove, valid: true},
-		{name: "activate by agent command", state: StateActive, source: SourceAgentCommand, valid: true},
-		{name: "deactivate by agent command", state: StateInactive, source: SourceAgentCommand, valid: true},
+		{name: "legacy active agent command", state: StateActive, source: SourceAgentCommand, valid: true},
+		{name: "legacy inactive agent command", state: StateInactive, source: SourceAgentCommand, valid: true},
 		{name: "active from removal", state: StateActive, source: SourceBadgeRemove},
 		{name: "inactive from slash", state: StateInactive, source: SourceSlashCommand},
 	} {

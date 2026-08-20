@@ -317,7 +317,6 @@ func (s Service) runUpdateAction(ctx context.Context, spec ProviderSpec, result 
 		result.Message = firstNonBlank(result.Stderr, result.Stdout, "Update command failed")
 		return result, nil
 	}
-
 	setActiveAction(updateCtx, spec.Provider, ActiveAction{ID: ActionUpdate, Status: "running", Step: "verify", Stdout: result.Stdout})
 	probe, err := s.Probe(ctx, ProbeInput{Provider: spec.Provider})
 	if err != nil {
@@ -328,6 +327,20 @@ func (s Service) runUpdateAction(ctx context.Context, spec ProviderSpec, result 
 		result.Status = RunActionFailed
 		result.ReasonCode = "post_update_probe_failed"
 		result.Message = firstNonBlank(probe.Message, probe.ReasonCode, "Agent provider runtime probe failed after update")
+		return result, nil
+	}
+	// Re-resolve after npm has completed before publishing the verified launcher
+	// directory. Legacy Windows installs are updated in place, while a resolver
+	// may still choose a higher-priority managed package after the update.
+	postUpdateRuntime := s.resolveProviderRuntime(ctx, spec)
+	postUpdateBinaryPath := postUpdateRuntime.CLIPath
+	if strings.TrimSpace(postUpdateBinaryPath) == "" {
+		postUpdateBinaryPath = probe.BinaryPath
+	}
+	if err := s.publishManagedInstallBinaryDir(updateCtx, postUpdateBinaryPath); err != nil {
+		result.Status = RunActionFailed
+		result.ReasonCode = "user_path_update_failed"
+		result.Message = err.Error()
 		return result, nil
 	}
 	result.Status = RunActionCompleted

@@ -81,9 +81,12 @@ function validateReleaseSummary(summary, expected = {}) {
   }
   if (
     summary.summarySource !== "agnes" &&
-    summary.summarySource !== "fallback"
+    summary.summarySource !== "fallback" &&
+    summary.summarySource !== "human-reviewed"
   ) {
-    throw new Error("release summary summarySource must be agnes or fallback");
+    throw new Error(
+      "release summary summarySource must be agnes, fallback, or human-reviewed"
+    );
   }
   if (
     !summary.compare ||

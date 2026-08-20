@@ -1,4 +1,4 @@
-import { useMemo, type ReactNode } from "react";
+import { useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import {
   createWorkbenchHostLaunchedNodeId,
   type WorkbenchContribution,
@@ -16,6 +16,7 @@ import {
   workspaceAppWebviewTypeID
 } from "@renderer/features/workspace-app-center";
 import { createStandaloneAgentDirectToolHost } from "./standaloneAgentToolWorkbench.ts";
+import { syncStandaloneAgentAppViewerWebviewBounds } from "./standaloneAgentAppViewerLayout.ts";
 
 export function StandaloneAgentAppViewerToolPanel({
   active,
@@ -32,8 +33,43 @@ export function StandaloneAgentAppViewerToolPanel({
 }): ReactNode {
   const { service } = useWorkspaceAppCenterService();
   const resolved = resolveStandaloneAgentAppWebviewContribution(contributions);
+  const viewerAvailable = resolved !== null;
   const directHost = useMemo(createStandaloneAgentDirectToolHost, []);
   const app = findWorkspaceApp(service, appId);
+  const surfaceRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const surface = surfaceRef.current;
+    if (!active || !surface) return;
+
+    let animationFrameId: number | null = null;
+    const syncBounds = (): void => {
+      animationFrameId = null;
+      syncStandaloneAgentAppViewerWebviewBounds(surface);
+    };
+    const scheduleBoundsSync = (): void => {
+      if (animationFrameId !== null) return;
+      animationFrameId = window.requestAnimationFrame(syncBounds);
+    };
+    const mutationObserver = new MutationObserver(scheduleBoundsSync);
+    mutationObserver.observe(surface, { childList: true, subtree: true });
+    const resizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(scheduleBoundsSync);
+    resizeObserver?.observe(surface);
+    window.addEventListener("resize", scheduleBoundsSync);
+    scheduleBoundsSync();
+
+    return () => {
+      if (animationFrameId !== null) {
+        window.cancelAnimationFrame(animationFrameId);
+      }
+      mutationObserver.disconnect();
+      resizeObserver?.disconnect();
+      window.removeEventListener("resize", scheduleBoundsSync);
+    };
+  }, [active, viewerAvailable]);
 
   if (!resolved) {
     return (
@@ -92,7 +128,7 @@ export function StandaloneAgentAppViewerToolPanel({
     isDragging: false,
     isFocused: active,
     isResizing: false,
-    isVisible: true,
+    isVisible: active,
     node,
     setNodeRuntimeState: () => undefined,
     setSnapshotNodeState: () => undefined
@@ -100,10 +136,14 @@ export function StandaloneAgentAppViewerToolPanel({
 
   return (
     <div
-      className="h-full min-h-0 w-full overflow-hidden"
+      className="relative h-full min-h-0 w-full overflow-hidden"
+      data-active={active ? "true" : "false"}
       data-standalone-agent-app-viewer-surface="true"
+      ref={surfaceRef}
     >
-      {resolved.definition.renderBody(context)}
+      <div className="absolute inset-0 min-h-0 overflow-hidden">
+        {resolved.definition.renderBody(context)}
+      </div>
     </div>
   );
 }

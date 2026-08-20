@@ -168,7 +168,6 @@ func TestClaudeSDKCancelLiveTurnWaitsForProviderTerminal(t *testing.T) {
 	// Cancel argument (which is the cancel reason). Register a live turn and pass
 	// an unrelated reason to prove the terminal is stamped for the real turnID.
 	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-live", "")
-	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
 	events, err := adapter.Cancel(context.Background(), session, "user")
@@ -185,6 +184,12 @@ func TestClaudeSDKCancelLiveTurnWaitsForProviderTerminal(t *testing.T) {
 	if payloadString(sent[0].Payload, "turnId") != "turn-live" {
 		t.Fatalf("cancel payload = %#v, want turnId=turn-live", sent[0].Payload)
 	}
+	if payloadInt64(sent[0].Payload, "interruptTimeoutMs") != claudeSDKCancelInterruptTimeout.Milliseconds() {
+		t.Fatalf("cancel payload = %#v, want interrupt timeout", sent[0].Payload)
+	}
+	if payloadInt64(sent[0].Payload, "drainTimeoutMs") != claudeSDKCancelDrainTimeout.Milliseconds() {
+		t.Fatalf("cancel payload = %#v, want drain timeout", sent[0].Payload)
+	}
 }
 
 // The controller calls adapter.Cancel(ctx, session, reason) — the third argument
@@ -199,7 +204,6 @@ func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-live", "")
-	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-live", nil)
 
 	// Reason is the free-form stop reason the controller passes, not a turnID.
@@ -226,7 +230,7 @@ func TestClaudeSDKCancelUsesRegistryTurnNotReasonArg(t *testing.T) {
 	}
 }
 
-func TestClaudeSDKCancelWaitsForDurableProviderAcceptance(t *testing.T) {
+func TestClaudeSDKCancelBeforeProviderAcceptanceIsForwarded(t *testing.T) {
 	t.Parallel()
 
 	adapter := NewClaudeCodeSDKAdapter(nil)
@@ -235,32 +239,140 @@ func TestClaudeSDKCancelWaitsForDurableProviderAcceptance(t *testing.T) {
 	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-accept", "")
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-accept", nil)
 
-	started := make(chan struct{})
-	done := make(chan error, 1)
-	go func() {
-		close(started)
-		_, err := adapter.Cancel(context.Background(), session, "user")
-		done <- err
-	}()
-	<-started
-	select {
-	case err := <-done:
-		t.Fatalf("Cancel returned before durable acceptance: %v", err)
-	case <-time.After(50 * time.Millisecond):
-	}
-	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("Cancel after acceptance: %v", err)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("Cancel did not resume after durable acceptance")
+	if _, err := adapter.Cancel(context.Background(), session, "user"); err != nil {
+		t.Fatalf("Cancel before provider acceptance: %v", err)
 	}
 	sent := conn.sentRequests()
 	if len(sent) != 1 || sent[0].Type != "cancel" ||
 		payloadString(sent[0].Payload, "turnId") != "turn-accept" {
-		t.Fatalf("cancel after acceptance = %#v", sent)
+		t.Fatalf("cancel before acceptance = %#v", sent)
+	}
+}
+
+func TestClaudeSDKCancelProviderActiveWaitsOnlyAfterSendingCancel(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := newBlockingClaudeSDKConnection()
+	defer func() { _ = conn.Close() }()
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-provider-active", "")
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-provider-active", nil)
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := adapter.Cancel(context.Background(), session, "user")
+		done <- err
+	}()
+	request := waitForClaudeSDKSentRequest(t, conn, "cancel")
+	conn.pushEvent(claudeSDKSidecarEvent{
+		ID: request.ID, Type: "ok",
+		Payload: map[string]any{
+			"canceled": true, "disposition": "provider_active",
+			"turnId": "turn-provider-active", "providerTurnId": "provider-turn-active",
+			"dispatchPhase": "identity_resolved",
+		},
+	})
+	select {
+	case err := <-done:
+		t.Fatalf("Cancel returned before durable acceptance completed: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+	adapter.completeClaudeSDKProviderAcceptance(adapterSession, "turn-provider-active", nil)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Cancel after durable acceptance: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Cancel did not resume after durable acceptance")
+	}
+}
+
+func TestClaudeSDKCancelProviderActiveReturnsDurableAcceptanceFailure(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := &ackClaudeSDKConnection{
+		cancelDisposition:    "provider_active",
+		cancelProviderTurnID: "provider-turn-failed",
+	}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-acceptance-failed", "")
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-acceptance-failed", nil)
+	acceptanceErr := errors.New("durable acceptance failed")
+	adapter.completeClaudeSDKProviderAcceptance(adapterSession, "turn-acceptance-failed", acceptanceErr)
+
+	_, err := adapter.Cancel(context.Background(), session, "user")
+	if !errors.Is(err, acceptanceErr) {
+		t.Fatalf("Cancel error = %v, want durable acceptance failure", err)
+	}
+}
+
+func TestClaudeSDKCancelUnknownDispositionFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := &ackClaudeSDKConnection{cancelDisposition: "future_state"}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-unknown-disposition", "")
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-unknown-disposition", nil)
+
+	_, err := adapter.Cancel(context.Background(), session, "user")
+	if err == nil || !strings.Contains(err.Error(), "unknown cancel disposition") {
+		t.Fatalf("Cancel error = %v, want unknown disposition failure", err)
+	}
+}
+
+func TestClaudeSDKCancelUnknownDispatchPhaseFailsClosed(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := &ackClaudeSDKConnection{cancelDispatchPhase: "future_phase"}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-unknown-phase", "")
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-unknown-phase", nil)
+
+	_, err := adapter.Cancel(context.Background(), session, "user")
+	if err == nil || !strings.Contains(err.Error(), "unknown cancel dispatch phase") {
+		t.Fatalf("Cancel error = %v, want unknown dispatch phase failure", err)
+	}
+}
+
+func TestClaudeSDKCancelMismatchIsNotTargetAbsent(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	canceled := false
+	conn := &ackClaudeSDKConnection{
+		cancelResult:      &canceled,
+		cancelDisposition: "mismatch",
+	}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-mismatch", "")
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-mismatch", nil)
+
+	_, err := adapter.CancelTargets(context.Background(), session, []CancelTarget{{
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-mismatch",
+	}}, "user")
+	if !errors.Is(err, ErrCancelTargetMismatch) || errors.Is(err, ErrSessionNoActiveTurn) {
+		t.Fatalf("CancelTargets error = %v, want target mismatch", err)
+	}
+	if adapter.turnAlreadySettled(adapterSession, "turn-mismatch") {
+		t.Fatal("mismatched cancel permanently fenced the still-live Turn")
+	}
+	projected, terminal, projectionErr := adapter.sidecarTurnEvents(adapterSession, session, "turn-mismatch", claudeSDKSidecarEvent{
+		Type: "tool_started",
+		Payload: map[string]any{
+			"turnId":     "turn-mismatch",
+			"toolCallId": "tool-after-mismatch",
+			"toolName":   "Bash",
+			"input":      map[string]any{"command": "pwd"},
+		},
+	})
+	if projectionErr != nil || terminal || len(projected) == 0 {
+		t.Fatalf("post-mismatch projection events=%#v terminal=%v err=%v", projected, terminal, projectionErr)
 	}
 }
 
@@ -271,7 +383,6 @@ func TestClaudeSDKCancelTargetsPassesExactTurnID(t *testing.T) {
 	conn := &ackClaudeSDKConnection{}
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-exact", "")
-	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-exact", nil)
 
 	result, err := adapter.CancelTargets(context.Background(), session, []CancelTarget{{
@@ -291,6 +402,31 @@ func TestClaudeSDKCancelTargetsPassesExactTurnID(t *testing.T) {
 	}
 }
 
+func TestClaudeSDKCancelTargetsReportsExactTurnAbsent(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	canceled := false
+	conn := &ackClaudeSDKConnection{cancelResult: &canceled}
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-absent", "")
+	adapter.registerClaudeSDKTurn(adapterSession, "turn-absent", nil)
+
+	result, err := adapter.CancelTargets(context.Background(), session, []CancelTarget{{
+		AgentSessionID: session.AgentSessionID,
+		TurnID:         "turn-absent",
+	}}, "user")
+	if !errors.Is(err, ErrSessionNoActiveTurn) {
+		t.Fatalf("CancelTargets error = %v, want %v", err, ErrSessionNoActiveTurn)
+	}
+	if len(result.ConfirmedTargets) != 0 {
+		t.Fatalf("confirmed = %#v, want none", result.ConfirmedTargets)
+	}
+	if adapter.turnAlreadySettled(adapterSession, "turn-absent") {
+		t.Fatal("absent cancel permanently fenced the unconfirmed Turn")
+	}
+}
+
 // A cancel racing the turn's own settle must not fabricate a second,
 // contradicting terminal event (the stuck-view class ADR 0008 removes).
 func TestClaudeSDKCancelAfterSettleIsIdempotent(t *testing.T) {
@@ -301,7 +437,6 @@ func TestClaudeSDKCancelAfterSettleIsIdempotent(t *testing.T) {
 	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
 
 	adapter.beginClaudeSDKRootTurn(adapterSession, "turn-1", "provider-turn-1")
-	adapter.signalClaudeSDKProviderTurnAccepted(adapterSession)
 	adapter.registerClaudeSDKTurn(adapterSession, "turn-1", nil)
 	_ = adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
 		Type:    "turn_completed",
@@ -874,6 +1009,477 @@ func TestClaudeSDKGoalArmTurnGatesCompletion(t *testing.T) {
 	}
 	if goal := adapter.localGoal(adapterSession); goal["status"] != "active" {
 		t.Fatalf("goal after arm turn completed = %#v", goal)
+	}
+}
+
+func TestClaudeSDKPendingGoalCancelRollsBackExactArmWithoutTurnTerminal(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, &recordingClaudeSDKConnection{})
+	var events []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, next []activityshared.Event) {
+		events = append(events, next...)
+	})
+	adapter.applyLocalGoal(adapterSession, map[string]any{
+		"objective": "ship it",
+		"status":    "active",
+	})
+	adapterSession.goalOperationID = "goal-operation-1"
+	adapterSession.goalRevision = 1
+	adapterSession.goalArmTurnID = "goal-turn-pending"
+	adapterSession.pendingGoalCommands = map[string]claudeSDKPendingGoalCommand{
+		"goal-turn-pending": {
+			identity: goalOperationIdentity{
+				operationID: "goal-operation-1",
+				revision:    1,
+			},
+			action: "set",
+		},
+	}
+	adapterSession.goalTurnBindings = map[string]claudeSDKGoalTurnBinding{
+		"goal-turn-pending": {turnID: "goal-turn-pending"},
+	}
+
+	err := adapter.dispatchClaudeSDKEvent(
+		session.AgentSessionID,
+		adapterSession,
+		claudeSDKSidecarEvent{
+			Type: "goal_command_canceled",
+			Payload: map[string]any{
+				"turnId":      "goal-turn-pending",
+				"operationId": "goal-operation-1",
+				"revision":    1,
+				"repairEpoch": 0,
+				"action":      "set",
+				"reason":      "cancel_requested",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("goal_command_canceled: %v", err)
+	}
+	if goal := adapter.localGoal(adapterSession); len(goal) != 0 {
+		t.Fatalf("goal mirror after pending cancel = %#v, want empty", goal)
+	}
+	if adapterSession.goalArmTurnID != "" {
+		t.Fatalf("goal arm after pending cancel = %q, want empty", adapterSession.goalArmTurnID)
+	}
+	if _, ok := adapterSession.goalTurnBindings["goal-turn-pending"]; ok {
+		t.Fatal("pending Goal binding survived exact cancellation")
+	}
+	assertClaudeSDKGoalUpdateEvent(t, events, "thread_goal_cleared")
+	if terminals := activityEventsWithType(events, activityshared.EventTurnCompleted); len(terminals) != 0 {
+		t.Fatalf("pending Goal cancel fabricated a Turn terminal: %#v", terminals)
+	}
+}
+
+func TestClaudeSDKPendingGoalClearCancelRestoresPreviousMirror(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, &recordingClaudeSDKConnection{})
+	var events []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, next []activityshared.Event) {
+		events = append(events, next...)
+	})
+	previous := map[string]any{"objective": "keep shipping", "status": "active"}
+	adapterSession.goalOperationID = "goal-clear-operation"
+	adapterSession.goalRevision = 3
+	adapterSession.goalRepairEpoch = 1
+	adapterSession.goalClearControlTurns = map[string]struct{}{"goal-clear-pending": {}}
+	adapterSession.pendingGoalCommands = map[string]claudeSDKPendingGoalCommand{
+		"goal-clear-pending": {
+			identity: goalOperationIdentity{
+				operationID: "goal-clear-operation",
+				revision:    3,
+				repairEpoch: 1,
+			},
+			action:       "clear",
+			previousGoal: previous,
+		},
+	}
+
+	err := adapter.dispatchClaudeSDKEvent(
+		session.AgentSessionID,
+		adapterSession,
+		claudeSDKSidecarEvent{
+			Type: "goal_command_canceled",
+			Payload: map[string]any{
+				"turnId":      "goal-clear-pending",
+				"operationId": "goal-clear-operation",
+				"revision":    3,
+				"repairEpoch": 1,
+				"action":      "clear",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("goal clear cancel: %v", err)
+	}
+	if goal := adapter.localGoal(adapterSession); asString(goal["objective"]) != "keep shipping" {
+		t.Fatalf("goal mirror after clear cancel = %#v, want previous", goal)
+	}
+	if _, ok := adapterSession.goalClearControlTurns["goal-clear-pending"]; ok {
+		t.Fatal("clear-control bookkeeping survived exact cancellation")
+	}
+	assertClaudeSDKGoalUpdateEvent(t, events, "thread_goal_update")
+}
+
+func TestClaudeSDKStalePendingGoalCancelDoesNotRollbackNewerIdentity(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, &recordingClaudeSDKConnection{})
+	var events []activityshared.Event
+	adapter.SetSessionEventSink(func(_ string, next []activityshared.Event) {
+		events = append(events, next...)
+	})
+	adapterSession.goalOperationID = "goal-operation-new"
+	adapterSession.goalRevision = 2
+	adapterSession.goalArmTurnID = "goal-turn-new"
+	adapterSession.pendingGoalCommands = map[string]claudeSDKPendingGoalCommand{
+		"goal-turn-old": {
+			identity: goalOperationIdentity{
+				operationID: "goal-operation-old",
+				revision:    1,
+			},
+			action: "set",
+		},
+	}
+	adapter.applyLocalGoal(adapterSession, map[string]any{
+		"objective": "new goal",
+		"status":    "active",
+	})
+
+	err := adapter.dispatchClaudeSDKEvent(
+		session.AgentSessionID,
+		adapterSession,
+		claudeSDKSidecarEvent{
+			Type: "goal_command_canceled",
+			Payload: map[string]any{
+				"turnId":      "goal-turn-old",
+				"operationId": "goal-operation-old",
+				"revision":    1,
+				"repairEpoch": 0,
+				"action":      "set",
+			},
+		},
+	)
+	if err != nil {
+		t.Fatalf("stale goal cancel: %v", err)
+	}
+	if len(events) != 0 {
+		t.Fatalf("stale goal cancel emitted updates: %#v", events)
+	}
+	if goal := adapter.localGoal(adapterSession); asString(goal["objective"]) != "new goal" {
+		t.Fatalf("stale cancel rolled back newer goal: %#v", goal)
+	}
+	if adapterSession.goalArmTurnID != "goal-turn-new" {
+		t.Fatalf("stale cancel cleared newer arm: %q", adapterSession.goalArmTurnID)
+	}
+}
+
+func TestClaudeSDKFenceCancelsPendingGoalBeforeProviderStart(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := newBlockingClaudeSDKConnection()
+	defer func() { _ = conn.Close() }()
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.applyLocalGoal(adapterSession, map[string]any{
+		"objective": "previous goal",
+		"status":    "active",
+	})
+
+	applyDone := make(chan error, 1)
+	go func() {
+		_, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+			Action: GoalControlSet, Objective: "new goal",
+			OperationID: "goal-operation-pending", Revision: 4, RepairEpoch: 2,
+		})
+		applyDone <- err
+	}()
+	execRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", "/goal new goal")
+	conn.pushEvent(claudeSDKSidecarEvent{ID: execRequest.ID, Type: "ok"})
+	if err := <-applyDone; err != nil {
+		t.Fatalf("ApplyGoal: %v", err)
+	}
+	turnID := payloadString(execRequest.Payload, "turnId")
+
+	if err := adapter.FenceGoalGeneration(context.Background(), session, GoalGenerationFenceInput{
+		OperationID: "goal-operation-pending", Revision: 4, RepairEpoch: 2,
+		Reason: "superseded",
+	}); err != nil {
+		t.Fatalf("FenceGoalGeneration: %v", err)
+	}
+	cancelRequest := waitForClaudeSDKSentRequest(t, conn, "cancel")
+	if payloadString(cancelRequest.Payload, "turnId") != turnID {
+		t.Fatalf("pending Goal cancel payload = %#v, want turn %q", cancelRequest.Payload, turnID)
+	}
+	conn.pushEvent(claudeSDKSidecarEvent{
+		Type: "goal_command_canceled",
+		Payload: map[string]any{
+			"turnId":      turnID,
+			"operationId": "goal-operation-pending",
+			"revision":    4,
+			"repairEpoch": 2,
+			"action":      "set",
+			"reason":      "cancel_requested",
+		},
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		goal := adapter.localGoal(adapterSession)
+		adapter.mu.Lock()
+		_, pending := adapterSession.pendingGoalCommands[turnID]
+		adapter.mu.Unlock()
+		if asString(goal["objective"]) == "previous goal" && !pending {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("pending Goal did not converge after fence: goal=%#v pending=%v", goal, pending)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	for _, request := range conn.sentRequests() {
+		if request.Type == "exec" && request.ID != execRequest.ID {
+			t.Fatalf("fenced pending Goal was dispatched again: %#v", conn.sentRequests())
+		}
+	}
+}
+
+func TestClaudeSDKTypedGoalCancellationConvergesAcrossStartBacklog(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		action           GoalControlAction
+		objective        string
+		fenceBeforeStart bool
+		observeBeforeEnd bool
+	}{
+		{name: "fenced set", action: GoalControlSet, objective: "new goal", fenceBeforeStart: true},
+		{name: "fenced clear", action: GoalControlClear, fenceBeforeStart: true},
+		{name: "started set", action: GoalControlSet, objective: "new goal"},
+		{name: "started clear", action: GoalControlClear},
+		{name: "observed set commits", action: GoalControlSet, objective: "new goal", observeBeforeEnd: true},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := NewClaudeCodeSDKAdapter(nil)
+			conn := newBlockingClaudeSDKConnection()
+			defer func() { _ = conn.Close() }()
+			session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+			adapter.applyLocalGoal(adapterSession, map[string]any{
+				"objective": "previous goal",
+				"status":    "active",
+			})
+			var emitted []activityshared.Event
+			adapter.SetSessionEventSink(func(_ string, next []activityshared.Event) {
+				emitted = append(emitted, next...)
+			})
+
+			applyDone := make(chan error, 1)
+			go func() {
+				_, err := adapter.ApplyGoal(context.Background(), session, GoalApplyInput{
+					Action: test.action, Objective: test.objective,
+					OperationID: "goal-operation-backlog", Revision: 9, RepairEpoch: 2,
+				})
+				applyDone <- err
+			}()
+			command := "/goal clear"
+			if test.action == GoalControlSet {
+				command = "/goal new goal"
+			}
+			execRequest := waitForClaudeSDKSentRequestMatching(t, conn, "exec", command)
+			conn.pushEvent(claudeSDKSidecarEvent{ID: execRequest.ID, Type: "ok"})
+			if err := <-applyDone; err != nil {
+				t.Fatalf("ApplyGoal: %v", err)
+			}
+			turnID := payloadString(execRequest.Payload, "turnId")
+			providerTurnID := "provider-" + turnID
+
+			if test.fenceBeforeStart {
+				if err := adapter.FenceGoalGeneration(context.Background(), session, GoalGenerationFenceInput{
+					OperationID: "goal-operation-backlog", Revision: 9, RepairEpoch: 2,
+					Reason: "superseded",
+				}); err != nil {
+					t.Fatalf("FenceGoalGeneration: %v", err)
+				}
+				cancelRequest := waitForClaudeSDKSentRequest(t, conn, "cancel")
+				if payloadString(cancelRequest.Payload, "turnId") != turnID {
+					t.Fatalf("cancel payload = %#v, want turn %q", cancelRequest.Payload, turnID)
+				}
+			}
+
+			provenance := map[string]any{
+				"turnId": turnID, "providerTurnId": providerTurnID,
+				"sourceGoalOperationId": "goal-operation-backlog",
+				"sourceGoalRevision":    float64(9),
+				"sourceGoalRepairEpoch": float64(2),
+			}
+			if test.action == GoalControlSet {
+				provenance["turnOrigin"] = "goal_arm"
+			}
+			for _, sidecarEvent := range []claudeSDKSidecarEvent{
+				{Type: "provider_turn_identity_resolved", Payload: clonePayload(provenance)},
+				{Type: "goal_command_started", Payload: map[string]any{
+					"turnId": turnID, "providerTurnId": providerTurnID,
+					"operationId": "goal-operation-backlog", "revision": float64(9),
+					"repairEpoch": float64(2), "action": string(test.action),
+				}},
+			} {
+				if err := adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, sidecarEvent); err != nil {
+					t.Fatalf("dispatch %s: %v", sidecarEvent.Type, err)
+				}
+			}
+			if test.action == GoalControlSet {
+				turnStarted := clonePayload(provenance)
+				delete(turnStarted, "providerTurnId")
+				if err := adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+					Type: "turn_started", Payload: turnStarted,
+				}); err != nil {
+					t.Fatalf("dispatch turn_started: %v", err)
+				}
+			}
+
+			if test.observeBeforeEnd {
+				if err := adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+					Type: "goal_observed",
+					Payload: map[string]any{
+						"turnId": turnID, "providerTurnId": providerTurnID,
+						"action": "set", "source": "active_goal",
+						"updateType": "thread_goal_update",
+						"goal":       map[string]any{"objective": "new goal", "status": "active"},
+					},
+				}); err != nil {
+					t.Fatalf("dispatch goal_observed: %v", err)
+				}
+			}
+			if err := adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+				Type: "turn_canceled",
+				Payload: map[string]any{
+					"turnId": turnID, "providerTurnId": providerTurnID,
+				},
+			}); err != nil {
+				t.Fatalf("dispatch turn_canceled: %v", err)
+			}
+
+			wantObjective := "previous goal"
+			if test.observeBeforeEnd {
+				wantObjective = "new goal"
+			}
+			if goal := adapter.localGoal(adapterSession); asString(goal["objective"]) != wantObjective {
+				t.Fatalf("goal after cancellation = %#v, want objective %q", goal, wantObjective)
+			}
+			adapter.mu.Lock()
+			_, pending := adapterSession.pendingGoalCommands[turnID]
+			_, clearControl := adapterSession.goalClearControlTurns[turnID]
+			armTurnID := adapterSession.goalArmTurnID
+			fencedTurns := len(adapterSession.fencedGoalTurns)
+			bindings := len(adapterSession.goalTurnBindings)
+			adapter.mu.Unlock()
+			if pending || clearControl || armTurnID == turnID || fencedTurns != 0 || bindings != 0 {
+				t.Fatalf("Goal bookkeeping survived terminal: pending=%v clear=%v arm=%q fences=%d bindings=%d",
+					pending, clearControl, armTurnID, fencedTurns, bindings)
+			}
+			started := activityEventsWithType(emitted, activityshared.EventRootProviderTurnStarted)
+			wantStarts := 0
+			if !test.fenceBeforeStart && test.action == GoalControlSet {
+				wantStarts = 1
+			}
+			if len(started) != wantStarts {
+				t.Fatalf("canonical starts = %#v, want %d", started, wantStarts)
+			}
+		})
+	}
+}
+
+func TestClaudeSDKFencedPendingGoalConsumesLateSuperseded(t *testing.T) {
+	t.Parallel()
+
+	adapter := NewClaudeCodeSDKAdapter(nil)
+	conn := newBlockingClaudeSDKConnection()
+	defer func() { _ = conn.Close() }()
+	session, adapterSession := newClaudeSDKLifecycleTestSession(t, adapter, conn)
+	adapter.applyLocalGoal(adapterSession, map[string]any{
+		"objective": "previous goal",
+		"status":    "active",
+	})
+
+	applyGoal := func(input GoalApplyInput, command string) string {
+		t.Helper()
+		done := make(chan error, 1)
+		go func() {
+			_, err := adapter.ApplyGoal(context.Background(), session, input)
+			done <- err
+		}()
+		request := waitForClaudeSDKSentRequestMatching(t, conn, "exec", command)
+		conn.pushEvent(claudeSDKSidecarEvent{ID: request.ID, Type: "ok"})
+		if err := <-done; err != nil {
+			t.Fatalf("ApplyGoal %s: %v", input.Action, err)
+		}
+		return payloadString(request.Payload, "turnId")
+	}
+	oldTurnID := applyGoal(GoalApplyInput{
+		Action: GoalControlSet, Objective: "superseded goal",
+		OperationID: "goal-operation-old", Revision: 1,
+	}, "/goal superseded goal")
+	newTurnID := applyGoal(GoalApplyInput{
+		Action:      GoalControlClear,
+		OperationID: "goal-operation-new", Revision: 2,
+	}, "/goal clear")
+
+	if err := adapter.FenceGoalGeneration(context.Background(), session, GoalGenerationFenceInput{
+		OperationID: "goal-operation-old", Revision: 1, Reason: "superseded",
+	}); err != nil {
+		t.Fatalf("FenceGoalGeneration: %v", err)
+	}
+	waitForClaudeSDKSentRequest(t, conn, "cancel")
+	if err := adapter.dispatchClaudeSDKEvent(session.AgentSessionID, adapterSession, claudeSDKSidecarEvent{
+		Type: "goal_command_superseded",
+		Payload: map[string]any{
+			"turnId": oldTurnID, "operationId": "goal-operation-old",
+			"revision": float64(1), "action": "set", "supersededByRevision": float64(2),
+		},
+	}); err != nil {
+		t.Fatalf("dispatch late goal_command_superseded: %v", err)
+	}
+
+	adapter.mu.Lock()
+	_, oldPending := adapterSession.pendingGoalCommands[oldTurnID]
+	_, newPending := adapterSession.pendingGoalCommands[newTurnID]
+	fencedTurns := len(adapterSession.fencedGoalTurns)
+	bindings := len(adapterSession.goalTurnBindings)
+	aliases := len(adapterSession.rootProviderTurns)
+	adapter.mu.Unlock()
+	if oldPending || !newPending || fencedTurns != 0 || bindings != 0 || aliases != 0 {
+		t.Fatalf("late superseded cleanup: oldPending=%v newPending=%v fences=%d bindings=%d aliases=%d",
+			oldPending, newPending, fencedTurns, bindings, aliases)
+	}
+	if goal := adapter.localGoal(adapterSession); len(goal) != 0 {
+		t.Fatalf("stale superseded event rolled back newer clear mirror: %#v", goal)
+	}
+
+	countCancels := func() int {
+		count := 0
+		for _, request := range conn.sentRequests() {
+			if request.Type == "cancel" {
+				count++
+			}
+		}
+		return count
+	}
+	cancelCount := countCancels()
+	if err := adapter.FenceGoalGeneration(context.Background(), session, GoalGenerationFenceInput{
+		OperationID: "goal-operation-old", Revision: 1, Reason: "retry",
+	}); err != nil {
+		t.Fatalf("repeat FenceGoalGeneration: %v", err)
+	}
+	if nextCancelCount := countCancels(); nextCancelCount != cancelCount {
+		t.Fatalf("repeat fence sent another cancel: before=%d after=%d", cancelCount, nextCancelCount)
 	}
 }
 

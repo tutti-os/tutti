@@ -10,9 +10,9 @@ import {
 import { managedAgentRoundedIconUrl } from "./managedAgentIcons";
 import { isDirectAgentGeneratedMediaPath } from "../actions/workspaceFilePathCandidate";
 import {
-  resolveAgentTargetPresentation,
+  resolveAgentMentionTargetPresentation,
   type AgentMessageMarkdownAgentTarget
-} from "./AgentTargetPresentationContext";
+} from "./agentTargetPresentation";
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "./AgentMessageMarkdown";
 
 const PLAIN_SESSION_MENTION_AGENT_LABELS = [
@@ -71,15 +71,23 @@ export function isLocalAbsolutePath(path: string): boolean {
 
 export function resolveMarkdownWorkspaceMediaPath(src: string): string | null {
   const candidate = src.trim();
-  if (!isLocalAbsolutePath(candidate)) {
-    return null;
-  }
-
+  const fileUrlPath = resolveMarkdownFileUrlPath(candidate);
+  const pathCandidate = fileUrlPath ?? candidate;
   try {
-    const decodedPath = decodeURIComponent(candidate);
-    return decodedPath.length > 1 &&
+    const decodedPath = fileUrlPath ?? decodeURIComponent(pathCandidate);
+    if (
+      !isLocalAbsolutePath(pathCandidate) &&
+      !isWindowsAbsolutePath(pathCandidate) &&
+      !isWindowsAbsolutePath(decodedPath)
+    ) {
+      return null;
+    }
+    const isPosixAbsolutePath =
+      decodedPath.length > 1 &&
       decodedPath.startsWith("/") &&
-      !decodedPath.startsWith("//") &&
+      !decodedPath.startsWith("//");
+    const isWindowsAbsolutePathValue = isWindowsAbsolutePath(decodedPath);
+    return (isPosixAbsolutePath || isWindowsAbsolutePathValue) &&
       !decodedPath.includes("\0")
       ? decodedPath
       : null;
@@ -101,7 +109,11 @@ export function isHomeRelativePath(path: string): boolean {
 
 export function isWindowsAbsolutePath(path: string): boolean {
   const candidate = path.trim();
-  return /^[A-Za-z]:[\\/]/.test(candidate) && !/\s/.test(candidate);
+  return (
+    /^[A-Za-z]:[\\/]/.test(candidate) &&
+    !candidate.includes("://") &&
+    !candidate.includes("\0")
+  );
 }
 
 export function isExplicitWorkspaceFilePath(path: string): boolean {
@@ -150,6 +162,10 @@ export function resolveRenderableMarkdownMediaSrc(src: string): string {
   const trimmed = src.trim();
   if (!trimmed) {
     return src;
+  }
+  const workspacePath = resolveMarkdownWorkspaceMediaPath(trimmed);
+  if (workspacePath && isWindowsAbsolutePath(workspacePath)) {
+    return windowsPathToFileUrl(workspacePath);
   }
   if (!isLocalAbsolutePath(trimmed) || trimmed.startsWith("/workspace/")) {
     return src;
@@ -305,14 +321,19 @@ function normalizeLocalPathMarkdownLinkAt(
   const target = content.slice(hrefStart, hrefEnd).trim();
   if (
     !target ||
-    !/\s/.test(target) ||
     /[<>]/.test(target) ||
     !isPotentialLocalMarkdownPathHref(target)
   ) {
     return null;
   }
+  const normalizedTarget = /^[A-Za-z]:\\/.test(target)
+    ? target.replaceAll("\\", "/")
+    : target;
+  if (normalizedTarget === target && !/\s/.test(target)) return null;
   return {
-    markdown: `${content.slice(index, hrefStart)}<${target}>)`,
+    markdown: `${content.slice(index, hrefStart)}${
+      /\s/.test(normalizedTarget) ? `<${normalizedTarget}>` : normalizedTarget
+    })`,
     end: hrefEnd + 1
   };
 }
@@ -395,13 +416,45 @@ export function normalizePlainSessionMentionTitle(content: string): string {
   return content;
 }
 
-export function markdownUrlTransform(value: string): string {
+export function markdownUrlTransform(value: string, key = ""): string {
   const target = value.trim();
+  if (key === "src") {
+    const workspacePath = resolveMarkdownWorkspaceMediaPath(target);
+    if (workspacePath && isWindowsAbsolutePath(workspacePath)) {
+      return windowsPathToFileUrl(workspacePath);
+    }
+  }
   return isRichTextMentionHref(target) ||
     isExplicitWorkspaceFilePath(target) ||
     isStandardMarkdownLinkHref(target)
     ? target
     : defaultUrlTransform(value);
+}
+
+function resolveMarkdownFileUrlPath(value: string): string | null {
+  if (!value.toLowerCase().startsWith("file:")) {
+    return null;
+  }
+
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "file:" || url.hostname) {
+      return null;
+    }
+    const decodedPath = decodeURIComponent(url.pathname);
+    return /^[A-Za-z]:[\\/]/.test(decodedPath.slice(1))
+      ? decodedPath.slice(1)
+      : decodedPath;
+  } catch {
+    return null;
+  }
+}
+
+function windowsPathToFileUrl(path: string): string {
+  const normalizedPath = path.replaceAll("\\", "/");
+  const drive = normalizedPath.slice(0, 2);
+  const segments = normalizedPath.slice(2).split("/");
+  return `file:///${drive}${segments.map((segment) => encodeURIComponent(segment)).join("/")}`;
 }
 
 type MentionKind =
@@ -502,40 +555,36 @@ export function parseMentionLink(
   }
   if (kind === "agent-target") {
     const workspaceId = mention.scope?.workspaceId?.trim() || "";
-    const target = resolveAgentTargetPresentation({
+    const scopedProvider = mention.scope?.agentProviderId?.trim() || "";
+    const presentation = resolveAgentMentionTargetPresentation({
       agentTargetId: entityId,
       agentTargets,
+      fallbackIconUrl: managedAgentRoundedIconUrl(scopedProvider || undefined),
+      fallbackName: label,
+      fallbackProvider: scopedProvider,
       workspaceId
     });
-    const agentProviderId = target?.provider?.trim() || undefined;
-    const targetLabel = target?.name?.trim() || label;
     return {
       ...identity,
-      agentProviderId,
+      agentProviderId: presentation.provider,
       kind,
-      label: targetLabel,
-      iconUrl:
-        target?.iconUrl?.trim() || managedAgentRoundedIconUrl(agentProviderId)
+      label: presentation.name ?? label,
+      iconUrl: presentation.iconUrl
     };
   }
   if (kind === "session") {
     const workspaceId = mention.scope?.workspaceId?.trim() || "";
     const agentTargetId = mention.scope?.agentTargetId?.trim() || "";
-    const target = resolveAgentTargetPresentation({
+    const presentation = resolveAgentMentionTargetPresentation({
       agentTargetId,
       agentTargets,
       workspaceId
     });
-    const localProvider = agentTargetId.startsWith("local:")
-      ? agentTargetId.slice("local:".length).trim()
-      : "";
     return {
       ...identity,
       kind,
       label,
-      iconUrl:
-        target?.iconUrl?.trim() ||
-        (localProvider ? managedAgentRoundedIconUrl(localProvider) : undefined)
+      iconUrl: presentation.iconUrl
     };
   }
   if (kind === "workspace-reference") {

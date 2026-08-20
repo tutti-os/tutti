@@ -12,6 +12,8 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
@@ -30,6 +32,9 @@ const NodeStaticProfile = appRuntimeNodeStaticProfile
 
 const maxManagedAppRuntimeArtifactBytes int64 = 512 * 1024 * 1024
 const maxManagedAppRuntimeExpandedBytes int64 = 2 * 1024 * 1024 * 1024
+const managedAppRuntimeCatalogRequestAttempts = 3
+const managedAppRuntimeCatalogRetryBaseDelay = 100 * time.Millisecond
+const managedAppRuntimeCatalogErrorDrainBytes int64 = 32 * 1024
 
 type Resolver interface {
 	Resolve(context.Context) (ResolvedRuntime, error)
@@ -85,7 +90,48 @@ type appRuntimeCatalogComponent struct {
 	ArtifactSizeBytes int64  `json:"artifactSizeBytes,omitempty"`
 }
 
-var managedAppRuntimeDownloadLocks sync.Map
+type managedAppRuntimeRootLock struct {
+	token chan struct{}
+	users int
+}
+
+var managedAppRuntimeDownloadLocks = struct {
+	sync.Mutex
+	entries map[string]*managedAppRuntimeRootLock
+}{entries: make(map[string]*managedAppRuntimeRootLock)}
+
+func acquireManagedAppRuntimeDownloadLock(ctx context.Context, root string) (func(), error) {
+	managedAppRuntimeDownloadLocks.Lock()
+	lock := managedAppRuntimeDownloadLocks.entries[root]
+	if lock == nil {
+		lock = &managedAppRuntimeRootLock{token: make(chan struct{}, 1)}
+		managedAppRuntimeDownloadLocks.entries[root] = lock
+	}
+	lock.users++
+	managedAppRuntimeDownloadLocks.Unlock()
+
+	releaseUser := func() {
+		managedAppRuntimeDownloadLocks.Lock()
+		lock.users--
+		if lock.users == 0 && managedAppRuntimeDownloadLocks.entries[root] == lock {
+			delete(managedAppRuntimeDownloadLocks.entries, root)
+		}
+		managedAppRuntimeDownloadLocks.Unlock()
+	}
+	select {
+	case lock.token <- struct{}{}:
+		var once sync.Once
+		return func() {
+			once.Do(func() {
+				<-lock.token
+				releaseUser()
+			})
+		}, nil
+	case <-ctx.Done():
+		releaseUser()
+		return nil, ctx.Err()
+	}
+}
 
 func (r DefaultResolver) Resolve(ctx context.Context) (ResolvedRuntime, error) {
 	root := r.runtimeRoot()
@@ -241,10 +287,11 @@ func (r DefaultResolver) ensureRuntimeProfile(ctx context.Context, root string, 
 	if profile == "" {
 		return fmt.Errorf("managed app runtime profile is required")
 	}
-	lockValue, _ := managedAppRuntimeDownloadLocks.LoadOrStore(root, &sync.Mutex{})
-	lock := lockValue.(*sync.Mutex)
-	lock.Lock()
-	defer lock.Unlock()
+	release, err := acquireManagedAppRuntimeDownloadLock(ctx, root)
+	if err != nil {
+		return fmt.Errorf("wait for managed app runtime lock: %w", err)
+	}
+	defer release()
 
 	if profile == appRuntimeBaselineProfile && RootReady(root) {
 		return nil
@@ -371,34 +418,86 @@ func (r DefaultResolver) runtimeCatalogSource() string {
 
 func (r DefaultResolver) readCatalog(ctx context.Context, source string) ([]byte, error) {
 	if strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
-		if err != nil {
-			return nil, fmt.Errorf("create managed app runtime catalog request: %w", err)
+		var lastErr error
+		for attempt := 1; attempt <= managedAppRuntimeCatalogRequestAttempts; attempt++ {
+			data, retry, err := r.readRemoteCatalogOnce(ctx, source)
+			if err == nil {
+				return data, nil
+			}
+			lastErr = err
+			if !retry || attempt == managedAppRuntimeCatalogRequestAttempts {
+				return nil, err
+			}
+			if err := waitForManagedAppRuntimeCatalogRetry(ctx, attempt); err != nil {
+				return nil, fmt.Errorf("download managed app runtime catalog: %w", err)
+			}
 		}
-		response, err := r.httpClient().Do(request)
-		if err != nil {
-			return nil, fmt.Errorf("download managed app runtime catalog: %w", err)
-		}
-		defer func() {
-			_ = response.Body.Close()
-		}()
-		if response.StatusCode < 200 || response.StatusCode >= 300 {
-			return nil, fmt.Errorf("download managed app runtime catalog: unexpected status %d", response.StatusCode)
-		}
-		data, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024+1))
-		if err != nil {
-			return nil, fmt.Errorf("read managed app runtime catalog: %w", err)
-		}
-		if len(data) > 2*1024*1024 {
-			return nil, fmt.Errorf("managed app runtime catalog exceeds maximum size")
-		}
-		return data, nil
+		return nil, lastErr
 	}
 	data, err := os.ReadFile(source)
 	if err != nil {
 		return nil, fmt.Errorf("read managed app runtime catalog: %w", err)
 	}
 	return data, nil
+}
+
+func (r DefaultResolver) readRemoteCatalogOnce(ctx context.Context, source string) ([]byte, bool, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
+	if err != nil {
+		return nil, false, fmt.Errorf("create managed app runtime catalog request: %w", err)
+	}
+	response, err := r.httpClient().Do(request)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, false, fmt.Errorf("download managed app runtime catalog: %w", ctx.Err())
+		}
+		return nil, isTransientManagedAppRuntimeCatalogError(err), fmt.Errorf("download managed app runtime catalog: %w", err)
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, managedAppRuntimeCatalogErrorDrainBytes))
+		_ = response.Body.Close()
+		retry := response.StatusCode == http.StatusRequestTimeout ||
+			response.StatusCode == http.StatusTooManyRequests ||
+			response.StatusCode >= http.StatusInternalServerError
+		return nil, retry, fmt.Errorf("download managed app runtime catalog: unexpected status %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 2*1024*1024+1))
+	_ = response.Body.Close()
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, false, fmt.Errorf("read managed app runtime catalog: %w", ctx.Err())
+		}
+		return nil, true, fmt.Errorf("read managed app runtime catalog: %w", err)
+	}
+	if len(data) > 2*1024*1024 {
+		return nil, false, fmt.Errorf("managed app runtime catalog exceeds maximum size")
+	}
+	return data, false, nil
+}
+
+func isTransientManagedAppRuntimeCatalogError(err error) bool {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.ETIMEDOUT) {
+		return true
+	}
+	var timeoutError interface{ Timeout() bool }
+	if errors.As(err, &timeoutError) && timeoutError.Timeout() {
+		return true
+	}
+	var temporaryError interface{ Temporary() bool }
+	return errors.As(err, &temporaryError) && temporaryError.Temporary()
+}
+
+func waitForManagedAppRuntimeCatalogRetry(ctx context.Context, attempt int) error {
+	timer := time.NewTimer(time.Duration(attempt) * managedAppRuntimeCatalogRetryBaseDelay)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
 }
 
 func (r DefaultResolver) downloadRuntime(ctx context.Context, root string, entry appRuntimeCatalogEntry, componentNames []string) error {

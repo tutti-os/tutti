@@ -354,6 +354,9 @@ function createWebHostApi(): DesktopHostApi {
         window.close();
         return Promise.resolve();
       },
+      setCloseGuardEnabled() {
+        return Promise.resolve();
+      },
       capturePreview() {
         return Promise.resolve(null);
       },

@@ -39,7 +39,10 @@ func newAgentStore(db *sql.DB) *agentactivitybiz.Store {
 			legacyIDLocalClaudeCode: agenttargetbiz.IDLocalClaudeCode,
 		},
 		TargetIDBackfillByProvider: defaultTargetIDBackfillByProvider(),
-		TransactionParticipant:     tuttiModeSourceActivityParticipant{},
+		TransactionParticipant: agentTransactionParticipants{
+			tuttiModeSourceActivityParticipant{},
+			agentTurnTerminalAnalyticsParticipant{},
+		},
 	})
 }
 
@@ -368,6 +371,10 @@ func (s *SQLiteStore) GetTurn(ctx context.Context, workspaceID string, agentSess
 	return s.agentReadStore().GetTurn(ctx, workspaceID, agentSessionID, turnID)
 }
 
+func (s *SQLiteStore) GetTurnSubmission(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.TurnSubmission, bool, error) {
+	return s.agentReadStore().GetTurnSubmission(ctx, workspaceID, agentSessionID, turnID)
+}
+
 func (s *SQLiteStore) GetLatestTurn(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Turn, bool, error) {
 	return s.agentReadStore().GetLatestTurn(ctx, workspaceID, agentSessionID)
 }
@@ -442,6 +449,10 @@ func (s *SQLiteStore) CompleteGoalControlOperation(ctx context.Context, input ag
 
 func (s *SQLiteStore) GetSessionGoalState(ctx context.Context, workspaceID, agentSessionID string) (agentactivitybiz.SessionGoalState, bool, error) {
 	return s.agentReadStore().GetSessionGoalState(ctx, workspaceID, agentSessionID)
+}
+
+func (s *SQLiteStore) ListSessionGoalStates(ctx context.Context, workspaceID string, agentSessionIDs []string) (map[string]agentactivitybiz.SessionGoalState, error) {
+	return s.agentReadStore().ListSessionGoalStates(ctx, workspaceID, agentSessionIDs)
 }
 
 func (s *SQLiteStore) ReconcileSessionGoalObservation(ctx context.Context, input agentactivitybiz.GoalObservationReconcile) (agentactivitybiz.SessionGoalState, error) {

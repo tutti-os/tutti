@@ -14,6 +14,27 @@ type testMetadata struct {
 	Peer string
 }
 
+type blockingCloseLink struct {
+	*fakeLink
+	closeStarted chan struct{}
+	releaseClose chan struct{}
+	startOnce    sync.Once
+}
+
+func newBlockingCloseLink() *blockingCloseLink {
+	return &blockingCloseLink{
+		fakeLink:     newFakeLink(),
+		closeStarted: make(chan struct{}),
+		releaseClose: make(chan struct{}),
+	}
+}
+
+func (link *blockingCloseLink) Close() error {
+	link.startOnce.Do(func() { close(link.closeStarted) })
+	<-link.releaseClose
+	return link.fakeLink.Close()
+}
+
 func TestManagerReusesLinkAndExpiresOnlyAfterLastStreamCloses(t *testing.T) {
 	t.Parallel()
 	manager := NewManager[string, testMetadata](ManagerConfig[string, testMetadata]{
@@ -60,6 +81,85 @@ func TestManagerRejectsLateLinkAfterGenerationInvalidation(t *testing.T) {
 		t.Fatalf("late link close=%d ready=%v", link.closeCount.Load(), manager.Ready("peer"))
 	}
 	admission.Close()
+}
+
+func TestManagerRetireDoesNotMakeReplacementWaitForOldClose(t *testing.T) {
+	t.Parallel()
+	manager := NewManager[string, testMetadata](ManagerConfig[string, testMetadata]{
+		IdleGrace: time.Minute,
+	})
+	old := newBlockingCloseLink()
+	registerTestLink(t, manager, "peer", "old", old, nil)
+
+	retired := manager.Retire("peer")
+	if manager.Ready("peer") {
+		t.Fatal("retired link remained ready")
+	}
+	closeDone := make(chan error, 1)
+	go func() { closeDone <- retired.Close() }()
+	select {
+	case <-old.closeStarted:
+	case <-time.After(time.Second):
+		t.Fatal("old physical close did not start")
+	}
+
+	replacement := newFakeLink()
+	registerTestLink(t, manager, "peer", "replacement", replacement, nil)
+	if !manager.Ready("peer") {
+		t.Fatal("replacement did not become ready while old close was blocked")
+	}
+	stream, err := manager.OpenStream(context.Background(), "peer")
+	if err != nil {
+		t.Fatalf("OpenStream through replacement: %v", err)
+	}
+	_ = stream.Close()
+
+	close(old.releaseClose)
+	select {
+	case err := <-closeDone:
+		if err != nil {
+			t.Fatalf("old retirement close: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("old retirement close did not finish")
+	}
+	if !manager.Ready("peer") {
+		t.Fatal("late old close removed the replacement")
+	}
+	if replacement.closeCount.Load() != 0 {
+		t.Fatalf("late old close closed replacement %d times", replacement.closeCount.Load())
+	}
+	manager.Invalidate("peer")
+}
+
+func TestManagerRetireAllReturnsExactIndependentHandles(t *testing.T) {
+	t.Parallel()
+	manager := NewManager[string, testMetadata](ManagerConfig[string, testMetadata]{
+		IdleGrace: time.Minute,
+	})
+	first := newFakeLink()
+	second := newFakeLink()
+	registerTestLink(t, manager, "first", "first-old", first, nil)
+	registerTestLink(t, manager, "second", "second-old", second, nil)
+
+	retirements := manager.RetireAll()
+	if len(retirements) != 2 {
+		t.Fatalf("RetireAll returned %d handles, want 2", len(retirements))
+	}
+	if manager.Ready("first") || manager.Ready("second") {
+		t.Fatal("RetireAll left an old link ready")
+	}
+	replacement := newFakeLink()
+	registerTestLink(t, manager, "first", "first-new", replacement, nil)
+	for index := range retirements {
+		if err := retirements[index].Close(); err != nil {
+			t.Fatalf("close retirement: %v", err)
+		}
+	}
+	if !manager.Ready("first") || replacement.closeCount.Load() != 0 {
+		t.Fatal("retired handle affected the replacement")
+	}
+	manager.Invalidate("first")
 }
 
 func TestManagerRejectsLinkAfterAdmissionContextCancellation(t *testing.T) {

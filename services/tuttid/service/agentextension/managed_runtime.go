@@ -132,6 +132,7 @@ func (m *Manager) resolveInstalledManagedRuntime(
 		if err := verifyManagedRuntimeEntry(entry); err != nil {
 			return RuntimeBinding{}, fmt.Errorf("%w: %v", ErrManagedRuntimeIntegrity, err)
 		}
+		m.repairUserCommandPath(ctx)
 	}
 	for _, candidate := range profile.Candidates {
 		if err := active.verify(); err != nil || !managedRuntimeCandidateExecutableUnchanged(active, relativeExecutable, fingerprint) {
@@ -158,12 +159,16 @@ func (m *Manager) resolveInstalledManagedRuntime(
 			return RuntimeBinding{}, fmt.Errorf("%w: active runtime executable changed during version probe", ErrManagedRuntimeIntegrity)
 		}
 		launchArgs := resolveRuntimeArguments(installation.Manifest.Runtime.Launch.Args, cwd, root)
-		return m.runtimeBinding(
+		binding, err := m.runtimeBinding(
 			installation,
 			append([]string{executable}, launchArgs...),
 			version,
 			"managed",
 		)
+		if err != nil {
+			return RuntimeBinding{}, err
+		}
+		return binding, nil
 	}
 	return RuntimeBinding{}, errors.New("managed runtime version is incompatible")
 }
@@ -234,32 +239,51 @@ func (m *Manager) adoptCompatibleManagedRuntime(
 			candidate.Close()
 			return fmt.Errorf("%w: adoption candidate changed before rename", ErrManagedRuntimeIntegrity)
 		}
-		if err := workspace.rename(name, runtimeIdentity); err != nil {
-			_ = candidate.writeJSONAtomic("activation.json", originalActivation)
-			candidate.Close()
+		// Windows does not allow a directory to be renamed while this process
+		// still holds its directory handle. Close the verified source, rename it,
+		// then reopen the promoted directory and repeat the integrity check.
+		if err := candidate.Close(); err != nil {
 			return err
 		}
-		candidate.name = runtimeIdentity
-		candidate.path = targetRoot
-		if err := candidate.verify(); err != nil || !managedRuntimeCandidateExecutableUnchanged(candidate, relativeExecutable, fingerprint) {
+		restoreActivation := func(entryName string) {
+			restored, openErr := workspace.openDirectoryName(entryName)
+			if openErr != nil {
+				return
+			}
+			_ = restored.writeJSONAtomic("activation.json", originalActivation)
+			_ = restored.Close()
+		}
+		if err := workspace.rename(name, runtimeIdentity); err != nil {
+			restoreActivation(name)
+			return err
+		}
+		promoted, err := workspace.openDirectoryName(runtimeIdentity)
+		if err != nil {
 			_ = workspace.rename(runtimeIdentity, name)
-			candidate.name = name
-			candidate.path = filepath.Join(workspace.agentPath, name)
-			_ = candidate.writeJSONAtomic("activation.json", originalActivation)
-			candidate.Close()
+			restoreActivation(name)
+			return err
+		}
+		rollback := func() {
+			_ = promoted.Close()
+			if workspace.rename(runtimeIdentity, name) == nil {
+				restoreActivation(name)
+			}
+		}
+		if err := promoted.verify(); err != nil || !managedRuntimeCandidateExecutableUnchanged(promoted, relativeExecutable, fingerprint) {
+			rollback()
 			return fmt.Errorf("%w: adoption candidate changed across rename", ErrManagedRuntimeIntegrity)
 		}
 		if publishesUserCommand(installation.Manifest) {
+			if err := m.ensureUserCommandPath(ctx); err != nil {
+				rollback()
+				return err
+			}
 			if err := publishManagedRuntimeEntry(runtimeEntry); err != nil {
-				_ = workspace.rename(runtimeIdentity, name)
-				candidate.name = name
-				candidate.path = filepath.Join(workspace.agentPath, name)
-				_ = candidate.writeJSONAtomic("activation.json", originalActivation)
-				candidate.Close()
+				rollback()
 				return err
 			}
 		}
-		candidate.Close()
+		promoted.Close()
 		return nil
 	}
 	return os.ErrNotExist

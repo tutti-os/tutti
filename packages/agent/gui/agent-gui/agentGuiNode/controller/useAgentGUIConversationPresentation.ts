@@ -7,10 +7,8 @@ import {
 } from "../../../agentTargets";
 import type { AgentGUINodeData, AgentGUIAgentTarget } from "../../../types";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
-import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import {
   applyAgentGUIConversationProjects,
-  resolveAgentGUIConversationProject,
   type AgentGUIConversationSummary
 } from "../model/agentGuiConversationModel";
 import { isAgentGUIProviderUnresolved } from "../../../shared/agentConversationTitleProjection.ts";
@@ -20,7 +18,7 @@ import {
   conversationSummariesRenderEqual,
   stableConversationSummaryList
 } from "./agentGuiController.stableHelpers";
-import { conversationBusyStatusFromAgentActivityDisplayStatus } from "./agentGuiController.draftMessageHelpers";
+import { conversationStatusFromAgentActivityDisplayStatus } from "./agentGuiController.draftMessageHelpers";
 import { mergeVisibleConversations } from "./agentGuiController.conversationHelpers";
 import { rememberAgentGUIActiveConversation } from "../model/agentGuiSessionNavigationMemory";
 import { resolveConversationSummaryById } from "./useAgentConversationSelection";
@@ -41,7 +39,6 @@ interface UseAgentGUIConversationPresentationInput {
   draftByScopeKey: Record<string, AgentComposerDraft>;
   hasUnconfirmedSubmit: boolean;
   isCreatingConversation: boolean;
-  isNoProjectPath?: (input: { path: string }) => boolean;
   isSubmitting: boolean;
   normalizedExplicitProviderTargets: readonly AgentGUIAgentTarget[];
   normalizedProviderTargets: readonly AgentGUIAgentTarget[];
@@ -67,17 +64,14 @@ export function useAgentGUIConversationPresentation(
       input.transientConversation
     );
     const mapped = source.map((conversation) => {
-      const activityBusyStatus =
-        conversationBusyStatusFromAgentActivityDisplayStatus(
-          input.activityDisplayStatuses.get(conversation.id)
-        );
-      return activityBusyStatus && conversation.status !== activityBusyStatus
-        ? { ...conversation, status: activityBusyStatus }
+      const activityStatus = conversationStatusFromAgentActivityDisplayStatus(
+        input.activityDisplayStatuses.get(conversation.id)
+      );
+      return activityStatus && conversation.status !== activityStatus
+        ? { ...conversation, status: activityStatus }
         : conversation;
     });
-    const next = applyAgentGUIConversationProjects(mapped, input.userProjects, {
-      isNoProjectPath: input.isNoProjectPath
-    });
+    const next = applyAgentGUIConversationProjects(mapped, input.userProjects);
     // Semantic conversations keep hidden entries so an explicitly opened
     // invisible session resolves its real identity; the rail list never
     // renders them.
@@ -90,7 +84,6 @@ export function useAgentGUIConversationPresentation(
   }, [
     input.activityDisplayStatuses,
     input.conversations,
-    input.isNoProjectPath,
     input.transientConversation,
     input.userProjects
   ]);
@@ -119,27 +112,10 @@ export function useAgentGUIConversationPresentation(
       input.activeConversationId
     );
     if (resolved) {
-      const activityDisplayStatus = input.activityDisplayStatuses.get(
-        resolved.id
-      );
-      const activityBusyStatus =
-        conversationBusyStatusFromAgentActivityDisplayStatus(
-          activityDisplayStatus
-        );
-      const hasCanonicalTerminalStatus =
-        activityDisplayStatus === "completed" ||
-        activityDisplayStatus === "failed" ||
-        activityDisplayStatus === "canceled";
       const status =
-        (input.isSubmitting || input.hasUnconfirmedSubmit
-          ? ("working" as const)
-          : hasCanonicalTerminalStatus
-            ? activityDisplayStatus
-            : activityBusyStatus) ??
-        (resolved.status === "ready" &&
-        (input.activeLatestPendingSubmitTurnId || input.isSubmitting)
-          ? ("working" as const)
-          : resolved.status);
+        conversationStatusFromAgentActivityDisplayStatus(
+          input.activityDisplayStatuses.get(resolved.id)
+        ) ?? resolved.status;
       return stabilize(
         status === resolved.status ? resolved : { ...resolved, status }
       );
@@ -152,21 +128,9 @@ export function useAgentGUIConversationPresentation(
       agentTargets: input.normalizedProviderTargets,
       useStaticCatalog: input.shouldUseStaticProviderTargets
     });
-    const fallbackStatus =
-      input.isSubmitting ||
-      input.isCreatingConversation ||
-      Object.prototype.hasOwnProperty.call(
-        input.draftByScopeKey,
-        resolveAgentComposerDraftScopeKey({
-          agentSessionId: input.activeConversationId
-        })
-      )
-        ? ("working" as const)
-        : ("ready" as const);
-    const activityBusyStatus =
-      conversationBusyStatusFromAgentActivityDisplayStatus(
-        input.activityDisplayStatuses.get(input.activeConversationId)
-      );
+    const activityStatus = conversationStatusFromAgentActivityDisplayStatus(
+      input.activityDisplayStatuses.get(input.activeConversationId)
+    );
     const previousActiveConversation = activeConversationRef.current?.[0];
     const fallbackUpdatedAtUnixMs =
       previousActiveConversation?.id === input.activeConversationId
@@ -181,32 +145,21 @@ export function useAgentGUIConversationPresentation(
       provider: input.data.provider,
       title: "",
       titleFallback: "untitled-conversation",
-      status: activityBusyStatus ?? fallbackStatus,
+      status: activityStatus ?? "ready",
       cwd: input.workspacePath,
-      project: resolveAgentGUIConversationProject(
-        input.workspacePath,
-        input.userProjects,
-        { isNoProjectPath: input.isNoProjectPath }
-      ),
+      project: null,
       sortTimeUnixMs: fallbackUpdatedAtUnixMs,
       updatedAtUnixMs: fallbackUpdatedAtUnixMs
     });
   }, [
     input.activeConversationId,
-    input.activeLatestPendingSubmitTurnId,
     input.activityDisplayStatuses,
     input.currentUserId,
     input.data.agentTargetId,
     input.data.provider,
     input.defaultAgentTargetId,
-    input.draftByScopeKey,
-    input.hasUnconfirmedSubmit,
-    input.isCreatingConversation,
-    input.isNoProjectPath,
-    input.isSubmitting,
     input.normalizedProviderTargets,
     input.shouldUseStaticProviderTargets,
-    input.userProjects,
     conversationProjection.semanticConversations,
     input.workspacePath
   ]);

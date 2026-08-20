@@ -14,7 +14,7 @@ import (
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
 )
 
@@ -159,6 +159,35 @@ func TestManagedCredentialAuthorizationContinuesConnectorOwnedBroker(t *testing.
 	}
 }
 
+func TestManagedCredentialAuthorizationReturnsDeviceCodeFromBroker(t *testing.T) {
+	connection := newCredentialBrokerConnection()
+	host := &credentialAuthorizationHostStub{
+		route: &connectorRoute{id: "default\x00github-cli", credentialBrokerLaunch: &managedCredentialBrokerLaunch{
+			timeout: 5 * time.Minute, allowedHosts: map[string]struct{}{"github.com": {}},
+		}},
+		connections: []agentruntime.ProcessConnection{connection},
+	}
+	provider := newManagedCredentialAuthorizationProvider(host)
+	result := make(chan market.AuthorizationSession, 1)
+	resultErr := make(chan error, 1)
+	go func() {
+		session, err := provider.Begin(context.Background(), market.AuthorizationStartRequest{
+			OperationID: "authorize-github", Connector: market.Connector{Key: "github-cli"},
+		})
+		result <- session
+		resultErr <- err
+	}()
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://github.com/login/device","code":"ABCD-EFGH"}` + "\n")}
+
+	if err := <-resultErr; err != nil {
+		t.Fatal(err)
+	}
+	session := <-result
+	if session.AuthorizationURL != "https://github.com/login/device" || session.UserCode != "ABCD-EFGH" {
+		t.Fatalf("authorization session = %#v", session)
+	}
+}
+
 func TestManagedCredentialAuthorizationDisconnectUsesBrokerProtocol(t *testing.T) {
 	exitCode := 0
 	connection := newCredentialBrokerConnection()
@@ -178,6 +207,93 @@ func TestManagedCredentialAuthorizationDisconnectUsesBrokerProtocol(t *testing.T
 	observed := awaitAuthorizationObservations(t, host, 1)
 	if !reflect.DeepEqual(observed, []market.AuthorizationState{market.AuthorizationStateDisconnected}) {
 		t.Fatalf("authorization observations = %#v", observed)
+	}
+}
+
+func TestManagedCredentialAuthorizationInspectReturnsFencedObservation(t *testing.T) {
+	exitCode := 0
+	connection := newCredentialBrokerConnection()
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"expired","code":"token_expired","message":"login expired"}` + "\n"), ExitCode: &exitCode}
+	host := &credentialAuthorizationHostStub{
+		route: &connectorRoute{id: "account-1\x00lark-cli", connectorKey: "lark-cli", connectionID: "account-1",
+			releaseDigest: strings.Repeat("a", 64), credentialBrokerLaunch: &managedCredentialBrokerLaunch{timeout: 5 * time.Minute}},
+		connections: []agentruntime.ProcessConnection{connection},
+	}
+	provider := newManagedCredentialAuthorizationProvider(host)
+	connector := market.Connector{Key: "lark-cli", Release: market.Release{ReleaseDigest: strings.Repeat("a", 64)}}
+	observation, err := provider.Inspect(context.Background(), market.AuthorizationInspectRequest{
+		Scope: market.OperationScope{AccountID: "user-1"}, Connector: connector,
+		AccountGeneration: 3, VMAssignmentID: "vm-1", AuthorizationSessionID: "auth-1",
+		AuthorizationGeneration: 4, DesktopBootEpoch: "desktop-1", GuestBootID: "guest-1",
+		RuntimeEpoch: "runtime-1", StateRevision: 9,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.State != market.AuthorizationObservationExpired || observation.FailureCode != "token_expired" ||
+		observation.AccountID != "user-1" || observation.AccountGeneration != 3 || observation.VMAssignmentID != "vm-1" ||
+		observation.ConnectorKey != "lark-cli" || observation.ConnectionID != "account-1" ||
+		observation.ReleaseDigest != strings.Repeat("a", 64) || observation.StateRevision != 9 || observation.ObservedAt.IsZero() {
+		t.Fatalf("observation = %#v", observation)
+	}
+	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV1, Operation: "inspect"}}) {
+		t.Fatalf("broker requests = %#v", host.requests)
+	}
+}
+
+func TestInstallationTargetsReleaseAcceptsOnlyActiveCurrentOrCandidate(t *testing.T) {
+	tests := []struct {
+		name          string
+		installation  market.Installation
+		releaseDigest string
+		want          bool
+	}{
+		{
+			name: "installed current release",
+			installation: market.Installation{
+				State: market.InstallationStateInstalled, InstalledReleaseDigest: "current",
+			},
+			releaseDigest: "current",
+			want:          true,
+		},
+		{
+			name: "installing candidate release",
+			installation: market.Installation{
+				State: market.InstallationStateInstalling, CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "candidate",
+			want:          true,
+		},
+		{
+			name: "updating candidate release",
+			installation: market.Installation{
+				State: market.InstallationStateUpdating, InstalledReleaseDigest: "current", CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "candidate",
+			want:          true,
+		},
+		{
+			name: "updating superseded current release",
+			installation: market.Installation{
+				State: market.InstallationStateUpdating, InstalledReleaseDigest: "current", CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "current",
+		},
+		{
+			name: "failed candidate release",
+			installation: market.Installation{
+				State: market.InstallationStateFailed, CandidateReleaseDigest: "candidate",
+			},
+			releaseDigest: "candidate",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := installationTargetsRelease(test.installation, test.releaseDigest); got != test.want {
+				t.Fatalf("installationTargetsRelease() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 
@@ -257,7 +373,7 @@ func TestManagedCredentialAuthorizationRestartsFailedBrokerOnFirstRetry(t *testi
 	}
 	exitCode := 1
 	failedConnection.frames <- agentruntime.ProcessFrame{Stderr: []byte("broker failed"), ExitCode: &exitCode}
-	awaitCachedAuthorizationFailure(t, provider, route.id)
+	awaitCachedAuthorizationFailure(t, provider, firstRequest.OperationID)
 
 	retryConnection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://accounts.example.com/retry"}` + "\n")}
 	retry, err := provider.Begin(context.Background(), market.AuthorizationStartRequest{
@@ -274,15 +390,63 @@ func TestManagedCredentialAuthorizationRestartsFailedBrokerOnFirstRetry(t *testi
 	}
 }
 
-func awaitCachedAuthorizationFailure(t *testing.T, provider *managedCredentialAuthorizationProvider, routeID string) {
+func TestManagedCredentialAuthorizationCancelWaitsForBrokerExit(t *testing.T) {
+	connection := newCredentialBrokerConnection()
+	route := &connectorRoute{id: "default\x00dingtalk-cli", credentialBrokerLaunch: &managedCredentialBrokerLaunch{
+		timeout: 5 * time.Minute, allowedHosts: map[string]struct{}{"login.dingtalk.com": {}},
+	}}
+	host := &credentialAuthorizationHostStub{route: route, connections: []agentruntime.ProcessConnection{connection}}
+	provider := newManagedCredentialAuthorizationProvider(host)
+	request := market.AuthorizationStartRequest{OperationID: "authorize-a", Connector: market.Connector{Key: "dingtalk-cli"}}
+	beginDone := make(chan error, 1)
+	go func() {
+		_, err := provider.Begin(context.Background(), request)
+		beginDone <- err
+	}()
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://login.dingtalk.com/oauth"}` + "\n")}
+	if err := <-beginDone; err != nil {
+		t.Fatal(err)
+	}
+
+	provider.mu.Lock()
+	session := provider.sessions[request.OperationID]
+	originalCancel := session.cancel
+	cancelRequested := make(chan struct{})
+	session.cancel = func() {
+		close(cancelRequested)
+		originalCancel()
+	}
+	provider.mu.Unlock()
+	cancelDone := make(chan error, 1)
+	go func() {
+		cancelDone <- provider.Cancel(context.Background(), market.AuthorizationCancelRequest{OperationID: request.OperationID})
+	}()
+	<-cancelRequested
+	select {
+	case err := <-cancelDone:
+		t.Fatalf("cancel returned before broker exit: %v", err)
+	default:
+	}
+	close(connection.frames)
+	if err := <-cancelDone; err != nil {
+		t.Fatal(err)
+	}
+	provider.mu.Lock()
+	defer provider.mu.Unlock()
+	if provider.sessions[request.OperationID] != nil || provider.activeByRoute[route.id] != "" {
+		t.Fatalf("canceled session remained active: sessions=%#v routes=%#v", provider.sessions, provider.activeByRoute)
+	}
+}
+
+func awaitCachedAuthorizationFailure(t *testing.T, provider *managedCredentialAuthorizationProvider, operationID string) {
 	t.Helper()
 	deadline := time.Now().Add(time.Second)
 	for {
 		provider.mu.Lock()
-		session := provider.sessions[routeID]
+		session := provider.sessions[operationID]
 		provider.mu.Unlock()
 		if session != nil {
-			_, _, err := session.snapshot()
+			_, _, _, err := session.snapshot()
 			if err != nil {
 				return
 			}

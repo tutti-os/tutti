@@ -4,12 +4,15 @@ import {
   applyWorkspaceGitPatch,
   cancelAgentSessionRecording,
   cancelWorkspaceAgentTurn,
+  cancelWorkspaceAgentSideConversationTurn,
+  closeWorkspaceAgentSideConversation,
   clearWorkspaceAgentSessions,
   completeAgentSessionRecording,
   createWorkspaceAgentSession,
   deleteAgentSessionRecording,
   deleteWorkspaceAgentSession,
   deleteWorkspaceAgentSessionsBatch,
+  deleteWorkspaceManagedWorktree,
   forkWorkspaceAgentSession,
   getWorkspaceAgentSessionForkOperation,
   editRetryWorkspaceAgentTurn,
@@ -31,10 +34,12 @@ import {
   listWorkspaceAgentSessions,
   listWorkspaceDeletedAgentSessions,
   listWorkspaceGitBranches,
+  listWorkspaceManagedWorktrees,
   purgeWorkspaceDeletedAgentSession,
   purgeWorkspaceDeletedAgentSessions,
   readWorkspaceAgentSessionAttachment,
   recoverWorkspaceAgentEditRetry,
+  resolveWorkspaceAgentSideCapabilities,
   renameAgentSessionRecording,
   restoreWorkspaceDeletedAgentSession,
   reconcileWorkspaceAgentSessionGoal,
@@ -43,8 +48,11 @@ import {
   resolveWorkspaceAgentSessionWorktreeSupport,
   scanWorkspaceExternalAgentSessionImports,
   sendWorkspaceAgentSessionInput,
+  sendWorkspaceAgentSideConversationInput,
   startAgentSessionRecording,
   submitWorkspaceAgentInteractive,
+  submitWorkspaceAgentSideConversationInteractive,
+  openWorkspaceAgentSideConversation,
   submitWorkspaceAgentPlanDecision,
   updateWorkspaceAgentSessionPin,
   updateAgentSessionReplayTransportPlayback,
@@ -66,12 +74,15 @@ type WorkspaceAgentClient = Pick<
   | "applyWorkspaceGitPatch"
   | "cancelAgentSessionRecording"
   | "cancelWorkspaceAgentTurn"
+  | "cancelWorkspaceAgentSideConversationTurn"
+  | "closeWorkspaceAgentSideConversation"
   | "clearWorkspaceAgentSessions"
   | "completeAgentSessionRecording"
   | "createWorkspaceAgentSession"
   | "deleteAgentSessionRecording"
   | "deleteWorkspaceAgentSession"
   | "deleteWorkspaceAgentSessionsBatch"
+  | "deleteWorkspaceManagedWorktree"
   | "forkWorkspaceAgentSession"
   | "getWorkspaceAgentSessionForkOperation"
   | "editRetry"
@@ -93,10 +104,12 @@ type WorkspaceAgentClient = Pick<
   | "listWorkspaceAgentSessions"
   | "listWorkspaceDeletedAgentSessions"
   | "listWorkspaceGitBranches"
+  | "listWorkspaceManagedWorktrees"
   | "purgeWorkspaceDeletedAgentSession"
   | "purgeWorkspaceDeletedAgentSessions"
   | "readWorkspaceAgentSessionAttachment"
   | "recoverEditRetry"
+  | "resolveWorkspaceAgentSideCapabilities"
   | "renameAgentSessionRecording"
   | "restoreWorkspaceDeletedAgentSession"
   | "reconcileWorkspaceAgentSessionGoal"
@@ -105,8 +118,11 @@ type WorkspaceAgentClient = Pick<
   | "resolveWorkspaceAgentSessionWorktreeSupport"
   | "scanWorkspaceExternalAgentSessionImports"
   | "sendWorkspaceAgentSessionInput"
+  | "sendWorkspaceAgentSideConversationInput"
   | "startAgentSessionRecording"
   | "submitWorkspaceAgentInteractive"
+  | "submitWorkspaceAgentSideConversationInteractive"
+  | "openWorkspaceAgentSideConversation"
   | "submitWorkspaceAgentPlanDecision"
   | "updateWorkspaceAgentSessionPin"
   | "updateAgentSessionReplayTransportPlayback"
@@ -282,6 +298,86 @@ export function createWorkspaceAgentClient(
         }),
         "Fork workspace agent session request failed."
       ).operation;
+    },
+    async resolveWorkspaceAgentSideCapabilities(workspaceID, agentSessionID) {
+      return unwrapData(
+        await resolveWorkspaceAgentSideCapabilities({
+          client,
+          path: { agentSessionID, workspaceID }
+        }),
+        "Resolve workspace agent Side capabilities request failed."
+      ).capabilities;
+    },
+    async openWorkspaceAgentSideConversation(
+      workspaceID,
+      agentSessionID,
+      request
+    ) {
+      return unwrapData(
+        await openWorkspaceAgentSideConversation({
+          client,
+          body: request,
+          path: { agentSessionID, workspaceID }
+        }),
+        "Open workspace agent Side conversation request failed."
+      ).side;
+    },
+    async closeWorkspaceAgentSideConversation(workspaceID, sideAgentSessionID) {
+      unwrapData(
+        await closeWorkspaceAgentSideConversation({
+          client,
+          path: { sideAgentSessionID, workspaceID }
+        }),
+        "Close workspace agent Side conversation request failed."
+      );
+    },
+    async sendWorkspaceAgentSideConversationInput(
+      workspaceID,
+      sideAgentSessionID,
+      request
+    ) {
+      return unwrapData(
+        await sendWorkspaceAgentSideConversationInput({
+          client,
+          body: request,
+          path: { sideAgentSessionID, workspaceID }
+        }),
+        "Send workspace agent Side conversation input request failed."
+      );
+    },
+    async cancelWorkspaceAgentSideConversationTurn(
+      workspaceID,
+      sideAgentSessionID,
+      turnID
+    ) {
+      return unwrapData(
+        await cancelWorkspaceAgentSideConversationTurn({
+          client,
+          path: { sideAgentSessionID, turnID, workspaceID }
+        }),
+        "Cancel workspace agent Side conversation turn request failed."
+      );
+    },
+    async submitWorkspaceAgentSideConversationInteractive(
+      workspaceID,
+      sideAgentSessionID,
+      turnID,
+      requestID,
+      request
+    ) {
+      return unwrapData(
+        await submitWorkspaceAgentSideConversationInteractive({
+          client,
+          body: request,
+          path: {
+            requestID,
+            sideAgentSessionID,
+            turnID,
+            workspaceID
+          }
+        }),
+        "Submit workspace agent Side interactive response failed."
+      );
     },
     async getWorkspaceAgentSessionForkOperation(
       workspaceID,
@@ -704,6 +800,24 @@ export function createWorkspaceAgentClient(
           query: { agentTargetId, cwd }
         }),
         "Resolve workspace Agent Session worktree support failed."
+      );
+    },
+    async listWorkspaceManagedWorktrees(workspaceID) {
+      return unwrapData(
+        await listWorkspaceManagedWorktrees({
+          client,
+          path: { workspaceID }
+        }),
+        "List workspace managed worktrees failed."
+      );
+    },
+    async deleteWorkspaceManagedWorktree(workspaceID, worktreeID) {
+      return unwrapData(
+        await deleteWorkspaceManagedWorktree({
+          client,
+          path: { workspaceID, worktreeID }
+        }),
+        "Delete workspace managed worktree failed."
       );
     },
     async applyWorkspaceGitPatch(workspaceID, request) {

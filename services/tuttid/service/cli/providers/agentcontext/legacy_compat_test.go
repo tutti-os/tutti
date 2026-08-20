@@ -79,6 +79,7 @@ func TestAgentListUsesExtensionSetupAuthenticationStateForBroadAndExactCatalogs(
 		return agenttargetbiz.Target{
 			ID: id, Provider: provider, LaunchRefJSON: launchRef, Name: name, Enabled: true,
 			Source: agenttargetbiz.SourceSystem, AvailabilityStatus: "ready",
+			ExecutablePath: "/resolved/bin/" + strings.TrimPrefix(id, "extension:"),
 		}
 	}
 	hermes := newExtension("extension:hermes", "acp:hermes", "Hermes Agent")
@@ -120,6 +121,9 @@ func TestAgentListUsesExtensionSetupAuthenticationStateForBroadAndExactCatalogs(
 			t.Fatalf("Handler(%s): %v", target.ID, err)
 		}
 		agent := output.Value["agents"].([]any)[0].(map[string]any)
+		if agent["executablePath"] != target.ExecutablePath {
+			t.Fatalf("executablePath(%s) = %#v, want %q", target.ID, agent["executablePath"], target.ExecutablePath)
+		}
 		byID[agent["id"].(string)] = agent["availability"].(map[string]any)
 	}
 	if len(sessions.availabilityIn) != 0 {

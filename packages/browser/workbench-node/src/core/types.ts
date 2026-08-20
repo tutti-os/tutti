@@ -130,6 +130,7 @@ export interface BrowserNodeActivationInput {
 }
 
 export interface BrowserNodePrepareSessionInput {
+  automationTarget?: BrowserNodeAutomationTargetMetadata | null;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
   nodeId: string;
   profileId: string | null;

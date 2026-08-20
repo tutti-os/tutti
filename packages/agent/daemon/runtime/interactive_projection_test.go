@@ -51,8 +51,84 @@ func TestNormalizedApprovalInputCanonicalizesNestedToolCall(t *testing.T) {
 			t.Fatalf("input.%s = %#v, want %#v (input=%#v)", key, input[key], value, input)
 		}
 	}
-	if toolCall["input"] != nil {
-		t.Fatalf("toolCall duplicated canonical display input: %#v", toolCall)
+	if !reflect.DeepEqual(toolCall["input"], want) {
+		t.Fatalf("toolCall.input = %#v, want canonical display input %#v", toolCall["input"], want)
+	}
+}
+
+func TestNormalizedApprovalInputKeepsClaudeWebFetchURLInCanonicalToolCall(t *testing.T) {
+	t.Parallel()
+
+	input := normalizedApprovalInput(map[string]any{
+		"toolCallId": "tool-web-fetch",
+		"name":       "WebFetch",
+		"input": map[string]any{
+			"url":    "https://example.com/docs",
+			"prompt": "Summarize this page",
+		},
+	}, []map[string]any{{"optionId": "allow_always", "kind": "allow_always"}}, "request-web-fetch", nil)
+
+	if input["url"] != "https://example.com/docs" {
+		t.Fatalf("input.url = %#v, want WebFetch URL", input["url"])
+	}
+	toolCallInput := payloadMap(payloadMap(input, "toolCall"), "input")
+	if toolCallInput["url"] != "https://example.com/docs" || toolCallInput["prompt"] != "Summarize this page" {
+		t.Fatalf("toolCall.input = %#v, want complete WebFetch input", toolCallInput)
+	}
+}
+
+func TestNormalizedApprovalInputRecoversTopLevelURL(t *testing.T) {
+	t.Parallel()
+
+	input := normalizedApprovalInput(map[string]any{
+		"toolCallId": "tool-web-fetch",
+		"name":       "WebFetch",
+		"url":        "https://example.com/fallback",
+		"prompt":     "Summarize the fallback page",
+	}, nil, "request-web-fetch", nil)
+
+	if input["url"] != "https://example.com/fallback" {
+		t.Fatalf("input.url = %#v, want top-level fallback URL", input["url"])
+	}
+	if got := payloadMap(payloadMap(input, "toolCall"), "input")["url"]; got != "https://example.com/fallback" {
+		t.Fatalf("toolCall.input.url = %#v, want top-level fallback URL", got)
+	}
+	if got := payloadMap(payloadMap(input, "toolCall"), "input")["prompt"]; got != "Summarize the fallback page" {
+		t.Fatalf("toolCall.input.prompt = %#v, want top-level fallback prompt", got)
+	}
+}
+
+func TestNormalizedApprovalInputRecoversKnownInputWebAliases(t *testing.T) {
+	t.Parallel()
+
+	input := normalizedApprovalInput(map[string]any{
+		"toolCallId": "tool-web-fetch",
+		"name":       "WebFetch",
+	}, nil, "request-web-fetch", map[string]any{
+		"uri":         "https://example.com/known-input",
+		"instruction": "Extract the compatibility requirements",
+	})
+
+	toolCallInput := payloadMap(payloadMap(input, "toolCall"), "input")
+	if toolCallInput["uri"] != "https://example.com/known-input" || toolCallInput["instruction"] != "Extract the compatibility requirements" {
+		t.Fatalf("toolCall.input = %#v, want known-input web aliases", toolCallInput)
+	}
+}
+
+func TestPersistedApprovalInputDoesNotDuplicateDisplayFields(t *testing.T) {
+	input := normalizedApprovalInput(map[string]any{
+		"toolCallId": "tool-web-fetch",
+		"name":       "WebFetch",
+		"input": map[string]any{
+			"url": "https://example.com/docs",
+		},
+	}, nil, "request-web-fetch", nil)
+	persisted := persistedInteractionInput("approval", input)
+	if _, duplicated := persisted["url"]; duplicated {
+		t.Fatalf("persisted approval duplicated root display input: %#v", persisted)
+	}
+	if got := payloadMap(payloadMap(persisted, "toolCall"), "input")["url"]; got != "https://example.com/docs" {
+		t.Fatalf("persisted toolCall.input.url = %#v", got)
 	}
 }
 
@@ -129,6 +205,51 @@ func TestCodexAndClaudeApprovalOptionsProjectSemantics(t *testing.T) {
 			}
 			if !semantics["approve"] || !semantics["deny"] {
 				t.Fatalf("semantics = %#v, want approve and deny", semantics)
+			}
+		})
+	}
+}
+
+func TestInteractiveAdaptersClassifyMalformedResponsesConsistently(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderCodex)
+	adapters := []struct {
+		name   string
+		submit func() error
+	}{
+		{
+			name: "codex",
+			submit: func() error {
+				_, err := (&CodexAppServerAdapter{}).SubmitInteractive(
+					context.Background(), session, SubmitInteractiveInput{},
+				)
+				return err
+			},
+		},
+		{
+			name: "standard-acp",
+			submit: func() error {
+				_, err := (&standardACPAdapter{}).SubmitInteractive(
+					context.Background(), session, SubmitInteractiveInput{},
+				)
+				return err
+			},
+		},
+		{
+			name: "claude-sdk",
+			submit: func() error {
+				_, err := NewClaudeCodeSDKAdapter(nil).SubmitInteractive(
+					context.Background(), session, SubmitInteractiveInput{},
+				)
+				return err
+			},
+		},
+	}
+	for _, adapter := range adapters {
+		t.Run(adapter.name, func(t *testing.T) {
+			if err := adapter.submit(); !errors.Is(err, ErrInteractiveResponseInvalid) {
+				t.Fatalf("SubmitInteractive error = %v, want ErrInteractiveResponseInvalid", err)
 			}
 		})
 	}

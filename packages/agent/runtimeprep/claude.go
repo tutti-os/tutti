@@ -56,18 +56,24 @@ func (p ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInpu
 	if err := os.WriteFile(systemPromptPath, []byte(systemPrompt), 0o600); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("write claude system prompt: %w", err)
 	}
-	pluginDir := filepath.Join(input.RuntimeRoot, "claude-plugin", "tutti-cli")
-	if err := installClaudeTuttiPlugin(pluginDir, input.PrepareInput); err != nil {
-		return ProviderPrepareResult{}, err
-	}
 	if input.Manifest != nil {
 		input.Manifest.RecordManagedFile(systemPromptPath, "provider-system-prompt", true)
-		input.Manifest.RecordManagedFile(pluginDir, "provider-plugin", true)
 	}
 	env := []string{
 		claudeSystemPromptFileEnv + "=" + systemPromptPath,
-		claudePluginDirEnv + "=" + pluginDir,
-		claudeSkillListingBudgetEnv + "=" + claudeSkillListingBudgetChars,
+	}
+	if !input.SkipSkills {
+		pluginDir := filepath.Join(input.RuntimeRoot, "claude-plugin", "tutti-cli")
+		if err := installClaudeTuttiPlugin(pluginDir, input.PrepareInput); err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if input.Manifest != nil {
+			input.Manifest.RecordManagedFile(pluginDir, "provider-plugin", true)
+		}
+		env = append(env,
+			claudePluginDirEnv+"="+pluginDir,
+			claudeSkillListingBudgetEnv+"="+claudeSkillListingBudgetChars,
+		)
 	}
 	env = append(env, p.claudeCodeExecutableEnv()...)
 	env = append(env, modelEndpointClaudeEnv(input.ModelEndpoint)...)
@@ -105,7 +111,7 @@ func installClaudeTuttiPlugin(pluginDir string, input PrepareInput) error {
 	if err := os.WriteFile(filepath.Join(manifestDir, "plugin.json"), append(content, '\n'), 0o600); err != nil {
 		return fmt.Errorf("write claude plugin manifest: %w", err)
 	}
-	if _, err := installProviderNativeSkills(filepath.Join(pluginDir, "skills"), input); err != nil {
+	if _, err := installProviderNativeSkillsSessionScoped(filepath.Join(pluginDir, "skills"), input); err != nil {
 		return fmt.Errorf("install claude tutti skill plugin: %w", err)
 	}
 	return nil

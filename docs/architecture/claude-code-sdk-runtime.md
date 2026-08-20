@@ -181,19 +181,59 @@ Raw sidecar stderr is never copied into activity, logs, or user-visible errors.
 The Go transport retains only a bounded failure classification; explicitly
 prefixed auth diagnostics are separately sanitized before structured logging.
 
-SDK Query lifetime is narrower than durable provider-session lifetime. A user
-cancel first revokes the current Query generation, awaits the SDK interrupt
-acknowledgment, then closes that Query in cleanup. Closing before the interrupt
-response turns a successful provider stop into a transport failure. Revocation
-fences message routing, hooks, and `canUseTool` before permission-mode handling,
-including `bypassPermissions`; background-task notifications from the canceled
-generation therefore cannot start a synthetic continuation or execute another
-tool. The next real user prompt creates a fresh Query with
+SDK Query lifetime is narrower than durable provider-session lifetime. The
+sidecar owns Query termination; an RPC caller deadline alone is never treated
+as cancellation because it cannot stop an already-dispatched SDK control
+request. A user cancel carries the exact canonical Turn, a cooperative
+interrupt budget, and a consumer-drain budget, and returns one structured disposition:
+`pre_accept`, `provider_active`, `absent`, or `mismatch`. An undispatched queue
+entry can be removed locally. Once the prompt has been dispatched, cancel first
+revokes the current Query generation and requests the SDK interrupt. If Claude
+Code acknowledges within the cooperative budget, shutdown remains graceful. If
+the acknowledgment is missing or fails, the sidecar closes the owned SDK Query
+transport; the pinned SDK then ends stdin and escalates its Claude Code child
+from `SIGTERM` to `SIGKILL`. The sidecar waits only for the separate drain budget
+for its consumer to settle. A drain timeout is an explicit bounded failure and
+never leaves the request pending. Revocation fences message routing, hooks, and
+`canUseTool` before permission-mode handling, including `bypassPermissions`;
+background-task notifications from the canceled generation therefore cannot
+start a synthetic continuation or execute another tool. Every Turn already
+handed to the retired Query's prompt queue settles after that same authoritative
+shutdown boundary, including a drained Goal command that can no longer execute;
+a Goal command still in the sidecar's deferred queue is independent and remains
+eligible for exact local removal. For a
+`provider_active` response, the Go adapter also waits for the exact Turn's
+durable provider-acceptance outcome before confirming cancellation. `absent`
+is the only authoritative not-found result; mismatches, unknown dispositions,
+drain failures, and acceptance failures remain fail-closed. The next real
+user prompt creates a fresh Query with
 `resume: providerSessionId` and generation-local prompt/abort resources. If the
 SDK replays the canceled generation's terminal task notification and paired
 result during resume, the new generation consumes that tail without attaching
 it to the new canonical Turn. Session close remains permanent and closes the
 current generation without creating a resumable successor.
+
+The Go adapter also tracks each accepted-but-not-started typed Goal command by
+its operation, revision, repair epoch, action, and previous optimistic Goal
+mirror. A Goal-generation fence targets both those pending commands and Turns
+that already have provider bindings. When the sidecar confirms an exact pending
+Goal cancellation, the adapter removes its bookkeeping and restores the
+previous mirror only while that same identity is still current, so a stale
+cancellation cannot overwrite a newer Goal. `goal_command_started` records
+provider progress but does not commit the optimistic mirror; an authoritative
+Goal observation or successful command terminal commits it, while cancellation,
+failure, or supersession closes the exact pending transaction.
+
+Guidance preempts a provider response without ending its canonical Turn. The
+sidecar captures the already-active Query and calls its SDK `interrupt()` before
+the guidance handler first yields; it never waits for query creation or pending
+configuration while the old response continues. As soon as that interrupt
+succeeds, the sidecar emits `guidance_interrupted`, and only then queues the
+guidance prompt. The daemon uses that response boundary to settle open thinking,
+assistant, and tool projections without emitting a Turn terminal. Claude's
+later matching `error_during_execution` is bookkeeping only. Output produced
+for the guidance then starts a fresh response projection on the same canonical
+Turn.
 
 Background-task lifecycle uses the SDK's `background_tasks_changed` system
 message as a level signal. Its `tasks` array fully replaces the previous live
@@ -251,7 +291,9 @@ The daemon and sidecar exchange newline-delimited JSON over standard input and
 output. Every request and event carries the current protocol version. Missing
 or unsupported versions fail explicitly. Change both
 `claude_sdk_protocol.go` and `src/protocol.ts` together and cover the change on
-both sides.
+both sides. Version 10 makes the cooperative-interrupt and consumer-drain
+budgets required cancel-request fields. Version 9 makes the cancel disposition, exact canonical Turn ID,
+provider Turn ID, and dispatch phase correctness-required response fields.
 
 Capability and composer contracts are intentionally stable across this runtime
 split. Imported historical metadata may still be read for display compatibility

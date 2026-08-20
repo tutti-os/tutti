@@ -19,6 +19,21 @@ import type {
 } from "../contracts/agentMessageRowVM";
 
 type ImageFailureKind = "load" | "read" | "unavailable";
+type ImageFailureUnavailableReason = "source_vm";
+type ImageFailureSource =
+  | {
+      kind: "resolved";
+      src: string;
+    }
+  | {
+      agentSessionId: string;
+      attachmentId: string;
+      kind: "locator";
+      path: string;
+      readerAvailable: boolean;
+      unavailableReason?: ImageFailureUnavailableReason;
+      workspaceId: string;
+    };
 type ImageFailureReporter = (
   image: AgentMessageImageVM,
   kind: ImageFailureKind,
@@ -39,7 +54,7 @@ export function AgentUserImageGrid({
     },
     [runtime]
   );
-  const { failedIds, loadingIds, retryCounts, sources, markFailed, retry } =
+  const { failedSources, loadingIds, retryCounts, sources, markFailed, retry } =
     useAgentMessageImageSources(images, reportFailure);
   const { t } = useTranslation();
   const columnCount = Math.min(Math.max(images.length, 1), 4);
@@ -53,53 +68,106 @@ export function AgentUserImageGrid({
     >
       {images.map((image) => {
         const src = sources.get(image.id) ?? imageSourceUrl(image);
-        const failed = failedIds.has(image.id);
-        const loading = !src && loadingIds.has(image.id);
+        const failureSource = imageFailureSource(image, src, runtime);
+        const failedSource = failedSources.get(image.id);
+        const displayedFailureSource = failedSource ?? failureSource;
+        const failed = isMatchingImageFailure(failedSource, failureSource);
+        const canRetry = canRetryImageFailure(displayedFailureSource);
         const attempt = retryCounts.get(image.id) ?? 0;
         return (
-          <div key={image.id} className={styles.userImageThumbnail}>
-            {failed ? (
-              <ImageLoadFailurePlaceholder
-                label={t("agentHost.agentGui.imageLoadFailed")}
-                retryLabel={t("agentHost.agentGui.retryImage")}
-                icon={AlertCircle}
-                onRetry={() => retry(image.id)}
-              />
-            ) : src ? (
-              <ZoomableImage
-                key={`${image.id}:${attempt}:${src}`}
-                src={src}
-                alt={image.name?.trim() || "image"}
-                className="block max-h-20 w-full rounded-[7px] object-contain"
-                draggable={false}
-                downloadName={image.name?.trim() || "image.png"}
-                onError={() => {
-                  markFailed(image.id);
-                  reportFailure(image, "load", attempt);
-                }}
-              />
-            ) : loading ? (
-              <div
-                className="flex h-20 w-full items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
-                data-testid="agent-gui-message-image-loading"
-              >
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="size-5 animate-spin text-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]"
-                  strokeWidth={2}
-                />
-              </div>
-            ) : (
-              <ImageLoadFailurePlaceholder
-                label={t("agentHost.agentGui.imageLoadFailed")}
-                retryLabel={t("agentHost.agentGui.retryImage")}
-                icon={AlertCircle}
-                onRetry={() => retry(image.id)}
-              />
-            )}
-          </div>
+          <AgentUserImageTile
+            key={image.id}
+            canRetry={canRetry}
+            image={image}
+            src={src}
+            failed={failed}
+            sourceLoading={!src && loadingIds.has(image.id)}
+            attempt={attempt}
+            failureLabel={t(imageFailureLabelKey(displayedFailureSource))}
+            retryLabel={t("agentHost.agentGui.retryImage")}
+            onFailed={() => {
+              markFailed(image.id, failureSource);
+              reportFailure(image, "load", attempt);
+            }}
+            onRetry={() => retry(image.id)}
+          />
         );
       })}
+    </div>
+  );
+}
+
+function AgentUserImageTile({
+  attempt,
+  canRetry,
+  failed,
+  failureLabel,
+  image,
+  onFailed,
+  onRetry,
+  retryLabel,
+  sourceLoading,
+  src
+}: {
+  attempt: number;
+  canRetry: boolean;
+  failed: boolean;
+  failureLabel: string;
+  image: AgentMessageImageVM;
+  onFailed: () => void;
+  onRetry: () => void;
+  retryLabel: string;
+  sourceLoading: boolean;
+  src: string | null;
+}): JSX.Element {
+  const [loadedImage, setLoadedImage] = useState<{
+    attempt: number;
+    src: string;
+  } | null>(null);
+  const browserLoaded = Boolean(
+    src && loadedImage?.attempt === attempt && loadedImage.src === src
+  );
+  const showingFailure = failed || (!src && !sourceLoading);
+  const loading = !failed && (src ? !browserLoaded : sourceLoading);
+  const state = showingFailure ? "failed" : loading ? "loading" : "loaded";
+
+  return (
+    <div
+      aria-busy={loading || undefined}
+      className={styles.userImageThumbnail}
+      data-image-state={state}
+    >
+      {showingFailure ? (
+        <ImageLoadFailurePlaceholder
+          canRetry={canRetry}
+          label={failureLabel}
+          retryLabel={retryLabel}
+          icon={AlertCircle}
+          onRetry={onRetry}
+        />
+      ) : src ? (
+        <>
+          <ZoomableImage
+            key={`${image.id}:${attempt}:${src}`}
+            src={src}
+            alt={image.name?.trim() || "image"}
+            className="block h-full w-full rounded-[7px] object-contain"
+            draggable={false}
+            downloadName={image.name?.trim() || "image.png"}
+            onLoad={() => {
+              setLoadedImage((current) =>
+                current?.attempt === attempt && current.src === src
+                  ? current
+                  : { attempt, src }
+              );
+            }}
+            onError={onFailed}
+          />
+          {loading ? <ImageLoadingPlaceholder /> : null}
+        </>
+      ) : (
+        <ImageLoadingPlaceholder />
+      )}
     </div>
   );
 }
@@ -108,38 +176,45 @@ function useAgentMessageImageSources(
   images: readonly AgentMessageImageVM[],
   reportFailure: ImageFailureReporter
 ): {
-  failedIds: ReadonlySet<string>;
+  failedSources: ReadonlyMap<string, ImageFailureSource>;
   loadingIds: ReadonlySet<string>;
   retryCounts: ReadonlyMap<string, number>;
   sources: ReadonlyMap<string, string>;
-  markFailed: (imageId: string) => void;
+  markFailed: (imageId: string, source: ImageFailureSource) => void;
   retry: (imageId: string) => void;
 } {
   const runtime = useOptionalAgentGUIRuntime();
-  const [failedIds, setFailedIds] = useState<Set<string>>(() => new Set());
+  const [failedSources, setFailedSources] = useState<
+    Map<string, ImageFailureSource>
+  >(() => new Map());
   const [sources, setSources] = useState<Map<string, string>>(() => new Map());
   const [loadingIds, setLoadingIds] = useState<Set<string>>(() => new Set());
   const [retryCounts, setRetryCounts] = useState<Map<string, number>>(
     () => new Map()
   );
-  const markFailed = useCallback((imageId: string): void => {
-    setFailedIds((current) => {
-      if (current.has(imageId)) return current;
-      const next = new Set(current);
-      next.add(imageId);
-      return next;
-    });
-    setLoadingIds((current) => {
-      if (!current.has(imageId)) return current;
-      const next = new Set(current);
-      next.delete(imageId);
-      return next;
-    });
-  }, []);
+  const markFailed = useCallback(
+    (imageId: string, source: ImageFailureSource): void => {
+      setFailedSources((current) => {
+        if (isMatchingImageFailure(current.get(imageId), source)) {
+          return current;
+        }
+        const next = new Map(current);
+        next.set(imageId, source);
+        return next;
+      });
+      setLoadingIds((current) => {
+        if (!current.has(imageId)) return current;
+        const next = new Set(current);
+        next.delete(imageId);
+        return next;
+      });
+    },
+    []
+  );
   const retry = useCallback((imageId: string): void => {
-    setFailedIds((current) => {
+    setFailedSources((current) => {
       if (!current.has(imageId)) return current;
-      const next = new Set(current);
+      const next = new Map(current);
       next.delete(imageId);
       return next;
     });
@@ -155,7 +230,10 @@ function useAgentMessageImageSources(
         (image) =>
           !imageSourceUrl(image) &&
           !sources.has(image.id) &&
-          !failedIds.has(image.id) &&
+          !isMatchingImageFailure(
+            failedSources.get(image.id),
+            imageFailureSource(image, null, runtime)
+          ) &&
           image.workspaceId &&
           image.agentSessionId &&
           (image.attachmentId
@@ -163,7 +241,7 @@ function useAgentMessageImageSources(
             : runtime?.readPromptAsset) &&
           (image.attachmentId || image.path)
       ),
-    [failedIds, images, runtime, sources]
+    [failedSources, images, runtime, sources]
   );
   const unavailableImages = useMemo(
     () =>
@@ -171,7 +249,10 @@ function useAgentMessageImageSources(
         (image) =>
           !imageSourceUrl(image) &&
           !sources.has(image.id) &&
-          !failedIds.has(image.id) &&
+          !isMatchingImageFailure(
+            failedSources.get(image.id),
+            imageFailureSource(image, null, runtime)
+          ) &&
           (!image.workspaceId ||
             !image.agentSessionId ||
             !(image.attachmentId || image.path) ||
@@ -179,8 +260,10 @@ function useAgentMessageImageSources(
               ? !runtime?.readSessionAttachment
               : !runtime?.readPromptAsset))
       ),
-    [failedIds, images, runtime, sources]
+    [failedSources, images, runtime, sources]
   );
+  const visibleLoadingIds = new Set(loadingIds);
+  for (const image of missingImages) visibleLoadingIds.add(image.id);
 
   useEffect(() => {
     let canceled = false;
@@ -218,10 +301,20 @@ function useAgentMessageImageSources(
               return next;
             });
           })
-          .catch(() => {
+          .catch((error: unknown) => {
             if (canceled) return;
-            markFailed(image.id);
-            reportFailure(image, "read", attempt);
+            const unavailableReason = isSourceVMUnavailableError(error)
+              ? "source_vm"
+              : undefined;
+            markFailed(
+              image.id,
+              imageFailureSource(image, null, runtime, unavailableReason)
+            );
+            reportFailure(
+              image,
+              unavailableReason ? "unavailable" : "read",
+              attempt
+            );
           })
           .finally(() => {
             if (canceled) return;
@@ -235,7 +328,7 @@ function useAgentMessageImageSources(
     }
     for (const image of unavailableImages) {
       const attempt = retryCounts.get(image.id) ?? 0;
-      markFailed(image.id);
+      markFailed(image.id, imageFailureSource(image, null, runtime));
       reportFailure(image, "unavailable", attempt);
     }
     return () => {
@@ -251,8 +344,8 @@ function useAgentMessageImageSources(
   ]);
 
   return {
-    failedIds,
-    loadingIds,
+    failedSources,
+    loadingIds: visibleLoadingIds,
     retryCounts,
     sources,
     markFailed,
@@ -260,12 +353,29 @@ function useAgentMessageImageSources(
   };
 }
 
+function ImageLoadingPlaceholder(): JSX.Element {
+  return (
+    <div
+      className="absolute inset-0 flex items-center justify-center bg-[color-mix(in_srgb,var(--text-primary)_6%,transparent)]"
+      data-testid="agent-gui-message-image-loading"
+    >
+      <LoaderCircle
+        aria-hidden="true"
+        className="size-5 animate-spin text-[color-mix(in_srgb,var(--text-primary)_45%,transparent)]"
+        strokeWidth={2}
+      />
+    </div>
+  );
+}
+
 function ImageLoadFailurePlaceholder({
+  canRetry,
   icon: Icon,
   label,
   onRetry,
   retryLabel
 }: {
+  canRetry: boolean;
   icon: LucideIcon;
   label: string;
   onRetry: () => void;
@@ -273,7 +383,7 @@ function ImageLoadFailurePlaceholder({
 }): JSX.Element {
   return (
     <div
-      className="flex h-20 w-full flex-col items-center justify-center gap-1 bg-[var(--transparency-block)] px-1 text-[var(--text-secondary)]"
+      className="flex h-full w-full flex-col items-center justify-center gap-1 bg-[var(--transparency-block)] px-1 text-[var(--text-secondary)]"
       data-testid="agent-gui-message-image-failed"
       role="status"
       aria-label={label}
@@ -282,10 +392,12 @@ function ImageLoadFailurePlaceholder({
       <span className="max-w-full truncate text-xs" title={label}>
         {label}
       </span>
-      <Button type="button" variant="ghost" size="xs" onClick={onRetry}>
-        <RotateCcw aria-hidden="true" />
-        {retryLabel}
-      </Button>
+      {canRetry ? (
+        <Button type="button" variant="ghost" size="xs" onClick={onRetry}>
+          <RotateCcw aria-hidden="true" />
+          {retryLabel}
+        </Button>
+      ) : null}
     </div>
   );
 }
@@ -352,4 +464,73 @@ function imageDataUrl(image: AgentMessageImageVM): string | null {
 function imageSourceUrl(image: AgentMessageImageVM): string | null {
   const url = image.url?.trim() ?? "";
   return url || imageDataUrl(image);
+}
+
+function imageFailureSource(
+  image: AgentMessageImageVM,
+  src: string | null,
+  runtime: AgentGUIRuntime | null,
+  unavailableReason?: ImageFailureUnavailableReason
+): ImageFailureSource {
+  if (src) {
+    return { kind: "resolved", src };
+  }
+  const attachmentId = image.attachmentId?.trim() ?? "";
+  return {
+    kind: "locator",
+    workspaceId: image.workspaceId?.trim() ?? "",
+    agentSessionId: image.agentSessionId.trim(),
+    attachmentId,
+    path: image.path?.trim() ?? "",
+    readerAvailable: Boolean(
+      attachmentId ? runtime?.readSessionAttachment : runtime?.readPromptAsset
+    ),
+    ...(unavailableReason ? { unavailableReason } : {})
+  };
+}
+
+function canRetryImageFailure(source: ImageFailureSource): boolean {
+  return (
+    source.kind === "resolved" ||
+    (source.readerAvailable && !source.unavailableReason)
+  );
+}
+
+function imageFailureLabelKey(
+  source: ImageFailureSource
+):
+  | "agentHost.agentGui.imageLoadFailed"
+  | "agentHost.agentGui.imageTemporarilyUnavailable" {
+  return source.kind === "locator" &&
+    (source.unavailableReason === "source_vm" || !source.readerAvailable)
+    ? "agentHost.agentGui.imageTemporarilyUnavailable"
+    : "agentHost.agentGui.imageLoadFailed";
+}
+
+function isSourceVMUnavailableError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code ===
+      "agent_session_attachment_vm_unavailable"
+  );
+}
+
+function isMatchingImageFailure(
+  failed: ImageFailureSource | undefined,
+  current: ImageFailureSource
+): boolean {
+  if (!failed || failed.kind !== current.kind) return false;
+  if (failed.kind === "resolved" && current.kind === "resolved") {
+    return failed.src === current.src;
+  }
+  if (failed.kind !== "locator" || current.kind !== "locator") return false;
+  return (
+    failed.workspaceId === current.workspaceId &&
+    failed.agentSessionId === current.agentSessionId &&
+    failed.attachmentId === current.attachmentId &&
+    failed.path === current.path &&
+    failed.readerAvailable === current.readerAvailable
+  );
 }

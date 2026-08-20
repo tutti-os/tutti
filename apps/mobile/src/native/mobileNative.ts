@@ -51,6 +51,7 @@ interface MobilePreferencesNative {
 
 interface DeviceLinkNative {
   addListener(eventName: string): void;
+  cancelLink(token: number): Promise<void>;
   closeLink(): Promise<void>;
   configureRelay?: (
     endpoint: string,
@@ -65,6 +66,11 @@ interface DeviceLinkNative {
     token: number,
     timeoutMillis: number
   ): Promise<string>;
+  nextCandidateExchangeAction(
+    token: number,
+    timeoutMillis: number
+  ): Promise<string>;
+  notifyRemoteCandidateChange(token: number): Promise<void>;
   prepareLink(
     stunEndpointsJSON: string,
     timeoutMillis: number
@@ -87,11 +93,19 @@ interface DeviceLinkNative {
     status: number;
   }>;
   removeListeners(count: number): void;
+  resolveCandidateExchangeAction(
+    actionId: number,
+    succeeded: boolean,
+    retryable: boolean,
+    candidatesJSON: string,
+    token: number
+  ): Promise<number>;
   runLoopbackProbe(timeoutMillis: number): Promise<string>;
   startAgentLive(
     workspaceId: string,
     subscriptionGeneration: number
   ): Promise<void>;
+  stopCandidateExchange(token: number): Promise<void>;
   stopAgentLive(): Promise<void>;
 }
 

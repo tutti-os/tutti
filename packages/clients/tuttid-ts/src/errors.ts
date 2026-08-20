@@ -3,6 +3,21 @@ import type { ApiErrorDetails, ApiErrorResponse } from "./generated/index.ts";
 export type TuttidProtocolErrorCode = ApiErrorDetails["code"];
 export type TuttidProtocolErrorParams = NonNullable<ApiErrorDetails["params"]>;
 
+export class TuttidTransportError extends Error {
+  readonly code = "tuttid_transport_error";
+
+  constructor(message: string, cause: Error) {
+    super(message, { cause });
+    this.name = "TuttidTransportError";
+  }
+}
+
+export function isTuttidTransportError(
+  error: unknown
+): error is TuttidTransportError {
+  return error instanceof TuttidTransportError;
+}
+
 const tuttidProtocolErrorCodes = new Set<TuttidProtocolErrorCode>([
   "invalid_request",
   "method_not_allowed",

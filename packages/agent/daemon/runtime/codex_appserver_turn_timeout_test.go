@@ -65,6 +65,104 @@ func TestCodexAppServerAdapterTurnStartAckTimeoutInvalidatesClient(t *testing.T)
 	}
 }
 
+func TestCodexSharedClientInvalidationExpiresEverySessionReference(t *testing.T) {
+	adapter, transport, parent := startedAppServerAdapter(t)
+	client := adapter.getSession(parent.AgentSessionID).client
+	side := parent
+	side.AgentSessionID = "side-shared"
+	side.ProviderSessionID = "codex-thread-side"
+	side.Scope = RuntimeSessionScopeSide
+	side.SourceAgentSessionID = parent.AgentSessionID
+	adapter.storeSession(side.AgentSessionID, &codexAppServerSession{
+		client: client, threadID: side.ProviderSessionID, runtimeSession: side,
+		acpLiveState: newACPLiveState(),
+	})
+
+	if !adapter.invalidateSessionClient(side.AgentSessionID, client) {
+		t.Fatal("shared client was not invalidated")
+	}
+	if adapter.HasLiveSession(parent) || adapter.HasLiveSession(side) {
+		t.Fatal("unhealthy shared client left a parent or Side reference live")
+	}
+	transport.conn.mu.Lock()
+	closeCount := transport.conn.closeCount
+	transport.conn.mu.Unlock()
+	if closeCount != 1 {
+		t.Fatalf("shared client close count = %d, want 1", closeCount)
+	}
+}
+
+func TestCodexAppServerAdapterTurnStartEOFProjectsVisibleFailureBeforeAcceptance(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
+	transport.server.closeOnTurnStart = true
+
+	var dispatch ProviderDispatchResult
+	barrierCalled := false
+	events, err := adapter.ExecWithProviderAcceptance(
+		context.Background(),
+		session,
+		[]PromptContentBlock{{Type: "text", Text: "disconnect before acknowledgement"}},
+		"disconnect before acknowledgement",
+		"turn-eof",
+		nil,
+		nil,
+		func(result ProviderDispatchResult) { dispatch = result },
+		func(ProviderAcceptanceReceipt) error {
+			barrierCalled = true
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("ExecWithProviderAcceptance: %v", err)
+	}
+	if barrierCalled {
+		t.Fatal("provider acceptance barrier called without a turn/start response")
+	}
+	if dispatch.Disposition != DispatchDispositionOutcomeUnknown {
+		t.Fatalf("dispatch disposition = %q, want outcome_unknown", dispatch.Disposition)
+	}
+	failed := eventsOfType(events, activityshared.EventTurnFailed)
+	if len(failed) != 1 {
+		t.Fatalf("turn.failed events = %d, want 1; events = %#v", len(failed), events)
+	}
+	if got := failed[0].Payload.Metadata["error"]; got != "EOF" {
+		t.Fatalf("turn.failed error = %#v, want EOF", got)
+	}
+	report := reportActivityInput(session, events)
+	visibleFailures := 0
+	for _, update := range report.MessageUpdates {
+		if update.Status == messageStreamStateFailed && update.Payload["kind"] == visibleErrorKind {
+			visibleFailures++
+		}
+	}
+	if visibleFailures != 1 {
+		t.Fatalf("visible failure count = %d, want 1; updates = %#v", visibleFailures, report.MessageUpdates)
+	}
+}
+
+func TestCodexAppServerAdapterHasLiveSessionRejectsClosedClient(t *testing.T) {
+	adapter, transport, session := startedAppServerAdapter(t)
+	appSession := adapter.getSession(session.AgentSessionID)
+	if appSession == nil || appSession.client == nil {
+		t.Fatal("started session has no client")
+	}
+	if err := transport.conn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	waitForCondition(t, func() bool {
+		select {
+		case <-appSession.client.Done():
+			return true
+		default:
+			return false
+		}
+	})
+	if adapter.HasLiveSession(session) {
+		t.Fatal("HasLiveSession = true after app-server client terminated")
+	}
+}
+
 func TestCodexAppServerAdapterTurnStartCancelBeforeAckInvalidatesClient(t *testing.T) {
 	adapter, transport, session := startedAppServerAdapter(t)
 	t.Cleanup(func() { _ = adapter.Close(context.Background(), session) })
@@ -206,14 +304,25 @@ func TestCodexAppServerAdapterTurnSteerTimesOut(t *testing.T) {
 	transport.server.mu.Unlock()
 
 	startedAt := time.Now()
-	_, err := adapter.GuideActiveTurn(context.Background(), session, []PromptContentBlock{{
-		Type: "text", Text: "new guidance",
-	}}, "", "turn-guidance", nil, nil)
+	dispatches := make(chan ProviderDispatchResult, 1)
+	_, err := adapter.GuideActiveTurnWithProviderDispatch(
+		context.Background(),
+		session,
+		[]PromptContentBlock{{Type: "text", Text: "new guidance"}},
+		"",
+		"turn-guidance",
+		nil,
+		nil,
+		func(result ProviderDispatchResult) { dispatches <- result },
+	)
 	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("GuideActiveTurn error = %v, want deadline exceeded", err)
+		t.Fatalf("steered Exec error = %v, want deadline exceeded", err)
+	}
+	if dispatch := <-dispatches; dispatch.Disposition != DispatchDispositionOutcomeUnknown {
+		t.Fatalf("guidance dispatch = %#v, want outcome unknown", dispatch)
 	}
 	if elapsed := time.Since(startedAt); elapsed > time.Second {
-		t.Fatalf("GuideActiveTurn elapsed = %s, want bounded turn/steer", elapsed)
+		t.Fatalf("steered Exec elapsed = %s, want bounded turn/steer", elapsed)
 	}
 
 	transport.server.completePendingTurn()

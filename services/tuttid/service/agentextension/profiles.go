@@ -171,6 +171,17 @@ type AuthenticationMethodProfile struct {
 	} `json:"command"`
 }
 
+type AccountUsageProfile struct {
+	SchemaVersion string `json:"schemaVersion"`
+	Runtime       struct {
+		Package   string   `json:"package"`
+		Kind      string   `json:"kind"`
+		Script    string   `json:"script"`
+		Args      []string `json:"args"`
+		TimeoutMS int      `json:"timeoutMs"`
+	} `json:"runtime"`
+}
+
 func (m *Manager) LoadComposerProfile(installationID string) (ComposerProfile, error) {
 	installation, err := m.loadInstallationByID(strings.TrimSpace(installationID))
 	if err != nil {
@@ -188,6 +199,21 @@ func (m *Manager) LoadComposerProfile(installationID string) (ComposerProfile, e
 		return ComposerProfile{}, err
 	}
 	return profile, nil
+}
+
+func loadAccountUsageProfile(installation Installation) (*AccountUsageProfile, error) {
+	if installation.Manifest.Profiles.AccountUsage == "" {
+		return nil, nil
+	}
+	var profile AccountUsageProfile
+	path := filepath.Join(installation.PackageDir, filepath.FromSlash(installation.Manifest.Profiles.AccountUsage))
+	if err := readJSON(path, &profile); err != nil {
+		return nil, err
+	}
+	if err := validateAccountUsageProfile(profile); err != nil {
+		return nil, err
+	}
+	return &profile, nil
 }
 
 func loadAuthenticationMethods(installation Installation) (map[string]AuthenticationMethodProfile, error) {
@@ -542,6 +568,7 @@ var composerSlashCommandName = regexp.MustCompile(`^[a-z0-9][a-z0-9._:-]{0,63}$`
 var composerConfigOptionID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 var composerLaunchSettingValue = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
 var authenticationMethodID = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$`)
+var accountUsagePackage = regexp.MustCompile(`^@[a-z0-9._-]+/[a-z0-9._-]+@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 
 func validateAuthenticationProfile(profile AuthenticationProfile) error {
 	if profile.SchemaVersion != "tutti.agent.authentication.v1" {
@@ -597,6 +624,37 @@ func validateAuthenticationProfile(profile AuthenticationProfile) error {
 	return nil
 }
 
+func validateAccountUsageProfile(profile AccountUsageProfile) error {
+	if profile.SchemaVersion != "tutti.agent.account-usage-probe.v1" {
+		return errors.New("unsupported account usage profile schema")
+	}
+	if !accountUsagePackage.MatchString(strings.TrimSpace(profile.Runtime.Package)) {
+		return errors.New("account usage companion package must use an exact scoped version")
+	}
+	if profile.Runtime.Kind != "node-script" {
+		return errors.New("account usage companion runtime kind must be node-script")
+	}
+	script := strings.TrimSpace(profile.Runtime.Script)
+	if !strings.HasPrefix(script, "${installRoot}/") || strings.ContainsAny(script, "|;&`\n\r<>") || strings.Contains(script, "$(") {
+		return errors.New("account usage companion script must stay under installRoot")
+	}
+	if matches := runtimeArgumentPlaceholderPattern.FindAllString(script, -1); len(matches) != 1 || matches[0] != "${installRoot}" {
+		return errors.New("account usage companion script contains unsupported placeholders")
+	}
+	if len(profile.Runtime.Args) == 0 || len(profile.Runtime.Args) > 8 {
+		return errors.New("account usage companion must declare 1..8 arguments")
+	}
+	for _, argument := range profile.Runtime.Args {
+		if strings.TrimSpace(argument) == "" || utf8.RuneCountInString(argument) > 128 || strings.ContainsAny(argument, "|;&`\n\r<>") || strings.Contains(argument, "$(") || strings.Contains(argument, "$") || strings.ContainsFunc(argument, unicode.IsControl) {
+			return errors.New("account usage companion argument is invalid")
+		}
+	}
+	if profile.Runtime.TimeoutMS < 100 || profile.Runtime.TimeoutMS > 30_000 {
+		return errors.New("account usage companion timeout must be 100..30000")
+	}
+	return nil
+}
+
 func validAuthenticationPresentation(value string, maxRunes int) bool {
 	if value == "" || value != strings.TrimSpace(value) || utf8.RuneCountInString(value) > maxRunes {
 		return false
@@ -623,6 +681,7 @@ func validateInstalledProfiles(root string, manifest Manifest) error {
 		manifest.Profiles.Capabilities:   "tutti.agent.capabilities.v1",
 		manifest.Profiles.Composer:       "tutti.agent.composer.v1",
 		manifest.Profiles.Authentication: "tutti.agent.authentication.v1",
+		manifest.Profiles.AccountUsage:   "tutti.agent.account-usage-probe.v1",
 		manifest.Profiles.Events:         "tutti.agent.events.v1",
 	} {
 		if file == "" {
@@ -670,6 +729,13 @@ func validateInstalledProfiles(root string, manifest Manifest) error {
 	}
 	if _, err := loadAuthenticationMethods(installation); err != nil {
 		return err
+	}
+	accountUsage, err := loadAccountUsageProfile(installation)
+	if err != nil {
+		return err
+	}
+	if accountUsage != nil && manifest.Runtime.Install.Runner != "npm" && manifest.Runtime.Install.Runner != "pnpm" {
+		return errors.New("account usage companion requires an npm-compatible managed runtime")
 	}
 	return nil
 }

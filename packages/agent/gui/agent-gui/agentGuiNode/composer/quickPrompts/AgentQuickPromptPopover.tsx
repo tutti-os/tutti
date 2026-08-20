@@ -109,7 +109,10 @@ export function AgentQuickPromptPopover({
     preserveExternalFocusRef.current = true;
     controller.openCreate(
       { title: template.title, content: template.content },
-      { insertIntoComposerAfterSave: true }
+      {
+        insertIntoComposerAfterSave: true,
+        usagePromptType: "recommended_template"
+      }
     );
   };
   const isTemplateView = activeView === "templates";
@@ -262,7 +265,7 @@ export function AgentQuickPromptPopover({
               </div>
             )}
           </div>
-          {!isTemplateView ? (
+          {!isTemplateView && !isSorting ? (
             <div className="relative shrink-0 px-3 py-2.5">
               <SearchIcon
                 aria-hidden
@@ -272,7 +275,7 @@ export function AgentQuickPromptPopover({
                 ref={searchRef}
                 aria-label={labels.searchPlaceholder}
                 className="pl-8"
-                disabled={controller.isInteractionLocked || isSorting}
+                disabled={controller.isInteractionLocked}
                 placeholder={labels.searchPlaceholder}
                 value={controller.searchQuery}
                 onChange={(event) =>
@@ -335,7 +338,7 @@ export function AgentQuickPromptPopover({
           ) : null}
           <ScrollArea
             className="min-h-0 flex-1"
-            viewportClassName="px-2 pb-2"
+            viewportClassName={cn("px-2 pb-2", isSorting && "pt-2")}
             viewportTestId="agent-quick-prompt-scroll-viewport"
           >
             {isTemplateView ? (

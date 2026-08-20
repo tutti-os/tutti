@@ -23,6 +23,7 @@ import {
 } from "./agent-gui-virtualization-performance-scenarios.mjs";
 import { providerStatusFocusRefreshScenario } from "./agent-provider-status-performance-scenario.mjs";
 import { concurrentAgentStreamingScenario } from "./agent-gui-concurrent-streaming-performance-scenario.mjs";
+import { workbenchDockPopupPreviewScenario } from "./agent-gui-dock-preview-performance-scenario.mjs";
 
 export const agentGuiPerformanceScenarios = [
   providerSwitchScenario,
@@ -37,6 +38,7 @@ export const agentGuiPerformanceScenarios = [
   railScopeRevealScenario,
   composerInputScenario,
   composerOverflowResizeScenario,
+  workbenchDockPopupPreviewScenario,
   workbenchFiftyWindowStressScenario,
   workbenchWindowDragScenario,
   workbenchWindowLifecycleScenario,

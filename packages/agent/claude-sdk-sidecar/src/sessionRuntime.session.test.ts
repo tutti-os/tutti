@@ -5,6 +5,7 @@ import { join } from "node:path";
 import test from "node:test";
 import type {
   Options as ClaudeQueryOptions,
+  PermissionUpdate,
   SDKMessage
 } from "@anthropic-ai/claude-agent-sdk";
 import { withSidecarEventSinkForTest } from "./eventSink.ts";
@@ -630,6 +631,40 @@ test("ephemeral Claude session state UUID does not replace the durable checkpoin
           } as never;
           yield {
             type: "system",
+            subtype: "hook_started",
+            hook_id: "hook-1",
+            hook_name: "demo-hook",
+            hook_event: "PostToolUse",
+            uuid: "ephemeral-hook-started-uuid",
+            session_id: "provider-session-checkpoint"
+          } as never;
+          yield {
+            type: "system",
+            subtype: "hook_progress",
+            hook_id: "hook-1",
+            hook_name: "demo-hook",
+            hook_event: "PostToolUse",
+            stdout: "progress",
+            stderr: "",
+            output: "progress",
+            uuid: "ephemeral-hook-progress-uuid",
+            session_id: "provider-session-checkpoint"
+          } as never;
+          yield {
+            type: "system",
+            subtype: "hook_response",
+            hook_id: "hook-1",
+            hook_name: "demo-hook",
+            hook_event: "PostToolUse",
+            output: "done",
+            stdout: "",
+            stderr: "",
+            outcome: "success",
+            uuid: "ephemeral-hook-response-uuid",
+            session_id: "provider-session-checkpoint"
+          } as never;
+          yield {
+            type: "system",
             subtype: "session_state_changed",
             state: "idle",
             uuid: "ephemeral-idle-uuid",
@@ -984,10 +1019,20 @@ test("SDK api_retry authentication error fails before retrying", async () => {
   }
 });
 
-test("guidance prompt stays on the active SDK turn", async () => {
+test("guidance preempts immediately and stays on the active SDK turn", async () => {
   const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
   const prompts: string[] = [];
-  const interrupts = { count: 0 };
+  let releaseInterrupt = () => {};
+  let releaseAbortResult = () => {};
+  const interrupts = {
+    count: 0,
+    wait: new Promise<void>((resolve) => {
+      releaseInterrupt = resolve;
+    }),
+    resultWait: new Promise<void>((resolve) => {
+      releaseAbortResult = resolve;
+    })
+  };
   const restoreSink = withSidecarEventSinkForTest((event) =>
     events.push(event)
   );
@@ -1012,11 +1057,36 @@ test("guidance prompt stays on the active SDK turn", async () => {
 
     await session.start();
     session.exec("turn-1", "start working");
-    session.guide("prefer the focused path");
+    await waitForCondition(() => prompts.length === 1, "initial prompt");
+    let guidanceAcknowledged = false;
+    const guidance = session.guide("prefer the focused path").then(() => {
+      guidanceAcknowledged = true;
+    });
+
+    assert.equal(interrupts.count, 1);
+    assert.deepEqual(prompts, ["start working"]);
+    assert.equal(guidanceAcknowledged, false);
+
+    releaseInterrupt();
+    await guidance;
+    const interruptedIndex = events.findIndex(
+      (event) => event.type === "guidance_interrupted"
+    );
+    assert.ok(interruptedIndex >= 0);
+    assert.equal(events[interruptedIndex]?.payload?.turnId, "turn-1");
+    assert.deepEqual(prompts, ["start working"]);
+
+    releaseAbortResult();
     await waitForEvent(events, "turn_completed");
 
     assert.deepEqual(prompts, ["start working", "prefer the focused path"]);
     assert.equal(interrupts.count, 1);
+    const guidedAssistantIndex = events.findIndex(
+      (event) =>
+        event.type === "assistant_completed" &&
+        event.payload?.content === "Guided response"
+    );
+    assert.ok(guidedAssistantIndex > interruptedIndex);
     const completed = events.find((event) => event.type === "turn_completed");
     assert.equal(completed?.payload?.turnId, "turn-1");
     assert.equal(
@@ -1037,6 +1107,52 @@ test("guidance prompt stays on the active SDK turn", async () => {
       ),
       false
     );
+  } finally {
+    restoreSink();
+  }
+});
+
+test("guidance rejects instead of enqueueing when SDK preemption fails", async () => {
+  const prompts: string[] = [];
+  const restoreSink = withSidecarEventSinkForTest(() => {});
+  try {
+    const session = new SessionRuntime(
+      "provider-session-1",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt }) => {
+        const query = fakeGuidancePromptQuery(prompt, prompts);
+        return {
+          ...query,
+          async interrupt() {
+            throw new Error("interrupt rejected");
+          }
+        };
+      }
+    );
+
+    await session.start();
+    session.exec("turn-1", "start working");
+    await waitForCondition(() => prompts.length === 1, "initial prompt");
+
+    await assert.rejects(
+      session.guide("prefer the focused path"),
+      /guidance preemption failed: interrupt rejected/
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    assert.deepEqual(prompts, ["start working"]);
   } finally {
     restoreSink();
   }
@@ -2107,6 +2223,116 @@ test("follow-up after settled turn resumes a fresh Claude query", async () => {
     assert.equal(queryCount, 2);
     assert.equal(resumedOptions?.resume, "provider-session-1");
     assert.equal(Object.hasOwn(resumedOptions ?? {}, "sessionId"), false);
+  } finally {
+    restoreSink();
+  }
+});
+
+test("allow for session survives the fresh Claude query used by a follow-up turn", async () => {
+  const events: Array<{ type: string; payload?: Record<string, unknown> }> = [];
+  const restoreSink = withSidecarEventSinkForTest((event) =>
+    events.push(event)
+  );
+  const permissionResults: unknown[] = [];
+  const suggestions = [
+    {
+      type: "addRules",
+      rules: [{ toolName: "WebFetch", ruleContent: "domain:example.com" }],
+      behavior: "allow",
+      destination: "session"
+    } satisfies PermissionUpdate
+  ];
+  let queryCount = 0;
+  try {
+    const session = new SessionRuntime(
+      "provider-session-permission-ledger",
+      "/repo",
+      {},
+      false,
+      false,
+      {
+        model: "",
+        permissionModeId: "default",
+        planMode: false,
+        effort: "",
+        speed: ""
+      },
+      sidecarClaudeOptionsFromPayload({}),
+      undefined,
+      ({ prompt, options }) => {
+        queryCount += 1;
+        const currentQuery = queryCount;
+        return fakePermissionCheckQuery(
+          prompt,
+          options,
+          async (queryOptions) => {
+            permissionResults.push(
+              await queryOptions.canUseTool?.(
+                "WebFetch",
+                { url: `https://example.com/${currentQuery}` },
+                {
+                  ...testCanUseToolOptions({
+                    requestId: `request-web-fetch-${currentQuery}`,
+                    toolUseID: `tool-web-fetch-${currentQuery}`
+                  }),
+                  suggestions
+                }
+              )
+            );
+          }
+        );
+      }
+    );
+
+    await session.start();
+    session.exec("turn-1", "fetch once");
+    await waitForEvent(events, "approval_requested");
+    const request = events.find((event) => event.type === "approval_requested");
+    session.submitInteractive(
+      "turn-1",
+      String(request?.payload?.requestId ?? ""),
+      "approved",
+      "allow_always",
+      {}
+    );
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-1"
+        ),
+      "first permission turn completion"
+    );
+
+    session.exec("turn-2", "fetch again");
+    await waitForCondition(
+      () =>
+        events.some(
+          (event) =>
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-2"
+        ),
+      "follow-up permission turn completion"
+    );
+
+    assert.equal(queryCount, 2);
+    assert.equal(
+      events.filter((event) => event.type === "approval_requested").length,
+      1
+    );
+    assert.deepEqual(permissionResults, [
+      {
+        behavior: "allow",
+        updatedInput: { url: "https://example.com/1" },
+        updatedPermissions: suggestions
+      },
+      {
+        behavior: "allow",
+        updatedInput: { url: "https://example.com/2" },
+        updatedPermissions: suggestions
+      }
+    ]);
   } finally {
     restoreSink();
   }

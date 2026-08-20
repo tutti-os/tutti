@@ -17,6 +17,8 @@ transport commands and normalize observations before they enter the engine.
 - can retain live session event streams with reference-counted subscription
   lifecycle when a host adapter exposes that optional capability
 - merges persisted and live messages with version-aware conflict handling
+- projects exact-identity ephemeral conversations into the same snapshot,
+  Turn, and Interaction vocabulary without creating a workspace engine
 - analyzes normalized activity events into one inline-observation intent plus
   an explicit authoritative-reconcile requirement
 - projects shared activation, prompt send, Goal Control, settings update, turn
@@ -29,6 +31,30 @@ transport commands and normalize observations before they enter the engine.
 It intentionally does not render UI, open network connections directly, persist
 state, or translate daemon/backend contracts. Those responsibilities belong to a
 host adapter such as the desktop renderer adapter.
+
+## Ephemeral Conversation Projector
+
+`createAgentActivityEphemeralConversationProjector` supports transient,
+surface-owned conversation lanes such as live Side:
+
+```ts
+const side = createAgentActivityEphemeralConversationProjector({
+  workspaceId,
+  agentSessionId: sideAgentSessionId,
+  sourceAgentSessionId,
+  provider,
+  cwd
+});
+
+side.apply(normalizedEvent);
+const { activitySnapshot, sessionTurns, interactions } = side.getSnapshot();
+```
+
+It is intentionally smaller than `createAgentSessionEngine`. It accepts only
+already-normalized events for one exact identity, rejects forward sequence gaps,
+and expires on identity mismatch or terminal state. It does not load,
+reconcile, subscribe, persist, or recover data. The owning surface/controller
+must dispose the transport and discard the projection when it expires.
 
 ## Session Engine
 
@@ -72,6 +98,12 @@ Engine rules:
   Cancellation aborts a mutation host effect; once delivery may have started,
   the mutation remains delivery-unknown rather than becoming a confirmed
   failure.
+- The activation request identity is projected as `activationId` on the typed
+  host effect. Pending activation diagnostics keep command settlement separate
+  from the first Session snapshot observation, including bounded outcomes for a
+  missing Session, workspace mismatch, stale new-Session evidence, and a match.
+  This lets hosts report command and snapshot latency without treating repeated
+  snapshots or a late command result as a second lifecycle transition.
 - Reducers are pure and return new state plus command descriptions; the effect
   executor performs commands and feeds every settlement (success, failure,
   timeout) back into the loop as command-result intents.
@@ -178,12 +210,15 @@ current snapshot reference and does not notify subscribers.
 
 ## Composer Options Cache
 
-`engine.loadComposerOptions({ targetKey, provider, ... })` caches results in a
-single key space, `composerOptionsByTargetKey`. After non-empty boundary
-normalization, `targetKey` is an **opaque** cache key: the engine never parses
-or derives meaning from it. Callers pass the already-resolved directory target
-id; two distinct targets that share a `provider` therefore keep isolated caches
-(no provider-dimension fallback).
+`engine.loadComposerOptions({ targetKey, provider, section, ... })` caches
+results in a single target key space with independent `core` and
+`capabilities` entries. `core` owns model, reasoning, speed, permission, and
+effective settings; `capabilities` owns skills, commands, and capability
+catalog data. After non-empty boundary normalization, `targetKey` is an
+**opaque** cache key: the engine never parses or derives meaning from it.
+Callers pass the already-resolved directory target id; two distinct targets
+that share a `provider` therefore keep isolated caches (no provider-dimension
+fallback).
 
 The semantic Engine method owns request identity, signature-aware cache reuse,
 joining an identical in-flight request, supersession by a newer request, exact
@@ -341,6 +376,19 @@ for external hosts that use them for goal setup or idempotency. A typed
 new-Session Goal is part of activation: hosts forward `initialGoalControl` and
 empty initial content to their Create transport, and Agent Host creates the
 Session plus durable Goal operation without creating a Turn.
+Hosts that already observe that durable operation may attach the optional,
+read-only `goalSyncState` projection to the Session. The field carries only the
+revision, sync status, pending operation identity, and optional Host-owned
+`executionPending` proof. Omission means the host cannot prove progress;
+consumers must not reinterpret it as idle or successful.
+For loading continuity, `pending`, `applying`, and `unknown` require a non-empty
+pending operation identity. A `synced` mutation keeps the initial-Goal bridge
+only when `executionPending` is explicitly true. The Host clears that proof on
+the first canonical Turn with exact Goal provenance or when the Goal becomes
+terminal, diverged, failed, or otherwise non-executing. Missing proof fails
+closed, including for mixed-version hosts.
+Engine Session merging preserves known state across compatible projections that
+omit the optional field, while an explicit `null` clears it.
 Existing-Session Goal Control is a separate Engine operation. The caller
 proposes a stable client-submit identity; admission returns the effective
 identity actually used by the Engine. The Engine owns command identity,

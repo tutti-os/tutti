@@ -1,7 +1,9 @@
+import { formatWorkspaceFilePathForDisplay } from "@tutti-os/workspace-file-manager/services";
 import type {
   AgentTurnSummaryFileVM,
   AgentTurnSummaryPatchChangeVM
 } from "../contracts/agentTurnSummaryRowVM";
+import { normalizeWorkspaceFilePath } from "../../../actions/workspaceFilePathCandidate";
 
 export function fileCanBuildPatch(file: AgentTurnSummaryFileVM): boolean {
   return (
@@ -14,24 +16,31 @@ export function fileCanBuildPatch(file: AgentTurnSummaryFileVM): boolean {
 
 export function patchBatchDirectoryCwd(
   cwd: string | null,
-  changes: readonly Pick<AgentTurnSummaryPatchChangeVM, "path">[]
+  changes: readonly Pick<AgentTurnSummaryPatchChangeVM, "path">[],
+  workspaceRoot?: string | null
 ): string | null {
-  const normalizedCwd = normalizePatchHostPath(cwd ?? "");
+  const normalizedCwd = normalizePatchHostPath(cwd ?? "", workspaceRoot);
   if (!normalizedCwd) {
     return null;
   }
   const cwdIsChangedFilePath = changes.some(
-    (change) => normalizePatchHostPath(change.path) === normalizedCwd
+    (change) =>
+      normalizePatchHostPath(change.path, workspaceRoot) === normalizedCwd
   );
-  return cwdIsChangedFilePath ? dirnameForPatchHostPath(normalizedCwd) : cwd;
+  return cwdIsChangedFilePath
+    ? dirnameForPatchHostPath(normalizedCwd)
+    : normalizedCwd;
 }
 
 export function resolvePatchExecutionCwd(
   cwd: string | null,
   workspaceRoot?: string | null
 ): string | null {
-  const normalizedCwd = normalizePatchHostPath(cwd ?? "");
-  const normalizedRoot = normalizePatchHostPath(workspaceRoot ?? "");
+  const normalizedRoot = normalizePatchHostPath(
+    workspaceRoot ?? "",
+    workspaceRoot
+  );
+  const normalizedCwd = normalizePatchHostPath(cwd ?? "", normalizedRoot);
   if (!normalizedCwd) {
     return normalizedRoot || null;
   }
@@ -84,8 +93,21 @@ export function resolvePatchDiffCwd({
     : sourceCwd;
 }
 
-function normalizePatchHostPath(path: string): string {
-  return path.trim().replaceAll("\\", "/").replace(/\/+$/, "");
+function normalizePatchHostPath(
+  path: string,
+  workspaceRoot?: string | null
+): string {
+  const trimmed = path.trim();
+  if (!trimmed) {
+    return "";
+  }
+  const normalized = normalizeWorkspaceFilePath(trimmed, workspaceRoot);
+  if (/^\/?[A-Za-z]:\//.test(normalized)) {
+    return formatWorkspaceFilePathForDisplay(normalized, "win32")
+      .replaceAll("\\", "/")
+      .replace(/\/+$/, "");
+  }
+  return normalized.replace(/\/+$/, "");
 }
 
 function dirnameForPatchHostPath(path: string): string {

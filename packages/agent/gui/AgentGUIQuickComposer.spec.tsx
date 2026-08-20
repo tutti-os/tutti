@@ -3,10 +3,11 @@ import type { AgentActivityComposerOptions } from "@tutti-os/agent-activity-core
 import { createI18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createRichTextMentionService } from "@tutti-os/ui-rich-text/service";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AgentGUIQuickComposer } from "./AgentGUIQuickComposer";
 import type { AgentGUIQuickComposerAgentTarget } from "./AgentGUIQuickComposer";
 import { agentGuiI18nResources } from "./i18n/index";
+import { projectQuickComposerSettings } from "./quickComposerSettings";
 
 const agentTargets = [
   {
@@ -49,6 +50,10 @@ const composerOptions = {
   skills: [],
   speeds: []
 } satisfies AgentActivityComposerOptions;
+
+beforeEach(() => {
+  globalThis.localStorage.clear();
+});
 
 describe("AgentGUIQuickComposer", () => {
   it("fails closed when the controlled Agent target is missing or disabled", () => {
@@ -159,6 +164,102 @@ describe("AgentGUIQuickComposer", () => {
     );
 
     expect(onSettingsChange).toHaveBeenCalledWith({ model: "gpt-5.5" });
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-recents:agent:codex"
+      )
+    ).toBe('["gpt-5.5"]');
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-recents:default"
+      )
+    ).toBeNull();
+  });
+
+  it("migrates legacy model history into the exact selected target", async () => {
+    globalThis.localStorage.setItem(
+      "agent-gui:composer-model-recents:default",
+      '["obsolete-model","gpt-5.5"]'
+    );
+    globalThis.localStorage.setItem(
+      "agent-gui:composer-model-favorites:default",
+      '["gpt-5.5"]'
+    );
+    const { container } = render(
+      <AgentGUIQuickComposer
+        agentTargets={agentTargets}
+        capabilitiesByAgentTargetId={capabilitiesByAgentTargetId}
+        composerSettings={{
+          loading: false,
+          onChange: vi.fn(),
+          options: composerOptions,
+          value: { model: "gpt-5.6-sol", reasoningEffort: "high" }
+        }}
+        content={[{ text: "Inspect this", type: "text" }]}
+        selectedAgentTargetId="agent:codex"
+        workspaceId="workspace:test"
+        onAgentTargetChange={vi.fn()}
+        onContentChange={vi.fn()}
+        onSubmit={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(
+      container.querySelector<HTMLButtonElement>(
+        '[data-agent-model-reasoning-trigger="true"]'
+      )!,
+      { button: 0, ctrlKey: false }
+    );
+
+    await waitFor(() => {
+      expect(
+        globalThis.localStorage.getItem(
+          "agent-gui:composer-model-recents:agent:codex"
+        )
+      ).toBe('["gpt-5.5"]');
+      expect(
+        globalThis.localStorage.getItem(
+          "agent-gui:composer-model-favorites:agent:codex"
+        )
+      ).toBe('["gpt-5.5"]');
+    });
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-recents:default"
+      )
+    ).toBeNull();
+    expect(
+      globalThis.localStorage.getItem(
+        "agent-gui:composer-model-favorites:default"
+      )
+    ).toBeNull();
+    expect(
+      document.querySelector(
+        '[data-agent-model-value="gpt-5.5"] [data-agent-model-favorite-toggle="true"]'
+      )
+    ).toHaveAttribute("data-favorited", "true");
+  });
+
+  it("marks retained catalog testimony unsettled while the host is loading", () => {
+    const projected = projectQuickComposerSettings({
+      agentTargetId: "agent:codex",
+      loading: true,
+      options: composerOptions,
+      projectLocked: false,
+      provider: "codex",
+      selectedProjectPath: null,
+      settings: {}
+    });
+
+    expect(projected.modelChoiceHistory).toEqual({
+      targetId: "agent:codex",
+      catalog: {
+        authoritative: true,
+        effectiveModel: "gpt-5.6-sol",
+        loading: true,
+        models: [{ value: "gpt-5.6-sol" }, { value: "gpt-5.5" }]
+      }
+    });
   });
 
   it("keeps prompt entry and references available while options load", () => {

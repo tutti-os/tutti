@@ -37,6 +37,45 @@ test("workspace file reference picker controller searches a query only once when
   );
 });
 
+test("workspace file reference picker keeps snapshot and preview inputs cloneable", async () => {
+  let previewReference: WorkspaceFileReference | null = null;
+  const adapter: WorkspaceFileReferenceAdapter = {
+    async readReferencePreview({ reference }) {
+      previewReference = reference;
+      return null;
+    },
+    async searchReferences() {
+      return [
+        {
+          displayName: "photo.png",
+          kind: "file",
+          path: "/workspace/photo.png"
+        }
+      ];
+    }
+  };
+  const controller = createWorkspaceFileReferencePickerController({
+    fileAdapter: adapter,
+    searchDebounceMs: 0,
+    workspaceId: "workspace-cloneable"
+  });
+
+  controller.open();
+  controller.setSearchQuery("photo");
+  await settlePromises();
+
+  const reference = controller.getSnapshot().searchEntries[0];
+  assert.ok(reference);
+  assert.doesNotThrow(() => structuredClone(controller.getSnapshot()));
+  assert.doesNotThrow(() => structuredClone(reference));
+
+  controller.setPreviewReference(reference);
+  await settlePromises();
+
+  assert.ok(previewReference);
+  assert.doesNotThrow(() => structuredClone(previewReference));
+});
+
 test("workspace file reference picker controller cancels stale searches", async () => {
   const calls: Array<{
     query: string;

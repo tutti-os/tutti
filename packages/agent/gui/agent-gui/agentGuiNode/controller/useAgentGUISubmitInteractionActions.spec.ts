@@ -15,11 +15,26 @@ import {
   restoreFailedAgentGUIHomeDraft
 } from "./agentGuiController.homeDraftHelpers";
 import {
+  agentGUISubmitSettlementError,
   typedGoalControlFromComposer,
   useAgentGUISubmitInteractionActions
 } from "./useAgentGUISubmitInteractionActions";
 
 const draftKey = "node-default:codex:local:codex";
+
+it("preserves a failed submit reason for package-owned presentation", () => {
+  expect(
+    agentGUISubmitSettlementError({
+      errorCode: "workspace_operation_failed",
+      errorMessage: "agent process cleanup is still pending",
+      errorReason: "agent.process_cleanup_pending"
+    })
+  ).toMatchObject({
+    code: "workspace_operation_failed",
+    message: "agent process cleanup is still pending",
+    reason: "agent.process_cleanup_pending"
+  });
+});
 
 function draft(prompt: string): AgentComposerDraft {
   return [{ type: "text", text: prompt }];
@@ -114,6 +129,7 @@ function createGoalControlInput(
     dataRef: { current: {} },
     draftByScopeKeyRef,
     executePromptRef: { current: vi.fn() },
+    goalControlSupported: true,
     isComposerHomeRef: { current: false },
     isCurrentConversation: (agentSessionId: string) =>
       agentSessionId === "session-1",
@@ -518,6 +534,45 @@ describe("existing-session prompt submission", () => {
     ).toBe("");
   });
 
+  it("clears the draft captured by the Composer when the controller ref is stale", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    const submittedDraft = draft("continue");
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("stale projection")
+    };
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    setDraftByScopeKey.mockImplementationOnce((update) => {
+      const current = { "session:session-1": submittedDraft };
+      const next = typeof update === "function" ? update(current) : update;
+      draftByScopeKeyRef.current = next;
+    });
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "continue" }],
+        undefined,
+        { submittedDraft }
+      )
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: [{ type: "text", text: "continue" }]
+      })
+    );
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("");
+  });
+
   it("keeps the draft when the Engine does not admit the submission", () => {
     const goalControl = vi.fn(async () => undefined);
     const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
@@ -545,6 +600,34 @@ describe("existing-session prompt submission", () => {
 });
 
 describe("goal controls", () => {
+  it("submits typed Goal text normally when Goal control is unsupported", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.goalControlSupported = false;
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: false });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "/goal count to ten" }
+      ])
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSessionId: "session-1",
+        content: [{ type: "text", text: "/goal count to ten" }]
+      })
+    );
+    expect(goalControl).not.toHaveBeenCalled();
+  });
+
   it("publishes the Engine-owned optimistic goal before transport settles", async () => {
     const goalControl = vi.fn(() => new Promise<void>(() => {}));
     const { input, sessionEngine } = createGoalControlInput(
@@ -803,14 +886,17 @@ describe("typedGoalControlFromComposer", () => {
     expect(
       typedGoalControlFromComposer(
         [{ type: "text", text: "/goal clear" }],
-        "clear chip"
+        "clear chip",
+        true
       )
     ).toEqual({ action: "clear" });
     expect(
       typedGoalControlFromComposer(
         [{ type: "text", text: "ordinary prompt" }],
-        "/goal clear"
+        "/goal clear",
+        true
       )
     ).toBeNull();
   });
+
 });

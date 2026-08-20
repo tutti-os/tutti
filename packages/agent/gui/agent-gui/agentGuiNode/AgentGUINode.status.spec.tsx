@@ -584,6 +584,7 @@ function createViewModel(
     queueStatus: "active",
     gate: {
       conversationBusy: false,
+      isAwaitingTurnStart: false,
       runtime: {
         status: "ready",
         reason: null,
@@ -594,6 +595,7 @@ function createViewModel(
     },
     isSubmitting: false,
     isInterrupting: false,
+    hasPendingSubmitStopTarget: false,
     promptImagesSupported: true,
     availability: "ready",
     listError: null,

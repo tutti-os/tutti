@@ -466,6 +466,35 @@ test("rejects a late Turn fact without leaking completion into attention", () =>
   harness.engine.dispose();
 });
 
+test("accepts host-fenced settlement across source version domains", () => {
+  const harness = createHarness();
+  const runningTurn = turn("running", 4);
+  harness.engine.dispatch({
+    session: session(runningTurn, 4),
+    type: "session/upserted"
+  });
+
+  const result = harness.coordinator.ingestEvent(
+    turnUpdateEvent("settled", 2, "turn-1", 100),
+    { hostFencedSameTurnSettlement: true }
+  );
+  const snapshot = harness.engine.getSnapshot();
+
+  assert.equal(result.accepted, true);
+  assert.equal(
+    snapshot.sessionLifecycle.turnsById[canonicalTurnKey("session-1", "turn-1")]
+      ?.phase,
+    "settled"
+  );
+  assert.equal(
+    snapshot.sessionLifecycle.sessionsById["session-1"]?.activeTurnId,
+    null
+  );
+
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
 test("replays an accepted completion after live reconcile supplies identity", () => {
   const harness = createHarness();
   const settledTurn = turn("settled", 2);

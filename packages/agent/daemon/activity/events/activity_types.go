@@ -579,6 +579,27 @@ func BestEffortErrorMessage(payload EventPayload) string {
 	return ""
 }
 
+// BestEffortErrorCode preserves a provider-owned structured error code when
+// the event carries one. It does not classify free-form text; runtime adapters
+// that own a stable classifier may apply that only after this exact value.
+func BestEffortErrorCode(payload EventPayload) string {
+	if payload.Metadata != nil {
+		if code := firstNonEmptyErrorString(
+			payload.Metadata["errorCode"],
+			payload.Metadata["error_code"],
+			payload.Metadata["code"],
+		); code != "" {
+			return code
+		}
+		if nested, ok := payload.Metadata["error"].(map[string]any); ok {
+			if code := errorCodeFromMap(nested); code != "" {
+				return code
+			}
+		}
+	}
+	return errorCodeFromMap(payload.Error)
+}
+
 func firstNonEmptyErrorString(values ...any) string {
 	for _, value := range values {
 		if text, ok := value.(string); ok {
@@ -612,4 +633,11 @@ func errorMessageFromMap(value map[string]any) string {
 		value["debugMessage"],
 		value["lastError"],
 	)
+}
+
+func errorCodeFromMap(value map[string]any) string {
+	if len(value) == 0 {
+		return ""
+	}
+	return firstNonEmptyErrorString(value["errorCode"], value["error_code"], value["code"])
 }

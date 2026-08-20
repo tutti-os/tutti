@@ -37,8 +37,6 @@ import type { WorkspaceAgentActivityTimelineItem } from "../../../shared/workspa
 import { resolveWorkspaceAgentSessionSortTimeUnixMs } from "../../../shared/workspaceAgentSessionSortTime";
 import {
   createAgentGUIConversationProjectResolver,
-  type AgentGUIConversationNoProjectPathResolver,
-  type AgentGUIConversationProjectResolutionOptions,
   type AgentGUIConversationProjectResolver,
   type AgentGUIConversationProjectSummary,
   type AgentGUIConversationUserProject
@@ -64,10 +62,11 @@ export {
   AGENT_GUI_RUNTIME_SESSION_ORIGIN,
   resolveAgentGUIConversationSortTimeUnixMs
 } from "./agentGuiConversationTypes";
-export { resolveAgentGUIConversationProject } from "./agentGuiConversationProjectResolver";
+export {
+  resolveAgentGUIConversationProjectBySectionKey,
+  resolveAgentGUISelectedUserProject
+} from "./agentGuiConversationProjectResolver";
 export type {
-  AgentGUIConversationNoProjectPathResolver,
-  AgentGUIConversationProjectResolutionOptions,
   AgentGUIConversationProjectSummary,
   AgentGUIConversationUserProject
 } from "./agentGuiConversationProjectResolver";
@@ -85,7 +84,6 @@ export type {
 } from "./agentGuiConversationTypes";
 export function buildAgentGUIConversationSummaries({
   conversationFilter,
-  isNoProjectPath,
   snapshot,
   provider,
   sessionMessagesById,
@@ -108,10 +106,8 @@ export function buildAgentGUIConversationSummaries({
       session
     ])
   );
-  const projectResolver = createAgentGUIConversationProjectResolver(
-    userProjects,
-    { isNoProjectPath }
-  );
+  const projectResolver =
+    createAgentGUIConversationProjectResolver(userProjects);
   const conversations = buildWorkspaceAgentActivityListViewModel(
     runtimeSnapshot,
     {
@@ -319,14 +315,12 @@ export function mergeTimelineItemsByEventID(
 export function conversationSummaryFromAgentSession(
   session: CanonicalAgentSession,
   options: {
-    isNoProjectPath?: AgentGUIConversationNoProjectPathResolver;
     needsUserAction?: boolean;
     userProjects?: readonly AgentGUIConversationUserProject[];
   } = {}
 ): AgentGUIConversationSummary {
   const projectResolver = createAgentGUIConversationProjectResolver(
-    options.userProjects ?? [],
-    { isNoProjectPath: options.isNoProjectPath }
+    options.userProjects ?? []
   );
   const provider = resolveAgentGUIProviderIdentity({
     sessionProvider: session.provider
@@ -349,9 +343,6 @@ export function conversationSummaryFromAgentSession(
     isolation: session.isolation,
     railSectionKey: session.railSectionKey,
     project: resolveConversationProject(session, projectResolver),
-    ...(isExternalImportNoProjectSession(session)
-      ? { projectMode: "none" }
-      : {}),
     pinnedAtUnixMs: session.pinnedAtUnixMs ?? null,
     needsUserAction: options.needsUserAction ?? false,
     ...(session.visible === false ? { hiddenFromRail: true } : {}),
@@ -363,19 +354,15 @@ export function conversationSummaryFromAgentSession(
 
 export function applyAgentGUIConversationProjects(
   conversations: readonly AgentGUIConversationSummary[],
-  userProjects: readonly AgentGUIConversationUserProject[] = [],
-  options: AgentGUIConversationProjectResolutionOptions = {}
+  userProjects: readonly AgentGUIConversationUserProject[] = []
 ): AgentGUIConversationSummary[] {
   let changed = false;
-  const projectResolver = createAgentGUIConversationProjectResolver(
-    userProjects,
-    options
-  );
+  const projectResolver =
+    createAgentGUIConversationProjectResolver(userProjects);
   const next = conversations.map((conversation) => {
-    const project =
-      conversation.projectMode === "none"
-        ? null
-        : projectResolver.resolve(conversation.cwd);
+    const project = projectResolver.resolveSectionKey(
+      conversation.railSectionKey
+    );
     if (isSameAgentGUIConversationProject(conversation.project, project)) {
       return conversation;
     }
@@ -482,9 +469,6 @@ function conversationSummaryFromActivity(
     isolation: session?.isolation ?? null,
     ...(session ? { railSectionKey: session.railSectionKey } : {}),
     project: resolveConversationProject(session, options.projectResolver),
-    ...(isExternalImportNoProjectSession(session)
-      ? { projectMode: "none" }
-      : {}),
     pinnedAtUnixMs: session?.pinnedAtUnixMs ?? null,
     needsUserAction: rootSessionIdsAwaitingUserAction.has(activity.sessionId),
     sortTimeUnixMs: activity.sortTimeUnixMs,
@@ -498,20 +482,7 @@ function resolveConversationProject(
   session: AgentActivitySession | CanonicalAgentSession | undefined,
   projectResolver: AgentGUIConversationProjectResolver
 ): AgentGUIConversationProjectSummary | null {
-  if (isExternalImportNoProjectSession(session)) {
-    return null;
-  }
-  return projectResolver.resolve(session?.cwd);
-}
-
-function isExternalImportNoProjectSession(
-  session: AgentActivitySession | CanonicalAgentSession | undefined
-): boolean {
-  return Boolean(
-    session &&
-    "imported" in session &&
-    (session.noProject === true || session.imported === true)
-  );
+  return projectResolver.resolveSectionKey(session?.railSectionKey);
 }
 
 function isImportedWorkspaceAgentSession(

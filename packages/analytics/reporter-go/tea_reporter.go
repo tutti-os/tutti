@@ -54,20 +54,26 @@ func (r *TeaReporter) Track(ctx context.Context, events ...Event) {
 	}
 
 	common, userUniqueID := r.common.snapshot()
-	sendEvents := normalizeEvents(events, common)
+	header := r.common.teaHeader()
+	sendEvents := normalizeEvents(events, common, header)
 	if len(sendEvents) == 0 {
 		return
 	}
 
-	r.publishDebugEvents(ctx, sendEvents, common)
-	_ = r.sdk.Send(r.appID, userUniqueID, sendEvents, common)
+	r.publishDebugEvents(ctx, sendEvents, common, header)
+	_ = r.sdk.Send(r.appID, userUniqueID, sendEvents, common, header)
 }
 
 func (r *TeaReporter) Close() error {
 	return r.sdk.Close()
 }
 
-func (r *TeaReporter) publishDebugEvents(ctx context.Context, events []teaSDKEvent, common map[string]any) {
+func (r *TeaReporter) publishDebugEvents(
+	ctx context.Context,
+	events []teaSDKEvent,
+	common map[string]any,
+	header teaSDKHeader,
+) {
 	if r.debug == nil || len(events) == 0 {
 		return
 	}
@@ -78,6 +84,9 @@ func (r *TeaReporter) publishDebugEvents(ctx context.Context, events []teaSDKEve
 			params = map[string]any{}
 		}
 		for key, value := range common {
+			params[key] = value
+		}
+		for key, value := range header.presetParams() {
 			params[key] = value
 		}
 		debugEvents = append(debugEvents, DebugEvent{

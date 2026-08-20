@@ -449,6 +449,7 @@ describe("useAgentGuiConversationList", () => {
       expect.objectContaining({
         id: "session-1",
         provider: "codex",
+        status: "working",
         title: "test1",
         titleFallback: null
       })
@@ -477,7 +478,7 @@ describe("useAgentGuiConversationList", () => {
     expect(result.current?.conversations).toEqual([
       expect.objectContaining({
         id: "session-1",
-        status: "working",
+        status: "ready",
         title: "test1",
         titleFallback: null
       })
@@ -519,7 +520,7 @@ describe("useAgentGuiConversationList", () => {
     expect(result.current?.conversations).toEqual([
       expect.objectContaining({
         id: "session-1",
-        status: "working",
+        status: "ready",
         title: "Pending task"
       })
     ]);
@@ -546,7 +547,46 @@ describe("useAgentGuiConversationList", () => {
       });
     });
     expect(result.current?.conversations).toEqual([
-      expect.objectContaining({ id: "session-1", title: "Durable task" })
+      expect.objectContaining({
+        id: "session-1",
+        status: "ready",
+        title: "Durable task"
+      })
+    ]);
+
+    act(() => {
+      engine.dispatch({
+        type: "session/snapshotReceived",
+        sessions: [
+          {
+            activeTurn: {
+              agentSessionId: "session-1",
+              origin: "user_prompt",
+              phase: "running",
+              startedAtUnixMs: 3,
+              turnId: "turn-1",
+              updatedAtUnixMs: 3
+            },
+            activeTurnId: "turn-1",
+            agentSessionId: "session-1",
+            createdAtUnixMs: 2,
+            cwd: "/workspace",
+            latestTurnInteractions: [],
+            pendingInteractions: [],
+            provider: "codex",
+            title: "Durable task",
+            updatedAtUnixMs: 3,
+            workspaceId: "workspace-1"
+          }
+        ]
+      });
+    });
+    expect(result.current?.conversations).toEqual([
+      expect.objectContaining({
+        id: "session-1",
+        status: "working",
+        title: "Durable task"
+      })
     ]);
   });
 

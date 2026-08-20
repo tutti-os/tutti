@@ -15,11 +15,16 @@ import (
 )
 
 const (
-	runtimeOperationLeaseDuration  = 30 * time.Second
-	runtimeOperationWorkerInterval = time.Second
-	runtimeOperationBatchSize      = 64
-	runtimeOperationLogPrefix      = "[agent-runtime-operation]"
+	runtimeOperationLeaseDuration     = 30 * time.Second
+	runtimeOperationWorkerInterval    = time.Second
+	runtimeOperationBatchSize         = 64
+	runtimeOperationLogPrefix         = "[agent-runtime-operation]"
+	interactiveFollowUpStartTimeout   = 30 * time.Second
+	interactiveFollowUpPollInterval   = 25 * time.Millisecond
+	interactiveFollowUpDispositionKey = "followUpDisposition"
 )
+
+const interactiveFollowUpClientSubmitIDPrefix = "interactive-deny:"
 
 // runtimeOperationID is stable across retries and process restarts.
 func runtimeOperationID(workspaceID, agentSessionID, kind, subjectID string) string {
@@ -33,6 +38,22 @@ func runtimeOperationID(workspaceID, agentSessionID, kind, subjectID string) str
 func runtimeOperationPayloadText(payload map[string]any, key string) string {
 	value, _ := payload[key].(string)
 	return strings.TrimSpace(value)
+}
+
+func runtimeOperationPayloadBool(payload map[string]any, key string) bool {
+	value, _ := payload[key].(bool)
+	return value
+}
+
+func runtimeOperationPayloadInteractiveDisposition(payload map[string]any, key string) RuntimeInteractiveDisposition {
+	switch RuntimeInteractiveDisposition(runtimeOperationPayloadText(payload, key)) {
+	case RuntimeInteractiveDispositionAnswered,
+		RuntimeInteractiveDispositionSuperseded,
+		RuntimeInteractiveDispositionInterrupted:
+		return RuntimeInteractiveDisposition(runtimeOperationPayloadText(payload, key))
+	default:
+		return RuntimeInteractiveDispositionUnknown
+	}
 }
 
 func (h *Host) prepareInteractiveRuntimeOperation(
@@ -141,6 +162,26 @@ func (h *Host) prepareCancelRuntimeOperation(
 }
 
 func (h *Host) processRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, recovering bool) (storesqlite.RuntimeOperation, error) {
+	if operation.Kind == storesqlite.RuntimeOperationKindPlanDecision {
+		var result storesqlite.RuntimeOperation
+		var processErr error
+		err := h.withWorkspaceRuntimeOperationInfo(ctx, WorkspaceRuntimeOperationInfo{
+			WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID,
+			Kind: operation.Kind, AgentSessionID: operation.AgentSessionID,
+			Source: "host.runtime_operation_worker",
+		}, func(operationCtx context.Context) error {
+			result, processErr = h.processRuntimeOperationAdmitted(operationCtx, operation, recovering)
+			return processErr
+		})
+		if err != nil {
+			return result, err
+		}
+		return result, processErr
+	}
+	return h.processRuntimeOperationAdmitted(ctx, operation, recovering)
+}
+
+func (h *Host) processRuntimeOperationAdmitted(ctx context.Context, operation storesqlite.RuntimeOperation, recovering bool) (storesqlite.RuntimeOperation, error) {
 	if operation.Status == storesqlite.RuntimeOperationStatusCompleted {
 		return operation, nil
 	}
@@ -213,10 +254,21 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 	_, runtimeSessionFound := h.runtime.Session(operation.WorkspaceID, operation.AgentSessionID)
 	runtimeDisposition := RuntimeInteractiveDispositionUnknown
 	var submissionErr error
+	followUpPrompt := runtimeOperationPayloadText(operation.Payload, "followUpPrompt")
+	followUpClientSubmitID := runtimeOperationPayloadText(operation.Payload, "followUpClientSubmitId")
+	persistedFollowUpDisposition := runtimeOperationPayloadInteractiveDisposition(operation.Payload, interactiveFollowUpDispositionKey)
 	if recovering {
-		runtimeDisposition = h.runtime.InteractiveDisposition(operation.WorkspaceID, runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
-		if runtimeDisposition == RuntimeInteractiveDispositionUnknown && !runtimeSessionFound {
-			return h.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q has unknown runtime disposition after runtime session removal", operation.RequestID), true)
+		if followUpPrompt != "" && persistedFollowUpDisposition != RuntimeInteractiveDispositionUnknown {
+			// A checkpointed follow-up is durable evidence that the interactive
+			// response already reached a terminal disposition. Do not consult the
+			// Controller's in-memory disposition cache after a restart; it is not
+			// part of the recovery contract.
+			runtimeDisposition = persistedFollowUpDisposition
+		} else {
+			runtimeDisposition = h.runtime.InteractiveDisposition(operation.WorkspaceID, runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
+			if runtimeDisposition == RuntimeInteractiveDispositionUnknown && !runtimeSessionFound {
+				return h.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q has unknown runtime disposition after runtime session removal", operation.RequestID), true)
+			}
 		}
 	}
 	if runtimeDisposition != RuntimeInteractiveDispositionAnswered && runtimeDisposition != RuntimeInteractiveDispositionSuperseded && runtimeDisposition != RuntimeInteractiveDispositionInterrupted {
@@ -230,6 +282,35 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 		runtimeDisposition = result.Disposition
 		if runtimeDisposition == "" {
 			runtimeDisposition = h.runtime.InteractiveDisposition(operation.WorkspaceID, runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), operation.AgentSessionID, operation.TurnID, operation.RequestID)
+		}
+		if prompt := strings.TrimSpace(result.FollowUpPrompt); prompt != "" {
+			checkpointFollowUp := false
+			if followUpPrompt == "" {
+				followUpPrompt = prompt
+				checkpointFollowUp = true
+			}
+			if followUpClientSubmitID == "" {
+				followUpClientSubmitID = interactiveFollowUpClientSubmitIDPrefix + operation.OperationID
+				checkpointFollowUp = true
+			}
+			if persistedFollowUpDisposition == RuntimeInteractiveDispositionUnknown {
+				persistedFollowUpDisposition = runtimeDisposition
+				checkpointFollowUp = true
+			}
+			if checkpointFollowUp {
+				payload := cloneMap(operation.Payload)
+				payload["followUpPrompt"] = followUpPrompt
+				payload["followUpClientSubmitId"] = followUpClientSubmitID
+				payload[interactiveFollowUpDispositionKey] = string(persistedFollowUpDisposition)
+				checkpointed, _, checkpointErr := h.operations.CheckpointRuntimeOperation(ctx, storesqlite.CheckpointRuntimeOperationInput{
+					WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
+					Payload: payload, NowUnixMS: h.now().UnixMilli(),
+				})
+				if checkpointErr != nil {
+					return operation, checkpointErr
+				}
+				operation = checkpointed
+			}
 		}
 	}
 	dispositionErr := submissionErr
@@ -252,6 +333,21 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 	default:
 		return h.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("interactive request %q returned unsupported runtime disposition %q: %w", operation.RequestID, runtimeDisposition, dispositionErr), true)
 	}
+	if followUpPrompt != "" {
+		if followUpClientSubmitID == "" {
+			followUpClientSubmitID = interactiveFollowUpClientSubmitIDPrefix + operation.OperationID
+		}
+		if err := h.waitForInteractiveFollowUp(ctx, operation.WorkspaceID, operation.AgentSessionID); err != nil {
+			return h.releaseRuntimeOperation(ctx, operation, owner, err, false)
+		}
+		_, err := h.SendInput(ctx, SessionRef{WorkspaceID: operation.WorkspaceID, AgentSessionID: operation.AgentSessionID}, SendInput{
+			Content:        []PromptContentBlock{{Type: "text", Text: followUpPrompt}},
+			ClientSubmitID: followUpClientSubmitID,
+		})
+		if err != nil {
+			return h.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableInteractiveFollowUpError(err))
+		}
+	}
 	completion, _, err := h.operations.CompleteInteractiveRuntimeOperation(ctx, storesqlite.CompleteInteractiveRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
 		Disposition: disposition, Output: map[string]any{"action": runtimeOperationPayloadText(operation.Payload, "action"), "optionId": runtimeOperationPayloadText(operation.Payload, "optionId")},
@@ -264,6 +360,36 @@ func (h *Host) executeInteractiveRuntimeOperation(ctx context.Context, operation
 		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish completed interactive runtime operation: %w", err))
 	}
 	return completion.Operation, nil
+}
+
+func (h *Host) waitForInteractiveFollowUp(ctx context.Context, workspaceID, agentSessionID string) error {
+	deadline := time.NewTimer(interactiveFollowUpStartTimeout)
+	defer deadline.Stop()
+	ticker := time.NewTicker(interactiveFollowUpPollInterval)
+	defer ticker.Stop()
+	for {
+		session, found := h.runtime.Session(workspaceID, agentSessionID)
+		if !found {
+			return ErrSessionNotFound
+		}
+		if session.TurnLifecycle == nil || session.TurnLifecycle.ActiveTurnID == nil || strings.TrimSpace(*session.TurnLifecycle.ActiveTurnID) == "" {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-deadline.C:
+			return ErrRuntimeSessionActive
+		case <-ticker.C:
+		}
+	}
+}
+
+func isRetryableInteractiveFollowUpError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) ||
+		errors.Is(err, ErrSubmitDeliveryUnknown) || errors.Is(err, ErrSessionNotFound) ||
+		errors.Is(err, ErrRuntimeSessionActive) || errors.Is(err, ErrRuntimeSessionDisconnected) ||
+		errors.Is(err, ErrRuntimeOperationInProgress)
 }
 
 func (h *Host) executeCancelRuntimeOperation(
@@ -282,27 +408,122 @@ func (h *Host) executeCancelRuntimeOperation(
 		}
 	}
 	targets := runtimeCancelTargetsFromPayload(operation.Payload)
+	settled, err := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
+	if err != nil {
+		return h.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
+	}
+	if settled {
+		return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, nil)
+	}
 	result, err := h.runtime.Cancel(ctx, RuntimeCancelInput{
 		WorkspaceID: operation.WorkspaceID, RootAgentSessionID: runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"),
 		Targets: targets, Reason: runtimeOperationPayloadText(operation.Payload, "reason"),
 	})
 	if err != nil {
+		if errors.Is(err, ErrRuntimeCancelDeliveryUnconfirmed) {
+			checkpointed, checkpointErr := h.checkpointCancelRuntimeOperationDeliveryUnconfirmed(ctx, operation, owner)
+			if checkpointErr != nil {
+				return h.releaseRuntimeOperation(ctx, operation, owner, fmt.Errorf("checkpoint cancel delivery-unconfirmed state: %w", checkpointErr), true)
+			}
+			operation = checkpointed
+			settled, settledErr := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
+			if settledErr != nil {
+				return h.releaseRuntimeOperation(ctx, operation, owner, settledErr, !isRetryableRuntimeOperationError(settledErr))
+			}
+			if settled {
+				return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, nil)
+			}
+			slog.Info("agent runtime cancel delivery is unconfirmed; preserving exact target for reconciliation",
+				"event", "agent_runtime_operation.cancel_delivery_unconfirmed",
+				"workspace_id", operation.WorkspaceID,
+				"agent_session_id", operation.AgentSessionID,
+				"operation_id", operation.OperationID,
+				"target_count", len(targets),
+			)
+		}
 		return h.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
 	}
+	if result.TargetAbsent && runtimeOperationPayloadBool(operation.Payload, storesqlite.CancelRuntimeOperationDeliveryUnconfirmedPayloadKey) {
+		settled, settledErr := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
+		if settledErr != nil {
+			return h.releaseRuntimeOperation(ctx, operation, owner, settledErr, !isRetryableRuntimeOperationError(settledErr))
+		}
+		if settled {
+			return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, nil)
+		}
+		slog.Info("agent runtime cancel target is absent after delivery-unconfirmed response; awaiting canonical settlement",
+			"event", "agent_runtime_operation.cancel_delivery_unconfirmed_target_absent",
+			"workspace_id", operation.WorkspaceID,
+			"agent_session_id", operation.AgentSessionID,
+			"operation_id", operation.OperationID,
+			"target_count", len(targets),
+		)
+		return h.releaseRuntimeOperation(ctx, operation, owner, ErrRuntimeCancelDeliveryUnconfirmed, false)
+	}
+	return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, result.ConfirmedTargets)
+}
+
+func (h *Host) checkpointCancelRuntimeOperationDeliveryUnconfirmed(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+) (storesqlite.RuntimeOperation, error) {
+	payload := cloneMap(operation.Payload)
+	payload[storesqlite.CancelRuntimeOperationDeliveryUnconfirmedPayloadKey] = true
+	checkpointed, _, err := h.operations.CheckpointRuntimeOperation(ctx, storesqlite.CheckpointRuntimeOperationInput{
+		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
+		Payload: payload, NowUnixMS: h.now().UnixMilli(),
+	})
+	if err != nil {
+		return operation, err
+	}
+	return checkpointed, nil
+}
+
+func (h *Host) completeCancelRuntimeOperation(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+	targets []RuntimeCancelTarget,
+	confirmed []RuntimeCancelTarget,
+) (storesqlite.RuntimeOperation, error) {
 	completion, _, err := h.operations.CompleteCancelRuntimeOperation(ctx, storesqlite.CompleteCancelRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		TargetOutcomes: runtimeCancelTargetOutcomes(runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), targets, result.ConfirmedTargets),
+		TargetOutcomes: runtimeCancelTargetOutcomes(runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), targets, confirmed),
 		NowUnixMS:      h.now().UnixMilli(),
 	})
 	if err != nil {
 		return operation, err
 	}
 	completion.Operation.Payload = cloneMap(completion.Operation.Payload)
-	completion.Operation.Payload["providerConfirmed"] = len(result.ConfirmedTargets) > 0
+	completion.Operation.Payload["providerConfirmed"] = len(confirmed) > 0
 	if err := h.publishRuntimeOperationEvents(ctx, operation.WorkspaceID); err != nil {
 		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish completed cancel runtime operation: %w", err))
 	}
 	return completion.Operation, nil
+}
+
+func (h *Host) cancelRuntimeOperationTargetsSettled(
+	ctx context.Context,
+	workspaceID string,
+	targets []RuntimeCancelTarget,
+) (bool, error) {
+	if len(targets) == 0 {
+		return false, ErrRuntimeOperationIdentityMismatch
+	}
+	for _, target := range targets {
+		turn, found, err := h.store.GetTurn(ctx, workspaceID, target.AgentSessionID, target.TurnID)
+		if err != nil {
+			return false, err
+		}
+		if !found {
+			return false, ErrRuntimeOperationIdentityMismatch
+		}
+		if turn.Phase != storesqlite.TurnPhaseSettled {
+			return false, nil
+		}
+	}
+	return true, nil
 }
 
 // A live Goal revocation may crash after preparing its exact-Turn cancel but
@@ -500,8 +721,7 @@ func (h *Host) RecoverRuntimeOperations(ctx context.Context) error {
 }
 
 // Recover fixes startup order as durable runtime operations, goal operations,
-// the durable goal reconcile inbox, session Forks, unrecoverable stale turns,
-// and finally the adapter-specific worktree-isolation sweep.
+// the durable goal reconcile inbox, session Forks, and unrecoverable stale turns.
 func (h *Host) Recover(ctx context.Context) error {
 	if err := h.validateRecoveryConfiguration(); err != nil {
 		return err
@@ -523,7 +743,7 @@ func (h *Host) Recover(ctx context.Context) error {
 			return err
 		}
 	}
-	return h.RecoverWorktreeIsolation(ctx)
+	return nil
 }
 
 func (h *Host) validateRecoveryConfiguration() error {
@@ -610,7 +830,7 @@ func logRuntimeOperationFailure(operation storesqlite.RuntimeOperation, err erro
 }
 
 func isRetryableRuntimeOperationError(err error) bool {
-	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrRuntimeSessionDisconnected))
+	return err != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, ErrSessionNotFound) || errors.Is(err, ErrRuntimeSessionDisconnected) || errors.Is(err, ErrRuntimeCancelDeliveryUnconfirmed))
 }
 
 func runtimeOperationNextAttemptAt(now time.Time, attempt int, failed bool) int64 {

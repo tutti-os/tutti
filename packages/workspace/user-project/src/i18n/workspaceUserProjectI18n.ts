@@ -40,6 +40,7 @@ const workspaceUserProjectEn = {
       "Tutti does not have permission to create folders under /workspace.",
     createProjectTitle: "Add project",
     linkExistingProject: "Use existing project",
+    importProject: "Import project",
     loadingProjects: "Loading projects",
     noProject: "No project",
     projectLabel: "Project",
@@ -65,6 +66,7 @@ const workspaceUserProjectZhCN = {
     createProjectPermissionDenied: "Tutti 没有权限在 /workspace 下创建文件夹。",
     createProjectTitle: "添加项目",
     linkExistingProject: "使用已有项目",
+    importProject: "导入项目",
     loadingProjects: "正在加载项目",
     noProject: "不使用项目",
     projectLabel: "项目",
@@ -89,6 +91,7 @@ export type WorkspaceUserProjectI18nKey =
   | "projectSelect.createProjectPermissionDenied"
   | "projectSelect.createProjectTitle"
   | "projectSelect.linkExistingProject"
+  | "projectSelect.importProject"
   | "projectSelect.loadingProjects"
   | "projectSelect.noProject"
   | "projectSelect.projectLabel"

@@ -26,11 +26,8 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.charset.StandardCharsets
 import java.util.UUID
-import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.ThreadPoolExecutor
-import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -54,15 +51,8 @@ class DeviceLinkModule(
     private val processLifecycle = ProcessLifecycleOwner.get().lifecycle
     @Volatile
     private var invalidated = false
-    private val executor =
-        ThreadPoolExecutor(
-            2,
-            4,
-            30,
-            TimeUnit.SECONDS,
-            ArrayBlockingQueue(16),
-            ThreadPoolExecutor.AbortPolicy(),
-        )
+    private val executor = newDeviceLinkOperationExecutor()
+    private val candidateExecutor = newDeviceLinkCandidateExecutor()
 
     init {
         reactContext.addLifecycleEventListener(this)
@@ -99,14 +89,15 @@ class DeviceLinkModule(
     @ReactMethod
     fun prepareLink(
         stunEndpointsJSON: String,
-        timeoutMillis: Double,
+        _timeoutMillis: Double,
         promise: Promise,
     ) {
         val generation = beginLinkOperation()
         runAsync(promise, "DEVICE_LINK_PREPARE_FAILED", "Unable to prepare DeviceLink") {
-            val prepared = Mobile.newLink(stunEndpointsJSON)
+            var prepared: Link? = null
             try {
-                val description = prepared.localDescription(timeoutMillis.toLong())
+                prepared = Mobile.newLink(stunEndpointsJSON)
+                val description = prepared.startLocalDescription()
                 check(promoteLink(prepared, generation)) {
                     "DeviceLink prepare was cancelled"
                 }
@@ -116,9 +107,108 @@ class DeviceLinkModule(
                 }
             } catch (error: Throwable) {
                 closeDetachedLink(prepared)
+                closeDetachedLink(cancelLinkOperation(generation))
                 throw error
             }
         }
+    }
+
+    @ReactMethod
+    fun nextCandidateExchangeAction(
+        token: Double,
+        timeoutMillis: Double,
+        promise: Promise,
+    ) {
+        val selected = linkSnapshot(token.toLong())
+        if (selected == null) {
+            promise.reject(
+                "DEVICE_LINK_CANDIDATE_FAILED",
+                "DeviceLink preparation is no longer current",
+            )
+            return
+        }
+        runCandidateAsync(
+            promise,
+            "DEVICE_LINK_CANDIDATE_FAILED",
+            "Unable to read DeviceLink candidate action",
+        ) {
+            selected.nextCandidateExchangeAction(timeoutMillis.toLong())
+        }
+    }
+
+    @ReactMethod
+    fun resolveCandidateExchangeAction(
+        actionId: Double,
+        succeeded: Boolean,
+        retryable: Boolean,
+        candidatesJSON: String,
+        token: Double,
+        promise: Promise,
+    ) {
+        val selected = linkSnapshot(token.toLong())
+        if (selected == null) {
+            promise.reject(
+                "DEVICE_LINK_CANDIDATE_FAILED",
+                "DeviceLink preparation is no longer current",
+            )
+            return
+        }
+        runCandidateAsync(
+            promise,
+            "DEVICE_LINK_CANDIDATE_FAILED",
+            "Unable to resolve DeviceLink candidate action",
+        ) {
+            selected
+                .resolveCandidateExchangeAction(
+                    actionId.toLong(),
+                    succeeded,
+                    retryable,
+                    candidatesJSON,
+                ).toDouble()
+        }
+    }
+
+    @ReactMethod
+    fun notifyRemoteCandidateChange(
+        token: Double,
+        promise: Promise,
+    ) {
+        val selected = linkSnapshot(token.toLong())
+        if (selected == null) {
+            promise.reject(
+                "DEVICE_LINK_CANDIDATE_FAILED",
+                "DeviceLink preparation is no longer current",
+            )
+            return
+        }
+        runCatching(selected::notifyRemoteCandidateChange).fold(
+            { promise.resolve(null) },
+            {
+                promise.reject(
+                    "DEVICE_LINK_CANDIDATE_FAILED",
+                    "Unable to notify DeviceLink candidate change",
+                    it,
+                )
+            },
+        )
+    }
+
+    @ReactMethod
+    fun stopCandidateExchange(
+        token: Double,
+        promise: Promise,
+    ) {
+        linkSnapshot(token.toLong())?.stopCandidateExchange()
+        promise.resolve(null)
+    }
+
+    @ReactMethod
+    fun cancelLink(
+        token: Double,
+        promise: Promise,
+    ) {
+        closeDetachedLink(cancelLinkOperation(token.toLong()))
+        promise.resolve(null)
     }
 
     @ReactMethod
@@ -469,6 +559,7 @@ class DeviceLinkModule(
         }
         closeCurrentLink()
         agentLiveExecutor.shutdownNow()
+        candidateExecutor.shutdownNow()
         executor.shutdownNow()
         closeExecutor.shutdown()
         super.invalidate()
@@ -514,6 +605,17 @@ class DeviceLinkModule(
                 detached
             }
         closeDetachedLink(previous)
+    }
+
+    @Synchronized
+    private fun cancelLinkOperation(generation: Long): Link? {
+        if (generation != linkGeneration) {
+            return null
+        }
+        linkGeneration += 1
+        val detached = link
+        link = null
+        return detached
     }
 
     @Synchronized
@@ -808,6 +910,23 @@ class DeviceLinkModule(
             }
         } catch (error: RejectedExecutionException) {
             promise.reject(code, "DeviceLink is busy; try again", error)
+        }
+    }
+
+    private fun runCandidateAsync(
+        promise: Promise,
+        code: String,
+        message: String,
+        operation: () -> Any?,
+    ) {
+        try {
+            candidateExecutor.execute {
+                runCatching(operation).fold(promise::resolve) {
+                    promise.reject(code, message, it)
+                }
+            }
+        } catch (error: RejectedExecutionException) {
+            promise.reject(code, "DeviceLink candidate exchange is busy; try again", error)
         }
     }
 

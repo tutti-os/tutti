@@ -183,9 +183,30 @@ func pendingInteractionTransition(turnID string, pending *pendingInteractiveRequ
 		TurnID:    firstNonEmptyString(strings.TrimSpace(turnID), strings.TrimSpace(pending.turnID)),
 		Kind:      kind,
 		ToolName:  firstNonEmpty(strings.TrimSpace(pending.toolName), strings.TrimSpace(pending.name)),
-		Input:     clonePayload(pending.input),
+		Input:     persistedInteractionInput(kind, pending.input),
 		Metadata:  clonePayload(metadata),
 	}
+}
+
+// Runtime adapters keep a flat approval input for provider-specific resolver
+// compatibility. The durable interaction has one canonical display payload at
+// toolCall.input; persisting the same values again at the root nearly doubles
+// large approval records and every Message Center projection derived from them.
+func persistedInteractionInput(kind string, input map[string]any) map[string]any {
+	if kind != "approval" {
+		return clonePayload(input)
+	}
+	toolCall := payloadObject(input["toolCall"])
+	if len(payloadObject(toolCall["input"])) == 0 {
+		return clonePayload(input)
+	}
+	result := map[string]any{}
+	for _, key := range []string{"requestId", "toolCall", "options"} {
+		if value, exists := input[key]; exists {
+			result[key] = clonePayloadValue(value)
+		}
+	}
+	return result
 }
 
 func normalizedInteractionActions(options []map[string]any) []any {
@@ -353,7 +374,7 @@ func normalizedApprovalInput(toolCall map[string]any, options []map[string]any, 
 	displayInput := normalizedApprovalDisplayInput(toolCall, knownInput)
 	input := map[string]any{
 		"requestId": requestID,
-		"toolCall":  normalizedApprovalToolCall(toolCall),
+		"toolCall":  normalizedApprovalToolCall(toolCall, displayInput),
 		"options":   cloneOptionMaps(options),
 	}
 	for key, value := range displayInput {
@@ -364,7 +385,7 @@ func normalizedApprovalInput(toolCall map[string]any, options []map[string]any, 
 	return input
 }
 
-func normalizedApprovalToolCall(toolCall map[string]any) map[string]any {
+func normalizedApprovalToolCall(toolCall map[string]any, displayInput map[string]any) map[string]any {
 	normalized := map[string]any{}
 	for _, key := range []string{
 		"toolCallId",
@@ -381,11 +402,14 @@ func normalizedApprovalToolCall(toolCall map[string]any) map[string]any {
 			normalized[key] = clonePayloadValue(value)
 		}
 	}
+	if len(displayInput) > 0 {
+		normalized["input"] = clonePayload(displayInput)
+	}
 	return normalized
 }
 
 // normalizedApprovalDisplayInput builds the preview detail (command, path,
-// query, reason, ...) shown on an approval card. Some ACP providers (Cursor) omit
+// query, URL, prompt, reason, ...) shown on an approval card. Some ACP providers (Cursor) omit
 // `rawInput` on the permission request's own `toolCall` and only repeat
 // `toolCallId`/`title`/`kind`, so `knownInput` — the input captured from an
 // earlier `tool_call`/`tool_call_update` for the same call id, when available
@@ -423,6 +447,10 @@ func normalizedApprovalDisplayInput(toolCall map[string]any, knownInput map[stri
 		"query",
 		"search_query",
 		"searchQuery",
+		"url",
+		"uri",
+		"prompt",
+		"instruction",
 		"pattern",
 		"cwd",
 		"changes",

@@ -242,6 +242,14 @@ export type CliInvokeContext = {
    * Caller agent session id hint. This is not an authorization boundary.
    */
   agentSessionId?: string | null;
+  /**
+   * Host-injected caller Agent working directory inherited by nested Agent starts that omit an explicit cwd. This is not an authorization boundary.
+   */
+  agentCwd?: string | null;
+  /**
+   * Host-injected versioned RailPlacement JSON inherited together with agentCwd. The Agent command provider validates this value before use.
+   */
+  agentRailPlacementJSON?: string | null;
 };
 
 export type CliInvokeRequest = {
@@ -413,7 +421,11 @@ export type WorkspaceDeletedAgentSession = {
    */
   title: string;
   /**
-   * Persisted original project path; null means the conversations section.
+   * Immutable persisted rail section identity used for classification.
+   */
+  railSectionKey: string;
+  /**
+   * Persisted project path retained as presentation metadata. Classification is determined only by railSectionKey.
    */
   projectPath: string | null;
   /**
@@ -432,7 +444,14 @@ export type WorkspaceDeletedAgentSession = {
 };
 
 export type WorkspaceDeletedAgentSessionProjectOption = {
-  projectPath: string;
+  /**
+   * Exact persisted rail section identity represented by this option.
+   */
+  railSectionKey: string;
+  /**
+   * Persisted project path retained as presentation metadata; it is not the option identity.
+   */
+  projectPath: string | null;
   projectLabel: string;
   /**
    * Whether the original project is still registered in the current project catalog.
@@ -600,8 +619,14 @@ export type WorkspaceAppAgentPreferencesResponse = {
 };
 
 export type PutDesktopPreferencesRequest = {
+  writeMode?: DesktopPreferencesWriteMode;
   preferences: DesktopPreferences;
 };
+
+/**
+ * replace performs the normal full preference update, and omitting writeMode is equivalent to replace. initializeIfAbsent atomically creates the preference row only when it does not exist after applying the daemon-owned Agent workspace-mode default to the supplied preferences. If the row already exists, it returns the authoritative stored preferences unchanged.
+ */
+export type DesktopPreferencesWriteMode = "replace" | "initializeIfAbsent";
 
 export type DesktopUpdateAdmissionProduct = "tsh-desktop" | "tutti-desktop";
 
@@ -708,6 +733,86 @@ export type AgentTarget = {
 
 export type ListAgentTargetsResponse = {
   targets: Array<AgentTarget>;
+};
+
+export type AgentTargetAccountUsageProbeResult =
+  | ({
+      outcome: "available";
+    } & AgentTargetAccountUsageAvailableResult)
+  | ({
+      outcome: "unsupported";
+    } & AgentTargetAccountUsageUnsupportedResult)
+  | ({
+      outcome: "error";
+    } & AgentTargetAccountUsageErrorResult);
+
+export type AgentTargetAccountUsageAvailableResult = {
+  schemaVersion: "tutti.agent.account-usage.v2";
+  agentTargetId: string;
+  provider: AgentTargetProvider;
+  outcome: "available";
+  capturedAtUnixMs: number;
+  billingMode: AgentTargetAccountUsageBillingMode;
+  quotaState: AgentTargetAccountUsageQuotaState;
+  quotas: Array<AgentTargetAccountUsageQuota>;
+};
+
+export type AgentTargetAccountUsageUnsupportedResult = {
+  schemaVersion: "tutti.agent.account-usage.v2";
+  agentTargetId: string;
+  provider: AgentTargetProvider;
+  outcome: "unsupported";
+  capturedAtUnixMs: number;
+};
+
+export type AgentTargetAccountUsageErrorResult = {
+  schemaVersion: "tutti.agent.account-usage.v2";
+  agentTargetId: string;
+  provider: AgentTargetProvider;
+  outcome: "error";
+  capturedAtUnixMs: number;
+  errorCode: AgentTargetAccountUsageErrorCode;
+};
+
+export type AgentTargetAccountUsageBillingMode =
+  | "subscription"
+  | "api"
+  | "coding_plan"
+  | "provider_account";
+
+export type AgentTargetAccountUsageQuotaState =
+  | "complete"
+  | "unavailable"
+  | "not_applicable";
+
+export type AgentTargetAccountUsageErrorCode =
+  | "auth_required"
+  | "config_invalid"
+  | "execution_failed"
+  | "no_data"
+  | "parse_failed"
+  | "rate_limited"
+  | "runtime_unavailable"
+  | "session_expired"
+  | "timeout";
+
+export type AgentTargetAccountUsageQuotaType =
+  | "session"
+  | "daily"
+  | "weekly"
+  | "monthly"
+  | "model"
+  | "credits"
+  | "cost";
+
+export type AgentTargetAccountUsageQuota = {
+  quotaType: AgentTargetAccountUsageQuotaType;
+  percentRemaining: number;
+  amountRemaining?: number;
+  amountLimit?: number;
+  amountUnit?: "credits";
+  resetsAtUnixMs?: number;
+  modelName?: string;
 };
 
 export type SetSystemAgentTargetEnabledRequest = {
@@ -1898,6 +2003,14 @@ export type AgentProviderComposerConfig = {
 
 export type GetAgentProviderComposerOptionsRequest = {
   /**
+   * Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data; connectors contains only the local Connector Market projection. Full is retained for callers that need the combined legacy response.
+   */
+  section?: "full" | "core" | "capabilities" | "connectors";
+  /**
+   * Waits for an authoritative model catalog when the cached result is stale. Use only for an explicit model-picker request; ordinary composer loads should render the last successful catalog first.
+   */
+  waitForFreshModelCatalog?: boolean;
+  /**
    * Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
    */
   agentTargetId?: string;
@@ -1911,6 +2024,10 @@ export type GetAgentProviderComposerOptionsRequest = {
 };
 
 export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
+  /**
+   * Independently loadable composer section.
+   */
+  section?: "full" | "core" | "capabilities" | "connectors";
   locale?: DesktopLocale;
   settings?: AgentSessionComposerSettings;
 };
@@ -2008,6 +2125,7 @@ export type AgentProviderCapabilityOption = {
   label: string;
   description?: string;
   iconUrl?: string;
+  installedAtUnixMs?: number;
   status:
     | "available"
     | "disabled"
@@ -2030,7 +2148,11 @@ export type AgentProviderAvailabilityStatus =
   | "unsupported"
   | "unknown";
 
-export type AgentProviderAuthStatus = "authenticated" | "required" | "unknown";
+export type AgentProviderAuthStatus =
+  | "authenticated"
+  | "configured"
+  | "required"
+  | "unknown";
 
 export type AgentProviderActionKind =
   | "daemon_action"
@@ -2556,6 +2678,10 @@ export type WorkspaceAgentSession = {
    */
   goal: WorkspaceAgentSessionGoal | null;
   /**
+   * Narrow Host-owned evidence for the durable Goal operation. Null means no Goal state exists for this Session; clients must not infer pending execution from the visible Goal alone.
+   */
+  goalSyncState: WorkspaceAgentSessionGoalSyncState | null;
+  /**
    * Independent, session-scoped Tutti mode activation projection. Null until the first activation revision exists; capability references are audit records and never determine this state.
    */
   tuttiModeActivation: TuttiModeActivation | null;
@@ -2871,9 +2997,13 @@ export type WorkspaceAgentSessionGoal = {
 export type WorkspaceAgentTurnCancelResult = {
   canceled: boolean;
   /**
-   * turn_canceled reports an active turn was stopped. already_settled and not_found are idempotent no-op successes, not errors.
+   * turn_canceled reports an active turn was stopped. cancel_requested reports accepted cancellation whose exact provider delivery still needs canonical reconciliation. already_settled and not_found are idempotent no-op successes, not errors.
    */
-  reason: "turn_canceled" | "already_settled" | "not_found";
+  reason:
+    | "turn_canceled"
+    | "cancel_requested"
+    | "already_settled"
+    | "not_found";
 };
 
 export type WorkspaceAgentTurnCancelResponse = {
@@ -3162,6 +3292,22 @@ export type WorkspaceAgentSessionGoalControlResponse = {
   state?: WorkspaceAgentSessionGoalState | null;
 };
 
+export type WorkspaceAgentSessionGoalSyncState = {
+  revision: number;
+  syncStatus:
+    | "pending"
+    | "applying"
+    | "synced"
+    | "diverged"
+    | "unknown"
+    | "failed";
+  pendingOperationId: string | null;
+  /**
+   * Host-owned proof that an accepted initial Goal is expected to begin autonomous execution and has not produced its first exact Goal Turn yet.
+   */
+  executionPending: boolean;
+};
+
 export type WorkspaceAgentSessionGoalState = {
   desired?: WorkspaceAgentSessionGoal | null;
   observed?: WorkspaceAgentSessionGoal | null;
@@ -3226,7 +3372,15 @@ export type CreateWorkspaceAgentSessionRequest = {
   isolation?: WorkspaceAgentSessionIsolationMode | null;
   permissionModeId?: string | null;
   model?: string | null;
+  /**
+   * True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
+   */
+  modelExplicit?: boolean | null;
   reasoningEffort?: string | null;
+  /**
+   * True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
+   */
+  reasoningEffortExplicit?: boolean | null;
   /**
    * Classifies a session that is intentionally not attached to a workspace project.
    */
@@ -3414,6 +3568,67 @@ export type WorkspaceAgentRailPlacement = {
   sectionKey: string;
 };
 
+export type WorkspaceAgentSideCapabilities = {
+  supported: boolean;
+  activeSourceTurn: boolean;
+  ephemeral: boolean;
+  hideInheritedTurns: boolean;
+  modelBoundaryInjected: boolean;
+};
+
+export type WorkspaceAgentSideCapabilitiesResponse = {
+  capabilities: WorkspaceAgentSideCapabilities;
+};
+
+export type OpenWorkspaceAgentSideConversationRequest = {
+  sideAgentSessionId: string;
+  requestId: string;
+};
+
+export type WorkspaceAgentSideConversation = {
+  workspaceId: string;
+  sourceAgentSessionId: string;
+  sideAgentSessionId: string;
+  provider: string;
+  status: string;
+  capabilities: WorkspaceAgentSideCapabilities;
+};
+
+export type WorkspaceAgentSideConversationResponse = {
+  side: WorkspaceAgentSideConversation;
+};
+
+export type SendWorkspaceAgentSideConversationInputRequest = {
+  turnId: string;
+  clientSubmitId: string;
+  content: Array<AgentPromptContentBlock>;
+  displayPrompt?: string | null;
+};
+
+export type WorkspaceAgentSideTurnResponse = {
+  sideAgentSessionId: string;
+  turnId: string;
+  accepted: boolean;
+  status: string;
+};
+
+export type WorkspaceAgentSideTurnCancelResponse = {
+  canceled: boolean;
+  targetAbsent: boolean;
+};
+
+export type SubmitWorkspaceAgentSideConversationInteractiveRequest = {
+  action?: string;
+  optionId?: string;
+  payload?: {
+    [key: string]: unknown;
+  };
+};
+
+export type WorkspaceAgentSideInteractiveResponse = {
+  disposition: string;
+};
+
 export type SendWorkspaceAgentSessionInputRequest = {
   content: Array<AgentPromptContentBlock>;
   clientSubmitId: string;
@@ -3443,6 +3658,7 @@ export type AgentSubmitDiagnostics = {
   promptLength?: number;
   queued?: boolean;
   source?: string;
+  uiMode?: "os" | "agent";
 };
 
 export type AgentPromptContentBlock = {
@@ -3508,6 +3724,10 @@ export type WorkspaceGitPatchSupportResponse = {
 export type WorkspaceAgentSessionIsolationMode = "worktree";
 
 export type WorkspaceAgentSessionIsolation = {
+  /**
+   * Independent managed worktree resource identity. Legacy sessions may omit it.
+   */
+  worktreeId?: string;
   mode: WorkspaceAgentSessionIsolationMode;
   worktreePath: string;
   branch: string;
@@ -3524,6 +3744,24 @@ export type WorkspaceAgentSessionWorktreeSupportResponse = {
   supported: boolean;
   root?: string;
   errorCode?: WorkspaceAgentSessionWorktreeSupportErrorCode;
+};
+
+export type WorkspaceManagedWorktree = {
+  worktreeId: string;
+  workspaceId: string;
+  repoRoot: string;
+  worktreePath: string;
+  branch: string;
+  baseCommit: string;
+  relativeCwd?: string;
+};
+
+export type WorkspaceManagedWorktreeListResponse = {
+  worktrees: Array<WorkspaceManagedWorktree>;
+};
+
+export type DeleteWorkspaceManagedWorktreeResponse = {
+  deleted: boolean;
 };
 
 export type WorkspaceGitPatchExecOutput = {
@@ -4722,6 +4960,14 @@ export type ConnectorMarketCategory = {
   kind: "category" | "featured";
   sortOrder: number;
   itemCount: number;
+  /**
+   * Server-managed Simplified Chinese category name.
+   */
+  displayNameZh?: string;
+  /**
+   * Server-managed English category name.
+   */
+  displayNameEn?: string;
 };
 
 export type ConnectorMarketCategoriesResponse = {
@@ -4746,6 +4992,7 @@ export type ConnectorMarketSnapshot = {
   connectors: Array<ConnectorMarketConnector>;
   operations: Array<ConnectorMarketOperation>;
   revision: number;
+  eventCursor: number;
   sourceRevision?: string;
 };
 
@@ -4755,6 +5002,7 @@ export type ConnectorMarketConnector = {
   installation: ConnectorMarketInstallation;
   authorization: ConnectorMarketAuthorization;
   compatibility: ConnectorMarketCompatibility;
+  runtime?: ConnectorMarketRuntime;
   revision: number;
 };
 
@@ -4780,6 +5028,16 @@ export type ConnectorMarketManifest = {
   permissions: Array<string>;
   implementation: ConnectorMarketImplementation;
   authorizationKind: string;
+  /**
+   * Opaque Connector-owned authorization interaction configuration. Hosts transport this value without interpreting its UI semantics; renderers must validate it against the versioned protocol.
+   */
+  authorizationInteraction?: {
+    [key: string]: unknown;
+  };
+  /**
+   * Public host projection indicating that authorization is owned by a managed credential broker and must start without a local secret.
+   */
+  authorizationInteractionMode?: "managed";
   compatibility?: ConnectorMarketCompatibilityRequirements;
 };
 
@@ -4810,6 +5068,7 @@ export type ConnectorMarketImplementation = {
 export type ConnectorMarketInstallation = {
   state: ConnectorMarketInstallationState;
   installedVersion?: string;
+  installedAtUnixMs?: number;
   installedReleaseId?: string;
   installedReleaseDigest?: string;
   failureCode?: string;
@@ -4823,6 +5082,11 @@ export type ConnectorMarketAuthorization = {
 export type ConnectorMarketCompatibility = {
   state: ConnectorMarketCompatibilityState;
   reason?: string;
+};
+
+export type ConnectorMarketRuntime = {
+  state: "started" | "starting" | "stopped" | "failed";
+  failureCode?: string;
 };
 
 export type ConnectorMarketOperation = {
@@ -4850,12 +5114,27 @@ export type ConnectorMarketOperationTarget = {
 export type ConnectorMarketMutationRequest = {
   clientRequestId: string;
   expectedRevision: number;
+  expectedConnectorRevision?: number;
+};
+
+export type ConnectorMarketRuntimeMutationRequest = {
+  clientRequestId: string;
+  expectedRevision: number;
+  expectedConnectorRevision?: number;
+  enabled: boolean;
 };
 
 export type ConnectorMarketAuthorizationRequest = {
   clientRequestId: string;
   expectedRevision: number;
+  expectedConnectorRevision?: number;
+  replacementPolicy?: ConnectorMarketAuthorizationReplacementPolicy;
 };
+
+/**
+ * When set to replace_active, the Host fences and terminates a different unresolved authorization attempt before starting this request. Omission preserves the legacy resume-or-conflict behavior.
+ */
+export type ConnectorMarketAuthorizationReplacementPolicy = "replace_active";
 
 export type ConnectorMarketMutationResponse = {
   connector?: ConnectorMarketConnector;
@@ -4867,6 +5146,13 @@ export type ConnectorMarketAuthorizationResponse = {
   connector: ConnectorMarketConnector;
   operation: ConnectorMarketOperation;
   authorizationUrl?: string;
+  /**
+   * Opaque runtime Authorization View V1 envelope. Clients must validate it with the shared authorization protocol before rendering.
+   */
+  authorizationView?: {
+    [key: string]: unknown;
+  };
+  authorizationExpiresAt: string;
   revision: number;
 };
 
@@ -4930,7 +5216,9 @@ export type ConnectorMarketOperationStage =
   | "refreshing"
   | "installing"
   | "installed"
+  | "runtime_pending"
   | "deactivating"
+  | "removing"
   | "authorizing"
   | "disconnecting"
   | "completed"
@@ -5006,6 +5294,8 @@ export type DesktopFileDefaultOpenersByExtensionWritable = {
 export type ConnectorMarketAuthorizationRequestWritable = {
   clientRequestId: string;
   expectedRevision: number;
+  expectedConnectorRevision?: number;
+  replacementPolicy?: ConnectorMarketAuthorizationReplacementPolicy;
   secret?: string;
 };
 
@@ -5105,6 +5395,11 @@ export type ConnectorMarketConnectorKey = string;
 export type ConnectorMarketOperationId = string;
 
 export type ConnectorMarketSectionId = string;
+
+/**
+ * Filters connector installation projections before page boundaries and next-page calculation.
+ */
+export type ConnectorMarketInstallationFilter = "not_installed";
 
 export type ConnectorMarketPageSize = number;
 
@@ -6393,6 +6688,51 @@ export type SetSystemAgentTargetEnabledResponses = {
 
 export type SetSystemAgentTargetEnabledResponse =
   SetSystemAgentTargetEnabledResponses[keyof SetSystemAgentTargetEnabledResponses];
+
+export type ProbeAgentTargetAccountUsageData = {
+  body?: never;
+  path: {
+    agentTargetID: string;
+  };
+  query?: never;
+  url: "/v1/agent-targets/{agentTargetID}/account-usage";
+};
+
+export type ProbeAgentTargetAccountUsageErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Agent target was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ProbeAgentTargetAccountUsageError =
+  ProbeAgentTargetAccountUsageErrors[keyof ProbeAgentTargetAccountUsageErrors];
+
+export type ProbeAgentTargetAccountUsageResponses = {
+  /**
+   * Provider-owned account usage result
+   */
+  200: AgentTargetAccountUsageProbeResult;
+};
+
+export type ProbeAgentTargetAccountUsageResponse =
+  ProbeAgentTargetAccountUsageResponses[keyof ProbeAgentTargetAccountUsageResponses];
 
 export type GetAgentTargetSetupData = {
   body?: never;
@@ -10737,11 +11077,19 @@ export type ListWorkspaceDeletedAgentSessionsData = {
      */
     searchQuery?: string;
     /**
-     * Select sessions without an original project. Mutually exclusive with projectPath; omit both project filters to list every location.
+     * Select sessions by their exact persisted rail section key. Mutually exclusive with the deprecated project filters; omit every section filter to list all locations.
+     */
+    railSectionKey?: string;
+    /**
+     * Deprecated explicit conversations-section selector. It is resolved to the fixed conversations rail section key and is mutually exclusive with railSectionKey and projectPath.
+     *
+     * @deprecated
      */
     projectScope?: "unscoped";
     /**
-     * Select sessions by their persisted original project path. Mutually exclusive with projectScope.
+     * Deprecated explicit project selector. The path is resolved to its canonical rail section key before querying and is mutually exclusive with railSectionKey and projectScope.
+     *
+     * @deprecated
      */
     projectPath?: string;
     /**
@@ -12362,6 +12710,105 @@ export type ResolveWorkspaceAgentSessionWorktreeSupportResponses = {
 export type ResolveWorkspaceAgentSessionWorktreeSupportResponse =
   ResolveWorkspaceAgentSessionWorktreeSupportResponses[keyof ResolveWorkspaceAgentSessionWorktreeSupportResponses];
 
+export type ListWorkspaceManagedWorktreesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/managed-worktrees";
+};
+
+export type ListWorkspaceManagedWorktreesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListWorkspaceManagedWorktreesError =
+  ListWorkspaceManagedWorktreesErrors[keyof ListWorkspaceManagedWorktreesErrors];
+
+export type ListWorkspaceManagedWorktreesResponses = {
+  /**
+   * Managed worktrees
+   */
+  200: WorkspaceManagedWorktreeListResponse;
+};
+
+export type ListWorkspaceManagedWorktreesResponse =
+  ListWorkspaceManagedWorktreesResponses[keyof ListWorkspaceManagedWorktreesResponses];
+
+export type DeleteWorkspaceManagedWorktreeData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    worktreeID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/managed-worktrees/{worktreeID}";
+};
+
+export type DeleteWorkspaceManagedWorktreeErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Managed worktree was not found in this workspace
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Managed worktree is dirty, ahead of its base, or changed during deletion
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type DeleteWorkspaceManagedWorktreeError =
+  DeleteWorkspaceManagedWorktreeErrors[keyof DeleteWorkspaceManagedWorktreeErrors];
+
+export type DeleteWorkspaceManagedWorktreeResponses = {
+  /**
+   * Managed worktree deletion result
+   */
+  200: DeleteWorkspaceManagedWorktreeResponse;
+};
+
+export type DeleteWorkspaceManagedWorktreeResponse2 =
+  DeleteWorkspaceManagedWorktreeResponses[keyof DeleteWorkspaceManagedWorktreeResponses];
+
 export type ApplyWorkspaceGitPatchData = {
   body: WorkspaceGitPatchRequest;
   path: {
@@ -12635,6 +13082,329 @@ export type RecoverWorkspaceAgentEditRetryResponses = {
 
 export type RecoverWorkspaceAgentEditRetryResponse =
   RecoverWorkspaceAgentEditRetryResponses[keyof RecoverWorkspaceAgentEditRetryResponses];
+
+export type ResolveWorkspaceAgentSideCapabilitiesData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-capabilities";
+};
+
+export type ResolveWorkspaceAgentSideCapabilitiesErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The source session is not eligible for Side
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ResolveWorkspaceAgentSideCapabilitiesError =
+  ResolveWorkspaceAgentSideCapabilitiesErrors[keyof ResolveWorkspaceAgentSideCapabilitiesErrors];
+
+export type ResolveWorkspaceAgentSideCapabilitiesResponses = {
+  /**
+   * Side capabilities for the live source session
+   */
+  200: WorkspaceAgentSideCapabilitiesResponse;
+};
+
+export type ResolveWorkspaceAgentSideCapabilitiesResponse =
+  ResolveWorkspaceAgentSideCapabilitiesResponses[keyof ResolveWorkspaceAgentSideCapabilitiesResponses];
+
+export type OpenWorkspaceAgentSideConversationData = {
+  body: OpenWorkspaceAgentSideConversationRequest;
+  path: {
+    workspaceID: string;
+    agentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-conversations";
+};
+
+export type OpenWorkspaceAgentSideConversationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Side identity conflicts, is opening, or the source is ineligible
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type OpenWorkspaceAgentSideConversationError =
+  OpenWorkspaceAgentSideConversationErrors[keyof OpenWorkspaceAgentSideConversationErrors];
+
+export type OpenWorkspaceAgentSideConversationResponses = {
+  /**
+   * Opened or reconciled transient Side conversation
+   */
+  200: WorkspaceAgentSideConversationResponse;
+};
+
+export type OpenWorkspaceAgentSideConversationResponse =
+  OpenWorkspaceAgentSideConversationResponses[keyof OpenWorkspaceAgentSideConversationResponses];
+
+export type CloseWorkspaceAgentSideConversationData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    sideAgentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}";
+};
+
+export type CloseWorkspaceAgentSideConversationErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CloseWorkspaceAgentSideConversationError =
+  CloseWorkspaceAgentSideConversationErrors[keyof CloseWorkspaceAgentSideConversationErrors];
+
+export type CloseWorkspaceAgentSideConversationResponses = {
+  /**
+   * Side conversation closed or already absent
+   */
+  204: void;
+};
+
+export type CloseWorkspaceAgentSideConversationResponse =
+  CloseWorkspaceAgentSideConversationResponses[keyof CloseWorkspaceAgentSideConversationResponses];
+
+export type SendWorkspaceAgentSideConversationInputData = {
+  body: SendWorkspaceAgentSideConversationInputRequest;
+  path: {
+    workspaceID: string;
+    sideAgentSessionID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns";
+};
+
+export type SendWorkspaceAgentSideConversationInputErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The Side conversation has expired or cannot accept input
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SendWorkspaceAgentSideConversationInputError =
+  SendWorkspaceAgentSideConversationInputErrors[keyof SendWorkspaceAgentSideConversationInputErrors];
+
+export type SendWorkspaceAgentSideConversationInputResponses = {
+  /**
+   * Accepted transient Side turn
+   */
+  200: WorkspaceAgentSideTurnResponse;
+};
+
+export type SendWorkspaceAgentSideConversationInputResponse =
+  SendWorkspaceAgentSideConversationInputResponses[keyof SendWorkspaceAgentSideConversationInputResponses];
+
+export type CancelWorkspaceAgentSideConversationTurnData = {
+  body?: never;
+  path: {
+    workspaceID: string;
+    sideAgentSessionID: string;
+    turnID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/cancel";
+};
+
+export type CancelWorkspaceAgentSideConversationTurnErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The Side conversation has expired
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type CancelWorkspaceAgentSideConversationTurnError =
+  CancelWorkspaceAgentSideConversationTurnErrors[keyof CancelWorkspaceAgentSideConversationTurnErrors];
+
+export type CancelWorkspaceAgentSideConversationTurnResponses = {
+  /**
+   * Side turn cancel result
+   */
+  200: WorkspaceAgentSideTurnCancelResponse;
+};
+
+export type CancelWorkspaceAgentSideConversationTurnResponse =
+  CancelWorkspaceAgentSideConversationTurnResponses[keyof CancelWorkspaceAgentSideConversationTurnResponses];
+
+export type SubmitWorkspaceAgentSideConversationInteractiveData = {
+  body: SubmitWorkspaceAgentSideConversationInteractiveRequest;
+  path: {
+    workspaceID: string;
+    sideAgentSessionID: string;
+    turnID: string;
+    requestID: string;
+  };
+  query?: never;
+  url: "/v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/interactive/{requestID}";
+};
+
+export type SubmitWorkspaceAgentSideConversationInteractiveErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * Workspace id was not found
+   */
+  404: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * The Side conversation or interaction is no longer live
+   */
+  409: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type SubmitWorkspaceAgentSideConversationInteractiveError =
+  SubmitWorkspaceAgentSideConversationInteractiveErrors[keyof SubmitWorkspaceAgentSideConversationInteractiveErrors];
+
+export type SubmitWorkspaceAgentSideConversationInteractiveResponses = {
+  /**
+   * Side interactive response disposition
+   */
+  200: WorkspaceAgentSideInteractiveResponse;
+};
+
+export type SubmitWorkspaceAgentSideConversationInteractiveResponse =
+  SubmitWorkspaceAgentSideConversationInteractiveResponses[keyof SubmitWorkspaceAgentSideConversationInteractiveResponses];
 
 export type SubmitWorkspaceAgentPlanDecisionData = {
   body: SubmitWorkspaceAgentPlanDecisionRequest;
@@ -13142,6 +13912,10 @@ export type SubmitWorkspaceAgentInteractiveErrors = {
    * HTTP method is not supported on this route
    */
   405: ApiErrorResponse;
+  /**
+   * Interactive response no longer matches a pending canonical request
+   */
+  409: ApiErrorResponse;
   /**
    * Workspace operation failed in an upstream adapter or command
    */
@@ -16734,6 +17508,10 @@ export type ListConnectorMarketCatalogData = {
   path?: never;
   query: {
     sectionId: string;
+    /**
+     * Filters connector installation projections before page boundaries and next-page calculation.
+     */
+    installation?: "not_installed";
     pageSize?: number;
     pageToken?: string;
   };
@@ -16942,6 +17720,51 @@ export type UninstallConnectorMarketConnectorResponses = {
 export type UninstallConnectorMarketConnectorResponse =
   UninstallConnectorMarketConnectorResponses[keyof UninstallConnectorMarketConnectorResponses];
 
+export type UpdateConnectorMarketConnectorRuntimeData = {
+  body: ConnectorMarketRuntimeMutationRequest;
+  path: {
+    connectorKey: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/connectors/{connectorKey}/runtime";
+};
+
+export type UpdateConnectorMarketConnectorRuntimeErrors = {
+  /**
+   * Invalid connector-market request
+   */
+  400: ConnectorMarketError;
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Revision conflict or operation already in progress
+   */
+  409: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type UpdateConnectorMarketConnectorRuntimeError =
+  UpdateConnectorMarketConnectorRuntimeErrors[keyof UpdateConnectorMarketConnectorRuntimeErrors];
+
+export type UpdateConnectorMarketConnectorRuntimeResponses = {
+  /**
+   * Runtime activation intent accepted
+   */
+  202: ConnectorMarketConnector;
+};
+
+export type UpdateConnectorMarketConnectorRuntimeResponse =
+  UpdateConnectorMarketConnectorRuntimeResponses[keyof UpdateConnectorMarketConnectorRuntimeResponses];
+
 export type StartConnectorMarketAuthorizationData = {
   body: ConnectorMarketAuthorizationRequestWritable;
   path: {
@@ -16986,6 +17809,43 @@ export type StartConnectorMarketAuthorizationResponses = {
 
 export type StartConnectorMarketAuthorizationResponse =
   StartConnectorMarketAuthorizationResponses[keyof StartConnectorMarketAuthorizationResponses];
+
+export type CancelConnectorMarketAuthorizationData = {
+  body?: never;
+  path: {
+    connectorKey: string;
+  };
+  query?: never;
+  url: "/v1/connector-market/connectors/{connectorKey}/authorization:cancel";
+};
+
+export type CancelConnectorMarketAuthorizationErrors = {
+  /**
+   * Daemon authorization is required
+   */
+  401: ConnectorMarketError;
+  /**
+   * Connector or operation was not found
+   */
+  404: ConnectorMarketError;
+  /**
+   * Connector-market capability is temporarily unavailable
+   */
+  503: ConnectorMarketError;
+};
+
+export type CancelConnectorMarketAuthorizationError =
+  CancelConnectorMarketAuthorizationErrors[keyof CancelConnectorMarketAuthorizationErrors];
+
+export type CancelConnectorMarketAuthorizationResponses = {
+  /**
+   * Pending authorization attempt canceled
+   */
+  204: void;
+};
+
+export type CancelConnectorMarketAuthorizationResponse =
+  CancelConnectorMarketAuthorizationResponses[keyof CancelConnectorMarketAuthorizationResponses];
 
 export type DisconnectConnectorMarketAuthorizationData = {
   body: ConnectorMarketMutationRequest;

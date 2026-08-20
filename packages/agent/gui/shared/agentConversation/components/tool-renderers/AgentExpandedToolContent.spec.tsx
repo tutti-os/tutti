@@ -464,6 +464,66 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.getByText("export const routes = []")).toBeTruthy();
   });
 
+  it("shows unwrapped failure text above proposed write content", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "Write",
+            status: "Failed",
+            statusKind: "failed",
+            payload: {
+              input: {
+                file_path: "/workspace/123.txt",
+                content: "{}"
+              },
+              error: {
+                message:
+                  "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Error")).toBeTruthy();
+    expect(
+      screen.getByText(
+        "File has not been read yet. Read it first before writing to it."
+      )
+    ).toBeTruthy();
+    expect(screen.queryByText(/tool_use_error/i)).toBeNull();
+    expect(screen.getByText("{}")).toBeTruthy();
+  });
+
+  it("renders an (empty) placeholder when write content is empty", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    const { container } = render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            toolName: "Write",
+            payload: {
+              input: {
+                file_path: "/workspace/112233.txt",
+                content: ""
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(
+      container.querySelector('[data-agent-code-empty="true"]')
+    ).toBeTruthy();
+    expect(screen.getByText("(empty)")).toBeTruthy();
+  });
+
   it("renders a write-created file only once when both content and synthetic diff are present", async () => {
     setAgentGuiI18nTestLocale("en");
 

@@ -320,16 +320,16 @@ func restoreHistoricalTurns(
 		}
 		_, err = tx.ExecContext(ctx, `
 INSERT INTO workspace_agent_turns (
-  workspace_id, agent_session_id, turn_id, phase, outcome, error_json,
+  workspace_id, agent_session_id, turn_id, identity_anchor_turn_id, phase, outcome, error_json,
   file_changes_json, completed_command_json, backfilled, turn_origin,
   source_goal_operation_id, source_goal_revision, source_goal_repair_epoch,
   started_at_unix_ms, settled_at_unix_ms, created_at_unix_ms,
   updated_at_unix_ms, root_provider_turn_id, root_provider_turn_phase,
   root_provider_turn_outcome, root_provider_turn_updated_at_unix_ms,
   capability_refs_json
-) VALUES (?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, 0, ?, NULLIF(?, ''),
+) VALUES (?, ?, ?, NULLIF(?, ''), ?, NULLIF(?, ''), ?, ?, ?, 0, ?, NULLIF(?, ''),
           NULLIF(?, 0), NULLIF(?, 0), ?, ?, ?, ?, NULLIF(?, ''), ?, ?, ?, ?)
-`, workspaceID, session.ID, turn.ID, turn.Phase, turn.Outcome,
+`, workspaceID, session.ID, turn.ID, turn.IdentityAnchorTurnID, turn.Phase, turn.Outcome,
 			string(errorJSON), string(filesJSON), string(commandJSON), turn.Origin,
 			turn.SourceGoalOperationID, turn.SourceGoalRevision,
 			turn.SourceGoalRepairEpoch, now, settledAt, now, now,

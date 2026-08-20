@@ -56,6 +56,7 @@ export function appendConversationSearchPage(
 }
 
 export interface AgentGUIConversationRailQuerySnapshot {
+  agentTargetId: string;
   railSearch: {
     enabled: boolean;
     failed: boolean;
@@ -76,6 +77,7 @@ export interface AgentGUIConversationRailQuerySnapshot {
 
 export function createConversationRailQuerySnapshotSelector(): (
   input: {
+    agentTargetId?: string | null;
     queryState: ConversationRailQueryState;
     runtimeRailFailed: boolean;
     runtimeSectionsEnabled: boolean;
@@ -92,6 +94,7 @@ export function createConversationRailQuerySnapshotSelector(): (
       input.searchState.requestKey === input.searchRequestKey &&
       input.searchState.resolvedQuery === input.searchQuery;
     const next: AgentGUIConversationRailQuerySnapshot = {
+      agentTargetId: input.agentTargetId?.trim() ?? "",
       railSearch: {
         enabled: input.searchEnabled,
         failed: searchResolved && input.searchState.failed,
@@ -123,6 +126,7 @@ function sameSnapshot(
   right: AgentGUIConversationRailQuerySnapshot
 ): boolean {
   return (
+    left.agentTargetId === right.agentTargetId &&
     left.runtimeSectionsEnabled === right.runtimeSectionsEnabled &&
     left.runtimeRailFailed === right.runtimeRailFailed &&
     left.runtimeRailMemberships === right.runtimeRailMemberships &&

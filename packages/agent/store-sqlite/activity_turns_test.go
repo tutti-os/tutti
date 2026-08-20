@@ -2,6 +2,7 @@ package storesqlite
 
 import (
 	"context"
+	"reflect"
 	"testing"
 )
 
@@ -59,6 +60,25 @@ func TestSettledTurnFreezesLastPersistedAssistantTextAsFinalMessageAnchor(t *tes
 	}
 	if payload != `{"finalAssistantMessageId":"assistant-a","finalAssistantMessageResolved":true}` {
 		t.Fatalf("completed command payload = %s", payload)
+	}
+}
+
+func TestSettledTurnPersistsStructuredErrorCodeWithoutMessage(t *testing.T) {
+	t.Parallel()
+
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-error-code")
+	turn, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-error-code", TurnID: "turn-1",
+		Phase: TurnPhaseSettled, Outcome: TurnOutcomeFailed,
+		ErrorCode: "provider_max_tokens", OccurredAtUnixMS: 10,
+	})
+	if err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	if turn.ErrorCode != "provider_max_tokens" || turn.ErrorMessage != "" {
+		t.Fatalf("stored turn error = %q/%q", turn.ErrorCode, turn.ErrorMessage)
 	}
 }
 
@@ -177,6 +197,21 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	}); err != nil || accepted != InteractionTransitionApplied {
 		t.Fatalf("UpsertInteraction() accepted=%v error=%v", accepted, err)
 	}
+	if result, err := store.ReportSessionMessages(ctx, SessionMessageReport{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", Origin: "runtime",
+		Messages: []MessageUpdate{
+			{
+				MessageID: "toolcall:waiting", TurnID: "turn-1", Role: "assistant", Kind: "tool_call",
+				Status: "waiting_input", Payload: map[string]any{"toolName": "request_input"}, OccurredAtUnixMS: 111,
+			},
+			{
+				MessageID: "toolcall:completed", TurnID: "turn-1", Role: "assistant", Kind: "tool_call",
+				Status: "completed", Payload: map[string]any{"toolName": "completed_tool"}, OccurredAtUnixMS: 112,
+			},
+		},
+	}); err != nil || result.AcceptedCount != 2 {
+		t.Fatalf("ReportSessionMessages() result=%#v error=%v", result, err)
+	}
 
 	settlements, err := store.SettleStaleTurns(ctx)
 	if err != nil {
@@ -184,6 +219,10 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	}
 	if len(settlements) != 1 {
 		t.Fatalf("settlements = %#v, want one", settlements)
+	}
+	if settlement := settlements[0]; settlement.Provider != "codex" ||
+		settlement.StartedAtUnixMS != 100 || settlement.SettledAtUnixMS <= settlement.StartedAtUnixMS {
+		t.Fatalf("settlement identity and timing = %#v, want provider codex and a valid duration", settlement)
 	}
 	turn, ok, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
 	if err != nil || !ok || turn.Phase != TurnPhaseSettled || turn.Outcome != TurnOutcomeInterrupted {
@@ -202,13 +241,91 @@ func TestSettleStaleTurnsClosesSplitRuntimeSuccessStateOnRestart(t *testing.T) {
 	page, ok, err := store.ListSessionMessages(ctx, ListSessionMessagesInput{
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", Limit: 10,
 	})
-	if err != nil || !ok || len(page.Messages) != 1 {
+	if err != nil || !ok || len(page.Messages) != 3 {
 		t.Fatalf("startup system messages = %#v ok=%v error=%v", page.Messages, ok, err)
 	}
-	message := page.Messages[0]
-	if message.MessageID != "system-stale-turn-turn-1" || message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
+	messagesByID := make(map[string]Message, len(page.Messages))
+	for _, message := range page.Messages {
+		messagesByID[message.MessageID] = message
+	}
+	if message := messagesByID["toolcall:waiting"]; message.Status != "canceled" || message.CompletedAtUnixMS == 0 {
+		t.Fatalf("stale waiting tool message = %#v, want canceled with completion time", message)
+	}
+	if message := messagesByID["toolcall:completed"]; message.Status != "completed" {
+		t.Fatalf("terminal tool message = %#v, want preserved", message)
+	}
+	message := messagesByID["system-stale-turn-turn-1"]
+	if message.TurnID != "turn-1" || message.Payload["noticeKind"] != "stale_turn_reconciled" {
 		t.Fatalf("startup system message = %#v", message)
 	}
+}
+
+func TestSettleStaleTurnsReturnsCanonicalSettledTurn(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	ctx := context.Background()
+	seedTurnTestSession(t, store, "ws-1", "session-1")
+	if _, accepted, err := store.RecordTurnTransition(ctx, TurnTransition{
+		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
+		Phase: TurnPhaseRunning, Origin: TurnOriginUserPrompt, OccurredAtUnixMS: 100,
+	}); err != nil || !accepted {
+		t.Fatalf("RecordTurnTransition() accepted=%v error=%v", accepted, err)
+	}
+	if _, err := store.db.ExecContext(ctx, `
+UPDATE workspace_agent_turns
+SET backfilled = 1
+WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1' AND turn_id = 'turn-1'
+`); err != nil {
+		t.Fatalf("mark turn backfilled: %v", err)
+	}
+
+	settlements, err := store.SettleStaleTurns(ctx)
+	if err != nil {
+		t.Fatalf("SettleStaleTurns() error = %v", err)
+	}
+	if len(settlements) != 1 {
+		t.Fatalf("settlements = %#v, want one", settlements)
+	}
+	persisted, found, err := store.GetTurn(ctx, "ws-1", "session-1", "turn-1")
+	if err != nil || !found {
+		t.Fatalf("GetTurn() found=%v error=%v turn=%#v", found, err, persisted)
+	}
+	if !reflect.DeepEqual(settlements[0].Turn, persisted) {
+		t.Fatalf("settlement turn = %#v, want canonical persisted turn %#v", settlements[0].Turn, persisted)
+	}
+	if settlements[0].Turn.Origin != TurnOriginUserPrompt || !settlements[0].Turn.Backfilled {
+		t.Fatalf("settlement turn provenance = %#v, want user_prompt/backfilled", settlements[0].Turn)
+	}
+}
+
+func TestSettleStaleTurnsCarriesChildSessionIdentity(t *testing.T) {
+	t.Parallel()
+	store := openTestStore(t, testOptions(&staticProjectPaths{}))
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "root", Kind: SessionKindRoot,
+		Provider: "codex", OccurredAtUnixMS: 10,
+	}, "root-turn", 10)
+	reportSessionWithTurn(t, store, SessionStateReport{
+		WorkspaceID: "ws-1", AgentSessionID: "child", Kind: SessionKindChild,
+		RootAgentSessionID: "root", RootTurnID: "root-turn",
+		ParentAgentSessionID: "root", ParentTurnID: "root-turn", ParentToolCallID: "call-1",
+		Provider: "claude-code", OccurredAtUnixMS: 20,
+	}, "child-turn", 20)
+
+	settlements, err := store.SettleStaleTurns(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, settlement := range settlements {
+		if settlement.AgentSessionID == "child" {
+			if !settlement.IsChildSession || settlement.Provider != "claude-code" ||
+				settlement.StartedAtUnixMS != 20 || settlement.SettledAtUnixMS <= 20 {
+				t.Fatalf("child settlement = %#v", settlement)
+			}
+			return
+		}
+	}
+	t.Fatalf("child settlement missing from %#v", settlements)
 }
 
 func TestSettleStaleTurnsPreservesTurnProtectedByDeferredRuntimeOperation(t *testing.T) {

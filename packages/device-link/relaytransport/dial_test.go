@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -109,6 +110,203 @@ func TestDialCreatesAuthenticatedBinaryByteStream(t *testing.T) {
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("server did not finish the binary stream exchange")
+	}
+}
+
+func TestDialClosesStreamWhenPeerDoesNotPong(t *testing.T) {
+	pings := make(chan struct{}, 1)
+	upgrader := websocket.Upgrader{
+		CheckOrigin:  func(*http.Request) bool { return true },
+		Subprotocols: []string{testSubprotocol},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		ws.SetPingHandler(func(string) error {
+			select {
+			case pings <- struct{}{}:
+			default:
+			}
+			return nil
+		})
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	endpoint := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, err := Dial(context.Background(), DialRequest{
+		Endpoint: endpoint, Subprotocol: testSubprotocol,
+		Liveness: DialLivenessConfig{
+			PingInterval: 50 * time.Millisecond,
+			PongTimeout:  500 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer conn.Close()
+
+	readResult := make(chan error, 1)
+	go func() {
+		_, err := conn.Read(make([]byte, 1))
+		readResult <- err
+	}()
+
+	select {
+	case <-pings:
+	case <-time.After(2 * time.Second):
+		t.Fatal("caller did not send a liveness ping")
+	}
+	select {
+	case err := <-readResult:
+		if err == nil {
+			t.Fatal("stream read succeeded after peer ignored liveness ping")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream read remained blocked after peer ignored liveness ping")
+	}
+}
+
+func TestDialKeepsStreamOpenWhenPeerPongs(t *testing.T) {
+	upgrader := websocket.Upgrader{
+		CheckOrigin:  func(*http.Request) bool { return true },
+		Subprotocols: []string{testSubprotocol},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		pings := 0
+		ws.SetPingHandler(func(payload string) error {
+			pings++
+			if err := ws.WriteControl(websocket.PongMessage, []byte(payload), time.Now().Add(time.Second)); err != nil {
+				return err
+			}
+			if pings == 6 {
+				return ws.WriteMessage(websocket.BinaryMessage, []byte("ok"))
+			}
+			return nil
+		})
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	endpoint := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, err := Dial(context.Background(), DialRequest{
+		Endpoint: endpoint, Subprotocol: testSubprotocol,
+		Liveness: DialLivenessConfig{
+			PingInterval: 100 * time.Millisecond,
+			PongTimeout:  500 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer conn.Close()
+
+	readResult := make(chan struct {
+		payload []byte
+		err     error
+	}, 1)
+	go func() {
+		payload := make([]byte, 2)
+		_, err := io.ReadFull(conn, payload)
+		readResult <- struct {
+			payload []byte
+			err     error
+		}{payload: payload, err: err}
+	}()
+
+	select {
+	case result := <-readResult:
+		if result.err != nil {
+			t.Fatalf("stream read after pongs: %v", result.err)
+		}
+		if got := string(result.payload); got != "ok" {
+			t.Fatalf("stream payload = %q, want ok", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("stream did not remain open while peer replied to liveness pings")
+	}
+}
+
+func TestDialLivenessDoesNotOverrideCallerReadDeadline(t *testing.T) {
+	pings := make(chan struct{}, 1)
+	upgrader := websocket.Upgrader{
+		CheckOrigin:  func(*http.Request) bool { return true },
+		Subprotocols: []string{testSubprotocol},
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ws, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		defer ws.Close()
+		ws.SetPingHandler(func(payload string) error {
+			if err := ws.WriteControl(websocket.PongMessage, []byte(payload), time.Now().Add(time.Second)); err != nil {
+				return err
+			}
+			select {
+			case pings <- struct{}{}:
+			default:
+			}
+			return nil
+		})
+		for {
+			if _, _, err := ws.ReadMessage(); err != nil {
+				return
+			}
+		}
+	}))
+	defer server.Close()
+
+	endpoint := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, err := Dial(context.Background(), DialRequest{
+		Endpoint: endpoint, Subprotocol: testSubprotocol,
+		Liveness: DialLivenessConfig{
+			PingInterval: 50 * time.Millisecond,
+			PongTimeout:  500 * time.Millisecond,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Dial() error = %v", err)
+	}
+	defer conn.Close()
+
+	readResult := make(chan error, 1)
+	go func() {
+		_, err := conn.Read(make([]byte, 1))
+		readResult <- err
+	}()
+	select {
+	case <-pings:
+	case <-time.After(2 * time.Second):
+		t.Fatal("caller did not send a liveness ping")
+	}
+	if err := conn.SetReadDeadline(time.Now().Add(120 * time.Millisecond)); err != nil {
+		t.Fatalf("SetReadDeadline() error = %v", err)
+	}
+	select {
+	case err := <-readResult:
+		var netErr net.Error
+		if !errors.As(err, &netErr) || !netErr.Timeout() {
+			t.Fatalf("stream read error = %v, want caller read deadline timeout", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("liveness pong extended the caller read deadline")
 	}
 }
 

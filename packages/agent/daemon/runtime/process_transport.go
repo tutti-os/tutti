@@ -1,8 +1,12 @@
 package agentruntime
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -37,6 +41,205 @@ func RunVerifiedExecutable(ctx context.Context, path string, args []string, iden
 	return cmd.CombinedOutput()
 }
 
+// RunVerifiedExecutableBounded captures only stdout from a verified short-lived
+// executable and rejects output beyond maxBytes. Stderr is intentionally not
+// returned so provider diagnostics cannot cross a host contract by accident.
+func RunVerifiedExecutableBounded(ctx context.Context, path string, args []string, identity *ExecutableIdentity, maxBytes int) ([]byte, error) {
+	if identity == nil {
+		return nil, errors.New("verified process executable identity is required")
+	}
+	if maxBytes <= 0 {
+		return nil, errors.New("verified process output limit is required")
+	}
+	preparedExecutable, err := prepareProcessExecutable(path, identity)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = preparedExecutable.Close() }()
+	cmd := newManagedProcessCommand(ctx, preparedExecutable.path, args...)
+	if preparedExecutable.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedExecutable.file}
+	}
+	output := boundedProcessOutput{limit: maxBytes}
+	cmd.Stdout = &output
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	if output.overflow {
+		return nil, errors.New("verified process output exceeded limit")
+	}
+	return output.bytes, nil
+}
+
+// RunVerifiedNodeScriptBounded verifies a fixed Node interpreter and a
+// provider-owned JavaScript file independently. The verified script bytes are
+// supplied on stdin, so execution never depends on reopening a mutable script
+// pathname or on platform-specific npm shims.
+func RunVerifiedNodeScriptBounded(
+	ctx context.Context,
+	nodePath string,
+	scriptPath string,
+	args []string,
+	nodeIdentity *ExecutableIdentity,
+	scriptIdentity *ExecutableIdentity,
+	maxBytes int,
+) ([]byte, error) {
+	return NewVerifiedNodeScriptRunner("").Run(
+		ctx, nodePath, scriptPath, args, nodeIdentity, scriptIdentity, maxBytes,
+	)
+}
+
+// VerifiedNodeScriptRunner reuses verified Node snapshots when the platform
+// cannot safely execute an already-open interpreter descriptor. snapshotRoot
+// must be daemon-owned private state when reuse across probes is required.
+type VerifiedNodeScriptRunner struct {
+	snapshotRoot      string
+	snapshotMu        sync.Mutex
+	verifiedSnapshots map[string]*os.File
+}
+
+func NewVerifiedNodeScriptRunner(snapshotRoot string) *VerifiedNodeScriptRunner {
+	return &VerifiedNodeScriptRunner{snapshotRoot: strings.TrimSpace(snapshotRoot)}
+}
+
+func (runner *VerifiedNodeScriptRunner) Close() error {
+	if runner == nil {
+		return nil
+	}
+	runner.snapshotMu.Lock()
+	defer runner.snapshotMu.Unlock()
+	var closeErr error
+	for identity, file := range runner.verifiedSnapshots {
+		closeErr = errors.Join(closeErr, file.Close())
+		delete(runner.verifiedSnapshots, identity)
+	}
+	return closeErr
+}
+
+func (runner *VerifiedNodeScriptRunner) Run(
+	ctx context.Context,
+	nodePath string,
+	scriptPath string,
+	args []string,
+	nodeIdentity *ExecutableIdentity,
+	scriptIdentity *ExecutableIdentity,
+	maxBytes int,
+) ([]byte, error) {
+	if nodeIdentity == nil || scriptIdentity == nil {
+		return nil, errors.New("verified Node interpreter and script identities are required")
+	}
+	if maxBytes <= 0 {
+		return nil, errors.New("verified process output limit is required")
+	}
+	script, err := readVerifiedProcessInput(ctx, scriptPath, scriptIdentity, 16<<20)
+	if err != nil {
+		return nil, err
+	}
+	preparedNode, err := prepareReusableNodeInterpreter(ctx, runner, nodePath, nodeIdentity)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = preparedNode.Close() }()
+	nodeArgs := append([]string{"--input-type=commonjs", "-"}, args...)
+	cmd := newManagedProcessCommand(ctx, preparedNode.path, nodeArgs...)
+	if preparedNode.file != nil {
+		cmd.ExtraFiles = []*os.File{preparedNode.file}
+	}
+	cmd.Stdin = bytes.NewReader(script)
+	output := boundedProcessOutput{limit: maxBytes}
+	cmd.Stdout = &output
+	cmd.Stderr = io.Discard
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	if output.overflow {
+		return nil, errors.New("verified process output exceeded limit")
+	}
+	return output.bytes, nil
+}
+
+func readVerifiedProcessInput(ctx context.Context, path string, expected *ExecutableIdentity, maxBytes int64) ([]byte, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if !validProcessInputIdentity(expected) || maxBytes <= 0 || expected.SizeBytes > maxBytes {
+		return nil, errors.New("verified process input identity is invalid")
+	}
+	pathInfo, err := os.Lstat(path)
+	if err != nil || !pathInfo.Mode().IsRegular() || pathInfo.Mode()&os.ModeSymlink != 0 {
+		return nil, errors.New("verified process input is not an ordinary file")
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("open verified process input: %w", err)
+	}
+	defer func() { _ = file.Close() }()
+	fileInfo, err := file.Stat()
+	if err != nil || !fileInfo.Mode().IsRegular() || !os.SameFile(pathInfo, fileInfo) {
+		return nil, errors.New("verified process input changed while opening")
+	}
+	data, err := io.ReadAll(io.LimitReader(&contextReader{ctx: ctx, reader: file}, maxBytes+1))
+	if err != nil {
+		return nil, fmt.Errorf("read verified process input: %w", err)
+	}
+	if int64(len(data)) != expected.SizeBytes {
+		return nil, errors.New("verified process input does not match expected identity")
+	}
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != expected.SHA256 {
+		return nil, errors.New("verified process input does not match expected identity")
+	}
+	return data, nil
+}
+
+type contextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader *contextReader) Read(value []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	count, err := reader.reader.Read(value)
+	if err == nil {
+		if contextErr := reader.ctx.Err(); contextErr != nil {
+			return count, contextErr
+		}
+	}
+	return count, err
+}
+
+func validProcessInputIdentity(identity *ExecutableIdentity) bool {
+	if identity == nil || identity.SizeBytes <= 0 || len(identity.SHA256) != sha256.Size*2 || identity.SHA256 != strings.ToLower(identity.SHA256) {
+		return false
+	}
+	_, err := hex.DecodeString(identity.SHA256)
+	return err == nil
+}
+
+type boundedProcessOutput struct {
+	bytes    []byte
+	limit    int
+	overflow bool
+}
+
+func (output *boundedProcessOutput) Write(value []byte) (int, error) {
+	remaining := output.limit - len(output.bytes)
+	if remaining > 0 {
+		count := len(value)
+		if count > remaining {
+			count = remaining
+		}
+		output.bytes = append(output.bytes, value[:count]...)
+	}
+	if len(value) > remaining {
+		output.overflow = true
+	}
+	return len(value), nil
+}
+
 type localProcessConnection struct {
 	cancel             context.CancelFunc
 	cmd                *exec.Cmd
@@ -46,10 +249,10 @@ type localProcessConnection struct {
 	frames             chan ProcessFrame
 	stdin              io.WriteCloser
 
-	closeOnce sync.Once
-	sendMu    sync.Mutex
-	inputOnce sync.Once
-	closeErr  error
+	closeMu     sync.Mutex
+	closingOnce sync.Once
+	sendMu      sync.Mutex
+	inputOnce   sync.Once
 }
 
 func NewLocalProcessTransport() ProcessTransport {
@@ -303,29 +506,34 @@ func (c *localProcessConnection) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.closeOnce.Do(func() {
-		close(c.closing)
-		_ = c.CloseInput()
-		if !c.waitDone(250 * time.Millisecond) {
-			_ = c.Terminate()
-		}
-		if !c.waitDone(750 * time.Millisecond) {
-			killErr := c.Kill()
-			if !c.waitDone(2 * time.Second) {
-				if killErr != nil {
-					c.closeErr = killErr
-					return
-				}
-				c.closeErr = errors.New("process did not exit after kill")
-				return
-			}
-		}
-	})
-	if c.closeErr != nil {
-		return c.closeErr
+	c.closeMu.Lock()
+	defer c.closeMu.Unlock()
+	if c.waitDone(0) {
+		return nil
 	}
-	<-c.done
-	return nil
+	c.closingOnce.Do(func() { close(c.closing) })
+	return closeLocalProcessAttempt(c.waitDone, c.CloseInput, c.Terminate, c.Kill)
+}
+
+func closeLocalProcessAttempt(
+	waitDone func(time.Duration) bool,
+	closeInput func() error,
+	terminate func() error,
+	kill func() error,
+) error {
+	_ = closeInput()
+	if waitDone(250 * time.Millisecond) {
+		return nil
+	}
+	_ = terminate()
+	if waitDone(750 * time.Millisecond) {
+		return nil
+	}
+	killErr := kill()
+	if waitDone(2 * time.Second) {
+		return nil
+	}
+	return errors.Join(killErr, errors.New("process did not exit after kill"))
 }
 
 func (c *localProcessConnection) CloseInput() error {

@@ -30,6 +30,7 @@ import {
   SelectItem,
   SelectSeparator,
   SelectTrigger,
+  UploadIcon,
   cn
 } from "@tutti-os/ui-system";
 import type {
@@ -40,6 +41,7 @@ import type {
   WorkspaceUserProjectService
 } from "../../../contracts/index.ts";
 import {
+  areWorkspaceUserProjectPathsEqual,
   basenameWorkspaceUserProjectPath,
   getWorkspaceUserProjectErrorCode,
   prepareWorkspaceUserProjectSelection,
@@ -65,6 +67,7 @@ export type WorkspaceUserProjectSelectLabels = {
   createProjectPermissionDenied: string;
   createProjectTitle: string;
   linkExistingProject: string;
+  importProject: string;
   loadingProjects: string;
   noProject: string;
   projectLabel: string;
@@ -85,6 +88,13 @@ export interface WorkspaceUserProjectSelectClassNames {
 export type WorkspaceUserProjectSelectChangeAction =
   | "clear"
   | "create_new"
+  | "import_directory"
+  | "select_existing";
+
+export type WorkspaceUserProjectSelectMenuAction =
+  | "clear"
+  | "create_new"
+  | "import_directory"
   | "select_existing";
 
 export interface WorkspaceUserProjectSelectProps {
@@ -96,6 +106,7 @@ export interface WorkspaceUserProjectSelectProps {
   disabled?: boolean;
   i18n?: WorkspaceUserProjectI18nRuntime;
   labels?: WorkspaceUserProjectSelectLabelOverrides;
+  menuActions?: readonly WorkspaceUserProjectSelectMenuAction[];
   onProjectMissingChange?: (isMissing: boolean) => void;
   /**
    * Called when the select menu or create dialog is about to restore focus.
@@ -124,6 +135,12 @@ export interface WorkspaceUserProjectSelectProps {
 const noProjectOptionValue = "__tutti_no_project__";
 const addProjectOptionValue = "__tutti_add_project__";
 const linkExistingProjectOptionValue = "__tutti_link_existing_project__";
+const importProjectOptionValue = "__tutti_import_project__";
+const defaultWorkspaceUserProjectSelectMenuActions = [
+  "select_existing",
+  "create_new",
+  "clear"
+] as const satisfies readonly WorkspaceUserProjectSelectMenuAction[];
 const workspaceUserProjectOverflowLabelStyle = `
 @keyframes workspace-user-project-label-marquee {
   0% {
@@ -207,6 +224,7 @@ export function WorkspaceUserProjectSelect({
   disabled: disabledProp = false,
   i18n = defaultWorkspaceUserProjectSelectI18n,
   labels,
+  menuActions = defaultWorkspaceUserProjectSelectMenuActions,
   onProjectMissingChange,
   onDismissAutoFocus,
   onProjectPathChange,
@@ -258,7 +276,8 @@ export function WorkspaceUserProjectSelect({
   const [isSelectedPathMissing, setIsSelectedPathMissing] = useState(false);
   const rawSelectedPath = selectedProjectPath?.trim() ?? "";
   const selectedPath =
-    rawSelectedPath && rawSelectedPath === suppressedSelectedPath
+    rawSelectedPath &&
+    areWorkspaceUserProjectPathsEqual(rawSelectedPath, suppressedSelectedPath)
       ? ""
       : rawSelectedPath;
   const projects = service ? [...serviceSnapshot.projects] : apiProjects;
@@ -272,7 +291,9 @@ export function WorkspaceUserProjectSelect({
   const selectedPathLabel =
     basenameWorkspaceUserProjectPath(selectedPath) || selectedPath;
   const selectedProject = showKnownProjectOptions
-    ? (projects.find((project) => project.path === selectedPath) ?? null)
+    ? (projects.find((project) =>
+        areWorkspaceUserProjectPathsEqual(project.path, selectedPath)
+      ) ?? null)
     : null;
   const selectedProjectLabel = selectedProject
     ? resolveWorkspaceUserProjectDisplayLabel(selectedProject)
@@ -311,10 +332,14 @@ export function WorkspaceUserProjectSelect({
     serviceSnapshot.isMutationPending === true ||
     (shouldDisableWhileLoading && isLoading) ||
     !effectiveApi;
-  const hasProjectActions =
-    Boolean(effectiveApi?.selectDirectory) ||
-    showCreateProjectAction ||
-    showNoProjectAction;
+  const hasProjectActions = menuActions.some((action) =>
+    isWorkspaceUserProjectMenuActionAvailable(action, {
+      canCreate: showCreateProjectAction,
+      canImport: Boolean(effectiveApi?.importDirectory),
+      canSelectExisting: Boolean(effectiveApi?.selectDirectory),
+      showNoProject: showNoProjectAction
+    })
+  );
   const showProjectActionDivider =
     visibleProjects.length > 0 && hasProjectActions;
 
@@ -337,7 +362,11 @@ export function WorkspaceUserProjectSelect({
     }
     if (
       suppressedSelectedPath &&
-      (!rawSelectedPath || rawSelectedPath !== suppressedSelectedPath)
+      (!rawSelectedPath ||
+        !areWorkspaceUserProjectPathsEqual(
+          rawSelectedPath,
+          suppressedSelectedPath
+        ))
     ) {
       setSuppressedSelectedPath(null);
     }
@@ -520,7 +549,22 @@ export function WorkspaceUserProjectSelect({
         .catch(() => {});
       return;
     }
-    const knownProject = projects.find((project) => project.path === nextValue);
+    if (nextValue === importProjectOptionValue) {
+      void Promise.resolve(effectiveApi.importDirectory?.())
+        .then(async (selection) => {
+          const path = selection?.path?.trim() ?? "";
+          if (!path) {
+            return;
+          }
+          await useProjectPath(path, "import_directory");
+          onDismissAutoFocus?.(new Event("focus"));
+        })
+        .catch(() => {});
+      return;
+    }
+    const knownProject = projects.find((project) =>
+      areWorkspaceUserProjectPathsEqual(project.path, nextValue)
+    );
     if (knownProject) {
       void effectiveApi.rememberDefaultSelection?.({ path: knownProject.path });
       setHasPinnedNoProjectSelection(false);
@@ -603,55 +647,27 @@ export function WorkspaceUserProjectSelect({
                 className="gap-0.5 p-0"
                 data-workspace-user-project-action-group="true"
               >
-                {effectiveApi?.selectDirectory ? (
-                  <SelectItem
-                    className={classNames?.item}
-                    value={linkExistingProjectOptionValue}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                      <LinkIcon aria-hidden size={15} />
-                      <span className="truncate">
-                        {resolvedLabels.linkExistingProject}
-                      </span>
-                    </span>
-                  </SelectItem>
-                ) : null}
-                {showCreateProjectAction ? (
-                  <SelectItem
-                    className={classNames?.item}
-                    value={addProjectOptionValue}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                      {renderAddProjectIcon?.() ?? (
-                        <NewWorkspaceLinedIcon
-                          aria-hidden
-                          data-workspace-user-project-add-icon="true"
-                          size={15}
-                        />
-                      )}
-                      <span className="truncate">
-                        {resolvedLabels.addProject}
-                      </span>
-                    </span>
-                  </SelectItem>
-                ) : null}
-                {showNoProjectAction ? (
-                  <SelectItem
-                    className={classNames?.item}
-                    value={noProjectOptionValue}
-                  >
-                    <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
-                      <NoWorkspaceLinedIcon
-                        aria-hidden
-                        data-agent-project-no-workspace-icon="true"
-                        size={15}
-                      />
-                      <span className="truncate">
-                        {resolvedLabels.noProject}
-                      </span>
-                    </span>
-                  </SelectItem>
-                ) : null}
+                {menuActions.map((action) => {
+                  if (
+                    !isWorkspaceUserProjectMenuActionAvailable(action, {
+                      canCreate: showCreateProjectAction,
+                      canImport: Boolean(effectiveApi?.importDirectory),
+                      canSelectExisting: Boolean(effectiveApi?.selectDirectory),
+                      showNoProject: showNoProjectAction
+                    })
+                  ) {
+                    return null;
+                  }
+                  return (
+                    <WorkspaceUserProjectMenuActionItem
+                      action={action}
+                      className={classNames?.item}
+                      key={action}
+                      labels={resolvedLabels}
+                      renderAddProjectIcon={renderAddProjectIcon}
+                    />
+                  );
+                })}
               </SelectGroup>
             ) : null}
           </SelectContent>
@@ -848,6 +864,9 @@ function createWorkspaceUserProjectApiAdapter(
     isNoProjectPath: hasWorkspaceUserProjectMethod(service, "isNoProjectPath")
       ? ({ path }) => service.isNoProjectPath!(path)
       : apiIsNoProjectPath,
+    importDirectory: hasWorkspaceUserProjectMethod(api, "importDirectory")
+      ? () => api!.importDirectory!()
+      : undefined,
     list: async () => {
       await (service.ensureLoaded?.() ?? service.refresh());
       return { projects: [...service.store.projects] };
@@ -929,6 +948,8 @@ export function resolveWorkspaceUserProjectSelectLabels(
     linkExistingProject:
       overrides?.linkExistingProject ??
       i18n.t("projectSelect.linkExistingProject"),
+    importProject:
+      overrides?.importProject ?? i18n.t("projectSelect.importProject"),
     loadingProjects:
       overrides?.loadingProjects ?? i18n.t("projectSelect.loadingProjects"),
     noProject: overrides?.noProject ?? i18n.t("projectSelect.noProject"),
@@ -943,6 +964,88 @@ export function resolveWorkspaceUserProjectSelectLabels(
       overrides?.projectUnavailable ??
       i18n.t("projectSelect.projectUnavailable")
   };
+}
+
+function isWorkspaceUserProjectMenuActionAvailable(
+  action: WorkspaceUserProjectSelectMenuAction,
+  capabilities: {
+    canCreate: boolean;
+    canImport: boolean;
+    canSelectExisting: boolean;
+    showNoProject: boolean;
+  }
+): boolean {
+  switch (action) {
+    case "create_new":
+      return capabilities.canCreate;
+    case "select_existing":
+      return capabilities.canSelectExisting;
+    case "import_directory":
+      return capabilities.canImport;
+    case "clear":
+      return capabilities.showNoProject;
+  }
+}
+
+function WorkspaceUserProjectMenuActionItem({
+  action,
+  className,
+  labels,
+  renderAddProjectIcon
+}: {
+  action: WorkspaceUserProjectSelectMenuAction;
+  className?: string;
+  labels: WorkspaceUserProjectSelectLabels;
+  renderAddProjectIcon?: () => ReactNode;
+}): React.JSX.Element {
+  const presentation = (() => {
+    switch (action) {
+      case "create_new":
+        return {
+          icon: renderAddProjectIcon?.() ?? (
+            <NewWorkspaceLinedIcon
+              aria-hidden
+              data-workspace-user-project-add-icon="true"
+              size={15}
+            />
+          ),
+          label: labels.addProject,
+          value: addProjectOptionValue
+        };
+      case "select_existing":
+        return {
+          icon: <LinkIcon aria-hidden size={15} />,
+          label: labels.linkExistingProject,
+          value: linkExistingProjectOptionValue
+        };
+      case "import_directory":
+        return {
+          icon: <UploadIcon aria-hidden size={15} />,
+          label: labels.importProject,
+          value: importProjectOptionValue
+        };
+      case "clear":
+        return {
+          icon: (
+            <NoWorkspaceLinedIcon
+              aria-hidden
+              data-agent-project-no-workspace-icon="true"
+              size={15}
+            />
+          ),
+          label: labels.noProject,
+          value: noProjectOptionValue
+        };
+    }
+  })();
+  return (
+    <SelectItem className={className} value={presentation.value}>
+      <span className="flex min-w-0 flex-1 items-center gap-2 pr-1">
+        {presentation.icon}
+        <span className="truncate">{presentation.label}</span>
+      </span>
+    </SelectItem>
+  );
 }
 
 function resolveProjectCreationErrorLabel(

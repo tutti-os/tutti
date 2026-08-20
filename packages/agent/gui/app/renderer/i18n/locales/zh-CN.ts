@@ -4,6 +4,7 @@ import { zhCNAgentGui } from "./zh-CN.agentGui.ts";
 import { zhCNMessages } from "./zh-CN.messages.ts";
 import { zhCNSettingsPanel } from "./zh-CN.settingsPanel.ts";
 import { zhCNWebsiteNode } from "./zh-CN.websiteNode.ts";
+import { zhCNWorkspaceAgentProbeQuota } from "./zh-CN.workspaceAgentProbeQuota.ts";
 export const zhCN = {
   common: {
     add: "添加",
@@ -722,9 +723,8 @@ export const zhCN = {
     workspaceAgentProbeDetailStatus: "状态",
     workspaceAgentProbeDetailQuota: "额度",
     workspaceAgentProbeUsageUnsupported: "暂未接入用量",
-    workspaceAgentProbeQuotaRemaining: "剩余 {{percent}}%",
     workspaceAgentProbeQuotaResetTimeLabel: "{{label}}重置时间",
-    workspaceAgentProbeQuotaDollarRemaining: "剩余 ${{amount}}",
+    ...zhCNWorkspaceAgentProbeQuota,
     workspaceAgentProbeLoadingUsage: "加载用量中...",
     workspaceAgentProbeScrollListRight: "向右查看更多 Agent",
     workspaceAgentProbeScrollListLeft: "向左查看前面的 Agent",

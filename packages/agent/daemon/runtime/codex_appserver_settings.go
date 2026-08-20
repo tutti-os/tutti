@@ -2,7 +2,6 @@ package agentruntime
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -244,11 +243,11 @@ func (a *CodexAppServerAdapter) SessionCommandSnapshot(session Session) (AgentSe
 func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session Session, input SubmitInteractiveInput) (SubmitInteractiveResult, error) {
 	turnID := strings.TrimSpace(input.TurnID)
 	if turnID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive turn id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive turn id is required", ErrInteractiveResponseInvalid)
 	}
 	requestID := strings.TrimSpace(input.RequestID)
 	if requestID == "" {
-		return SubmitInteractiveResult{}, errors.New("interactive request id is required")
+		return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive request id is required", ErrInteractiveResponseInvalid)
 	}
 	targetAgentSessionID := firstNonEmpty(strings.TrimSpace(input.AgentSessionID), strings.TrimSpace(session.AgentSessionID))
 	pending := a.getPendingRequest(targetAgentSessionID, turnID, requestID)
@@ -258,11 +257,16 @@ func (a *CodexAppServerAdapter) SubmitInteractive(ctx context.Context, session S
 	if pending.callType == "approval" {
 		optionID := interactiveApprovalOptionID(input)
 		if optionID == "" {
-			return SubmitInteractiveResult{}, errors.New("interactive option id is required")
+			return SubmitInteractiveResult{}, fmt.Errorf("%w: interactive option id is required", ErrInteractiveResponseInvalid)
 		}
 		resolvedOptionID, ok := pending.resolvePermissionOptionID(optionID)
 		if !ok {
-			return SubmitInteractiveResult{}, fmt.Errorf("permission option %q is not available for request %q", optionID, requestID)
+			return SubmitInteractiveResult{}, fmt.Errorf(
+				"%w: permission option %q is not available for request %q",
+				ErrInteractiveResponseInvalid,
+				optionID,
+				requestID,
+			)
 		}
 		if _, err := pending.dispatchResponse(ctx, pendingInteractiveResponse{
 			optionID: resolvedOptionID,
