@@ -53,6 +53,7 @@ import {
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
 import { useComposerInputHistory } from "./composer/useComposerInputHistory";
+import { useComposerSlashCapabilitiesRefresh } from "./composer/useComposerSlashCapabilitiesRefresh";
 
 export { formatSlashStatusTokenCount };
 
@@ -381,7 +382,12 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
         skillQueryMatch !== null &&
         filteredSkills.length > 0));
   const showPalette = showFileMentionPalette || showSlashPalette;
-  const refreshedSlashSessionRef = useRef<string | null>(null);
+  useComposerSlashCapabilitiesRefresh({
+    agentSessionId,
+    isPaletteOpen,
+    onRetryComposerOptions,
+    slashQuery
+  });
   const showCommandMenuPanel = isSlashStatusPanelOpen || isReviewPickerOpen;
   const showFloatingCommandMenu = showSlashPalette || showCommandMenuPanel;
   const activeHighlight = clampSlashCommandHighlight(
@@ -441,14 +447,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   ]);
 
   useEffect(() => {
-    const refreshKey =
-      slashQuery !== null && agentSessionId ? agentSessionId : null;
-    if (refreshKey === null) {
-      refreshedSlashSessionRef.current = null;
-    } else if (refreshedSlashSessionRef.current !== refreshKey) {
-      refreshedSlashSessionRef.current = refreshKey;
-      onRetryComposerOptions?.({ force: true, section: "capabilities" });
-    }
     draftImagesRef.current = agentComposerDraftImages(draftContent);
     draftFilesRef.current = agentComposerDraftFiles(draftContent);
     draftLargeTextsRef.current = agentComposerDraftLargeTexts(draftContent);
@@ -466,12 +464,9 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       });
     }
   }, [
-    agentSessionId,
     draftContent,
     draftPrompt,
     goalDraftObjective,
-    onRetryComposerOptions,
-    slashQuery,
     settlePendingInputHistory
   ]);
 
