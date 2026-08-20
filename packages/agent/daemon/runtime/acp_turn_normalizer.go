@@ -566,6 +566,36 @@ func appendTurnFileChangesEvent(
 	return append(events, updated)
 }
 
+func (n *acpTurnNormalizer) recordFileChangesEvents(
+	session Session,
+	turnID string,
+	files []map[string]any,
+) []activityshared.Event {
+	if n == nil || strings.TrimSpace(turnID) == "" {
+		return nil
+	}
+	canonical := make([]any, 0, len(files))
+	for _, file := range files {
+		if file = canonicalToolFileChange(file, ""); file != nil {
+			canonical = append(canonical, file)
+		}
+	}
+	if len(canonical) == 0 {
+		return nil
+	}
+	n.fileChanges = mergeCanonicalFileChanges(n.fileChanges, map[string]any{
+		"files": canonical,
+	})
+	ctx, ok := activityEventContext(session, newID(), turnID)
+	if !ok {
+		return nil
+	}
+	ctx.RootAgentSessionID = strings.TrimSpace(session.RootAgentSessionID)
+	updated := activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseWorking)
+	updated.Payload.Metadata = map[string]any{"fileChanges": clonePayload(n.fileChanges)}
+	return []activityshared.Event{updated}
+}
+
 func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
 	key := firstNonEmpty(asString(update["toolCallId"]), asString(update["id"]), asString(update["title"]), asString(update["name"]))
 	if key == "" {

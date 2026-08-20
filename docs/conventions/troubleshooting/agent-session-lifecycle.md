@@ -2781,7 +2781,9 @@ inline data URL instead`. Claude or standard ACP may instead receive no
 - Symptom:
   Clicking Undo on a changed-files summary shows a failure even though the
   target directory is a Git repository and the file appears unchanged since
-  the agent edit.
+  the agent edit. The same loss can appear earlier as a missing changed-files
+  card, missing or incorrect line counts, or a "missing reversible patch data"
+  error after a provider overwrites a file.
 - Quick checks:
   Search desktop and daemon logs for the `agent-git-patch` diagnostic family.
   Inspect `errorCode`, Git `stderr`, the diff byte count and hash, and the
@@ -2789,7 +2791,11 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   malformed unified-diff control markers. A no-newline marker must begin with
   `\`, not a leading context-space followed by `\`. For
   `patch-does-not-apply`, compare the recorded after-state with the current
-  file rather than assuming the original turn is still the latest writer.
+  file rather than assuming the original turn is still the latest writer. For
+  missing patch data, check whether Standard ACP logged an unsupported
+  `fs/write_text_file` request, whether Codex emitted
+  `item/fileChange/patchUpdated`, and whether a modified canonical file entry
+  contains only one of `oldString` and `newString`.
 - Root cause:
   Provider display diffs can contain syntax that a viewer tolerates but
   `git apply` rejects. Treating that display payload as executable patch data
@@ -2797,12 +2803,23 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   but later edits changed its context. On Windows, leaving an absolute drive
   path in either a synthesized patch or an existing unified-diff header also
   violates Git's cwd-relative patch contract and can report that an untracked
-  created file does not exist in the index.
+  created file does not exist in the index. Patch data is also lost when a
+  Standard ACP host advertises file writes as unsupported and therefore cannot
+  snapshot the old content, or when an app-server adapter ignores the
+  authoritative incremental file-change patch notification. Synthesizing the
+  missing side of a modified file as empty then produces a plausible-looking
+  but non-reversible patch.
 - Fix:
   Canonicalize provider file-change metadata at the runtime adapter boundary
   before persistence, and canonicalize historical no-newline markers on read.
   AgentGUI must make synthesized paths and existing unified-diff headers
   relative to the patch cwd, using case-insensitive path identity for Windows.
+  Standard ACP hosts that advertise `writeTextFile` must implement the matching
+  `fs/write_text_file` request, capture the exact old and new content, and emit
+  canonical turn file changes. App-server adapters must preserve authoritative
+  incremental patch notifications in the same canonical turn state. AgentGUI
+  must fail closed instead of synthesizing a modified-file patch when either
+  side is absent.
   The daemon must preflight with `git apply --check` using the same execution
   options, return `invalid-patch` for syntax failures and
   `patch-does-not-apply` for state mismatch, and avoid mutating the worktree on
@@ -2811,9 +2828,14 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Cover leading-whitespace no-newline markers, historical activity projection,
   corrupt-patch preflight without mutation, worktree divergence, reverse
   application, cwd-relative Windows drive paths for synthesized and complete
-  diffs, and the existing untracked-created-file behavior.
+  diffs, Standard ACP overwrite capture and relative-path rejection, Codex
+  incremental patch projection, one-sided modified metadata, and the existing
+  untracked-created-file behavior.
 - References:
   [claude_sdk_activity.go](../../../packages/agent/daemon/runtime/claude_sdk_activity.go)
+  [standard_acp_filesystem.go](../../../packages/agent/daemon/runtime/standard_acp_filesystem.go)
+  [codex_appserver_reducer.go](../../../packages/agent/daemon/runtime/codex_appserver_reducer.go)
+  [agentTurnSummaryPatchDiff.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentTurnSummaryPatchDiff.ts)
   [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
   [git_patch.go](../../../services/tuttid/service/agent/git_patch.go)
 
