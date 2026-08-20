@@ -1,6 +1,7 @@
 import type {
   AgentGUIRuntime,
   AgentSideConversationRuntime,
+  AgentGUISideConversationPresentation,
   AgentGUIAgentDirectorySnapshot,
   AgentGUIAllAgentsPresentation,
   AgentGUIProvider,
@@ -53,6 +54,7 @@ export interface DesktopAgentGUISurfaceContext {
 export interface DesktopAgentGUIWorkbenchBodyProps {
   agentActivityRuntime: AgentGUIRuntime;
   agentSideConversationRuntime: AgentSideConversationRuntime | null;
+  agentSideConversationPresentation?: AgentGUISideConversationPresentation | null;
   agentHostApi: AgentHostInputApi;
   agentSessionReplayService: AgentSessionReplayService | null;
   agentStatusSource?: AgentStatusSource;
@@ -168,6 +170,8 @@ export function areDesktopAgentGUIWorkbenchBodyPropsEqual(
     previous.agentActivityRuntime === next.agentActivityRuntime &&
     previous.agentSideConversationRuntime ===
       next.agentSideConversationRuntime &&
+    previous.agentSideConversationPresentation ===
+      next.agentSideConversationPresentation &&
     previous.agentHostApi === next.agentHostApi &&
     previous.agentStatusSource === next.agentStatusSource &&
     previous.tuttiModePlanReviewRuntime === next.tuttiModePlanReviewRuntime &&

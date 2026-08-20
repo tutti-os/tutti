@@ -18,6 +18,7 @@ import type {
   AgentGUIViewLabels
 } from "./AgentGUINodeView.types";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
+import type { AgentGUISideConversationPresentation } from "../../../agentSideConversationPresentation";
 
 type AgentGUIDetailExternalPromptProps = Pick<
   AgentComposerProps,
@@ -39,6 +40,7 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
   referenceProvenanceFilters?: AgentComposerProps["referenceProvenanceFilters"];
   sessionInputHistoryEnabled?: boolean;
   sideConversationEnabled?: boolean;
+  sideConversationPresentation?: AgentGUISideConversationPresentation | null;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>

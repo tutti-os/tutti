@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from "react";
+import type { AgentActivitySlashCommandPolicy } from "@tutti-os/agent-activity-core";
 import {
   useAgentSideConversationSnapshot,
   useAgentSideConversationSupport,
@@ -8,6 +9,7 @@ import type { AgentConversationPromptVM } from "../../../shared/agentConversatio
 import type { AgentComposerProps } from "../AgentComposer";
 import type { AgentComposerDraft } from "../model/agentGuiNodeTypes";
 import {
+  agentComposerDraftPrompt,
   appendAgentComposerDraftQuote,
   emptyAgentComposerDraft
 } from "../model/agentComposerDraft";
@@ -49,6 +51,29 @@ export function appendAgentSidePromptToDraft(
   ];
 }
 
+function projectAgentSideSlashCommandPolicy({
+  commands,
+  enabled,
+  policy
+}: {
+  commands: AgentComposerProps["availableCommands"];
+  enabled: boolean;
+  policy: AgentActivitySlashCommandPolicy | null | undefined;
+}): AgentActivitySlashCommandPolicy | null | undefined {
+  if (!enabled) return policy;
+  return {
+    ...(policy ?? {}),
+    fallbackCommands:
+      policy?.fallbackCommands ?? commands.map((command) => command.name),
+    commandEffects: [
+      ...(policy?.commandEffects ?? []).filter(
+        (entry) => entry.command.trim().toLowerCase() !== "side"
+      ),
+      { command: "side", effect: "submitImmediate" }
+    ]
+  };
+}
+
 interface UseAgentGUIDetailSideConversationInput {
   enabled?: boolean;
   workspaceId: string;
@@ -57,6 +82,7 @@ interface UseAgentGUIDetailSideConversationInput {
   cwd: string | null;
   capabilityRevision?: string;
   availableCommands: AgentComposerProps["availableCommands"];
+  slashCommandPolicy?: AgentActivitySlashCommandPolicy | null;
   clearMainDraft: () => void;
   submitPrompt: NonNullable<AgentComposerProps["onSubmit"]>;
 }
@@ -69,6 +95,7 @@ export function useAgentGUIDetailSideConversation({
   cwd,
   capabilityRevision = "",
   availableCommands,
+  slashCommandPolicy = null,
   clearMainDraft,
   submitPrompt
 }: UseAgentGUIDetailSideConversationInput) {
@@ -276,17 +303,23 @@ export function useAgentGUIDetailSideConversation({
   const submitSide = useCallback<NonNullable<AgentComposerProps["onSubmit"]>>(
     (content, displayPrompt) => {
       if (!runtime || !active || active.status !== "idle") return;
+      const draftPrompt = agentComposerDraftPrompt(draftContent);
       void runtime
         .send({
           workspaceId,
           sideAgentSessionId: active.sideAgentSessionId,
           content,
-          displayPrompt
+          // Quotes are provider context, not the user's visible message. The
+          // Composer's generic display prompt includes quote Markdown so main
+          // conversations can preserve their historical representation; Side
+          // keeps that full content on the wire while projecting only the
+          // typed question into its transient timeline.
+          displayPrompt: draftPrompt.trim() ? draftPrompt : displayPrompt
         })
         .then(() => setDraftContent(emptyAgentComposerDraft()))
         .catch(() => {});
     },
-    [active, runtime, workspaceId]
+    [active, draftContent, runtime, setDraftContent, workspaceId]
   );
 
   const stageSelection = useCallback(
@@ -320,17 +353,18 @@ export function useAgentGUIDetailSideConversation({
     [enabled, open, runtime, sourceAgentSessionId, workspaceId]
   );
 
+  const sideCommandEnabled = Boolean(
+    runtime &&
+    enabled &&
+    sourceAgentSessionId &&
+    sideAvailable &&
+    (!active || active.sourceAgentSessionId === sourceAgentSessionId)
+  );
   const commands = useMemo(() => {
     const commandsWithoutSide = availableCommands.filter(
       (command) => command.name.trim().toLowerCase() !== "side"
     );
-    if (
-      !runtime ||
-      !enabled ||
-      !sourceAgentSessionId ||
-      !sideAvailable ||
-      (active && active.sourceAgentSessionId !== sourceAgentSessionId)
-    ) {
+    if (!sideCommandEnabled) {
       return commandsWithoutSide;
     }
     return [
@@ -340,15 +374,16 @@ export function useAgentGUIDetailSideConversation({
         description: t("agentHost.agentGui.sideCommandDescription")
       }
     ];
-  }, [
-    active,
-    availableCommands,
-    enabled,
-    runtime,
-    sideAvailable,
-    sourceAgentSessionId,
-    t
-  ]);
+  }, [availableCommands, sideCommandEnabled, t]);
+  const projectedSlashCommandPolicy = useMemo(
+    () =>
+      projectAgentSideSlashCommandPolicy({
+        commands,
+        enabled: sideCommandEnabled,
+        policy: slashCommandPolicy
+      }),
+    [commands, sideCommandEnabled, slashCommandPolicy]
+  );
 
   const interrupt = useCallback(() => {
     if (!runtime || !active?.activeTurnId) return;
@@ -361,14 +396,12 @@ export function useAgentGUIDetailSideConversation({
       .catch(() => {});
   }, [active, runtime, workspaceId]);
 
-  const close = useCallback(() => {
+  const close = useCallback(async () => {
     if (!runtime || !active) return;
-    void runtime
-      .close({
-        workspaceId,
-        sideAgentSessionId: active.sideAgentSessionId
-      })
-      .catch(() => {});
+    await runtime.close({
+      workspaceId,
+      sideAgentSessionId: active.sideAgentSessionId
+    });
   }, [active, runtime, workspaceId]);
 
   const [interactionSubmitting, setInteractionSubmitting] = useState(false);
@@ -493,6 +526,7 @@ export function useAgentGUIDetailSideConversation({
     open,
     setFocused,
     setDraftContent,
+    slashCommandPolicy: projectedSlashCommandPolicy,
     stageSelection,
     sourceAgentSessionId,
     submitMain,

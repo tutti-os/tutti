@@ -16,9 +16,11 @@ import {
   parseAgentSideInvocation,
   useAgentGUIDetailSideConversation
 } from "./useAgentGUIDetailSideConversation";
+import { resolveSlashCommandSelectionEffect } from "../model/agentSlashCommandProviderPolicy";
 import {
   agentComposerDraftQuotes,
-  projectAgentComposerDraftSubmission
+  projectAgentComposerDraftSubmission,
+  updateAgentComposerDraft
 } from "../model/agentComposerDraft";
 
 describe("parseAgentSideInvocation", () => {
@@ -67,6 +69,75 @@ describe("appendAgentSidePromptToDraft", () => {
 });
 
 describe("useAgentGUIDetailSideConversation lifecycle", () => {
+  it("submits Side on palette selection while preserving provider command effects", async () => {
+    const transport: AgentSideConversationTransport = {
+      resolveCapabilities: vi.fn(async () => ({
+        supported: true,
+        activeSourceTurn: true,
+        ephemeral: true,
+        hideInheritedTurns: true,
+        modelBoundaryInjected: true
+      })),
+      open: vi.fn(async () => ({ status: "idle" })),
+      send: vi.fn(async () => {}),
+      cancel: vi.fn(async () => {}),
+      respond: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+      subscribe: vi.fn(() => () => {}),
+      subscribeConnectionState: vi.fn(() => () => {}),
+      getConnectionState: vi.fn(() => "connected" as const)
+    };
+    const runtime = createAgentSideConversationRuntime(transport);
+    const wrapper = ({ children }: PropsWithChildren) =>
+      createElement(
+        AgentSideConversationRuntimeProvider,
+        { runtime },
+        children
+      );
+    const rendered = renderHook(
+      () =>
+        useAgentGUIDetailSideConversation({
+          workspaceId: "workspace-immediate",
+          sourceAgentSessionId: "source-immediate",
+          provider: "codex",
+          cwd: null,
+          availableCommands: [{ name: "status" }],
+          slashCommandPolicy: {
+            fallbackCommands: ["status"],
+            commandEffects: [{ command: "status", effect: "showStatus" }]
+          },
+          clearMainDraft: vi.fn(),
+          submitPrompt: vi.fn()
+        }),
+      { wrapper }
+    );
+
+    await vi.waitFor(() => expect(rendered.result.current.canOpen).toBe(true));
+    const sideCommand = rendered.result.current.commands.find(
+      (command) => command.name === "side"
+    );
+    expect(sideCommand).toBeDefined();
+    expect(
+      resolveSlashCommandSelectionEffect({
+        provider: "codex",
+        policy: rendered.result.current.slashCommandPolicy,
+        command: sideCommand!,
+        currentDraft: "/"
+      })
+    ).toEqual({ kind: "submitPrompt", prompt: "/side" });
+    expect(
+      resolveSlashCommandSelectionEffect({
+        provider: "codex",
+        policy: rendered.result.current.slashCommandPolicy,
+        command: { name: "status" },
+        currentDraft: "/"
+      })
+    ).toEqual({ kind: "showStatus" });
+
+    rendered.unmount();
+    runtime.dispose();
+  });
+
   it("stages selected transcript text in Side without sending until submit", async () => {
     const transport: AgentSideConversationTransport = {
       resolveCapabilities: vi.fn(async () => ({
@@ -119,6 +190,14 @@ describe("useAgentGUIDetailSideConversation lifecycle", () => {
     expect(rendered.result.current.focused).toBe(true);
     expect(rendered.result.current.focusRequestSequence).toBe(1);
 
+    act(() => {
+      rendered.result.current.setDraftContent(
+        updateAgentComposerDraft(rendered.result.current.draftContent, {
+          prompt: "What does this selection say?"
+        })
+      );
+    });
+
     const submission = projectAgentComposerDraftSubmission({
       draft: rendered.result.current.draftContent,
       skills: []
@@ -132,8 +211,17 @@ describe("useAgentGUIDetailSideConversation lifecycle", () => {
     await vi.waitFor(() => expect(transport.send).toHaveBeenCalledOnce());
     expect(transport.send).toHaveBeenCalledWith(
       expect.objectContaining({
-        content: [{ type: "text", text: "> Selected answer text" }],
-        displayPrompt: "> Selected answer text"
+        content: [
+          {
+            type: "text",
+            text: "What does this selection say?"
+          },
+          {
+            type: "text",
+            text: "> Selected answer text"
+          }
+        ],
+        displayPrompt: "What does this selection say?"
       })
     );
 

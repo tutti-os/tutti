@@ -5,17 +5,19 @@ import type { AgentGUINodeViewProps } from "../AgentGUINodeView";
 import type { AgentGUINodeViewModel } from "../model/agentGuiNodeTypes";
 import type { TimelineScrollAnchor } from "./agentGUIScrollMemory";
 
+export interface AgentGUIPendingPrependScrollAnchor {
+  conversationId: string;
+  scrollHeight: number;
+  scrollTop: number;
+}
+
 export interface AgentGUIDetailScrollInput {
   actions: AgentGUINodeViewProps["actions"];
   bottomDockRef: RefObject<HTMLDivElement | null>;
   bottomDockStoreRevision: string;
   conversation: AgentConversationVM | null;
   isVisible: boolean;
-  pendingPrependScrollAnchorRef: MutableRefObject<{
-    conversationId: string;
-    scrollHeight: number;
-    scrollTop: number;
-  } | null>;
+  pendingPrependScrollAnchorRef: MutableRefObject<AgentGUIPendingPrependScrollAnchor | null>;
   showTimelineSkeleton: boolean;
   submittedPromptScrollConversationRef: MutableRefObject<string | null>;
   timelineConversationId: string | null;

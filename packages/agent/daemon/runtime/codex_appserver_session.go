@@ -12,6 +12,10 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 )
 
+// Codex may synchronously finish resource and thread initialization before
+// replying to thread/start; keep this budget separate from generic ACP calls.
+const codexAppServerThreadStartTimeout = 90 * time.Second
+
 func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (events []activityshared.Event, err error) {
 	unlockLifecycle := a.lockSessionLifecycle(session.AgentSessionID)
 	defer unlockLifecycle()
@@ -101,9 +105,10 @@ func (a *CodexAppServerAdapter) Start(ctx context.Context, session Session) (eve
 
 	threadParams := appServerThreadStartParams(session, a.sessionCWD(session))
 	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, threadParams, false))
+	a.observeStartupResourcesAsync(session, client, trace)
 	callbackSession := session
-	threadResult, err := trace.TypedCall(acpStartCallTimeout, appServerMethodThreadStart, func() (json.RawMessage, error) {
-		return client.ThreadStart(ctx, acpStartCallTimeout, threadParams,
+	threadResult, err := trace.TypedCall(codexAppServerThreadStartTimeout, appServerMethodThreadStart, func() (json.RawMessage, error) {
+		return client.ThreadStart(ctx, codexAppServerThreadStartTimeout, threadParams,
 			func(ctx context.Context, message acpMessage) error {
 				trace.LogMessage(message.Method, len(message.ID) > 0, len(message.Params))
 				_, err := a.handleAppServerMessage(ctx, client, callbackSession, "", message, nil, nil, nil)
@@ -318,6 +323,7 @@ func (a *CodexAppServerAdapter) Resume(ctx context.Context, session Session) (er
 	params := appServerThreadStartParams(session, a.sessionCWD(session))
 	params["threadId"] = strings.TrimSpace(session.ProviderSessionID)
 	trace.Log("thread.start.params", codexAppServerTraceThreadStartParams(session, params, true))
+	a.observeStartupResourcesAsync(session, client, trace)
 	// codex replays thread/tokenUsage/updated during thread/resume so the GUI
 	// can show context fill before a new turn runs. The resumed session is not
 	// stored yet, so applyTokenUsage cannot reach it; capture the replayed

@@ -22,7 +22,9 @@ const (
 	appServerMethodAccountRead         = "account/read"
 	appServerMethodRateLimitsRead      = "account/rateLimits/read"
 	appServerMethodModelList           = "model/list"
+	appServerMethodPluginList          = "plugin/list"
 	appServerMethodSkillsExtraRootsSet = "skills/extraRoots/set"
+	appServerMethodSkillsList          = "skills/list"
 	// Experimental: collaboration mode presets (plan/pair/execute). Absence of
 	// the method on older binaries downgrades planMode capability gracefully.
 	appServerMethodCollaborationModeList = "collaborationMode/list"
@@ -125,6 +127,10 @@ type CodexAppServerAdapterOptions struct {
 	// session start or resume finishes. It is best-effort observability only
 	// and must not influence provider startup or command correctness.
 	StartupObserver CodexAppServerStartupObserver
+	// StartupResourceObserver receives a best-effort snapshot of the resources
+	// exposed by the app-server. The snapshot is collected asynchronously and
+	// must not influence provider startup or command correctness.
+	StartupResourceObserver CodexAppServerResourceObserver
 }
 
 // CodexAppServerSpanObservation is one allowlisted startup span boundary
@@ -152,8 +158,7 @@ type CodexAppServerSpanObserver func(CodexAppServerSpanObservation)
 
 // CodexAppServerStartupObservation is one bounded summary of a Codex
 // app-server session start or resume. Counts describe resources bound to the
-// Tutti session and completed allowlisted Codex spans; Codex-native plugin and
-// skill counts are intentionally absent until Codex emits those counts.
+// Tutti session and completed allowlisted Codex spans.
 type CodexAppServerStartupObservation struct {
 	Provider           string
 	RoomID             string
@@ -168,6 +173,29 @@ type CodexAppServerStartupObservation struct {
 // CodexAppServerStartupObserver consumes one completed startup summary.
 // Implementations must be best-effort and must not affect provider behavior.
 type CodexAppServerStartupObserver func(CodexAppServerStartupObservation)
+
+// CodexAppServerResourceObservation is a bounded snapshot of the resources
+// visible to one app-server startup attempt. MCPServerCount is the number of
+// bindings supplied by the Tutti session. PluginCount and SkillCount are
+// Codex-native counts; -1 means that the corresponding list request did not
+// produce a trustworthy response.
+type CodexAppServerResourceObservation struct {
+	Provider           string
+	RoomID             string
+	AgentSessionID     string
+	StartedAt          string
+	Outcome            string
+	DurationMS         int64
+	MCPServerCount     int
+	PluginCount        int
+	SkillCount         int
+	PluginQueryOutcome string
+	SkillQueryOutcome  string
+}
+
+// CodexAppServerResourceObserver consumes one best-effort resource snapshot.
+// Implementations must be best-effort and must not affect provider behavior.
+type CodexAppServerResourceObserver func(CodexAppServerResourceObservation)
 
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
 // honor turn/interrupt gracefully before force-closing the app-server process.
@@ -204,6 +232,7 @@ type CodexAppServerAdapter struct {
 	config                     appServerAdapterConfig
 	startupSpanObserver        CodexAppServerSpanObserver
 	startupObserver            CodexAppServerStartupObserver
+	startupResourceObserver    CodexAppServerResourceObserver
 	preparer                   ProviderLaunchPreparer
 	commandResolver            ProviderCommandResolver
 	mu                         sync.Mutex
@@ -477,6 +506,7 @@ func NewCodexAppServerAdapterWithHostMetadataAndOptions(
 	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
 	adapter.startupSpanObserver = options.StartupSpanObserver
 	adapter.startupObserver = options.StartupObserver
+	adapter.startupResourceObserver = options.StartupResourceObserver
 	return adapter
 }
 
@@ -525,6 +555,7 @@ func NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
 	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
 	adapter.startupSpanObserver = options.StartupSpanObserver
 	adapter.startupObserver = options.StartupObserver
+	adapter.startupResourceObserver = options.StartupResourceObserver
 	return adapter
 }
 

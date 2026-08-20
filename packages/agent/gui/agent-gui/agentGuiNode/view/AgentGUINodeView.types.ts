@@ -48,6 +48,7 @@ import type { TuttiWorkflowDockLabels } from "../TuttiWorkflowDock";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
 import type { AgentGUISessionLaunchMode } from "../model/agentSessionLaunchMode";
 import type { AgentProjectDropdownOptions } from "../AgentComposerProjectMenu";
+import type { AgentGUISideConversationPresentation } from "../../../agentSideConversationPresentation";
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
 ) => ReferenceLocateTarget | null;
@@ -578,6 +579,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
   sideConversationEnabled?: boolean;
+  sideConversationPresentation?: AgentGUISideConversationPresentation | null;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>

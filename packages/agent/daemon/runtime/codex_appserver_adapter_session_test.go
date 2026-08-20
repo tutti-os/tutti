@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+func TestCodexAppServerStartupTimeoutsStayScoped(t *testing.T) {
+	if got, want := codexAppServerThreadStartTimeout, 90*time.Second; got != want {
+		t.Fatalf("thread/start timeout = %s, want %s", got, want)
+	}
+	if got, want := acpStartCallTimeout, 30*time.Second; got != want {
+		t.Fatalf("generic ACP timeout = %s, want %s", got, want)
+	}
+	if got, want := defaultCodexAppServerTurnStartAckTimeout, 30*time.Second; got != want {
+		t.Fatalf("turn/start ACK timeout = %s, want %s", got, want)
+	}
+}
+
 func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 	t.Parallel()
 

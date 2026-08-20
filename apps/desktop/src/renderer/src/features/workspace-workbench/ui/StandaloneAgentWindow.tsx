@@ -11,6 +11,7 @@ import {
 } from "react";
 import {
   AGENT_GUI_EXPANDED_TARGET_WIDTH_PX,
+  createAgentGUISideConversationPresentation,
   resolveAgentGUIConversationRailPresentation,
   resolveStandaloneAgentGUIViewportMinimumWidthPx
 } from "@tutti-os/agent-gui";
@@ -532,6 +533,10 @@ export function StandaloneAgentWindow({
     () => agentGuiHostInput.createAgentSideConversationRuntime(),
     [agentGuiHostInput]
   );
+  const agentSideConversationPresentation = useMemo(
+    createAgentGUISideConversationPresentation,
+    []
+  );
   useEffect(
     () => () => agentSideConversationRuntime?.dispose?.(),
     [agentSideConversationRuntime]
@@ -581,7 +586,7 @@ export function StandaloneAgentWindow({
   const isConversationRailCollapsed = conversationRailPresentation.isCollapsed;
   const minimumAgentGuiViewportWidthPx =
     resolveStandaloneAgentGUIViewportMinimumWidthPx({
-      conversationRailCollapsed: isConversationRailCollapsed,
+      conversationRailCollapsed: nodeState.conversationRailCollapsed === true,
       conversationRailWidthPx: nodeState.conversationRailWidthPx
     });
   const host = useMemo(
@@ -810,6 +815,7 @@ export function StandaloneAgentWindow({
       >
         <StandaloneAgentToolSidebar
           activityService={workspaceAgentActivityService}
+          agentSideConversationPresentation={agentSideConversationPresentation}
           appOpenId={openAppId}
           appI18n={toolWorkbench.appI18n}
           browserApi={desktopApi.browser}
@@ -903,6 +909,9 @@ export function StandaloneAgentWindow({
           >
             <DesktopAgentGUISurface
               agentActivityRuntime={agentGuiHostInput.agentActivityRuntime}
+              agentSideConversationPresentation={
+                agentSideConversationPresentation
+              }
               agentSideConversationRuntime={agentSideConversationRuntime}
               agentHostApi={agentGuiHostInput.agentHostApi}
               agentSessionReplayService={
