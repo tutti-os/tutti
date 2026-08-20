@@ -234,7 +234,7 @@ func (a *CodexAppServerAdapter) OpenSide(
 	if err := a.admitCodexReplacementLocked(side.AgentSessionID); err != nil {
 		return SideConversationOpenResult{}, err
 	}
-	trace := newCodexAppServerStartupTrace(side)
+	trace := newCodexAppServerStartupTrace(side, a.startupSpanObserver, nil)
 	defer func() { trace.Finish(err) }()
 	clientState, err := a.sideClient(ctx, source, side, trace)
 	if err != nil {

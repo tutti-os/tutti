@@ -1540,21 +1540,28 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   App-server notifications and the response for their triggering RPC have no
   safe application-order guarantee. Waiting only on the response leaves the
   lifecycle call blocked when Codex has already published the authoritative
-  thread snapshot. Required MCP startup failure is also a terminal lifecycle
-  fact, but it can arrive without stderr or a response. Child terminal
-  notifications can arrive before `receiverThreadIds` registers their thread;
-  dropping those unknown-thread terminal events loses the only completion fact.
+  thread snapshot. A required MCP failure is terminal only when Codex reports
+  it through the lifecycle RPC itself. MCP stderr and startup-status
+  notifications are diagnostic state, not independent lifecycle failures:
+  optional MCP startup can fail while the Codex session is still usable. Child
+  terminal notifications can arrive before `receiverThreadIds` registers their
+  thread; dropping those unknown-thread terminal events loses the only
+  completion fact.
 - Fix:
   Complete only the active method-matched `thread/start` or `thread/resume` wait
-  from a valid `thread/started` snapshot. Schedule the structured MCP failure
-  after a short response grace window so a normal response wins the race. Keep
-  ordinary foreign-thread progress dropped, but retain a bounded terminal
-  notification until child registration and replay it with child identity.
+  from a valid `thread/started` snapshot. Do not fail that wait from MCP stderr
+  or `mcpServer/startupStatus/updated`; record the warning and keep the session
+  alive. A real Codex lifecycle RPC error, process exit, or transport error
+  remains terminal and is still propagated. Keep ordinary foreign-thread
+  progress dropped, but retain a bounded terminal notification until child
+  registration and replay it with child identity. Warnings without a `turnId`
+  use a session audit event instead of a turn-scoped message.
   Keep confirmed provider turn-id fences; only the existing unconfirmed steer
   stub and goal-adopted exceptions may settle from a different or empty id.
 - Validation:
-  Run the notification-only Start/Resume wire test, the MCP failed-status
-  response-grace tests, and the child terminal-before-registration replay test.
+  Run the notification-only Start/Resume wire test, the delayed MCP
+  failed-status tests, the turnless warning projection test, and
+  the child terminal-before-registration replay test.
   Run the focused app-server suite with `-race` and the full
   `go test ./packages/agent/daemon/runtime` package suite.
 - References:

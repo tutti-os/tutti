@@ -186,6 +186,18 @@ test("keeps connector details open through installation and advances to authoriz
       : undefined,
     "https://work.weixin.qq.com/ai/qc/c?s=opaque"
   );
+
+  delete market.pendingAuthorizationsByConnectorKey[connector.key];
+  delete market.authorizingConnectorKeys[connector.key];
+  delete market.authorizationViewsByConnectorKey[connector.key];
+  connector.authorization = { state: "connected" };
+  market.connectorsByKey[connector.key] = connector;
+  const connected = buildConnectorMarketView(market, dialogState).dialog;
+  assert.equal(connected?.kind, "management");
+  assert.equal(
+    connected?.kind === "management" && connected.canAuthorize,
+    true
+  );
 });
 
 test("preserves the connector authorization interaction for the dialog", () => {

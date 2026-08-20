@@ -593,10 +593,13 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
   host keeps the mutation request open until runtime work completes; the local
   projection is cleared on both success and failure and never replaces daemon
   installation truth
-- every new user authorization action creates a new `clientRequestId` and sends
-  `replacementPolicy=replace_active`; continuation polling within that action
-  reuses the same identity, while a superseded renderer Promise cannot retain
-  the Connector mutation token
+- the first user authorization action stays in flight until it completes or
+  the user Cancels; a second Authorize click joins that Promise and must not
+  create another `clientRequestId` or send `replace_active`. After Cancel, the
+  next Authorize is a new action: it creates a new `clientRequestId` and sends
+  `replacementPolicy=replace_active`. Continuation polling within one action
+  reuses the same identity. A canceled renderer Promise cannot retain the
+  Connector mutation token
 - event refreshes are coalesced, daemon reconnect performs a full reload, and
   accepted commands are followed through the operation endpoint or events
 - hosts gate connector-market transport through `canRequest`; Tutti binds it to
@@ -657,16 +660,24 @@ open it.
 
 Connector details are represented by one modal state machine, never by a fixed
 right-hand pane. An uninstalled connector opens an installation confirmation.
-An unconnected installed connector opens the authorization dialog; an
-authorized connector opens the management dialog. Blocked releases open the
-blocked-state dialog. Only one dialog host is mounted at a time, so
+An unconnected installed connector opens the authorization dialog. The token
+form keeps typed secrets after submit so a failed or in-flight attempt does
+not force the user to re-enter them. Completing authorization in that dialog
+keeps the modal open and advances it to the management dialog, where
+disconnect and try remain available. An already authorized connector opens
+the management dialog directly. Blocked releases
+open the blocked-state dialog. Only one dialog host is mounted at a time, so
 the catalog keeps the full settings content width and never leaves an empty
 right column.
 
-Closing an authorization dialog only dismisses presentation. The explicit
-Cancel action calls the Host cancellation command. Reopening an unconnected
-Connector starts a new replace-active attempt, so a hidden or stuck renderer
-request cannot lock later authorization actions.
+Closing an authorization dialog while a request is in flight does not start a
+new session and does not dismiss the modal; the user must finish the provider
+flow or use Cancel. Browser OAuth keeps the in-flight footer on authorizing
+and does not surface Continue for a synthesized `external_link` view; the
+Start command already opened that URL. Cancel calls the Host cancellation
+command, then the next Authorize is a new replace-active attempt. A leftover
+pending session without an in-flight renderer request also shows Authorize,
+not a second Start disguised as Continue.
 
 ## Local OpenAPI Reuse
 

@@ -1244,12 +1244,8 @@ test("forwards a user-provided secret only to the authorization mutation", async
   service.dispose();
 });
 
-test("a new authorization command supersedes the previous caller", async () => {
+test("a second authorization command joins the in-flight attempt", async () => {
   const firstAuthorization =
-    deferred<
-      Awaited<ReturnType<ConnectorMarketBackend["beginAuthorization"]>>
-    >();
-  const secondAuthorization =
     deferred<
       Awaited<ReturnType<ConnectorMarketBackend["beginAuthorization"]>>
     >();
@@ -1264,9 +1260,7 @@ test("a new authorization command supersedes the previous caller", async () => {
       beginAuthorization: async (request) => {
         requests.push(request);
         authorizationAttempts += 1;
-        return authorizationAttempts === 1
-          ? firstAuthorization.promise
-          : secondAuthorization.promise;
+        return firstAuthorization.promise;
       }
     }),
     createRequestId: () => `authorization-${++requestIds}`
@@ -1275,8 +1269,77 @@ test("a new authorization command supersedes the previous caller", async () => {
 
   const first = service.beginAuthorization("notion");
   const second = service.beginAuthorization("notion");
+  assert.equal(second, first);
   const connected = connector("notion", 2);
   connected.authorization = { state: "connected" };
+  firstAuthorization.resolve({
+    connector: connected,
+    operation: {
+      ...operation("start_authorization", 2),
+      connectorKey: "notion",
+      state: "completed"
+    },
+    revision: 2
+  });
+  await first;
+  await second;
+
+  assert.equal(authorizationAttempts, 1);
+  assert.equal(requestIds, 1);
+  assert.deepEqual(
+    requests.map(({ clientRequestId, replacementPolicy }) => ({
+      clientRequestId,
+      replacementPolicy
+    })),
+    [
+      {
+        clientRequestId: "authorization-1",
+        replacementPolicy: "replace_active"
+      }
+    ]
+  );
+  assert.deepEqual(service.dataStore.authorizingConnectorKeys, {});
+  service.dispose();
+});
+
+test("a new authorization command starts only after the user cancels", async () => {
+  const firstAuthorization =
+    deferred<
+      Awaited<ReturnType<ConnectorMarketBackend["beginAuthorization"]>>
+    >();
+  const secondAuthorization =
+    deferred<
+      Awaited<ReturnType<ConnectorMarketBackend["beginAuthorization"]>>
+    >();
+  let authorizationAttempts = 0;
+  let requestIds = 0;
+  const requests: ConnectorAuthorizationInput[] = [];
+  const initial = connector("notion", 1);
+  initial.authorization = { state: "disconnected" };
+  const connected = connector("notion", 2);
+  connected.authorization = { state: "connected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      beginAuthorization: async (request) => {
+        requests.push(request);
+        authorizationAttempts += 1;
+        return authorizationAttempts === 1
+          ? firstAuthorization.promise
+          : secondAuthorization.promise;
+      },
+      cancelAuthorization: async () => undefined
+    }),
+    createRequestId: () => `authorization-${++requestIds}`
+  });
+  await service.ensureLoaded();
+
+  const first = service.beginAuthorization("notion");
+  await waitFor(() => authorizationAttempts === 1);
+  await service.cancelAuthorization("notion");
+  const second = service.beginAuthorization("notion");
+  assert.notEqual(second, first);
+  await waitFor(() => authorizationAttempts === 2);
   secondAuthorization.resolve({
     connector: connected,
     operation: {

@@ -20,11 +20,12 @@
   missing release and its immutable summary remain valid.
 - Fix:
   Run `Repair Desktop Release Changelog` with the exact missing stable tag.
-  The workflow validates the published release and summary, preserves every
-  existing entry, and upserts the missing summary without moving release
-  pointers or republishing assets. Do not rerun promotion for an older stable
-  tag because its rollback guard correctly rejects moving the public channel
-  behind the current release.
+  The workflow validates the published release and staged summary metadata,
+  rebuilds the public entry from the current human-reviewed Release Notes,
+  preserves every existing entry, and upserts the corrected summary without
+  moving release pointers or republishing assets. Do not rerun promotion for an
+  older stable tag because its rollback guard correctly rejects moving the
+  public channel behind the current release.
 - Validation:
   Confirm the workflow's S3 round-trip verification passes, then verify the
   public aggregate and `https://tutti.sh/changelog` both contain the restored

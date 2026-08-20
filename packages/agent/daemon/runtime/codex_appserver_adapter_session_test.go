@@ -29,6 +29,12 @@ func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 	if !containsString(spec.Env, codexAgentRoutingEnv) {
 		t.Fatalf("env = %#v, want agent routing env", spec.Env)
 	}
+	if !containsString(spec.Env, codexAppServerLogFormatEnv) {
+		t.Fatalf("env = %#v, want structured Codex logs", spec.Env)
+	}
+	if !containsString(spec.Env, codexAppServerRustLogEnv) {
+		t.Fatalf("env = %#v, want Codex startup span log level", spec.Env)
+	}
 
 	initialize := appServerRequestParams(t, transport.conn, appServerMethodInitialize)
 	clientInfo, _ := initialize["clientInfo"].(map[string]any)

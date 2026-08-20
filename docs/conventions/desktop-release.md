@@ -421,11 +421,14 @@ https://<asset-base-url>/changelog.json
 
 If a published stable release is missing from the aggregate feed, use the
 manual `Repair Desktop Release Changelog` workflow with that exact stable tag.
-The repair reads the checksummed `release-summary.json` attached to the
-published GitHub Release, validates that its tag and target commit still match,
-and upserts only that entry under the same `desktop-release-promotion`
-concurrency lock used by normal promotion. It must not republish the GitHub
-Release, upload immutable installers, or move any stable/RC/beta pointer.
+The repair validates the checksummed `release-summary.json` attached to the
+published GitHub Release for its tag, target commit, and comparison metadata,
+then rebuilds the public summary from the current human-reviewed Release Notes
+section. This keeps later editorial corrections authoritative without mutating
+the staged candidate asset. It upserts only that entry under the same
+`desktop-release-promotion` concurrency lock used by normal promotion and must
+not republish the GitHub Release, upload immutable installers, or move any
+stable/RC/beta pointer.
 
 ## Draft Promotion
 

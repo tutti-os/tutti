@@ -44,7 +44,7 @@ const connectorMarketEn = {
   actionUpdate: "Update",
   actionUpdateAuthorization: "Reauthorize",
   actionUpdating: "Updating…",
-  actionWaitingAuthorization: "Waiting for authorization…",
+  actionWaitingAuthorization: "Authorizing",
   blockedDescription:
     "This connector cannot be used in the current environment",
   blockedTitle: "Connector unavailable",
@@ -169,7 +169,7 @@ const connectorMarketZhCN = {
   actionUpdate: "更新",
   actionUpdateAuthorization: "重新授权",
   actionUpdating: "更新中…",
-  actionWaitingAuthorization: "等待授权…",
+  actionWaitingAuthorization: "授权中",
   blockedDescription: "当前环境无法使用这个连接器",
   blockedTitle: "连接器不可用",
   cancel: "取消",

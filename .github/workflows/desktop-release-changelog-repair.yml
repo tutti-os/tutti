@@ -97,6 +97,19 @@ jobs:
           RELEASE_TARGET: ${{ steps.release.outputs.release_target }}
         run: node apps/desktop/scripts/validate-release-summary.mjs release-assets/release-summary.json
 
+      - name: Build approved summary from current release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_CHANNEL: stable
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          RELEASE_TARGET: ${{ steps.release.outputs.release_target }}
+        run: |
+          gh release view "${RELEASE_TAG}" --json body --jq .body > approved-release-body.md
+          node apps/desktop/scripts/extract-approved-release-summary.mjs \
+            approved-release-body.md \
+            release-assets/release-summary.json \
+            approved-release-summary.json
+
       - name: Install AWS CLI
         run: |
           if ! command -v aws >/dev/null 2>&1; then
@@ -144,7 +157,7 @@ jobs:
           aws s3 cp "${changelog_uri}" existing-changelog.json
           node apps/desktop/scripts/upsert-release-changelog.mjs \
             existing-changelog.json \
-            release-assets/release-summary.json \
+            approved-release-summary.json \
             changelog.json
           node - <<'NODE'
           const fs = require("node:fs");

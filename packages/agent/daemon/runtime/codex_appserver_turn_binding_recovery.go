@@ -20,7 +20,7 @@ func (a *CodexAppServerAdapter) RecoverProviderTurnBinding(
 		return ProviderTurnBindingRecoveryResult{},
 			errors.New("codex provider turn recovery token is unavailable")
 	}
-	trace := newCodexAppServerStartupTrace(source)
+	trace := newCodexAppServerStartupTrace(source, a.startupSpanObserver, nil)
 	client, _, err := a.startInitializedClient(ctx, source, trace)
 	if err != nil {
 		trace.Finish(err)

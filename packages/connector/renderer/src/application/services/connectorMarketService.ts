@@ -448,9 +448,10 @@ export class ConnectorMarketService implements IConnectorMarketService {
     if (this.disposed || !this.canRequest()) {
       return Promise.resolve();
     }
-    const previousAttempt = this.authorizationAttempts.get(connectorKey);
-    if (previousAttempt) {
-      previousAttempt.canceled = true;
+    const inFlight = this.authorizationInFlight.get(connectorKey);
+    const currentAttempt = this.authorizationAttempts.get(connectorKey);
+    if (inFlight && currentAttempt && !currentAttempt.canceled) {
+      return inFlight;
     }
     let authorization!: Promise<void>;
     authorization = this.runAuthorization(connectorKey, secret).finally(() => {

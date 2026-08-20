@@ -29,7 +29,7 @@ type codexAppServerClient struct {
 	// through the typed schema parse (telemetry only).
 	parsedNotificationMethods sync.Map
 	mcpFailureMu              sync.Mutex
-	mcpFailureScheduled       bool
+	mcpFailureObserved        bool
 }
 
 type codexAppServerCaller struct {
@@ -101,11 +101,11 @@ func (c *codexAppServerClient) observeMCPStderr(chunk []byte) {
 	diagnostics := c.raw.Diagnostics()
 	detail := diagnostics.StderrTail
 	failure := codexMCPServerStartupFailureFromStderr(detail)
-	c.scheduleMCPFailure(failure, "stderr")
+	c.observeMCPFailure(failure, "stderr")
 }
 
 func (c *codexAppServerClient) observeMCPStartupStatus(status map[string]any) {
-	c.scheduleMCPFailure(codexMCPServerStartupFailureFromStatus(status), "notification")
+	c.observeMCPFailure(codexMCPServerStartupFailureFromStatus(status), "notification")
 }
 
 func (c *codexAppServerClient) completeThreadLifecycleFromNotification(thread map[string]any) {
@@ -124,33 +124,27 @@ func (c *codexAppServerClient) completeThreadLifecycleFromNotification(thread ma
 	c.raw.completeActiveHandler(appServerMethodThreadResume, result)
 }
 
-func (c *codexAppServerClient) scheduleMCPFailure(failure error, source string) {
+// observeMCPFailure records provider-owned MCP state without changing the
+// lifecycle result of an unrelated app-server RPC. Codex treats MCP servers
+// as optional unless its own lifecycle response says otherwise; stderr and
+// startup-status notifications do not carry enough authority to close the
+// Codex session.
+func (c *codexAppServerClient) observeMCPFailure(failure error, source string) {
 	if c == nil || failure == nil {
 		return
 	}
 	c.mcpFailureMu.Lock()
-	if c.mcpFailureScheduled {
+	if c.mcpFailureObserved {
 		c.mcpFailureMu.Unlock()
 		return
 	}
-	c.mcpFailureScheduled = true
+	c.mcpFailureObserved = true
 	c.mcpFailureMu.Unlock()
 	slog.Warn("agent session Codex MCP server startup failed",
 		"event", "agent_session.codex.mcp.startup_failed",
 		"source", source,
 		"error", failure.Error(),
-		"grace_ms", defaultCodexAppServerMCPFailureGraceWindow.Milliseconds(),
 	)
-	time.AfterFunc(defaultCodexAppServerMCPFailureGraceWindow, func() {
-		c.failActiveCall(failure)
-	})
-}
-
-func (c *codexAppServerClient) failActiveCall(err error) {
-	if c == nil || c.raw == nil {
-		return
-	}
-	c.raw.failActiveHandler(err)
 }
 
 func (c *codexAppServerClient) Close() error {
