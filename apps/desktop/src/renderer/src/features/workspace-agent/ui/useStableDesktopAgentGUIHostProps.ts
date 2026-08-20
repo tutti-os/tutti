@@ -57,7 +57,10 @@ export type DesktopAgentGUIHostProps = {
   >;
   renderSlots: Pick<
     AgentGUIProps["renderSlots"],
-    "agentConfigAccount" | "composerFooterAccessory" | "sidebarFooter"
+    | "agentConfigAccount"
+    | "agentConfigSystemActions"
+    | "composerFooterAccessory"
+    | "sidebarFooter"
   >;
 };
 
@@ -146,6 +149,7 @@ export function useStableDesktopAgentGUIHostProps({
     },
     renderSlots: {
       agentConfigAccount: nextRenderSlots.agentConfigAccount,
+      agentConfigSystemActions: nextRenderSlots.agentConfigSystemActions,
       composerFooterAccessory: nextRenderSlots.composerFooterAccessory,
       sidebarFooter: nextRenderSlots.sidebarFooter
     }

@@ -394,25 +394,6 @@ func (c *acpClient) unregisterCall(id int64, active *acpActiveHandler) {
 	c.mu.Unlock()
 }
 
-// failActiveHandler wakes the lifecycle RPC currently waiting for a provider
-// response without terminating the underlying process. The caller owns the
-// decision to retain or close that process after the typed failure is returned.
-func (c *acpClient) failActiveHandler(err error) {
-	if c == nil || err == nil {
-		return
-	}
-	c.mu.Lock()
-	active := c.active
-	c.mu.Unlock()
-	if active == nil {
-		return
-	}
-	select {
-	case active.errors <- err:
-	default:
-	}
-}
-
 // completeActiveHandler supplies a synthetic success result to the active
 // request when the provider emits an authoritative lifecycle notification but
 // loses the matching JSON-RPC response. The method fence prevents an

@@ -216,7 +216,7 @@ function AuthorizationFormRenderer({
           }
         />
       ))}
-      <DialogFooter>
+      <DialogFooter className="pt-1 sm:justify-center">
         <Button
           disabled={busy}
           size="dialog"

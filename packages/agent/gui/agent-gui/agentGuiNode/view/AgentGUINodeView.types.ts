@@ -636,6 +636,8 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   slashStatusUsageAttempted?: boolean;
   /** Host-rendered account/Commerce chrome for the exact selected target. */
   agentConfigAccountContent?: ReactNode;
+  /** Host-rendered system actions appended to the Agent config menu. */
+  agentConfigSystemActionsContent?: ReactNode;
   onAgentConfigMenuClose?: () => void;
   onAgentConfigMenuOpen?: () => void;
   /** Forces a fresh usage probe from the config menu's refresh control. */
