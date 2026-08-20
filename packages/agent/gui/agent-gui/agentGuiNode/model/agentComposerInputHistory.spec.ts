@@ -162,6 +162,29 @@ describe("agent composer input history", () => {
     expect(agentComposerDraftPrompt(history[0]!.draft)).toBe("resendable");
   });
 
+  it("rebuilds history from canonical messages for a reloaded conversation", () => {
+    const messages = [
+      { id: "first", body: "first prompt", occurredAtUnixMs: 100 },
+      { id: "second", body: "second prompt", occurredAtUnixMs: 200 }
+    ];
+    const beforeRestart = projectAgentComposerInputHistory(
+      conversationWithUserMessages(messages)
+    );
+    const afterRestart = projectAgentComposerInputHistory(
+      conversationWithUserMessages(messages)
+    );
+
+    expect(
+      afterRestart.map((entry) => agentComposerDraftPrompt(entry.draft))
+    ).toEqual(
+      beforeRestart.map((entry) => agentComposerDraftPrompt(entry.draft))
+    );
+    expect(afterRestart.map((entry) => entry.id)).toEqual([
+      "turn-1:first",
+      "turn-1:second"
+    ]);
+  });
+
   it("restores a file-only structured input with a resendable mention", () => {
     const displayPrompt = createAgentComposerFileMentionMarkdown({
       id: "original-file",
