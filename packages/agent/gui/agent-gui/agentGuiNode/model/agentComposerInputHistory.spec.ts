@@ -149,6 +149,19 @@ describe("agent composer input history", () => {
     expect(agentComposerDraftImages(history[0]!.draft)).toHaveLength(1);
   });
 
+  it("filters empty user messages out of input history", () => {
+    const history = projectAgentComposerInputHistory(
+      conversationWithUserMessages([
+        { id: "empty", body: "   ", sourceTimelineItems: [] },
+        { id: "text", body: "resendable" }
+      ])
+    );
+
+    expect(history).toHaveLength(1);
+    expect(history[0]!.id).toBe("turn-1:text");
+    expect(agentComposerDraftPrompt(history[0]!.draft)).toBe("resendable");
+  });
+
   it("restores a file-only structured input with a resendable mention", () => {
     const displayPrompt = createAgentComposerFileMentionMarkdown({
       id: "original-file",
