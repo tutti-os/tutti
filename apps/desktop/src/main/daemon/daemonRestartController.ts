@@ -21,7 +21,7 @@ export interface DaemonRestartControllerDeps {
 }
 
 export interface DaemonRestartController {
-  notifyExited(): Promise<void>;
+  notifyExited(): Promise<boolean>;
   notifyStarted(): void;
 }
 
@@ -39,13 +39,13 @@ export function createDaemonRestartController(
 
   let attempts = 0;
   let lastHealthyAt: number | null = null;
-  let inFlight: Promise<void> | null = null;
+  let inFlight: Promise<boolean> | null = null;
 
   function backoffDelayMs(attempt: number): number {
     return Math.min(config.baseDelayMs * 2 ** attempt, config.maxDelayMs);
   }
 
-  async function runRestartLoop(): Promise<void> {
+  async function runRestartLoop(): Promise<boolean> {
     // A sustained-healthy period before this death earns a fresh retry budget.
     // Evaluate once per cycle — doing it inside the loop would re-fire on every
     // failing retry (lastHealthyAt stays old) and never reach maxAttempts.
@@ -61,7 +61,7 @@ export function createDaemonRestartController(
         deps.logger.error("managed tuttid restart giving up", {
           attempts
         });
-        return;
+        return false;
       }
 
       const waitMs = backoffDelayMs(attempts);
@@ -69,14 +69,17 @@ export function createDaemonRestartController(
       await deps.delay(waitMs);
 
       if (deps.isStopRequested()) {
-        return;
+        return false;
       }
 
       try {
         await deps.restart();
+        if (deps.isStopRequested()) {
+          return false;
+        }
         lastHealthyAt = deps.now();
         deps.logger.info("managed tuttid restarted", { attempts });
-        return;
+        return true;
       } catch (error: unknown) {
         deps.logger.error("managed tuttid restart failed", {
           attempts,
@@ -84,12 +87,13 @@ export function createDaemonRestartController(
         });
       }
     }
+    return false;
   }
 
   return {
     notifyExited() {
       if (deps.isStopRequested()) {
-        return Promise.resolve();
+        return Promise.resolve(false);
       }
 
       if (inFlight) {

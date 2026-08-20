@@ -419,6 +419,26 @@ func TestControllerCloseAllLiveSessionsBoundsFailedCloseBudgetPerAdapter(t *test
 	}
 }
 
+func TestControllerCloseAllLiveSessionsHonorsCancellationWhileWaitingForLifecycleLock(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReleasableAdapter()
+	controller := NewController([]Adapter{adapter}, nil)
+	started := startReleasableSession(t, controller, "locked-session")
+	releaseLock := controller.acquireLifecycleLock(started.Session.RoomID, started.Session.AgentSessionID)
+	defer releaseLock()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	result := controller.CloseAllLiveSessions(ctx)
+	if result.Scanned != 1 || result.Failed != 1 || result.Closed != 0 {
+		t.Fatalf("close-all result = %#v, want canceled lock acquisition failure", result)
+	}
+	if calls := adapter.closeCallCount(started.Session.AgentSessionID); calls != 0 {
+		t.Fatalf("close calls = %d, want no adapter close after cancellation", calls)
+	}
+}
+
 func TestControllerDetachedCleanupGivesEveryAdapterOneBoundedAttempt(t *testing.T) {
 	t.Parallel()
 

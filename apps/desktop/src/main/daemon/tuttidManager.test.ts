@@ -4,6 +4,7 @@ import {
   chmod,
   mkdir,
   mkdtemp,
+  readFile,
   rm,
   stat,
   utimes,
@@ -19,6 +20,7 @@ import type { DesktopDaemonEndpoint } from "../transport/paths.ts";
 import {
   createTuttidManager,
   isLikelyTuttidProcess,
+  isRetryableManagedTuttidStartupError,
   managedTuttidStartupError,
   resolveBrowserMcpDaemonEnv,
   resolveComputerMcpDaemonEnv,
@@ -28,6 +30,7 @@ import {
   resolveManagedPosixShellDaemonEnv,
   resolveManagedUVDaemonEnv,
   resolveMutagenDaemonEnv,
+  shouldScheduleManagedTuttidRestart,
 } from "./tuttidManager.ts";
 
 test("resolveManagedUVDaemonEnv points the daemon at packaged archives", async () => {
@@ -98,15 +101,147 @@ test("rejects startup when the managed tuttid binary cannot be spawned", async (
       throw new Error("health must not run when spawn fails");
     },
   } as unknown as TuttidClient;
+  let manager: ReturnType<typeof createTuttidManager> | undefined;
 
   try {
     process.env.TUTTID_BIN = join(runtimeDirectory, "missing-tuttid");
-    const manager = createTuttidManager(endpoint, tuttidClient);
+    manager = createTuttidManager(endpoint, tuttidClient);
 
     await assert.rejects(manager.start(), { code: "managed_process_error" });
     assert.equal(endpoint.boundAddr, null);
     await manager.stop();
   } finally {
+    await manager?.stop().catch(() => undefined);
+    restoreEnv(previousEnv);
+    await rm(runtimeDirectory, { force: true, recursive: true });
+  }
+});
+
+test("stop wins while a managed tuttid start is still preparing", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the executable fixture uses a POSIX shebang");
+    return;
+  }
+
+  const previousEnv = { ...process.env };
+  const runtimeDirectory = await mkdtemp(
+    join(tmpdir(), "tutti-tuttid-stop-start-"),
+  );
+  const fixturePath = join(runtimeDirectory, "tuttid-fixture.mjs");
+  const spawnedPath = join(runtimeDirectory, "spawned.txt");
+  const endpoint: DesktopDaemonEndpoint = {
+    accessToken: "test-token",
+    boundAddr: null,
+    listenerInfoPath: join(runtimeDirectory, "listener.json"),
+    pidPath: join(runtimeDirectory, "tuttid.pid"),
+    requestedAddr: "127.0.0.1:0",
+  };
+  const tuttidClient = {
+    async getHealth() {
+      throw new Error("a canceled start must not reach health polling");
+    },
+  } as unknown as TuttidClient;
+  let manager: ReturnType<typeof createTuttidManager> | undefined;
+
+  try {
+    await writeFile(
+      fixturePath,
+      `#!/usr/bin/env node
+import { writeFile } from "node:fs/promises";
+await writeFile(process.env.TUTTI_TEST_SPAWNED_PATH, "spawned");
+setInterval(() => {}, 1_000);
+`,
+    );
+    await chmod(fixturePath, 0o755);
+    process.env.TUTTID_BIN = fixturePath;
+    process.env.TUTTI_TEST_SPAWNED_PATH = spawnedPath;
+
+    manager = createTuttidManager(endpoint, tuttidClient);
+    const start = manager.start();
+    await manager.stop();
+    await start;
+    await assert.rejects(readFile(spawnedPath, "utf8"), { code: "ENOENT" });
+    assert.equal(endpoint.boundAddr, null);
+  } finally {
+    await manager?.stop().catch(() => undefined);
+    restoreEnv(previousEnv);
+    await rm(runtimeDirectory, { force: true, recursive: true });
+  }
+});
+
+test("keeps the original startup alive while recovering a transient SQLite failure", async (t) => {
+  if (process.platform === "win32") {
+    t.skip("the executable fixture uses a POSIX shebang");
+    return;
+  }
+
+  const previousEnv = { ...process.env };
+  const runtimeDirectory = await mkdtemp(join(tmpdir(), "tutti-tuttid-retry-"));
+  const fixturePath = join(runtimeDirectory, "tuttid-fixture.mjs");
+  const attemptsPath = join(runtimeDirectory, "attempts.txt");
+  const fixturePIDPath = join(runtimeDirectory, "fixture.pid");
+  const endpoint: DesktopDaemonEndpoint = {
+    accessToken: "test-token",
+    boundAddr: null,
+    listenerInfoPath: join(runtimeDirectory, "listener.json"),
+    pidPath: join(runtimeDirectory, "tuttid.pid"),
+    requestedAddr: "127.0.0.1:0",
+  };
+  const tuttidClient = {
+    async getHealth() {
+      assert.equal(endpoint.boundAddr, "127.0.0.1:4545");
+      return {};
+    },
+  } as unknown as TuttidClient;
+  let manager: ReturnType<typeof createTuttidManager> | undefined;
+
+  try {
+    await writeFile(
+      fixturePath,
+      `#!/usr/bin/env node
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+const attemptsPath = process.env.TUTTI_TEST_START_ATTEMPTS_PATH;
+const fixturePIDPath = process.env.TUTTI_TEST_FIXTURE_PID_PATH;
+const listenerInfoPath = process.env.TUTTID_LISTENER_INFO_PATH;
+const previous = Number(await readFile(attemptsPath, "utf8").catch(() => "0"));
+const attempt = previous + 1;
+await writeFile(attemptsPath, String(attempt));
+if (attempt === 1) {
+  console.error("enable sqlite wal mode: disk I/O error (1546)");
+  process.exit(1);
+}
+await mkdir(dirname(listenerInfoPath), { recursive: true });
+await writeFile(fixturePIDPath, String(process.pid));
+await writeFile(listenerInfoPath, JSON.stringify({ addr: "127.0.0.1:4545" }));
+setInterval(() => {}, 1_000);
+`,
+    );
+    await chmod(fixturePath, 0o755);
+    process.env.TUTTID_BIN = fixturePath;
+    process.env.TUTTID_LISTENER_INFO_PATH = endpoint.listenerInfoPath;
+    process.env.TUTTI_TEST_FIXTURE_PID_PATH = fixturePIDPath;
+    process.env.TUTTI_TEST_START_ATTEMPTS_PATH = attemptsPath;
+
+    manager = createTuttidManager(endpoint, tuttidClient);
+    await manager.start();
+
+    assert.equal(await readFile(attemptsPath, "utf8"), "2");
+    assert.equal(endpoint.boundAddr, "127.0.0.1:4545");
+
+    const recoveredPID = Number(await readFile(fixturePIDPath, "utf8"));
+    process.kill(recoveredPID, "SIGTERM");
+    await waitForTestProcessExit(recoveredPID);
+    await manager.start();
+    await new Promise((resolve) => setTimeout(resolve, 750));
+    assert.equal(
+      await readFile(attemptsPath, "utf8"),
+      "3",
+      "background recovery and an explicit start must share one spawn attempt",
+    );
+    await manager.stop();
+  } finally {
+    await manager?.stop().catch(() => undefined);
     restoreEnv(previousEnv);
     await rm(runtimeDirectory, { force: true, recursive: true });
   }
@@ -136,6 +271,34 @@ test("classifies startup errors without daemon diagnostics", () => {
     (failure as NodeJS.ErrnoException).code,
     "managed_process_error",
   );
+});
+
+test("retries only the transient SQLite truncate startup failure", () => {
+  const transient = managedTuttidStartupError(
+    new Error("tuttid exited before it published its listener info."),
+    "enable sqlite wal mode: disk I/O error (1546)",
+  );
+  const named = managedTuttidStartupError(
+    new Error("tuttid exited before it published its listener info."),
+    "SQLITE_IOERR_TRUNCATE",
+  );
+  const permanent = managedTuttidStartupError(
+    new Error("tuttid exited before it published its listener info."),
+    "permission denied",
+  );
+
+  assert.equal(isRetryableManagedTuttidStartupError(transient), true);
+  assert.equal(isRetryableManagedTuttidStartupError(named), true);
+  assert.equal(isRetryableManagedTuttidStartupError(permanent), false);
+  assert.equal(isRetryableManagedTuttidStartupError(new Error("1546")), false);
+});
+
+test("only a previously healthy daemon exit schedules background recovery", () => {
+  assert.equal(shouldScheduleManagedTuttidRestart("healthy", false), true);
+  assert.equal(shouldScheduleManagedTuttidRestart("starting", false), false);
+  assert.equal(shouldScheduleManagedTuttidRestart("recovering", false), false);
+  assert.equal(shouldScheduleManagedTuttidRestart("stopping", false), false);
+  assert.equal(shouldScheduleManagedTuttidRestart("healthy", true), false);
 });
 
 test("resolveLaunchSpec prefers the development tuttid binary when present", async (t) => {
@@ -742,4 +905,17 @@ async function developmentBinaryIsFresh(binaryPath: string): Promise<boolean> {
   } catch {
     return true;
   }
+}
+
+async function waitForTestProcessExit(pid: number): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    } catch {
+      return;
+    }
+  }
+  throw new Error(`timed out waiting for fixture process ${pid} to exit`);
 }

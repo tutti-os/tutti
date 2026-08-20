@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -22,6 +23,10 @@ import (
 const defaultSQLiteBusyTimeoutMillisec = 5000
 const defaultSQLiteReaderConnections = 4
 
+const sqliteIOErrTruncate = 1546
+
+var sqliteWALRetryDelays = []time.Duration{100 * time.Millisecond, 300 * time.Millisecond}
+
 type SQLiteStore struct {
 	dbPath                 string
 	writeDB                *sql.DB
@@ -33,6 +38,14 @@ type SQLiteStore struct {
 
 type sqliteOnlineBackuper interface {
 	NewBackup(string) (*sqlitedriver.Backup, error)
+}
+
+type sqlitePragmaExecutor interface {
+	Exec(string, ...any) (sql.Result, error)
+}
+
+type sqliteErrorCoder interface {
+	Code() int
 }
 
 func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
@@ -54,12 +67,37 @@ func OpenSQLiteStore(dbPath string) (*SQLiteStore, error) {
 	store := &SQLiteStore{dbPath: dbPath, writeDB: db}
 	store.agentWriter = newAgentStore(db)
 
-	if _, err := db.Exec("PRAGMA journal_mode = WAL"); err != nil {
+	if err := enableSQLiteWAL(db, time.Sleep); err != nil {
 		_ = store.Close()
 		return nil, fmt.Errorf("enable sqlite wal mode: %w", err)
 	}
 
 	return store, nil
+}
+
+func enableSQLiteWAL(executor sqlitePragmaExecutor, sleep func(time.Duration)) error {
+	for attempt := 0; ; attempt++ {
+		if _, err := executor.Exec("PRAGMA journal_mode = WAL"); err != nil {
+			if attempt >= len(sqliteWALRetryDelays) || !isSQLiteIOErrTruncate(err) {
+				return err
+			}
+			delay := sqliteWALRetryDelays[attempt]
+			slog.Warn("retrying sqlite wal mode after transient truncate error",
+				"event", "workspace.sqlite.wal_retry",
+				"attempt", attempt+1,
+				"retry_in_ms", delay.Milliseconds(),
+				"sqlite_error_code", sqliteIOErrTruncate,
+				"error", err)
+			sleep(delay)
+			continue
+		}
+		return nil
+	}
+}
+
+func isSQLiteIOErrTruncate(err error) bool {
+	var coded sqliteErrorCoder
+	return errors.As(err, &coded) && coded.Code() == sqliteIOErrTruncate
 }
 
 func DefaultDBPath() string {

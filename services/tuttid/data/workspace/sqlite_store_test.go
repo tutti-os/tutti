@@ -19,6 +19,77 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 )
 
+type sqlitePragmaExecutorStub struct {
+	errors []error
+	calls  int
+}
+
+func (s *sqlitePragmaExecutorStub) Exec(string, ...any) (sql.Result, error) {
+	index := s.calls
+	s.calls++
+	if index < len(s.errors) {
+		return nil, s.errors[index]
+	}
+	return nil, nil
+}
+
+type sqliteCodedTestError struct {
+	code int
+}
+
+func (e sqliteCodedTestError) Error() string { return fmt.Sprintf("sqlite error %d", e.code) }
+func (e sqliteCodedTestError) Code() int     { return e.code }
+
+func TestEnableSQLiteWALRetriesTransientTruncateErrors(t *testing.T) {
+	executor := &sqlitePragmaExecutorStub{errors: []error{
+		sqliteCodedTestError{code: sqliteIOErrTruncate},
+		sqliteCodedTestError{code: sqliteIOErrTruncate},
+	}}
+	var delays []time.Duration
+
+	if err := enableSQLiteWAL(executor, func(delay time.Duration) { delays = append(delays, delay) }); err != nil {
+		t.Fatalf("enableSQLiteWAL() error = %v", err)
+	}
+	if executor.calls != 3 {
+		t.Fatalf("Exec calls = %d, want 3", executor.calls)
+	}
+	if !slices.Equal(delays, sqliteWALRetryDelays) {
+		t.Fatalf("retry delays = %v, want %v", delays, sqliteWALRetryDelays)
+	}
+}
+
+func TestEnableSQLiteWALDoesNotRetryOtherErrors(t *testing.T) {
+	executor := &sqlitePragmaExecutorStub{errors: []error{sqliteCodedTestError{code: 5}}}
+
+	err := enableSQLiteWAL(executor, func(time.Duration) { t.Fatal("unexpected retry") })
+	if err == nil {
+		t.Fatal("enableSQLiteWAL() error = nil, want failure")
+	}
+	if executor.calls != 1 {
+		t.Fatalf("Exec calls = %d, want 1", executor.calls)
+	}
+}
+
+func TestEnableSQLiteWALStopsAfterTransientRetryBudget(t *testing.T) {
+	executor := &sqlitePragmaExecutorStub{errors: []error{
+		sqliteCodedTestError{code: sqliteIOErrTruncate},
+		sqliteCodedTestError{code: sqliteIOErrTruncate},
+		sqliteCodedTestError{code: sqliteIOErrTruncate},
+	}}
+	var delays []time.Duration
+
+	err := enableSQLiteWAL(executor, func(delay time.Duration) { delays = append(delays, delay) })
+	if err == nil {
+		t.Fatal("enableSQLiteWAL() error = nil, want failure")
+	}
+	if executor.calls != 3 {
+		t.Fatalf("Exec calls = %d, want 3", executor.calls)
+	}
+	if !slices.Equal(delays, sqliteWALRetryDelays) {
+		t.Fatalf("retry delays = %v, want %v", delays, sqliteWALRetryDelays)
+	}
+}
+
 func TestSQLiteDSNPathUsesFileURLFormOnWindows(t *testing.T) {
 	got := sqliteDSNPath(`C:\Users\Tutti User\state\tuttid.db`, "windows")
 	if got != "/C:/Users/Tutti User/state/tuttid.db" {

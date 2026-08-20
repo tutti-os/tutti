@@ -388,7 +388,22 @@ func (c *Controller) CloseAllLiveSessions(ctx context.Context) CloseAllLiveSessi
 			continue
 		}
 		result.Scanned++
-		releaseLifecycleLock := c.acquireLifecycleLock(cand.session.RoomID, cand.session.AgentSessionID)
+		releaseLifecycleLock, lockErr := c.acquireLifecycleLockContext(ctx, cand.session.RoomID, cand.session.AgentSessionID)
+		if lockErr != nil {
+			result.Failed++
+			failedProviders[provider] = true
+			slog.Warn("agent live session shutdown lock failed",
+				"event", "agent_session.shutdown_close.lock_failed",
+				"room_id", cand.session.RoomID,
+				"agent_session_id", cand.session.AgentSessionID,
+				"provider", cand.session.Provider,
+				"error", lockErr.Error(),
+			)
+			if ctx.Err() != nil {
+				break
+			}
+			continue
+		}
 		err := cand.adapter.Close(ctx, cand.session)
 		releaseLifecycleLock()
 		if err != nil {

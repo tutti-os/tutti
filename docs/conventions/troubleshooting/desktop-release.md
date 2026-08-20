@@ -389,29 +389,49 @@
 
 - Symptom:
   The desktop logs `Timed out waiting for tuttid listener info: daemon runtime
-information is not available yet`, but `ps` or `lsof` still shows an older
-  `tuttid` process holding the development database or a loopback listener.
+information is not available yet`, or the first restart reports a daemon
+  startup failure while a second restart succeeds. `ps`, `lsof`, or Task Manager
+  may still show an older `tuttid` process holding the database or a loopback
+  listener.
 - Quick checks:
   Inspect `~/.tutti-dev/run/tuttid.pid`, run `lsof` on
   `~/.tutti-dev/tuttid.db`, and check whether the daemon process
   has parent PID `1`. That combination means the Electron parent no longer owns
-  the process even though the daemon survived.
+  the process even though the daemon survived. On Windows, align
+  `desktop parent process disappeared`, `http server shutdown error`,
+  `process did not exit after kill`, `stopping stale tuttid process`, and
+  `disk I/O error (1546)` across `tuttid.log` and `tutti-desktop.log`. A later
+  `managed tuttid restarted` after `failed to start managed tuttid` identifies
+  two competing startup owners rather than a second user action fixing data.
 - Root cause:
   In development, launching through `go run` can create a wrapper process and a
   compiled daemon child. Killing only the direct child can leave the compiled
   daemon alive. If the desktop also removes the listener info file before the
   next launch, the orphan can keep local state busy while the new managed daemon
-  never publishes runtime info within the startup timeout.
+  never publishes runtime info within the startup timeout. The same symptom can
+  occur in packaged builds when HTTP shutdown returns before active handlers and
+  live Agent transports finish closing. A stale-daemon handoff can transiently
+  fail SQLite WAL initialization with `SQLITE_IOERR_TRUNCATE`. Initial startup
+  must own recovery until the daemon first becomes healthy; runtime supervision
+  must not independently recover the same child exit while bootstrap propagates
+  the original failure.
 - Fix:
   Prefer a prebuilt `apps/desktop/build/tuttid/tuttid` binary in development
   when present, kill managed daemon process groups during desktop shutdown,
   write and clear `tuttid.pid`, and inject `TUTTI_DESKTOP_PARENT_PID` so
-  `tuttid` can self-shutdown when its desktop parent disappears.
+  `tuttid` can self-shutdown when its desktop parent disappears. Keep one
+  startup recovery owner until health succeeds, wait for HTTP shutdown before
+  closing daemon wiring, and retry only the bounded transient
+  `SQLITE_IOERR_TRUNCATE` WAL handoff error. Do not delete WAL/SHM files or retry
+  arbitrary SQLite failures.
 - Validation:
   Repeatedly quit and restart the desktop, then confirm there is at most one
   `tuttid` process and that `~/.tutti-dev/run/tuttid.pid`
-  matches it. Also run the desktop daemon-manager tests and
-  `cd services/tuttid && go test .`.
+  matches it. Fault-inject the first WAL initialization attempt and verify the
+  original desktop bootstrap continues after one recovery loop. Hold an HTTP
+  request open during cancellation and verify daemon `Run` does not return until
+  the request drains. Also run the desktop daemon-manager tests and
+  `cd services/tuttid && go test ./...`.
 - References:
   [tuttidManager.ts](../../../apps/desktop/src/main/daemon/tuttidManager.ts)
   [main.go](../../../services/tuttid/main.go)
