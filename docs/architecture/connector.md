@@ -320,9 +320,12 @@ supplies a guest process adapter.
 
 ## Durable Operations And Recovery
 
-Remote refresh, install, update, uninstall, and recoverable authorization work
+Remote refresh, install, update, uninstall, disconnect, and runtime reconcile
 use at-least-once execution. Exactly-once execution is not assumed across
-SQLite, the filesystem, runtime activation, and process restarts.
+SQLite, the filesystem, runtime activation, and process restarts. Start
+authorization is not in that set: the user secret exists only in the
+`BeginAuthorization` command, so an accepted or running `start_authorization`
+row must not be executed from persisted state.
 
 An installation request carries an immutable operation identity and release
 identity plus an explicit account execution scope. Each stage is idempotent for at least:
@@ -374,8 +377,12 @@ constraint remains device-global per Connector.
 
 `accepted` and `running` rows have no age-based expiry. The SQLite repository
 protects them with one-active-operation constraints plus renewable,
-token-fenced leases, and daemon startup reschedules every recoverable row. The
-cleanup path is therefore intentionally unable to select an active operation.
+token-fenced leases. Daemon startup reschedules every recoverable row whose
+effect is durable. Start authorization is command-inline and is not scheduled
+on accept; bootstrap fails leftover accepted or running `start_authorization`
+rows so they cannot block a later user retry, and the continuous recovery
+scanner must not execute them. The cleanup path is therefore intentionally
+unable to select an active operation.
 
 Terminal operation results are retained for 24 hours after `updatedAt`, with
 the cutoff inclusive. This is the supported `GET operation` result window and
@@ -420,10 +427,14 @@ installed release evidence needed for safe repair or uninstall. A later
 preserves the projection. Runtime reconcile then performs interface readiness
 checks before any route is published.
 
-Authorization operations follow the same recovery rule. Authorization creation
-is serialized per account and Connector. A repeated `clientRequestId` resumes
-the same external session. A different request retains the compatibility
-conflict unless it explicitly sends `replacementPolicy=replace_active`. Replace
+Authorization creation is serialized per account and Connector. A repeated
+`clientRequestId` resumes the same external session. Accepted or running
+`start_authorization` is not recovered by replaying the operation: that would
+complete a native-secret control-plane session with an empty secret and fail
+the live command. Completed authorization receipts recover through
+`ReconcileAuthorizations`, not through the durable operation scanner. A
+different request retains the compatibility conflict unless it explicitly
+sends `replacementPolicy=replace_active`. Replace
 is Host-owned: it interrupts an in-progress initial Begin, moves an existing
 receipt through durable `canceling`, asks the provider to terminate the exact
 attempt, waits until that attempt can no longer publish credentials or events,
@@ -602,6 +613,16 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
   Connector mutation token
 - event refreshes are coalesced, daemon reconnect performs a full reload, and
   accepted commands are followed through the operation endpoint or events
+- the settings catalog toolbar Refresh control indicates an explicit
+  `refreshCatalog()` command only. The daemon also runs a scheduled catalog
+  refresh after bootstrap and about once a minute; that background sync may set
+  `catalogState=refreshing` while keeping the last-known-good catalog visible,
+  and must not spin or disable the toolbar control
+- catalog cards show a status field only after installation. Idle uninstalled
+  cards keep the Install action and omit Not installed, so Authorization
+  required remains the distinctive installed-but-disconnected mark. First-time
+  install and update still show their in-progress status because that is live
+  work, not an idle catalog tier
 - hosts gate connector-market transport through `canRequest`; Tutti binds it to
   account authentication, activates the module without network access while
   signed out, reloads after login, and keeps reconnect/resume paths silent
@@ -636,12 +657,16 @@ instead of spinning. The host
 executes `openConnectorMarketDialog(root, connectorKey)`, which waits for the
 authoritative market view, rejects invalid or unknown keys, and then advances
 the package-owned dialog state machine. Before applying the bounded quick-list
-limit, the shared menu stably groups connected connectors ahead of connectors
-that still require authorization or setup; each group preserves host catalog
-order. Its compact trigger previews the installed and authorized group without
-requiring those connectors to be selected in the current draft; draft selection
-continues to control only structured prompt content. Selecting “more” remains
-host navigation because settings/workbench location is product-owned.
+limit, the shared menu ranks already installed and authorized connectors
+(`connected` and installed-but-stopped `disabled`) ahead of connectors that
+still require authorization or setup. The secondary key is the installation
+event timestamp (`installedAtUnixMs`, newest first). Connectors without a
+timestamp keep their relative host catalog order after timestamped entries in
+the same group. Its compact trigger previews the authorized and running
+(`connected`) group without requiring those connectors to be selected in the
+current draft; draft selection continues to control only structured prompt
+content. Selecting “more” remains host navigation because settings/workbench
+location is product-owned.
 
 Connector access-policy editors reuse `ConnectorAccessSelectionPanel` from the
 same shared UI entrypoint. The controlled panel accepts only loading/error/ready

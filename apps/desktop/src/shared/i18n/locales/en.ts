@@ -257,6 +257,7 @@ export const en = {
         openRightPanel: "Open right panel",
         resizeSidebar: "Resize tool sidebar",
         shrinkPanel: "Shrink panel",
+        side: "Side",
         tasks: "Tasks",
         terminal: "Terminal",
         tool: "Tool",

@@ -208,6 +208,13 @@ export interface AgentComposerPastedTextBlock extends AgentComposerFileBlockBase
   text: string;
 }
 
+/** Transcript text retained as visible, unsent composer context. */
+export interface AgentComposerQuoteBlock {
+  type: "quote";
+  id: string;
+  text: string;
+}
+
 export type AgentComposerFileBlock =
   | AgentComposerRegularFileBlock
   | AgentComposerPastedTextBlock;
@@ -223,6 +230,7 @@ export interface AgentComposerConnectorBlock {
 
 export type AgentComposerSupplementaryBlock =
   | AgentComposerAttachmentBlock
+  | AgentComposerQuoteBlock
   | AgentComposerConnectorBlock;
 
 export type AgentComposerDraftBlock =

@@ -7,21 +7,72 @@ import {
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
   agentComposerDraftPrompt,
+  agentComposerDraftQuotes,
   agentComposerDraftSubmittedText,
   agentComposerDraftToPromptContent,
   agentPromptContentDisplayText,
   agentPromptContentToComposerDraft,
   buildAgentComposerDraft,
+  appendAgentComposerDraftQuote,
   agentComposerDraftPreservingConnectors,
   emptyAgentComposerDraft,
   extractPastedTextArchivePaths,
   linkifyPastedTextReferences,
   normalizeAgentPromptContentBlocks,
-  projectAgentComposerDraftSubmission
+  projectAgentComposerDraftSubmission,
+  updateAgentComposerDraft
 } from "./agentComposerDraft";
 import { createAgentComposerFileMentionMarkdown } from "../agentRichText/agentMentionMarkdown";
 
 describe("agentComposerDraft", () => {
+  it("keeps transcript selections as visible draft quotes and submits blockquotes", () => {
+    const draft = appendAgentComposerDraftQuote(
+      buildAgentComposerDraft({ prompt: "Why does this happen?" }),
+      {
+        type: "quote",
+        id: "quote-1",
+        text: "First line\nSecond line"
+      }
+    );
+
+    expect(agentComposerDraftQuotes(draft)).toEqual([
+      { type: "quote", id: "quote-1", text: "First line\nSecond line" }
+    ]);
+    expect(agentComposerDraftHasContent(draft)).toBe(true);
+    expect(projectAgentComposerDraftSubmission({ draft, skills: [] })).toEqual({
+      content: [
+        { type: "text", text: "Why does this happen?" },
+        { type: "text", text: "> First line\n> Second line" }
+      ],
+      displayPrompt: "Why does this happen?\n> First line\n> Second line"
+    });
+    expect(
+      agentComposerDraftQuotes(
+        updateAgentComposerDraft(draft, { prompt: "A revised question" })
+      )
+    ).toEqual([
+      { type: "quote", id: "quote-1", text: "First line\nSecond line" }
+    ]);
+  });
+
+  it("deduplicates the same selected transcript quote", () => {
+    const initial = buildAgentComposerDraft({ prompt: "" });
+    const once = appendAgentComposerDraftQuote(initial, {
+      type: "quote",
+      id: "quote-1",
+      text: " selected context "
+    });
+    const twice = appendAgentComposerDraftQuote(once, {
+      type: "quote",
+      id: "quote-2",
+      text: "selected context"
+    });
+
+    expect(agentComposerDraftQuotes(twice)).toEqual([
+      { type: "quote", id: "quote-1", text: "selected context" }
+    ]);
+  });
+
   it("stores text, images, files, and pasted text in one ordered content array", () => {
     const draft = buildAgentComposerDraft({
       prompt: "Inspect this",

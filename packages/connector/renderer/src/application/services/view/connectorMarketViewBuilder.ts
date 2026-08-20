@@ -85,7 +85,7 @@ export function buildConnectorMarketView(
         ? market.authorizationViewsByConnectorKey[uiState.dialog.connectorKey]
         : undefined
     ),
-    refreshing: market.catalogState === "refreshing",
+    refreshing: market.pendingExplicitCatalogRefresh,
     sections: sections.filter(
       (section) =>
         section.connectorKeys.length > 0 ||

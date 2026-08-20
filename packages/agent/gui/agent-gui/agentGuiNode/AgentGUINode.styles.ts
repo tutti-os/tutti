@@ -215,6 +215,7 @@ const styles = {
   sideHeader: "agent-gui-node__side-header",
   sidePane: "agent-gui-node__side-pane",
   sideResizeHandle: "agent-gui-node__side-resize-handle",
+  sideSurface: "agent-gui-node__side-surface",
   sideTimeline: "agent-gui-node__side-timeline",
   sideTimelineFrame: "agent-gui-node__side-timeline-frame",
   timeline: "agent-gui-node__timeline",

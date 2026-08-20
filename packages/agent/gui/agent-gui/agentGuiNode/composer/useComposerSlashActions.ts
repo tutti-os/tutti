@@ -37,7 +37,6 @@ import { moveSlashCommandHighlight } from "../model/agentSlashCommands";
 import {
   agentComposerDraftHasContent,
   agentComposerDraftPreservingConnectors,
-  buildAgentComposerDraft,
   projectAgentComposerDraftSubmission,
   textPromptContent,
   updateAgentComposerDraft
@@ -499,7 +498,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         return;
       }
       const nextPrompt = draftPromptRef.current;
-      const nextDraftContent = buildAgentComposerDraft({
+      const nextDraftContent = updateAgentComposerDraft(draftContent, {
         prompt: nextPrompt,
         images: currentDraftImages,
         files: currentDraftFiles,

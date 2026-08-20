@@ -10,6 +10,8 @@ export const enAgentGuiSide = {
   sideCollapse: "Collapse Side conversation",
   selectionAddToConversation: "Add to conversation",
   selectionAskInSide: "Ask in Side chat",
+  selectionReferenceCountOne: "1 selected file snippet",
+  selectionReferenceCountMany: "{{count}} selected file snippets",
   sideInteractionTitle: "Side needs your response",
   sideContentUnsupported:
     "This attachment type is not supported in a Side conversation yet.",

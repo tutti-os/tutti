@@ -365,6 +365,31 @@ export function handoffProjectPathForConversation(
   );
 }
 
+export function agentGUIDetailBottomDockStoreRevision(input: {
+  activePromptResponsePending: boolean;
+  bottomDockLiftedPrompt: { requestId?: string } | null | undefined;
+  bottomDockReplacementPrompt: { requestId?: string } | null | undefined;
+  inlineNoticeChrome:
+    | { recovery?: { message?: string } | null }
+    | null
+    | undefined;
+  sessionChrome: AgentGUISessionChrome;
+  viewModel: Pick<AgentGUINodeViewModel, "composer">;
+}): string {
+  return [
+    input.bottomDockLiftedPrompt?.requestId ?? "",
+    input.bottomDockReplacementPrompt?.requestId ?? "",
+    input.inlineNoticeChrome?.recovery?.message ?? "",
+    input.sessionChrome.auth?.message ?? "",
+    input.sessionChrome.recovery?.kind ?? "",
+    input.sessionChrome.recovery?.message ?? "",
+    input.viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
+    input.viewModel.composer.queueStatus,
+    input.viewModel.composer.drainingQueuedPromptId ?? "",
+    input.activePromptResponsePending ? "1" : "0"
+  ].join("|");
+}
+
 export function mergeWorkspaceAppIconsFromCommands(input: {
   commands: AgentGUINodeViewModel["composer"]["availableCommands"];
   workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];

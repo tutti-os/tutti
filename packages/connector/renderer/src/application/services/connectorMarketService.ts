@@ -247,6 +247,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
       return this.refreshInFlight;
     }
     const generation = this.dataGeneration;
+    this.dataStore.pendingExplicitCatalogRefresh = true;
     this.dataStore.catalogState = "refreshing";
     const promise = this.dependencies.backend
       .refreshCatalog({
@@ -256,11 +257,15 @@ export class ConnectorMarketService implements IConnectorMarketService {
       .then((result) => {
         if (this.isCurrent(generation)) {
           applyConnectorMutationResult(this.dataStore, result);
-          this.trackOperation(result.operation);
+          const tracked = this.trackOperation(result.operation);
+          if (!tracked) {
+            this.dataStore.pendingExplicitCatalogRefresh = false;
+          }
         }
       })
       .catch((error) => {
         if (this.isCurrent(generation)) {
+          this.dataStore.pendingExplicitCatalogRefresh = false;
           this.dataStore.catalogState = "failed";
           this.recordError(error);
         }
@@ -1185,6 +1190,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
         operation;
     } else if (operation.kind === "refresh_catalog") {
       this.dataStore.catalogOperation = operation;
+      if (operation.state === "completed" || operation.state === "failed") {
+        this.dataStore.pendingExplicitCatalogRefresh = false;
+      }
     }
     const notification =
       this.dataStore.pendingUninstallNotificationsByOperationId[

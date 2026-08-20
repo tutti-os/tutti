@@ -145,6 +145,7 @@ Connector catalog, installation, account authorization, and runtime convergence.
 - [A second authorize click starts another OAuth session](./connector-market.md#a-second-authorize-click-starts-another-oauth-session)
 - [OAuth finishes in the browser but does not return to the initiating desktop build](./connector-market.md#oauth-finishes-in-the-browser-but-does-not-return-to-the-initiating-desktop-build)
 - [Composer install stays spinning on an OAuth remote connector](./connector-market.md#composer-install-stays-spinning-on-an-oauth-remote-connector)
+- [API-key Connect toast fails while the token is still in the form](./connector-market.md#api-key-connect-toast-fails-while-the-token-is-still-in-the-form)
 
 ## [Toolchain, Browser, And Terminal](./toolchain-browser-terminal.md)
 

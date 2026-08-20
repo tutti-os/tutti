@@ -113,6 +113,7 @@ const AgentSessionReplayNodeReadiness = lazy(() =>
 function DesktopAgentGUISurfaceImpl({
   agentActivityRuntime: hostAgentActivityRuntime,
   agentSideConversationRuntime = null,
+  agentSideConversationPresentation = null,
   agentHostApi,
   agentSessionReplayService,
   agentStatusSource,
@@ -675,6 +676,7 @@ function DesktopAgentGUISurfaceImpl({
     hostCapabilities: {
       referenceProvenanceFilterEnabled,
       sideConversationEnabled,
+      sideConversationPresentation: agentSideConversationPresentation,
       sessionInputHistoryEnabled,
       sessionWorktreeEnabled: true,
       sessionLaunchModesByProjectSectionKey,

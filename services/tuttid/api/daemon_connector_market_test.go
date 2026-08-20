@@ -2,7 +2,9 @@ package api
 
 import (
 	"context"
+	"errors"
 	"net/http"
+	"strings"
 	"testing"
 	"time"
 
@@ -213,6 +215,45 @@ func TestDaemonAPIForwardsReplaceActiveAuthorizationPolicy(t *testing.T) {
 	if received.AccountID != "account-1" || received.ClientRequestID != "authorization-b" ||
 		received.ReplacementPolicy != market.AuthorizationReplacementPolicyReplaceActive {
 		t.Fatalf("authorization mutation = %#v", received)
+	}
+}
+
+func TestDaemonAPIStartAuthorizationSurfacesControlPlaneCause(t *testing.T) {
+	const token = "cf-token"
+	service := stubConnectorMarketService{beginFn: func(
+		_ context.Context,
+		mutation market.ConnectorMutation,
+		secret []byte,
+	) (market.AuthorizationResult, error) {
+		if mutation.ConnectorKey != "cloudflare" || string(secret) != token {
+			t.Fatalf("mutation=%#v secret=%q", mutation, secret)
+		}
+		return market.AuthorizationResult{}, market.NewDomainError(
+			market.ErrorCodeAuthorizationFailed,
+			"connector authorization could not be started",
+			true,
+			errors.New("connector authorization request failed: status 502: composio session create failed"),
+		)
+	}}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux, NewRoutes(DaemonAPI{
+		ConnectorMarketService: service,
+		ConnectorMarketScope:   func() market.OperationScope { return market.OperationScope{AccountID: "account-1"} },
+	}))
+
+	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost,
+		"/v1/connector-market/connectors/cloudflare/authorization:start", map[string]any{
+			"clientRequestId": "authorization-cloudflare", "expectedRevision": 1,
+			"replacementPolicy": "replace_active", "secret": token,
+		})
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusServiceUnavailable, recorder.Body.String())
+	}
+	if !strings.Contains(recorder.Body.String(), "composio session create failed") {
+		t.Fatalf("body = %s", recorder.Body.String())
+	}
+	if strings.Contains(recorder.Body.String(), token) {
+		t.Fatalf("response leaked secret: %s", recorder.Body.String())
 	}
 }
 

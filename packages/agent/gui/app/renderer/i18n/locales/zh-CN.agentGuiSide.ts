@@ -8,6 +8,8 @@ export const zhCNAgentGuiSide = {
   sideCollapse: "收起 Side 会话",
   selectionAddToConversation: "添加到对话",
   selectionAskInSide: "在侧边聊天中提问",
+  selectionReferenceCountOne: "1 个已选文件片段",
+  selectionReferenceCountMany: "{{count}} 个已选文件片段",
   sideInteractionTitle: "Side 需要你的响应",
   sideContentUnsupported: "Side 临时会话暂不支持这种附件类型",
   sideOperationFailed: "Side 会话未能完成该操作，请关闭后重试"

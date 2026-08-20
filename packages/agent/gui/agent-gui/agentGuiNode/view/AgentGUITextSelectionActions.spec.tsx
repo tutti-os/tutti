@@ -63,6 +63,14 @@ describe("AgentGUITextSelectionActions", () => {
   it("routes selected transcript text to the main conversation or Side", () => {
     const onAskInSide = vi.fn();
     const { onAddToConversation, onDismiss } = renderActions(onAskInSide);
+    const toolbar = screen.getByRole("toolbar");
+    expect(toolbar).toHaveClass("t-dropdown");
+    expect(
+      screen.getByRole("button", { name: "Add to conversation" })
+    ).toHaveAttribute("data-slot", "button");
+    expect(
+      screen.getByRole("button", { name: "Ask in Side chat" })
+    ).toHaveClass("border-0", "border-l");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Add to conversation" })

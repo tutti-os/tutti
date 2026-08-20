@@ -1,4 +1,5 @@
 import { useCallback, useMemo, type ReactNode } from "react";
+import type { AgentGUISideConversationPresentation } from "../../../agentSideConversationPresentation";
 import type { AgentComposerProps } from "../AgentComposer";
 import type { AgentGUIDetailPaneProps } from "./AgentGUINodeView.types";
 import type { useAgentGUIDetailSideConversation } from "./useAgentGUIDetailSideConversation";
@@ -10,9 +11,11 @@ import {
 import { useTranslation } from "../../../i18n/index";
 import {
   AgentGUISideConversationPane,
-  type AgentGUISideConversationPaneProps
+  type AgentGUISideConversationPaneProps,
+  type AgentGUISideConversationSurfaceProps
 } from "./AgentGUISideConversationPane";
-import { appendAgentGUIComposerPrompt } from "../controller/useAgentGUIComposerAppendRequest";
+import { appendAgentComposerDraftQuote } from "../model/agentComposerDraft";
+import { AgentGUISideConversationPresentationPublisher } from "./AgentGUISideConversationPresentationPublisher";
 
 const EMPTY_WORKSPACE_APP_ICONS: NonNullable<
   AgentComposerProps["workspaceAppIcons"]
@@ -24,6 +27,7 @@ interface UseAgentGUIDetailSideChromeInput {
   controller: ReturnType<typeof useAgentGUIDetailSideConversation>;
   conversationFlowLabels: AgentGUISideConversationPaneProps["conversationFlowLabels"];
   isVisible: boolean;
+  presentation?: AgentGUISideConversationPresentation | null;
   textSelectionActionsEnabled: boolean;
   onRequestComposerFocus: () => void;
   renderComposerFooterAccessory: AgentGUIDetailPaneProps["renderComposerFooterAccessory"];
@@ -35,6 +39,7 @@ export function useAgentGUIDetailSideChrome({
   controller,
   conversationFlowLabels,
   isVisible,
+  presentation = null,
   textSelectionActionsEnabled,
   onRequestComposerFocus,
   renderComposerFooterAccessory
@@ -54,12 +59,14 @@ export function useAgentGUIDetailSideChrome({
     draftContent,
     entryError,
     focused,
+    focusRequestSequence,
     interactionSubmitting,
     interactivePrompt,
     interrupt,
     setDraftContent,
     setFocused,
     sourceAgentSessionId,
+    stageSelection,
     submitInteraction,
     submitSide
   } = controller;
@@ -105,7 +112,11 @@ export function useAgentGUIDetailSideChrome({
   const addSelectionToConversation = useCallback(
     (text: string) => {
       baseComposerProps.onDraftContentChange(
-        appendAgentGUIComposerPrompt(baseComposerProps.draftContent, text)
+        appendAgentComposerDraftQuote(baseComposerProps.draftContent, {
+          type: "quote",
+          id: crypto.randomUUID(),
+          text
+        })
       );
       onRequestComposerFocus();
     },
@@ -113,9 +124,9 @@ export function useAgentGUIDetailSideChrome({
   );
   const askSelectionInSide = useCallback(
     (text: string) => {
-      void controller.open(text).catch(() => {});
+      void stageSelection(text).catch(() => {});
     },
-    [controller]
+    [stageSelection]
   );
   const selectionProps = useMemo(
     () => ({
@@ -164,13 +175,17 @@ export function useAgentGUIDetailSideChrome({
       activePrompt: interactivePrompt,
       activePromptKeyboardShortcutsEnabled:
         baseComposerProps.isActive && focused,
+      composerFocusRequestSequence: focusRequestSequence,
       promptTips: [],
       isInterrupting: false,
       isSendingTurn: Boolean(active.activeTurnId),
       isSubmittingPrompt: interactionSubmitting,
       projectMissingProbeEnabled: false,
       uiLanguage: baseComposerProps.uiLanguage,
-      isActive: baseComposerProps.isActive && focused,
+      // isActive controls whether the editor installs its focus and input
+      // behavior. It cannot depend on focus itself or the first click has no
+      // active editor with which to establish that focus.
+      isActive: baseComposerProps.isActive && isVisible,
       workspaceReferencePickerOpen: false,
       promptImagesSupported: false,
       canGoalControl: false,
@@ -202,32 +217,68 @@ export function useAgentGUIDetailSideChrome({
     baseComposerProps,
     draftContent,
     focused,
+    focusRequestSequence,
     interactionSubmitting,
     interactivePrompt,
     interrupt,
+    isVisible,
     setDraftContent,
     submitInteraction,
     submitSide,
     t
   ]);
-  const sidePane =
-    active &&
-    sideComposerProps &&
-    active.sourceAgentSessionId === sourceAgentSessionId ? (
-      <AgentGUISideConversationPane
-        active={active}
-        availableSkills={availableSkills}
-        composerProps={sideComposerProps}
-        conversationFlowLabels={conversationFlowLabels}
-        isVisible={isVisible}
-        loadingLabel={t("agentHost.agentGui.loadingConversation")}
-        workspaceAppIcons={
-          baseComposerProps.workspaceAppIcons ?? EMPTY_WORKSPACE_APP_ICONS
-        }
-        onClose={close}
-        onFocusChange={setFocused}
-        onLinkAction={baseComposerProps.onLinkAction}
-      />
-    ) : null;
+  const sideMatchesSource =
+    active !== null && active.sourceAgentSessionId === sourceAgentSessionId;
+  const sideSurfaceProps = useMemo<AgentGUISideConversationSurfaceProps | null>(
+    () =>
+      active && sideComposerProps && sideMatchesSource
+        ? {
+            active,
+            availableSkills,
+            composerProps: sideComposerProps,
+            conversationFlowLabels,
+            isVisible,
+            loadingLabel: t("agentHost.agentGui.loadingConversation"),
+            workspaceAppIcons:
+              baseComposerProps.workspaceAppIcons ?? EMPTY_WORKSPACE_APP_ICONS,
+            onFocusChange: setFocused,
+            onLinkAction: baseComposerProps.onLinkAction
+          }
+        : null,
+    [
+      active,
+      availableSkills,
+      baseComposerProps.onLinkAction,
+      baseComposerProps.workspaceAppIcons,
+      conversationFlowLabels,
+      isVisible,
+      setFocused,
+      sideComposerProps,
+      sideMatchesSource,
+      t
+    ]
+  );
+  const projection = useMemo(
+    () =>
+      sideSurfaceProps && active
+        ? {
+            close,
+            sideAgentSessionId: active.sideAgentSessionId,
+            sourceAgentSessionId: active.sourceAgentSessionId,
+            surfaceProps: sideSurfaceProps
+          }
+        : null,
+    [active, close, sideSurfaceProps]
+  );
+  const sidePane = presentation ? (
+    <AgentGUISideConversationPresentationPublisher
+      presentation={presentation}
+      projection={projection}
+      sourceMismatch={active !== null && !sideMatchesSource}
+      onClose={close}
+    />
+  ) : sideSurfaceProps ? (
+    <AgentGUISideConversationPane {...sideSurfaceProps} onClose={close} />
+  ) : null;
   return { bottomDockComposerProps, selectionProps, sidePane };
 }

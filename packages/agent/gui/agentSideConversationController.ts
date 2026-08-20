@@ -478,6 +478,8 @@ export function createAgentSideConversationRuntime(
         releaseTransportSubscriptionsIfUnused();
       };
     },
+    subscribeConnectionState: (listener) =>
+      transport.subscribeConnectionState(listener),
     dispose() {
       eventUnsubscribe?.();
       connectionUnsubscribe?.();

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -48,8 +49,15 @@ type codexAppServerStartupTrace struct {
 	startupObserver    CodexAppServerStartupObserver
 	stderrMu           sync.Mutex
 	stderrLine         []byte
-	spanStartedAt      map[string][]time.Time
+	openSpans          map[string][]codexAppServerOpenSpan
+	spanSequence       atomic.Uint64
 	completedSpanCount atomic.Int64
+}
+
+type codexAppServerOpenSpan struct {
+	instanceID string
+	startedAt  time.Time
+	timestamp  bool
 }
 
 func newCodexAppServerStartupTrace(
@@ -64,7 +72,7 @@ func newCodexAppServerStartupTrace(
 		path:            codexAppServerStartupTracePath(),
 		spanObserver:    spanObserver,
 		startupObserver: startupObserver,
-		spanStartedAt:   make(map[string][]time.Time),
+		openSpans:       make(map[string][]codexAppServerOpenSpan),
 	}
 	trace.Log("start.begin", map[string]any{
 		"permission_mode_id": session.PermissionModeID,
@@ -78,10 +86,10 @@ func newCodexAppServerStartupTrace(
 func newCodexAppServerTurnTrace(session Session, turnID string, metadata map[string]any) *codexAppServerStartupTrace {
 	settings := session.SettingsValue()
 	trace := &codexAppServerStartupTrace{
-		startedAt:     time.Now(),
-		session:       session,
-		path:          codexAppServerStartupTracePath(),
-		spanStartedAt: make(map[string][]time.Time),
+		startedAt: time.Now(),
+		session:   session,
+		path:      codexAppServerStartupTracePath(),
+		openSpans: make(map[string][]codexAppServerOpenSpan),
 	}
 	fields := map[string]any{
 		"turn_id":            strings.TrimSpace(turnID),
@@ -273,6 +281,7 @@ func (t *codexAppServerStartupTrace) logCodexAppServerSpan(line []byte) *CodexAp
 		"span_phase": phase,
 	}
 	var observation *CodexAppServerSpanObservation
+	spanInstanceID := ""
 	if record.Target != "" {
 		fields["span_target"] = record.Target
 	}
@@ -280,16 +289,34 @@ func (t *codexAppServerStartupTrace) logCodexAppServerSpan(line []byte) *CodexAp
 		fields["codex_timestamp"] = record.Timestamp
 	}
 	if phase == "new" {
-		if timestampOK {
-			t.spanStartedAt[spanName] = append(t.spanStartedAt[spanName], startedAt)
+		spanInstanceID = t.newSpanInstanceID()
+		t.openSpans[spanName] = append(t.openSpans[spanName], codexAppServerOpenSpan{
+			instanceID: spanInstanceID,
+			startedAt:  startedAt,
+			timestamp:  timestampOK,
+		})
+		fields["span_instance_id"] = spanInstanceID
+		if t.spanObserver != nil {
+			observation = &CodexAppServerSpanObservation{
+				Provider:       strings.TrimSpace(t.session.Provider),
+				RoomID:         strings.TrimSpace(t.session.RoomID),
+				AgentSessionID: strings.TrimSpace(t.session.AgentSessionID),
+				SpanName:       spanName,
+				SpanPhase:      phase,
+				SpanInstanceID: spanInstanceID,
+				SpanTarget:     strings.TrimSpace(record.Target),
+				CodexTimestamp: strings.TrimSpace(record.Timestamp),
+			}
 		}
-	} else if starts := t.spanStartedAt[spanName]; len(starts) > 0 {
+	} else if openSpans := t.openSpans[spanName]; len(openSpans) > 0 {
 		t.completedSpanCount.Add(1)
-		start := starts[len(starts)-1]
-		t.spanStartedAt[spanName] = starts[:len(starts)-1]
+		openSpan := openSpans[len(openSpans)-1]
+		t.openSpans[spanName] = openSpans[:len(openSpans)-1]
+		spanInstanceID = openSpan.instanceID
+		fields["span_instance_id"] = spanInstanceID
 		durationMS := int64(0)
-		if timestampOK {
-			durationMS = startedAt.Sub(start).Milliseconds()
+		if timestampOK && openSpan.timestamp {
+			durationMS = startedAt.Sub(openSpan.startedAt).Milliseconds()
 			fields["duration_ms"] = durationMS
 		}
 		if busy := codexJSONLogString(record.Fields["time.busy"]); busy != "" {
@@ -298,13 +325,14 @@ func (t *codexAppServerStartupTrace) logCodexAppServerSpan(line []byte) *CodexAp
 		if idle := codexJSONLogString(record.Fields["time.idle"]); idle != "" {
 			fields["span_idle"] = idle
 		}
-		if timestampOK && t.spanObserver != nil {
+		if t.spanObserver != nil {
 			observation = &CodexAppServerSpanObservation{
 				Provider:       strings.TrimSpace(t.session.Provider),
 				RoomID:         strings.TrimSpace(t.session.RoomID),
 				AgentSessionID: strings.TrimSpace(t.session.AgentSessionID),
 				SpanName:       spanName,
 				SpanPhase:      phase,
+				SpanInstanceID: spanInstanceID,
 				SpanTarget:     strings.TrimSpace(record.Target),
 				CodexTimestamp: strings.TrimSpace(record.Timestamp),
 				DurationMS:     durationMS,
@@ -315,6 +343,10 @@ func (t *codexAppServerStartupTrace) logCodexAppServerSpan(line []byte) *CodexAp
 	}
 	t.Log("app_server.span", fields)
 	return observation
+}
+
+func (t *codexAppServerStartupTrace) newSpanInstanceID() string {
+	return fmt.Sprintf("startup-%d-%d", t.startedAt.UnixNano(), t.spanSequence.Add(1))
 }
 
 func (t *codexAppServerStartupTrace) notifySpanObserver(observation CodexAppServerSpanObservation) {

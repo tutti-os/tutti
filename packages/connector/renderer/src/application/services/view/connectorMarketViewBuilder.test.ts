@@ -70,6 +70,17 @@ test("keeps a failed catalog section visible without failing the whole view", ()
   assert.equal(view.catalogError, null);
 });
 
+test("spins the catalog toolbar only for an explicit refresh command", () => {
+  const market = createConnectorMarketStoreState();
+  market.loadState = "ready";
+  market.catalogState = "refreshing";
+
+  assert.equal(buildConnectorMarketView(market, uiState).refreshing, false);
+
+  market.pendingExplicitCatalogRefresh = true;
+  assert.equal(buildConnectorMarketView(market, uiState).refreshing, true);
+});
+
 test("projects server-owned category names into the renderer view", () => {
   const market = createConnectorMarketStoreState();
   market.loadState = "ready";

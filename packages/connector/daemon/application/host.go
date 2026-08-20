@@ -637,9 +637,9 @@ func (host *Host) recoverAndWait(ctx context.Context) error {
 	for {
 		pending := false
 		for _, candidate := range operations {
-			// Remote refresh and authorization operations may legitimately wait on
-			// the network. Recover them, but do not make local route restoration
-			// wait for their terminal state.
+			// Remote refresh may wait on the network. Start authorization is not
+			// replayed from durable state. Recover those rows, but do not make
+			// local route restoration wait for their terminal state.
 			if candidate.Kind != market.OperationKindInstall && candidate.Kind != market.OperationKindUninstall &&
 				candidate.Kind != market.OperationKindReconcileRuntime {
 				continue
