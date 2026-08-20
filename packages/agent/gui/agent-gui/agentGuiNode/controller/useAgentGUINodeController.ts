@@ -49,6 +49,7 @@ import { useAgentGUIComposerCapabilities } from "./useAgentGUIComposerCapabiliti
 import { useAgentGUIComposerOptionsSync } from "./useAgentGUIComposerOptionsSync";
 import { useAgentGUIControllerRefs } from "./useAgentGUIControllerRefs";
 import { useAgentGUIOperationActions } from "./useAgentGUIOperationActions";
+import { useAgentGUIProviderHome } from "./useAgentGUIProviderHome";
 import { useAgentGUIViewAssembly } from "./useAgentGUIViewAssembly";
 import { useAgentGUIProviderCatalogSelection } from "./useAgentGUIProviderCatalogSelection";
 import { useAgentGUISessionEngineState } from "./useAgentGUISessionEngineState";
@@ -549,8 +550,6 @@ export function useAgentGUINodeController({
     transientConversation,
     workspaceId
   });
-  const persistActiveConversation =
-    conversationSelection.persistActiveConversation;
   const selectConversation = conversationSelection.selectConversation;
   const syncConversationListProjection =
     conversationSelection.syncConversationListProjection;
@@ -614,8 +613,26 @@ export function useAgentGUINodeController({
     );
   }, [conversations.length, hasLoadedConversations, transientConversation]);
 
-  useAgentGUIConversationRouting({
+  const providerHome = useAgentGUIProviderHome({
+    ...providerCatalogSelection,
+    ...localState,
+    ...conversationList,
+    ...sessionEngineState,
+    ...controllerRefs,
+    ...conversationSelection,
+    agentActivityRuntime,
+    data,
+    defaultAgentTargetId,
+    isLoadingConversations,
+    providerReadinessGates,
+    sessionEngine,
+    transientConversation,
+    unactivate: activation.unactivate,
+    workspaceId
+  });
+  const pendingOpenSessionRequest = useAgentGUIConversationRouting({
     activeConversationIdRef,
+    agentTargetsLoading,
     conversationListQuery,
     conversations,
     conversationsRef,
@@ -623,6 +640,7 @@ export function useAgentGUINodeController({
     hasLoadedConversations,
     intent,
     openSessionRequest,
+    openExternalSession: providerHome.openExternalSession,
     pendingOpenSessionRequestRef,
     selectConversation,
     sessionEngine,
@@ -757,10 +775,11 @@ export function useAgentGUINodeController({
     normalizedComingSoonProviders,
     nodeId,
     operationActions,
-    persistActiveConversation,
+    pendingOpenSessionRequest,
     planImplementationTurnIdRef,
     providerRailMode,
     providerReadinessGates,
+    providerHome,
     targetConnectionSource,
     interactionReadinessSource,
     observationGapSource,
@@ -769,7 +788,6 @@ export function useAgentGUINodeController({
     sessionEngine,
     transientConversation,
     tuttiModeActivation,
-    unactivate: activation.unactivate,
     updateSelectedProjectPath,
     userProjects,
     workspaceId,

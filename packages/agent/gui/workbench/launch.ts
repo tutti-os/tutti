@@ -87,12 +87,14 @@ export function createAgentGuiWorkbenchSessionLaunchRequest(input: {
   provider: unknown;
 }) {
   const provider = normalizeAgentGuiWorkbenchProvider(input.provider);
+  const agentTargetId =
+    input.agentTargetId === null
+      ? null
+      : input.agentTargetId?.trim() || undefined;
   return {
     dockEntryId: agentGuiWorkbenchUnifiedDockEntryId(),
     payload: {
-      ...(input.agentTargetId?.trim()
-        ? { agentTargetId: input.agentTargetId.trim() }
-        : {}),
+      ...(agentTargetId !== undefined ? { agentTargetId } : {}),
       ...(input.agentSessionId ? { agentSessionId: input.agentSessionId } : {}),
       ...(input.composerAppend?.draftPrompt.trim()
         ? {
@@ -193,6 +195,12 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
   }
 
   const targetAgentSessionId = agentSessionIdFromLaunchPayload(request.payload);
+  const agentTargetIdentity = openSessionAgentTargetIdentityFromLaunchPayload(
+    request.payload
+  );
+  if (agentTargetIdentity.kind === "invalid") {
+    throw new Error("agent_gui_workbench.launch_agent_target_invalid");
+  }
   const composerAppend = openSessionComposerAppendFromLaunchPayload(
     request.payload
   );
@@ -205,6 +213,12 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
       ? {
           payload: {
             agentSessionId: targetAgentSessionId,
+            ...(agentTargetIdentity.kind === "explicit-null"
+              ? { agentTargetId: null }
+              : agentTargetIdentity.kind === "value"
+                ? { agentTargetId: agentTargetIdentity.agentTargetId }
+                : {}),
+            provider,
             ...(composerAppend ? { composerAppend } : {})
           },
           type: agentGuiWorkbenchOpenSessionActivationType
@@ -222,6 +236,31 @@ export function createAgentGuiWorkbenchLaunchDescriptor(
           : { kind: "dock-entry" },
     targetAgentSessionId
   };
+}
+
+type OpenSessionAgentTargetIdentity =
+  | { kind: "absent" }
+  | { kind: "explicit-null" }
+  | { agentTargetId: string; kind: "value" }
+  | { kind: "invalid" };
+
+function openSessionAgentTargetIdentityFromLaunchPayload(
+  payload: unknown
+): OpenSessionAgentTargetIdentity {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return { kind: "absent" };
+  }
+  const record = payload as Record<string, unknown>;
+  if (!Object.prototype.hasOwnProperty.call(record, "agentTargetId")) {
+    return { kind: "absent" };
+  }
+  const rawAgentTargetId = record.agentTargetId;
+  if (rawAgentTargetId === null) {
+    return { kind: "explicit-null" };
+  }
+  return typeof rawAgentTargetId === "string" && rawAgentTargetId.trim()
+    ? { agentTargetId: rawAgentTargetId.trim(), kind: "value" }
+    : { kind: "invalid" };
 }
 
 function openSessionComposerAppendFromLaunchPayload(

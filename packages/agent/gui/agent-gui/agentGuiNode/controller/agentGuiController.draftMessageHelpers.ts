@@ -76,8 +76,12 @@ export {
 } from "./useAgentConversationMessagePaging";
 export interface AgentGUIOpenSessionRequest {
   agentSessionId: string;
+  agentTargetId?: string | null;
+  provider?: AgentGUIProvider;
   sequence: number;
 }
+
+export type AgentGUIOpenSessionSelectionOutcome = "rejected" | "selected";
 export function createPendingOptimisticTurnId(clientSubmitId: string): string {
   return `pending:${clientSubmitId}`;
 }
@@ -122,10 +126,54 @@ export function normalizeAgentGUIOpenSessionRequest(
   if (!agentSessionId || typeof request?.sequence !== "number") {
     return null;
   }
+  const record = request as unknown as Record<string, unknown>;
+  const rawAgentTargetId = record.agentTargetId;
+  const hasAgentTargetId =
+    rawAgentTargetId !== undefined &&
+    Object.prototype.hasOwnProperty.call(record, "agentTargetId");
+  if (
+    hasAgentTargetId &&
+    rawAgentTargetId !== null &&
+    (typeof rawAgentTargetId !== "string" || !rawAgentTargetId.trim())
+  ) {
+    return null;
+  }
+  const rawProvider = record.provider;
+  if (
+    rawProvider !== undefined &&
+    (typeof rawProvider !== "string" || !rawProvider.trim())
+  ) {
+    return null;
+  }
   return {
     agentSessionId,
+    ...(hasAgentTargetId
+      ? {
+          agentTargetId:
+            typeof rawAgentTargetId === "string"
+              ? rawAgentTargetId.trim()
+              : null
+        }
+      : {}),
+    ...(typeof rawProvider === "string"
+      ? { provider: rawProvider.trim() }
+      : {}),
     sequence: request.sequence
   };
+}
+
+export function resolveAgentGUIPendingOpenSessionRequestForRender(input: {
+  handledSequence: number | null;
+  openSessionRequest: AgentGUIOpenSessionRequest | null | undefined;
+  pendingOpenSessionRequest: AgentGUIOpenSessionRequest | null;
+}): AgentGUIOpenSessionRequest | null {
+  const normalizedOpenSessionRequest = normalizeAgentGUIOpenSessionRequest(
+    input.openSessionRequest
+  );
+  return normalizedOpenSessionRequest &&
+    normalizedOpenSessionRequest.sequence !== input.handledSequence
+    ? normalizedOpenSessionRequest
+    : input.pendingOpenSessionRequest;
 }
 
 export function numberValue(value: unknown): number | null {

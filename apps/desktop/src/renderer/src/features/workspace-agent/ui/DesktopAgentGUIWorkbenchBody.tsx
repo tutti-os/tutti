@@ -396,12 +396,10 @@ function DesktopAgentGUISurfaceImpl({
     agentStatusSource
   );
   useEffect(() => {
-    if (!provider) {
-      return;
-    }
     consumeDesktopAgentGUIOpenSessionActivation({
       activation: surface.activation,
       agentActivityRuntime,
+      agentDirectoryStatus: agentDirectory.status,
       clearNodeActivation: surface.host.clearNodeActivation?.bind(surface.host),
       handledSequence: handledOpenSessionActivationSequenceRef.current,
       markHandled: (sequence) => {
@@ -409,27 +407,30 @@ function DesktopAgentGUISurfaceImpl({
       },
       nodeId: surface.nodeId,
       onOpenSessionRequest: setOpenSessionRequest,
+      onOpenSessionRejected: () =>
+        Toast.Error(
+          i18n.t("workspace.agentMessageCenter.openSessionUnavailable")
+        ),
       onOpenSessionComposerRequest: setOpenSessionComposerRequest,
       // Persistence is owned by handleUpdateNode (the single writer).
       onStateChange: DESKTOP_AGENT_GUI_NOOP,
       provider,
       resolveAgentTargetProvider: (agentTargetId) =>
-        resolveDesktopAgentGUIProviderForAgentTarget(
-          agentTargetId,
-          agents,
-          provider
-        ),
+        agents.find((agent) => agent.agentTargetId === agentTargetId)
+          ?.provider ?? null,
       workspaceId,
       updateNodeState: handleUpdateNode
     });
   }, [
     agentActivityRuntime,
+    agentDirectory.status,
     surface.activation,
     surface.host,
     surface.nodeId,
     handleUpdateNode,
     provider,
     agents,
+    i18n,
     workspaceId
   ]);
 

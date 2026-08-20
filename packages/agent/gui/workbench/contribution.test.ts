@@ -265,6 +265,7 @@ describe("agent GUI workbench contribution copy", () => {
       layoutConstraints: testLaunchLayout.layoutConstraints,
       payload: {
         agentSessionId: "session-claude-1",
+        agentTargetId: "local:claude-code",
         provider: "claude-code"
       },
       reason: "dock",
@@ -281,7 +282,9 @@ describe("agent GUI workbench contribution copy", () => {
     expect(launchResult).toMatchObject({
       activation: {
         payload: {
-          agentSessionId: "session-claude-1"
+          agentSessionId: "session-claude-1",
+          agentTargetId: "local:claude-code",
+          provider: "claude-code"
         },
         type: "agent-gui:open-session"
       },
@@ -289,6 +292,12 @@ describe("agent GUI workbench contribution copy", () => {
       title: "Agent"
     });
     expect(launchResult?.instanceId).toMatch(/^agent-gui:instance:/);
+    expect(
+      contribution.externalStateSource?.getSnapshotNodeState?.({
+        instanceId: launchResult?.instanceId ?? "",
+        typeId: agentGuiWorkbenchTypeId
+      } as never)
+    ).toBeNull();
   });
 
   it("opens forced replay launches as distinct in-workspace nodes", async () => {
@@ -322,7 +331,7 @@ describe("agent GUI workbench contribution copy", () => {
     expect(firstLaunch?.instanceId).not.toBe(secondLaunch?.instanceId);
   });
 
-  it("clears stale target state when opening a session without a target payload", () => {
+  it("does not precommit session state before open-session admission", () => {
     const contribution = createTestAgentGuiWorkbenchContribution({
       renderBody: () => null,
       workspaceId: "workspace-1"
@@ -355,10 +364,7 @@ describe("agent GUI workbench contribution copy", () => {
         instanceId: seededLaunch?.instanceId ?? "",
         typeId: agentGuiWorkbenchTypeId
       } as never)
-    ).toMatchObject({
-      agentTargetId: "local:claude-code",
-      lastActiveAgentSessionId: "session-codex-1"
-    });
+    ).toBeNull();
 
     const relaunch = contribution.onLaunchRequest?.({
       ...baseRequest,
@@ -379,11 +385,7 @@ describe("agent GUI workbench contribution copy", () => {
         instanceId: relaunch?.instanceId ?? "",
         typeId: agentGuiWorkbenchTypeId
       } as never)
-    ).toEqual({
-      conversationRailCollapsed: false,
-      conversationRailWidthPx: null,
-      lastActiveAgentSessionId: "session-codex-1"
-    });
+    ).toBeNull();
   });
 
   it("opens prefill launches in a fresh node without overwriting an active session", () => {
@@ -445,12 +447,7 @@ describe("agent GUI workbench contribution copy", () => {
         instanceId: sessionLaunch?.instanceId ?? "",
         typeId: agentGuiWorkbenchTypeId
       } as never)
-    ).toEqual({
-      agentTargetId: "local:codex",
-      conversationRailCollapsed: false,
-      conversationRailWidthPx: null,
-      lastActiveAgentSessionId: "session-codex-1"
-    });
+    ).toBeNull();
   });
 
   it("resolves unified empty dock launches lazily from current provider availability", () => {
@@ -891,9 +888,7 @@ describe("agent GUI workbench contribution copy", () => {
     } as never;
 
     await expect(
-      Promise.resolve(
-        contribution.nodes?.[0]?.getWindowCloseEffect?.(context)
-      )
+      Promise.resolve(contribution.nodes?.[0]?.getWindowCloseEffect?.(context))
     ).resolves.toEqual({
       nodeId: "agent-gui-node-1",
       title: "Agent",
@@ -906,9 +901,7 @@ describe("agent GUI workbench contribution copy", () => {
     });
 
     await expect(
-      Promise.resolve(
-        contribution.nodes?.[0]?.getWindowCloseEffect?.(context)
-      )
+      Promise.resolve(contribution.nodes?.[0]?.getWindowCloseEffect?.(context))
     ).resolves.toBeNull();
   });
 
@@ -1231,7 +1224,8 @@ describe("agent GUI workbench contribution copy", () => {
     );
     expect(newWindowLaunch?.activation).toEqual({
       payload: {
-        agentSessionId: "session-1"
+        agentSessionId: "session-1",
+        provider: "codex"
       },
       type: "agent-gui:open-session"
     });
@@ -1321,19 +1315,13 @@ describe("agent GUI workbench contribution copy", () => {
         instanceId: firstSessionLaunch?.instanceId ?? "",
         typeId: agentGuiWorkbenchTypeId
       } as never)
-    ).toMatchObject({
-      agentTargetId: "local:codex",
-      lastActiveAgentSessionId: "session-1"
-    });
+    ).toBeNull();
     expect(
       contribution.externalStateSource?.getSnapshotNodeState?.({
         instanceId: secondSessionLaunch?.instanceId ?? "",
         typeId: agentGuiWorkbenchTypeId
       } as never)
-    ).toMatchObject({
-      agentTargetId: "local:codex",
-      lastActiveAgentSessionId: "session-2"
-    });
+    ).toBeNull();
   });
 
   it("does not treat a drifted session-keyed window as the requested session", async () => {
@@ -1386,6 +1374,75 @@ describe("agent GUI workbench contribution copy", () => {
     expect(relaunch?.instanceId).not.toBe("agent-gui:codex:session:session-1");
     expect(relaunch?.instanceId).toMatch(/^agent-gui:instance:/);
     expect(relaunch?.preserveExistingNodeFrame).not.toBe(true);
+  });
+
+  it("releases a stale reservation when a forced instance commits the session", async () => {
+    let writeForcedState: ((state: AgentGuiWorkbenchState) => void) | null =
+      null;
+    const contribution = createTestAgentGuiWorkbenchContribution({
+      renderBody: (context, helpers) => {
+        if (context.node.id === "forced-session-node") {
+          writeForcedState = helpers.onStateChange;
+        }
+        return null;
+      },
+      workspaceId: "workspace-1"
+    });
+    const baseRequest = {
+      layoutConstraints: testLaunchLayout.layoutConstraints,
+      reason: "host" as const,
+      surfaceSize: testLaunchLayout.surfaceSize,
+      typeId: agentGuiWorkbenchTypeId,
+      workspaceId: "workspace-1"
+    };
+    const pendingLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: { agentSessionId: "session-1", provider: "codex" }
+    });
+    const forcedLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: {
+        agentSessionId: "session-1",
+        openInNewWindow: true,
+        provider: "codex"
+      }
+    });
+
+    contribution.nodes?.[0]?.renderBody?.({
+      activation: forcedLaunch?.activation ?? null,
+      externalNodeState: null,
+      externalWorkspaceState: null,
+      instanceId: forcedLaunch?.instanceId ?? "",
+      instanceKey: null,
+      node: {
+        data: { runtimeNodeState: null },
+        displayMode: "floating",
+        frame: { height: 560, width: 1040, x: 0, y: 0 },
+        id: "forced-session-node",
+        title: "Agent"
+      }
+    } as Parameters<
+      NonNullable<(typeof contribution.nodes)[number]["renderBody"]>
+    >[0]);
+    expect(writeForcedState).not.toBeNull();
+    (writeForcedState as unknown as (state: AgentGuiWorkbenchState) => void)({
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: "session-1"
+    });
+    (writeForcedState as unknown as (state: AgentGuiWorkbenchState) => void)({
+      conversationRailCollapsed: false,
+      conversationRailWidthPx: null,
+      lastActiveAgentSessionId: "session-2"
+    });
+
+    const retryLaunch = await contribution.onLaunchRequest?.({
+      ...baseRequest,
+      payload: { agentSessionId: "session-1", provider: "codex" }
+    });
+
+    expect(retryLaunch?.instanceId).not.toBe(pendingLaunch?.instanceId);
+    expect(retryLaunch?.instanceId).not.toBe(forcedLaunch?.instanceId);
   });
 
   it("keeps compact new-window session launches on the cascade policy", async () => {

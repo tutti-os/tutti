@@ -416,6 +416,7 @@ export const en = {
     },
     agentMessageCenter: {
       openAria: "Open agent messages",
+      openSessionUnavailable: "Couldn't open this session",
       promptConstraintHeader: "Constraint",
       promptInputHeader: "Input",
       promptQuestion: "Add a response for the agent.",

@@ -9,6 +9,8 @@ import { useCallback, useEffect } from "react";
 import type { AgentGUIConversationSummary } from "../model/agentGuiConversationModel";
 import {
   normalizeAgentGUIOpenSessionRequest,
+  resolveAgentGUIPendingOpenSessionRequestForRender,
+  type AgentGUIOpenSessionSelectionOutcome,
   type AgentGUIOpenSessionRequest
 } from "./agentGuiController.draftMessageHelpers";
 import {
@@ -19,6 +21,7 @@ import {
 
 interface UseAgentGUIConversationRoutingInput {
   activeConversationIdRef: RefObject<string | null>;
+  agentTargetsLoading?: boolean;
   conversationListQuery: unknown | null;
   conversations: readonly AgentGUIConversationSummary[];
   conversationsRef: RefObject<AgentGUIConversationSummary[]>;
@@ -26,6 +29,9 @@ interface UseAgentGUIConversationRoutingInput {
   hasLoadedConversations: boolean;
   intent: ConversationIntent;
   openSessionRequest: AgentGUIOpenSessionRequest | null | undefined;
+  openExternalSession?(
+    request: AgentGUIOpenSessionRequest
+  ): AgentGUIOpenSessionSelectionOutcome;
   pendingOpenSessionRequestRef: RefObject<AgentGUIOpenSessionRequest | null>;
   selectConversation(
     agentSessionId: string,
@@ -39,9 +45,10 @@ interface UseAgentGUIConversationRoutingInput {
 
 export function useAgentGUIConversationRouting(
   input: UseAgentGUIConversationRoutingInput
-): void {
+): AgentGUIOpenSessionRequest | null {
   const {
     activeConversationIdRef,
+    agentTargetsLoading = false,
     conversationListQuery,
     conversations,
     conversationsRef,
@@ -49,6 +56,7 @@ export function useAgentGUIConversationRouting(
     hasLoadedConversations,
     intent,
     openSessionRequest,
+    openExternalSession,
     pendingOpenSessionRequestRef,
     selectConversation,
     sessionEngine,
@@ -56,6 +64,12 @@ export function useAgentGUIConversationRouting(
     transientConversation,
     workspaceId
   } = input;
+  const pendingOpenSessionRequestForRender =
+    resolveAgentGUIPendingOpenSessionRequestForRender({
+      handledSequence: handledOpenSessionSequenceRef.current,
+      openSessionRequest,
+      pendingOpenSessionRequest: pendingOpenSessionRequestRef.current
+    });
 
   const ensureTransientOpenSessionConversation = useCallback(
     (agentSessionId: string) => {
@@ -122,8 +136,21 @@ export function useAgentGUIConversationRouting(
     const resolveCanonicalId = (id: string) =>
       resolveConversationSummaryById(conversations, id, null) !== null;
     if (hasExplicitOpenSessionRequest) {
-      const requestedId = pendingOpenSessionRequest!.agentSessionId.trim();
+      const request = pendingOpenSessionRequest!;
+      const requestedId = request.agentSessionId.trim();
+      const hasExactTargetIdentity = Object.prototype.hasOwnProperty.call(
+        request,
+        "agentTargetId"
+      );
       if (!hasLoadedConversations) return;
+      if (hasExactTargetIdentity) {
+        if (request.agentTargetId !== null && agentTargetsLoading) return;
+        pendingOpenSessionRequestRef.current = null;
+        if (openExternalSession?.(request) === "selected") {
+          ensureTransientOpenSessionConversation(requestedId);
+        }
+        return;
+      }
       pendingOpenSessionRequestRef.current = null;
       selectConversation(requestedId, {
         reloadConversations: false,
@@ -174,13 +201,16 @@ export function useAgentGUIConversationRouting(
         return;
     }
   }, [
+    agentTargetsLoading,
     conversationListQuery,
     conversations,
     ensureTransientOpenSessionConversation,
     hasLoadedConversations,
     intent,
     openSessionRequest,
+    openExternalSession,
     selectConversation,
     transientConversation
   ]);
+  return pendingOpenSessionRequestForRender;
 }

@@ -22,8 +22,7 @@ import {
 import {
   desktopAgentGUIOpenSessionActivationType,
   normalizeDesktopAgentGUIProvider,
-  type DesktopAgentGUIProvider,
-  type DesktopAgentGUIWorkbenchState
+  type DesktopAgentGUIProvider
 } from "@renderer/features/workspace-agent/desktopAgentGUINodeState.ts";
 import { handleStandaloneAgentGuiLaunch } from "../services/standaloneAgentGuiLaunchHandler.ts";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
@@ -50,7 +49,6 @@ interface StandaloneAgentLaunchRoutingInput {
   setActivation: Dispatch<
     SetStateAction<WorkbenchHostNodeBodyContext["activation"]>
   >;
-  setNodeState: Dispatch<SetStateAction<DesktopAgentGUIWorkbenchState>>;
   workspaceAgentActivityService: IWorkspaceAgentActivityService;
   workspaceAppCenterService: IWorkspaceAppCenterService;
   workspaceId: string;
@@ -66,7 +64,6 @@ export function useStandaloneAgentLaunchRouting({
   openFileInSidebar,
   runtimeApi,
   setActivation,
-  setNodeState,
   workspaceAgentActivityService,
   workspaceAppCenterService,
   workspaceId
@@ -99,15 +96,11 @@ export function useStandaloneAgentLaunchRouting({
       };
       provider: string;
     }) => {
-      setNodeState((current) => ({
-        ...current,
-        agentTargetId: input.agentTargetId,
-        lastActiveAgentSessionId: input.agentSessionId,
-        provider: normalizeDesktopAgentGUIProvider(input.provider)
-      }));
       setActivation({
         payload: {
           agentSessionId: input.agentSessionId,
+          agentTargetId: input.agentTargetId,
+          provider: normalizeDesktopAgentGUIProvider(input.provider),
           ...(input.composerAppend
             ? { composerAppend: input.composerAppend }
             : {})
@@ -116,7 +109,7 @@ export function useStandaloneAgentLaunchRouting({
         type: desktopAgentGUIOpenSessionActivationType
       });
     },
-    [setActivation, setNodeState]
+    [setActivation]
   );
   const handleOpenMessageCenterChat = useCallback(
     (input: WorkspaceAgentMessageCenterOpenChatInput) => {

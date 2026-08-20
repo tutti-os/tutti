@@ -13,11 +13,43 @@ import {
   clearSubmittedDraftIfUnchanged,
   deleteSubmittedDraftSnapshotsForScopes,
   deleteUnacceptedSubmittedDraftSnapshot,
+  normalizeAgentGUIOpenSessionRequest,
   toRuntimeSendContent
 } from "./agentGuiController.draftMessageHelpers";
 
 afterEach(() => {
   resetAgentCustomMentionKindsForTests();
+});
+
+describe("open-session request normalization", () => {
+  it("preserves the exact Agent target and Provider identity", () => {
+    expect(
+      normalizeAgentGUIOpenSessionRequest({
+        agentSessionId: " session-claude ",
+        agentTargetId: " local:claude-code ",
+        provider: "claude-code",
+        sequence: 7
+      } as never)
+    ).toEqual({
+      agentSessionId: "session-claude",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code",
+      sequence: 7
+    });
+  });
+
+  it("keeps an explicitly undefined target compatible with legacy requests", () => {
+    expect(
+      normalizeAgentGUIOpenSessionRequest({
+        agentSessionId: "session-codex",
+        agentTargetId: undefined,
+        sequence: 8
+      })
+    ).toEqual({
+      agentSessionId: "session-codex",
+      sequence: 8
+    });
+  });
 });
 
 describe("runtime prompt materialization", () => {

@@ -16,8 +16,9 @@ test("source-session activation selects the exact session and requests a non-sub
         activateSession(input: unknown) {
           selected.push(input);
           return true;
-        }
-      } as AgentSessionEngine;
+        },
+        getSnapshot: () => ({ sessionLifecycle: { sessionsById: {} } })
+      } as unknown as AgentSessionEngine;
     }
   } as Pick<AgentGUIRuntime, "getSessionEngine">;
 
@@ -35,6 +36,7 @@ test("source-session activation selects the exact session and requests a non-sub
       type: desktopAgentGUIOpenSessionActivationType
     },
     agentActivityRuntime: runtime,
+    agentDirectoryStatus: "ready",
     handledSequence: null,
     markHandled() {},
     nodeId: "node-1",

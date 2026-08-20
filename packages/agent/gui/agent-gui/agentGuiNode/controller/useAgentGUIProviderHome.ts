@@ -40,9 +40,14 @@ import {
   resolveAgentGUIProviderRailTargetSelection
 } from "./agentGuiController.providerHelpers";
 import { reportAgentGUIConversationFilterTargetUnresolved } from "./agentGuiController.reporting";
+import type {
+  AgentGUIOpenSessionRequest,
+  AgentGUIOpenSessionSelectionOutcome
+} from "./agentGuiController.draftMessageHelpers";
 import { isPendingNewConversationActivationForSession } from "./useAgentGUIActivation";
 import {
   resolveConversationSummaryById,
+  type AgentGUIConversationSelectionOptions,
   type ConversationIntent
 } from "./useAgentConversationSelection";
 
@@ -79,7 +84,7 @@ interface UseAgentGUIProviderHomeInput {
   selectedComposerTargetDataRef: CurrentValue<AgentGUIComposerTargetData>;
   selectConversation(
     agentSessionId: string,
-    options?: { reloadConversations?: boolean }
+    options?: AgentGUIConversationSelectionOptions
   ): void;
   sessionEngine: AgentSessionEngine;
   setActiveConversationId: Dispatch<SetStateAction<string | null>>;
@@ -279,6 +284,112 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
     []
   );
 
+  const openExternalSession = useCallback(
+    (
+      request: AgentGUIOpenSessionRequest
+    ): AgentGUIOpenSessionSelectionOutcome => {
+      const current = inputRef.current;
+      const agentSessionId = request.agentSessionId.trim();
+      const hasAgentTargetId = Object.prototype.hasOwnProperty.call(
+        request,
+        "agentTargetId"
+      );
+      const agentTargetId = request.agentTargetId?.trim() || null;
+      const requestedProvider =
+        request.provider?.trim() || current.dataRef.current.provider;
+      if (!agentSessionId || !hasAgentTargetId || !requestedProvider) {
+        return "rejected";
+      }
+
+      const nextTarget = agentTargetId
+        ? resolveAgentGUIAgentTarget({
+            agentTargetId,
+            defaultAgentTargetId: current.defaultAgentTargetId,
+            provider: requestedProvider,
+            agentTargets: current.normalizedProviderTargets,
+            useStaticCatalog: current.shouldUseStaticProviderTargets
+          })
+        : null;
+      const knownSummary = resolveConversationSummaryById(
+        current.conversationsRef.current,
+        agentSessionId,
+        current.transientConversation
+      );
+      const knownSession = selectEngineSession(
+        current.sessionEngine.getSnapshot(),
+        agentSessionId
+      );
+      const knownAgentTargetId = knownSession
+        ? knownSession.agentTargetId?.trim() || null
+        : knownSummary
+          ? knownSummary.agentTargetId?.trim() || null
+          : undefined;
+      const knownProvider =
+        knownSession?.provider?.trim() || knownSummary?.provider?.trim() || "";
+      if (
+        (agentTargetId !== null && !nextTarget) ||
+        (nextTarget && nextTarget.provider !== requestedProvider) ||
+        (knownAgentTargetId !== undefined &&
+          knownAgentTargetId !== agentTargetId) ||
+        (knownProvider && knownProvider !== requestedProvider) ||
+        (agentTargetId === null &&
+          ((current.dataRef.current.agentTargetId?.trim() || null) !== null ||
+            current.dataRef.current.provider !== requestedProvider))
+      ) {
+        reportAgentGUIConversationFilterTargetUnresolved({
+          provider: requestedProvider,
+          agentTargetId: agentTargetId ?? "",
+          providerTargetCount: current.normalizedProviderTargets.length,
+          reason: "unresolved",
+          runtime: current.agentActivityRuntime,
+          workspaceId: current.workspaceId
+        });
+        return "rejected";
+      }
+
+      if (agentTargetId === null) {
+        if (current.conversationFilterRef.current.kind === "agentTarget") {
+          current.setConversationFilter({ kind: "all" });
+        }
+        current.selectConversation(agentSessionId, {
+          reloadConversations: false,
+          reveal: "external-open"
+        });
+        return "selected";
+      }
+      if (!nextTarget) return "rejected";
+
+      const currentAgentTargetId =
+        current.dataRef.current.agentTargetId?.trim() ||
+        current.effectiveSelectedProviderTarget.agentTargetId?.trim() ||
+        "";
+      const targetChanged =
+        currentAgentTargetId !== agentTargetId ||
+        current.dataRef.current.provider !== nextTarget.provider;
+      if (targetChanged) {
+        selectHomeComposerAgentTarget({
+          provider: nextTarget.provider,
+          agentTargetId
+        });
+      } else if (
+        current.conversationFilterRef.current.kind === "agentTarget" &&
+        current.conversationFilterRef.current.agentTargetId.trim() !==
+          agentTargetId
+      ) {
+        current.setConversationFilter({
+          kind: "agentTarget",
+          agentTargetId
+        });
+      }
+      current.selectConversation(agentSessionId, {
+        reloadConversations: false,
+        reveal: "external-open"
+      });
+      return "selected";
+    },
+    [selectHomeComposerAgentTarget]
+  );
+
   useEffect(() => {
     const effectiveAgentTargetId =
       input.effectiveSelectedProviderTarget.agentTargetId?.trim() ?? "";
@@ -446,6 +557,7 @@ export function useAgentGUIProviderHome(input: UseAgentGUIProviderHomeInput) {
   );
 
   return {
+    openExternalSession,
     resetHomeComposerAgentTargetToDefault,
     selectConversationFilterTarget,
     selectHomeComposerAgentTarget,

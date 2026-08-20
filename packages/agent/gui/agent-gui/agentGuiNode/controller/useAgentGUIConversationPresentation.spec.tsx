@@ -283,6 +283,46 @@ describe("useAgentGUIConversationPresentation", () => {
     });
   });
 
+  it("does not let the previous Session overwrite a pending exact target", () => {
+    const conversation = createConversation();
+    const input = createInput(conversation);
+    const onDataChange = vi.fn();
+    input.data = {
+      agentTargetId: "target-claude",
+      lastActiveAgentSessionId: "session-claude",
+      provider: "claude-code"
+    };
+    input.dataRef = { current: input.data };
+    input.normalizedExplicitProviderTargets = [
+      {
+        agentTargetId: "target-1",
+        label: "Codex",
+        provider: "codex",
+        ref: { kind: "local", provider: "codex" },
+        targetId: "target-1"
+      },
+      {
+        agentTargetId: "target-claude",
+        label: "Claude Code",
+        provider: "claude-code",
+        ref: { kind: "local", provider: "claude-code" },
+        targetId: "target-claude"
+      }
+    ];
+    input.normalizedProviderTargets = input.normalizedExplicitProviderTargets;
+    input.onDataChangeRef = { current: onDataChange };
+    input.pendingOpenSessionRequest = {
+      agentSessionId: "session-claude",
+      agentTargetId: "target-claude",
+      provider: "claude-code",
+      sequence: 10
+    };
+
+    renderHook(() => useAgentGUIConversationPresentation(input));
+
+    expect(onDataChange).not.toHaveBeenCalled();
+  });
+
   it("keeps a hidden transient conversation out of the rail while presenting its identity", () => {
     const conversation = createConversation();
     const hiddenTransient: AgentGUIConversationSummary = {
@@ -365,6 +405,7 @@ function createInput(
     isSubmitting: true,
     normalizedExplicitProviderTargets: [],
     normalizedProviderTargets: [],
+    pendingOpenSessionRequest: null,
     onDataChangeRef: { current: vi.fn() },
     shouldUseStaticProviderTargets: false,
     transientConversation: null,

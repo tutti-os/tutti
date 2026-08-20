@@ -281,4 +281,55 @@ describe("useAgentGUIConversationRouting", () => {
 
     expect(setIntent).not.toHaveBeenCalledWith({ tag: "home" });
   });
+
+  it("routes an exact cross-Agent request through the target-aware owner", () => {
+    const sessionEngine = createAgentSessionEngine({
+      clock: { nowUnixMs: () => 1 },
+      commandPort: createTestEngineCommandPort({
+        execute: async () => undefined
+      }),
+      identity: { origin: "test", workspaceId: "workspace-1" },
+      scheduler: { schedule: () => ({ cancel() {} }) }
+    });
+    const openExternalSession = vi.fn(() => "selected" as const);
+    const selectConversation = vi.fn();
+
+    renderHook(() =>
+      useAgentGUIConversationRouting({
+        activeConversationIdRef: { current: "session-codex" },
+        agentTargetsLoading: false,
+        conversationListQuery: {},
+        conversations: [],
+        conversationsRef: { current: [] },
+        handledOpenSessionSequenceRef: { current: null },
+        hasLoadedConversations: true,
+        intent: {
+          id: "session-codex",
+          source: "user-selection",
+          tag: "active"
+        },
+        openExternalSession,
+        openSessionRequest: {
+          agentSessionId: "session-claude",
+          agentTargetId: "local:claude-code",
+          provider: "claude-code",
+          sequence: 8
+        },
+        pendingOpenSessionRequestRef: { current: null },
+        selectConversation,
+        sessionEngine,
+        setIntent: vi.fn(),
+        transientConversation: null,
+        workspaceId: "workspace-1"
+      })
+    );
+
+    expect(openExternalSession).toHaveBeenCalledWith({
+      agentSessionId: "session-claude",
+      agentTargetId: "local:claude-code",
+      provider: "claude-code",
+      sequence: 8
+    });
+    expect(selectConversation).not.toHaveBeenCalled();
+  });
 });
