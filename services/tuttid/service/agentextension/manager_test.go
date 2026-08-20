@@ -294,7 +294,7 @@ func TestManagerReconcileMigratesLegacyRemoteV2InstallationAndFallsBackOffline(t
 		t.Fatal(err)
 	}
 	if !validPackageContentSHA256(migrated.PackageContentSHA256) || migrated.ReleaseArtifactSHA256 != "" ||
-		migrated.ReleaseArtifactSizeBytes != 0 || !migrated.PreferManagedRuntime {
+		migrated.ReleaseArtifactSizeBytes != 0 || !manager.isCurrentClientPinnedRemoteInstallation(migrated) {
 		t.Fatalf("migrated legacy installation identity = %#v", migrated)
 	}
 	loaded, err := manager.loadInstallationByID(legacy.ID)

@@ -63,13 +63,6 @@ func (m *Manager) RestoreActive(ctx context.Context) (bool, []error) {
 			}
 			continue
 		}
-		if !installation.HasLocalPackageProvenance() && !installation.PreferManagedRuntime {
-			installation.PreferManagedRuntime = true
-			if err := m.Installations.PutActive(installation); err != nil {
-				errs = append(errs, fmt.Errorf("record managed runtime preference for %s: %w", source.Key, err))
-				continue
-			}
-		}
 		if err := m.registerTarget(ctx, installation); err != nil {
 			errs = append(errs, fmt.Errorf("register active agent extension %s: %w", source.Key, err))
 		}

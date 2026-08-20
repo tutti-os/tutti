@@ -789,14 +789,10 @@ func buildDaemonAPI(
 	providerAuthWatcher := startAgentModelInvalidationAuthWatcher(
 		replayComposition, agentModelCatalog, agentSessionService, events,
 	)
-
-	if err := agentTargetSetup.StartManagedRuntimeReconciler(); err != nil {
+	if err := startAgentExtensionReconcilers(agentTargetSetup); err != nil {
+		providerAuthWatcher.Close()
 		agentRuntime.Close()
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start managed agent runtime reconciler: %w", err)
-	}
-	if err := agentTargetSetup.StartAccountUsageCompanionReconciler(); err != nil {
-		agentRuntime.Close()
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start account usage companion reconciler: %w", err)
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
 	}
 	if refreshAgentExtensionsInBackground {
 		startAgentExtensionBackgroundRefresh(agentExtensionManager, agentTargetSetup)

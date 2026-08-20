@@ -89,7 +89,11 @@ the installation record contract; `service/agentextension` owns release
 verification, package promotion, activation, and reconciliation; the narrow
 `data/agentextension` installation adapter alone derives `agent/extensions`
 paths and reads or atomically replaces `installation.json` and `active.json`.
-Service code must not reconstruct the daemon state root.
+Service code must not reconstruct the daemon state root. Managed-first Runtime
+selection is derived from the running client's exact source pin and is not an
+independent durable installation preference. Readers accept and discard the
+legacy `preferManagedRuntime` field so strict decoding remains compatible with
+records written during the initial rollout.
 
 The active record registers a system Agent Target with an
 `agent_extension` launch reference fixed to `<agentKey>@<version>`. The
@@ -344,11 +348,15 @@ plan digest. Renderer input cannot replace any execution field.
 After a client-pinned remote Extension is activated, a daemon-owned background
 reconciler automatically installs the exact Runtime declared by that signed
 Extension into Tutti's private runtime root. It runs once at startup, wakes
-after source refresh or activation, and retries transient failures with bounded
-backoff. It never writes to or replaces a user-owned PATH executable, and local
-development snapshots are excluded. The Target-scoped setup endpoints remain
-the observable repair and authentication surface; automatic convergence reuses
-the same verified install pipeline as an explicit setup action.
+after source refresh or activation, and tracks retry state independently for
+each Target. Transient installation failures use exponential backoff capped at
+30 minutes without rechecking settled Targets. Permanent contract, platform,
+or user-command ownership conflicts wait for a source or preference wake, or
+an explicit setup action, instead of retrying on a timer. It never writes to or replaces a
+user-owned PATH executable, and local development snapshots are excluded. The
+Target-scoped setup endpoints remain the observable repair and authentication
+surface; automatic convergence reuses the same verified install pipeline as an
+explicit setup action.
 
 Runtime roots use
 `~/.local/share/tutti/agent-runtimes/<agentKey>/<runtimeIdentity>`, where

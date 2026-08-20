@@ -72,12 +72,6 @@ func (m *Manager) reconcileConfiguredSource(
 			)}
 		}
 	}
-	if !sourceUsesLocalPackage(source) && !installation.PreferManagedRuntime {
-		installation.PreferManagedRuntime = true
-		if err := m.Installations.PutActive(installation); err != nil {
-			return []error{fmt.Errorf("record managed runtime preference for %s: %w", source.Key, err)}
-		}
-	}
 	if err := m.registerTarget(ctx, installation); err != nil {
 		return []error{fmt.Errorf("register agent extension %s: %w", source.Key, err)}
 	}

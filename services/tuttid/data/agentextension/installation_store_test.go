@@ -1,6 +1,7 @@
 package agentextension
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"testing"
@@ -48,6 +49,13 @@ func TestFileInstallationStoreRoundTripUsesPrivateStablePaths(t *testing.T) {
 		if info.Mode().Perm() != 0o600 {
 			t.Fatalf("%s mode = %o", path, info.Mode().Perm())
 		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if bytes.Contains(data, []byte("preferManagedRuntime")) {
+			t.Fatalf("%s persisted a derived managed Runtime preference", path)
+		}
 	}
 	info, err := os.Stat(filepath.Dir(packageDir))
 	if err != nil {
@@ -75,5 +83,30 @@ func TestFileInstallationStoreRejectsTraversalAndUnknownFields(t *testing.T) {
 	}
 	if _, err := store.ReadInstallation("generic@1.2.3"); err == nil {
 		t.Fatal("unknown field accepted")
+	}
+}
+
+func TestFileInstallationStoreAcceptsButClearsLegacyManagedRuntimePreference(t *testing.T) {
+	store := NewFileInstallationStore(t.TempDir())
+	packageDir, err := store.PackageDir("generic", "1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(packageDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(
+		filepath.Join(packageDir, "installation.json"),
+		[]byte(`{"id":"generic@1.2.3","preferManagedRuntime":true}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	installation, err := store.ReadInstallation("generic@1.2.3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if installation.LegacyPreferManagedRuntime {
+		t.Fatal("legacy managed runtime preference remained authoritative after decode")
 	}
 }

@@ -166,6 +166,23 @@ func installationMatchesConfiguredSource(source tuttitypes.AgentExtensionSource,
 		validSemver(source.PinnedVersion) && installation.Version == source.PinnedVersion
 }
 
+// isCurrentClientPinnedRemoteInstallation is the single owner of managed-first
+// Runtime policy. Historical remote installations remain usable for
+// session-pinned recovery, but only the exact remote release configured by the
+// running client participates in automatic Runtime convergence.
+func (m *Manager) isCurrentClientPinnedRemoteInstallation(installation Installation) bool {
+	if m == nil || installation.HasLocalPackageProvenance() {
+		return false
+	}
+	for _, source := range m.Sources {
+		if source.Key == installation.AgentKey && !sourceUsesLocalPackage(source) &&
+			installationMatchesConfiguredSource(source, installation) {
+			return true
+		}
+	}
+	return false
+}
+
 func (m *Manager) ResolveRuntime(ctx context.Context, installationID string) (RuntimeBinding, error) {
 	discoveryRoot, err := m.ensureDiscoveryRoot(ctx)
 	if err != nil {
@@ -198,7 +215,7 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 	if profile.SchemaVersion != "tutti.agent.discovery.v1" {
 		return RuntimeBinding{}, errors.New("unsupported discovery profile schema")
 	}
-	if installation.PreferManagedRuntime {
+	if m.isCurrentClientPinnedRemoteInstallation(installation) {
 		if binding, err := m.resolveInstalledManagedRuntime(ctx, installation, profile, cwd); err == nil {
 			return binding, nil
 		} else if errors.Is(err, ErrManagedRuntimeIntegrity) {
@@ -369,12 +386,6 @@ func (m *Manager) reconcileSource(ctx context.Context, source tuttitypes.AgentEx
 	if installed, err := m.loadActive(source.Key); err == nil && installed.Version == record.Version &&
 		installed.ReleaseArtifactSHA256 == strings.ToLower(record.Release.ArtifactSHA256) &&
 		installed.ReleaseArtifactSizeBytes == record.Release.ArtifactSizeBytes {
-		if !installed.PreferManagedRuntime {
-			installed.PreferManagedRuntime = true
-			if err := m.Installations.PutActive(installed); err != nil {
-				return Installation{}, fmt.Errorf("record managed runtime preference: %w", err)
-			}
-		}
 		return installed, nil
 	}
 	artifact, err := m.getBytes(ctx, record.Release.ArtifactURL, maxArtifact)
@@ -458,7 +469,7 @@ func (m *Manager) installVerifiedRelease(release Release, artifact []byte, sourc
 		AgentKey: release.AgentKey, Version: release.Version, Provider: "acp:" + release.AgentKey,
 		PackageDir: finalDir, PackageContentSHA256: contentDigest,
 		ReleaseArtifactSHA256: strings.ToLower(release.ArtifactSHA256), ReleaseArtifactSizeBytes: release.ArtifactSizeBytes,
-		PreferManagedRuntime: true, Manifest: manifest, InstalledAt: time.Now().UTC(),
+		Manifest: manifest, InstalledAt: time.Now().UTC(),
 	}
 	locales := map[string]string{}
 	if err := readJSON(filepath.Join(finalDir, filepath.FromSlash(manifest.LocalizationInfo.DefaultFile)), &locales); err != nil {
