@@ -426,6 +426,7 @@ export interface AgentComposerProps {
   }) => void;
   /** Retries or explicitly refreshes the target-scoped composer options. */
   onRetryComposerOptions?: (options?: {
+    force?: boolean;
     section?: "core" | "capabilities" | "connectors";
     waitForFreshModelCatalog?: boolean;
   }) => void;

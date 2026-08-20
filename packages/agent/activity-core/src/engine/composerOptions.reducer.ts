@@ -267,14 +267,10 @@ function mergeSectionOptions(
   if (section === "connectors") {
     return cloneAgentActivityComposerOptions({
       ...existing,
-      capabilityCatalog: [
-        ...(existing.capabilityCatalog ?? []).filter(
-          (capability) => capability.kind !== "connector"
-        ),
-        ...(incoming.capabilityCatalog ?? []).filter(
-          (capability) => capability.kind === "connector"
-        )
-      ],
+      capabilityCatalog: mergeConnectorCatalog(
+        existing.capabilityCatalog,
+        incoming.capabilityCatalog
+      ),
       loadedAtUnixMs: incoming.loadedAtUnixMs
     });
   }
@@ -283,10 +279,43 @@ function mergeSectionOptions(
     capabilities: incoming.capabilities ?? existing.capabilities,
     commands: incoming.commands,
     skills: incoming.skills,
-    capabilityCatalog: incoming.capabilityCatalog,
+    capabilityCatalog: mergeNonConnectorCatalog(
+      existing.capabilityCatalog,
+      incoming.capabilityCatalog
+    ),
     slashCommandPolicy: existing.slashCommandPolicy,
     loadedAtUnixMs: incoming.loadedAtUnixMs
   });
+}
+
+function mergeConnectorCatalog(
+  existing: AgentActivityComposerOptions["capabilityCatalog"],
+  incoming: AgentActivityComposerOptions["capabilityCatalog"]
+): NonNullable<AgentActivityComposerOptions["capabilityCatalog"]> {
+  return [
+    ...(existing ?? []).filter((capability) => capability.kind !== "connector"),
+    ...(incoming ?? []).filter((capability) => capability.kind === "connector")
+  ];
+}
+
+function mergeNonConnectorCatalog(
+  existing: AgentActivityComposerOptions["capabilityCatalog"],
+  incoming: AgentActivityComposerOptions["capabilityCatalog"]
+): AgentActivityComposerOptions["capabilityCatalog"] {
+  const incomingCatalog = incoming ?? [];
+  const incomingConnectors = incomingCatalog.filter(
+    (capability) => capability.kind === "connector"
+  );
+  const incomingOther = incomingCatalog.filter(
+    (capability) => capability.kind !== "connector"
+  );
+  if (incomingConnectors.length > 0) {
+    return [...incomingOther, ...incomingConnectors];
+  }
+  return [
+    ...incomingOther,
+    ...(existing ?? []).filter((capability) => capability.kind === "connector")
+  ];
 }
 
 function invalidate(

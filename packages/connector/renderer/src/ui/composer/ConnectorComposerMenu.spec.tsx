@@ -120,6 +120,31 @@ describe("ConnectorComposerMenu", () => {
     ).toHaveTextContent("+2");
   });
 
+  it("previews selected connectors on the trigger even when they are not authorized", () => {
+    render(
+      <ConnectorComposerMenu
+        items={[
+          connector("google-forms", "setup_required", true),
+          connector("github", "connected")
+        ]}
+        disabled={false}
+        labels={labels}
+        onOpenConnector={vi.fn()}
+        onOpenMarket={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByTestId("connector-market-composer-preview-google-forms")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-market-composer-preview-github")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connectors" })
+    ).not.toHaveTextContent("Connectors");
+  });
+
   it("shows runtime state versus setup actions and opens the catalog footer", async () => {
     const onOpenConnector = vi.fn();
     const onOpenMarket = vi.fn();

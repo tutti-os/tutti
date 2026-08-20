@@ -71,7 +71,7 @@ export function ComposerPrimaryCapabilityControl({
         disabled={disabled}
         items={projectConnectorComposerItems(
           availableSkills ?? [],
-          connectorsReadOnly ? [] : selectedConnectorKeys
+          selectedConnectorKeys
         )}
         labels={{
           authorize: labels.addContentConnectorAuthorize,
@@ -93,12 +93,15 @@ export function ComposerPrimaryCapabilityControl({
                   connectorKey,
                   action: "install"
                 });
-                onRetryComposerOptions?.({ section: "connectors" });
+                onRetryComposerOptions?.({
+                  force: true,
+                  section: "connectors"
+                });
               }
         }
         onOpenChange={(open) => {
           if (open) {
-            onRetryComposerOptions?.({ section: "connectors" });
+            onRetryComposerOptions?.({ force: true, section: "connectors" });
           }
         }}
         onOpenConnector={

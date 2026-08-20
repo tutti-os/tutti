@@ -188,6 +188,64 @@ test("connector section replaces only connector capabilities", async () => {
   assert.equal(merged.models[0]?.value, "capability-model");
 });
 
+test("capabilities without connectors keep a previously loaded connector catalog", async () => {
+  const harness = createHarness();
+  const connectors = harness.engine.loadComposerOptions({
+    ...loadInput(),
+    section: "connectors"
+  });
+  harness.succeed(
+    harness.commands[0]!.commandId,
+    composerOptions("connector-model", {
+      capabilityCatalog: [
+        {
+          id: "connector:google-forms",
+          invocation: "textTrigger",
+          kind: "connector",
+          label: "Google Forms",
+          name: "google-forms",
+          status: "available"
+        }
+      ]
+    })
+  );
+  await connectors;
+
+  const capabilities = harness.engine.loadComposerOptions({
+    ...loadInput(),
+    section: "capabilities"
+  });
+  harness.succeed(
+    harness.commands[1]!.commandId,
+    composerOptions("capability-model", {
+      capabilityCatalog: [
+        {
+          id: "skill:review",
+          invocation: "promptItem",
+          kind: "skill",
+          label: "Review",
+          name: "review",
+          status: "available"
+        }
+      ],
+      skills: [
+        {
+          name: "search",
+          sourceKind: "project",
+          trigger: "/search"
+        }
+      ]
+    })
+  );
+  const merged = await capabilities;
+
+  assert.deepEqual(
+    merged.capabilityCatalog?.map((capability) => capability.id),
+    ["skill:review", "connector:google-forms"]
+  );
+  assert.equal(merged.skills[0]?.name, "search");
+});
+
 test("semantic composer load joins an identical request and reuses its ready cache", async () => {
   const harness = createHarness();
   const first = harness.engine.loadComposerOptions(loadInput());
