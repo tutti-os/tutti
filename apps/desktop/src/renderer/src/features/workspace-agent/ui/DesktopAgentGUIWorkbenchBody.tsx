@@ -72,6 +72,7 @@ import { resolveDesktopAgentGUIEmbeddedDesktopSize } from "./desktopAgentGUIEmbe
 import { scheduleDesktopAgentGUIWorkbenchHydration } from "./desktopAgentGUIWorkbenchHydration.ts";
 import { resolveDesktopAgentGUIWorkbenchBodyVisibility } from "./desktopAgentGUIWorkbenchVisibility.ts";
 import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
+import { DesktopAgentConfigSystemActions } from "./DesktopAgentConfigSystemActions.tsx";
 import { hasDesktopLocalTuttiAgent } from "./desktopAgentConfigCommerceContext.ts";
 import { useDesktopAgentGUIComposerFooterAccessory } from "./useDesktopAgentGUIComposerFooterAccessory.tsx";
 import { useDesktopAgentGUIOpenSessionComposerRequest } from "./useDesktopAgentGUIOpenSessionComposerRequest.ts";
@@ -98,6 +99,10 @@ import {
 const EMPTY_AGENT_SESSION_LAUNCH_MODES_BY_PROJECT_SECTION_KEY: Readonly<
   Record<string, AgentGUISessionLaunchMode>
 > = Object.freeze({});
+
+const renderDesktopAgentConfigSystemActions: NonNullable<
+  AgentGUIProps["renderSlots"]["agentConfigSystemActions"]
+> = () => <DesktopAgentConfigSystemActions />;
 
 const AgentSessionReplayNodeReadiness = lazy(() =>
   import("../../agent-session-replay/ui/AgentSessionReplayNodeReadiness.tsx").then(
@@ -708,6 +713,7 @@ function DesktopAgentGUISurfaceImpl({
     },
     renderSlots: {
       agentConfigAccount: renderAgentConfigAccount,
+      agentConfigSystemActions: renderDesktopAgentConfigSystemActions,
       composerFooterAccessory: renderComposerFooterAccessory,
       sidebarFooter: renderSidebarFooter
     }

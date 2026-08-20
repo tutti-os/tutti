@@ -153,6 +153,7 @@ export const AgentGUINode = memo(function AgentGUINode({
   } = hostActions;
   const {
     agentConfigAccount: renderAgentConfigAccount,
+    agentConfigSystemActions: renderAgentConfigSystemActions,
     agentTargetInfo: renderAgentTargetInfo,
     composerFooterAccessory: renderComposerFooterAccessory,
     projectDirectoryPickerHeaderActions:
@@ -399,6 +400,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   const agentConfigAccountContent = agentConfigMenuContext
     ? (renderAgentConfigAccount?.(agentConfigMenuContext) ?? null)
     : null;
+  const agentConfigSystemActionsContent =
+    renderAgentConfigSystemActions?.() ?? null;
 
   return (
     <AgentGUIMentionServiceBoundary
@@ -512,6 +515,7 @@ export const AgentGUINode = memo(function AgentGUINode({
                 controllerRailStatus?.resolvedEmpty ?? false
               }
               agentConfigAccountContent={agentConfigAccountContent}
+              agentConfigSystemActionsContent={agentConfigSystemActionsContent}
               providerAuthAccountLabels={effectiveProviderAuthAccountLabels}
               onAgentConfigMenuClose={handleAgentConfigMenuClose}
               onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
