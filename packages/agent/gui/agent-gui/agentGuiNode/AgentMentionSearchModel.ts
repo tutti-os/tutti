@@ -566,9 +566,7 @@ export function providerItemToAgentMentionItem(input: {
   workspaceId: string;
 }): AgentContextMentionItem | null {
   const label = compactText(input.label);
-  if (!label) {
-    return null;
-  }
+  if (!label) return null;
   if (input.insertResult.kind === "markdown-link") {
     const href = input.insertResult.href.trim();
     const directoryPath = input.directory?.path.trim() ?? "";
