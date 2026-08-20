@@ -259,6 +259,7 @@ type RemoteStreamableHTTPImplementation struct {
 
 type Installation struct {
 	State                  InstallationState `json:"state"`
+	InstalledAtUnixMS      int64             `json:"installedAtUnixMs,omitempty"`
 	InstalledVersion       string            `json:"installedVersion,omitempty"`
 	InstalledReleaseID     string            `json:"installedReleaseId,omitempty"`
 	InstalledReleaseDigest string            `json:"installedReleaseDigest,omitempty"`

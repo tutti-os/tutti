@@ -15,6 +15,7 @@ func TestConnectorOptionsProjectsEveryCatalogState(t *testing.T) {
 		connectorFixture("legacy", "Legacy", connectorhost.InstallationStateInstalled, connectorhost.AuthorizationStateConnected, connectorhost.CompatibilityStateUnsupportedVersion),
 		connectorFixture("slack", "Slack", connectorhost.InstallationStateNotInstalled, connectorhost.AuthorizationStateConnected, connectorhost.CompatibilityStateSupported),
 	}}}
+	source.snapshot.Connectors[0].Installation.InstalledAtUnixMS = 1786089600000
 
 	options, err := ConnectorOptions(context.Background(), source)
 	if err != nil {
@@ -23,7 +24,7 @@ func TestConnectorOptionsProjectsEveryCatalogState(t *testing.T) {
 	if len(options) != 4 {
 		t.Fatalf("options = %#v, want every catalog connector", options)
 	}
-	if got := options[0]; got.ID != "connector:github" || got.Label != "GitHub" || got.IconURL != "data:image/png;base64,aWNvbg==" || got.Status != CapabilityStatusAvailable || got.Trigger != "/github" || got.Invocation != CapabilityInvocationTextTrigger || got.Source != CapabilitySourceLocalDB {
+	if got := options[0]; got.ID != "connector:github" || got.Label != "GitHub" || got.IconURL != "data:image/png;base64,aWNvbg==" || got.InstalledAtUnixMS != 1786089600000 || got.Status != CapabilityStatusAvailable || got.Trigger != "/github" || got.Invocation != CapabilityInvocationTextTrigger || got.Source != CapabilitySourceLocalDB {
 		t.Fatalf("github option = %#v", got)
 	}
 	if got := options[1]; got.Label != "notion" || got.Status != CapabilityStatusAuthRequired {

@@ -448,9 +448,10 @@ export class ConnectorMarketService implements IConnectorMarketService {
     if (this.disposed || !this.canRequest()) {
       return Promise.resolve();
     }
-    const previousAttempt = this.authorizationAttempts.get(connectorKey);
-    if (previousAttempt) {
-      previousAttempt.canceled = true;
+    const inFlight = this.authorizationInFlight.get(connectorKey);
+    const currentAttempt = this.authorizationAttempts.get(connectorKey);
+    if (inFlight && currentAttempt && !currentAttempt.canceled) {
+      return inFlight;
     }
     let authorization!: Promise<void>;
     authorization = this.runAuthorization(connectorKey, secret).finally(() => {
@@ -753,7 +754,6 @@ export class ConnectorMarketService implements IConnectorMarketService {
       const pageResults = await Promise.allSettled(
         requestedCategories.map((category) =>
           this.dependencies.backend.listCatalogPage({
-            installation: "not_installed",
             sectionId: category.categoryId,
             pageSize: 20
           })
@@ -855,7 +855,6 @@ export class ConnectorMarketService implements IConnectorMarketService {
     markConnectorMarketSectionLoading(this.dataStore, sectionId);
     try {
       const page = await this.dependencies.backend.listCatalogPage({
-        installation: "not_installed",
         sectionId,
         pageSize: 20,
         pageToken

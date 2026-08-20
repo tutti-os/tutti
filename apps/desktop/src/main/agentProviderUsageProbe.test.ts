@@ -50,12 +50,13 @@ test("listDesktopWorkspaceAgentProbes consumes provider-owned API billing", asyn
     },
     {
       probeAgentTargetAccountUsage: async (agentTargetId) => ({
-        schemaVersion: "tutti.agent.account-usage.v1",
+        schemaVersion: "tutti.agent.account-usage.v2",
         agentTargetId,
         provider: "acp:usage-fixture",
         outcome: "available",
         capturedAtUnixMs: 123,
         billingMode: "api",
+        quotaState: "not_applicable",
         quotas: []
       })
     }
@@ -80,7 +81,7 @@ test("listDesktopWorkspaceAgentProbes fails closed on an unknown provider-owned 
     {
       probeAgentTargetAccountUsage: async () =>
         ({
-          schemaVersion: "tutti.agent.account-usage.v2",
+          schemaVersion: "tutti.agent.account-usage.v3",
           agentTargetId: "extension:usage-fixture",
           provider: "acp:usage-fixture",
           outcome: "available",
@@ -111,7 +112,7 @@ test("listDesktopWorkspaceAgentProbes strips provider diagnostics from projectio
     {
       probeAgentTargetAccountUsage: async () =>
         ({
-          schemaVersion: "tutti.agent.account-usage.v1",
+          schemaVersion: "tutti.agent.account-usage.v2",
           agentTargetId: "extension:usage-fixture",
           provider: "acp:usage-fixture",
           outcome: "error",

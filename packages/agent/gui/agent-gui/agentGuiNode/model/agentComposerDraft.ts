@@ -30,8 +30,21 @@ import {
   agentPromptContentConnectors,
   mergeAgentComposerDraftConnectorKeys
 } from "./agentComposerDraftConnectors";
+import {
+  agentPromptImageBlockToDraftImage,
+  type AgentPromptImageContentBlock
+} from "./agentComposerDraftImages";
+import {
+  projectLocalConnectorPrompt,
+  promptForProviderSkills,
+  skillTriggerForPrefix
+} from "./agentSkillOptions";
 
-export { agentComposerDraftConnectors } from "./agentComposerDraftConnectors";
+export {
+  agentComposerDraftConnectors,
+  agentComposerDraftPreservingConnectors
+} from "./agentComposerDraftConnectors";
+export { formatAgentComposerDraftBytes } from "./agentComposerDraftImages";
 
 export {
   extractPastedTextArchivePaths,
@@ -139,21 +152,8 @@ export function applyPastedTextStagingResult(
     uploading: false
   };
 }
-import {
-  projectLocalConnectorPrompt,
-  promptForProviderSkills,
-  skillTriggerForPrefix
-} from "./agentSkillOptions";
 
 export const MAX_AGENT_COMPOSER_DRAFT_IMAGES = 8;
-
-type AgentPromptImageContentBlock = AgentPromptContentBlock & {
-  type: "image";
-  mimeType: "image/png" | "image/jpeg" | "image/webp";
-  attachmentId?: string;
-  data?: string;
-  path?: string;
-};
 
 export function emptyAgentComposerDraft(): AgentComposerDraft {
   return [{ type: "text", text: "" }];
@@ -763,38 +763,4 @@ export function materializePastedTextInstructions(
 // break the parse-back in {@link linkifyPastedTextReferences}.
 function sanitizePastedTextPreviewForContent(name: string | undefined): string {
   return (name ?? "").replace(/["\n\r]/g, " ").trim();
-}
-
-export function formatAgentComposerDraftBytes(sizeBytes: number): string {
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`;
-  }
-  const kib = sizeBytes / 1024;
-  if (kib < 1024) {
-    return `${kib.toFixed(kib >= 10 ? 0 : 1)} KB`;
-  }
-  const mib = kib / 1024;
-  return `${mib.toFixed(mib >= 10 ? 0 : 1)} MB`;
-}
-
-function agentPromptImageBlockToDraftImage(
-  image: AgentPromptImageContentBlock,
-  idPrefix: string,
-  index: number
-): AgentComposerDraftImage {
-  return {
-    id: `${idPrefix}:image:${index}`,
-    name: image.name?.trim() || `image-${index + 1}`,
-    mimeType: image.mimeType,
-    ...(image.attachmentId ? { attachmentId: image.attachmentId } : {}),
-    ...(image.data ? { data: image.data } : {}),
-    ...(image.url ? { url: image.url } : {}),
-    ...(image.path ? { path: image.path } : {}),
-    previewUrl:
-      typeof image.data === "string" && image.data
-        ? image.data.startsWith("data:")
-          ? image.data
-          : `data:${image.mimeType};base64,${image.data}`
-        : (image.url ?? "")
-  };
 }

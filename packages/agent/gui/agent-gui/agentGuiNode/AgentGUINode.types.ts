@@ -261,6 +261,8 @@ export interface AgentGUINodeRenderSlots {
    * Returning null preserves AgentGUI's provider account and quota content.
    */
   agentConfigAccount?: (context: AgentGUIAgentConfigMenuContext) => ReactNode;
+  /** Optional Host-owned system actions appended to the Agent config menu. */
+  agentConfigSystemActions?: () => ReactNode;
   projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   projectSelectOptions?: AgentProjectDropdownOptions;
   referencePickerSidebarActions?: (
@@ -503,6 +505,7 @@ export function areAgentGUINodePropsEqual(
     pa.onEngagementEvent === na.onEngagementEvent &&
     pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
     ps.agentConfigAccount === ns.agentConfigAccount &&
+    ps.agentConfigSystemActions === ns.agentConfigSystemActions &&
     ps.agentTargetInfo === ns.agentTargetInfo &&
     ps.composerFooterAccessory === ns.composerFooterAccessory &&
     ps.providerRailEmpty === ns.providerRailEmpty &&

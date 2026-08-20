@@ -33,8 +33,11 @@ type scriptedSessionState struct {
 	threadName                      string
 	replayTokenUsageOnResume        bool
 	threadResumeError               bool
+	mcpAuthStderrOnStart            bool
 	mcpAuthStderrOnResume           bool
+	mcpAuthStderrStartResponse      bool
 	mcpAuthStderrResumeResponse     bool
+	mcpFailureResponseDelay         time.Duration
 	mcpStartupStatusFailedOnStart   bool
 	mcpStartupStatusFailedOnResume  bool
 	mcpStartupStatusFailureResponse bool
@@ -205,8 +208,11 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 	case appServerMethodThreadStart, appServerMethodThreadResume:
 		s.mu.Lock()
 		threadResumeError := s.threadResumeError && message.Method == appServerMethodThreadResume
+		mcpAuthStderrOnStart := s.mcpAuthStderrOnStart && message.Method == appServerMethodThreadStart
 		mcpAuthStderrOnResume := s.mcpAuthStderrOnResume && message.Method == appServerMethodThreadResume
+		mcpAuthStderrStartResponse := s.mcpAuthStderrStartResponse && message.Method == appServerMethodThreadStart
 		mcpAuthStderrResumeResponse := s.mcpAuthStderrResumeResponse && message.Method == appServerMethodThreadResume
+		mcpFailureResponseDelay := s.mcpFailureResponseDelay
 		mcpStartupStatusFailed := (s.mcpStartupStatusFailedOnStart && message.Method == appServerMethodThreadStart) ||
 			(s.mcpStartupStatusFailedOnResume && message.Method == appServerMethodThreadResume)
 		mcpStartupStatusFailureResponse := s.mcpStartupStatusFailureResponse
@@ -215,9 +221,12 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 		threadStartedResponse := s.threadStartedResponse
 		replayTokenUsage := s.replayTokenUsageOnResume && message.Method == appServerMethodThreadResume
 		s.mu.Unlock()
-		if mcpAuthStderrOnResume {
+		mcpAuthStderr := mcpAuthStderrOnStart || mcpAuthStderrOnResume
+		mcpAuthStderrResponse := (mcpAuthStderrOnStart && mcpAuthStderrStartResponse) ||
+			(mcpAuthStderrOnResume && mcpAuthStderrResumeResponse)
+		if mcpAuthStderr {
 			s.sendStderr([]byte(`rmcp::transport::worker: worker quit with fatal: Transport channel closed, when AuthRequired(AuthRequiredError { www_authenticate_header: "Bearer resource_metadata=\"https://mcp.figma.com/.well-known/oauth-protected-resource\",scope=\"mcp:connect\"" })`))
-			if !mcpAuthStderrResumeResponse {
+			if !mcpAuthStderrResponse {
 				return true
 			}
 		}
@@ -260,7 +269,7 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 				},
 			})
 		}
-		s.sendJSON(map[string]any{
+		response := map[string]any{
 			"id": message.ID,
 			"result": map[string]any{
 				"thread":          map[string]any{"id": "codex-thread-1"},
@@ -271,7 +280,15 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 				"sandbox":         map[string]any{"type": "workspaceWrite"},
 				"modelProvider":   "openai",
 			},
-		})
+		}
+		if (mcpAuthStderr || mcpStartupStatusFailed) && mcpFailureResponseDelay > 0 {
+			go func() {
+				time.Sleep(mcpFailureResponseDelay)
+				s.sendJSON(response)
+			}()
+			return true
+		}
+		s.sendJSON(response)
 		if !threadStarted {
 			s.notify(appServerNotifyThreadStarted, map[string]any{
 				"thread": map[string]any{"id": "codex-thread-1"},

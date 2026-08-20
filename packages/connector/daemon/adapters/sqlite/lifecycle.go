@@ -91,10 +91,77 @@ WHERE updated_at_unix_ms = 0`)
 			return err
 		}
 	}
+	if err := backfillConnectorInstallationTimes(ctx, tx); err != nil {
+		return err
+	}
 	if err := backfillInstalledReleaseEvidence(ctx, tx); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func backfillConnectorInstallationTimes(ctx context.Context, tx *sql.Tx) error {
+	rows, err := tx.QueryContext(ctx, `SELECT connector_key, connector_json FROM connector_market_connectors`)
+	if err != nil {
+		return err
+	}
+	type connectorBackfill struct {
+		connectorKey string
+		connector    market.Connector
+	}
+	var connectors []connectorBackfill
+	for rows.Next() {
+		var connectorKey, payload string
+		if err := rows.Scan(&connectorKey, &payload); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		connector, err := decodeConnector(payload)
+		if err != nil {
+			_ = rows.Close()
+			return err
+		}
+		connectors = append(connectors, connectorBackfill{connectorKey: connectorKey, connector: connector})
+	}
+	if err := rows.Close(); err != nil {
+		return err
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	for _, entry := range connectors {
+		if entry.connector.Installation.State != market.InstallationStateInstalled ||
+			entry.connector.Installation.InstalledAtUnixMS > 0 {
+			continue
+		}
+		var operationPayload string
+		err := tx.QueryRowContext(ctx, `SELECT operation_json FROM connector_market_operations
+WHERE connector_key = ? AND kind = ? AND state = ?
+ORDER BY updated_at_unix_ms DESC LIMIT 1`, entry.connectorKey, market.OperationKindInstall, market.OperationStateCompleted).Scan(&operationPayload)
+		if errors.Is(err, sql.ErrNoRows) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		operation, err := decodeOperation(operationPayload)
+		if err != nil {
+			return err
+		}
+		installedAtUnixMS := operation.UpdatedAt.UTC().UnixMilli()
+		if installedAtUnixMS <= 0 {
+			continue
+		}
+		entry.connector.Installation.InstalledAtUnixMS = installedAtUnixMS
+		payload, err := json.Marshal(entry.connector)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE connector_market_connectors SET connector_json = ? WHERE connector_key = ?`, string(payload), entry.connectorKey); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func backfillInstalledReleaseEvidence(ctx context.Context, tx *sql.Tx) error {

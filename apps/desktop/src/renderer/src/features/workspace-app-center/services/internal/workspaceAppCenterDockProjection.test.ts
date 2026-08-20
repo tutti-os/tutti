@@ -12,6 +12,10 @@ test("workspace app center dock order stays before task and app entries", () => 
 });
 
 test("projectWorkspaceAppCenterDockApps maps runtime status to dock state", () => {
+  assert.equal(
+    projectWorkspaceAppCenterDockApps([createApp()])[0]?.visibility,
+    "when-open"
+  );
   assert.deepEqual(
     projectSingleWorkspaceAppCenterDockApp({
       launchUrl: "https://app.local",
@@ -231,7 +235,12 @@ test("projectWorkspaceAppCenterDockApps includes only enabled apps", () => {
 function projectSingleWorkspaceAppCenterDockApp(
   input: Partial<ReturnType<typeof createApp>>
 ) {
-  return projectWorkspaceAppCenterDockApps([createApp(input)])[0] ?? null;
+  const projection = projectWorkspaceAppCenterDockApps([createApp(input)])[0];
+  if (!projection) {
+    return null;
+  }
+  const { visibility: _visibility, ...runtimeProjection } = projection;
+  return runtimeProjection;
 }
 
 function createApp(

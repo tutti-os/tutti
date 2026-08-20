@@ -45,6 +45,7 @@ import {
 } from "./developerLogsDesktop.ts";
 import {
   applyDesktopThemeSource,
+  getDesktopThemeState,
   syncDesktopWindowBackgroundColors
 } from "./desktopTheme";
 import { registerIpcHandlers } from "./ipc/register";
@@ -68,7 +69,10 @@ import { registerWorkspaceFileIconProtocol } from "./host/workspaceFileIconProto
 import { applyDesktopElectronPlatformCompatibility } from "./electronPlatformCompatibility.ts";
 import { createAppUpdateService } from "./update/appUpdateService.ts";
 import { createTuttidDesktopUpdateAdmissionBackend } from "./update/desktopUpdateAdmissionBackend.ts";
-import { getWorkspaceWindowKind } from "./windows/workspaceWindow.ts";
+import {
+  getWorkspaceWindowKind,
+  syncWorkspaceWindowTitleBarOverlayColors
+} from "./windows/workspaceWindow.ts";
 import {
   resolveDesktopDistribution,
   resolveDesktopManualDownloadUrl
@@ -76,6 +80,11 @@ import {
 
 function envFlagEnabled(value: string | undefined): boolean {
   return /^(1|true|yes|on)$/iu.test(value?.trim() ?? "");
+}
+
+function syncDesktopWindowThemeColors(): void {
+  syncDesktopWindowBackgroundColors();
+  syncWorkspaceWindowTitleBarOverlayColors(getDesktopThemeState().appearance);
 }
 
 function applyElectronDiagnosticSwitches(): void {
@@ -372,7 +381,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
   const theme = applyDesktopThemeSource(
     desktopAppServices.preferences.getThemeSource()
   );
-  syncDesktopWindowBackgroundColors();
+  syncDesktopWindowThemeColors();
 
   void import("electron").then(({ nativeTheme }) => {
     nativeTheme.on("updated", () => {
@@ -380,7 +389,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
         return;
       }
 
-      syncDesktopWindowBackgroundColors();
+      syncDesktopWindowThemeColors();
     });
   });
 
@@ -442,7 +451,7 @@ export async function bootstrapDesktopApp(): Promise<void> {
     logger,
     preferences: desktopAppServices.preferences,
     updateService: desktopAppServices.updateService,
-    syncWindowBackgroundColors: syncDesktopWindowBackgroundColors
+    syncWindowBackgroundColors: syncDesktopWindowThemeColors
   });
   const agentPowerSaveBlocker = connectAgentPowerSaveBlocker({
     eventStreamClient: createDesktopHostPreferencesEventStreamClient(

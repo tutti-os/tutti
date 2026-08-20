@@ -1,31 +1,70 @@
 package agentruntime
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
 const codexAppServerStartupTraceFileName = "tutti-codex-appserver-startup.jsonl"
+const codexAppServerStartupTraceMaxBytes = 64 * 1024 * 1024
 
 var codexAppServerStartupTraceMu sync.Mutex
 
-type codexAppServerStartupTrace struct {
-	startedAt time.Time
-	session   Session
-	path      string
+var codexAppServerStartupSpanNames = map[string]struct{}{
+	"app_server.thread_start.attach_listener": {},
+	"app_server.thread_start.config_snapshot": {},
+	"app_server.thread_start.create_thread":   {},
+	"app_server.thread_start.notify_started":  {},
+	"app_server.thread_start.resolve_status":  {},
+	"app_server.thread_start.send_response":   {},
+	"app_server.thread_start.upsert_thread":   {},
+	"session_init":                            {},
+	"session_init.auth_mcp":                   {},
+	"session_init.mcp_manager_init":           {},
+	"session_init.network_proxy":              {},
+	"session_init.plugin_skill_warmup":        {},
+	"session_init.state_db":                   {},
+	"session_init.thread_name_lookup":         {},
+	"session_init.thread_persistence":         {},
+	"shell_snapshot":                          {},
+	"thread_spawn":                            {},
 }
 
-func newCodexAppServerStartupTrace(session Session) *codexAppServerStartupTrace {
+const codexAppServerStderrLineLimit = 64 * 1024
+
+type codexAppServerStartupTrace struct {
+	startedAt          time.Time
+	session            Session
+	path               string
+	spanObserver       CodexAppServerSpanObserver
+	startupObserver    CodexAppServerStartupObserver
+	stderrMu           sync.Mutex
+	stderrLine         []byte
+	spanStartedAt      map[string][]time.Time
+	completedSpanCount atomic.Int64
+}
+
+func newCodexAppServerStartupTrace(
+	session Session,
+	spanObserver CodexAppServerSpanObserver,
+	startupObserver CodexAppServerStartupObserver,
+) *codexAppServerStartupTrace {
 	settings := session.SettingsValue()
 	trace := &codexAppServerStartupTrace{
-		startedAt: time.Now(),
-		session:   session,
-		path:      codexAppServerStartupTracePath(),
+		startedAt:       time.Now(),
+		session:         session,
+		path:            codexAppServerStartupTracePath(),
+		spanObserver:    spanObserver,
+		startupObserver: startupObserver,
+		spanStartedAt:   make(map[string][]time.Time),
 	}
 	trace.Log("start.begin", map[string]any{
 		"permission_mode_id": session.PermissionModeID,
@@ -39,9 +78,10 @@ func newCodexAppServerStartupTrace(session Session) *codexAppServerStartupTrace 
 func newCodexAppServerTurnTrace(session Session, turnID string, metadata map[string]any) *codexAppServerStartupTrace {
 	settings := session.SettingsValue()
 	trace := &codexAppServerStartupTrace{
-		startedAt: time.Now(),
-		session:   session,
-		path:      codexAppServerStartupTracePath(),
+		startedAt:     time.Now(),
+		session:       session,
+		path:          codexAppServerStartupTracePath(),
+		spanStartedAt: make(map[string][]time.Time),
 	}
 	fields := map[string]any{
 		"turn_id":            strings.TrimSpace(turnID),
@@ -94,22 +134,51 @@ func (t *codexAppServerStartupTrace) Log(event string, fields map[string]any) {
 	if err := os.MkdirAll(filepath.Dir(t.path), 0o755); err != nil {
 		return
 	}
-	file, err := os.OpenFile(t.path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err != nil {
+	if err := appendCodexAppServerStartupTrace(t.path, line, codexAppServerStartupTraceMaxBytes); err != nil {
 		return
 	}
+}
+
+func appendCodexAppServerStartupTrace(path string, line []byte, maxBytes int64) error {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return err
+	}
 	defer func() { _ = file.Close() }()
-	_, _ = file.Write(append(line, '\n'))
+	if info, err := file.Stat(); err != nil {
+		return err
+	} else if maxBytes > 0 && info.Size()+int64(len(line)+1) > maxBytes {
+		if err := file.Truncate(0); err != nil {
+			return err
+		}
+	}
+	_, err = file.Write(append(line, '\n'))
+	return err
 }
 
 func (t *codexAppServerStartupTrace) Finish(err error) {
-	fields := map[string]any{}
-	if err != nil {
-		fields["error"] = err.Error()
-		t.Log("start.failed", fields)
+	if t == nil {
 		return
 	}
-	t.Log("start.succeeded", fields)
+	outcome := "succeeded"
+	fields := map[string]any{}
+	if err != nil {
+		outcome = "failed"
+		fields["error"] = err.Error()
+		t.Log("start.failed", fields)
+	} else {
+		t.Log("start.succeeded", fields)
+	}
+	t.notifyStartupObserver(CodexAppServerStartupObservation{
+		Provider:           strings.TrimSpace(t.session.Provider),
+		RoomID:             strings.TrimSpace(t.session.RoomID),
+		AgentSessionID:     strings.TrimSpace(t.session.AgentSessionID),
+		StartedAt:          t.startedAt.UTC().Format(time.RFC3339Nano),
+		Outcome:            outcome,
+		DurationMS:         time.Since(t.startedAt).Milliseconds(),
+		MCPServerCount:     len(t.session.MCPServers),
+		CompletedSpanCount: int(t.completedSpanCount.Load()),
+	})
 }
 
 func (t *codexAppServerStartupTrace) LogMessage(method string, hasID bool, paramsSize int) {
@@ -129,6 +198,165 @@ func (t *codexAppServerStartupTrace) LogStderr(chunk []byte) {
 		"message": truncateACPLogValue(text, 2000),
 		"size":    len(chunk),
 	})
+
+	t.stderrMu.Lock()
+	observations := make([]CodexAppServerSpanObservation, 0)
+	t.stderrLine = append(t.stderrLine, chunk...)
+	for {
+		line, rest, ok := bytes.Cut(t.stderrLine, []byte("\n"))
+		if !ok {
+			if len(t.stderrLine) > codexAppServerStderrLineLimit {
+				t.stderrLine = append([]byte(nil), t.stderrLine[len(t.stderrLine)-codexAppServerStderrLineLimit:]...)
+			}
+			break
+		}
+		t.stderrLine = rest
+		if observation := t.logCodexAppServerSpan(line); observation != nil {
+			observations = append(observations, *observation)
+		}
+	}
+	t.stderrMu.Unlock()
+	for _, observation := range observations {
+		t.notifySpanObserver(observation)
+	}
+}
+
+func withCodexAppServerLogging(env []string) []string {
+	env = withoutEnvironmentKeyFold(env, "LOG_FORMAT")
+	env = withoutEnvironmentKeyFold(env, "RUST_LOG")
+	return append(env, codexAppServerLogFormatEnv, codexAppServerRustLogEnv)
+}
+
+func withoutEnvironmentKeyFold(env []string, key string) []string {
+	filtered := make([]string, 0, len(env))
+	for _, entry := range env {
+		candidateKey, _, ok := strings.Cut(entry, "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			continue
+		}
+		filtered = append(filtered, entry)
+	}
+	return filtered
+}
+
+func (t *codexAppServerStartupTrace) logCodexAppServerSpan(line []byte) *CodexAppServerSpanObservation {
+	var record struct {
+		Timestamp string                       `json:"timestamp"`
+		Target    string                       `json:"target"`
+		Fields    map[string]json.RawMessage   `json:"fields"`
+		Span      map[string]json.RawMessage   `json:"span"`
+		Spans     []map[string]json.RawMessage `json:"spans"`
+	}
+	if err := json.Unmarshal(bytes.TrimSpace(line), &record); err != nil {
+		return nil
+	}
+	spanName := codexJSONLogString(record.Span["name"])
+	if spanName == "" {
+		for index := len(record.Spans) - 1; index >= 0; index-- {
+			spanName = codexJSONLogString(record.Spans[index]["name"])
+			if spanName != "" {
+				break
+			}
+		}
+	}
+	if _, ok := codexAppServerStartupSpanNames[spanName]; !ok {
+		return nil
+	}
+	phase := codexJSONLogString(record.Fields["message"])
+	if phase != "new" && phase != "close" {
+		return nil
+	}
+	startedAt, parseErr := time.Parse(time.RFC3339Nano, record.Timestamp)
+	timestampOK := parseErr == nil
+	fields := map[string]any{
+		"span_name":  spanName,
+		"span_phase": phase,
+	}
+	var observation *CodexAppServerSpanObservation
+	if record.Target != "" {
+		fields["span_target"] = record.Target
+	}
+	if record.Timestamp != "" {
+		fields["codex_timestamp"] = record.Timestamp
+	}
+	if phase == "new" {
+		if timestampOK {
+			t.spanStartedAt[spanName] = append(t.spanStartedAt[spanName], startedAt)
+		}
+	} else if starts := t.spanStartedAt[spanName]; len(starts) > 0 {
+		t.completedSpanCount.Add(1)
+		start := starts[len(starts)-1]
+		t.spanStartedAt[spanName] = starts[:len(starts)-1]
+		durationMS := int64(0)
+		if timestampOK {
+			durationMS = startedAt.Sub(start).Milliseconds()
+			fields["duration_ms"] = durationMS
+		}
+		if busy := codexJSONLogString(record.Fields["time.busy"]); busy != "" {
+			fields["span_busy"] = busy
+		}
+		if idle := codexJSONLogString(record.Fields["time.idle"]); idle != "" {
+			fields["span_idle"] = idle
+		}
+		if timestampOK && t.spanObserver != nil {
+			observation = &CodexAppServerSpanObservation{
+				Provider:       strings.TrimSpace(t.session.Provider),
+				RoomID:         strings.TrimSpace(t.session.RoomID),
+				AgentSessionID: strings.TrimSpace(t.session.AgentSessionID),
+				SpanName:       spanName,
+				SpanPhase:      phase,
+				SpanTarget:     strings.TrimSpace(record.Target),
+				CodexTimestamp: strings.TrimSpace(record.Timestamp),
+				DurationMS:     durationMS,
+				SpanBusy:       codexJSONLogString(record.Fields["time.busy"]),
+				SpanIdle:       codexJSONLogString(record.Fields["time.idle"]),
+			}
+		}
+	}
+	t.Log("app_server.span", fields)
+	return observation
+}
+
+func (t *codexAppServerStartupTrace) notifySpanObserver(observation CodexAppServerSpanObservation) {
+	if t.spanObserver == nil {
+		return
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Warn("agent session Codex app-server span observer panicked",
+				"provider", observation.Provider,
+				"agent_session_id", observation.AgentSessionID,
+				"span_name", observation.SpanName,
+				"panic", recovered,
+			)
+		}
+	}()
+	t.spanObserver(observation)
+}
+
+func (t *codexAppServerStartupTrace) notifyStartupObserver(observation CodexAppServerStartupObservation) {
+	if t.startupObserver == nil {
+		return
+	}
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			slog.Warn("agent session Codex app-server startup observer panicked",
+				"provider", observation.Provider,
+				"agent_session_id", observation.AgentSessionID,
+				"outcome", observation.Outcome,
+				"panic", recovered,
+			)
+		}
+	}()
+	t.startupObserver(observation)
+}
+
+func codexJSONLogString(raw json.RawMessage) string {
+	var value string
+	if len(raw) == 0 || json.Unmarshal(raw, &value) != nil {
+		return ""
+	}
+	return strings.TrimSpace(value)
 }
 
 func (t *codexAppServerStartupTrace) Call(

@@ -63,6 +63,7 @@ import {
 } from "./composerOptions.reducer.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import { activeTurnIdForSession } from "./promptQueue.drainDecision.ts";
 import {
   createInitialSessionMutationsState,
   sessionMutationsReducer
@@ -300,21 +301,35 @@ export function rootEngineReducer(
     planTurnValid &&
     submitRequestAccepted
   );
+  const queuedSendNowTargetTurnId =
+    intent.type === "queue/sendNowRequested"
+      ? (intent.targetTurnId?.trim() ?? "")
+      : "";
+  const queuedSendNowCurrentTurnId =
+    intent.type === "queue/sendNowRequested"
+      ? (activeTurnIdForSession(
+          state.sessionLifecycle,
+          intent.agentSessionId
+        ) ?? "")
+      : "";
   const sendNowStrategy =
     intent.type === "submit/requested" && intent.routing === "send_now"
       ? submitSendNowStrategy
       : intent.type === "queue/sendNowRequested"
-        ? resolveQueuedPromptSendNowStrategy(
-            state.promptQueue,
-            intent.agentSessionId,
-            intent.promptId,
-            deriveCanonicalSubmitAvailability(
-              state.sessionLifecycle,
-              intent.agentSessionId
-            ),
-            state.sessionLifecycle.sessionsById[intent.agentSessionId.trim()]
-              ?.capabilities
-          )
+        ? queuedSendNowTargetTurnId &&
+          queuedSendNowTargetTurnId !== queuedSendNowCurrentTurnId
+          ? "send_available"
+          : resolveQueuedPromptSendNowStrategy(
+              state.promptQueue,
+              intent.agentSessionId,
+              intent.promptId,
+              deriveCanonicalSubmitAvailability(
+                state.sessionLifecycle,
+                intent.agentSessionId
+              ),
+              state.sessionLifecycle.sessionsById[intent.agentSessionId.trim()]
+                ?.capabilities
+            )
         : null;
   const expiringSubmitId =
     intent.type === "engine/intentExpired" &&

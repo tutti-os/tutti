@@ -789,13 +789,13 @@ func (e AgentTargetAccountUsageAvailableResultOutcome) Valid() bool {
 
 // Defines values for AgentTargetAccountUsageAvailableResultSchemaVersion.
 const (
-	AgentTargetAccountUsageAvailableResultSchemaVersionTuttiAgentAccountUsageV1 AgentTargetAccountUsageAvailableResultSchemaVersion = "tutti.agent.account-usage.v1"
+	AgentTargetAccountUsageAvailableResultSchemaVersionTuttiAgentAccountUsageV2 AgentTargetAccountUsageAvailableResultSchemaVersion = "tutti.agent.account-usage.v2"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetAccountUsageAvailableResultSchemaVersion enum.
 func (e AgentTargetAccountUsageAvailableResultSchemaVersion) Valid() bool {
 	switch e {
-	case AgentTargetAccountUsageAvailableResultSchemaVersionTuttiAgentAccountUsageV1:
+	case AgentTargetAccountUsageAvailableResultSchemaVersionTuttiAgentAccountUsageV2:
 		return true
 	default:
 		return false
@@ -804,16 +804,22 @@ func (e AgentTargetAccountUsageAvailableResultSchemaVersion) Valid() bool {
 
 // Defines values for AgentTargetAccountUsageBillingMode.
 const (
-	Api          AgentTargetAccountUsageBillingMode = "api"
-	Subscription AgentTargetAccountUsageBillingMode = "subscription"
+	AgentTargetAccountUsageBillingModeApi             AgentTargetAccountUsageBillingMode = "api"
+	AgentTargetAccountUsageBillingModeCodingPlan      AgentTargetAccountUsageBillingMode = "coding_plan"
+	AgentTargetAccountUsageBillingModeProviderAccount AgentTargetAccountUsageBillingMode = "provider_account"
+	AgentTargetAccountUsageBillingModeSubscription    AgentTargetAccountUsageBillingMode = "subscription"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetAccountUsageBillingMode enum.
 func (e AgentTargetAccountUsageBillingMode) Valid() bool {
 	switch e {
-	case Api:
+	case AgentTargetAccountUsageBillingModeApi:
 		return true
-	case Subscription:
+	case AgentTargetAccountUsageBillingModeCodingPlan:
+		return true
+	case AgentTargetAccountUsageBillingModeProviderAccount:
+		return true
+	case AgentTargetAccountUsageBillingModeSubscription:
 		return true
 	default:
 		return false
@@ -876,13 +882,49 @@ func (e AgentTargetAccountUsageErrorResultOutcome) Valid() bool {
 
 // Defines values for AgentTargetAccountUsageErrorResultSchemaVersion.
 const (
-	AgentTargetAccountUsageErrorResultSchemaVersionTuttiAgentAccountUsageV1 AgentTargetAccountUsageErrorResultSchemaVersion = "tutti.agent.account-usage.v1"
+	AgentTargetAccountUsageErrorResultSchemaVersionTuttiAgentAccountUsageV2 AgentTargetAccountUsageErrorResultSchemaVersion = "tutti.agent.account-usage.v2"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetAccountUsageErrorResultSchemaVersion enum.
 func (e AgentTargetAccountUsageErrorResultSchemaVersion) Valid() bool {
 	switch e {
-	case AgentTargetAccountUsageErrorResultSchemaVersionTuttiAgentAccountUsageV1:
+	case AgentTargetAccountUsageErrorResultSchemaVersionTuttiAgentAccountUsageV2:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageQuotaAmountUnit.
+const (
+	AgentTargetAccountUsageQuotaAmountUnitCredits AgentTargetAccountUsageQuotaAmountUnit = "credits"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageQuotaAmountUnit enum.
+func (e AgentTargetAccountUsageQuotaAmountUnit) Valid() bool {
+	switch e {
+	case AgentTargetAccountUsageQuotaAmountUnitCredits:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentTargetAccountUsageQuotaState.
+const (
+	AgentTargetAccountUsageQuotaStateComplete      AgentTargetAccountUsageQuotaState = "complete"
+	AgentTargetAccountUsageQuotaStateNotApplicable AgentTargetAccountUsageQuotaState = "not_applicable"
+	AgentTargetAccountUsageQuotaStateUnavailable   AgentTargetAccountUsageQuotaState = "unavailable"
+)
+
+// Valid indicates whether the value is a known member of the AgentTargetAccountUsageQuotaState enum.
+func (e AgentTargetAccountUsageQuotaState) Valid() bool {
+	switch e {
+	case AgentTargetAccountUsageQuotaStateComplete:
+		return true
+	case AgentTargetAccountUsageQuotaStateNotApplicable:
+		return true
+	case AgentTargetAccountUsageQuotaStateUnavailable:
 		return true
 	default:
 		return false
@@ -891,28 +933,31 @@ func (e AgentTargetAccountUsageErrorResultSchemaVersion) Valid() bool {
 
 // Defines values for AgentTargetAccountUsageQuotaType.
 const (
-	Cost    AgentTargetAccountUsageQuotaType = "cost"
-	Daily   AgentTargetAccountUsageQuotaType = "daily"
-	Model   AgentTargetAccountUsageQuotaType = "model"
-	Monthly AgentTargetAccountUsageQuotaType = "monthly"
-	Session AgentTargetAccountUsageQuotaType = "session"
-	Weekly  AgentTargetAccountUsageQuotaType = "weekly"
+	AgentTargetAccountUsageQuotaTypeCost    AgentTargetAccountUsageQuotaType = "cost"
+	AgentTargetAccountUsageQuotaTypeCredits AgentTargetAccountUsageQuotaType = "credits"
+	AgentTargetAccountUsageQuotaTypeDaily   AgentTargetAccountUsageQuotaType = "daily"
+	AgentTargetAccountUsageQuotaTypeModel   AgentTargetAccountUsageQuotaType = "model"
+	AgentTargetAccountUsageQuotaTypeMonthly AgentTargetAccountUsageQuotaType = "monthly"
+	AgentTargetAccountUsageQuotaTypeSession AgentTargetAccountUsageQuotaType = "session"
+	AgentTargetAccountUsageQuotaTypeWeekly  AgentTargetAccountUsageQuotaType = "weekly"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetAccountUsageQuotaType enum.
 func (e AgentTargetAccountUsageQuotaType) Valid() bool {
 	switch e {
-	case Cost:
+	case AgentTargetAccountUsageQuotaTypeCost:
 		return true
-	case Daily:
+	case AgentTargetAccountUsageQuotaTypeCredits:
 		return true
-	case Model:
+	case AgentTargetAccountUsageQuotaTypeDaily:
 		return true
-	case Monthly:
+	case AgentTargetAccountUsageQuotaTypeModel:
 		return true
-	case Session:
+	case AgentTargetAccountUsageQuotaTypeMonthly:
 		return true
-	case Weekly:
+	case AgentTargetAccountUsageQuotaTypeSession:
+		return true
+	case AgentTargetAccountUsageQuotaTypeWeekly:
 		return true
 	default:
 		return false
@@ -936,13 +981,13 @@ func (e AgentTargetAccountUsageUnsupportedResultOutcome) Valid() bool {
 
 // Defines values for AgentTargetAccountUsageUnsupportedResultSchemaVersion.
 const (
-	TuttiAgentAccountUsageV1 AgentTargetAccountUsageUnsupportedResultSchemaVersion = "tutti.agent.account-usage.v1"
+	TuttiAgentAccountUsageV2 AgentTargetAccountUsageUnsupportedResultSchemaVersion = "tutti.agent.account-usage.v2"
 )
 
 // Valid indicates whether the value is a known member of the AgentTargetAccountUsageUnsupportedResultSchemaVersion enum.
 func (e AgentTargetAccountUsageUnsupportedResultSchemaVersion) Valid() bool {
 	switch e {
-	case TuttiAgentAccountUsageV1:
+	case TuttiAgentAccountUsageV2:
 		return true
 	default:
 		return false
@@ -3036,25 +3081,25 @@ func (e ModelPlanStatus) Valid() bool {
 
 // Defines values for ModelPlanTemplateKind.
 const (
-	CodingPlan           ModelPlanTemplateKind = "coding_plan"
-	Custom               ModelPlanTemplateKind = "custom"
-	Domestic             ModelPlanTemplateKind = "domestic"
-	OfficialSubscription ModelPlanTemplateKind = "official_subscription"
-	Relay                ModelPlanTemplateKind = "relay"
+	ModelPlanTemplateKindCodingPlan           ModelPlanTemplateKind = "coding_plan"
+	ModelPlanTemplateKindCustom               ModelPlanTemplateKind = "custom"
+	ModelPlanTemplateKindDomestic             ModelPlanTemplateKind = "domestic"
+	ModelPlanTemplateKindOfficialSubscription ModelPlanTemplateKind = "official_subscription"
+	ModelPlanTemplateKindRelay                ModelPlanTemplateKind = "relay"
 )
 
 // Valid indicates whether the value is a known member of the ModelPlanTemplateKind enum.
 func (e ModelPlanTemplateKind) Valid() bool {
 	switch e {
-	case CodingPlan:
+	case ModelPlanTemplateKindCodingPlan:
 		return true
-	case Custom:
+	case ModelPlanTemplateKindCustom:
 		return true
-	case Domestic:
+	case ModelPlanTemplateKindDomestic:
 		return true
-	case OfficialSubscription:
+	case ModelPlanTemplateKindOfficialSubscription:
 		return true
-	case Relay:
+	case ModelPlanTemplateKindRelay:
 		return true
 	default:
 		return false
@@ -4857,25 +4902,25 @@ func (e WorkspaceWorkflowOperationKind) Valid() bool {
 
 // Defines values for WorkspaceWorkflowOperationStatus.
 const (
-	Canceled  WorkspaceWorkflowOperationStatus = "canceled"
-	Failed    WorkspaceWorkflowOperationStatus = "failed"
-	Pending   WorkspaceWorkflowOperationStatus = "pending"
-	Running   WorkspaceWorkflowOperationStatus = "running"
-	Succeeded WorkspaceWorkflowOperationStatus = "succeeded"
+	WorkspaceWorkflowOperationStatusCanceled  WorkspaceWorkflowOperationStatus = "canceled"
+	WorkspaceWorkflowOperationStatusFailed    WorkspaceWorkflowOperationStatus = "failed"
+	WorkspaceWorkflowOperationStatusPending   WorkspaceWorkflowOperationStatus = "pending"
+	WorkspaceWorkflowOperationStatusRunning   WorkspaceWorkflowOperationStatus = "running"
+	WorkspaceWorkflowOperationStatusSucceeded WorkspaceWorkflowOperationStatus = "succeeded"
 )
 
 // Valid indicates whether the value is a known member of the WorkspaceWorkflowOperationStatus enum.
 func (e WorkspaceWorkflowOperationStatus) Valid() bool {
 	switch e {
-	case Canceled:
+	case WorkspaceWorkflowOperationStatusCanceled:
 		return true
-	case Failed:
+	case WorkspaceWorkflowOperationStatusFailed:
 		return true
-	case Pending:
+	case WorkspaceWorkflowOperationStatusPending:
 		return true
-	case Running:
+	case WorkspaceWorkflowOperationStatusRunning:
 		return true
-	case Succeeded:
+	case WorkspaceWorkflowOperationStatusSucceeded:
 		return true
 	default:
 		return false
@@ -5395,20 +5440,21 @@ type AgentProviderAvailabilityStatus string
 
 // AgentProviderCapabilityOption defines model for AgentProviderCapabilityOption.
 type AgentProviderCapabilityOption struct {
-	Description *string                                 `json:"description,omitempty"`
-	IconUrl     *string                                 `json:"iconUrl,omitempty"`
-	Id          string                                  `json:"id"`
-	Invocation  AgentProviderCapabilityOptionInvocation `json:"invocation"`
-	Kind        AgentProviderCapabilityOptionKind       `json:"kind"`
-	Label       string                                  `json:"label"`
-	Name        string                                  `json:"name"`
-	Path        *string                                 `json:"path,omitempty"`
-	PluginName  *string                                 `json:"pluginName,omitempty"`
-	ServerName  *string                                 `json:"serverName,omitempty"`
-	Source      *string                                 `json:"source,omitempty"`
-	Status      AgentProviderCapabilityOptionStatus     `json:"status"`
-	ToolName    *string                                 `json:"toolName,omitempty"`
-	Trigger     *string                                 `json:"trigger,omitempty"`
+	Description       *string                                 `json:"description,omitempty"`
+	IconUrl           *string                                 `json:"iconUrl,omitempty"`
+	Id                string                                  `json:"id"`
+	InstalledAtUnixMs *int64                                  `json:"installedAtUnixMs,omitempty"`
+	Invocation        AgentProviderCapabilityOptionInvocation `json:"invocation"`
+	Kind              AgentProviderCapabilityOptionKind       `json:"kind"`
+	Label             string                                  `json:"label"`
+	Name              string                                  `json:"name"`
+	Path              *string                                 `json:"path,omitempty"`
+	PluginName        *string                                 `json:"pluginName,omitempty"`
+	ServerName        *string                                 `json:"serverName,omitempty"`
+	Source            *string                                 `json:"source,omitempty"`
+	Status            AgentProviderCapabilityOptionStatus     `json:"status"`
+	ToolName          *string                                 `json:"toolName,omitempty"`
+	Trigger           *string                                 `json:"trigger,omitempty"`
 }
 
 // AgentProviderCapabilityOptionInvocation defines model for AgentProviderCapabilityOption.Invocation.
@@ -5899,6 +5945,7 @@ type AgentTargetAccountUsageAvailableResult struct {
 	CapturedAtUnixMs int64                                               `json:"capturedAtUnixMs"`
 	Outcome          AgentTargetAccountUsageAvailableResultOutcome       `json:"outcome"`
 	Provider         AgentTargetProvider                                 `json:"provider"`
+	QuotaState       AgentTargetAccountUsageQuotaState                   `json:"quotaState"`
 	Quotas           []AgentTargetAccountUsageQuota                      `json:"quotas"`
 	SchemaVersion    AgentTargetAccountUsageAvailableResultSchemaVersion `json:"schemaVersion"`
 }
@@ -5938,11 +5985,20 @@ type AgentTargetAccountUsageProbeResult struct {
 
 // AgentTargetAccountUsageQuota defines model for AgentTargetAccountUsageQuota.
 type AgentTargetAccountUsageQuota struct {
-	ModelName        *string                          `json:"modelName,omitempty"`
-	PercentRemaining float32                          `json:"percentRemaining"`
-	QuotaType        AgentTargetAccountUsageQuotaType `json:"quotaType"`
-	ResetsAtUnixMs   *int64                           `json:"resetsAtUnixMs,omitempty"`
+	AmountLimit      *float64                                `json:"amountLimit,omitempty"`
+	AmountRemaining  *float64                                `json:"amountRemaining,omitempty"`
+	AmountUnit       *AgentTargetAccountUsageQuotaAmountUnit `json:"amountUnit,omitempty"`
+	ModelName        *string                                 `json:"modelName,omitempty"`
+	PercentRemaining float32                                 `json:"percentRemaining"`
+	QuotaType        AgentTargetAccountUsageQuotaType        `json:"quotaType"`
+	ResetsAtUnixMs   *int64                                  `json:"resetsAtUnixMs,omitempty"`
 }
+
+// AgentTargetAccountUsageQuotaAmountUnit defines model for AgentTargetAccountUsageQuota.AmountUnit.
+type AgentTargetAccountUsageQuotaAmountUnit string
+
+// AgentTargetAccountUsageQuotaState defines model for AgentTargetAccountUsageQuotaState.
+type AgentTargetAccountUsageQuotaState string
 
 // AgentTargetAccountUsageQuotaType defines model for AgentTargetAccountUsageQuotaType.
 type AgentTargetAccountUsageQuotaType string
@@ -6680,6 +6736,7 @@ type ConnectorMarketImplementationKind string
 // ConnectorMarketInstallation defines model for ConnectorMarketInstallation.
 type ConnectorMarketInstallation struct {
 	FailureCode            *string                          `json:"failureCode,omitempty"`
+	InstalledAtUnixMs      *int64                           `json:"installedAtUnixMs,omitempty"`
 	InstalledReleaseDigest *string                          `json:"installedReleaseDigest,omitempty"`
 	InstalledReleaseId     *string                          `json:"installedReleaseId,omitempty"`
 	InstalledVersion       *string                          `json:"installedVersion,omitempty"`

@@ -419,6 +419,17 @@ https://<asset-base-url>/changelog.json
 
 `changelog.json` is updated only for stable releases. RC and beta builds can still generate per-run summaries for Feishu and GitHub Release notes, but they should not appear on the public changelog feed unless that policy is changed explicitly.
 
+If a published stable release is missing from the aggregate feed, use the
+manual `Repair Desktop Release Changelog` workflow with that exact stable tag.
+The repair validates the checksummed `release-summary.json` attached to the
+published GitHub Release for its tag, target commit, and comparison metadata,
+then rebuilds the public summary from the current human-reviewed Release Notes
+section. This keeps later editorial corrections authoritative without mutating
+the staged candidate asset. It upserts only that entry under the same
+`desktop-release-promotion` concurrency lock used by normal promotion and must
+not republish the GitHub Release, upload immutable installers, or move any
+stable/RC/beta pointer.
+
 ## Draft Promotion
 
 External publication is owned by `.github/workflows/desktop-release-promote.yml`. RC and beta builds may call it automatically. A stable candidate must be submitted manually from the Feishu link and then pass the `desktop-stable-release` GitHub Environment approval.
@@ -543,6 +554,12 @@ Recommended setup:
 - set `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` to the CloudFront distribution path, such as `https://d111111abcdef8.cloudfront.net/desktop-release-assets`
 - keep the S3 bucket and prefix configured so the workflow can upload mirrored assets
 - apply a 30-day lifecycle expiration to objects under `<prefix>/candidates/`; never apply that rule to formal `<tag>/` paths
+
+Release and promotion jobs bootstrap AWS CLI without refreshing Ubuntu package
+indexes. The bootstrap uses the runner's Python runtime to extract the official
+AWS CLI archive, retries transient download failures, and has a five-minute
+step deadline. Keep this path independent of APT mirrors so a mirror outage
+cannot consume the release job's full runtime limit after packages have built.
 
 If `TUTTI_DESKTOP_RELEASE_ASSETS_BASE_URL` is omitted, the workflow falls back to:
 

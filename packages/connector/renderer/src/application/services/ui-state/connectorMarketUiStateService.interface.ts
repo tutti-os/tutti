@@ -1,7 +1,5 @@
 import { createDecorator } from "@tutti-os/infra/di";
 
-export type ConnectorMarketSegment = "available" | "installed";
-
 export type ConnectorMarketScope = Readonly<Record<string, never>>;
 
 export interface ConnectorMarketDialogRequest {
@@ -13,7 +11,6 @@ export interface ConnectorMarketUiState {
   dialog: ConnectorMarketDialogRequest | null;
   query: string;
   scope: ConnectorMarketScope | null;
-  segment: ConnectorMarketSegment;
   started: boolean;
 }
 
@@ -23,7 +20,6 @@ export interface IConnectorMarketUiStateService {
 
   start(scope: ConnectorMarketScope): void;
   setQuery(query: string): void;
-  selectSegment(segment: ConnectorMarketSegment): void;
   openConnector(connectorKey: string): void;
   requestUninstall(connectorKey: string): void;
   closeDialog(): void;

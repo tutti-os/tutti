@@ -1,5 +1,6 @@
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
+  AgentComposerDraft,
   AgentComposerDraftConnector,
   AgentComposerDraftContent
 } from "./agentGuiNodeTypes";
@@ -52,4 +53,15 @@ export function mergeAgentComposerDraftConnectorKeys(
       ...additionalKeys
     ])
   );
+}
+
+export function agentComposerDraftPreservingConnectors(
+  previous: AgentComposerDraft | undefined
+): AgentComposerDraft {
+  return [
+    { type: "text", text: "" },
+    ...agentComposerDraftConnectorBlocks(
+      previous ? agentComposerDraftConnectors(previous) : []
+    )
+  ];
 }

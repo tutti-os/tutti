@@ -10,7 +10,7 @@ import {
 } from "./sessionLifecycle.state.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
-const TURN_CANCEL_TIMEOUT_MS = 30_000;
+export const TURN_CANCEL_TIMEOUT_MS = 30_000;
 
 export function reconcilePendingCancels(
   previous: SessionLifecycleState,

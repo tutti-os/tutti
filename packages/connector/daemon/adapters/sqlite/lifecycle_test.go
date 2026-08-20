@@ -548,6 +548,13 @@ operation_id, client_request_id, connector_key, kind, state, lease_owner, lease_
 	if updatedAtMS != operation.UpdatedAt.UnixMilli() {
 		t.Fatalf("migrated updated timestamp = %d, want %d", updatedAtMS, operation.UpdatedAt.UnixMilli())
 	}
+	migratedConnector, err := store.Connector(ctx, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if migratedConnector.Installation.InstalledAtUnixMS != operation.UpdatedAt.UnixMilli() {
+		t.Fatalf("migrated install timestamp = %d, want %d", migratedConnector.Installation.InstalledAtUnixMS, operation.UpdatedAt.UnixMilli())
+	}
 	release, err := store.InstalledRelease(ctx, connector.Key, installedRelease.ReleaseDigest)
 	if err != nil || release.ReleaseDigest != installedRelease.ReleaseDigest {
 		t.Fatalf("migrated installed release = %#v, error = %v", release, err)

@@ -637,6 +637,7 @@ func (h *Host) sendInputSerialized(
 			DisplayPrompt: displayPrompt, InitialTitle: initialTitle, InitialTitleBase: session.Title,
 			Guidance: input.Guidance, Metadata: cloneMap(metadata), TuttiModeSnapshot: input.TuttiModeSnapshot,
 			RequireProviderAcceptance: !input.Guidance,
+			ConnectorRoutingUpdate:    cloneStringPointer(input.ConnectorRoutingUpdate),
 		})
 	}()
 	recordProviderAcceptanceDiagnostics(ctx, execResult.ProviderDispatch)

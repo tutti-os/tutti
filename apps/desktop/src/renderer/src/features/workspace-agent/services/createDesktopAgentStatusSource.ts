@@ -252,6 +252,7 @@ function statusValueFromDesktopProbeSnapshot(
 ): AgentStatusValue {
   return statusValueFromDesktopProbe(
     request.context,
+    request.agent.name,
     snapshot.providers.find(
       (candidate) =>
         candidate.agentTargetId === request.agent.agentTargetId &&
@@ -326,6 +327,7 @@ function statusValueFromDesktopProbe(
     AgentStatusValue,
     "agentSessionId" | "contextState" | "contextWindow"
   >,
+  agentName: string,
   probe:
     | Awaited<
         ReturnType<
@@ -340,7 +342,13 @@ function statusValueFromDesktopProbe(
     usage?.accountTier?.trim() ||
     (usage?.billingMode === "api"
       ? translate("workspace.agentEnv.apiUsageBilling")
-      : "");
+      : usage?.billingMode === "coding_plan"
+        ? translate("workspace.agentEnv.codingPlanBilling")
+        : usage?.billingMode === "provider_account"
+          ? translate("workspace.agentEnv.providerAccountBilling", {
+              provider: agentName.trim()
+            })
+          : "");
   const limitsErrorCode =
     probe?.lastError?.code === "unsupported"
       ? ""
@@ -352,7 +360,11 @@ function statusValueFromDesktopProbe(
     limitsState: limitsErrorCode
       ? "error"
       : usage
-        ? "available"
+        ? usage.quotaState === undefined ||
+          usage.quotaState === "complete" ||
+          usage.quotaState === "not_applicable"
+          ? "available"
+          : "unavailable"
         : "unavailable",
     ...(limitsErrorCode ? { limitsErrorCode } : {}),
     limitsCapturedAtUnixMs: usage

@@ -45,10 +45,11 @@ import {
   reconcilePendingCancelForSubmit,
   reconcilePendingCancelFromMessages,
   reconcilePendingCancels,
-  sessionVersion
+  sessionVersion,
+  TURN_CANCEL_TIMEOUT_MS
 } from "./sessionLifecycle.cancel.ts";
+import { isPreTurnSendFailure } from "./promptSendFailure.ts";
 const NO_COMMANDS: readonly EngineCommand[] = [];
-const TURN_CANCEL_TIMEOUT_MS = 30_000;
 const STALE_INTERACTIVE_REQUEST_ERROR_REASON =
   "agent_interactive_request_stale";
 
@@ -275,26 +276,6 @@ export function sessionLifecycleReducer(
     default:
       return unchanged(state);
   }
-}
-
-function isPreTurnSendFailure(intent: EngineIntent): boolean {
-  if (
-    intent.type !== "engine/commandResult" ||
-    intent.commandType !== "queue/sendPrompt" ||
-    intent.outcome !== "failed"
-  ) {
-    return false;
-  }
-  const errorReason = intent.errorReason?.trim();
-  const errorCode = intent.errorCode?.trim();
-  return (
-    errorReason === "agent.no_active_turn" ||
-    errorCode === "agent.no_active_turn" ||
-    errorReason === "agent.session_no_active_turn" ||
-    errorCode === "agent.session_no_active_turn" ||
-    errorReason === "agent.process_cleanup_pending" ||
-    errorCode === "agent.process_cleanup_pending"
-  );
 }
 
 function abandonPendingSubmitCancel(

@@ -79,6 +79,18 @@ func projectAgentTargetAccountUsage(
 				PercentRemaining: float32(quota.PercentRemaining),
 				ResetsAtUnixMs:   quota.ResetsAtUnixMS,
 			}
+			if quota.AmountRemaining != nil {
+				amountRemaining := *quota.AmountRemaining
+				value.AmountRemaining = &amountRemaining
+			}
+			if quota.AmountLimit != nil {
+				amountLimit := *quota.AmountLimit
+				value.AmountLimit = &amountLimit
+			}
+			if quota.AmountUnit != "" {
+				amountUnit := tuttigenerated.AgentTargetAccountUsageQuotaAmountUnit(quota.AmountUnit)
+				value.AmountUnit = &amountUnit
+			}
 			if quota.ModelName != "" {
 				modelName := quota.ModelName
 				value.ModelName = &modelName
@@ -87,18 +99,19 @@ func projectAgentTargetAccountUsage(
 		}
 		err := projected.FromAgentTargetAccountUsageAvailableResult(
 			tuttigenerated.AgentTargetAccountUsageAvailableResult{
-				SchemaVersion: tuttigenerated.AgentTargetAccountUsageAvailableResultSchemaVersionTuttiAgentAccountUsageV1,
+				SchemaVersion: tuttigenerated.AgentTargetAccountUsageAvailableResultSchemaVersion(agentextensionservice.AccountUsageSchemaVersion),
 				AgentTargetId: result.AgentTargetID, Provider: tuttigenerated.AgentTargetProvider(result.Provider),
 				Outcome:          tuttigenerated.AgentTargetAccountUsageAvailableResultOutcomeAvailable,
 				CapturedAtUnixMs: result.CapturedAtUnixMS,
-				BillingMode:      tuttigenerated.AgentTargetAccountUsageBillingMode(result.BillingMode), Quotas: quotas,
+				BillingMode:      tuttigenerated.AgentTargetAccountUsageBillingMode(result.BillingMode),
+				QuotaState:       tuttigenerated.AgentTargetAccountUsageQuotaState(result.QuotaState), Quotas: quotas,
 			},
 		)
 		return projected, err
 	case "unsupported":
 		err := projected.FromAgentTargetAccountUsageUnsupportedResult(
 			tuttigenerated.AgentTargetAccountUsageUnsupportedResult{
-				SchemaVersion: tuttigenerated.TuttiAgentAccountUsageV1,
+				SchemaVersion: tuttigenerated.AgentTargetAccountUsageUnsupportedResultSchemaVersion(agentextensionservice.AccountUsageSchemaVersion),
 				AgentTargetId: result.AgentTargetID, Provider: tuttigenerated.AgentTargetProvider(result.Provider),
 				Outcome: tuttigenerated.Unsupported, CapturedAtUnixMs: result.CapturedAtUnixMS,
 			},
@@ -107,7 +120,7 @@ func projectAgentTargetAccountUsage(
 	case "error":
 		err := projected.FromAgentTargetAccountUsageErrorResult(
 			tuttigenerated.AgentTargetAccountUsageErrorResult{
-				SchemaVersion: tuttigenerated.AgentTargetAccountUsageErrorResultSchemaVersionTuttiAgentAccountUsageV1,
+				SchemaVersion: tuttigenerated.AgentTargetAccountUsageErrorResultSchemaVersion(agentextensionservice.AccountUsageSchemaVersion),
 				AgentTargetId: result.AgentTargetID, Provider: tuttigenerated.AgentTargetProvider(result.Provider),
 				Outcome:          tuttigenerated.AgentTargetAccountUsageErrorResultOutcomeError,
 				CapturedAtUnixMs: result.CapturedAtUnixMS,

@@ -21,6 +21,11 @@ const (
 	connectorFDEnvPrefix        = "TUTTI_CONNECTOR_FD_"
 )
 
+// ErrProcessSpecInvalid marks a deterministic connector process contract
+// violation. The same spec can never succeed on retry, so callers must map it
+// to a terminal failure instead of scheduling another attempt.
+var ErrProcessSpecInvalid = errors.New("connector process spec is invalid")
+
 type connectorProcessTransport struct {
 	stdoutLimit int64
 	stderrLimit int64
@@ -176,26 +181,26 @@ func connectorTreeInventoryDigest(root string) (string, error) {
 
 func validateConnectorProcessSpec(spec ProcessSpec) error {
 	if len(spec.Command) == 0 || strings.TrimSpace(spec.Command[0]) == "" {
-		return errors.New("connector process command is required")
+		return fmt.Errorf("%w: connector process command is required", ErrProcessSpecInvalid)
 	}
 	if !filepath.IsAbs(spec.Command[0]) {
-		return errors.New("connector process executable must be absolute")
+		return fmt.Errorf("%w: connector process executable must be absolute", ErrProcessSpecInvalid)
 	}
 	if spec.ExecutableIdentity == nil || strings.TrimSpace(spec.ExecutableIdentity.SHA256) == "" || spec.ExecutableIdentity.SizeBytes <= 0 {
-		return errors.New("connector process executable identity is required")
+		return fmt.Errorf("%w: connector process executable identity is required", ErrProcessSpecInvalid)
 	}
 	environmentKeys := make(map[string]struct{}, len(spec.Env))
 	for _, item := range spec.Env {
 		key, _, ok := strings.Cut(item, "=")
 		if !ok || !validConnectorEnvironmentKey(key) {
-			return errors.New("connector process environment entries must be explicit key=value pairs")
+			return fmt.Errorf("%w: connector process environment entries must be explicit key=value pairs", ErrProcessSpecInvalid)
 		}
 		if strings.HasPrefix(strings.ToUpper(key), connectorFDEnvPrefix) {
-			return fmt.Errorf("connector process environment key %q uses a host-reserved prefix", key)
+			return fmt.Errorf("%w: connector process environment key %q uses a host-reserved prefix", ErrProcessSpecInvalid, key)
 		}
 		normalizedKey := strings.ToUpper(key)
 		if _, exists := environmentKeys[normalizedKey]; exists {
-			return fmt.Errorf("connector process environment key %q is duplicated", key)
+			return fmt.Errorf("%w: connector process environment key %q is duplicated", ErrProcessSpecInvalid, key)
 		}
 		environmentKeys[normalizedKey] = struct{}{}
 	}
@@ -224,13 +229,13 @@ func addSensitiveInheritedFiles(cmd *exec.Cmd, spec *ProcessSpec) error {
 	for _, inherited := range spec.SensitiveInheritedFiles {
 		key := strings.ToUpper(strings.TrimSpace(inherited.DescriptorEnvKey))
 		if inherited.File == nil || strings.TrimSpace(inherited.Purpose) == "" {
-			return errors.New("connector sensitive inherited file and purpose are required")
+			return fmt.Errorf("%w: connector sensitive inherited file and purpose are required", ErrProcessSpecInvalid)
 		}
 		if !strings.HasPrefix(key, connectorFDEnvPrefix) || strings.ContainsAny(key, "=\x00") {
-			return fmt.Errorf("connector sensitive descriptor environment key %q is invalid", inherited.DescriptorEnvKey)
+			return fmt.Errorf("%w: connector sensitive descriptor environment key %q is invalid", ErrProcessSpecInvalid, inherited.DescriptorEnvKey)
 		}
 		if _, exists := seen[key]; exists {
-			return fmt.Errorf("connector sensitive descriptor environment key %q is duplicated", key)
+			return fmt.Errorf("%w: connector sensitive descriptor environment key %q is duplicated", ErrProcessSpecInvalid, key)
 		}
 		seen[key] = struct{}{}
 		cmd.ExtraFiles = append(cmd.ExtraFiles, inherited.File)

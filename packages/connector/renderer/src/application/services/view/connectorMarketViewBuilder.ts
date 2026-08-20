@@ -17,9 +17,6 @@ export function buildConnectorMarketView(
   const allConnectors = market.connectorKeys
     .map((key) => market.connectorsByKey[key])
     .filter((connector): connector is Connector => Boolean(connector));
-  const installedCount = allConnectors.filter(
-    connectorHasInstalledArtifact
-  ).length;
   const query = uiState.query.trim().toLocaleLowerCase();
   const matchesQuery = (connector: Connector) => {
     if (!query) {
@@ -31,48 +28,23 @@ export function buildConnectorMarketView(
       connector.release.manifest.description ?? ""
     ].some((value) => value.toLocaleLowerCase().includes(query));
   };
-  const sections =
-    uiState.segment === "installed"
-      ? [
-          {
-            id: "installed",
-            connectorKeys: allConnectors
-              .filter(connectorHasInstalledArtifact)
-              .filter(matchesQuery)
-              .sort((left, right) =>
-                left.release.manifest.displayName.localeCompare(
-                  right.release.manifest.displayName
-                )
-              )
-              .map((connector) => connector.key),
-            error: false,
-            hasMore: false,
-            itemCount: installedCount,
-            loading: false
-          }
-        ]
-      : market.catalogSections.map((section) => ({
-          id: section.categoryId,
-          ...(section.displayNameZh === undefined
-            ? {}
-            : { displayNameZh: section.displayNameZh }),
-          ...(section.displayNameEn === undefined
-            ? {}
-            : { displayNameEn: section.displayNameEn }),
-          connectorKeys: section.connectorKeys.filter((key) => {
-            const connector = market.connectorsByKey[key];
-            return (
-              connector !== undefined &&
-              !connectorHasInstalledArtifact(connector) &&
-              matchesQuery(connector)
-            );
-          }),
-          error: section.loadState === "error",
-          hasMore:
-            section.loadState === "ready" && Boolean(section.nextPageToken),
-          itemCount: section.itemCount,
-          loading: section.loadState === "loading"
-        }));
+  const sections = market.catalogSections.map((section) => ({
+    id: section.categoryId,
+    ...(section.displayNameZh === undefined
+      ? {}
+      : { displayNameZh: section.displayNameZh }),
+    ...(section.displayNameEn === undefined
+      ? {}
+      : { displayNameEn: section.displayNameEn }),
+    connectorKeys: section.connectorKeys.filter((key) => {
+      const connector = market.connectorsByKey[key];
+      return connector !== undefined && matchesQuery(connector);
+    }),
+    error: section.loadState === "error",
+    hasMore: section.loadState === "ready" && Boolean(section.nextPageToken),
+    itemCount: section.itemCount,
+    loading: section.loadState === "loading"
+  }));
   const cardsByKey = Object.fromEntries(
     allConnectors.map((connector) => [
       connector.key,
@@ -85,7 +57,6 @@ export function buildConnectorMarketView(
   );
 
   return {
-    availableCount: allConnectors.length - installedCount,
     cardsByKey,
     catalogError: buildCatalogErrorView(market.lastError),
     dialog: buildConnectorDialogView(
@@ -114,7 +85,6 @@ export function buildConnectorMarketView(
         ? market.authorizationViewsByConnectorKey[uiState.dialog.connectorKey]
         : undefined
     ),
-    installedCount,
     refreshing: market.catalogState === "refreshing",
     sections: sections.filter(
       (section) =>

@@ -61,14 +61,20 @@ the English name otherwise without another network request. During the bounded
 compatibility window, only `featured`, `productivity`, `development`, and
 `other` may use their released local i18n labels when an older daemon omits
 both names. Unknown dynamic categories without a server name fail closed
-instead of displaying their slug as product copy. The local `installed`
-section remains a renderer-owned virtual category and keeps its local i18n
-label.
+instead of displaying their slug as product copy. Installation state stays on
+the connector card; the renderer does not split the catalog into installed and
+available categories, and catalog pages are loaded without the not-installed
+filter so installed connectors remain in their server-owned sections.
 
 Installation is a device fact. Authorization is an account projection. A
 Connector may therefore be installed while inactive for the current account;
 authorization completion or expiry schedules a normal durable runtime
-reconcile without changing installed truth. Every durable lifecycle command
+reconcile without changing installed truth. Remote MCP HTTP 428 and JSON-RPC
+`-33001`/`-33002` during an enabled reconcile are authorization-required
+observations, not retryable install failures. Core persists an expired account
+projection, replans `RuntimeDesired` as disabled, and lets
+`awaitRuntimeDesired` converge that inactive generation so the install
+operation can complete. Every durable lifecycle command
 freezes its `accountId` in `OperationScope`, while short-lived artifact and
 credential grants are passed only through execution ports and are never
 serialized into SQLite.
@@ -339,6 +345,10 @@ accepted -> deactivating(Desired=disabled) -> Observed(disabled)
          -> removing -> absent -> completed
 ```
 
+An authorization-required observation still completes install after the
+disabled generation is Observed. Install completion does not require an
+enabled Agent route.
+
 These are short database transactions separated by idempotent external
 effects, not one long transaction. Every external effect is preceded by a
 durable phase/receipt. A retryable error leaves the Operation non-terminal and
@@ -429,7 +439,10 @@ For account-scoped runtimes, `AccountRuntimeBindingResolver` maps `none`
 authorization to an always-active device connection. OAuth/API-key connectors
 remain inactive until the current account projection is `connected`; only then
 does the resolver request a one-shot credential-broker grant. `expired`,
-`disconnected`, and missing projections reconcile inactive. Daemon or guest
+`disconnected`, and missing projections reconcile inactive. If an enabled
+reconcile observes authorization-required from the remote MCP before the
+projection has expired, Core writes `expired` and replans inactive instead of
+leaving the install or convergence row retrying 428. Daemon or guest
 restart uses `BootstrapForScope` to rebuild the same projection explicitly.
 
 An enabled Runtime Reconcile returns one identity-fenced receipt containing
@@ -484,6 +497,9 @@ authentication only through a host-supplied request authorizer. Neither an API
 key submitted by the user nor the product account session is copied into the
 runtime VM. Remote MCP execution follows the product host's authenticated
 relay, while the VM receives only the non-credential runtime route identity.
+Route activation may reuse a same-process `tools/list` for an unchanged
+authorization identity; Agent-visible lists stay live and are never persisted
+or TTL-cached.
 Remote authorization replacement propagates the explicit replacement policy to
 Start and uses the session-scoped control-plane Cancel endpoint when a receipt
 already exists. This covers both a returned session and an interrupted initial
@@ -577,10 +593,13 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
   host keeps the mutation request open until runtime work completes; the local
   projection is cleared on both success and failure and never replaces daemon
   installation truth
-- every new user authorization action creates a new `clientRequestId` and sends
-  `replacementPolicy=replace_active`; continuation polling within that action
-  reuses the same identity, while a superseded renderer Promise cannot retain
-  the Connector mutation token
+- the first user authorization action stays in flight until it completes or
+  the user Cancels; a second Authorize click joins that Promise and must not
+  create another `clientRequestId` or send `replace_active`. After Cancel, the
+  next Authorize is a new action: it creates a new `clientRequestId` and sends
+  `replacementPolicy=replace_active`. Continuation polling within one action
+  reuses the same identity. A canceled renderer Promise cannot retain the
+  Connector mutation token
 - event refreshes are coalesced, daemon reconnect performs a full reload, and
   accepted commands are followed through the operation endpoint or events
 - hosts gate connector-market transport through `canRequest`; Tutti binds it to
@@ -610,7 +629,10 @@ has observed its latest desired generation as enabled and ready; `starting`,
 projection retain the legacy authorization-based presentation. AgentGUI maps
 its provider-neutral capability options into that projection and retains only
 placement plus its Tutti Mode fallback. Selecting one item emits a semantic
-connector-open intent. The host
+connector-open intent. Composer “install” waits on the durable install
+operation; authorization-required remote MCP must complete that operation
+with an inactive route so the trigger can move from install to authorize
+instead of spinning. The host
 executes `openConnectorMarketDialog(root, connectorKey)`, which waits for the
 authoritative market view, rejects invalid or unknown keys, and then advances
 the package-owned dialog state machine. Before applying the bounded quick-list
@@ -638,16 +660,24 @@ open it.
 
 Connector details are represented by one modal state machine, never by a fixed
 right-hand pane. An uninstalled connector opens an installation confirmation.
-An unconnected installed connector opens the authorization dialog; an
-authorized connector opens the management dialog. Blocked releases open the
-blocked-state dialog. Only one dialog host is mounted at a time, so
+An unconnected installed connector opens the authorization dialog. The token
+form keeps typed secrets after submit so a failed or in-flight attempt does
+not force the user to re-enter them. Completing authorization in that dialog
+keeps the modal open and advances it to the management dialog, where
+disconnect and try remain available. An already authorized connector opens
+the management dialog directly. Blocked releases
+open the blocked-state dialog. Only one dialog host is mounted at a time, so
 the catalog keeps the full settings content width and never leaves an empty
 right column.
 
-Closing an authorization dialog only dismisses presentation. The explicit
-Cancel action calls the Host cancellation command. Reopening an unconnected
-Connector starts a new replace-active attempt, so a hidden or stuck renderer
-request cannot lock later authorization actions.
+Closing an authorization dialog while a request is in flight does not start a
+new session and does not dismiss the modal; the user must finish the provider
+flow or use Cancel. Browser OAuth keeps the in-flight footer on authorizing
+and does not surface Continue for a synthesized `external_link` view; the
+Start command already opened that URL. Cancel calls the Host cancellation
+command, then the next Authorize is a new replace-active attempt. A leftover
+pending session without an in-flight renderer request also shows Authorize,
+not a second Start disguised as Continue.
 
 ## Local OpenAPI Reuse
 

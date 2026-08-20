@@ -156,6 +156,7 @@ export interface ConnectorRelease {
 
 export interface ConnectorInstallation {
   state: ConnectorInstallationState;
+  installedAtUnixMs?: number;
   installedVersion?: string;
   installedReleaseId?: string;
   installedReleaseDigest?: string;

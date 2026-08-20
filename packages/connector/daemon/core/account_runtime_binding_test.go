@@ -109,7 +109,7 @@ func TestAccountRuntimeBindingResolverUsesServerConnectionForRemoteMCPWithoutGra
 	release.Manifest.AuthorizationKind = "api_key"
 	projections := &authorizationProjectionStoreStub{projection: AuthorizationProjection{
 		AccountID: "account-1", ConnectorKey: "tencent-docs", ConnectionID: "server-connection", State: AuthorizationStateConnected,
-		ServerSynchronized: true,
+		ConnectionVersion: 3, ServerRevision: 12, ServerSynchronized: true,
 	}}
 	binding, err := (AccountRuntimeBindingResolver{Projections: projections}).ResolveRuntimeBinding(context.Background(), RuntimeBindingRequest{
 		Scope: OperationScope{AccountID: "account-1"}, Connector: Connector{Key: "tencent-docs"}, Release: release,
@@ -117,7 +117,8 @@ func TestAccountRuntimeBindingResolverUsesServerConnectionForRemoteMCPWithoutGra
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !binding.Enabled || binding.ConnectionID != AccountRuntimeConnectionID("account-1", "tencent-docs") || len(binding.CredentialBrokerGrant) != 0 {
+	if !binding.Enabled || binding.ConnectionID != AccountRuntimeConnectionID("account-1", "tencent-docs") ||
+		binding.ConnectionVersion != 3 || binding.ServerRevision != 12 || len(binding.CredentialBrokerGrant) != 0 {
 		t.Fatalf("binding = %#v", binding)
 	}
 }

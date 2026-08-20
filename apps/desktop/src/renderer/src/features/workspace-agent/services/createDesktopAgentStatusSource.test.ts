@@ -150,7 +150,7 @@ test("desktop status treats an unsupported extension usage probe as unavailable"
   assert.deepEqual(observed.errors, []);
 });
 
-test("desktop status labels extension API billing without quota rows", async () => {
+test("desktop status resolves extension API billing without applicable quota rows", async () => {
   const extensionAgent = {
     agentTargetId: "extension:usage-fixture",
     name: "Usage Fixture",
@@ -173,6 +173,7 @@ test("desktop status labels extension API billing without quota rows", async () 
             availability: { status: "unknown", detailsVisible: false },
             usage: {
               billingMode: "api",
+              quotaState: "not_applicable",
               capturedAtUnixMs: 450,
               quotas: []
             }
@@ -191,6 +192,98 @@ test("desktop status labels extension API billing without quota rows", async () 
 
   assert.equal(observed.frames[0]?.value.accountLabel, "API Usage Billing");
   assert.equal(observed.frames[0]?.value.limitsState, "available");
+  assert.deepEqual(observed.frames[0]?.value.quotas, []);
+  assert.deepEqual(observed.errors, []);
+});
+
+test("desktop status labels Coding Plan while keeping unavailable quotas explicit", async () => {
+  const codeBuddyAgent = {
+    agentTargetId: "extension:codebuddy",
+    name: "CodeBuddy",
+    iconUrl: "codebuddy.svg",
+    availability: { status: "ready" },
+    provider: "acp:codebuddy"
+  } as const;
+  const observed = createObserver();
+  const source = createDesktopAgentStatusSource({
+    agentActivityRuntime: runtimeWithSessions([]),
+    agents: [codeBuddyAgent] as never,
+    workspaceAgentProbes: {
+      list: async () => ({
+        workspaceId: "workspace-1",
+        capturedAtUnixMs: 500,
+        providers: [
+          {
+            agentTargetId: "extension:codebuddy",
+            provider: "acp:codebuddy",
+            availability: { status: "unknown", detailsVisible: false },
+            usage: {
+              billingMode: "coding_plan",
+              quotaState: "unavailable",
+              capturedAtUnixMs: 450,
+              quotas: []
+            }
+          }
+        ]
+      })
+    } as never,
+    workspaceId: "workspace-1"
+  });
+
+  source.open(
+    { scopeKey: "extension:codebuddy", reason: "agent-info" },
+    observed.observer
+  );
+  await observed.completed;
+
+  assert.equal(observed.frames[0]?.value.accountLabel, "Coding Plan");
+  assert.equal(observed.frames[0]?.value.limitsState, "unavailable");
+  assert.deepEqual(observed.frames[0]?.value.quotas, []);
+  assert.deepEqual(observed.errors, []);
+});
+
+test("desktop status derives a provider-account label from the exact Agent Target", async () => {
+  const codeBuddyAgent = {
+    agentTargetId: "extension:codebuddy",
+    name: "CodeBuddy",
+    iconUrl: "codebuddy.svg",
+    availability: { status: "ready" },
+    provider: "acp:codebuddy"
+  } as const;
+  const observed = createObserver();
+  const source = createDesktopAgentStatusSource({
+    agentActivityRuntime: runtimeWithSessions([]),
+    agents: [codeBuddyAgent] as never,
+    workspaceAgentProbes: {
+      list: async () => ({
+        workspaceId: "workspace-1",
+        capturedAtUnixMs: 500,
+        providers: [
+          {
+            agentTargetId: "extension:codebuddy",
+            provider: "acp:codebuddy",
+            availability: { status: "unknown", detailsVisible: false },
+            usage: {
+              billingMode: "provider_account",
+              quotaState: "unavailable",
+              capturedAtUnixMs: 450,
+              quotas: []
+            }
+          }
+        ]
+      })
+    } as never,
+    workspaceId: "workspace-1"
+  });
+
+  source.open(
+    { scopeKey: "extension:codebuddy", reason: "agent-info" },
+    observed.observer
+  );
+  await observed.completed;
+
+  assert.equal(observed.frames[0]?.value.accountLabel, "CodeBuddy Account");
+  assert.equal(observed.frames[0]?.value.limitsState, "unavailable");
   assert.deepEqual(observed.frames[0]?.value.quotas, []);
   assert.deepEqual(observed.errors, []);
 });

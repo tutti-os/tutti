@@ -1602,6 +1602,58 @@ invalid_grant`. Search `tuttid.log` for
   [Agent Extensions](../../architecture/agent-extensions.md)
   [Kimi Code Agent Extension](https://github.com/tutti-os/agent-extension-kimi-code)
 
+### CodeBuddy account panel does not distinguish API billing from Coding Plan
+
+- Symptom:
+  CodeBuddy `/status` opens the native account panel, but its limits row says
+  the current Agent does not provide quota limits. Ordinary API keys and Coding
+  Plan credentials also have the same presentation.
+- Quick checks:
+  Confirm the provider is `acp:codebuddy`. Inspect CodeBuddy's effective
+  `CODEBUDDY_API_KEY`, `CODEBUDDY_BASE_URL`, `CODEBUDDY_AUTH_TOKEN`, and
+  `apiKeyHelper` presence without copying credential values into logs. Coding
+  Plan keys use the `sk-sp-` prefix or an endpoint whose path contains
+  `coding`.
+- Root cause:
+  CodeBuddy's ACP `usage_update` reports context usage and per-request cost, but
+  the pinned runtime does not expose or document a complete account-level
+  credit-balance contract. Private product endpoints, filtered package queries,
+  and a single page of resource rows cannot prove a complete account balance.
+  Tutti previously had no CodeBuddy account probe, so the native panel treated
+  the provider as unsupported and could not identify the billing mode.
+- Fix:
+  CodeBuddy's Extension declares a separately published Provider-owned account
+  usage companion. The companion owns only CodeBuddy's effective configuration
+  precedence and billing-mode classification. Tutti executes the generic
+  `accountUsage` capability and consumes a closed Provider-neutral snapshot.
+  Ordinary API keys report `api` with quota state `not_applicable`; Coding Plan
+  reports `coding_plan` with quota state `unavailable`; native authentication
+  reports `provider_account` with quota state `unavailable`. The UI renders API
+  `not_applicable` as `—`; Coding Plan and native accounts render the localized
+  account-quota-unavailable copy. Neither presentation claims a verified credit
+  balance. Until the Provider publishes a contract that proves a complete
+  snapshot, the companion emits no exact Credits. It does not enumerate or read
+  native session files, decode JWTs, execute credential helpers, inspect local
+  `expiresAt`, or call private account endpoints. Runtime/ACP therefore remains
+  the only login and refresh authority. Tokens, account identifiers, paths, raw
+  Provider responses, and Provider messages never cross the daemon API or
+  renderer IPC and never enter logs.
+- Validation:
+  Cover ordinary API keys, Coding Plan keys, authentication tokens,
+  `apiKeyHelper`, effective settings precedence, and stable errors. Prove that
+  simultaneous expired and valid session files are never read, Runtime token
+  refresh cannot affect the probe, private package endpoints are never called,
+  incomplete package pagination cannot be presented as exact Credits,
+  concurrent probes coalesce at the Tutti boundary, and credentials or raw
+  errors are never projected. Also cover generic renderer labels and exact
+  amount validation for future Providers with a complete contract. Run the
+  Extension's Linux and Windows companion checks plus Tutti's daemon, Desktop,
+  typecheck, i18n, and changed-aware push-ready gates.
+- References:
+  [CodeBuddy Agent Extension](https://github.com/tutti-os/agent-extension-codebuddy)
+  [account_usage.go](../../../services/tuttid/service/agentextension/account_usage.go)
+  [agentTargetAccountUsageProbe.ts](../../../apps/desktop/src/main/agentTargetAccountUsageProbe.ts)
+
 ### Kimi Code account panel says the Agent provides no quota limits
 
 - Symptom:
@@ -1621,17 +1673,16 @@ invalid_grant`. Search `tuttid.log` for
   therefore had no account-level source and treated the extension provider as
   unsupported.
 - Fix:
-  The Desktop Kimi account probe resolves the selected model's provider from
-  Kimi configuration. API-key providers return provider-neutral `api` billing
-  with no quota rows, which the renderer labels `API Usage Billing`. The
-  managed provider reads its request-local OAuth access token in Electron main,
-  requests the configured Coding Plan `/usages` endpoint, and projects only
-  provider-neutral quota percentages/reset times. Tokens, API keys, and raw
-  responses never cross renderer IPC and are never logged. Kimi owns OAuth
-  refresh, so the probe must not treat its point-in-time `expires_at` value or a
-  usage-endpoint authorization rejection as Agent login authority. If Kimi
-  rewrites the credential while a request is in flight, retry once with the new
-  token; otherwise keep the Agent available and degrade only the limits row.
+  Kimi's Extension declares a separately published Provider-owned account usage
+  companion. It resolves the selected model's provider and Kimi credentials,
+  while Tutti executes the generic `accountUsage` capability and consumes only
+  Provider-neutral billing/quota fields. API-key providers return `api` with no
+  quota rows. The managed provider requests Coding Plan `/usages` and emits
+  normalized quota percentages/reset times. Kimi owns OAuth refresh, so the
+  companion does not treat point-in-time `expires_at` or an authorization
+  rejection as Agent login authority. It reloads the credential once after
+  401/403 and retries only when the token changed. Tokens, API keys, paths, raw
+  responses, and Provider messages never cross the daemon API or renderer IPC.
 - Validation:
   Cover managed inline/nested OAuth configuration, Coding Plan summary/window
   mapping, API billing without an account request, a concurrent credential
@@ -1640,8 +1691,9 @@ invalid_grant`. Search `tuttid.log` for
   Desktop tests, typecheck, i18n check, build, and changed-aware push-ready
   gate.
 - References:
-  [kimiProviderAccount.ts](../../../apps/desktop/src/main/kimiProviderAccount.ts)
-  [kimiProviderUsageProbe.ts](../../../apps/desktop/src/main/kimiProviderUsageProbe.ts)
+  [Kimi Code Agent Extension](https://github.com/tutti-os/agent-extension-kimi-code)
+  [account_usage.go](../../../services/tuttid/service/agentextension/account_usage.go)
+  [agentTargetAccountUsageProbe.ts](../../../apps/desktop/src/main/agentTargetAccountUsageProbe.ts)
   [agentProviderUsageProbe.ts](../../../apps/desktop/src/main/agentProviderUsageProbe.ts)
   [createDesktopAgentStatusSource.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/createDesktopAgentStatusSource.ts)
 

@@ -9047,12 +9047,13 @@ components:
         - outcome
         - capturedAtUnixMs
         - billingMode
+        - quotaState
         - quotas
       properties:
         schemaVersion:
           type: string
           enum:
-            - tutti.agent.account-usage.v1
+            - tutti.agent.account-usage.v2
         agentTargetId:
           type: string
           minLength: 1
@@ -9068,6 +9069,8 @@ components:
           minimum: 0
         billingMode:
           $ref: "#/components/schemas/AgentTargetAccountUsageBillingMode"
+        quotaState:
+          $ref: "#/components/schemas/AgentTargetAccountUsageQuotaState"
         quotas:
           type: array
           maxItems: 64
@@ -9086,7 +9089,7 @@ components:
         schemaVersion:
           type: string
           enum:
-            - tutti.agent.account-usage.v1
+            - tutti.agent.account-usage.v2
         agentTargetId:
           type: string
           minLength: 1
@@ -9114,7 +9117,7 @@ components:
         schemaVersion:
           type: string
           enum:
-            - tutti.agent.account-usage.v1
+            - tutti.agent.account-usage.v2
         agentTargetId:
           type: string
           minLength: 1
@@ -9135,6 +9138,14 @@ components:
       enum:
         - subscription
         - api
+        - coding_plan
+        - provider_account
+    AgentTargetAccountUsageQuotaState:
+      type: string
+      enum:
+        - complete
+        - unavailable
+        - not_applicable
     AgentTargetAccountUsageErrorCode:
       type: string
       enum:
@@ -9155,6 +9166,7 @@ components:
         - weekly
         - monthly
         - model
+        - credits
         - cost
     AgentTargetAccountUsageQuota:
       type: object
@@ -9169,6 +9181,18 @@ components:
           type: number
           minimum: 0
           maximum: 100
+        amountRemaining:
+          type: number
+          format: double
+          minimum: 0
+        amountLimit:
+          type: number
+          format: double
+          minimum: 0
+        amountUnit:
+          type: string
+          enum:
+            - credits
         resetsAtUnixMs:
           type: integer
           format: int64
@@ -12225,6 +12249,10 @@ components:
           type: string
         iconUrl:
           type: string
+        installedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
         status:
           type: string
           enum:

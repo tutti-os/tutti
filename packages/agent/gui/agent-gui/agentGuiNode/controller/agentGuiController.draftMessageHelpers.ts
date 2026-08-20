@@ -16,6 +16,7 @@ import type {
   AgentGUIAgentTarget
 } from "../../../types";
 import {
+  agentComposerDraftPreservingConnectors,
   emptyAgentComposerDraft,
   materializePastedTextInstructions
 } from "../model/agentComposerDraft";
@@ -26,7 +27,10 @@ import type {
   AgentGUIQueuedPromptVM,
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
-import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
+import {
+  isAgentComposerSessionDraftScope,
+  resolveAgentComposerDraftScopeKey
+} from "../model/agentComposerDraftScope";
 import {
   normalizePermissionModeId,
   readNodeDefaultDraftSettings,
@@ -469,6 +473,12 @@ export function clearSubmittedDraftIfUnchanged(input: {
   }
   return {
     ...input.drafts,
-    [input.snapshot.sourceScopeKey]: emptyAgentComposerDraft()
+    [input.snapshot.sourceScopeKey]: isAgentComposerSessionDraftScope(
+      input.snapshot.sourceScopeKey
+    )
+      ? agentComposerDraftPreservingConnectors(
+          input.drafts[input.snapshot.sourceScopeKey]
+        )
+      : emptyAgentComposerDraft()
   };
 }

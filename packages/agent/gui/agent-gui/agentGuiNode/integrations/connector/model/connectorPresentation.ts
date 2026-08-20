@@ -36,6 +36,7 @@ export function projectConnectorComposerItems(
       connectorKey,
       description: option.description,
       iconUrl: option.iconUrl,
+      installedAtUnixMs: option.installedAtUnixMs,
       name: option.name,
       selected: selectedKeys.has(connectorKey),
       status:

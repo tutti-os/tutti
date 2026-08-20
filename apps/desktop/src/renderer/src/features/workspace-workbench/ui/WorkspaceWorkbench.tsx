@@ -121,6 +121,10 @@ import {
 } from "../../../../../shared/featureFlags/catalog.ts";
 import { resolveWorkbenchShortcutAction } from "../services/workspaceWorkbenchShortcutService.ts";
 import {
+  resolveWorkspaceDockRetentionDefault,
+  resolveWorkspaceDockRetentionState
+} from "../services/workspaceDockRetention.ts";
+import {
   openWorkspaceWorkbenchAgentConversationShortcut,
   openWorkspaceWorkbenchSameTypeWindowShortcut
 } from "../services/workspaceWorkbenchShortcutActions.ts";
@@ -427,18 +431,12 @@ function ReadyWorkspaceWorkbenchWithSession({
         });
         const retained =
           runtime.dockRetentionByEntryId[request.entryId] ??
-          (entry
-            ? resolveWorkspaceDockRetentionDefault({
-                appCenterService,
-                entry
-              })
-            : false);
+          (entry ? resolveWorkspaceDockRetentionDefault(entry) : false);
         return runtime.setDockEntryRetained(request.entryId, !retained);
       }
       return hostInput.onDockEntryAction?.(request);
     },
     [
-      appCenterService,
       hostInput.contributions,
       hostInput.dockEntries,
       hostInput.onDockEntryAction,
@@ -449,13 +447,11 @@ function ReadyWorkspaceWorkbenchWithSession({
   const dockEntryPresentationOverrides = useMemo(
     () =>
       resolveWorkspaceDockEntryPresentationOverrides({
-        appCenterService,
         contributions: hostInput.contributions,
         dockEntries: hostInput.dockEntries,
         retainedByEntryId: runtime.dockRetentionByEntryId
       }),
     [
-      appCenterService,
       hostInput.contributions,
       hostInput.dockEntries,
       runtime.dockRetentionByEntryId
@@ -1021,12 +1017,10 @@ function ReadyWorkspaceWorkbenchWithSession({
 }
 
 function resolveWorkspaceDockEntryPresentationOverrides({
-  appCenterService,
   contributions,
   dockEntries,
   retainedByEntryId
 }: {
-  appCenterService: IWorkspaceAppCenterService;
   contributions: readonly WorkbenchContribution[] | undefined;
   dockEntries: readonly WorkbenchHostDockEntry[] | undefined;
   retainedByEntryId: Readonly<Record<string, boolean>>;
@@ -1043,7 +1037,6 @@ function resolveWorkspaceDockEntryPresentationOverrides({
   ];
   for (const entry of entries) {
     const presentationOverride = resolveWorkspaceDockRetentionPresentation({
-      appCenterService,
       entry,
       retainedByEntryId
     });
@@ -1055,11 +1048,9 @@ function resolveWorkspaceDockEntryPresentationOverrides({
 }
 
 function resolveWorkspaceDockRetentionPresentation({
-  appCenterService,
   entry,
   retainedByEntryId
 }: {
-  appCenterService: IWorkspaceAppCenterService;
   entry: WorkbenchHostDockEntry;
   retainedByEntryId: Readonly<Record<string, boolean>>;
 }): WorkbenchHostDockEntryPresentationOverride | null {
@@ -1069,28 +1060,14 @@ function resolveWorkspaceDockRetentionPresentation({
   ) {
     return null;
   }
-  const retained =
-    retainedByEntryId[entry.id] ??
-    resolveWorkspaceDockRetentionDefault({ appCenterService, entry });
+  const state = resolveWorkspaceDockRetentionState(entry, retainedByEntryId);
   return {
     dockRetention: {
       actionId: `${workspaceDockRetentionActionPrefix}${encodeURIComponent(entry.id)}`,
-      retained
+      retained: state.retained
     },
-    visibility: retained ? "always" : "when-open"
+    visibility: state.visibility
   };
-}
-
-function resolveWorkspaceDockRetentionDefault({
-  appCenterService,
-  entry
-}: {
-  appCenterService: IWorkspaceAppCenterService;
-  entry: WorkbenchHostDockEntry;
-}): boolean {
-  const appId = readWorkspaceAppIdFromDockEntryId(entry.id);
-  const app = appId ? findWorkspaceApp(appCenterService, appId) : null;
-  return app?.installed ?? (entry.visibility ?? "always") === "always";
 }
 
 function findWorkspaceDockRetentionEntry({
@@ -1109,15 +1086,6 @@ function findWorkspaceDockRetentionEntry({
       .find((entry) => entry.id === entryId) ??
     null
   );
-}
-
-function readWorkspaceAppIdFromDockEntryId(
-  value: string | null | undefined
-): string | null {
-  const prefix = "workspace-app:";
-  return value?.startsWith(prefix)
-    ? decodeURIComponent(value.slice(prefix.length))
-    : null;
 }
 
 function publishWorkspaceAppLaunchIntent(input: {

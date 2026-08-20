@@ -5362,15 +5362,18 @@ aside.workspace-agents-status-panel
 
 /*
  * The tool-sidebar actions are removed from the flex flow above. On Windows
- * the native caption buttons occupy the right edge of the same overlay, so a
- * bare `right: 0` puts those actions underneath minimize/restore/close. Move
- * the absolute action group to the same safe edge used by the header padding.
+ * the native caption buttons occupy the right edge of the same overlay. Keep
+ * the tool header anchored to the same edge as its body panel, then reserve
+ * the caption-button hit area inside that header so its controls stay clear
+ * without shifting the header border into the Agent surface.
  */
 .agent-gui-workbench-header[data-tutti-titlebar-overlay="true"]
-  .agent-gui-workbench-header__secondary-accessory:has(
-    [data-agent-tool-sidebar-header="true"]
-  ) {
-  right: var(--tutti-titlebar-controls-inset);
+  [data-agent-tool-sidebar-header="true"] {
+  box-sizing: border-box;
+  padding-right: calc(
+    var(--tutti-titlebar-controls-inset) +
+      var(--agent-gui-workbench-header-padding-x)
+  );
 }
 
 /*

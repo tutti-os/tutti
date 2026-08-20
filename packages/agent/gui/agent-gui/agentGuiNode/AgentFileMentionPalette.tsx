@@ -474,6 +474,7 @@ function agentMentionItemToRowItem(
     return {
       kind: "file",
       name: item.name,
+      contextLabel: item.contextLabel ?? null,
       visualKind,
       thumbnailUrl: resolveAgentMentionFileThumbnailUrl(item) ?? null,
       childCountLabel,

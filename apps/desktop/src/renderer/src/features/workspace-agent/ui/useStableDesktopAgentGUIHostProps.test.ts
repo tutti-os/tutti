@@ -45,6 +45,7 @@ test("React Compiler preserves field-keyed Agent GUI host projections", async ()
   assert.match(compiled, /nextHostActions\.onAgentConfigMenuOpen/);
   assert.match(compiled, /nextHostActions\.onOpenConversationWindow/);
   assert.match(compiled, /nextRenderSlots\.agentConfigAccount/);
+  assert.match(compiled, /nextRenderSlots\.agentConfigSystemActions/);
 });
 
 test("forwards the explicitly selected project directory capability", () => {

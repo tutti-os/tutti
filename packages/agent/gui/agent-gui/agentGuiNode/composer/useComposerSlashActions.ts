@@ -36,8 +36,8 @@ import { skillTriggerForPrefix } from "../model/agentSkillOptions";
 import { moveSlashCommandHighlight } from "../model/agentSlashCommands";
 import {
   agentComposerDraftHasContent,
+  agentComposerDraftPreservingConnectors,
   buildAgentComposerDraft,
-  emptyAgentComposerDraft,
   projectAgentComposerDraftSubmission,
   textPromptContent,
   updateAgentComposerDraft
@@ -167,8 +167,8 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     draftPromptRef.current = "";
     setPaletteDraftPrompt("");
     setIsPaletteOpen(false);
-    onDraftContentChange(emptyAgentComposerDraft());
-  }, [onDraftContentChange]);
+    onDraftContentChange(agentComposerDraftPreservingConnectors(draftContent));
+  }, [draftContent, onDraftContentChange]);
 
   const closeSlashStatusPanel = useCallback((): void => {
     setIsSlashStatusPanelOpen(false);

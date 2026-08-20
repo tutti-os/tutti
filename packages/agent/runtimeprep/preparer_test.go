@@ -149,8 +149,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
 	// The active Connector alias index has its own 640-rune cap. Keep the full
-	// provider instructions bounded while reserving room for that routing data.
-	const maxCodexAgentsChars = 7200
+	// provider instructions bounded while reserving room for that routing data
+	// plus the session-sticky enable-set protocol in connector-discovery.
+	const maxCodexAgentsChars = 7600
 	if count := utf8.RuneCountInString(string(codexAgents)); count > maxCodexAgentsChars {
 		t.Fatalf("codex AGENTS.md chars = %d, want <= %d", count, maxCodexAgentsChars)
 	}

@@ -27,6 +27,36 @@ const labels = {
 } as unknown as AgentGUIViewLabels;
 
 describe("AgentGUIConfigMenu", () => {
+  it("keeps Host system actions interactive after Agent settings", () => {
+    const onSystemAction = vi.fn();
+    render(
+      <AgentGUIConfigMenu
+        environmentSetupVisible={false}
+        labels={labels}
+        providerScopedActionsVisible
+        slashStatusLimits={[]}
+        slashStatusLimitsLoading={false}
+        slashStatusLimitsResolvedEmpty={false}
+        slashStatusUsageCapturedAtUnixMs={null}
+        slashStatusUsageDidFail={false}
+        slashStatusUsageAttempted={false}
+        systemActionsContent={
+          <button type="button" onClick={onSystemAction}>
+            Check for updates
+          </button>
+        }
+        onOpenAgentEnvSetup={vi.fn()}
+        onOpenAgentSettings={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+
+    expect(onSystemAction).toHaveBeenCalledOnce();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
   it("replaces provider quota chrome only when the Host supplies account content", () => {
     const onOpen = vi.fn();
     render(
@@ -130,6 +160,38 @@ describe("AgentGUIConfigMenu", () => {
       document.querySelector('span[style*="kimi-code-mask.png"]')
     ).toBeNull();
   });
+
+  it.each(["Coding Plan", "CodeBuddy Account"])(
+    "shows unavailable account quota copy for %s billing",
+    (providerAuthAccountLabel) => {
+      render(
+        <AgentGUIConfigMenu
+          environmentSetupVisible={false}
+          labels={labels}
+          providerScopedActionsVisible
+          provider="acp:codebuddy"
+          providerLabel="CodeBuddy"
+          providerAuthAccountLabel={providerAuthAccountLabel}
+          slashStatusLimits={[]}
+          slashStatusLimitsLoading={false}
+          slashStatusLimitsResolvedEmpty={false}
+          slashStatusUsageCapturedAtUnixMs={500}
+          slashStatusUsageDidFail={false}
+          slashStatusUsageAttempted
+          onAgentConfigMenuOpen={vi.fn()}
+          onOpenAgentEnvSetup={vi.fn()}
+          onOpenAgentSettings={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByRole("button", { name: "More" }));
+
+      expect(screen.getByText(providerAuthAccountLabel)).toBeInTheDocument();
+      expect(
+        screen.getByTestId("agent-gui-config-usage-unavailable")
+      ).toHaveTextContent("Unavailable");
+    }
+  );
 
   it("uses a custom mask only when no original icon exists", () => {
     render(

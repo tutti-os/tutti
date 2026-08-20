@@ -175,6 +175,18 @@ and AgentGUI never select this capability by provider name and never receive
 tokens, configured endpoints, paths, raw response bodies, or Provider error
 text.
 
+The normalized account-usage v2 snapshot separates billing identity from quota
+completeness. `billingMode` is `api`, `subscription`, `coding_plan`, or
+`provider_account`; `quotaState` is `complete`, `unavailable`, or
+`not_applicable`. Only `complete` may carry quota rows. `api` is explicitly
+`not_applicable`; a recognized plan or Provider account whose complete balance
+cannot be proven remains `unavailable` without an authoritative empty or
+partial balance. Exact balances use Provider-neutral amount/unit fields such as
+`credits`, while tokens, account IDs, and raw package records remain inside the
+companion. Tutti accepts the original v1 helper result for existing Extensions,
+normalizes it to v2 at the daemon boundary, and requires new companions to emit
+v2 whenever they need these completeness or exact-amount semantics.
+
 ### Spawn Settings And ACP Workflow Modes
 
 Composer profile v1 has an optional, closed `launchSettings.permission`

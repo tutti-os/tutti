@@ -68,6 +68,13 @@ interface ResolveLaunchSpecOptions {
   repoRoot?: string;
 }
 
+export type ManagedTuttidPhase =
+  | "stopped"
+  | "starting"
+  | "healthy"
+  | "recovering"
+  | "stopping";
+
 export function createTuttidManager(
   endpoint: DesktopDaemonEndpoint,
   tuttidClient: TuttidClient,
@@ -87,6 +94,9 @@ export function createTuttidManager(
 class ManagedTuttid implements TuttidManager {
   private process: ChildProcess | null = null;
   private stopRequested = false;
+  private phase: ManagedTuttidPhase = "stopped";
+  private startInFlight: Promise<void> | null = null;
+  private attemptInFlight: Promise<void> | null = null;
   private readonly endpoint: DesktopDaemonEndpoint;
   private readonly tuttidClient: TuttidClient;
   private readonly restartController: DaemonRestartController;
@@ -106,7 +116,7 @@ class ManagedTuttid implements TuttidManager {
     this.desktopUpdateAdmission = desktopUpdateAdmission;
     this.workspaceAppCliPath = workspaceAppCliPath;
     this.restartController = createDaemonRestartController({
-      restart: () => this.start(),
+      restart: () => this.startAttempt("recovering"),
       isStopRequested: () => this.stopRequested,
       delay: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
       now: () => Date.now(),
@@ -123,9 +133,66 @@ class ManagedTuttid implements TuttidManager {
   }
 
   async start(): Promise<void> {
+    if (this.phase === "healthy" && this.isProcessAlive()) {
+      return Promise.resolve();
+    }
+    if (this.startInFlight) {
+      return this.startInFlight;
+    }
+
+    this.stopRequested = false;
+    const start = this.startWithRecovery().finally(() => {
+      if (this.startInFlight === start) {
+        this.startInFlight = null;
+      }
+    });
+    this.startInFlight = start;
+    return start;
+  }
+
+  private async startWithRecovery(): Promise<void> {
+    try {
+      await this.startAttempt("starting");
+      return;
+    } catch (initialError) {
+      if (this.stopRequested) {
+        this.phase = "stopped";
+        return;
+      }
+      if (!isRetryableManagedTuttidStartupError(initialError)) {
+        this.phase = "stopped";
+        throw initialError;
+      }
+      this.phase = "recovering";
+      if (await this.restartController.notifyExited()) {
+        return;
+      }
+      this.phase = "stopped";
+      throw initialError;
+    }
+  }
+
+  private async startAttempt(phase: "starting" | "recovering"): Promise<void> {
+    if (this.attemptInFlight) {
+      return this.attemptInFlight;
+    }
+
+    const attempt = this.runStartAttempt(phase).finally(() => {
+      if (this.attemptInFlight === attempt) {
+        this.attemptInFlight = null;
+      }
+    });
+    this.attemptInFlight = attempt;
+    return attempt;
+  }
+
+  private async runStartAttempt(
+    phase: "starting" | "recovering",
+  ): Promise<void> {
     if (this.process) {
       return;
     }
+    this.phase = phase;
 
     this.endpoint.boundAddr = null;
     await stopStaleTuttid(this.endpoint.pidPath);
@@ -144,6 +211,10 @@ class ManagedTuttid implements TuttidManager {
       logOutput,
       userShellEnv,
     });
+    if (this.stopRequested) {
+      this.phase = "stopped";
+      return;
+    }
     logger.info("starting managed tuttid", {
       command: launchSpec.command,
       args: launchSpec.args,
@@ -164,7 +235,6 @@ class ManagedTuttid implements TuttidManager {
     const spawned = waitForChildSpawn(child);
 
     this.process = child;
-    this.stopRequested = false;
     let startupDiagnostic = "";
 
     if (forwardStdout) {
@@ -193,7 +263,9 @@ class ManagedTuttid implements TuttidManager {
 
     child.on("exit", (code, signal) => {
       const pid = child.pid ?? null;
-      this.process = null;
+      if (this.process === child) {
+        this.process = null;
+      }
 
       if (!this.stopRequested) {
         getDesktopLogger().error("managed tuttid exited unexpectedly", {
@@ -202,7 +274,16 @@ class ManagedTuttid implements TuttidManager {
           signal,
           error_code: desktopErrorCodes.managedProcessExited,
         });
-        void this.restartController.notifyExited();
+        if (
+          shouldScheduleManagedTuttidRestart(this.phase, this.stopRequested)
+        ) {
+          this.phase = "recovering";
+          void this.restartController.notifyExited().then((recovered) => {
+            if (!recovered && !this.stopRequested) {
+              this.phase = "stopped";
+            }
+          });
+        }
       }
     });
 
@@ -221,12 +302,15 @@ class ManagedTuttid implements TuttidManager {
       throw managedTuttidStartupError(error, startupDiagnostic);
     }
 
+    this.phase = "healthy";
     this.restartController.notifyStarted();
   }
 
   async stop(): Promise<void> {
     this.stopRequested = true;
+    this.phase = "stopping";
     await this.terminateProcess();
+    this.phase = "stopped";
   }
 
   private async terminateProcess(): Promise<void> {
@@ -300,6 +384,28 @@ export function managedTuttidStartupError(
   (failure as NodeJS.ErrnoException).code =
     desktopErrorCodes.managedProcessError;
   return failure;
+}
+
+export function isRetryableManagedTuttidStartupError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  const cause = error.cause;
+  if (!cause || typeof cause !== "object" || !("message" in cause)) {
+    return false;
+  }
+  const diagnostic = String(cause.message).toLowerCase();
+  return (
+    diagnostic.includes("disk i/o error (1546)") ||
+    diagnostic.includes("sqlite_ioerr_truncate")
+  );
+}
+
+export function shouldScheduleManagedTuttidRestart(
+  phase: ManagedTuttidPhase,
+  stopRequested: boolean,
+): boolean {
+  return !stopRequested && phase === "healthy";
 }
 
 function resolveEndpointEnv(

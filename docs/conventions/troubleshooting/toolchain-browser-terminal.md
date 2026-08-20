@@ -2,6 +2,30 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Standalone Agent provider login reports an internal error
+
+- Symptom:
+  A provider login request fails in a standalone Agent window even though a
+  Workbench host appears to be bound, or an HTTP/file action unexpectedly opens
+  an OS application.
+- Quick checks:
+  Distinguish the AgentGUI `surface.host` from the standalone right-side tool
+  host. Verify that the renderer registered the workspace-scoped Terminal,
+  Browser, and Files presenters before announcing tool-host readiness.
+- Root cause:
+  The AgentGUI surface host owns the Agent node, not Desktop tool nodes. Reusing
+  it as a Workspace Workbench host makes Terminal launch return no node, while
+  standalone-specific link/file shortcuts can bypass the in-app tools.
+- Fix:
+  Keep semantic launch coordinators shared and register Desktop presentation
+  adapters per mode. The standalone adapter creates/selects sidebar tabs and
+  reserves OS navigation for explicit external or reveal actions.
+- Validation:
+  Verify provider login opens a new Terminal tab, ordinary HTTP and file
+  preview stay in right-side tools, explicit Open in Finder remains external,
+  and Browser automation follows the canonical Turn's validated renderer claim
+  (with Workspace fallback only for an unclaimed legacy Turn).
+
 ### Go-only PR skips a repository contract that later fails
 
 - Symptom:

@@ -51,6 +51,13 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		Metadata: cloneMetadata(input.Metadata), ClientSubmitID: input.ClientSubmitID, Guidance: input.Guidance,
 		TurnID: input.TurnID,
 	}
+	connectorRoutingUpdate, connectorRoutingChanged := "", false
+	if !input.Guidance {
+		connectorRoutingUpdate, connectorRoutingChanged = s.pendingConnectorRoutingUpdate(workspaceID, agentSessionID)
+		if connectorRoutingChanged {
+			hostInput.ConnectorRoutingUpdate = &connectorRoutingUpdate
+		}
+	}
 	var preparedTurnID string
 	var preparedSnapshot tuttimodeactivationbiz.TurnSnapshot
 	if _, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, input.Guidance); !typedGoal {
@@ -102,6 +109,12 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	}
 	if preparedTurnID != "" && strings.TrimSpace(hostResult.TurnID) != preparedTurnID {
 		return SendInputResult{}, ErrSubmitDeliveryUnknown
+	}
+	if connectorRoutingChanged {
+		// The provider observed the routing update with this turn; later turns
+		// only need another update after the index diverges again. Ambiguous
+		// delivery outcomes above skip this commit and re-inject next turn.
+		s.connectorRoutingBaselines.commit(workspaceID, agentSessionID, connectorRoutingUpdate)
 	}
 	turnID := hostResult.TurnID
 	provider := strings.TrimSpace(hostResult.Session.Provider)

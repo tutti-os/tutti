@@ -319,7 +319,7 @@ export const zhCNAgentGui = {
   slashStatusContextValue:
     "{{percentLeft}}% 剩余（已用 {{usedTokens}} / {{totalTokens}}）",
   slashStatusContextUnavailable: "—",
-  slashStatusLimitsUnavailable: "当前 Agent 未提供额度限制",
+  slashStatusLimitsUnavailable: "账户额度暂不可用",
   slashStatusEmptyValue: "—",
   slashStatusUsageJustUpdated: "刚刚更新",
   slashStatusUsageMinutesAgo: "{{count}} 分钟前更新",

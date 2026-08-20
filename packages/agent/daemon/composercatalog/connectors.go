@@ -25,20 +25,21 @@ const (
 // projections. Provider-specific discovery may populate the optional identity
 // fields while connector projection uses ConnectorKey-compatible Name values.
 type Option struct {
-	ID          string
-	Kind        string
-	Name        string
-	Label       string
-	IconURL     string
-	Description string
-	Status      string
-	Source      string
-	PluginName  string
-	ServerName  string
-	ToolName    string
-	Trigger     string
-	Path        string
-	Invocation  string
+	ID                string
+	Kind              string
+	Name              string
+	Label             string
+	IconURL           string
+	Description       string
+	Status            string
+	Source            string
+	PluginName        string
+	ServerName        string
+	ToolName          string
+	Trigger           string
+	Path              string
+	Invocation        string
+	InstalledAtUnixMS int64
 }
 
 // ConnectorOptions reads one authoritative Connector Market snapshot and
@@ -68,16 +69,17 @@ func ProjectConnectorOptions(snapshot connectorhost.Snapshot) []Option {
 			label = key
 		}
 		options = append(options, Option{
-			ID:          "connector:" + key,
-			Kind:        CapabilityKindConnector,
-			Name:        key,
-			Label:       label,
-			IconURL:     strings.TrimSpace(connector.Release.Manifest.IconURL),
-			Description: strings.TrimSpace(connector.Release.Manifest.Description),
-			Status:      ConnectorStatus(connector),
-			Source:      CapabilitySourceLocalDB,
-			Trigger:     "/" + key,
-			Invocation:  CapabilityInvocationTextTrigger,
+			ID:                "connector:" + key,
+			Kind:              CapabilityKindConnector,
+			Name:              key,
+			Label:             label,
+			IconURL:           strings.TrimSpace(connector.Release.Manifest.IconURL),
+			Description:       strings.TrimSpace(connector.Release.Manifest.Description),
+			Status:            ConnectorStatus(connector),
+			Source:            CapabilitySourceLocalDB,
+			Trigger:           "/" + key,
+			Invocation:        CapabilityInvocationTextTrigger,
+			InstalledAtUnixMS: connector.Installation.InstalledAtUnixMS,
 		})
 	}
 	return options

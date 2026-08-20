@@ -24,7 +24,31 @@ func (c *Controller) SideCapabilities(
 	}
 	defer release()
 	_, _, capabilities, err := c.sideSourceCapabilitiesLocked(
-		ctx, roomID, sourceAgentSessionID,
+		ctx, roomID, sourceAgentSessionID, nil,
+	)
+	return capabilities, err
+}
+
+// SideCapabilitiesForSource resolves Side support from a Host-prepared source
+// snapshot when the canonical provider connection is no longer retained.
+func (c *Controller) SideCapabilitiesForSource(
+	ctx context.Context,
+	source Session,
+) (SideConversationCapabilities, error) {
+	roomID := strings.TrimSpace(source.RoomID)
+	sourceID := strings.TrimSpace(source.AgentSessionID)
+	if roomID == "" || sourceID == "" {
+		return SideConversationCapabilities{}, fmt.Errorf(
+			"room and source session ids are required",
+		)
+	}
+	release, err := c.acquireLifecycleLockContext(ctx, roomID, sourceID)
+	if err != nil {
+		return SideConversationCapabilities{}, err
+	}
+	defer release()
+	_, _, capabilities, err := c.sideSourceCapabilitiesLocked(
+		ctx, roomID, sourceID, &source,
 	)
 	return capabilities, err
 }
@@ -33,20 +57,24 @@ func (c *Controller) sideSourceCapabilitiesLocked(
 	ctx context.Context,
 	roomID string,
 	sourceAgentSessionID string,
+	requested *Session,
 ) (Session, Adapter, SideConversationCapabilities, error) {
-	source, adapter, err := c.sessionAndAdapter(
-		strings.TrimSpace(roomID),
-		strings.TrimSpace(sourceAgentSessionID),
-	)
+	var source Session
+	var adapter Adapter
+	var err error
+	if requested == nil {
+		source, adapter, err = c.sessionAndAdapter(
+			strings.TrimSpace(roomID),
+			strings.TrimSpace(sourceAgentSessionID),
+		)
+	} else {
+		source, adapter, err = c.sessionForkSource(ctx, *requested)
+	}
 	if err != nil {
 		return Session{}, nil, SideConversationCapabilities{}, err
 	}
 	if source.IsSideConversation() {
 		return Session{}, nil, SideConversationCapabilities{}, ErrSideConversationUnsupported
-	}
-	probe, ok := adapter.(LiveSessionProbeAdapter)
-	if !ok || !probe.HasLiveSession(source) {
-		return Session{}, nil, SideConversationCapabilities{}, ErrSessionDisconnected
 	}
 	sideAdapter, ok := adapter.(SideConversationAdapter)
 	if !ok {
@@ -76,6 +104,13 @@ func (c *Controller) OpenSide(
 	if sourceID == sideID {
 		return SideConversationOpenResult{}, ErrSideConversationConflict
 	}
+	if requested := sideRequestedSource(input); requested != nil &&
+		(strings.TrimSpace(requested.RoomID) != roomID ||
+			strings.TrimSpace(requested.AgentSessionID) != sourceID) {
+		return SideConversationOpenResult{}, fmt.Errorf(
+			"prepared source identity does not match side open input",
+		)
+	}
 
 	release, err := c.acquireSideConversationLifecycleLocks(
 		ctx,
@@ -94,7 +129,7 @@ func (c *Controller) OpenSide(
 			existing.SourceAgentSessionID == sourceID &&
 			existing.SideRequestID == requestID {
 			_, _, capabilities, err := c.sideSourceCapabilitiesLocked(
-				ctx, roomID, sourceID,
+				ctx, roomID, sourceID, sideRequestedSource(input),
 			)
 			return SideConversationOpenResult{
 				Session: existing, Capabilities: capabilities,
@@ -104,7 +139,7 @@ func (c *Controller) OpenSide(
 	}
 
 	source, adapter, capabilities, err := c.sideSourceCapabilitiesLocked(
-		ctx, roomID, sourceID,
+		ctx, roomID, sourceID, sideRequestedSource(input),
 	)
 	if err != nil {
 		return SideConversationOpenResult{}, err
@@ -222,6 +257,14 @@ func (c *Controller) OpenSide(
 		c.publishAdapterCommandSnapshot(opened, adapter)
 	}
 	return result, nil
+}
+
+func sideRequestedSource(input SideConversationOpenInput) *Session {
+	if strings.TrimSpace(input.Source.AgentSessionID) == "" {
+		return nil
+	}
+	source := input.Source
+	return &source
 }
 
 func (c *Controller) acquireSideConversationLifecycleLocks(

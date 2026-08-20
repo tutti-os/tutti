@@ -16,6 +16,51 @@ type sideRoutingObserver struct {
 	events map[string][]StreamEvent
 }
 
+func TestCodexSideSourceForLaunchRestoresPersistedCodexHome(t *testing.T) {
+	source, err := codexHistoricalSideSourceForLaunch(Session{
+		RoomID: "workspace", AgentSessionID: "canonical",
+		Env: []string{"CODEX_HOME=/stale", "EXISTING=value"},
+		RuntimeContext: map[string]any{"agent": map[string]any{
+			"codexHome": "/persisted/codex-home",
+		}},
+	}, Session{
+		RoomID: "workspace", AgentSessionID: "side-history",
+		RootAgentSessionID: "side-history", Scope: RuntimeSessionScopeSide,
+		SourceAgentSessionID: "canonical", SideRequestID: "request",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if source.AgentSessionID != "side-history" ||
+		source.RootAgentSessionID != "side-history" ||
+		source.SourceAgentSessionID != "canonical" ||
+		source.Scope != RuntimeSessionScopeSide || source.Resumable {
+		t.Fatalf("historical launch identity = %#v", source)
+	}
+	if got := envValueLast(source.Env, "CODEX_HOME"); got != "/persisted/codex-home" {
+		t.Fatalf("CODEX_HOME = %q, want persisted home", got)
+	}
+	if got := envValueLast(source.Env, "EXISTING"); got != "value" {
+		t.Fatalf("EXISTING = %q, want preserved", got)
+	}
+}
+
+func TestCodexHistoricalSideCapabilitiesRequirePersistedCodexHome(t *testing.T) {
+	adapter := NewCodexAppServerAdapter(nil)
+	capabilities, err := adapter.SideCapabilities(t.Context(), Session{
+		AgentSessionID: "historical", ProviderSessionID: "thread-1",
+		RuntimeContext: map[string]any{"agent": map[string]any{
+			"userAgent": "codex/0.144.1",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if capabilities.Supported {
+		t.Fatalf("capabilities = %#v, want fail closed without codexHome", capabilities)
+	}
+}
+
 func (o *sideRoutingObserver) ObserveRuntimeStreamEvents(
 	_ context.Context,
 	_ string,
@@ -241,6 +286,236 @@ func TestCodexAppServerSideUsesEphemeralForkAndInjectedBoundary(t *testing.T) {
 		RoomID: "workspace-side-codex", AgentSessionID: "parent",
 	}); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestCodexAppServerSideOpensFromReleasedHistoricalSource(t *testing.T) {
+	transport := &multiProcAppServerTransport{}
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+	})
+	adapter := NewCodexAppServerAdapter(transport)
+	var prepared Session
+	adapter.SetProviderLaunchPreparer(func(
+		_ context.Context,
+		input ProviderLaunchPrepareInput,
+	) (ProviderLaunchPrepareResult, error) {
+		prepared = input.Session
+		return ProviderLaunchPrepareResult{
+			Command: input.Command, Env: input.Env, CWD: input.CWD,
+		}, nil
+	})
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID: "workspace-side-history", AgentSessionID: "parent",
+		Provider: ProviderCodex, CWD: "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := started.Session
+	source.RuntimeContext = adapter.SessionState(source).RuntimeContext
+	controller.store(source)
+	if _, ok := source.RuntimeContext["agent"].(map[string]any); !ok {
+		t.Fatalf("source runtime context omitted persisted agent metadata: %#v", source.RuntimeContext)
+	}
+	if err := adapter.ReleaseLiveSession(t.Context(), source); err != nil {
+		t.Fatal(err)
+	}
+	if adapter.HasLiveSession(source) {
+		t.Fatal("source remained live after release")
+	}
+	coldController := NewController([]Adapter{adapter}, nil)
+
+	capabilities, err := coldController.SideCapabilitiesForSource(
+		t.Context(), source,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validRequiredSideCapabilities(capabilities) {
+		t.Fatalf("historical Side capabilities = %#v, want supported", capabilities)
+	}
+	if count, live := transport.snapshot(); count != 1 || len(live) != 0 {
+		t.Fatalf("capability probe spawned a process: spawned %d/live %d", count, len(live))
+	}
+
+	opened, err := coldController.OpenSide(t.Context(), SideConversationOpenInput{
+		RoomID: source.RoomID, SourceAgentSessionID: source.AgentSessionID,
+		SideAgentSessionID: "side-history", RequestID: "open-side-history",
+		Source: source,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened.Session.ProviderSessionID != "codex-thread-fork" {
+		t.Fatalf("opened historical Side = %#v", opened.Session)
+	}
+	if adapter.HasLiveSession(source) {
+		t.Fatal("opening Side unexpectedly resumed the canonical source")
+	}
+	if count, live := transport.snapshot(); count != 2 || len(live) != 1 {
+		t.Fatalf("historical Side processes = spawned %d/live %d, want 2/1", count, len(live))
+	}
+	dedicatedConn := transport.conn(1)
+	dedicatedSpec := transport.spec(1)
+	if dedicatedSpec.AgentSessionID != "side-history" ||
+		dedicatedSpec.RootAgentSessionID != "side-history" {
+		t.Fatalf("historical Side process spec = %#v", dedicatedSpec)
+	}
+	if prepared.AgentSessionID != "side-history" ||
+		prepared.RootAgentSessionID != "side-history" ||
+		prepared.SourceAgentSessionID != source.AgentSessionID ||
+		prepared.Scope != RuntimeSessionScopeSide {
+		t.Fatalf("historical Side prepared identity = %#v", prepared)
+	}
+	fork := appServerRequestParams(t, dedicatedConn, appServerMethodThreadFork)
+	if asString(fork["threadId"]) != source.ProviderSessionID ||
+		fork["ephemeral"] != true || fork["excludeTurns"] != true {
+		t.Fatalf("historical Side thread/fork params = %#v", fork)
+	}
+	if requests := appServerRequestParamsList(
+		t,
+		dedicatedConn,
+		appServerMethodCollaborationModeList,
+	); len(requests) != 0 {
+		t.Fatalf("historical Side refreshed persisted collaboration modes: %#v", requests)
+	}
+
+	if _, err := coldController.Exec(t.Context(), ExecInput{
+		RoomID: source.RoomID, AgentSessionID: "side-history",
+		TurnID:  "side-history-turn",
+		Content: []PromptContentBlock{{Type: "text", Text: "question from history"}},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := coldController.Close(t.Context(), CloseInput{
+		RoomID: source.RoomID, AgentSessionID: "side-history",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if count, live := transport.snapshot(); count != 2 || len(live) != 0 {
+		t.Fatalf("after historical Side close = spawned %d/live %d, want 2/0", count, len(live))
+	}
+}
+
+func TestCodexHistoricalSideFallsBackWhenRegisteredSourceClientIsDead(t *testing.T) {
+	transport := &multiProcAppServerTransport{}
+	transport.setConfigure(func(server *fakeCodexAppServer) {
+		server.userAgent = "codex/0.144.1"
+	})
+	adapter := NewCodexAppServerAdapter(transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(t.Context(), StartInput{
+		RoomID: "workspace-side-dead-source", AgentSessionID: "parent",
+		Provider: ProviderCodex, CWD: "/workspace",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := started.Session
+	source.RuntimeContext = adapter.SessionState(source).RuntimeContext
+	sourceClient := adapter.getSession(source.AgentSessionID).client
+	deadConn := transport.conn(0)
+	if err := deadConn.Close(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-sourceClient.Done():
+	case <-time.After(time.Second):
+		t.Fatal("source client did not observe the closed connection")
+	}
+
+	capabilities, err := adapter.SideCapabilities(t.Context(), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validRequiredSideCapabilities(capabilities) {
+		t.Fatalf("dead-source fallback capabilities = %#v", capabilities)
+	}
+	side := source
+	side.AgentSessionID = "side-dead-source"
+	side.RootAgentSessionID = side.AgentSessionID
+	side.ProviderSessionID = ""
+	side.Scope = RuntimeSessionScopeSide
+	side.SourceAgentSessionID = source.AgentSessionID
+	side.SideRequestID = "request-dead-source"
+	side.Resumable = false
+	opened, err := adapter.OpenSide(t.Context(), SideConversationAdapterOpenInput{
+		Source: source, Side: side, RequestID: side.SideRequestID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if count, live := transport.snapshot(); count != 2 || len(live) != 1 {
+		t.Fatalf("fallback processes = spawned %d/live %d, want 2/1", count, len(live))
+	}
+	if forks := appServerRequestParamsList(
+		t, deadConn, appServerMethodThreadFork,
+	); len(forks) != 0 {
+		t.Fatalf("dead source client received fork = %#v", forks)
+	}
+	if err := adapter.Close(t.Context(), opened.Session); err != nil {
+		t.Fatal(err)
+	}
+}
+
+type historicalSideCloseFailureTransport struct {
+	conn *scriptedAppServerConnection
+}
+
+func (t *historicalSideCloseFailureTransport) Start(
+	_ context.Context,
+	_ ProcessSpec,
+) (ProcessConnection, error) {
+	conn, server := newScriptedAppServerHarness()
+	server.userAgent = "codex/0.144.1"
+	server.forkRPCError = true
+	conn.closeFailures = 1
+	t.conn = conn
+	return conn, nil
+}
+
+func TestCodexHistoricalSideRetainsDedicatedClientAfterCloseFailure(t *testing.T) {
+	transport := &historicalSideCloseFailureTransport{}
+	adapter := NewCodexAppServerAdapter(transport)
+	source := Session{
+		RoomID: "workspace-side-history", AgentSessionID: "parent",
+		RootAgentSessionID: "parent", Provider: ProviderCodex,
+		ProviderSessionID: "codex-thread-1", CWD: "/workspace",
+		RuntimeContext: map[string]any{"agent": map[string]any{
+			"userAgent": "codex/0.144.1", "codexHome": "/persisted/codex-home",
+		}},
+	}
+	side := source
+	side.AgentSessionID = "side-history-failed"
+	side.RootAgentSessionID = side.AgentSessionID
+	side.ProviderSessionID = ""
+	side.Scope = RuntimeSessionScopeSide
+	side.SourceAgentSessionID = source.AgentSessionID
+	side.SideRequestID = "request-failed"
+	side.Resumable = false
+
+	if _, err := adapter.OpenSide(t.Context(), SideConversationAdapterOpenInput{
+		Source: source, Side: side, RequestID: side.SideRequestID,
+	}); err == nil {
+		t.Fatal("OpenSide unexpectedly succeeded")
+	}
+	if !adapter.hasRetiredCodexSessions(side.AgentSessionID) {
+		t.Fatal("close-failed dedicated process lost its retained owner")
+	}
+	cleanup := adapter.CleanupLiveSessionResources(t.Context(), 1)
+	if cleanup.Attempted != 1 || cleanup.Cleaned != 1 || cleanup.Failed != 0 {
+		t.Fatalf("cleanup = %#v, want one successful retry", cleanup)
+	}
+	if adapter.hasRetiredCodexSessions(side.AgentSessionID) {
+		t.Fatal("dedicated process remained retained after successful retry")
+	}
+	transport.conn.mu.Lock()
+	closeCount := transport.conn.closeCount
+	transport.conn.mu.Unlock()
+	if closeCount != 2 {
+		t.Fatalf("physical close attempts = %d, want 2", closeCount)
 	}
 }
 

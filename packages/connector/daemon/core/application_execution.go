@@ -149,7 +149,8 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 		Release:     release,
 	})
 	if installErr != nil {
-		return NewDomainError(ErrorCodeInstallFailed, "connector release installation failed", true, installErr)
+		return NewDomainError(ErrorCodeInstallFailed, "connector release installation failed",
+			!errors.Is(installErr, ErrPermanentInstallFailure), installErr)
 	}
 	if err := validateReleaseInstallationReceipt(operation, release, installed); err != nil {
 		return err
@@ -183,7 +184,8 @@ func (application *Application) executeInstall(ctx context.Context, operation Op
 		OperationID: operation.OperationID, Scope: operation.Scope, Generation: operation.HostGeneration,
 		Release: release, Receipt: installed,
 	}); err != nil {
-		return NewDomainError(ErrorCodeInstallFailed, "connector release installation commit failed", true, err)
+		return NewDomainError(ErrorCodeInstallFailed, "connector release installation commit failed",
+			!errors.Is(err, ErrPermanentInstallFailure), err)
 	}
 	if err := application.prepareInstallRuntimeDesired(ctx, operation.OperationID, release, binding); err != nil {
 		return err
@@ -243,7 +245,8 @@ func (application *Application) executeUninstall(ctx context.Context, operation 
 		Generation:  operation.HostGeneration,
 		Release:     release,
 	}); err != nil {
-		return NewDomainError(ErrorCodeInstallFailed, "connector release cleanup failed", true, err)
+		return NewDomainError(ErrorCodeInstallFailed, "connector release cleanup failed",
+			!errors.Is(err, ErrPermanentInstallFailure), err)
 	}
 	return application.completeUninstall(ctx, operation.OperationID)
 }

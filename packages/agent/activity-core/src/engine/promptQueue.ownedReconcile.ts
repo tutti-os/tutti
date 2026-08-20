@@ -8,6 +8,7 @@ import type {
   PromptQueueState
 } from "./promptQueue.types.ts";
 import { compactQueueRecord } from "./promptQueue.record.ts";
+import { setPendingSendNowForPrompt } from "./promptQueue.pendingSendNow.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 
@@ -63,6 +64,11 @@ export function settleOwnedQueueReconcile(
           : current.failureMessage,
       prompts: current.prompts.filter(
         (prompt) => prompt.id !== uncertain.promptId
+      ),
+      pendingSendNowByPromptId: setPendingSendNowForPrompt(
+        current.pendingSendNowByPromptId,
+        uncertain.promptId,
+        null
       ),
       sendNextPromptId:
         current.sendNextPromptId === uncertain.promptId

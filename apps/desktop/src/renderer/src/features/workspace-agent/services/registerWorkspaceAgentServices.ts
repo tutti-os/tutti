@@ -5,7 +5,11 @@ import type {
   TuttidEventStreamClient,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
-import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
+import type {
+  DesktopBrowserApi,
+  DesktopHostFilesApi,
+  DesktopRuntimeApi
+} from "@preload/types";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import type { IWorkspaceUserProjectService } from "../../workspace-user-project/index.ts";
 import type { IDesktopPreferencesService } from "../../desktop-preferences/services/desktopPreferencesService.interface.ts";
@@ -45,6 +49,7 @@ import {
 export interface WorkspaceAgentServiceRegistrationInput {
   accountLogin: { startLogin(): Promise<unknown> };
   clipboard: { writeText(text: string): Promise<void> };
+  browserApi?: Pick<DesktopBrowserApi, "claimAutomationTurn">;
   desktopPreferencesService: IDesktopPreferencesService;
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi: Pick<
@@ -154,6 +159,7 @@ export function registerWorkspaceAgentServices(
     );
   const workspaceAgentActivityService = new WorkspaceAgentActivityService({
     ...input,
+    claimBrowserAutomationTurn: input.browserApi?.claimAutomationTurn,
     forceRefreshAgentProviderStatuses: (providers) =>
       agentProviderStatusService.refreshStatuses(providers),
     resolveAgentTargetProvider: (agentTargetId) =>

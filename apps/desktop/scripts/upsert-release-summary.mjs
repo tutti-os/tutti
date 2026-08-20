@@ -112,8 +112,13 @@ function parseLocaleSection(sectionBody, title, nextTitle = null) {
     if (line.startsWith("#### ")) {
       current = { title: line.slice(5).trim(), items: [] };
       sections.push(current);
-    } else if (line.startsWith("- ") && current) {
-      current.items.push(line.slice(2).trim());
+    } else if (
+      current &&
+      line &&
+      !line.startsWith("#") &&
+      !line.startsWith("<!--")
+    ) {
+      current.items.push(line.startsWith("- ") ? line.slice(2).trim() : line);
     }
   }
   const validSections = sections.filter(

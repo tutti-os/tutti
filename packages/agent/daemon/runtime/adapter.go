@@ -228,10 +228,11 @@ type ProviderTurnBindingRecoveryAdapter interface {
 	) (ProviderTurnBindingRecoveryResult, error)
 }
 
-// SideConversationAdapter is the provider-specific open surface for live,
-// runtime-only side conversations. A Side-capable Adapter must also implement
-// LiveSessionProbeAdapter; interactive Side flows additionally require the
-// ordinary InteractiveAdapter contract. Once OpenSide returns, the Controller
+// SideConversationAdapter is the provider-specific open surface for
+// runtime-only side conversations. The adapter decides whether a live source
+// connection or persisted provider identity can satisfy the request;
+// interactive Side flows additionally require the ordinary InteractiveAdapter
+// contract. Once OpenSide returns, the Controller
 // reuses Adapter Exec/Cancel/Close and the configured event/command/config
 // sinks against the returned side-scoped Session.
 //

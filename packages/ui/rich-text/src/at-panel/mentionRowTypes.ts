@@ -29,6 +29,8 @@ export interface MentionRowFileItem {
   visualKind: MentionFileVisualKind;
   thumbnailUrl?: string | null;
   childCountLabel?: string | null;
+  /** Relative path and owning workspace shown after the file name. */
+  contextLabel?: string | null;
   /** Optional file entry kind surfaced as a row data attribute. */
   entryKind?: string | null;
   /** Optional navigation marker surfaced as a row data attribute. */

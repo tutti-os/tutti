@@ -179,6 +179,7 @@ func (s *Service) cleanupRuntimeWithOptions(
 	if s.ConnectorRuntime != nil {
 		s.ConnectorRuntime.RevokeSession(workspaceID, agentSessionID)
 	}
+	s.connectorRoutingBaselines.clear(workspaceID, agentSessionID)
 	return runtimeErr
 }
 

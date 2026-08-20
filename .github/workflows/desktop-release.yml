@@ -701,13 +701,14 @@ jobs:
                 gh api --method DELETE "repos/${GITHUB_REPOSITORY}/releases/assets/${asset_id}"
               done
           fi
-          gh release upload "${TUTTI_DESKTOP_RELEASE_CANDIDATE_TAG}" release-assets/*
+          node apps/desktop/scripts/upload-github-release-assets.mjs \
+            staged-release.json \
+            release-assets
           echo "release_id=$(jq -r .id staged-release.json)" >> "$GITHUB_OUTPUT"
 
       - name: Install AWS CLI
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends unzip
           if ! command -v aws >/dev/null 2>&1; then
             case "$(uname -m)" in
               x86_64) awscli_arch="x86_64" ;;
@@ -717,9 +718,16 @@ jobs:
                 exit 1
                 ;;
             esac
-            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" -o /tmp/awscliv2.zip
-            unzip -q /tmp/awscliv2.zip -d /tmp
-            sudo /tmp/aws/install --update
+            awscli_dir="$(mktemp -d "${RUNNER_TEMP}/aws-cli.XXXXXX")"
+            curl --fail --silent --show-error --location \
+              --retry 3 \
+              --retry-all-errors \
+              --connect-timeout 10 \
+              --max-time 180 \
+              "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" \
+              --output "${awscli_dir}/awscliv2.zip"
+            python3 -m zipfile -e "${awscli_dir}/awscliv2.zip" "${awscli_dir}"
+            sudo "${awscli_dir}/aws/install" --update
           fi
           aws --version
 

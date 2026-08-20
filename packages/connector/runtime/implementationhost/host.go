@@ -101,6 +101,7 @@ type Host struct {
 	mcpRegistry            *MCPRegistry
 	registry               *RouteRegistry
 	binDir                 string
+	remoteMCPTools         *remoteMCPToolCache
 }
 
 type connectorRoute struct {
@@ -185,6 +186,7 @@ func New(config Config) (*Host, error) {
 		mcpRegistry:            config.MCP,
 		registry:               config.Registry,
 		binDir:                 config.BinDir,
+		remoteMCPTools:         newRemoteMCPToolCache(),
 	}
 	host.authorizationProvider = newManagedCredentialAuthorizationProvider(host)
 	return host, nil
@@ -259,7 +261,7 @@ func (host *Host) Reconcile(ctx context.Context, request ReconcileRequest) (mark
 		route.executionRoot, route.installedRoot = executionRoot, installedRoot
 	}
 	if err != nil {
-		return market.RuntimeReceipt{}, err
+		return market.RuntimeReceipt{}, wrapRemoteMCPAuthorizationError(err)
 	}
 	route.displayName = runtimeRequest.Connector.Release.Manifest.DisplayName
 	route.description = runtimeRequest.Connector.Release.Manifest.Description
@@ -323,7 +325,12 @@ func (*Host) validateAuthorization(request market.RuntimeReconcileRequest) error
 			return nil
 		}
 		if request.Connector.Authorization.State != market.AuthorizationStateConnected {
-			return errors.New("authorized remote connector is not connected")
+			return market.NewDomainError(
+				market.ErrorCodeAuthorizationFailed,
+				"authorized remote connector is not connected",
+				false,
+				nil,
+			)
 		}
 		return nil
 	}
@@ -338,7 +345,12 @@ func (*Host) validateAuthorization(request market.RuntimeReconcileRequest) error
 		return errors.New("authorized connector credential broker binding is unavailable")
 	}
 	if request.Connector.Authorization.State != market.AuthorizationStateConnected {
-		return errors.New("authorized managed connector is not connected")
+		return market.NewDomainError(
+			market.ErrorCodeAuthorizationFailed,
+			"authorized managed connector is not connected",
+			false,
+			nil,
+		)
 	}
 	return nil
 }
@@ -370,6 +382,7 @@ func (host *Host) Close() error {
 		route.Fence()
 		errs = append(errs, route.Close(deadline))
 	}
+	host.remoteMCPTools.clear()
 	return errors.Join(errs...)
 }
 

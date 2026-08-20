@@ -104,6 +104,41 @@ describe("submitted composer draft cleanup", () => {
     expect(result[sourceScopeKey]).toEqual([{ type: "text", text: "" }]);
   });
 
+  it("keeps session-scoped connector blocks after a matching submit", () => {
+    const submittedDraft = buildAgentComposerDraft({
+      prompt: "Review this",
+      connectors: [{ connectorKey: "lark-cli" }, { connectorKey: "github" }]
+    });
+    const snapshot: SubmittedDraftSnapshot = {
+      sourceScopeKey,
+      content: snapshotAgentComposerDraft(submittedDraft)
+    };
+    const drafts = { [sourceScopeKey]: submittedDraft };
+    const result = clearSubmittedDraftIfUnchanged({ drafts, snapshot });
+
+    expect(result[sourceScopeKey]).toEqual(
+      buildAgentComposerDraft({
+        prompt: "",
+        connectors: [{ connectorKey: "lark-cli" }, { connectorKey: "github" }]
+      })
+    );
+  });
+
+  it("clears home-scoped drafts fully including connectors", () => {
+    const submittedDraft = buildAgentComposerDraft({
+      prompt: "Review this",
+      connectors: [{ connectorKey: "lark-cli" }]
+    });
+    const snapshot: SubmittedDraftSnapshot = {
+      sourceScopeKey: "home",
+      content: snapshotAgentComposerDraft(submittedDraft)
+    };
+    const drafts = { home: submittedDraft };
+    const result = clearSubmittedDraftIfUnchanged({ drafts, snapshot });
+
+    expect(result.home).toEqual([{ type: "text", text: "" }]);
+  });
+
   it("retains the entire current draft when text changes during submission", () => {
     const editedDraft = buildAgentComposerDraft({
       prompt: "Review this and the follow-up",

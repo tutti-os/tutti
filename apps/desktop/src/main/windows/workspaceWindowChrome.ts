@@ -1,4 +1,5 @@
 import type { BrowserWindowConstructorOptions } from "electron";
+import type { DesktopThemeAppearance } from "../../shared/theme/index.ts";
 
 export type WorkspaceWindowChromeOptions = Pick<
   BrowserWindowConstructorOptions,
@@ -9,15 +10,25 @@ export type WorkspaceWindowChromeOptions = Pick<
   | "titleBarStyle"
 >;
 
-const windowsTitleBarOverlay = {
-  color: "rgba(0, 0, 0, 0)",
-  height: 52,
-  symbolColor: "rgba(255, 255, 255, 0.92)"
-} as const;
+const windowsTitleBarSymbolColors: Record<DesktopThemeAppearance, string> = {
+  dark: "rgba(255, 255, 255, 0.92)",
+  light: "rgba(17, 24, 39, 0.88)"
+};
+
+export function resolveWorkspaceWindowTitleBarOverlay(
+  appearance: DesktopThemeAppearance
+) {
+  return {
+    color: "rgba(0, 0, 0, 0)",
+    height: 52,
+    symbolColor: windowsTitleBarSymbolColors[appearance]
+  } as const;
+}
 
 export function resolveWorkspaceWindowChromeOptions(
   platform: NodeJS.Platform,
-  windowKind: "agent" | "workspace"
+  windowKind: "agent" | "workspace",
+  appearance: DesktopThemeAppearance
 ): WorkspaceWindowChromeOptions {
   if (platform === "win32") {
     return {
@@ -26,7 +37,7 @@ export function resolveWorkspaceWindowChromeOptions(
       // The native caption buttons remain system-managed, but are overlaid on
       // that header so Windows does not render a second title-bar row.
       autoHideMenuBar: true,
-      titleBarOverlay: windowsTitleBarOverlay,
+      titleBarOverlay: resolveWorkspaceWindowTitleBarOverlay(appearance),
       titleBarStyle: "hidden"
     };
   }

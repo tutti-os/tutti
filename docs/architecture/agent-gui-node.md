@@ -517,13 +517,20 @@ actions, wakes after runtime or Extension activation, retries failures with
 bounded backoff, and rechecks persisted activation on restart. Account-usage
 requests are joined and cached for a short TTL by exact `agentTargetId`; the TTL
 starts when execution completes, and Node identity derivation is reused while
-the executable file identity is unchanged. The daemon returns the
-provider-neutral `tutti.agent.account-usage.v1` discriminated result. Desktop
-validates the schema and echoed Target/provider identity, then projects quotas
-without changing ACP readiness. Missing profiles and older Extensions are
-`unsupported`; unknown schemas, enums, shapes, or successful subscription
-results without a quota fail closed as `parse_failed`. No provider message,
-path, endpoint, response body, or credential crosses the port or enters logs.
+the executable file identity is unchanged. The daemon accepts existing v1
+helper output and returns the normalized provider-neutral
+`tutti.agent.account-usage.v2` discriminated result. Desktop validates the
+schema and echoed Target/provider identity, then projects billing identity,
+quota completeness, and optional exact Provider-neutral amounts without
+changing ACP readiness. A complete quota set is distinct from a known account
+whose quota is unavailable and from API billing where quota is not applicable;
+only the complete state may carry rows. Presentation maps API `not_applicable`
+to a resolved empty limits row (`—`), while `unavailable` uses localized
+account-quota-unavailable copy; neither becomes a refresh failure. Missing
+profiles and older Extensions are `unsupported`; unknown schemas, enums,
+shapes, partial exact amounts, or a claimed complete result without quotas fail
+closed as `parse_failed`. No provider message, path, endpoint, response body,
+credential, account ID, or raw account record crosses the port or enters logs.
 
 A source emits at most one cached `snapshot` followed by at most one
 `refreshed` value, then completes. Backend probing may continue independently
@@ -534,6 +541,13 @@ or transport diagnostics. The limits projection preserves stable codes such as
 `auth_required`, `session_expired`, and `subscription_required` through
 `AgentStatusValue.limitsErrorCode`; AgentGUI owns their localized presentation
 and maps unknown codes to one generic failure label.
+
+A provider quota may carry an optional exact provider-neutral amount and unit
+when a percentage alone would hide useful account information. The host owns
+the provider request, credential handling, package aggregation, and percentage
+normalization; AgentGUI only renders the projected amount and uses the optional
+percentage for progress presentation. Raw account and package records never
+cross this boundary.
 
 An explicit unsupported usage probe is a successful bounded read with no
 quotas and `limitsState: unavailable`; it must not become a refresh failure.
@@ -1407,6 +1421,15 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a queued-prompt `Send next` action uses native guidance when the provider
   supports it, even when the provider also supports interruption; guidance
   stays on the same canonical Turn and follows the provider's native semantics
+- when an active-turn `Send now` arrives before the Session has an authoritative
+  capability snapshot, the workspace Engine retains the exact prompt and
+  send-now decision without dispatching guidance or cancellation. A later
+  authoritative snapshot resolves that same intent to native guidance or
+  cancel-then-send. An explicit complete snapshot that supports neither keeps
+  the prompt in the ordinary queue until canonical availability returns; a
+  missing snapshot must never discard the prompt or be treated as unsupported.
+  Each queued prompt owns its deferred decision and exact target Turn; a later
+  Turn must not inherit guidance or cancellation intended for its predecessor
 - Claude SDK guidance acknowledges delivery only after its SDK interrupt has
   succeeded and the guidance prompt has been enqueued; a failed interrupt is a
   failed guidance request and must not allow the old response to keep running.
@@ -2014,6 +2037,11 @@ stored as semantic draft blocks, rendered as removable chips, and submitted as
 structured prompt content without synthesizing slash text. The compact Composer
 trigger previews installed and authorized connectors independently from draft
 selection, while preserving selected connectors first in that bounded preview.
+A matching send on a session-scoped draft keeps those connector blocks and
+clears the rest of the draft; home and other non-session scopes clear the
+full draft. `/clear` keeps the session enable set. A new conversation starts
+empty. The GUI submits the full enable set every turn; the daemon remembers
+the last announced set and injects only the delta into the provider turn.
 
 The device-global `lab.connectors` UI-preference flag controls whether that
 projection is returned. The daemon fails closed when the preference is absent
@@ -2571,6 +2599,18 @@ tab state. It also owns the single browser chrome instance for that surface.
 Its controller may activate an existing page by URL inside that one surface;
 the product Host remains responsible for choosing among Browser surfaces and
 focusing the owning top-level node or window.
+Desktop mode adapters register the same semantic Terminal, Browser, and Files
+launch coordinators in each renderer. A Workspace adapter presents through its
+Workbench host; a standalone Agent adapter presents through the right-side tool
+sidebar and waits for the exact mounted controller when necessary. The
+standalone AgentGUI `surface.host` represents the Agent node and must not be
+used as a tool-launch host. After a canonical Turn is created, its originating
+renderer claims the Browser presentation role through Electron main; Browser
+automation then selects or creates that exact Agent or Workspace surface.
+Automation may wait briefly when a provider tool request races ahead of that
+claim. Unclaimed legacy Turns retain the user/Workspace fallback. Host
+readiness must not be used to infer Turn origin. These tools remain Desktop
+chrome and do not enter AgentGUI lifecycle state.
 Hosts compose window controls into the tab strip through `defaultActions`,
 pass draggable-header semantics through `dragHandleProps`, and use
 `navigationActions` for address-row actions. A host must not wrap the panel in

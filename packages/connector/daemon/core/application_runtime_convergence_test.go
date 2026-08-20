@@ -206,6 +206,146 @@ func TestUpdateKeepsCurrentReleaseUntilCandidateRuntimeIsObserved(t *testing.T) 
 	}
 }
 
+func TestInstallCompletesWhenEnabledRuntimeRequiresAuthorization(t *testing.T) {
+	connector := testRemoteAuthorizedConnector("gmail")
+	connector.Installation = Installation{State: InstallationStateNotInstalled}
+	repository := newMemoryRepository(connector)
+	runtime := &memoryInstallRuntime{enabledReconcileErrors: map[string]error{
+		connector.Key: NewDomainError(
+			ErrorCodeAuthorizationFailed,
+			"connector authorization is required",
+			false,
+			errors.New("list connector MCP tools: MCP Streamable HTTP request failed: status 428"),
+		),
+	}}
+	projections := &recordingAuthorizationProjectionStore{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, ConnectionID: "server-connection",
+		State: AuthorizationStateConnected, ServerSynchronized: true,
+	}}
+	readiness := NewAuthorizationReadinessGate()
+	readiness.SetReady("account-1", true)
+	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
+	application.config.AuthorizationProjections = projections
+	application.config.RuntimeBindings = AccountRuntimeBindingResolver{
+		Projections: projections, Readiness: readiness,
+	}
+	application.config.ImplementationRegistry = NewImplementationRegistry(map[string]ImplementationValidator{
+		ImplementationKindRemoteStreamableHTTP: nil,
+	})
+
+	accepted, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "install-gmail"}, ConnectorKey: connector.Key, AccountID: "account-1",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ExecuteOperation(context.Background(), accepted.Operation.OperationID); err != nil {
+		t.Fatalf("install error = %v", err)
+	}
+	stored, err := repository.Connector(context.Background(), connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation, err := repository.Operation(context.Background(), accepted.Operation.OperationID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	convergence, err := repository.RuntimeConvergence(context.Background(), OperationScope{AccountID: "account-1"}, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Installation.State != InstallationStateInstalled ||
+		operation.State != OperationStateCompleted ||
+		projections.projection.State != AuthorizationStateExpired ||
+		convergence.Desired.Enabled ||
+		convergence.Desired.AuthorizationState != AuthorizationStateExpired ||
+		convergence.Observed.DesiredGeneration != convergence.Desired.Generation ||
+		runtime.lastReconcile.Enabled {
+		t.Fatalf(
+			"auth-required install left spinner debt: connector=%#v operation=%#v projection=%#v desired=%#v observed=%#v lastReconcile=%#v",
+			stored.Installation, operation, projections.projection, convergence.Desired, convergence.Observed, runtime.lastReconcile,
+		)
+	}
+}
+
+func TestRuntimeConvergenceForwardsAuthorizationIdentityToRemoteReconcile(t *testing.T) {
+	connector := testRemoteAuthorizedConnector("gmail")
+	repository := newMemoryRepository(connector)
+	runtime := &memoryInstallRuntime{}
+	projections := &recordingAuthorizationProjectionStore{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, ConnectionID: "server-connection",
+		State: AuthorizationStateConnected, ServerSynchronized: true,
+		ConnectionVersion: 3, ServerRevision: 12,
+	}}
+	readiness := NewAuthorizationReadinessGate()
+	readiness.SetReady("account-1", true)
+	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
+	application.config.AuthorizationProjections = projections
+	application.config.RuntimeBindings = AccountRuntimeBindingResolver{
+		Projections: projections, Readiness: readiness,
+	}
+	if _, err := application.EnsureRuntimeDesired(context.Background(), OperationScope{AccountID: "account-1"}, connector.Key); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ConvergeRuntime(context.Background(), OperationScope{AccountID: "account-1"}, connector.Key); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.lastReconcile.ConnectionVersion != 3 || runtime.lastReconcile.ServerRevision != 12 ||
+		!runtime.lastReconcile.Enabled {
+		t.Fatalf("reconcile identity = %#v", runtime.lastReconcile)
+	}
+}
+
+func TestRuntimeConvergenceAuthorizationRequiredReplansInactiveRuntime(t *testing.T) {
+	connector := testRemoteAuthorizedConnector("gmail")
+	repository := newMemoryRepository(connector)
+	runtime := &memoryInstallRuntime{enabledReconcileErrors: map[string]error{
+		connector.Key: NewDomainError(
+			ErrorCodeAuthorizationFailed,
+			"connector authorization is required",
+			false,
+			errors.New("list connector MCP tools: MCP Streamable HTTP request failed: status 428"),
+		),
+	}}
+	projections := &recordingAuthorizationProjectionStore{projection: AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key, ConnectionID: "server-connection",
+		State: AuthorizationStateConnected, ServerSynchronized: true,
+	}}
+	readiness := NewAuthorizationReadinessGate()
+	readiness.SetReady("account-1", true)
+	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
+	application.config.AuthorizationProjections = projections
+	application.config.RuntimeBindings = AccountRuntimeBindingResolver{
+		Projections: projections, Readiness: readiness,
+	}
+	if _, err := application.EnsureRuntimeDesired(context.Background(), OperationScope{AccountID: "account-1"}, connector.Key); err != nil {
+		t.Fatal(err)
+	}
+	if err := application.ConvergeRuntime(context.Background(), OperationScope{AccountID: "account-1"}, connector.Key); err != nil {
+		t.Fatalf("first converge error = %v", err)
+	}
+	if err := application.ConvergeRuntime(context.Background(), OperationScope{AccountID: "account-1"}, connector.Key); err != nil {
+		t.Fatalf("disabled converge error = %v", err)
+	}
+	stored, err := repository.RuntimeConvergence(context.Background(), OperationScope{AccountID: "account-1"}, connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored.Attempt != 0 || stored.LastErrorCode != "" || stored.Desired.Enabled ||
+		stored.Desired.AuthorizationState != AuthorizationStateExpired ||
+		stored.Observed.DesiredGeneration != stored.Desired.Generation ||
+		projections.projection.State != AuthorizationStateExpired {
+		t.Fatalf("authorization-required convergence = %#v projection=%#v", stored, projections.projection)
+	}
+	connectorAfter, err := repository.Connector(context.Background(), connector.Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connectorAfter.Installation.State != InstallationStateInstalled {
+		t.Fatalf("installation changed after authorization-required runtime: %#v", connectorAfter.Installation)
+	}
+}
+
 func TestAuthorizedUpdateInspectsPreparedCandidateBeforePromotion(t *testing.T) {
 	connector := testManagedAuthorizedConnector("lark-cli")
 	connector.Authorization = Authorization{State: AuthorizationStateConnected}

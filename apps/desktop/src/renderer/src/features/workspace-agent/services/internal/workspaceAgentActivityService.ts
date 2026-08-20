@@ -52,6 +52,7 @@ import {
 } from "../desktopAgentRuntimeSubmitDiagnostics.ts";
 import { reportAgentSessionSettingsChanges } from "./agentSessionSettingsAnalytics.ts";
 import { AgentSessionReplayActivityBridge } from "../../../agent-session-replay/services/agentSessionReplayActivityBridge.ts";
+import type { CreateDesktopAgentActivityAdapterInput } from "../desktopAgentActivityAdapter.ts";
 
 function waitForPromiseWithSignal<T>(
   promise: Promise<T>,
@@ -82,6 +83,7 @@ function waitForPromiseWithSignal<T>(
 }
 
 export interface WorkspaceAgentActivityServiceDependencies {
+  claimBrowserAutomationTurn?: CreateDesktopAgentActivityAdapterInput["claimBrowserAutomationTurn"];
   eventStreamClient?: TuttidEventStreamClient;
   hostFilesApi?: Pick<
     DesktopHostFilesApi,
@@ -1044,6 +1046,7 @@ export class WorkspaceAgentActivityService
 
   protected createEntry(workspaceId: string): WorkspaceAgentActivityEntry {
     return createWorkspaceAgentSessionEngineHost({
+      claimBrowserAutomationTurn: this.dependencies.claimBrowserAutomationTurn,
       ...(this.dependencies.sessionReplayEnabled
         ? {
             activityEventObserver:

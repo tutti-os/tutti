@@ -23,6 +23,8 @@ func (application *Application) executeRuntimeReconcile(ctx context.Context, ope
 	receipt, err := application.reconcileRuntime(ctx, RuntimeReconcileRequest{
 		OperationID: operation.OperationID, Scope: operation.Scope, ConnectionID: binding.ConnectionID,
 		Connector: connector, Enabled: binding.Enabled, Generation: operation.HostGeneration,
+		ConnectionVersion:     binding.ConnectionVersion,
+		ServerRevision:        binding.ServerRevision,
 		CredentialBrokerGrant: binding.CredentialBrokerGrant,
 	})
 	if err != nil {

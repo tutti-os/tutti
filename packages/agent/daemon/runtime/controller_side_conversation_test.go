@@ -417,7 +417,7 @@ func TestExpiredSideConversationNeverResumes(t *testing.T) {
 	}
 }
 
-func TestSideCapabilitiesFailsClosedAfterCanonicalSourceIdleRelease(t *testing.T) {
+func TestSideCapabilitiesDelegatesAfterCanonicalSourceIdleRelease(t *testing.T) {
 	adapter := newSideConformanceAdapter()
 	controller := NewController([]Adapter{adapter}, nil)
 	if _, err := controller.Resume(t.Context(), ResumeInput{
@@ -433,11 +433,14 @@ func TestSideCapabilitiesFailsClosedAfterCanonicalSourceIdleRelease(t *testing.T
 	adapter.live["parent"] = false
 	adapter.mu.Unlock()
 
-	_, err := controller.SideCapabilities(
+	capabilities, err := controller.SideCapabilities(
 		t.Context(), "workspace-side", "parent",
 	)
-	if !errors.Is(err, ErrSessionDisconnected) {
-		t.Fatalf("SideCapabilities error = %v, want ErrSessionDisconnected", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !validRequiredSideCapabilities(capabilities) {
+		t.Fatalf("SideCapabilities = %#v, want supported", capabilities)
 	}
 	adapter.mu.Lock()
 	defer adapter.mu.Unlock()
@@ -446,7 +449,7 @@ func TestSideCapabilitiesFailsClosedAfterCanonicalSourceIdleRelease(t *testing.T
 	}
 }
 
-func TestOpenSideFailsClosedAfterCanonicalSourceIdleRelease(t *testing.T) {
+func TestOpenSideDelegatesAfterCanonicalSourceIdleRelease(t *testing.T) {
 	adapter := newSideConformanceAdapter()
 	controller := NewController([]Adapter{adapter}, nil)
 	if _, err := controller.Resume(t.Context(), ResumeInput{
@@ -462,14 +465,17 @@ func TestOpenSideFailsClosedAfterCanonicalSourceIdleRelease(t *testing.T) {
 	adapter.live["parent"] = false
 	adapter.mu.Unlock()
 
-	_, err := controller.OpenSide(t.Context(), SideConversationOpenInput{
+	opened, err := controller.OpenSide(t.Context(), SideConversationOpenInput{
 		RoomID:               "workspace-side",
 		SourceAgentSessionID: "parent",
 		SideAgentSessionID:   "side-after-release",
 		RequestID:            "open-after-release",
 	})
-	if !errors.Is(err, ErrSessionDisconnected) {
-		t.Fatalf("OpenSide error = %v, want ErrSessionDisconnected", err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opened.Session.ProviderSessionID != "provider-side" {
+		t.Fatalf("opened Side = %#v", opened.Session)
 	}
 	adapter.mu.Lock()
 	defer adapter.mu.Unlock()

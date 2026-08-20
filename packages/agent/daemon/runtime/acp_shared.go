@@ -11,6 +11,11 @@ const (
 	nexightACPCommand    = "nexight-acp"
 	codexAgentRoutingEnv = "TUTTI_AGENT_ROUTING=1"
 	codexRoutingPreload  = "LD_PRELOAD=" + runtimepaths.BundlePreloadSOPath
+	// Codex app-server emits its tracing spans through stderr. Keep the
+	// managed process output structured so the runtime trace can preserve
+	// thread/start's internal phases for diagnostics.
+	codexAppServerLogFormatEnv = "LOG_FORMAT=json"
+	codexAppServerRustLogEnv   = "RUST_LOG=codex_app_server=info,codex_core=info"
 	// Standard ACP providers run headlessly and must never block on a Git
 	// credential or terminal prompt while building workspace context.
 	gitTerminalPromptEnv = "GIT_TERMINAL_PROMPT=0"

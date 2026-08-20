@@ -33,12 +33,24 @@ export interface PromptQueueInFlightCommand {
   stage?: "preparingSettings" | "sending";
 }
 
+export interface PromptQueuePendingSendNow {
+  awaitingTurnExpiresAtUnixMs: number;
+  cancelCommandId: string;
+  promptId: string;
+  targetTurnId: string;
+  timeoutMs: number;
+}
+
 export interface PromptQueueRecord {
   agentSessionId: string;
   deliveryBarrierTurnId: string | null;
   failedPromptId: string | null;
   failureMessage: string | null;
   inFlight: PromptQueueInFlightCommand | null;
+  /** Omitted by snapshots produced before deferred send-now admission existed. */
+  pendingSendNowByPromptId?: Readonly<
+    Record<string, PromptQueuePendingSendNow>
+  >;
   prompts: readonly EngineQueuedPrompt[];
   sendNextPromptId: string | null;
   suspendReason: PromptQueueSuspendReason | null;
@@ -69,6 +81,8 @@ export interface PromptQueueSendNowRequestedIntent {
   agentSessionId: string;
   cancelCommandId: string;
   promptId: string;
+  /** Exact active Turn observed when this deferred intent was admitted. */
+  targetTurnId?: string;
   awaitingTurnExpiresAtUnixMs: number;
   timeoutMs: number;
 }

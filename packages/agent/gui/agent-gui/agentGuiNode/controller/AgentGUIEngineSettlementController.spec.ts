@@ -10,6 +10,7 @@ import {
 } from "../../../shared/testing/createTestAgentSessionEngine";
 import {
   agentComposerDraftPrompt,
+  buildAgentComposerDraft,
   emptyAgentComposerDraft
 } from "../model/agentComposerDraft";
 import type {
@@ -57,6 +58,57 @@ describe("AgentGUIEngineSettlementController", () => {
     });
 
     expect(agentComposerDraftPrompt(drafts[sourceScopeKey]!)).toBe("");
+    expect(drafts["session:session-1"]).toEqual(emptyAgentComposerDraft());
+    expect(snapshots).toEqual({});
+    detach();
+    engine.dispose();
+  });
+
+  it("seeds the new session draft with submitted connectors after home activation", () => {
+    const engine = createTestAgentSessionEngine();
+    const sourceScopeKey = "home";
+    const submittedDraft = buildAgentComposerDraft({
+      prompt: "first",
+      connectors: [{ connectorKey: "lark-cli" }, { connectorKey: "github" }]
+    });
+    const snapshots: Record<string, SubmittedDraftSnapshot> = {
+      "submit-1": { content: submittedDraft, sourceScopeKey }
+    };
+    let drafts: Record<string, AgentComposerDraft> = {
+      [sourceScopeKey]: submittedDraft
+    };
+    const controller = new AgentGUIEngineSettlementController({
+      applyDraftUpdate: (update) => {
+        drafts = update(drafts);
+      },
+      engine,
+      snapshots
+    });
+    const detach = controller.attach();
+
+    requestActivation(engine, "submit-1");
+    engine.dispatch({
+      type: "session/upserted",
+      session: normalizeAgentActivitySession({
+        activeTurnId: null,
+        agentSessionId: "session-1",
+        createdAtUnixMs: Date.now() + 60_000,
+        cwd: "/workspace/app",
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        provider: "codex",
+        title: "first",
+        workspaceId: "test-workspace"
+      })
+    });
+
+    expect(drafts[sourceScopeKey]).toEqual(emptyAgentComposerDraft());
+    expect(drafts["session:session-1"]).toEqual(
+      buildAgentComposerDraft({
+        prompt: "",
+        connectors: [{ connectorKey: "lark-cli" }, { connectorKey: "github" }]
+      })
+    );
     expect(snapshots).toEqual({});
     detach();
     engine.dispose();
@@ -338,9 +390,10 @@ describe("AgentGUIEngineSettlementController", () => {
       type: "session/upserted"
     });
     const sourceScopeKey = "session:session-1";
-    const submittedDraft: AgentComposerDraft = [
-      { type: "text", text: "/goal ship it" }
-    ];
+    const submittedDraft = buildAgentComposerDraft({
+      prompt: "/goal ship it",
+      connectors: [{ connectorKey: "lark-cli" }]
+    });
     let drafts: Record<string, AgentComposerDraft> = {
       [sourceScopeKey]: submittedDraft
     };
@@ -375,7 +428,12 @@ describe("AgentGUIEngineSettlementController", () => {
     ).toBe(true);
 
     await vi.waitFor(() => {
-      expect(agentComposerDraftPrompt(drafts[sourceScopeKey]!)).toBe("");
+      expect(drafts[sourceScopeKey]).toEqual(
+        buildAgentComposerDraft({
+          prompt: "",
+          connectors: [{ connectorKey: "lark-cli" }]
+        })
+      );
     });
     expect(goalControlSettlements).toEqual({});
     detach();

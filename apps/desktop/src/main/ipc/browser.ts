@@ -58,6 +58,7 @@ type BrowserInvokeChannel = Exclude<
   | typeof desktopIpcChannels.browser.automationHostReady
   | typeof desktopIpcChannels.browser.automationRequest
   | typeof desktopIpcChannels.browser.automationResponse
+  | typeof desktopIpcChannels.browser.automationTurnClaim
   | typeof desktopIpcChannels.browser.event
 >;
 

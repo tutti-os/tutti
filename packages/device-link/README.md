@@ -72,6 +72,14 @@ waits for accepted stream handlers to finish. Link observations carry a
 per-connection sequence; projections must ignore older deliveries and treat
 `disconnected` as terminal for that globally comparable connection ID.
 
+Lifecycle controllers that cannot wait for transport I/O use `Retire` or
+`RetireAll`. These methods synchronously advance admission generations, revoke
+incoming handlers, and remove the exact old link, then return immutable
+`Retirement` handles for physical close outside the controller lock. A delayed
+retirement close never looks up a key again and therefore cannot close a newer
+link registered for the same opaque key. `Invalidate` and `InvalidateAll`
+remain synchronous compatibility wrappers.
+
 Tutti's `mobileremote` Desktop owner is the first production adapter: it keeps
 pairing, identity proof, rendezvous, and Agent framing in `tuttid`, while the
 shared manager owns the authenticated link and incoming stream lifecycle.
@@ -80,10 +88,12 @@ shared manager owns the authenticated link and incoming stream lifecycle.
 
 The `relaytransport` package owns the reusable mechanics for Relay-backed byte
 streams. `Dial` turns binary WebSocket messages into a `net.Conn` for one
-caller stream. `OwnerHost` maintains one WebSocket/yamux owner tunnel while at
-least one product driver holds a reference, accepts remote streams only after
-the product readiness barrier succeeds, and reconnects with bounded full-jitter
-backoff plus `Retry-After`.
+caller stream and uses Ping/Pong liveness so an unresponsive peer closes the
+stream for the product's existing reconnect policy. `DialLivenessConfig` has
+20-second ping and 60-second pong defaults. `OwnerHost` maintains one
+WebSocket/yamux owner tunnel while at least one product driver holds a
+reference, accepts remote streams only after the product readiness barrier
+succeeds, and reconnects with bounded full-jitter backoff plus `Retry-After`.
 
 `OwnerLifecycle.Activate` returns an `OwnerActivation`: its `Readiness`
 context is a continuous product health condition for the complete connection

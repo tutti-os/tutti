@@ -43,6 +43,52 @@ func TestOperationRecoveryReschedulesDurableRunningWorkAfterWakeLoss(t *testing.
 	}
 }
 
+func TestOperationRecoveryDelaysRecentHighAttemptWork(t *testing.T) {
+	ctx := context.Background()
+	store, err := marketdata.Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	operation := market.Operation{
+		OperationID: "install-retry", ClientRequestID: "request-retry", ConnectorKey: "github",
+		Kind: market.OperationKindInstall, State: market.OperationStateRunning, Stage: market.OperationStageInstalling,
+		Attempt: 6, CreatedAt: time.Now().UTC().Add(-time.Minute), UpdatedAt: time.Now().UTC(),
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		return tx.SaveOperation(operation)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	executor := &recordingOperationExecutor{}
+	scheduler := NewOperationScheduler(ctx)
+	if err := scheduler.Bind(executor); err != nil {
+		t.Fatal(err)
+	}
+	host := &Host{repository: store, scheduler: scheduler}
+	if err := host.scheduleRecoverableOperations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	scheduler.Wait()
+	if calls := executor.operationIDs(); len(calls) != 0 {
+		t.Fatalf("recent high-attempt operation scheduled = %#v", calls)
+	}
+
+	operation.UpdatedAt = time.Now().UTC().Add(-2 * time.Minute)
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		return tx.SaveOperation(operation)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := host.scheduleRecoverableOperations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	scheduler.Wait()
+	if calls := executor.operationIDs(); len(calls) != 1 || calls[0] != operation.OperationID {
+		t.Fatalf("recovered operations = %#v", calls)
+	}
+}
+
 type recordingOperationExecutor struct {
 	mu    sync.Mutex
 	calls []string

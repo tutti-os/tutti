@@ -120,7 +120,12 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 	if len(content) == 0 {
 		return ExecResult{}, fmt.Errorf("prompt is required")
 	}
-	providerContent := projectRuntimeConnectorPromptContent(content)
+	providerContent, nextAnnounced := projectRuntimeConnectorPromptContent(
+		content,
+		session.AnnouncedConnectorKeys,
+		input.Guidance,
+	)
+	providerContent = prependConnectorRoutingUpdate(providerContent, input.ConnectorRoutingUpdate)
 	displayPrompt := strings.TrimSpace(input.DisplayPrompt)
 	if promptAdapter, ok := adapter.(PromptContentAdapter); ok {
 		if err := promptAdapter.ValidatePromptContent(session, providerContent); err != nil {
@@ -130,6 +135,7 @@ func (c *Controller) Exec(ctx context.Context, input ExecInput) (result ExecResu
 	if input.Guidance {
 		return c.guideActiveTurn(ctx, session, adapter, providerContent, displayPrompt, metadata, input.CapabilityRefs, input.TurnID)
 	}
+	session.AnnouncedConnectorKeys = append([]string(nil), nextAnnounced...)
 	previousSession := session
 	// Keep the initial title on the submitted Turn patch so owner admission
 	// persists the title, turn, and prompt as one state/message transaction.

@@ -84,6 +84,18 @@ export function ComposerPrimaryCapabilityControl({
           selected: labels.addContentConnectorSelected
         }}
         loading={loading}
+        onInstallConnector={
+          connectorsReadOnly || !onCapabilitySettingsRequest
+            ? undefined
+            : async (connectorKey) => {
+                await onCapabilitySettingsRequest({
+                  kind: "connector",
+                  connectorKey,
+                  action: "install"
+                });
+                onRetryComposerOptions?.({ section: "connectors" });
+              }
+        }
         onOpenChange={(open) => {
           if (open) {
             onRetryComposerOptions?.({ section: "connectors" });

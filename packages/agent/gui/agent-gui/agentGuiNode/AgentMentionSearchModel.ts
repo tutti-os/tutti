@@ -566,9 +566,7 @@ export function providerItemToAgentMentionItem(input: {
   workspaceId: string;
 }): AgentContextMentionItem | null {
   const label = compactText(input.label);
-  if (!label) {
-    return null;
-  }
+  if (!label) return null;
   if (input.insertResult.kind === "markdown-link") {
     const href = input.insertResult.href.trim();
     const directoryPath = input.directory?.path.trim() ?? "";
@@ -577,6 +575,7 @@ export function providerItemToAgentMentionItem(input: {
       href,
       path: directoryPath || href,
       name: label,
+      contextLabel: compactText(input.subtitle) || undefined,
       entryKind:
         directoryPath || isRichTextFolderHref(href) ? "directory" : "unknown",
       directoryPath: dirnameFromProviderWorkspaceFileHref(
@@ -619,6 +618,7 @@ export function providerItemToAgentMentionItem(input: {
       }),
       path: directoryPath || targetId,
       name: label,
+      contextLabel: compactText(input.subtitle) || undefined,
       entryKind:
         directoryPath || isRichTextFolderHref(targetId)
           ? "directory"

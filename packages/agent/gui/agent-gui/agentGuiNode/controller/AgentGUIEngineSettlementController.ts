@@ -9,6 +9,8 @@ import {
   type SessionGoalControlSettlement
 } from "@tutti-os/agent-activity-core";
 import type { AgentActivityGoalControlAction } from "@tutti-os/agent-activity-core";
+import { agentComposerDraftPreservingConnectors } from "../model/agentComposerDraft";
+import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import type {
   AgentComposerDraft,
   SubmittedDraftSnapshot
@@ -99,7 +101,11 @@ export class AgentGUIEngineSettlementController {
       ) {
         this.applyDraftUpdate((drafts) =>
           activation.status === "confirmed"
-            ? clearSubmittedDraftIfUnchanged({ drafts, snapshot })
+            ? seedActivatedSessionDraft(
+                clearSubmittedDraftIfUnchanged({ drafts, snapshot }),
+                activation.agentSessionId,
+                snapshot
+              )
             : restoreFailedAgentGUIHomeDraft({
                 draftKey: snapshot.sourceScopeKey,
                 drafts,
@@ -198,4 +204,21 @@ export class AgentGUIEngineSettlementController {
       }
     }
   }
+}
+
+function seedActivatedSessionDraft(
+  drafts: Record<string, AgentComposerDraft>,
+  agentSessionId: string,
+  snapshot: SubmittedDraftSnapshot
+): Record<string, AgentComposerDraft> {
+  const sessionScopeKey = resolveAgentComposerDraftScopeKey({
+    agentSessionId
+  });
+  if (!agentSessionId.trim() || snapshot.sourceScopeKey === sessionScopeKey) {
+    return drafts;
+  }
+  return {
+    ...drafts,
+    [sessionScopeKey]: agentComposerDraftPreservingConnectors(snapshot.content)
+  };
 }

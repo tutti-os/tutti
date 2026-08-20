@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"sync"
@@ -287,4 +288,34 @@ func containsEnvironmentKey(environment []string, expected string) bool {
 		}
 	}
 	return false
+}
+
+func TestAllowedNodePackageInstallEnvironmentFoldsProxyKeyCase(t *testing.T) {
+	got := allowedNodePackageInstallEnvironment([]string{
+		"PATH=/usr/bin",
+		"http_proxy=http://127.0.0.1:7897",
+		"HTTP_PROXY=http://127.0.0.1:7897",
+		"https_proxy=http://127.0.0.1:7897",
+		"HTTPS_PROXY=http://127.0.0.1:7897",
+		"no_proxy=localhost",
+	})
+	want := []string{
+		"HTTPS_PROXY=http://127.0.0.1:7897",
+		"HTTP_PROXY=http://127.0.0.1:7897",
+		"NO_PROXY=localhost",
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("environment = %#v, want %#v", got, want)
+	}
+}
+
+func TestAllowedNodePackageInstallEnvironmentKeepsLastValueForFoldedKey(t *testing.T) {
+	got := allowedNodePackageInstallEnvironment([]string{
+		"http_proxy=http://first.invalid:1",
+		"HTTP_PROXY=http://second.invalid:2",
+	})
+	want := []string{"HTTP_PROXY=http://second.invalid:2"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("environment = %#v, want %#v", got, want)
+	}
 }

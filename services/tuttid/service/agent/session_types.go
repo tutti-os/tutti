@@ -69,6 +69,7 @@ type Service struct {
 	RuntimePreparer                runtimeprep.Preparer
 	ConnectorRuntime               ConnectorRuntime
 	ConnectorCapabilities          ConnectorCapabilityResolver
+	connectorRoutingBaselines      connectorRoutingBaselines
 	ModelGateway                   ModelGatewayRegistry
 	BrowserUseAvailable            func() bool
 	ComputerUseAvailable           func() bool

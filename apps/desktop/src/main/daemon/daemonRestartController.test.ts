@@ -32,10 +32,11 @@ test("restarts the daemon once after an unexpected exit", async () => {
     config
   });
 
-  await controller.notifyExited();
+  const recovered = await controller.notifyExited();
 
   assert.equal(restartCount, 1);
   assert.deepEqual(delays, [500]);
+  assert.equal(recovered, true);
 });
 
 test("does not restart when stop was requested", async () => {
@@ -51,9 +52,10 @@ test("does not restart when stop was requested", async () => {
     config
   });
 
-  await controller.notifyExited();
+  const recovered = await controller.notifyExited();
 
   assert.equal(restartCount, 0);
+  assert.equal(recovered, false);
 });
 
 test("uses exponential backoff and gives up after max attempts", async () => {
@@ -85,11 +87,12 @@ test("uses exponential backoff and gives up after max attempts", async () => {
     }
   });
 
-  await controller.notifyExited();
+  const recovered = await controller.notifyExited();
 
   assert.equal(restartCount, 4);
   assert.deepEqual(delays, [500, 1_000, 2_000, 4_000]);
   assert.ok(errors.some((message) => message.includes("giving up")));
+  assert.equal(recovered, false);
 });
 
 test("resets backoff after the daemon stays healthy", async () => {

@@ -366,6 +366,8 @@ export const en = {
       stageAdapterDone: "Adapter installed",
       stageLoginDone: "Signed in",
       apiUsageBilling: "API Usage Billing",
+      codingPlanBilling: "Coding Plan",
+      providerAccountBilling: "{{provider}} Account",
       stageLoginDoneApiBilling: "API billing configured",
       stageReadyDone: "Ready",
       networkCheckRegistry: "Install source",

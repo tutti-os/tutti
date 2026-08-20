@@ -225,8 +225,10 @@ export function createWorkspaceTerminalContribution(input: {
   };
 
   registerWorkspaceTerminalSurfaceRuntime(resolvedContribution, {
-    createSession: () =>
+    createSession: (request) =>
       feature.launchService.create({
+        cwd: request?.cwd,
+        initialInput: request?.initialInput,
         reason: "intent",
         workspaceId: input.workspaceId
       }),

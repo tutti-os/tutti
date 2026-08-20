@@ -11,6 +11,7 @@ export type AgentQuotaType =
   | "monthly"
   | "daily"
   | "model"
+  | "credits"
   | "cost";
 
 export interface AgentAvailabilityCheck {
@@ -28,6 +29,10 @@ export interface AgentAvailability {
 export interface AgentUsageQuota {
   quotaType: AgentQuotaType;
   percentRemaining?: number;
+  /** Exact provider-neutral balance when percent alone loses useful detail. */
+  amountRemaining?: number;
+  amountLimit?: number;
+  amountUnit?: "credits";
   resetsAtUnixMs?: number;
   resetText?: string;
   dollarRemaining?: number;
@@ -43,7 +48,9 @@ export interface AgentUsageSnapshot {
   quotas?: AgentUsageQuota[];
   accountTier?: string;
   /** Provider-neutral billing mode used when an account has no quota rows. */
-  billingMode?: "subscription" | "api";
+  billingMode?: "subscription" | "api" | "coding_plan" | "provider_account";
+  /** Whether quota rows are complete, unavailable, or not applicable. */
+  quotaState?: "complete" | "unavailable" | "not_applicable";
   costUsage?: AgentCostUsage;
   capturedAtUnixMs: number;
 }

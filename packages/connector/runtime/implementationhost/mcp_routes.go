@@ -33,12 +33,17 @@ func (host *Host) buildRemoteRoute(ctx context.Context, request market.RuntimeRe
 	closeClient := func() { _ = client.Close(context.Background()) }
 	if _, err := client.Call(ctx, "server/discover", map[string]any{}); err != nil {
 		closeClient()
-		return nil, fmt.Errorf("discover remote connector MCP: %w", err)
+		return nil, wrapRemoteMCPAuthorizationError(fmt.Errorf("discover remote connector MCP: %w", err))
 	}
-	tools, err := listModernMCPTools(ctx, client)
-	if err != nil {
-		closeClient()
-		return nil, err
+	cacheKey := remoteMCPToolCacheKeyFrom(request)
+	tools, cached := host.remoteMCPTools.lookup(cacheKey)
+	if !cached {
+		var err error
+		tools, err = listModernMCPTools(ctx, client)
+		if err != nil {
+			closeClient()
+			return nil, wrapRemoteMCPAuthorizationError(err)
+		}
 	}
 	for _, tool := range tools {
 		if err := client.RegisterTool(tool.Name, tool.InputSchema); err != nil {
@@ -50,6 +55,9 @@ func (host *Host) buildRemoteRoute(ctx context.Context, request market.RuntimeRe
 	if err := host.registerMCPTools(route, client, tools); err != nil {
 		closeClient()
 		return nil, err
+	}
+	if !cached {
+		host.remoteMCPTools.store(cacheKey, tools)
 	}
 	route.remoteMCP = client
 	return route, nil

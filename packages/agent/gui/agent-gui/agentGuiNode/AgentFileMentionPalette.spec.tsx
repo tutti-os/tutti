@@ -63,6 +63,56 @@ vi.mock("../../i18n/index", async () => {
 });
 
 describe("AgentFileMentionPalette", () => {
+  it("shows a file's relative path and workspace after its name", () => {
+    const file = {
+      kind: "file" as const,
+      href: "/Users/test/project/tutti/src/index.ts",
+      path: "/Users/test/project/tutti/src/index.ts",
+      name: "index.ts",
+      entryKind: "file" as const,
+      directoryPath: "/Users/test/project/tutti/src",
+      contextLabel: "project/tutti/src · Tutti"
+    } satisfies AgentContextMentionItem;
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "index",
+      mode: "results",
+      filter: "file",
+      categories: [],
+      groups: [
+        {
+          id: "opened_files",
+          items: [file],
+          totalCount: 1,
+          visibleCount: 1,
+          hasMore: false
+        }
+      ],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    expect(screen.getByText("index.ts")).toBeVisible();
+    expect(screen.getByText("project/tutti/src · Tutti")).toBeVisible();
+  });
+
   it("shows unavailable agent targets but prevents selecting them", () => {
     const unavailableAgent = {
       kind: "agent-target" as const,

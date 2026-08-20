@@ -123,6 +123,14 @@ func valueBoolDefault(input *bool, fallback bool) bool {
 
 func boolPointer(value bool) *bool { return &value }
 
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
 func firstMap(values ...map[string]any) map[string]any {
 	for _, value := range values {
 		if len(value) > 0 {

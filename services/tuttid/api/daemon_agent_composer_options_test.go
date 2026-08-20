@@ -314,15 +314,19 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsLeavesTargetDefa
 
 func TestGeneratedAgentProviderCapabilityOptionsProjectsIconURL(t *testing.T) {
 	options := generatedAgentProviderCapabilityOptions([]agentservice.ComposerCapabilityOption{{
-		ID:         "connector:github",
-		Kind:       "connector",
-		Name:       "github",
-		Label:      "GitHub",
-		IconURL:    "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
-		Status:     "available",
-		Invocation: "textTrigger",
+		ID:                "connector:github",
+		Kind:              "connector",
+		Name:              "github",
+		Label:             "GitHub",
+		IconURL:           "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
+		InstalledAtUnixMS: 1786089600000,
+		Status:            "available",
+		Invocation:        "textTrigger",
 	}})
 	if len(options) != 1 || options[0].IconUrl == nil || *options[0].IconUrl != "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg" {
 		t.Fatalf("options = %#v, want connector icon URL", options)
+	}
+	if options[0].InstalledAtUnixMs == nil || *options[0].InstalledAtUnixMs != 1786089600000 {
+		t.Fatalf("options = %#v, want connector installation time", options)
 	}
 }

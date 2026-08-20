@@ -90,7 +90,9 @@ func (application *Application) finalizeInstallAfterRuntime(
 			return NewDomainError(ErrorCodeUnavailable, "connector runtime candidate is not observed", true, nil)
 		}
 		revision := tx.AdvanceRevision()
+		installedAt := application.config.Now().UTC()
 		connector.Installation.State = InstallationStateInstalled
+		connector.Installation.InstalledAtUnixMS = installedAt.UnixMilli()
 		connector.Installation.InstalledVersion = connector.Installation.CandidateVersion
 		connector.Installation.InstalledReleaseID = connector.Installation.CandidateReleaseID
 		connector.Installation.InstalledReleaseDigest = connector.Installation.CandidateReleaseDigest
@@ -102,7 +104,7 @@ func (application *Application) finalizeInstallAfterRuntime(
 		operation.State = OperationStateCompleted
 		operation.Stage = OperationStageCompleted
 		operation.FailureCode = ""
-		operation.UpdatedAt = application.config.Now().UTC()
+		operation.UpdatedAt = installedAt
 		if err := tx.SaveConnector(connector); err != nil {
 			return err
 		}
@@ -407,9 +409,16 @@ func (application *Application) ConvergeRuntime(
 	receipt, err := application.reconcileRuntime(executionContext, RuntimeReconcileRequest{
 		OperationID: operationID, Scope: convergence.Desired.Scope, ConnectionID: binding.ConnectionID,
 		Connector: connector, Enabled: binding.Enabled, Generation: generation,
+		ConnectionVersion:     binding.ConnectionVersion,
+		ServerRevision:        binding.ServerRevision,
 		CredentialBrokerGrant: binding.CredentialBrokerGrant,
 	})
 	if err != nil {
+		if authorizationRequiredError(err) {
+			return application.replanRuntimeAfterAuthorizationRequired(
+				context.WithoutCancel(ctx), convergence, connector, release,
+			)
+		}
 		return application.retryRuntimeConvergence(ctx, convergence,
 			NewDomainError(ErrorCodeInstallFailed, "connector runtime could not be reconciled", true, err))
 	}
@@ -444,84 +453,6 @@ func (application *Application) completeRuntimeConvergence(
 		convergence.LastErrorCode = ""
 		convergence.LastError = ""
 	})
-}
-
-func (application *Application) inspectRuntimeAuthorization(
-	ctx context.Context,
-	convergence RuntimeConvergence,
-	connector Connector,
-) (Connector, error) {
-	if connector.Release.Manifest.Implementation.ManagedStdio == nil ||
-		connector.Release.Manifest.AuthorizationKind == "none" {
-		return connector, nil
-	}
-	inspector, ok := application.config.Authorization.(AuthorizationInspector)
-	if !ok {
-		return connector, nil
-	}
-	observation, err := inspector.InspectAuthorization(ctx, AuthorizationInspectRequest{
-		Scope: convergence.Desired.Scope, Connector: connector,
-		AuthorizationGeneration: convergence.Desired.Generation,
-		DesktopBootEpoch:        application.config.BootEpoch,
-		StateRevision:           connector.Revision,
-	})
-	if err != nil {
-		return Connector{}, fmt.Errorf("inspect connector authorization: %w", err)
-	}
-	if observation.ConnectorKey != "" && observation.ConnectorKey != connector.Key ||
-		observation.ReleaseDigest != "" && observation.ReleaseDigest != connector.Release.ReleaseDigest {
-		return Connector{}, invalidOperationReceipt("authorization inspector returned a mismatched observation")
-	}
-	var state AuthorizationState
-	switch observation.State {
-	case AuthorizationObservationConnected:
-		state = AuthorizationStateConnected
-	case AuthorizationObservationDisconnected:
-		state = AuthorizationStateDisconnected
-	case AuthorizationObservationExpired:
-		state = AuthorizationStateExpired
-	case AuthorizationObservationFailed:
-		state = AuthorizationStateFailed
-	case AuthorizationObservationPending:
-		state = AuthorizationStatePending
-	default:
-		return Connector{}, invalidOperationReceipt("authorization inspector returned an invalid state")
-	}
-	if connector.Authorization.State != state || connector.Authorization.FailureCode != observation.FailureCode {
-		err = application.config.Repository.Transaction(ctx, func(tx Transaction) error {
-			stored, txErr := tx.Connector(connector.Key)
-			if txErr != nil {
-				return txErr
-			}
-			revision := tx.AdvanceRevision()
-			stored.Authorization = Authorization{State: state, FailureCode: strings.TrimSpace(observation.FailureCode)}
-			stored.Revision = revision
-			if txErr := tx.SaveConnector(stored); txErr != nil {
-				return txErr
-			}
-			return tx.EnqueueConnectorMarketChanged(ChangedEvent{ConnectorKey: stored.Key, Revision: revision})
-		})
-		if err != nil {
-			return Connector{}, err
-		}
-		connector.Authorization = Authorization{State: state, FailureCode: strings.TrimSpace(observation.FailureCode)}
-	}
-	if application.config.AuthorizationProjections != nil && strings.TrimSpace(convergence.Desired.Scope.AccountID) != "" {
-		connectionID := strings.TrimSpace(observation.ConnectionID)
-		if state == AuthorizationStateConnected && connectionID == "" {
-			return Connector{}, invalidOperationReceipt("connected authorization inspection returned no connection id")
-		}
-		if err := application.saveAuthorizationProjection(ctx, ConnectorMutation{
-			ConnectorKey: connector.Key, AccountID: convergence.Desired.Scope.AccountID,
-		}, AuthorizationProjection{
-			AccountID: convergence.Desired.Scope.AccountID, ConnectorKey: connector.Key,
-			ConnectionID: connectionID, State: state, FailureCode: observation.FailureCode,
-			UpdatedAt: application.config.Now().UTC(),
-		}); err != nil {
-			return Connector{}, err
-		}
-	}
-	return connector, nil
 }
 
 func (application *Application) runtimeConnectorAndRelease(
@@ -596,8 +527,7 @@ func (application *Application) saveRuntimeDesired(
 		if err != nil {
 			return err
 		}
-		if connector.Installation.State != InstallationStateInstalled ||
-			connector.Installation.InstalledReleaseDigest != releaseDigest {
+		if !runtimeDesiredTargetMatches(connector, releaseDigest) {
 			return NewDomainError(ErrorCodeRevisionConflict, "installed connector changed while planning runtime", true, nil)
 		}
 		if mutation != nil {
@@ -708,6 +638,17 @@ func runtimeDesiredMatchesBinding(desired RuntimeDesired, releaseDigest string, 
 func runtimeBindingMatchesDesired(binding RuntimeBinding, desired RuntimeDesired) bool {
 	return desired.ReleaseDigest != "" && desired.Enabled == binding.Enabled &&
 		desired.ConnectionID == strings.TrimSpace(binding.ConnectionID) && desired.AuthorizationState == binding.AuthorizationState
+}
+
+func runtimeDesiredTargetMatches(connector Connector, releaseDigest string) bool {
+	releaseDigest = strings.TrimSpace(releaseDigest)
+	if connector.Installation.State == InstallationStateInstalled &&
+		connector.Installation.InstalledReleaseDigest == releaseDigest {
+		return true
+	}
+	return (connector.Installation.State == InstallationStateInstalling ||
+		connector.Installation.State == InstallationStateUpdating) &&
+		connector.Installation.CandidateReleaseDigest == releaseDigest
 }
 
 func runtimeActivationEnabled(desired RuntimeDesired) bool {

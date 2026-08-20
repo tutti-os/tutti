@@ -1,43 +1,39 @@
 # Connector Market Troubleshooting
 
-### Authorization stays loading and reopening cannot start a new attempt
+### A second authorize click starts another OAuth session
 
 **Symptoms**
 
-- the authorization button may remain on its initial loading state before a URL
-  is returned
-- the local Start operation is already `completed` while its private session
-  receipt is still unresolved
-- the account authorization projection remains `disconnected` until the OAuth
-  callback is observed
-- closing and reopening the dialog appears to reuse the old request or reports
-  that another Connector operation is in progress
+- the first Authorize click already opened the provider tab
+- a second click, Continue, or dialog dismiss-and-reopen starts
+  `replace_active` and tombstones the first session
+- the first Google or provider tab later returns an empty 403 after Complete
+  already succeeded for the replacement session
+- the authorization button looks clickable again while the renderer Promise is
+  still waiting
 
 **Check**
 
-Trace four states separately: the renderer request identity, the durable Start
-operation, its private authorization-session receipt, and the provider process.
-A
-completed Start operation means the external session was created; it does not
-mean the provider authorization is terminal. Confirm that a redirect session
-returns `pending` to the caller even when the durable projection has not changed
-yet. Within one action, confirm that continuation uses one `clientRequestId`.
-For a new user action, confirm that the request carries
-`replacementPolicy=replace_active`, the prior receipt moves through `canceling`
-to `superseded`, and the old Broker/DWS process exits before the replacement is
-launched. If no initial event is returned, verify that the new request cancels
-the active Host-owned Begin instead of waiting behind its authorization lane.
+Trace the renderer Promise separately from the Host Start. While
+`authorizationInFlight` is set and the attempt is not canceled, a second
+`beginAuthorization` must return that Promise and must not increment Host
+starts. The dialog Authorize control stays disabled on
+`actionWaitingAuthorization`; browser OAuth must not swap that control for
+Continue when Start returns a synthesized `external_link` view. Only Cancel
+ends the round. After Cancel, the
+next Authorize may send `replacementPolicy=replace_active` with a new
+`clientRequestId`. Continuation polling inside the same action still reuses one
+identity. Do not re-relay a provider `code` after Complete.
 
 **Rule**
 
-Keep the account projection as durable authorization truth. Preserve the
-current session's `pending` state only in the Start command result so shared
-clients continue that idempotent session. A new user action is different from a
-continuation: it must use Host-owned replace-active semantics. Fence late
-observations by the durable receipt, require provider cancellation and process
-exit confirmation, then create the replacement. Do not persist a synthetic
-connected projection, infer success from the Start operation's terminal state,
-or let the renderer race separate cancel and start calls.
+One user authorization action stays active until it completes or the user
+Cancels. A second click is not a new user action. Keep the account projection
+as durable authorization truth, and keep `pending` only in the Start command
+result so shared clients continue that idempotent session. `replace_active` is
+for an explicit new round after Cancel or after the previous action finished,
+not for a repeated Authorize while the first Promise is still live. Do not
+cancel the in-flight renderer Promise just because the user clicked again.
 
 ### OAuth finishes in the browser but does not return to the initiating desktop build
 
@@ -54,3 +50,20 @@ Inspect the server-owned authorization bridge URL before it leaves the renderer.
 **Rule**
 
 The initiating desktop build owns the callback environment. Do not infer a production or development desktop scheme from the authorization website hostname. Web code must accept only the exact supported `open` routes and keep the legacy client marker solely as compatibility for already released clients.
+
+### Composer install stays spinning on an OAuth remote connector
+
+**Symptoms**
+
+- composer connector menu “install” keeps a spinner for minutes
+- daemon logs repeat `list connector MCP tools: MCP Streamable HTTP request failed: status 428`
+- the install operation stays `running` with rising `attempt` and retryable `connector_install_failed`
+- after enough retries the connector may still become `installed` while the account projection is `expired` and runtime desired is disabled
+
+**Check**
+
+Separate device installation from account authorization. Confirm the connector is remote Streamable HTTP plus oauth2, and that enabled runtime reconcile called `tools/list` before any user authorization. The composer trigger waits for the durable install operation, not for an enabled Agent route. `awaitRuntimeDesired` must be able to converge a disabled generation after an authorization-required observation.
+
+**Rule**
+
+HTTP 428 and JSON-RPC `-33001`/`-33002` are authorization-required, not retryable install failure. Persist an expired account projection, replan `RuntimeDesired` enabled=false, and complete install once that inactive generation is Observed. Do not keep the install operation retrying 428, and do not require a connected route before installation may become a device fact.

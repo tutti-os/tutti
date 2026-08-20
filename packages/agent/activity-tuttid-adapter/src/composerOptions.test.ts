@@ -84,6 +84,7 @@ test("projects connector presentation icons from the daemon catalog", () => {
         status: "available",
         invocation: "textTrigger",
         iconUrl: "data:image/png;base64,Z2l0aHVi",
+        installedAtUnixMs: 1_786_089_600_000,
         trigger: "/github"
       }
     ],
@@ -106,5 +107,9 @@ test("projects connector presentation icons from the daemon catalog", () => {
   assert.equal(
     options.capabilityCatalog?.[0]?.iconUrl,
     "data:image/png;base64,Z2l0aHVi"
+  );
+  assert.equal(
+    options.capabilityCatalog?.[0]?.installedAtUnixMs,
+    1_786_089_600_000
   );
 });

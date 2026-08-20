@@ -2,7 +2,6 @@ import { proxy } from "valtio/vanilla";
 
 import type {
   ConnectorMarketScope,
-  ConnectorMarketSegment,
   ConnectorMarketUiState,
   IConnectorMarketUiStateService
 } from "./connectorMarketUiStateService.interface.ts";
@@ -13,7 +12,6 @@ export class ConnectorMarketUiStateService implements IConnectorMarketUiStateSer
     dialog: null,
     query: "",
     scope: null,
-    segment: "available",
     started: false
   });
 
@@ -25,7 +23,6 @@ export class ConnectorMarketUiStateService implements IConnectorMarketUiStateSer
     }
     this.dataStore.scope = { ...scope };
     this.dataStore.query = "";
-    this.dataStore.segment = "available";
     this.dataStore.dialog = null;
     this.dataStore.started = true;
   }
@@ -33,12 +30,6 @@ export class ConnectorMarketUiStateService implements IConnectorMarketUiStateSer
   setQuery(query: string): void {
     if (!this.disposed) {
       this.dataStore.query = query;
-    }
-  }
-
-  selectSegment(segment: ConnectorMarketSegment): void {
-    if (!this.disposed) {
-      this.dataStore.segment = segment;
     }
   }
 

@@ -52,6 +52,29 @@ func TestDefaultPreparerResolvesInjectedPackAcrossPolicySkillsAndEnv(t *testing.
 	}
 }
 
+func TestConnectorDiscoveryPackRendersEnabledSetNoneForLocalSessions(t *testing.T) {
+	t.Parallel()
+
+	input := testInputWithCommands(t, PrepareInput{
+		Provider:   "codex",
+		CLICommand: "tutti",
+		Connector:  &ConnectorAgentContext{},
+	})
+	contribution, err := ConnectorDiscoveryPack().Resolve(t.Context(), input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !contribution.Enabled || len(contribution.PolicySections) != 1 {
+		t.Fatalf("contribution = %#v, want enabled connector-discovery policy", contribution)
+	}
+	body := contribution.PolicySections[0].Body
+	if !strings.Contains(body, "Currently enabled by the user: none") ||
+		strings.Contains(body, "You are a shared agent") ||
+		strings.Contains(body, "TUTTI_CONNECTOR_CLI_REQUESTED_AUTHORITY=caller") {
+		t.Fatalf("local connector-discovery policy = %s", body)
+	}
+}
+
 func TestHostAppContextUsesNativeGeneratedImageArtifactsOnlyForSupportedProviders(t *testing.T) {
 	codexPolicy, err := hostAppContextPolicy(PrepareInput{Provider: "codex"})
 	if err != nil {

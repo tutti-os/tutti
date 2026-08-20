@@ -48,6 +48,23 @@ func codexSideInstructions(
 	return base + "\n\n" + codexSideDeveloperInstructions
 }
 
+func usableCodexSideSourceSession(
+	appSession *codexAppServerSession,
+	sourceThreadID string,
+) bool {
+	if appSession == nil || appSession.client == nil || appSession.releasing ||
+		appSession.releaseFailed ||
+		strings.TrimSpace(appSession.threadID) != strings.TrimSpace(sourceThreadID) {
+		return false
+	}
+	select {
+	case <-appSession.client.Done():
+		return false
+	default:
+		return true
+	}
+}
+
 func (a *CodexAppServerAdapter) SideCapabilities(
 	_ context.Context,
 	source Session,
@@ -60,8 +77,7 @@ func (a *CodexAppServerAdapter) SideCapabilities(
 	sourceThreadID := strings.TrimSpace(source.ProviderSessionID)
 	a.mu.Lock()
 	appSession := a.sessions[strings.TrimSpace(source.AgentSessionID)]
-	if appSession != nil && appSession.client != nil &&
-		appSession.threadID == sourceThreadID {
+	if usableCodexSideSourceSession(appSession, sourceThreadID) {
 		serverInfo := clonePayload(appSession.serverInfo)
 		a.mu.Unlock()
 		if version, ok := appServerForkVersion(strategy, serverInfo); ok &&
@@ -71,10 +87,119 @@ func (a *CodexAppServerAdapter) SideCapabilities(
 		return SideConversationCapabilities{}, nil
 	}
 	a.mu.Unlock()
-	// Side snapshots provider memory, including an in-progress Turn. A
-	// historical probe can attest a binary version but cannot attest that
-	// exact live context, so offline sources fail closed.
+	persistedServerInfo, _ := source.RuntimeContext["agent"].(map[string]any)
+	if strings.TrimSpace(asString(persistedServerInfo["codexHome"])) != "" {
+		if version, ok := appServerForkVersion(strategy, persistedServerInfo); ok &&
+			versionAtLeast(version, strategy.throughTurnMinimumVersion) {
+			return codexSideCapabilities(), nil
+		}
+	}
 	return SideConversationCapabilities{}, nil
+}
+
+type codexSideClientState struct {
+	client               *codexAppServerClient
+	serverInfo           map[string]any
+	account              map[string]any
+	models               []map[string]any
+	planModeMask         map[string]any
+	defaultModeMask      map[string]any
+	defaultModel         string
+	tuttiModeHostContext string
+	routerFallback       Session
+	dedicated            bool
+}
+
+func (a *CodexAppServerAdapter) sideClient(
+	ctx context.Context,
+	source Session,
+	side Session,
+	trace *codexAppServerStartupTrace,
+) (codexSideClientState, error) {
+	sourceThreadID := strings.TrimSpace(source.ProviderSessionID)
+	a.mu.Lock()
+	sourceAppSession := a.sessions[strings.TrimSpace(source.AgentSessionID)]
+	if usableCodexSideSourceSession(sourceAppSession, sourceThreadID) {
+		state := codexSideClientState{
+			client:               sourceAppSession.client,
+			serverInfo:           clonePayload(sourceAppSession.serverInfo),
+			account:              clonePayload(sourceAppSession.account),
+			models:               cloneCodexAppServerModels(sourceAppSession.models),
+			planModeMask:         clonePayload(sourceAppSession.planModeMask),
+			defaultModeMask:      clonePayload(sourceAppSession.defaultModeMask),
+			defaultModel:         sourceAppSession.defaultModel,
+			tuttiModeHostContext: sourceAppSession.tuttiModeHostContext,
+			routerFallback:       source,
+		}
+		a.mu.Unlock()
+		return state, nil
+	}
+	a.mu.Unlock()
+
+	launchSource, err := codexHistoricalSideSourceForLaunch(source, side)
+	if err != nil {
+		return codexSideClientState{}, err
+	}
+	client, initializeResult, err := a.startInitializedClient(ctx, launchSource, trace)
+	if err != nil {
+		return codexSideClientState{}, err
+	}
+	cleanupOwner := &codexAppServerSession{
+		client: client, runtimeSession: side,
+	}
+	keepClient := false
+	defer func() {
+		if !keepClient {
+			a.closeOrRetainCodexSession(side.AgentSessionID, cleanupOwner)
+		}
+	}()
+	// Upgrade the initialization handler to the thread-aware router before any
+	// metadata RPC so every later notification remains Side-scoped.
+	a.installSharedAppServerRouter(client, side)
+
+	planModeMask, defaultModeMask, defaultModel, _ :=
+		codexAppServerProtocolCheckpointFromRuntimeContext(source.RuntimeContext)
+	defaultModel = firstNonEmpty(
+		strings.TrimSpace(source.SettingsValue().Model),
+		defaultModel,
+	)
+	account, _ := source.RuntimeContext["account"].(map[string]any)
+	keepClient = true
+	return codexSideClientState{
+		client:          client,
+		serverInfo:      a.appServerInfo(initializeResult),
+		account:         clonePayload(account),
+		planModeMask:    planModeMask,
+		defaultModeMask: defaultModeMask,
+		defaultModel:    defaultModel,
+		routerFallback:  side,
+		dedicated:       true,
+	}, nil
+}
+
+func codexHistoricalSideSourceForLaunch(source Session, side Session) (Session, error) {
+	launchSource := cloneProviderLaunchSession(source)
+	launchSource.RoomID = side.RoomID
+	launchSource.AgentSessionID = side.AgentSessionID
+	launchSource.RootAgentSessionID = side.RootAgentSessionID
+	launchSource.Scope = RuntimeSessionScopeSide
+	launchSource.SourceAgentSessionID = side.SourceAgentSessionID
+	launchSource.SideRequestID = side.SideRequestID
+	launchSource.ProviderSessionID = ""
+	launchSource.Resumable = false
+	launchSource.Visible = false
+	agent, _ := source.RuntimeContext["agent"].(map[string]any)
+	codexHome := strings.TrimSpace(asString(agent["codexHome"]))
+	if codexHome == "" {
+		return Session{}, errors.New(
+			"historical Codex Side requires persisted CODEX_HOME",
+		)
+	}
+	launchSource.Env = append(
+		withoutEnvironmentKey(launchSource.Env, "CODEX_HOME"),
+		"CODEX_HOME="+codexHome,
+	)
+	return launchSource, nil
 }
 
 func codexSideCapabilities() SideConversationCapabilities {
@@ -106,26 +231,25 @@ func (a *CodexAppServerAdapter) OpenSide(
 
 	unlockLifecycle := a.lockSessionLifecycle(side.AgentSessionID)
 	defer unlockLifecycle()
-	trace := newCodexAppServerStartupTrace(side)
-	defer func() { trace.Finish(err) }()
-	a.mu.Lock()
-	sourceAppSession := a.sessions[strings.TrimSpace(source.AgentSessionID)]
-	if sourceAppSession == nil ||
-		sourceAppSession.client == nil ||
-		strings.TrimSpace(sourceAppSession.threadID) != sourceThreadID {
-		a.mu.Unlock()
-		return SideConversationOpenResult{}, ErrSideConversationExpired
+	if err := a.admitCodexReplacementLocked(side.AgentSessionID); err != nil {
+		return SideConversationOpenResult{}, err
 	}
-	client := sourceAppSession.client
-	serverInfo := clonePayload(sourceAppSession.serverInfo)
-	account := clonePayload(sourceAppSession.account)
-	models := cloneCodexAppServerModels(sourceAppSession.models)
-	planModeMask := sourceAppSession.planModeMask
-	defaultModeMask := sourceAppSession.defaultModeMask
-	defaultModel := sourceAppSession.defaultModel
-	tuttiModeHostContext := sourceAppSession.tuttiModeHostContext
-	a.mu.Unlock()
-	version, ok := appServerForkVersion(strategy, serverInfo)
+	trace := newCodexAppServerStartupTrace(side, a.startupSpanObserver, nil)
+	defer func() { trace.Finish(err) }()
+	clientState, err := a.sideClient(ctx, source, side, trace)
+	if err != nil {
+		return SideConversationOpenResult{}, err
+	}
+	client := clientState.client
+	keepDedicatedClient := false
+	defer func() {
+		if clientState.dedicated && !keepDedicatedClient {
+			a.closeOrRetainCodexSession(side.AgentSessionID, &codexAppServerSession{
+				client: client, runtimeSession: side,
+			})
+		}
+	}()
+	version, ok := appServerForkVersion(strategy, clientState.serverInfo)
 	if !ok || !versionAtLeast(version, strategy.throughTurnMinimumVersion) {
 		return SideConversationOpenResult{}, ErrSideConversationUnsupported
 	}
@@ -138,10 +262,11 @@ func (a *CodexAppServerAdapter) OpenSide(
 			a.discardPendingSideRoute(client)
 		}
 	}()
-	// From this point all per-RPC and idle messages on the source-owned
-	// connection are dispatched by thread id. This matches Codex App's Side
-	// topology and preserves the source's in-memory active-Turn snapshot.
-	a.installSharedAppServerRouter(client, source)
+	// A live source shares its connection so an in-progress Turn remains in the
+	// provider snapshot. A historical source owns a dedicated Side connection;
+	// its fallback is Side-scoped so provider startup events cannot enter the
+	// canonical source stream.
+	a.installSharedAppServerRouter(client, clientState.routerFallback)
 
 	params := map[string]any{
 		"threadId":     sourceThreadID,
@@ -149,9 +274,9 @@ func (a *CodexAppServerAdapter) OpenSide(
 		"excludeTurns": true,
 		"developerInstructions": codexSideInstructions(
 			source,
-			planModeMask,
-			defaultModeMask,
-			tuttiModeHostContext,
+			clientState.planModeMask,
+			clientState.defaultModeMask,
+			clientState.tuttiModeHostContext,
 		),
 	}
 	raw, err := trace.TypedCall(
@@ -239,7 +364,7 @@ func (a *CodexAppServerAdapter) OpenSide(
 	liveState.commandsKnown = true
 	applyACPConfigOptionDescriptors(
 		&liveState,
-		codexAppServerConfigOptionDescriptors(models, side, raw),
+		codexAppServerConfigOptionDescriptors(clientState.models, side, raw),
 	)
 	// Register the child before boundary injection so connection-scoped
 	// notifications and server requests already have an exact Side owner.
@@ -247,15 +372,15 @@ func (a *CodexAppServerAdapter) OpenSide(
 		client:                 client,
 		threadID:               childThreadID,
 		runtimeSession:         side,
-		serverInfo:             serverInfo,
-		account:                account,
-		models:                 cloneCodexAppServerModels(models),
-		startupModelsReady:     len(models) > 0,
+		serverInfo:             clientState.serverInfo,
+		account:                clientState.account,
+		models:                 cloneCodexAppServerModels(clientState.models),
+		startupModelsReady:     len(clientState.models) > 0,
 		startupRateLimitsReady: false,
-		planModeMask:           planModeMask,
-		defaultModeMask:        defaultModeMask,
-		defaultModel:           defaultModel,
-		tuttiModeHostContext:   tuttiModeHostContext,
+		planModeMask:           clientState.planModeMask,
+		defaultModeMask:        clientState.defaultModeMask,
+		defaultModel:           clientState.defaultModel,
+		tuttiModeHostContext:   clientState.tuttiModeHostContext,
 		authState:              "authenticated",
 		acpLiveState:           liveState,
 		pendingRequests:        make(map[string]*pendingInteractiveRequest),
@@ -274,7 +399,7 @@ func (a *CodexAppServerAdapter) OpenSide(
 			if err := a.routeSharedAppServerMessageWithPending(
 				ctx,
 				client,
-				source,
+				clientState.routerFallback,
 				buffered.message,
 				false,
 			); err != nil {
@@ -323,6 +448,7 @@ func (a *CodexAppServerAdapter) OpenSide(
 		Commands:       codexAppServerCommands(),
 	})
 	committed = true
+	keepDedicatedClient = true
 	return SideConversationOpenResult{
 		Session: side, Capabilities: codexSideCapabilities(),
 	}, nil

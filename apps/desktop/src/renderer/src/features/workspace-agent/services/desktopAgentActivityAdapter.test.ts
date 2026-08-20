@@ -525,6 +525,57 @@ test("desktop agent activity adapter rejects send responses without a canonical 
   );
 });
 
+test("desktop agent activity adapter claims canonical Turns for the originating renderer", async () => {
+  const claims: unknown[] = [];
+  const adapter = createDesktopAgentActivityAdapter({
+    claimBrowserAutomationTurn: (claim) => claims.push(claim),
+    tuttidClient: createTuttidClient({
+      async createWorkspaceAgentSession(_requestWorkspaceId, request) {
+        return createSession({
+          id: request.agentSessionId,
+          status: "running"
+        });
+      },
+      async sendWorkspaceAgentSessionInput(
+        _requestWorkspaceId,
+        agentSessionId
+      ) {
+        return createSendInputResponse(
+          createSession({ id: agentSessionId, status: "running" })
+        );
+      }
+    }),
+    runtimeApi: createRuntimeApi()
+  });
+
+  await adapter.createSession({
+    agentSessionId: "agent-session-created",
+    agentTargetId: "local:codex",
+    clientSubmitId: "submit-create",
+    initialContent: [{ type: "text", text: "hello" }],
+    workspaceId
+  });
+  await adapter.sendInput({
+    agentSessionId: "agent-session-existing",
+    clientSubmitId: "submit-send",
+    content: [{ type: "text", text: "continue" }],
+    workspaceId
+  });
+
+  assert.deepEqual(claims, [
+    {
+      agentSessionId: "agent-session-created",
+      agentTurnId: "turn-active",
+      workspaceId
+    },
+    {
+      agentSessionId: "agent-session-existing",
+      agentTurnId: "turn-1",
+      workspaceId
+    }
+  ]);
+});
+
 test("desktop agent activity adapter accepts typed goal input without a Turn", async () => {
   const adapter = createDesktopAgentActivityAdapter({
     tuttidClient: createTuttidClient({

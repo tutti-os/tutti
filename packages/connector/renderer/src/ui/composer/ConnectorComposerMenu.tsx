@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Badge,
   Button,
@@ -10,11 +10,13 @@ import {
   DropdownMenuTrigger,
   LinkIcon,
   OpenLinkLinedIcon,
+  Spinner,
   Switch
 } from "@tutti-os/ui-system";
 import { cn } from "@tutti-os/ui-system/utils";
 
 const QUICK_CONNECTOR_LIMIT = 10;
+const INSTALLED_CONNECTOR_PREVIEW_LIMIT = 4;
 const CONNECTOR_PREVIEW_LIMIT = 3;
 
 export type ConnectorComposerItemStatus =
@@ -27,6 +29,7 @@ export type ConnectorComposerItemStatus =
 export interface ConnectorComposerItem {
   connectorKey: string;
   iconUrl?: string;
+  installedAtUnixMs?: number;
   name: string;
   /** Caller-localized, credential-free presentation detail or disabled reason. */
   description?: string;
@@ -54,6 +57,7 @@ export interface ConnectorComposerMenuProps {
   onOpenChange?: (open: boolean) => void;
   onOpenConnector?: (connectorKey: string) => void;
   onOpenMarket?: () => void;
+  onInstallConnector?: (connectorKey: string) => void | Promise<void>;
   onRuntimeEnabledChange?: (
     connectorKey: string,
     enabled: boolean
@@ -75,6 +79,7 @@ export function ConnectorComposerMenu({
   onOpenChange,
   onOpenConnector,
   onOpenMarket,
+  onInstallConnector,
   onRuntimeEnabledChange,
   onSelectConnector,
   readOnly = false
@@ -83,8 +88,23 @@ export function ConnectorComposerMenu({
   const [runtimeIntents, setRuntimeIntents] = useState<
     Record<string, { desired: boolean; pending: boolean }>
   >({});
+  const installingConnectorKeysRef = useRef(new Set<string>());
+  const [installingConnectorKeys, setInstallingConnectorKeys] = useState<
+    ReadonlySet<string>
+  >(new Set());
   const normalizedItems = normalizeConnectorItems(items);
-  const quickItems = normalizedItems.slice(0, QUICK_CONNECTOR_LIMIT);
+  const installedItems = normalizedItems.filter(isInstalledConnectorItem);
+  const discoveryItems = normalizedItems.filter(
+    (item) => !isInstalledConnectorItem(item)
+  );
+  const quickItems = [
+    ...installedItems.slice(0, INSTALLED_CONNECTOR_PREVIEW_LIMIT),
+    ...discoveryItems.slice(
+      0,
+      QUICK_CONNECTOR_LIMIT -
+        Math.min(installedItems.length, INSTALLED_CONNECTOR_PREVIEW_LIMIT)
+    )
+  ];
   const connectedItems = normalizedItems.filter(
     (item) => item.status === "connected"
   );
@@ -94,6 +114,22 @@ export function ConnectorComposerMenu({
     setOpen(false);
     onOpenChange?.(false);
     action();
+  };
+  const installInPlace = (connectorKey: string): void => {
+    if (
+      !onInstallConnector ||
+      installingConnectorKeysRef.current.has(connectorKey)
+    ) {
+      return;
+    }
+    installingConnectorKeysRef.current.add(connectorKey);
+    setInstallingConnectorKeys(new Set(installingConnectorKeysRef.current));
+    void Promise.resolve(onInstallConnector(connectorKey))
+      .catch(() => undefined)
+      .finally(() => {
+        installingConnectorKeysRef.current.delete(connectorKey);
+        setInstallingConnectorKeys(new Set(installingConnectorKeysRef.current));
+      });
   };
   useEffect(() => {
     setRuntimeIntents((current) => {
@@ -178,53 +214,90 @@ export function ConnectorComposerMenu({
               item.status === "authorization_required"
                 ? labels.authorize
                 : labels.connect;
-            return (
-              <div key={item.connectorKey} className="relative" role="none">
-                <DropdownMenuItem
-                  className={cn("min-h-9 gap-2.5 px-2.5", installed && "pr-14")}
-                  data-testid={`connector-market-composer-item-${item.connectorKey}`}
-                  data-selected={selected ? "true" : undefined}
-                  disabled={
-                    readOnly ||
-                    (connected ? !onSelectConnector : !onOpenConnector)
-                  }
-                  onPointerDown={(event) => {
-                    if (event.button !== 0 || event.ctrlKey) {
-                      return;
+            const installingInPlace = installingConnectorKeys.has(
+              item.connectorKey
+            );
+            const setRuntimeEnabled = (nextEnabled: boolean): void => {
+              if (!onRuntimeEnabledChange) {
+                return;
+              }
+              setRuntimeIntents((current) => ({
+                ...current,
+                [item.connectorKey]: {
+                  desired: nextEnabled,
+                  pending: true
+                }
+              }));
+              void Promise.resolve(
+                onRuntimeEnabledChange(item.connectorKey, nextEnabled)
+              ).then(
+                () =>
+                  setRuntimeIntents((current) => {
+                    const intent = current[item.connectorKey];
+                    if (!intent || intent.desired !== nextEnabled) {
+                      return current;
                     }
-                    event.preventDefault();
-                    closeAndRun(() => {
-                      if (connected) {
-                        onSelectConnector?.(item.connectorKey, !selected);
+                    return {
+                      ...current,
+                      [item.connectorKey]: {
+                        desired: nextEnabled,
+                        pending: false
+                      }
+                    };
+                  }),
+                () =>
+                  setRuntimeIntents((current) => {
+                    const intent = current[item.connectorKey];
+                    if (!intent || intent.desired !== nextEnabled) {
+                      return current;
+                    }
+                    const next = { ...current };
+                    delete next[item.connectorKey];
+                    return next;
+                  })
+              );
+            };
+            if (installed) {
+              return (
+                <div key={item.connectorKey} className="relative" role="none">
+                  <DropdownMenuItem
+                    className="min-h-9 gap-2.5 px-2.5 pr-14"
+                    data-testid={`connector-market-composer-item-${item.connectorKey}`}
+                    data-selected={selected ? "true" : undefined}
+                    disabled={
+                      readOnly ||
+                      (connected ? !onSelectConnector : !onOpenConnector)
+                    }
+                    onPointerDown={(event) => {
+                      if (event.button !== 0 || event.ctrlKey) {
                         return;
                       }
-                      onOpenConnector?.(item.connectorKey);
-                    });
-                  }}
-                  onSelect={(event) => {
-                    event.preventDefault();
-                    closeAndRun(() => {
-                      if (connected) {
-                        onSelectConnector?.(item.connectorKey, !selected);
-                        return;
-                      }
-                      onOpenConnector?.(item.connectorKey);
-                    });
-                  }}
-                >
-                  <ConnectorComposerIcon
-                    iconUrl={item.iconUrl}
-                    label={item.name}
-                  />
-                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                  {!installed && !readOnly ? (
-                    <div className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
-                      <LinkIcon aria-hidden className="size-4" />
-                      {actionLabel}
-                    </div>
-                  ) : null}
-                </DropdownMenuItem>
-                {installed ? (
+                      event.preventDefault();
+                      closeAndRun(() => {
+                        if (connected) {
+                          onSelectConnector?.(item.connectorKey, !selected);
+                          return;
+                        }
+                        onOpenConnector?.(item.connectorKey);
+                      });
+                    }}
+                    onSelect={(event) => {
+                      event.preventDefault();
+                      closeAndRun(() => {
+                        if (connected) {
+                          onSelectConnector?.(item.connectorKey, !selected);
+                          return;
+                        }
+                        onOpenConnector?.(item.connectorKey);
+                      });
+                    }}
+                  >
+                    <ConnectorComposerIcon
+                      iconUrl={item.iconUrl}
+                      label={item.name}
+                    />
+                    <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  </DropdownMenuItem>
                   <Switch
                     aria-label={item.name}
                     checked={runtimeEnabled}
@@ -235,51 +308,79 @@ export function ConnectorComposerMenu({
                       !onRuntimeEnabledChange ||
                       runtimeIntent?.pending === true
                     }
-                    onClick={(event) => event.stopPropagation()}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onCheckedChange={(nextEnabled) => {
-                      if (!onRuntimeEnabledChange) {
+                    onKeyDown={(event) => {
+                      if (event.key !== "Enter" && event.key !== " ") {
                         return;
                       }
-                      setRuntimeIntents((current) => ({
-                        ...current,
-                        [item.connectorKey]: {
-                          desired: nextEnabled,
-                          pending: true
-                        }
-                      }));
-                      void Promise.resolve(
-                        onRuntimeEnabledChange(item.connectorKey, nextEnabled)
-                      ).then(
-                        () =>
-                          setRuntimeIntents((current) => {
-                            const intent = current[item.connectorKey];
-                            if (!intent || intent.desired !== nextEnabled) {
-                              return current;
-                            }
-                            return {
-                              ...current,
-                              [item.connectorKey]: {
-                                desired: nextEnabled,
-                                pending: false
-                              }
-                            };
-                          }),
-                        () =>
-                          setRuntimeIntents((current) => {
-                            const intent = current[item.connectorKey];
-                            if (!intent || intent.desired !== nextEnabled) {
-                              return current;
-                            }
-                            const next = { ...current };
-                            delete next[item.connectorKey];
-                            return next;
-                          })
-                      );
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setRuntimeEnabled(!runtimeEnabled);
+                    }}
+                    onPointerDown={(event) => {
+                      if (event.button !== 0 || event.ctrlKey) {
+                        return;
+                      }
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setRuntimeEnabled(!runtimeEnabled);
+                    }}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
                     }}
                   />
+                </div>
+              );
+            }
+            return (
+              <DropdownMenuItem
+                key={item.connectorKey}
+                className="min-h-9 gap-2.5 px-2.5"
+                data-testid={`connector-market-composer-item-${item.connectorKey}`}
+                aria-busy={installingInPlace || undefined}
+                disabled={
+                  readOnly ||
+                  installingInPlace ||
+                  (item.status === "setup_required"
+                    ? !onInstallConnector && !onOpenConnector
+                    : !onOpenConnector)
+                }
+                onPointerDown={(event) => {
+                  if (event.button !== 0 || event.ctrlKey) {
+                    return;
+                  }
+                  event.preventDefault();
+                  if (item.status === "setup_required" && onInstallConnector) {
+                    installInPlace(item.connectorKey);
+                    return;
+                  }
+                  closeAndRun(() => onOpenConnector?.(item.connectorKey));
+                }}
+                onSelect={(event) => {
+                  event.preventDefault();
+                  if (item.status === "setup_required" && onInstallConnector) {
+                    installInPlace(item.connectorKey);
+                    return;
+                  }
+                  closeAndRun(() => onOpenConnector?.(item.connectorKey));
+                }}
+              >
+                <ConnectorComposerIcon
+                  iconUrl={item.iconUrl}
+                  label={item.name}
+                />
+                <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {!readOnly ? (
+                  <div className="ml-auto inline-flex shrink-0 items-center gap-1 pl-3 text-xs text-[var(--text-primary)]">
+                    {installingInPlace ? (
+                      <Spinner aria-hidden size={14} />
+                    ) : (
+                      <LinkIcon aria-hidden className="size-4" />
+                    )}
+                    {actionLabel}
+                  </div>
                 ) : null}
-              </div>
+              </DropdownMenuItem>
             );
           })
         ) : loading ? (
@@ -323,8 +424,7 @@ export function ConnectorComposerMenu({
 export function normalizeConnectorItems(
   items: readonly ConnectorComposerItem[]
 ): ConnectorComposerItem[] {
-  const selectedItems: ConnectorComposerItem[] = [];
-  const connectedItems: ConnectorComposerItem[] = [];
+  const installedItems: ConnectorComposerItem[] = [];
   const remainingItems: ConnectorComposerItem[] = [];
   const seenConnectorKeys = new Set<string>();
   for (const item of items) {
@@ -334,15 +434,36 @@ export function normalizeConnectorItems(
     }
     seenConnectorKeys.add(connectorKey);
     const normalizedItem = { ...item, connectorKey };
-    if (normalizedItem.status === "connected" && normalizedItem.selected) {
-      selectedItems.push(normalizedItem);
-    } else if (normalizedItem.status === "connected") {
-      connectedItems.push(normalizedItem);
+    if (isInstalledConnectorItem(normalizedItem)) {
+      installedItems.push(normalizedItem);
     } else {
       remainingItems.push(normalizedItem);
     }
   }
-  return [...selectedItems, ...connectedItems, ...remainingItems];
+  installedItems.sort(compareInstalledConnectorItems);
+  return [...installedItems, ...remainingItems];
+}
+
+function compareInstalledConnectorItems(
+  left: ConnectorComposerItem,
+  right: ConnectorComposerItem
+): number {
+  const leftInstalledAt = left.installedAtUnixMs ?? 0;
+  const rightInstalledAt = right.installedAtUnixMs ?? 0;
+  if (leftInstalledAt === rightInstalledAt) {
+    return 0;
+  }
+  if (leftInstalledAt === 0) {
+    return 1;
+  }
+  if (rightInstalledAt === 0) {
+    return -1;
+  }
+  return rightInstalledAt - leftInstalledAt;
+}
+
+function isInstalledConnectorItem(item: ConnectorComposerItem): boolean {
+  return item.status === "connected" || item.status === "disabled";
 }
 
 function ConnectorComposerIcon({

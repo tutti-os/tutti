@@ -1,4 +1,8 @@
-import type { AgentProbeProvider, AgentUsageQuota } from "@tutti-os/agent-gui";
+import type {
+  AgentProbeProvider,
+  AgentUsageQuota,
+  AgentUsageSnapshot
+} from "@tutti-os/agent-gui";
 import type { AgentTargetAccountUsageProbeResult } from "@tutti-os/client-tuttid-ts";
 
 export interface DesktopAgentProbeTarget {
@@ -23,7 +27,19 @@ const accountUsageQuotaTypes = new Set([
   "weekly",
   "monthly",
   "model",
+  "credits",
   "cost"
+]);
+const accountUsageBillingModes = new Set([
+  "subscription",
+  "api",
+  "coding_plan",
+  "provider_account"
+]);
+const accountUsageQuotaStates = new Set([
+  "complete",
+  "unavailable",
+  "not_applicable"
 ]);
 
 export function mapProviderOwnedAccountUsageResult(
@@ -42,10 +58,11 @@ export function mapProviderOwnedAccountUsageResult(
       "outcome",
       "capturedAtUnixMs",
       "billingMode",
+      "quotaState",
       "quotas",
       "errorCode"
     ]) ||
-    result.schemaVersion !== "tutti.agent.account-usage.v1" ||
+    result.schemaVersion !== "tutti.agent.account-usage.v2" ||
     result.agentTargetId !== target.agentTargetId ||
     !provider ||
     (target.provider !== "unknown" && provider !== target.provider) ||
@@ -97,9 +114,13 @@ export function mapProviderOwnedAccountUsageResult(
       "outcome",
       "capturedAtUnixMs",
       "billingMode",
+      "quotaState",
       "quotas"
     ]) ||
-    (result.billingMode !== "subscription" && result.billingMode !== "api") ||
+    typeof result.billingMode !== "string" ||
+    !accountUsageBillingModes.has(result.billingMode) ||
+    typeof result.quotaState !== "string" ||
+    !accountUsageQuotaStates.has(result.quotaState) ||
     !Array.isArray(result.quotas) ||
     result.quotas.length > 64
   ) {
@@ -114,11 +135,22 @@ export function mapProviderOwnedAccountUsageResult(
         : numberValue(quota.resetsAtUnixMs);
     const modelName =
       quota?.modelName === undefined ? undefined : stringValue(quota.modelName);
+    const amountRemaining =
+      quota?.amountRemaining === undefined
+        ? undefined
+        : numberValue(quota.amountRemaining);
+    const amountLimit =
+      quota?.amountLimit === undefined
+        ? undefined
+        : numberValue(quota.amountLimit);
     if (
       !quota ||
       !hasOnlyKeys(quota, [
         "quotaType",
         "percentRemaining",
+        "amountRemaining",
+        "amountLimit",
+        "amountUnit",
         "resetsAtUnixMs",
         "modelName"
       ]) ||
@@ -134,7 +166,19 @@ export function mapProviderOwnedAccountUsageResult(
           !Number.isSafeInteger(resetsAtUnixMs) ||
           resetsAtUnixMs < 0)) ||
       (quota.quotaType === "model" && !modelName) ||
-      (quota.modelName !== undefined && (!modelName || modelName.length > 128))
+      (quota.modelName !== undefined &&
+        (!modelName || modelName.length > 128)) ||
+      (quota.quotaType === "credits"
+        ? typeof quota.amountRemaining !== "number" ||
+          typeof amountRemaining !== "number" ||
+          amountRemaining < 0 ||
+          typeof quota.amountLimit !== "number" ||
+          typeof amountLimit !== "number" ||
+          amountLimit < amountRemaining ||
+          quota.amountUnit !== "credits"
+        : quota.amountRemaining !== undefined ||
+          quota.amountLimit !== undefined ||
+          quota.amountUnit !== undefined)
     ) {
       return [];
     }
@@ -142,6 +186,15 @@ export function mapProviderOwnedAccountUsageResult(
       {
         quotaType: quota.quotaType as AgentUsageQuota["quotaType"],
         percentRemaining,
+        ...(amountRemaining === undefined
+          ? {}
+          : { amountRemaining: amountRemaining as number }),
+        ...(amountLimit === undefined
+          ? {}
+          : { amountLimit: amountLimit as number }),
+        ...(quota.amountUnit === "credits"
+          ? { amountUnit: "credits" as const }
+          : {}),
         ...(resetsAtUnixMs === undefined
           ? {}
           : { resetsAtUnixMs: resetsAtUnixMs as number }),
@@ -151,21 +204,40 @@ export function mapProviderOwnedAccountUsageResult(
   });
   if (
     quotas.length !== result.quotas.length ||
-    (result.billingMode === "subscription" && quotas.length === 0) ||
-    (result.billingMode === "api" && quotas.length !== 0)
+    !validQuotaState(result.billingMode, result.quotaState, quotas.length)
   ) {
     return failedDesktopAgentProbe(resolvedTarget, "parse_failed");
   }
+  const billingMode = result.billingMode as NonNullable<
+    AgentUsageSnapshot["billingMode"]
+  >;
+  const quotaState = result.quotaState as NonNullable<
+    AgentUsageSnapshot["quotaState"]
+  >;
   return {
     agentTargetId: target.agentTargetId,
     availability: { detailsVisible: false, status: "unknown" },
     provider,
     usage: {
-      billingMode: result.billingMode,
+      billingMode,
+      quotaState,
       capturedAtUnixMs,
       quotas
     }
   };
+}
+
+function validQuotaState(
+  billingMode: unknown,
+  quotaState: unknown,
+  quotaCount: number
+): boolean {
+  if (quotaState === "complete") return billingMode !== "api" && quotaCount > 0;
+  if (quotaState === "unavailable")
+    return billingMode !== "api" && quotaCount === 0;
+  return (
+    quotaState === "not_applicable" && billingMode === "api" && quotaCount === 0
+  );
 }
 
 export function failedDesktopAgentProbe(

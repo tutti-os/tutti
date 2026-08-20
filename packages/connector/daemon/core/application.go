@@ -175,8 +175,11 @@ func publicSnapshot(snapshot Snapshot, scope OperationScope) (Snapshot, error) {
 		if connectorRemovedFromCatalog(connector) {
 			continue
 		}
+		// A single historical or malformed release must not remove the whole
+		// catalog from every reader. Hidden connectors also hide their
+		// operations below, exactly like delisted ones.
 		if err := ValidateReleaseShape(connector.Release); err != nil {
-			return Snapshot{}, fmt.Errorf("validate connector %q release: %w", connector.Key, err)
+			continue
 		}
 		visibleConnectorKeys[connector.Key] = struct{}{}
 		connectors = append(connectors, connector)

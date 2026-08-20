@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -306,6 +307,9 @@ func (installer *NodePackageInstaller) runManagedNode(ctx context.Context, resol
 		Command: append([]string{node.Path}, args...), Env: env,
 		ExecutableIdentity: &agentruntime.ExecutableIdentity{SHA256: node.SHA256, SizeBytes: node.SizeBytes}})
 	if err != nil {
+		if errors.Is(err, agentruntime.ErrProcessSpecInvalid) {
+			return fmt.Errorf("%w: %w", market.ErrPermanentInstallFailure, err)
+		}
 		return err
 	}
 	defer connection.Close()
@@ -366,6 +370,11 @@ func uniquePaths(values []string) []string {
 	return result
 }
 
+// allowedNodePackageInstallEnvironment projects the inherited environment onto
+// the installer allow-list. Keys are folded case-insensitively and emitted in
+// one canonical upper-case form: the connector process contract rejects two
+// entries that differ only by case, so POSIX hosts exporting both HTTP_PROXY
+// and http_proxy must not produce two entries here.
 func allowedNodePackageInstallEnvironment(environment []string) []string {
 	allowed := map[string]struct{}{
 		"ALL_PROXY": {}, "COMSPEC": {}, "HTTP_PROXY": {}, "HTTPS_PROXY": {},
@@ -373,15 +382,26 @@ func allowedNodePackageInstallEnvironment(environment []string) []string {
 		"NODE_EXTRA_CA_CERTS": {}, "PATHEXT": {}, "SSL_CERT_DIR": {}, "SSL_CERT_FILE": {},
 		"SYSTEMROOT": {},
 	}
-	result := make([]string, 0, len(allowed))
+	values := make(map[string]string, len(allowed))
 	for _, item := range environment {
-		key, _, ok := strings.Cut(item, "=")
+		key, value, ok := strings.Cut(item, "=")
 		if !ok {
 			continue
 		}
-		if _, ok := allowed[strings.ToUpper(key)]; ok {
-			result = append(result, item)
+		canonical := strings.ToUpper(key)
+		if _, permitted := allowed[canonical]; !permitted {
+			continue
 		}
+		values[canonical] = value
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, key+"="+values[key])
 	}
 	return result
 }

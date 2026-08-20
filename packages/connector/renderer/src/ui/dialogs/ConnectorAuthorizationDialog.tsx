@@ -76,6 +76,8 @@ export function ConnectorAuthorizationDialog({
   });
   const currentView =
     authorizationView ?? (resolved.kind === "form" ? resolved.view : null);
+  const showAuthorizationView =
+    currentView !== null && currentView.view.type !== "external_link";
 
   const handleInteractionEvent = (event: AuthorizationEventEnvelopeV1) => {
     if (!currentView) return;
@@ -109,7 +111,10 @@ export function ConnectorAuthorizationDialog({
   };
 
   return (
-    <DialogContent className="max-h-[min(720px,calc(100vh-32px))] overflow-y-auto sm:max-w-[420px]">
+    <DialogContent
+      aria-busy={authorizing}
+      className="max-h-[min(720px,calc(100vh-32px))] overflow-y-auto sm:max-w-[420px]"
+    >
       <DialogHeader className="gap-3 px-5 pt-4 text-center">
         <div className="gap-3 flex items-center justify-center">
           <span className="flex size-12 items-center justify-center rounded-xl bg-[var(--transparency-block)] text-[var(--accent)]">
@@ -140,7 +145,7 @@ export function ConnectorAuthorizationDialog({
         />
       </div>
 
-      {currentView ? (
+      {showAuthorizationView && currentView ? (
         <AuthorizationRenderer
           busy={authorizationView ? false : authorizing || pending}
           labels={{
@@ -187,12 +192,10 @@ export function ConnectorAuthorizationDialog({
             type="button"
             onClick={() => void onAuthorize()}
           >
-            {authorizing && !pending ? <Spinner size={14} /> : null}
-            {authorizing && pending
+            {authorizing ? <Spinner size={14} /> : null}
+            {authorizing
               ? i18n.t("actionWaitingAuthorization")
-              : pending
-                ? i18n.t("actionContinueAuthorization")
-                : i18n.t("actionAuthorize")}
+              : i18n.t("actionAuthorize")}
           </Button>
         </DialogFooter>
       )}

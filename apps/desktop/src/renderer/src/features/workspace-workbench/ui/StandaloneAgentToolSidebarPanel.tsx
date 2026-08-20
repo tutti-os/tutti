@@ -10,7 +10,6 @@ import type { WorkspaceAgentActivityService } from "@renderer/features/workspace
 import type { DesktopBrowserApi } from "@preload/types";
 import type { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
-import { resolveStandaloneAgentBrowserSessionId } from "../services/standaloneAgentBrowserSession.ts";
 import { StandaloneAgentBrowserToolPanel } from "./StandaloneAgentBrowserToolPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 
@@ -63,7 +62,6 @@ export interface StandaloneAgentFileOpenRequest {
 
 export function StandaloneAgentToolSidebarPanel({
   active,
-  agentSessionId,
   appI18n,
   activityService,
   browserApi,
@@ -84,7 +82,6 @@ export function StandaloneAgentToolSidebarPanel({
   workspaceId
 }: {
   active: boolean;
-  agentSessionId: string | null;
   appI18n: I18nRuntime<string>;
   activityService: WorkspaceAgentActivityService;
   browserApi?: DesktopBrowserApi;
@@ -129,7 +126,7 @@ export function StandaloneAgentToolSidebarPanel({
           }}
           revealIntent={fileOpenRequest}
           showInternalOpenWithActions
-          showPreviewPanel={false}
+          showPreviewPanel
           workspaceID={workspaceId}
         />
       </Suspense>
@@ -208,10 +205,7 @@ export function StandaloneAgentToolSidebarPanel({
   if (panel === "browser") {
     return browserApi ? (
       <StandaloneAgentBrowserToolPanel
-        agentSessionId={resolveStandaloneAgentBrowserSessionId({
-          currentAgentSessionId: agentSessionId,
-          resourceAgentSessionId: tab.resourceId
-        })}
+        agentSessionId={tab.resourceId ?? null}
         appI18n={appI18n}
         automationManaged={Boolean(tab.resourceId)}
         browserApi={browserApi}
@@ -239,6 +233,7 @@ export function StandaloneAgentToolSidebarPanel({
       >
         <LazyStandaloneAgentTerminalPanel
           contributions={contributions}
+          initialSessionId={tab.resourceId}
           instanceId={instanceId}
           loadingLabel={i18n.t("common.loading")}
           open={active}

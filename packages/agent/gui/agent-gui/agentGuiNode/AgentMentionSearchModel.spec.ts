@@ -6,6 +6,27 @@ import {
 } from "./AgentMentionSearchModel";
 
 describe("providerItemToAgentMentionItem", () => {
+  it("keeps file path and workspace context as picker-only presentation", () => {
+    expect(
+      providerItemToAgentMentionItem({
+        currentUserId: "user-1",
+        providerId: "file",
+        insertResult: {
+          href: "/Users/test/project/tutti/src/index.ts",
+          kind: "markdown-link",
+          label: "index.ts"
+        },
+        label: "index.ts",
+        subtitle: "project/tutti/src · Tutti",
+        workspaceId: "workspace-1"
+      })
+    ).toMatchObject({
+      contextLabel: "project/tutti/src · Tutti",
+      kind: "file",
+      name: "index.ts"
+    });
+  });
+
   it("normalizes Windows generated-file paths before deriving their directory", () => {
     const path = "C:\\Users\\agent\\workspace\\generated\\report.md";
     const item = providerItemToAgentMentionItem({

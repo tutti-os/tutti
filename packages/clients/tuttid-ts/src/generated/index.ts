@@ -381,6 +381,7 @@ export type {
   AgentTargetAccountUsageErrorResult,
   AgentTargetAccountUsageProbeResult,
   AgentTargetAccountUsageQuota,
+  AgentTargetAccountUsageQuotaState,
   AgentTargetAccountUsageQuotaType,
   AgentTargetAccountUsageUnsupportedResult,
   AgentTargetAuthenticatedAccount,

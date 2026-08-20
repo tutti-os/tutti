@@ -664,6 +664,10 @@ components:
           $ref: "#/components/schemas/ConnectorMarketInstallationState"
         installedVersion:
           type: string
+        installedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
         installedReleaseId:
           type: string
         installedReleaseDigest:

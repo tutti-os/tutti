@@ -6,11 +6,12 @@ import {
   type ConnectorComposerItem
 } from "./ConnectorComposerMenu.tsx";
 
-test("prioritizes selected then authorized connectors while preserving first identity", () => {
+test("orders installed connectors by installation time and preserves catalog order for legacy entries", () => {
   const items: ConnectorComposerItem[] = [
     item(" github "),
-    item("figma", "connected"),
-    item("notion", "connected", true),
+    item("figma", "connected", false, 200),
+    item("notion", "connected", true, 300),
+    item("legacy", "disabled"),
     item("github"),
     item("lark"),
     item("   ")
@@ -18,19 +19,21 @@ test("prioritizes selected then authorized connectors while preserving first ide
 
   assert.deepEqual(
     normalizeConnectorItems(items).map((entry) => entry.connectorKey),
-    ["notion", "figma", "github", "lark"]
+    ["notion", "figma", "legacy", "github", "lark"]
   );
 });
 
 function item(
   connectorKey: string,
   status: ConnectorComposerItem["status"] = "setup_required",
-  selected = false
+  selected = false,
+  installedAtUnixMs?: number
 ): ConnectorComposerItem {
   return {
     connectorKey,
     name: connectorKey,
     selected,
+    installedAtUnixMs,
     status
   };
 }

@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   ConnectorComposerMenu,
@@ -22,10 +28,12 @@ const labels = {
 function connector(
   key: string,
   status: ConnectorComposerItem["status"],
-  selected = false
+  selected = false,
+  installedAtUnixMs?: number
 ): ConnectorComposerItem {
   return {
     connectorKey: key,
+    installedAtUnixMs,
     name: `Connector ${key}`,
     status,
     selected
@@ -306,6 +314,10 @@ describe("ConnectorComposerMenu", () => {
       "connector-market-composer-item-github"
     );
     expect(menuItem).not.toContainElement(toggle);
+    expect(toggle).toHaveAttribute("role", "switch");
+    expect(toggle).toHaveClass("absolute", "right-2.5", "-translate-y-1/2");
+    expect(toggle).toHaveAttribute("data-size", "default");
+    expect(toggle).toHaveAttribute("data-state", "checked");
     fireEvent.pointerDown(toggle, {
       button: 0,
       ctrlKey: false,
@@ -319,10 +331,82 @@ describe("ConnectorComposerMenu", () => {
     fireEvent.click(toggle);
 
     expect(onRuntimeEnabledChange).toHaveBeenCalledWith("github", false);
+    expect(onRuntimeEnabledChange).toHaveBeenCalledOnce();
     expect(onSelectConnector).not.toHaveBeenCalled();
     expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAttribute("data-state", "unchecked");
     expect(menuItem).toBeInTheDocument();
     expect(screen.getByRole("menu")).toHaveClass("w-[240px]");
+  });
+
+  it("toggles installed runtime from the keyboard without closing the menu", async () => {
+    const onRuntimeEnabledChange = vi.fn();
+    render(
+      <ConnectorComposerMenu
+        items={[connector("github", "connected")]}
+        disabled={false}
+        labels={labels}
+        onOpenMarket={vi.fn()}
+        onRuntimeEnabledChange={onRuntimeEnabledChange}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+    const toggle = await screen.findByTestId(
+      "connector-market-composer-status-github"
+    );
+    fireEvent.keyDown(toggle, { key: "Enter" });
+
+    expect(onRuntimeEnabledChange).toHaveBeenCalledWith("github", false);
+    expect(toggle).not.toBeChecked();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+  });
+
+  it("installs a setup-required connector in place without opening a dialog", async () => {
+    let completeInstall!: () => void;
+    const onInstallConnector = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completeInstall = resolve;
+        })
+    );
+    const onOpenConnector = vi.fn();
+    render(
+      <ConnectorComposerMenu
+        items={[connector("canva", "setup_required")]}
+        disabled={false}
+        labels={labels}
+        onInstallConnector={onInstallConnector}
+        onOpenConnector={onOpenConnector}
+        onOpenMarket={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+    const item = await screen.findByTestId(
+      "connector-market-composer-item-canva"
+    );
+    fireEvent.pointerDown(item, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+
+    expect(onInstallConnector).toHaveBeenCalledOnce();
+    expect(onInstallConnector).toHaveBeenCalledWith("canva");
+    expect(onOpenConnector).not.toHaveBeenCalled();
+    expect(item).toHaveAttribute("aria-busy", "true");
+    expect(item.querySelector('[data-slot="spinner"]')).toBeInTheDocument();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    await act(async () => completeInstall());
+    expect(item).not.toHaveAttribute("aria-busy");
   });
 
   it("limits the quick connector projection to ten catalog entries", async () => {
@@ -385,5 +469,100 @@ describe("ConnectorComposerMenu", () => {
     expect(
       screen.queryByTestId("connector-market-composer-item-setup-9")
     ).not.toBeInTheDocument();
+  });
+
+  it("shows four recently installed connectors and fills the remaining quick slots from discovery", async () => {
+    const connectedConnectors = Array.from({ length: 10 }, (_, index) =>
+      connector(`connected-${index}`, "connected", false, index + 1)
+    );
+    const discoveryConnectors = Array.from({ length: 6 }, (_, index) =>
+      connector(`setup-${index}`, "setup_required")
+    );
+    render(
+      <ConnectorComposerMenu
+        items={[
+          ...connectedConnectors,
+          ...discoveryConnectors,
+          connector("stopped", "disabled", false, 100)
+        ]}
+        disabled={false}
+        labels={labels}
+        onOpenConnector={vi.fn()}
+        onOpenMarket={vi.fn()}
+        onRuntimeEnabledChange={vi.fn()}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+
+    expect(
+      await screen.findByTestId("connector-market-composer-item-setup-0")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("connector-market-composer-status-stopped")
+    ).not.toBeChecked();
+    expect(
+      screen.getAllByTestId(/^connector-market-composer-item-/)
+    ).toHaveLength(10);
+  });
+
+  it("keeps an installed connector in place when its runtime is stopped", async () => {
+    const props = {
+      disabled: false,
+      labels,
+      onOpenMarket: vi.fn(),
+      onRuntimeEnabledChange: vi.fn()
+    };
+    const rendered = render(
+      <ConnectorComposerMenu
+        {...props}
+        items={[
+          connector("github", "connected"),
+          connector("google-calendar", "connected", true),
+          connector("google-drive", "connected")
+        ]}
+      />
+    );
+
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Connectors" }), {
+      button: 0,
+      ctrlKey: false
+    });
+    expect(
+      screen
+        .getAllByTestId(/^connector-market-composer-item-/)
+        .map((item) => item.dataset.testid)
+    ).toEqual([
+      "connector-market-composer-item-github",
+      "connector-market-composer-item-google-calendar",
+      "connector-market-composer-item-google-drive"
+    ]);
+
+    rendered.rerender(
+      <ConnectorComposerMenu
+        {...props}
+        items={[
+          connector("github", "connected"),
+          connector("google-calendar", "disabled", true),
+          connector("google-drive", "connected")
+        ]}
+      />
+    );
+
+    expect(
+      screen
+        .getAllByTestId(/^connector-market-composer-item-/)
+        .map((item) => item.dataset.testid)
+    ).toEqual([
+      "connector-market-composer-item-github",
+      "connector-market-composer-item-google-calendar",
+      "connector-market-composer-item-google-drive"
+    ]);
+    expect(
+      screen.getByTestId("connector-market-composer-status-google-calendar")
+    ).not.toBeChecked();
   });
 });

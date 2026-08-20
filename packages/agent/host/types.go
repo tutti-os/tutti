@@ -401,6 +401,11 @@ type RuntimeExecInput struct {
 	HistoryReplacement              bool
 	RequireProviderAcceptance       bool
 	TuttiModeSnapshot               *TuttiModeTurnSnapshot
+	// ConnectorRoutingUpdate carries the current connector alias index when it
+	// diverged from the index materialized into the session's instructions.
+	// The runtime renders it into provider-only content; canonical prompt
+	// content never includes it. Nil means the instructions are still current.
+	ConnectorRoutingUpdate *string
 }
 
 type CapabilityReference = storesqlite.CapabilityReference
@@ -694,6 +699,10 @@ type SendInput struct {
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string
 	Guidance       bool
+	// ConnectorRoutingUpdate is set by the service when the connector alias
+	// index changed after this session's instructions were prepared. See
+	// RuntimeExecInput.ConnectorRoutingUpdate.
+	ConnectorRoutingUpdate *string
 }
 
 type SubmitInteractiveInput struct {
@@ -1060,18 +1069,4 @@ type FenceGoalGenerationResult struct {
 	Fence          storesqlite.GoalGenerationFence
 	IntentAccepted bool
 	Settled        bool
-}
-
-type GoalReconcileRequiredInput struct {
-	WorkspaceID         string
-	AgentSessionID      string
-	RequestID           string
-	ProviderTurnID      string
-	Reason              string
-	FenceMode           string
-	ExpectedOperationID string
-	ExpectedRevision    int64
-	ExpectedRepairEpoch int64
-	QuiesceSucceeded    bool
-	QuiesceError        string
 }

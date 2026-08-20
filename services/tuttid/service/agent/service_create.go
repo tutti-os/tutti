@@ -706,6 +706,10 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 	if strings.TrimSpace(prepared.Cwd) == "" {
 		prepared.Cwd = cwd
 	}
+	// Every non-Connector preparation outcome below leaves the session without
+	// a materialized alias index, so drop any stale routing baseline first and
+	// re-record it only when Connector enhancement succeeds.
+	s.connectorRoutingBaselines.clear(workspaceID, strings.TrimSpace(input.AgentSessionID))
 	if s.ConnectorRuntime != nil && s.ConnectorCapabilities != nil {
 		httpMCP, capabilityErr := s.ConnectorCapabilities.ConnectorHTTPMCPSupported(ctx, ConnectorCapabilityInput{
 			WorkspaceID: workspaceID, AgentSessionID: strings.TrimSpace(input.AgentSessionID),
@@ -747,6 +751,10 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 					}
 				} else {
 					prepared = enhanced
+					s.connectorRoutingBaselines.record(
+						workspaceID, strings.TrimSpace(input.AgentSessionID),
+						runtimeprep.ConnectorRoutingIndex(contextBinding.RoutingHints),
+					)
 				}
 			}
 		}

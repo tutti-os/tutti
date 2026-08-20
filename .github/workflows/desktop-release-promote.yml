@@ -72,7 +72,6 @@ jobs:
       release_prerelease: ${{ steps.release.outputs.release_prerelease }}
       release_tag: ${{ steps.release.outputs.release_tag }}
       release_target: ${{ steps.release.outputs.release_target }}
-      release_url: ${{ steps.release.outputs.release_url }}
       release_version: ${{ steps.release.outputs.release_version }}
       source_ref: ${{ steps.release.outputs.source_ref }}
 
@@ -199,7 +198,6 @@ jobs:
             fi
           fi
 
-          release_url="$(jq -r .html_url release.json)"
           echo "approval_digest=${approval_digest}" >> "$GITHUB_OUTPUT"
           echo "release_already_published=${release_already_published}" >> "$GITHUB_OUTPUT"
           echo "release_candidate_id=${release_candidate_id}" >> "$GITHUB_OUTPUT"
@@ -210,7 +208,6 @@ jobs:
           echo "release_prerelease=${release_prerelease}" >> "$GITHUB_OUTPUT"
           echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
           echo "release_target=${release_target}" >> "$GITHUB_OUTPUT"
-          echo "release_url=${release_url}" >> "$GITHUB_OUTPUT"
           echo "release_version=${release_version}" >> "$GITHUB_OUTPUT"
           echo "source_ref=${source_ref}" >> "$GITHUB_OUTPUT"
 
@@ -230,7 +227,7 @@ jobs:
     if: ${{ always() && needs.resolve.result == 'success' && (needs.approve-stable.result == 'success' || needs.approve-stable.result == 'skipped') }}
     runs-on: ubuntu-latest
     outputs:
-      release_url: ${{ needs.resolve.outputs.release_url }}
+      release_url: ${{ github.server_url }}/${{ github.repository }}/releases/tag/${{ needs.resolve.outputs.release_tag }}
     env:
       AWS_REGION: ${{ vars.AWS_REGION }}
       TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
@@ -336,9 +333,8 @@ jobs:
           node apps/desktop/scripts/validate-release-summary.mjs release-assets/release-summary.json
 
       - name: Install AWS CLI
+        timeout-minutes: 5
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends unzip
           if ! command -v aws >/dev/null 2>&1; then
             case "$(uname -m)" in
               x86_64) awscli_arch="x86_64" ;;
@@ -348,9 +344,16 @@ jobs:
                 exit 1
                 ;;
             esac
-            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" -o /tmp/awscliv2.zip
-            unzip -q /tmp/awscliv2.zip -d /tmp
-            sudo /tmp/aws/install --update
+            awscli_dir="$(mktemp -d "${RUNNER_TEMP}/aws-cli.XXXXXX")"
+            curl --fail --silent --show-error --location \
+              --retry 3 \
+              --retry-all-errors \
+              --connect-timeout 10 \
+              --max-time 180 \
+              "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" \
+              --output "${awscli_dir}/awscliv2.zip"
+            python3 -m zipfile -e "${awscli_dir}/awscliv2.zip" "${awscli_dir}"
+            sudo "${awscli_dir}/aws/install" --update
           fi
           aws --version
 

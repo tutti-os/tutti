@@ -266,6 +266,9 @@ func TestDecodeAccountUsagePayloadAcceptsProviderOwnedGoldenResult(t *testing.T)
 	if result.Outcome != "available" || result.BillingMode != "subscription" || result.CapturedAtUnixMS != 1_770_000_000_000 || len(result.Quotas) != 2 {
 		t.Fatalf("account usage result = %#v", result)
 	}
+	if result.SchemaVersion != AccountUsageSchemaVersion || result.QuotaState != "complete" {
+		t.Fatalf("normalized account usage identity = %#v", result)
+	}
 	if result.Quotas[0].QuotaType != "weekly" || result.Quotas[0].PercentRemaining != 72 {
 		t.Fatalf("weekly quota = %#v", result.Quotas[0])
 	}
@@ -277,18 +280,22 @@ func TestDecodeAccountUsagePayloadAcceptsProviderOwnedGoldenResult(t *testing.T)
 func TestDecodeAccountUsagePayloadFailsClosed(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
-		"unknown schema":        `{"schemaVersion":"tutti.agent.account-usage.v2","outcome":"unsupported","capturedAtUnixMs":1}`,
-		"unknown outcome":       `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"future","capturedAtUnixMs":1}`,
-		"unknown success field": `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"weekly","percentRemaining":50}],"raw":"secret"}`,
-		"empty subscription":    `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[]}`,
-		"null API quotas":       `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":null}`,
-		"API quotas":            `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":[{"quotaType":"weekly","percentRemaining":50}]}`,
-		"unknown quota":         `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"future","percentRemaining":50}]}`,
-		"unnamed model quota":   `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"model","percentRemaining":50}]}`,
-		"invalid percent":       `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"weekly","percentRemaining":101}]}`,
-		"free text error":       `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"error","capturedAtUnixMs":1,"errorCode":"execution_failed","message":"secret path"}`,
-		"unknown error code":    `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"error","capturedAtUnixMs":1,"errorCode":"provider_message"}`,
-		"trailing JSON":         `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"unsupported","capturedAtUnixMs":1}{}`,
+		"unknown schema":         `{"schemaVersion":"tutti.agent.account-usage.v3","outcome":"unsupported","capturedAtUnixMs":1}`,
+		"unknown outcome":        `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"future","capturedAtUnixMs":1}`,
+		"unknown success field":  `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"weekly","percentRemaining":50}],"raw":"secret"}`,
+		"empty subscription":     `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[]}`,
+		"null API quotas":        `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":null}`,
+		"API quotas":             `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"api","quotas":[{"quotaType":"weekly","percentRemaining":50}]}`,
+		"unknown quota":          `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"future","percentRemaining":50}]}`,
+		"unnamed model quota":    `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"model","percentRemaining":50}]}`,
+		"invalid percent":        `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotas":[{"quotaType":"weekly","percentRemaining":101}]}`,
+		"free text error":        `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"error","capturedAtUnixMs":1,"errorCode":"execution_failed","message":"secret path"}`,
+		"unknown error code":     `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"error","capturedAtUnixMs":1,"errorCode":"provider_message"}`,
+		"trailing JSON":          `{"schemaVersion":"tutti.agent.account-usage.v1","outcome":"unsupported","capturedAtUnixMs":1}{}`,
+		"v2 missing quota state": `{"schemaVersion":"tutti.agent.account-usage.v2","outcome":"available","capturedAtUnixMs":1,"billingMode":"provider_account","quotas":[]}`,
+		"v2 partial credits":     `{"schemaVersion":"tutti.agent.account-usage.v2","outcome":"available","capturedAtUnixMs":1,"billingMode":"provider_account","quotaState":"complete","quotas":[{"quotaType":"credits","percentRemaining":50,"amountRemaining":50,"amountUnit":"credits"}]}`,
+		"v2 amount on weekly":    `{"schemaVersion":"tutti.agent.account-usage.v2","outcome":"available","capturedAtUnixMs":1,"billingMode":"subscription","quotaState":"complete","quotas":[{"quotaType":"weekly","percentRemaining":50,"amountRemaining":50,"amountLimit":100,"amountUnit":"credits"}]}`,
+		"v2 incomplete balance":  `{"schemaVersion":"tutti.agent.account-usage.v2","outcome":"available","capturedAtUnixMs":1,"billingMode":"provider_account","quotaState":"unavailable","quotas":[{"quotaType":"credits","percentRemaining":50,"amountRemaining":50,"amountLimit":100,"amountUnit":"credits"}]}`,
 	}
 	for name, payload := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -296,6 +303,32 @@ func TestDecodeAccountUsagePayloadFailsClosed(t *testing.T) {
 				t.Fatal("decodeAccountUsagePayload() error = nil")
 			}
 		})
+	}
+}
+
+func TestDecodeAccountUsagePayloadAcceptsCompleteProviderAccountCredits(t *testing.T) {
+	t.Parallel()
+	result, err := decodeAccountUsagePayload([]byte(`{"schemaVersion":"tutti.agent.account-usage.v2","outcome":"available","capturedAtUnixMs":1,"billingMode":"provider_account","quotaState":"complete","quotas":[{"quotaType":"credits","percentRemaining":50,"amountRemaining":1050.5,"amountLimit":2101,"amountUnit":"credits"}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SchemaVersion != AccountUsageSchemaVersion || result.QuotaState != "complete" || len(result.Quotas) != 1 {
+		t.Fatalf("provider account result = %#v", result)
+	}
+	quota := result.Quotas[0]
+	if quota.QuotaType != "credits" || quota.AmountRemaining == nil || *quota.AmountRemaining != 1050.5 || quota.AmountLimit == nil || *quota.AmountLimit != 2101 || quota.AmountUnit != "credits" {
+		t.Fatalf("credits quota = %#v", quota)
+	}
+}
+
+func TestDecodeAccountUsagePayloadAcceptsUnavailablePlanWithoutQuotas(t *testing.T) {
+	t.Parallel()
+	result, err := decodeAccountUsagePayload([]byte(`{"schemaVersion":"tutti.agent.account-usage.v2","outcome":"available","capturedAtUnixMs":1,"billingMode":"coding_plan","quotaState":"unavailable","quotas":[]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.BillingMode != "coding_plan" || result.QuotaState != "unavailable" || len(result.Quotas) != 0 {
+		t.Fatalf("coding plan result = %#v", result)
 	}
 }
 
@@ -307,5 +340,8 @@ func TestDecodeAccountUsagePayloadAllowsExplicitAPIBilling(t *testing.T) {
 	}
 	if result.BillingMode != "api" || len(result.Quotas) != 0 {
 		t.Fatalf("API billing result = %#v", result)
+	}
+	if result.SchemaVersion != AccountUsageSchemaVersion || result.QuotaState != "not_applicable" {
+		t.Fatalf("normalized API billing result = %#v", result)
 	}
 }

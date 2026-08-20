@@ -136,6 +136,8 @@ export interface AgentGUIProviderSkillOption {
   connectorKey?: string;
   /** Presentation icon projected by the connector catalog. */
   iconUrl?: string;
+  /** Successful installation time used only for stable composer ordering. */
+  installedAtUnixMs?: number;
   /** Daemon-issued invocation contract; never infer this from provider id. */
   invocation?: "promptItem" | "textTrigger";
   sourceKind:

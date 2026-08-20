@@ -291,7 +291,8 @@ func routeMCPCaller(route *connectorRoute) mcpCaller {
 
 func (registry *MCPRegistry) observeAuthorizationError(err error) {
 	var rpcErr *connectormcp.RPCError
-	if !errors.As(err, &rpcErr) || (rpcErr.Code != -33001 && rpcErr.Code != -33002) {
+	if !errors.As(err, &rpcErr) ||
+		(rpcErr.Code != mcpAuthorizationRequiredCode && rpcErr.Code != mcpAuthorizationExpiredCode) {
 		return
 	}
 	registry.mu.RLock()

@@ -8,6 +8,10 @@ import (
 var (
 	ErrNotFound           = errors.New("connector market resource not found")
 	ErrOperationLeaseLost = errors.New("connector market operation lease lost")
+	// ErrPermanentInstallFailure marks an installation failure that cannot succeed
+	// on retry, such as a rejected process contract or a malformed release. The
+	// recovery scanner must not reschedule an operation that failed this way.
+	ErrPermanentInstallFailure = errors.New("connector installation cannot be retried")
 )
 
 type ErrorCode string
@@ -72,4 +76,9 @@ func errorCodeOr(err error, fallback ErrorCode) ErrorCode {
 func isRetryableError(err error) bool {
 	var domainError *DomainError
 	return errors.As(err, &domainError) && domainError.Retryable
+}
+
+func authorizationRequiredError(err error) bool {
+	var domainError *DomainError
+	return errors.As(err, &domainError) && domainError.Code == ErrorCodeAuthorizationFailed
 }

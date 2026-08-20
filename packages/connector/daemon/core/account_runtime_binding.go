@@ -64,7 +64,7 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 		return RuntimeBinding{}, invalidOperationReceipt("authorization projection identity does not match runtime scope")
 	}
 	if remote && !projection.ServerSynchronized {
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: AuthorizationStateDisconnected}, nil
+		return projectionRuntimeBinding(connectionID, false, AuthorizationStateDisconnected, projection, nil), nil
 	}
 	// Remote routes have a stable account+connector identity. The server's
 	// connectionId is diagnostic authorization state and can change when a
@@ -76,24 +76,24 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 		return RuntimeBinding{}, invalidOperationReceipt("authorization projection connection id is invalid")
 	}
 	if projection.State != AuthorizationStateConnected {
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: false, AuthorizationState: projection.State}, nil
+		return projectionRuntimeBinding(connectionID, false, projection.State, projection, nil), nil
 	}
 	if request.Purpose == RuntimeBindingPurposePlan || request.Purpose == RuntimeBindingPurposeDeactivate {
 		// Planning persists only non-secret intent. Reconcile resolves a fresh,
 		// one-shot credential grant immediately before the host call.
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State}, nil
+		return projectionRuntimeBinding(connectionID, true, projection.State, projection, nil), nil
 	}
 	managed := request.Release.Manifest.Implementation.ManagedStdio
 	if remote {
 		// Remote MCP routes authenticate to tsh-server with the Tutti account
 		// session. Provider credentials never cross the daemon boundary.
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State}, nil
+		return projectionRuntimeBinding(connectionID, true, projection.State, projection, nil), nil
 	}
 	if managed != nil && managed.CredentialBroker != nil {
 		// Connector-owned credential brokers persist their own account binding
 		// inside the managed VM user home. They do not consume a Server-issued
 		// credential grant when the active CLI/MCP route is reconciled.
-		return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State}, nil
+		return projectionRuntimeBinding(connectionID, true, projection.State, projection, nil), nil
 	}
 	if resolver.Credentials == nil {
 		return RuntimeBinding{}, NewDomainError(ErrorCodeUnavailable, "credential broker grant issuer is not registered", true, nil)
@@ -106,7 +106,24 @@ func (resolver AccountRuntimeBindingResolver) ResolveRuntimeBinding(
 	if len(grant) == 0 {
 		return RuntimeBinding{}, invalidOperationReceipt("credential broker grant issuer returned an empty grant")
 	}
-	return RuntimeBinding{ConnectionID: connectionID, Enabled: true, AuthorizationState: projection.State, CredentialBrokerGrant: grant}, nil
+	return projectionRuntimeBinding(connectionID, true, projection.State, projection, grant), nil
+}
+
+func projectionRuntimeBinding(
+	connectionID string,
+	enabled bool,
+	state AuthorizationState,
+	projection AuthorizationProjection,
+	grant []byte,
+) RuntimeBinding {
+	return RuntimeBinding{
+		ConnectionID:          connectionID,
+		Enabled:               enabled,
+		AuthorizationState:    state,
+		ConnectionVersion:     projection.ConnectionVersion,
+		ServerRevision:        projection.ServerRevision,
+		CredentialBrokerGrant: grant,
+	}
 }
 
 func DeviceRuntimeConnectionID(connectorKey string) string {

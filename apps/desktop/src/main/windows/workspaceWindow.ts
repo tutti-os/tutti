@@ -38,7 +38,10 @@ import {
   resolveStandaloneAgentWindowWorkArea
 } from "./standaloneAgentWindowBounds.ts";
 import { WorkspaceWindowRegistry } from "./workspaceWindowRegistry.ts";
-import { resolveWorkspaceWindowChromeOptions } from "./workspaceWindowChrome.ts";
+import {
+  resolveWorkspaceWindowChromeOptions,
+  resolveWorkspaceWindowTitleBarOverlay
+} from "./workspaceWindowChrome.ts";
 import { supportsWorkspaceWindowCloseGuard } from "./workspaceWindowCloseGuard.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
@@ -137,7 +140,8 @@ export function createWorkspaceWindow(
       : defaultAgentWindowBounds;
   const windowChromeOptions = resolveWorkspaceWindowChromeOptions(
     process.platform,
-    windowKind
+    windowKind,
+    options.theme.appearance
   );
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
@@ -380,6 +384,24 @@ export function getWorkspaceWindowWorkspaceID(
   workspaceWindow: BrowserWindow
 ): string | null {
   return workspaceWindows.getWorkspaceID(workspaceWindow);
+}
+
+export function syncWorkspaceWindowTitleBarOverlayColors(
+  appearance: DesktopThemeState["appearance"]
+): void {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const titleBarOverlay = resolveWorkspaceWindowTitleBarOverlay(appearance);
+  for (const workspaceWindow of BrowserWindow.getAllWindows()) {
+    if (
+      !workspaceWindow.isDestroyed() &&
+      workspaceWindows.getKind(workspaceWindow) !== null
+    ) {
+      workspaceWindow.setTitleBarOverlay(titleBarOverlay);
+    }
+  }
 }
 
 export function findWorkspaceWindow(

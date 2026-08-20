@@ -8,6 +8,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	"github.com/tutti-os/tutti/packages/agent/host/conformance"
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 )
 
 type sideHostConformanceDriver struct {
@@ -21,6 +22,7 @@ type sideHostRuntime struct {
 	sideLive        bool
 	transientEvents int
 	canonicalWrites int
+	resumeCalls     int
 }
 
 func (d *sideHostConformanceDriver) ResetSideConversation(context.Context) error {
@@ -92,10 +94,11 @@ func (*sideHostRuntime) Start(
 	return agenthost.RuntimeStartResult{}, nil
 }
 
-func (*sideHostRuntime) Resume(
+func (r *sideHostRuntime) Resume(
 	context.Context,
 	agenthost.RuntimeResumeInput,
 ) (agenthost.ProviderRuntimeSession, error) {
+	r.resumeCalls++
 	return agenthost.ProviderRuntimeSession{}, nil
 }
 
@@ -219,6 +222,57 @@ func TestHostSideConversationConformance(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
+	}
+}
+
+type historicalSideCanonicalStore struct {
+	agenthost.CanonicalStore
+	session storesqlite.Session
+}
+
+func (s historicalSideCanonicalStore) GetSession(
+	_ context.Context,
+	workspaceID string,
+	agentSessionID string,
+) (storesqlite.Session, bool, error) {
+	if workspaceID != s.session.WorkspaceID || agentSessionID != s.session.ID {
+		return storesqlite.Session{}, false, nil
+	}
+	return s.session, true, nil
+}
+
+func TestHostSideConversationUsesPersistedSourceWithoutResumingCanonical(t *testing.T) {
+	runtime := &sideHostRuntime{sessions: map[string]agenthost.ProviderRuntimeSession{}}
+	store := historicalSideCanonicalStore{session: storesqlite.Session{
+		ID: "historical-parent", WorkspaceID: "workspace-side",
+		Provider: "codex", ProviderSessionID: "provider-parent",
+		Cwd: "/workspace", InternalRuntimeContext: map[string]any{
+			"agent": map[string]any{"userAgent": "codex_cli_rs/1.0.0"},
+		},
+	}}
+	host := agenthost.New(agenthost.Config{
+		CanonicalStore: store, Runtime: runtime, SideConversationRuntime: runtime,
+	})
+
+	capabilities, err := host.ResolveSideConversation(
+		t.Context(), "workspace-side", "historical-parent",
+	)
+	if err != nil || !capabilities.Supported {
+		t.Fatalf("ResolveSideConversation() = (%#v, %v), want supported", capabilities, err)
+	}
+	result, err := host.OpenSideConversation(t.Context(), agenthost.OpenSideConversationInput{
+		WorkspaceID: "workspace-side", SourceAgentSessionID: "historical-parent",
+		SideAgentSessionID: "historical-side", RequestID: "historical-open",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Session.SourceAgentSessionID != "historical-parent" ||
+		result.Session.Scope != agenthost.RuntimeSessionScopeSide {
+		t.Fatalf("OpenSideConversation() session = %#v", result.Session)
+	}
+	if runtime.resumeCalls != 0 {
+		t.Fatalf("Resume() calls = %d, want 0", runtime.resumeCalls)
 	}
 }
 

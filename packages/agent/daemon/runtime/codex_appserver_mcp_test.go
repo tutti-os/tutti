@@ -133,6 +133,9 @@ func TestCodexAppServerReducerProjectsMCPStartupStatus(t *testing.T) {
 			}
 			metadata := event.Payload.Metadata
 			if asString(metadata["kind"]) == "agent_system_notice" {
+				if event.Type != activityshared.EventSessionAudit || event.Payload.TurnID != "" {
+					t.Fatalf("turnless MCP warning event = %#v, want session audit without turnId", event)
+				}
 				if asString(metadata["noticeKind"]) != "warning" ||
 					asString(metadata["severity"]) != "warning" ||
 					asString(metadata["detail"]) != "MCP server requires authentication" ||
@@ -147,5 +150,23 @@ func TestCodexAppServerReducerProjectsMCPStartupStatus(t *testing.T) {
 		case <-deadline:
 			t.Fatalf("MCP startup status/warning projection missing: status=%t warning=%t", statusFound, warningFound)
 		}
+	}
+}
+
+func TestCodexAppServerStartupWarningKeepsTurnScopedProjection(t *testing.T) {
+	adapter, _, session := startedAppServerAdapter(t)
+	appSession := adapter.getSession(session.AgentSessionID)
+	if appSession == nil {
+		t.Fatal("missing app-server session")
+	}
+
+	event := codexMCPServerStartupWarningEvent(appSession.client, session, "turn-1", map[string]any{
+		"name":          "figma",
+		"status":        "failed",
+		"failureReason": "reauthenticationRequired",
+		"error":         "MCP server requires authentication",
+	})
+	if event.Type != activityshared.EventMessageAppended || event.Payload.TurnID != "turn-1" {
+		t.Fatalf("turn-scoped MCP warning event = %#v, want message on turn-1", event)
 	}
 }

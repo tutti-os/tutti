@@ -36,6 +36,7 @@ func TestDaemonAgentTargetAccountUsageReturnsTargetScopedStandardResult(t *testi
 					Outcome:          "available",
 					CapturedAtUnixMS: 1_700_000_000_000,
 					BillingMode:      "subscription",
+					QuotaState:       "complete",
 					Quotas: []agentextensionservice.AccountUsageQuota{{
 						QuotaType: "weekly", PercentRemaining: 72, ResetsAtUnixMS: &reset,
 					}},
@@ -66,5 +67,37 @@ func TestDaemonAgentTargetAccountUsageReturnsTargetScopedStandardResult(t *testi
 	}
 	if _, exists := response["errorMessage"]; exists {
 		t.Fatalf("response exposed free-form error text: %#v", response)
+	}
+}
+
+func TestProjectAgentTargetAccountUsagePreservesCompleteCredits(t *testing.T) {
+	remaining := 1050.5
+	limit := 2101.0
+	projected, err := projectAgentTargetAccountUsage(agentextensionservice.AccountUsageResult{
+		SchemaVersion:    agentextensionservice.AccountUsageSchemaVersion,
+		AgentTargetID:    "extension:codebuddy",
+		Provider:         "acp:codebuddy",
+		Outcome:          "available",
+		CapturedAtUnixMS: 1,
+		BillingMode:      "provider_account",
+		QuotaState:       "complete",
+		Quotas: []agentextensionservice.AccountUsageQuota{{
+			QuotaType: "credits", PercentRemaining: 50,
+			AmountRemaining: &remaining, AmountLimit: &limit, AmountUnit: "credits",
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	available, err := projected.AsAgentTargetAccountUsageAvailableResult()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if available.QuotaState != "complete" || available.BillingMode != "provider_account" || len(available.Quotas) != 1 {
+		t.Fatalf("projected credits result = %#v", available)
+	}
+	quota := available.Quotas[0]
+	if quota.AmountRemaining == nil || *quota.AmountRemaining != remaining || quota.AmountLimit == nil || *quota.AmountLimit != limit || quota.AmountUnit == nil || *quota.AmountUnit != "credits" {
+		t.Fatalf("projected credits quota = %#v", quota)
 	}
 }

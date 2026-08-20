@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -209,30 +210,113 @@ func normalizeRuntimePromptContentForValidation(content []PromptContentBlock) []
 	return out
 }
 
-func projectRuntimeConnectorPromptContent(content []PromptContentBlock) []PromptContentBlock {
-	connectorKeys := make([]string, 0)
-	seen := make(map[string]struct{})
+func projectRuntimeConnectorPromptContent(content []PromptContentBlock, announced []string, skipDelta bool) (projected []PromptContentBlock, next []string) {
+	current := uniqueRuntimeConnectorKeys(content)
 	providerContent := make([]PromptContentBlock, 0, len(content)+1)
 	for _, block := range content {
 		if block.Type != "connector" {
 			providerContent = append(providerContent, block)
+		}
+	}
+	if skipDelta {
+		return providerContent, announced
+	}
+	enabled, disabled := diffRuntimeConnectorKeys(announced, current)
+	next = append([]string(nil), current...)
+	if len(enabled) == 0 && len(disabled) == 0 {
+		return providerContent, next
+	}
+	return append([]PromptContentBlock{{
+		Type: "text",
+		Text: formatRuntimeConnectorDeltaInstruction(enabled, disabled),
+	}}, providerContent...), next
+}
+
+func uniqueRuntimeConnectorKeys(content []PromptContentBlock) []string {
+	keys := make([]string, 0)
+	seen := make(map[string]struct{})
+	for _, block := range content {
+		if block.Type != "connector" {
 			continue
 		}
-		connectorKey := strings.TrimSpace(block.ConnectorKey)
-		if _, ok := seen[connectorKey]; ok {
+		key := strings.TrimSpace(block.ConnectorKey)
+		if key == "" {
 			continue
 		}
-		seen[connectorKey] = struct{}{}
-		connectorKeys = append(connectorKeys, connectorKey)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		keys = append(keys, key)
 	}
-	if len(connectorKeys) == 0 {
-		return providerContent
+	return keys
+}
+
+func diffRuntimeConnectorKeys(announced, current []string) (enabled, disabled []string) {
+	announcedSet := make(map[string]struct{}, len(announced))
+	for _, key := range announced {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		announcedSet[key] = struct{}{}
 	}
-	instruction := fmt.Sprintf(
-		"Selected local connector(s): %s. For this request, use only these installed Tutti connectors for their corresponding external services. Query `%s connector available --json` for their native interfaces. Read connector-owned Skills through the provider's native Skill system. Call MCP tools from the injected `connector` MCP server, or execute the returned connector-specific CLI command through the normal shell. Never use a similarly named user-global Skill, custom MCP server, unrelated connector, or direct service CLI.",
-		strings.Join(connectorKeys, ", "), tuttiCLICommandName(),
-	)
-	return append([]PromptContentBlock{{Type: "text", Text: instruction}}, providerContent...)
+	currentSet := make(map[string]struct{}, len(current))
+	for _, key := range current {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		currentSet[key] = struct{}{}
+		if _, ok := announcedSet[key]; !ok {
+			enabled = append(enabled, key)
+		}
+	}
+	for _, key := range announced {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, ok := currentSet[key]; !ok {
+			disabled = append(disabled, key)
+		}
+	}
+	sort.Strings(enabled)
+	sort.Strings(disabled)
+	return enabled, disabled
+}
+
+func formatRuntimeConnectorDeltaInstruction(enabled, disabled []string) string {
+	parts := make([]string, 0, 2)
+	if len(enabled) > 0 {
+		parts = append(parts, fmt.Sprintf("Connector(s) enabled: %s.", strings.Join(enabled, ", ")))
+	}
+	if len(disabled) > 0 {
+		parts = append(parts, fmt.Sprintf("Connector(s) disabled: %s.", strings.Join(disabled, ", ")))
+	}
+	return strings.Join(parts, " ")
+}
+
+// prependConnectorRoutingUpdate renders a provider-only notice that the
+// connector alias index changed after this session's instructions were
+// materialized. Callers must keep the update out of canonical prompt content.
+func prependConnectorRoutingUpdate(content []PromptContentBlock, update *string) []PromptContentBlock {
+	if update == nil {
+		return content
+	}
+	var instruction string
+	if index := strings.TrimSpace(*update); index == "" {
+		instruction = fmt.Sprintf(
+			"Connector routing update: no Tutti connectors are currently available. This supersedes the connector alias index in earlier instructions. Confirm availability with `%s connector available --json` before invoking any connector.",
+			tuttiCLICommandName(),
+		)
+	} else {
+		instruction = fmt.Sprintf(
+			"Connector routing update: aliases `%s`. This supersedes the connector alias index in earlier instructions. On an alias or `连接器`/`connector`, run `%s connector available --json` to discover native interfaces; connectors absent from this index are no longer available.",
+			index, tuttiCLICommandName(),
+		)
+	}
+	return append([]PromptContentBlock{{Type: "text", Text: instruction}}, content...)
 }
 
 func validatePromptContentImagesForPreflight(content []PromptContentBlock) error {

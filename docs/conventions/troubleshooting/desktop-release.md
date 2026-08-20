@@ -2,6 +2,38 @@
 
 [Back to troubleshooting index](./README.md)
 
+### A published stable release is missing from the public changelog
+
+- Symptom:
+  The stable GitHub Release and its installers are public, but
+  `https://tutti.sh/changelog` skips that version and the aggregate
+  `changelog.json` does not contain its tag.
+- Quick checks:
+  Inspect the public `changelog.json`, then confirm the GitHub Release is a
+  published non-prerelease with a `release-summary.json` asset. Check the
+  original promotion run's `Update stable changelog metadata` step and any
+  later release or recovery runs that rewrote the mutable aggregate.
+- Root cause:
+  The public page renders the release-owned aggregate rather than deriving
+  entries from GitHub on each request. If that mutable aggregate loses an
+  entry, later releases preserve the incomplete baseline even though the
+  missing release and its immutable summary remain valid.
+- Fix:
+  Run `Repair Desktop Release Changelog` with the exact missing stable tag.
+  The workflow validates the published release and staged summary metadata,
+  rebuilds the public entry from the current human-reviewed Release Notes,
+  preserves every existing entry, and upserts the corrected summary without
+  moving release pointers or republishing assets. Do not rerun promotion for an
+  older stable tag because its rollback guard correctly rejects moving the
+  public channel behind the current release.
+- Validation:
+  Confirm the workflow's S3 round-trip verification passes, then verify the
+  public aggregate and `https://tutti.sh/changelog` both contain the restored
+  version after the configured cache window.
+- References:
+  [.github/workflows/desktop-release-changelog-repair.yml](../../../.github/workflows/desktop-release-changelog-repair.yml)
+  [upsert-release-changelog.mjs](../../../apps/desktop/scripts/upsert-release-changelog.mjs)
+
 ### Packaged Tutti starts but external shells cannot find `tutti`
 
 - Symptom:
@@ -109,6 +141,38 @@
   [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
   [resolve-previous-release-tag.mjs](../../../apps/desktop/scripts/resolve-previous-release-tag.mjs)
   [githubReleaseBody.mjs](../../../apps/desktop/scripts/lib/githubReleaseBody.mjs)
+
+### Desktop release stalls after all packages finish building
+
+- Symptom:
+  Every macOS and Windows build succeeds and the GitHub draft assets are
+  staged, but `Stage Release Draft` remains in `Install AWS CLI` until GitHub
+  cancels the job near its six-hour runtime limit. The last output comes from
+  `apt-get update` and contains repeated `Ign` lines for Ubuntu package indexes.
+- Quick checks:
+  Inspect the start of `Install AWS CLI`. If the shell still runs
+  `sudo apt-get update`, the Actions run used a workflow revision from before
+  the bounded bootstrap fix. Confirm no later `curl` or `aws --version` line
+  appears; that distinguishes an APT mirror stall from an AWS CLI download or
+  credential failure.
+- Root cause:
+  The old bootstrap refreshed Ubuntu package indexes before checking for AWS
+  CLI. A transient runner mirror failure could therefore block an otherwise
+  complete release, and the step had no deadline below GitHub's job limit.
+- Fix:
+  Start a new release run from a revision that skips APT, extracts the official
+  AWS CLI archive with `python3 -m zipfile`, retries bounded downloads, and
+  limits the complete install step to five minutes. Re-running the original
+  Actions run is insufficient because GitHub reuses that run's old workflow
+  revision.
+- Validation:
+  Run `node --test tools/scripts/desktop-release-config.test.mjs`. Confirm both
+  release workflows reject `apt-get`, require the download retry/connect/total
+  time limits, use Python extraction, and set the step deadline.
+- References:
+  [.github/workflows/desktop-release.yml](../../../.github/workflows/desktop-release.yml)
+  [.github/workflows/desktop-release-promote.yml](../../../.github/workflows/desktop-release-promote.yml)
+  [desktop-release-config.test.mjs](../../../tools/scripts/desktop-release-config.test.mjs)
 
 ### Desktop dev GUI exits before opening
 
@@ -325,29 +389,49 @@
 
 - Symptom:
   The desktop logs `Timed out waiting for tuttid listener info: daemon runtime
-information is not available yet`, but `ps` or `lsof` still shows an older
-  `tuttid` process holding the development database or a loopback listener.
+information is not available yet`, or the first restart reports a daemon
+  startup failure while a second restart succeeds. `ps`, `lsof`, or Task Manager
+  may still show an older `tuttid` process holding the database or a loopback
+  listener.
 - Quick checks:
   Inspect `~/.tutti-dev/run/tuttid.pid`, run `lsof` on
   `~/.tutti-dev/tuttid.db`, and check whether the daemon process
   has parent PID `1`. That combination means the Electron parent no longer owns
-  the process even though the daemon survived.
+  the process even though the daemon survived. On Windows, align
+  `desktop parent process disappeared`, `http server shutdown error`,
+  `process did not exit after kill`, `stopping stale tuttid process`, and
+  `disk I/O error (1546)` across `tuttid.log` and `tutti-desktop.log`. A later
+  `managed tuttid restarted` after `failed to start managed tuttid` identifies
+  two competing startup owners rather than a second user action fixing data.
 - Root cause:
   In development, launching through `go run` can create a wrapper process and a
   compiled daemon child. Killing only the direct child can leave the compiled
   daemon alive. If the desktop also removes the listener info file before the
   next launch, the orphan can keep local state busy while the new managed daemon
-  never publishes runtime info within the startup timeout.
+  never publishes runtime info within the startup timeout. The same symptom can
+  occur in packaged builds when HTTP shutdown returns before active handlers and
+  live Agent transports finish closing. A stale-daemon handoff can transiently
+  fail SQLite WAL initialization with `SQLITE_IOERR_TRUNCATE`. Initial startup
+  must own recovery until the daemon first becomes healthy; runtime supervision
+  must not independently recover the same child exit while bootstrap propagates
+  the original failure.
 - Fix:
   Prefer a prebuilt `apps/desktop/build/tuttid/tuttid` binary in development
   when present, kill managed daemon process groups during desktop shutdown,
   write and clear `tuttid.pid`, and inject `TUTTI_DESKTOP_PARENT_PID` so
-  `tuttid` can self-shutdown when its desktop parent disappears.
+  `tuttid` can self-shutdown when its desktop parent disappears. Keep one
+  startup recovery owner until health succeeds, wait for HTTP shutdown before
+  closing daemon wiring, and retry only the bounded transient
+  `SQLITE_IOERR_TRUNCATE` WAL handoff error. Do not delete WAL/SHM files or retry
+  arbitrary SQLite failures.
 - Validation:
   Repeatedly quit and restart the desktop, then confirm there is at most one
   `tuttid` process and that `~/.tutti-dev/run/tuttid.pid`
-  matches it. Also run the desktop daemon-manager tests and
-  `cd services/tuttid && go test .`.
+  matches it. Fault-inject the first WAL initialization attempt and verify the
+  original desktop bootstrap continues after one recovery loop. Hold an HTTP
+  request open during cancellation and verify daemon `Run` does not return until
+  the request drains. Also run the desktop daemon-manager tests and
+  `cd services/tuttid && go test ./...`.
 - References:
   [tuttidManager.ts](../../../apps/desktop/src/main/daemon/tuttidManager.ts)
   [main.go](../../../services/tuttid/main.go)

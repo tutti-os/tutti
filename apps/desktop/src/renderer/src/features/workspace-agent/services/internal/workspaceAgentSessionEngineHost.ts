@@ -24,6 +24,7 @@ import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import type { AgentHostAgentSessionComposerSettings } from "@shared/contracts/dto";
 import {
   createDesktopAgentActivityAdapter,
+  type CreateDesktopAgentActivityAdapterInput,
   type DesktopAgentActivityCommandAdapter
 } from "../desktopAgentActivityAdapter.ts";
 import {
@@ -47,6 +48,7 @@ export interface WorkspaceAgentSessionEngineActivityObserver {
 
 interface CreateWorkspaceAgentSessionEngineHostInput {
   activityEventObserver?: WorkspaceAgentSessionEngineActivityObserver;
+  claimBrowserAutomationTurn?: CreateDesktopAgentActivityAdapterInput["claimBrowserAutomationTurn"];
   executeEngineActivateSession(
     input: AgentActivityRuntimeActivateSessionInput,
     options: EngineEffectOptions
@@ -162,6 +164,7 @@ export function createWorkspaceAgentSessionEngineHost(
   input: CreateWorkspaceAgentSessionEngineHostInput
 ): WorkspaceAgentSessionEngineHost {
   const adapter = createDesktopAgentActivityAdapter({
+    claimBrowserAutomationTurn: input.claimBrowserAutomationTurn,
     tuttidClient: input.tuttidClient,
     runtimeApi: input.runtimeApi,
     uiMode: input.uiMode,

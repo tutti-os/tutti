@@ -23,28 +23,22 @@ func TestApplicationPublicReadsRejectObsoleteConnectorIcon(t *testing.T) {
 		CatalogSnapshot{},
 	)
 
-	for _, test := range []struct {
-		name string
-		read func() error
-	}{
-		{name: "snapshot", read: func() error {
-			_, err := application.Snapshot(context.Background())
-			return err
-		}},
-		{name: "scoped snapshot", read: func() error {
-			_, err := application.SnapshotForScope(context.Background(), OperationScope{AccountID: "account-1"})
-			return err
-		}},
-		{name: "connector", read: func() error {
-			_, err := application.GetConnector(context.Background(), connector.Key)
-			return err
-		}},
-	} {
-		t.Run(test.name, func(t *testing.T) {
-			if err := test.read(); err == nil || !strings.Contains(err.Error(), "iconUrl") {
-				t.Fatalf("public read error = %v, want iconUrl rejection", err)
-			}
-		})
+	snapshot, err := application.Snapshot(context.Background())
+	if err != nil {
+		t.Fatalf("snapshot failed because of one invalid release: %v", err)
+	}
+	if len(snapshot.Connectors) != 0 {
+		t.Fatalf("snapshot connectors = %#v, want hidden", snapshot.Connectors)
+	}
+	scoped, err := application.SnapshotForScope(context.Background(), OperationScope{AccountID: "account-1"})
+	if err != nil {
+		t.Fatalf("scoped snapshot failed because of one invalid release: %v", err)
+	}
+	if len(scoped.Connectors) != 0 {
+		t.Fatalf("scoped snapshot connectors = %#v, want hidden", scoped.Connectors)
+	}
+	if _, err := application.GetConnector(context.Background(), connector.Key); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+		t.Fatalf("GetConnector() error = %v, want iconUrl rejection", err)
 	}
 }
 
@@ -112,6 +106,36 @@ func TestApplicationPublicReadsHideRemovedCatalogConnectorBeforeValidation(t *te
 	}
 	if _, err := repository.Connector(context.Background(), removed.Key); err != nil {
 		t.Fatalf("removed connector durable evidence was deleted: %v", err)
+	}
+}
+
+func TestApplicationPublicReadsHideInvalidReleaseWithoutFailingSnapshot(t *testing.T) {
+	invalid := testConnector("invalid-icon")
+	invalid.Release.Manifest.IconURL = "data:image/png;base64,iVBORw0KGgo="
+	visible := testConnector("visible")
+	repository := newMemoryRepository(invalid, visible)
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+
+	for _, read := range []struct {
+		name string
+		load func() (Snapshot, error)
+	}{
+		{name: "snapshot", load: func() (Snapshot, error) {
+			return application.Snapshot(context.Background())
+		}},
+		{name: "scoped snapshot", load: func() (Snapshot, error) {
+			return application.SnapshotForScope(context.Background(), OperationScope{AccountID: "account-1"})
+		}},
+	} {
+		t.Run(read.name, func(t *testing.T) {
+			snapshot, err := read.load()
+			if err != nil {
+				t.Fatalf("snapshot failed because of one invalid release: %v", err)
+			}
+			if len(snapshot.Connectors) != 1 || snapshot.Connectors[0].Key != visible.Key {
+				t.Fatalf("connectors = %#v, want only the valid one", snapshot.Connectors)
+			}
+		})
 	}
 }
 
@@ -355,6 +379,9 @@ func TestApplicationExecutesAcceptedInstall(t *testing.T) {
 	if installed.Installation.State != InstallationStateInstalled || installed.Installation.InstalledVersion != "1.0.0" {
 		t.Fatalf("installation = %#v", installed.Installation)
 	}
+	if installed.Installation.InstalledAtUnixMS != application.config.Now().UnixMilli() {
+		t.Fatalf("installed timestamp = %d, want %d", installed.Installation.InstalledAtUnixMS, application.config.Now().UnixMilli())
+	}
 	if operation.State != OperationStateCompleted || installationHost.prepares != 1 || installationHost.reconciles != 1 {
 		t.Fatalf("operation = %#v, prepares = %d, reconciles = %d", operation, installationHost.prepares, installationHost.reconciles)
 	}
@@ -367,6 +394,43 @@ func TestApplicationExecutesAcceptedInstall(t *testing.T) {
 		convergence.Observed.DesiredGeneration != convergence.Desired.Generation ||
 		convergence.Observed.BootEpoch != application.config.BootEpoch {
 		t.Fatalf("post-install runtime convergence = %#v", convergence)
+	}
+}
+
+func TestApplicationMarksPermanentInstallFailureNonRetryable(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		{name: "transient", err: errors.New("network down"), retryable: true},
+		{name: "permanent", err: fmt.Errorf("%w: boom", ErrPermanentInstallFailure), retryable: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			repository := newMemoryRepository(testConnector("github"))
+			application := newTestApplication(
+				t,
+				repository,
+				&memoryScheduler{},
+				&memoryInstallRuntime{installationErr: test.err},
+				CatalogSnapshot{},
+			)
+			accepted, err := application.Install(context.Background(), ConnectorMutation{
+				Mutation:     Mutation{ClientRequestID: "request-" + test.name, ExpectedRevision: 0},
+				ConnectorKey: "github",
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = application.ExecuteOperation(context.Background(), accepted.Operation.OperationID)
+			var domainError *DomainError
+			if !errors.As(err, &domainError) || domainError.Code != ErrorCodeInstallFailed {
+				t.Fatalf("err = %v", err)
+			}
+			if domainError.Retryable != test.retryable {
+				t.Fatalf("retryable = %v, want %v", domainError.Retryable, test.retryable)
+			}
+		})
 	}
 }
 
@@ -2293,6 +2357,27 @@ func testConnector(key string) Connector {
 	}
 }
 
+func testRemoteAuthorizedConnector(key string) Connector {
+	connector := testConnector(key)
+	connector.Release.Manifest.AuthorizationKind = "oauth2"
+	connector.Release.Manifest.RequiredCapabilities = []string{"tools"}
+	connector.Release.Manifest.Implementation = Implementation{
+		Kind: ImplementationKindRemoteStreamableHTTP,
+		RemoteStreamableHTTP: &RemoteStreamableHTTPImplementation{
+			ProtocolVersion:     "2026-07-28",
+			BindingRef:          key + ".primary",
+			ContractVersion:     1,
+			BindingContractHash: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		},
+	}
+	connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
+	connector.Installation = Installation{
+		State: InstallationStateInstalled, InstalledVersion: connector.Release.Version,
+		InstalledReleaseID: connector.Release.ReleaseID, InstalledReleaseDigest: connector.Release.ReleaseDigest,
+	}
+	return connector
+}
+
 func testManagedAuthorizedConnector(key string) Connector {
 	connector := testConnector(key)
 	connector.Release.Manifest.AuthorizationKind = "oauth2"
@@ -2415,7 +2500,9 @@ type memoryInstallRuntime struct {
 	installationResult      ReleaseInstallationObservation
 	installationInspectErr  error
 	installationCommitErr   error
+	installationErr         error
 	reconcileErrors         map[string]error
+	enabledReconcileErrors  map[string]error
 }
 
 func (host *memoryInstallRuntime) Reconcile(_ context.Context, request RuntimeReconcileRequest) (RuntimeReceipt, error) {
@@ -2423,6 +2510,11 @@ func (host *memoryInstallRuntime) Reconcile(_ context.Context, request RuntimeRe
 	host.reconcileRequests = append(host.reconcileRequests, request)
 	host.lastReconcile = request
 	host.lastCredentialGrant = string(request.CredentialBrokerGrant)
+	if request.Enabled {
+		if err := host.enabledReconcileErrors[request.Connector.Key]; err != nil {
+			return RuntimeReceipt{}, err
+		}
+	}
 	if err := host.reconcileErrors[request.Connector.Key]; err != nil {
 		return RuntimeReceipt{}, err
 	}
@@ -2490,6 +2582,9 @@ func (host *memoryInstallRuntime) InstallRelease(
 	ctx context.Context,
 	request InstallReleaseRequest,
 ) (ReleaseInstallationReceipt, error) {
+	if host.installationErr != nil {
+		return ReleaseInstallationReceipt{}, host.installationErr
+	}
 	prepared, err := host.Prepare(ctx, PrepareArtifactRequest(request))
 	if err != nil {
 		return ReleaseInstallationReceipt{}, err

@@ -9,6 +9,7 @@ import {
 import { useService } from "@tutti-os/infra/di";
 import {
   IConnectorMarketModule,
+  installAndOpenConnectorMarketDialog,
   openConnectorMarketDialog
 } from "@tutti-os/connector-renderer/application";
 import type {
@@ -197,6 +198,12 @@ export function useWorkspaceWorkbenchShellRuntime({
             target.connectorKey,
             target.enabled
           );
+        }
+        if (target.action === "install") {
+          return installAndOpenConnectorMarketDialog(
+            connectorMarketModule.root,
+            target.connectorKey
+          ).then(() => undefined);
         }
         if (target.action === "open") {
           void openConnectorMarketDialog(

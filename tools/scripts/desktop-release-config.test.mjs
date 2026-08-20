@@ -16,6 +16,10 @@ const promoteWorkflowPath = new URL(
   "../../.github/workflows/desktop-release-promote.yml",
   import.meta.url
 );
+const changelogRepairWorkflowPath = new URL(
+  "../../.github/workflows/desktop-release-changelog-repair.yml",
+  import.meta.url
+);
 const buildScriptPath = new URL(
   "../../tools/scripts/build-desktop-package.sh",
   import.meta.url
@@ -190,6 +194,35 @@ test("desktop release workflow uses the published desktop package name", async (
       packageName,
       `desktop release workflow filter should stay aligned with ${packageName}`
     );
+  }
+});
+
+test("desktop release AWS CLI bootstrap avoids apt mirrors and bounds downloads", async () => {
+  const workflows = [
+    ["release", await readFile(workflowPath, "utf8")],
+    ["promotion", await readFile(promoteWorkflowPath, "utf8")]
+  ];
+
+  for (const [name, workflow] of workflows) {
+    const installStep = workflow.match(
+      /      - name: Install AWS CLI\n[\s\S]*?(?=\n      - name:)/
+    )?.[0];
+    assert.ok(installStep, `${name} workflow must install AWS CLI`);
+    assert.doesNotMatch(
+      installStep,
+      /sudo apt-get (?:update|install)/,
+      `${name} workflow must not depend on an apt mirror to install AWS CLI`
+    );
+    assert.match(
+      installStep,
+      /- name: Install AWS CLI\n\s+timeout-minutes: 5/,
+      `${name} workflow must bound the complete AWS CLI bootstrap step`
+    );
+    assert.match(installStep, /--retry 3/);
+    assert.match(installStep, /--retry-all-errors/);
+    assert.match(installStep, /--connect-timeout 10/);
+    assert.match(installStep, /--max-time 180/);
+    assert.match(installStep, /python3 -m zipfile -e/);
   }
 });
 
@@ -484,7 +517,9 @@ test("desktop release workflow passes tsh-aligned Feishu card context", async ()
   );
   assert.ok(
     workflow.indexOf("name: Resolve current stable GitHub draft URL") >
-      workflow.indexOf("name: Update release notes with summary and direct downloads"),
+      workflow.indexOf(
+        "name: Update release notes with summary and direct downloads"
+      ),
     "the candidate draft URL should be refreshed after release notes are updated"
   );
   assert.match(
@@ -604,6 +639,27 @@ test("desktop promotion notification tolerates skipped optional approval", async
   assert.ok(notifyJob, "promotion notify job should exist");
   assert.match(notifyJob, /if:\s+\${{\s*always\(\)\s*&&/);
   assert.match(notifyJob, /needs\.promote\.result\s*==\s*'success'/);
+});
+
+test("desktop promotion sends the canonical tag URL instead of a transient draft URL", async () => {
+  const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
+
+  assert.match(
+    promoteWorkflow,
+    /release_url:\s+\${{\s*github\.server_url\s*}}\/\${{\s*github\.repository\s*}}\/releases\/tag\/\${{\s*needs\.resolve\.outputs\.release_tag\s*}}/
+  );
+  assert.doesNotMatch(
+    promoteWorkflow,
+    /release_url="\$\(jq -r \.html_url release\.json\)"/
+  );
+  assert.doesNotMatch(
+    promoteWorkflow,
+    /release_url:\s+\${{\s*needs\.resolve\.outputs\.release_url\s*}}/
+  );
+  assert.match(
+    promoteWorkflow,
+    /RELEASE_URL:\s+\${{\s*needs\.promote\.outputs\.release_url\s*}}/
+  );
 });
 
 test("desktop release workflow can mirror release assets to S3 and upsert direct download links", async () => {
@@ -728,6 +784,49 @@ test("desktop release workflow generates summaries and stable changelog metadata
     releaseWorkflows,
     /RELEASE_SUMMARY_PATH:\s+release-summary\/release-summary\.json/
   );
+});
+
+test("desktop changelog repair restores one published stable summary without moving release pointers", async () => {
+  const repairWorkflow = await readFile(changelogRepairWorkflowPath, "utf8");
+
+  assert.match(repairWorkflow, /workflow_dispatch:/);
+  assert.match(repairWorkflow, /release_tag:/);
+  assert.match(
+    repairWorkflow,
+    /permissions:\s*\n\s*contents:\s*read\s*\n\s*id-token:\s*write/
+  );
+  assert.match(repairWorkflow, /group:\s*desktop-release-promotion/);
+  assert.match(
+    repairWorkflow,
+    /\^v\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\\\.\(0\|\[1-9\]\[0-9\]\*\)\$/
+  );
+  assert.match(repairWorkflow, /isDraft/);
+  assert.match(repairWorkflow, /isPrerelease/);
+  assert.match(repairWorkflow, /--pattern release-summary\.json/);
+  assert.match(repairWorkflow, /--pattern SHA256SUMS\.txt/);
+  assert.match(repairWorkflow, /sha256sum --check --strict/);
+  assert.match(
+    repairWorkflow,
+    /apps\/desktop\/scripts\/validate-release-summary\.mjs/
+  );
+  assert.match(repairWorkflow, /gh release view .* --json body --jq \.body/);
+  assert.match(
+    repairWorkflow,
+    /apps\/desktop\/scripts\/extract-approved-release-summary\.mjs/
+  );
+  assert.match(
+    repairWorkflow,
+    /apps\/desktop\/scripts\/upsert-release-changelog\.mjs/
+  );
+  assert.match(
+    repairWorkflow,
+    /existing-changelog\.json[\s\\]*approved-release-summary\.json[\s\\]*changelog\.json/
+  );
+  assert.match(repairWorkflow, /Repair removed existing changelog entry/);
+  assert.match(repairWorkflow, /cmp changelog\.json published-changelog\.json/);
+  assert.doesNotMatch(repairWorkflow, /latest\.json/);
+  assert.doesNotMatch(repairWorkflow, /gh release edit/);
+  assert.doesNotMatch(repairWorkflow, /aws s3 sync/);
 });
 
 test("desktop promotion consumes the checksummed summary staged with the draft", async () => {
@@ -855,6 +954,8 @@ test("stable candidates require environment approval and bind the reviewed notes
   const promoteWorkflow = await readFile(promoteWorkflowPath, "utf8");
 
   assert.match(workflow, /build-release-candidate-manifest\.mjs/);
+  assert.match(workflow, /upload-github-release-assets\.mjs/);
+  assert.doesNotMatch(workflow, /gh release upload/);
   assert.match(workflow, /release_candidate_tag="candidate-\$\{release_tag\}"/);
   assert.match(workflow, /releases\/assets\/\$\{asset_id\}/);
   assert.match(

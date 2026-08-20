@@ -219,6 +219,11 @@ type ExecInput struct {
 	InitialTitleBase                string
 	Metadata                        map[string]any
 	Guidance                        bool
+	// ConnectorRoutingUpdate carries the current connector alias index when it
+	// diverged from the index materialized into the session's instructions at
+	// preparation time. The controller renders it into provider-facing content
+	// only; canonical prompt content never includes it. Nil means no update.
+	ConnectorRoutingUpdate *string
 	// HistoryReplacement requires a fresh provider turn. It may not steer an
 	// active turn or reinterpret the edited text as a provider slash command.
 	// The provider's complete EffectiveHistoryAdapter seam always returns one
@@ -423,6 +428,10 @@ type Session struct {
 	// title so a restarted runtime never lets a provider title clobber a
 	// persisted user title.
 	UserTitleSet bool `json:"-"`
+	// AnnouncedConnectorKeys is the last connector enable set injected into
+	// provider prompt content. Process-memory only: a restart treats the next
+	// turn as a first announce.
+	AnnouncedConnectorKeys []string `json:"-"`
 }
 
 type MCPServerBinding struct {
@@ -468,10 +477,11 @@ type SideConversationCapabilities struct {
 }
 
 type SideConversationOpenInput struct {
-	RoomID               string `json:"roomId"`
-	SourceAgentSessionID string `json:"sourceAgentSessionId"`
-	SideAgentSessionID   string `json:"sideAgentSessionId"`
-	RequestID            string `json:"requestId"`
+	RoomID               string  `json:"roomId"`
+	SourceAgentSessionID string  `json:"sourceAgentSessionId"`
+	SideAgentSessionID   string  `json:"sideAgentSessionId"`
+	RequestID            string  `json:"requestId"`
+	Source               Session `json:"-"`
 }
 
 type SideConversationAdapterOpenInput struct {

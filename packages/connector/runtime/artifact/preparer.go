@@ -759,18 +759,6 @@ func inventoryDigest(root string) (string, error) {
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func syncDirectory(path string) error {
-	directory, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer directory.Close()
-	if err := directory.Sync(); err != nil {
-		return fmt.Errorf("sync connector artifact directory: %w", err)
-	}
-	return nil
-}
-
 func sameMediaType(actual, expected string) bool {
 	actualType, _, actualErr := mime.ParseMediaType(actual)
 	expectedType, _, expectedErr := mime.ParseMediaType(expected)

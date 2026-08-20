@@ -747,17 +747,18 @@ export type AgentTargetAccountUsageProbeResult =
     } & AgentTargetAccountUsageErrorResult);
 
 export type AgentTargetAccountUsageAvailableResult = {
-  schemaVersion: "tutti.agent.account-usage.v1";
+  schemaVersion: "tutti.agent.account-usage.v2";
   agentTargetId: string;
   provider: AgentTargetProvider;
   outcome: "available";
   capturedAtUnixMs: number;
   billingMode: AgentTargetAccountUsageBillingMode;
+  quotaState: AgentTargetAccountUsageQuotaState;
   quotas: Array<AgentTargetAccountUsageQuota>;
 };
 
 export type AgentTargetAccountUsageUnsupportedResult = {
-  schemaVersion: "tutti.agent.account-usage.v1";
+  schemaVersion: "tutti.agent.account-usage.v2";
   agentTargetId: string;
   provider: AgentTargetProvider;
   outcome: "unsupported";
@@ -765,7 +766,7 @@ export type AgentTargetAccountUsageUnsupportedResult = {
 };
 
 export type AgentTargetAccountUsageErrorResult = {
-  schemaVersion: "tutti.agent.account-usage.v1";
+  schemaVersion: "tutti.agent.account-usage.v2";
   agentTargetId: string;
   provider: AgentTargetProvider;
   outcome: "error";
@@ -773,7 +774,16 @@ export type AgentTargetAccountUsageErrorResult = {
   errorCode: AgentTargetAccountUsageErrorCode;
 };
 
-export type AgentTargetAccountUsageBillingMode = "subscription" | "api";
+export type AgentTargetAccountUsageBillingMode =
+  | "subscription"
+  | "api"
+  | "coding_plan"
+  | "provider_account";
+
+export type AgentTargetAccountUsageQuotaState =
+  | "complete"
+  | "unavailable"
+  | "not_applicable";
 
 export type AgentTargetAccountUsageErrorCode =
   | "auth_required"
@@ -792,11 +802,15 @@ export type AgentTargetAccountUsageQuotaType =
   | "weekly"
   | "monthly"
   | "model"
+  | "credits"
   | "cost";
 
 export type AgentTargetAccountUsageQuota = {
   quotaType: AgentTargetAccountUsageQuotaType;
   percentRemaining: number;
+  amountRemaining?: number;
+  amountLimit?: number;
+  amountUnit?: "credits";
   resetsAtUnixMs?: number;
   modelName?: string;
 };
@@ -2115,6 +2129,7 @@ export type AgentProviderCapabilityOption = {
   label: string;
   description?: string;
   iconUrl?: string;
+  installedAtUnixMs?: number;
   status:
     | "available"
     | "disabled"
@@ -5057,6 +5072,7 @@ export type ConnectorMarketImplementation = {
 export type ConnectorMarketInstallation = {
   state: ConnectorMarketInstallationState;
   installedVersion?: string;
+  installedAtUnixMs?: number;
   installedReleaseId?: string;
   installedReleaseDigest?: string;
   failureCode?: string;

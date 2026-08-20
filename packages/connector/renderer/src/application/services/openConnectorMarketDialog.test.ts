@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import type { IConnectorMarketRoot } from "./core/connectorMarketRoot.interface.ts";
-import { openConnectorMarketDialog } from "./openConnectorMarketDialog.ts";
+import {
+  installAndOpenConnectorMarketDialog,
+  openConnectorMarketDialog
+} from "./openConnectorMarketDialog.ts";
 
 test("opens the canonical dialog only after the connector exists in the loaded view", async () => {
   const calls: string[] = [];
@@ -42,12 +45,54 @@ test("does not open a dialog for invalid or unknown connector keys", async () =>
   assert.deepEqual(opened, []);
 });
 
+test("opens the canonical post-install dialog after installation completes", async () => {
+  const calls: string[] = [];
+  const root = createRoot({
+    ensureLoaded: async () => {
+      calls.push("load");
+      root.view.dataStore.cardsByKey.canva = {} as never;
+    },
+    install: async (connectorKey) => {
+      calls.push(`install:${connectorKey}`);
+      return "installed";
+    },
+    openConnector: (connectorKey) => calls.push(`open:${connectorKey}`)
+  });
+
+  const result = await installAndOpenConnectorMarketDialog(root, " canva ");
+
+  assert.equal(result, "opened");
+  assert.deepEqual(calls, ["install:canva", "load", "open:canva"]);
+});
+
+test("does not open a post-install dialog when installation is not admitted", async () => {
+  let loadCount = 0;
+  const opened: string[] = [];
+  const root = createRoot({
+    ensureLoaded: async () => {
+      loadCount += 1;
+    },
+    install: async () => "not_admitted",
+    openConnector: (connectorKey) => opened.push(connectorKey)
+  });
+
+  const result = await installAndOpenConnectorMarketDialog(root, "canva");
+
+  assert.equal(result, "not_admitted");
+  assert.equal(loadCount, 0);
+  assert.deepEqual(opened, []);
+});
+
 function createRoot(input: {
   ensureLoaded: () => Promise<void>;
+  install?: (connectorKey: string) => Promise<"installed" | "not_admitted">;
   openConnector: (connectorKey: string) => void;
 }): IConnectorMarketRoot {
   return {
-    market: { ensureLoaded: input.ensureLoaded },
+    market: {
+      ensureLoaded: input.ensureLoaded,
+      install: input.install ?? (async () => "installed")
+    },
     uiState: { openConnector: input.openConnector },
     view: { dataStore: { cardsByKey: {} } }
   } as IConnectorMarketRoot;

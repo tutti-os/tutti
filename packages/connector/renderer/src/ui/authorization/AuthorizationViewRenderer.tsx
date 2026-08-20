@@ -188,9 +188,7 @@ function AuthorizationFormRenderer({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     if (canSubmit) {
-      const submitEvent = createAuthorizationSubmitEvent(view.viewId, values);
-      setValues(initialFormValues(view.view.fields));
-      onEvent(submitEvent);
+      onEvent(createAuthorizationSubmitEvent(view.viewId, values));
     }
   };
 
@@ -218,7 +216,7 @@ function AuthorizationFormRenderer({
           }
         />
       ))}
-      <DialogFooter>
+      <DialogFooter className="pt-1 sm:justify-center">
         <Button
           disabled={busy}
           size="dialog"

@@ -20,6 +20,8 @@ test("mapProviderOwnedAccountUsageResult keeps the Kimi 0.34.0 weekly and five-h
   );
   const result = mapProviderOwnedAccountUsageResult(target, {
     ...helperPayload,
+    schemaVersion: "tutti.agent.account-usage.v2",
+    quotaState: "complete",
     agentTargetId: target.agentTargetId,
     provider: target.provider
   });
@@ -40,15 +42,79 @@ test("mapProviderOwnedAccountUsageResult keeps the Kimi 0.34.0 weekly and five-h
 
 test("mapProviderOwnedAccountUsageResult rejects model quotas without a stable model name", () => {
   const result = mapProviderOwnedAccountUsageResult(target, {
-    schemaVersion: "tutti.agent.account-usage.v1",
+    schemaVersion: "tutti.agent.account-usage.v2",
     agentTargetId: target.agentTargetId,
     provider: target.provider,
     outcome: "available",
     capturedAtUnixMs: 1,
     billingMode: "subscription",
+    quotaState: "complete",
     quotas: [{ quotaType: "model", percentRemaining: 50 }]
   });
 
   assert.equal(result.lastError?.code, "parse_failed");
   assert.equal(result.usage, undefined);
+});
+
+test("mapProviderOwnedAccountUsageResult preserves exact complete credits", () => {
+  const result = mapProviderOwnedAccountUsageResult(
+    { agentTargetId: "extension:codebuddy", provider: "acp:codebuddy" },
+    {
+      schemaVersion: "tutti.agent.account-usage.v2",
+      agentTargetId: "extension:codebuddy",
+      provider: "acp:codebuddy",
+      outcome: "available",
+      capturedAtUnixMs: 1,
+      billingMode: "provider_account",
+      quotaState: "complete",
+      quotas: [
+        {
+          quotaType: "credits",
+          percentRemaining: 50,
+          amountRemaining: 1050.5,
+          amountLimit: 2101,
+          amountUnit: "credits"
+        }
+      ]
+    }
+  );
+
+  assert.deepEqual(result.usage, {
+    billingMode: "provider_account",
+    quotaState: "complete",
+    capturedAtUnixMs: 1,
+    quotas: [
+      {
+        quotaType: "credits",
+        percentRemaining: 50,
+        amountRemaining: 1050.5,
+        amountLimit: 2101,
+        amountUnit: "credits"
+      }
+    ]
+  });
+});
+
+test("mapProviderOwnedAccountUsageResult keeps unproven account balance unavailable", () => {
+  const result = mapProviderOwnedAccountUsageResult(
+    { agentTargetId: "extension:codebuddy", provider: "acp:codebuddy" },
+    {
+      schemaVersion: "tutti.agent.account-usage.v2",
+      agentTargetId: "extension:codebuddy",
+      provider: "acp:codebuddy",
+      outcome: "available",
+      capturedAtUnixMs: 1,
+      billingMode: "provider_account",
+      quotaState: "unavailable",
+      quotas: []
+    }
+  );
+
+  assert.equal(result.lastError, undefined);
+  assert.deepEqual(result.usage, {
+    billingMode: "provider_account",
+    quotaState: "unavailable",
+    capturedAtUnixMs: 1,
+    quotas: []
+  });
 });

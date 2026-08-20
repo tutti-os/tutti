@@ -882,6 +882,14 @@ publish duplicate deletion events.
 
 Before a session exists, composer options carry the same typed capability
 descriptor. The active session descriptor takes precedence once available.
+For an existing active Turn, a null Session capability snapshot is unresolved
+admission input rather than a negative capability result. Activity Core keeps
+an accepted send-now prompt in its queue and resolves the pending delivery
+decision when the complete Session snapshot arrives. Guidance and interruption
+remain exact capability-driven paths; a complete snapshot supporting neither
+degrades only the delivery mode to ordinary queued send and never drops the
+accepted prompt. Deferred decisions are keyed by prompt and bound to the active
+Turn observed at admission; they never steer or cancel a successor Turn.
 Model composer options keep the selected value and provider-resolved value as
 separate facts. An inherited `default` remains the selected value used for
 future mutations; `effectiveModel` is presentation-only runtime evidence for

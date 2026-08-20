@@ -48,6 +48,7 @@ export interface AgentActivityComposerCapabilityOption {
   invocation: "promptItem" | "textTrigger" | "none";
   description?: string;
   iconUrl?: string;
+  installedAtUnixMs?: number;
   source?: string;
   pluginName?: string;
   serverName?: string;

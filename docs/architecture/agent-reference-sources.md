@@ -261,6 +261,15 @@ re-sort it by node kind or label. Host-only collections such as open Dock files
 may provide the empty-query browse list and presentation metadata, but must not
 be prepended to ranked query results.
 
+The Desktop AgentGUI file provider adds one host-context tier without creating
+a second relevance model: when the composer working directory resolves to a
+registered current project, matching candidates are placed before candidates
+from elsewhere, while the daemon's order is preserved within both tiers. The
+provider also supplies each row's parent path relative to the search root and
+its owning registered-project label. AgentGUI renders that combined context
+after the basename; it does not parse absolute paths, discover projects, or
+infer current-workspace ownership.
+
 Picker purpose constrains result kinds before pagination: the reference picker
 searches files only, while the project-directory picker searches folders only.
 A file-type filter by itself normally remains in browse mode, filters files in

@@ -17,9 +17,10 @@ import (
 )
 
 const (
-	AccountUsageSchemaVersion = "tutti.agent.account-usage.v1"
-	accountUsageOutputLimit   = 256 << 10
-	accountUsageProbeTimeout  = 45 * time.Second
+	AccountUsageSchemaVersion        = "tutti.agent.account-usage.v2"
+	accountUsageProbeSchemaVersionV1 = "tutti.agent.account-usage.v1"
+	accountUsageOutputLimit          = 256 << 10
+	accountUsageProbeTimeout         = 45 * time.Second
 )
 
 var ErrInvalidAccountUsageTarget = errors.New("invalid account usage agent target")
@@ -31,6 +32,7 @@ type AccountUsageResult struct {
 	Outcome          string
 	CapturedAtUnixMS int64
 	BillingMode      string
+	QuotaState       string
 	Quotas           []AccountUsageQuota
 	ErrorCode        string
 }
@@ -38,6 +40,9 @@ type AccountUsageResult struct {
 type AccountUsageQuota struct {
 	QuotaType        string
 	PercentRemaining float64
+	AmountRemaining  *float64
+	AmountLimit      *float64
+	AmountUnit       string
 	ResetsAtUnixMS   *int64
 	ModelName        string
 }
@@ -147,6 +152,7 @@ func (service AccountUsageService) probe(ctx context.Context, targetID string) (
 	base.Outcome = payload.Outcome
 	base.CapturedAtUnixMS = payload.CapturedAtUnixMS
 	base.BillingMode = payload.BillingMode
+	base.QuotaState = payload.QuotaState
 	base.Quotas = payload.Quotas
 	base.ErrorCode = payload.ErrorCode
 	return base, nil
@@ -183,6 +189,7 @@ type accountUsagePayload struct {
 	Outcome          string          `json:"outcome"`
 	CapturedAtUnixMS *int64          `json:"capturedAtUnixMs"`
 	BillingMode      string          `json:"billingMode,omitempty"`
+	QuotaState       string          `json:"quotaState,omitempty"`
 	Quotas           json.RawMessage `json:"quotas,omitempty"`
 	ErrorCode        string          `json:"errorCode,omitempty"`
 }
@@ -190,6 +197,9 @@ type accountUsagePayload struct {
 type accountUsageQuotaPayload struct {
 	QuotaType        string   `json:"quotaType"`
 	PercentRemaining *float64 `json:"percentRemaining"`
+	AmountRemaining  *float64 `json:"amountRemaining,omitempty"`
+	AmountLimit      *float64 `json:"amountLimit,omitempty"`
+	AmountUnit       string   `json:"amountUnit,omitempty"`
 	ResetsAtUnixMS   *int64   `json:"resetsAtUnixMs,omitempty"`
 	ModelName        string   `json:"modelName,omitempty"`
 }
@@ -199,7 +209,7 @@ func decodeAccountUsagePayload(output []byte) (AccountUsageResult, error) {
 	if err := decodeStrictJSON(output, &payload); err != nil {
 		return AccountUsageResult{}, err
 	}
-	if payload.SchemaVersion != AccountUsageSchemaVersion || payload.CapturedAtUnixMS == nil || *payload.CapturedAtUnixMS < 0 {
+	if (payload.SchemaVersion != accountUsageProbeSchemaVersionV1 && payload.SchemaVersion != AccountUsageSchemaVersion) || payload.CapturedAtUnixMS == nil || *payload.CapturedAtUnixMS < 0 {
 		return AccountUsageResult{}, errors.New("account usage payload identity is invalid")
 	}
 	result := AccountUsageResult{
@@ -208,20 +218,35 @@ func decodeAccountUsagePayload(output []byte) (AccountUsageResult, error) {
 	}
 	switch payload.Outcome {
 	case "available":
-		if payload.ErrorCode != "" || (payload.BillingMode != "subscription" && payload.BillingMode != "api") || len(payload.Quotas) == 0 {
+		if payload.ErrorCode != "" || !accountUsageBillingMode(payload.BillingMode) || len(payload.Quotas) == 0 {
 			return AccountUsageResult{}, errors.New("available account usage payload is invalid")
 		}
 		var quotas []accountUsageQuotaPayload
 		if err := decodeStrictJSON(payload.Quotas, &quotas); err != nil || quotas == nil || len(quotas) > 64 {
 			return AccountUsageResult{}, errors.New("account usage quotas are invalid")
 		}
-		if payload.BillingMode == "subscription" && len(quotas) == 0 {
-			return AccountUsageResult{}, errors.New("subscription account usage requires quotas")
-		}
-		if payload.BillingMode == "api" && len(quotas) != 0 {
-			return AccountUsageResult{}, errors.New("API billing must not project subscription quotas")
-		}
 		result.BillingMode = payload.BillingMode
+		if payload.SchemaVersion == accountUsageProbeSchemaVersionV1 {
+			if payload.QuotaState != "" || (payload.BillingMode != "subscription" && payload.BillingMode != "api") {
+				return AccountUsageResult{}, errors.New("v1 account usage payload is invalid")
+			}
+			if payload.BillingMode == "subscription" && len(quotas) == 0 {
+				return AccountUsageResult{}, errors.New("subscription account usage requires quotas")
+			}
+			if payload.BillingMode == "api" && len(quotas) != 0 {
+				return AccountUsageResult{}, errors.New("API billing must not project subscription quotas")
+			}
+			if payload.BillingMode == "api" {
+				result.QuotaState = "not_applicable"
+			} else {
+				result.QuotaState = "complete"
+			}
+		} else {
+			if !validAccountUsageQuotaState(payload.BillingMode, payload.QuotaState, len(quotas)) {
+				return AccountUsageResult{}, errors.New("account usage quota state is invalid")
+			}
+			result.QuotaState = payload.QuotaState
+		}
 		for _, quota := range quotas {
 			validated, err := validateAccountUsageQuota(quota)
 			if err != nil {
@@ -230,11 +255,11 @@ func decodeAccountUsagePayload(output []byte) (AccountUsageResult, error) {
 			result.Quotas = append(result.Quotas, validated)
 		}
 	case "unsupported":
-		if payload.BillingMode != "" || len(payload.Quotas) != 0 || payload.ErrorCode != "" {
+		if payload.BillingMode != "" || payload.QuotaState != "" || len(payload.Quotas) != 0 || payload.ErrorCode != "" {
 			return AccountUsageResult{}, errors.New("unsupported account usage payload contains extra fields")
 		}
 	case "error":
-		if payload.BillingMode != "" || len(payload.Quotas) != 0 || !accountUsageErrorCode(payload.ErrorCode) {
+		if payload.BillingMode != "" || payload.QuotaState != "" || len(payload.Quotas) != 0 || !accountUsageErrorCode(payload.ErrorCode) {
 			return AccountUsageResult{}, errors.New("account usage error payload is invalid")
 		}
 		result.ErrorCode = payload.ErrorCode
@@ -255,15 +280,50 @@ func validateAccountUsageQuota(payload accountUsageQuotaPayload) (AccountUsageQu
 	if (payload.QuotaType == "model" && modelName == "") || modelName != payload.ModelName || utf8.RuneCountInString(modelName) > 128 || strings.ContainsFunc(modelName, unicode.IsControl) {
 		return AccountUsageQuota{}, errors.New("account usage quota model name is invalid")
 	}
+	if payload.QuotaType == "credits" {
+		if !validAccountUsageAmount(payload.AmountRemaining) || !validAccountUsageAmount(payload.AmountLimit) || payload.AmountUnit != "credits" || *payload.AmountRemaining > *payload.AmountLimit {
+			return AccountUsageQuota{}, errors.New("account usage credit amount is invalid")
+		}
+	} else if payload.AmountRemaining != nil || payload.AmountLimit != nil || payload.AmountUnit != "" {
+		return AccountUsageQuota{}, errors.New("account usage amount is unsupported for quota type")
+	}
 	return AccountUsageQuota{
 		QuotaType: payload.QuotaType, PercentRemaining: *payload.PercentRemaining,
+		AmountRemaining: payload.AmountRemaining, AmountLimit: payload.AmountLimit,
+		AmountUnit:     payload.AmountUnit,
 		ResetsAtUnixMS: payload.ResetsAtUnixMS, ModelName: modelName,
 	}, nil
 }
 
+func validAccountUsageAmount(value *float64) bool {
+	return value != nil && !math.IsNaN(*value) && !math.IsInf(*value, 0) && *value >= 0
+}
+
+func accountUsageBillingMode(value string) bool {
+	switch value {
+	case "subscription", "api", "coding_plan", "provider_account":
+		return true
+	default:
+		return false
+	}
+}
+
+func validAccountUsageQuotaState(billingMode string, quotaState string, quotaCount int) bool {
+	switch quotaState {
+	case "complete":
+		return billingMode != "api" && quotaCount > 0
+	case "unavailable":
+		return billingMode != "api" && quotaCount == 0
+	case "not_applicable":
+		return billingMode == "api" && quotaCount == 0
+	default:
+		return false
+	}
+}
+
 func accountUsageQuotaType(value string) bool {
 	switch value {
-	case "session", "daily", "weekly", "monthly", "model", "cost":
+	case "session", "daily", "weekly", "monthly", "model", "credits", "cost":
 		return true
 	default:
 		return false

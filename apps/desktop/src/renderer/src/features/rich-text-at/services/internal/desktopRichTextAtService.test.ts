@@ -170,6 +170,71 @@ test("desktop rich text @ service assembles workspace file providers by capabili
   });
 });
 
+test("desktop AgentGUI file mentions prioritize the current workspace and expose row context", async () => {
+  const service = new DesktopRichTextAtService({
+    getUserProjects: () => [
+      {
+        id: "tutti",
+        label: "Tutti",
+        path: "/Users/test/project/tutti",
+        pinnedAtUnixMs: 0
+      },
+      {
+        id: "other",
+        label: "Other",
+        path: "/Users/test/project/other",
+        pinnedAtUnixMs: 0
+      }
+    ],
+    tuttidClient: createTuttidClient({
+      async searchWorkspaceFiles(workspaceId: string) {
+        return {
+          entries: [
+            {
+              kind: "file",
+              name: "index.ts",
+              path: "/Users/test/project/other/src/index.ts",
+              score: 100
+            },
+            {
+              kind: "file",
+              name: "index.ts",
+              path: "/Users/test/project/tutti/src/index.ts",
+              score: 90
+            }
+          ],
+          root: "/Users/test",
+          workspaceID: workspaceId
+        };
+      }
+    })
+  });
+  const provider = getProvider(service, "file", { surface: "composer" });
+
+  const items = await queryProvider(provider, "index", {
+    context: {
+      metadata: { sessionCwd: "/Users/test/project/tutti" }
+    }
+  });
+
+  assert.deepEqual(
+    items.map((item) => ({
+      path: (item as { path: string }).path,
+      subtitle: provider.getItemSubtitle?.(item)
+    })),
+    [
+      {
+        path: "/Users/test/project/tutti/src/index.ts",
+        subtitle: "project/tutti/src · Tutti"
+      },
+      {
+        path: "/Users/test/project/other/src/index.ts",
+        subtitle: "project/other/src · Other"
+      }
+    ]
+  );
+});
+
 test("desktop file mention provider preserves native Windows folder separators", async () => {
   const service = new DesktopRichTextAtService({
     tuttidClient: createTuttidClient({

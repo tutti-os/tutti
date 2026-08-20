@@ -790,7 +790,16 @@ func runtimeExecInput(input host.RuntimeExecInput) agentruntime.ExecInput {
 		Metadata: cloneMap(input.Metadata), Guidance: input.Guidance,
 		HistoryReplacement:        input.HistoryReplacement,
 		RequireProviderAcceptance: input.RequireProviderAcceptance,
+		ConnectorRoutingUpdate:    cloneStringPointer(input.ConnectorRoutingUpdate),
 	}
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func runtimeHistoryInput(input host.RuntimeHistoryInput) agentruntime.EffectiveHistoryInput {

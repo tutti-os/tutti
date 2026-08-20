@@ -47,7 +47,13 @@ Deployment differences are expressed with `DeploymentProfile` and
 `CapabilityPack`. A pack resolves policy, skills, and environment together.
 Dynamic host skills use `SkillSource`; per-session skills use `ExtraSkills`.
 The canonical template and shared skill bodies remain in runtimeprep so hosts
-do not fork the actual prompt content.
+do not fork the actual prompt content. `PrepareInput.SharedInvocation` and
+`EnabledConnectors` render the session-sticky enable-set protocol in
+`connector-discovery`: a non-empty set is the current user-enabled connectors,
+and an empty set is discovery mode over the listed connectors. Shared
+invocations add Caller-versus-Owner routing rules. Hosts pass the full enable
+set on each turn as connector prompt blocks; `packages/agent/daemon` injects
+only enable/disable deltas into the provider-visible turn.
 
 Tutti Agent keeps auth, configuration, transcripts, and other mutable state in
 its session-scoped `TUTTI_AGENT_HOME`, while Tutti-managed Skills use a

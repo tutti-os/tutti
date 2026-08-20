@@ -192,6 +192,7 @@ export const desktopIpcChannels = {
     automationHostReady: "browser:automation-host-ready",
     automationRequest: "browser:automation-request",
     automationResponse: "browser:automation-response",
+    automationTurnClaim: "browser:automation-turn-claim",
     capturePreview: "browser:capturePreview",
     chooseDownloadDirectory: "browser:chooseDownloadDirectory",
     clearBrowsingData: "browser:clearBrowsingData",
@@ -1090,6 +1091,12 @@ export interface DesktopBrowserAutomationRequest {
 
 export interface DesktopBrowserAutomationHostReady {
   surfaceRole: "agent" | "user";
+  workspaceId: string;
+}
+
+export interface DesktopBrowserAutomationTurnClaim {
+  agentSessionId: string;
+  agentTurnId: string;
   workspaceId: string;
 }
 

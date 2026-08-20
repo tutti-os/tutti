@@ -210,6 +210,37 @@ test("approved summary is parsed from the human review instead of generated sugg
   assert.equal(approved.generatedAt, "2026-08-17T01:00:00.000Z");
 });
 
+test("approved summary accepts reviewed items written as plain Markdown lines", () => {
+  const body = [
+    REVIEW_START,
+    "## Release Notes",
+    "### 中文",
+    "人工确认标题",
+    "#### 功能变更",
+    "默认开启快捷提示词管理",
+    "支持会话分叉",
+    "### English",
+    "Reviewed headline",
+    "#### Feature Changes",
+    "Quick prompt management is enabled by default",
+    "Conversation forking is supported",
+    REVIEW_END
+  ].join("\n");
+  const approved = buildApprovedReleaseSummary({
+    body,
+    generatedSummary: validReleaseSummary()
+  });
+
+  assert.deepEqual(approved.zh.sections[0].items, [
+    "默认开启快捷提示词管理",
+    "支持会话分叉"
+  ]);
+  assert.deepEqual(approved.en.sections[0].items, [
+    "Quick prompt management is enabled by default",
+    "Conversation forking is supported"
+  ]);
+});
+
 test("desktop release summary trims only generated notes at GitHub's body limit", () => {
   const oversizedNotes = [
     "## What's Changed",

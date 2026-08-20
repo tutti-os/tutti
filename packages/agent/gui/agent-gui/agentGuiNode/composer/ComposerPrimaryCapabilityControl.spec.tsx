@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { AgentComposerProps } from "./AgentComposer.types";
 import { ComposerPrimaryCapabilityControl } from "./ComposerPrimaryCapabilityControl";
@@ -115,8 +115,9 @@ describe("ComposerPrimaryCapabilityControl", () => {
       screen.getByTestId("connector-market-composer-trigger"),
       { button: 0, ctrlKey: false, pointerType: "mouse" }
     );
-    fireEvent.click(
-      screen.getByTestId("connector-market-composer-status-github")
+    fireEvent.pointerDown(
+      screen.getByTestId("connector-market-composer-status-github"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
     );
 
     expect(onCapabilitySettingsRequest).toHaveBeenCalledWith({
@@ -126,6 +127,65 @@ describe("ComposerPrimaryCapabilityControl", () => {
       enabled: false
     });
     expect(onConnectorSelected).not.toHaveBeenCalled();
+  });
+
+  it("routes setup-required connectors directly to installation", async () => {
+    let completeInstall!: () => void;
+    const onCapabilitySettingsRequest = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          completeInstall = resolve;
+        })
+    );
+    const onRetryComposerOptions = vi.fn();
+    render(
+      <ComposerPrimaryCapabilityControl
+        availableSkills={[
+          {
+            connectorKey: "canva",
+            kind: "connector",
+            name: "Canva",
+            sourceKind: "connector",
+            status: "setupRequired",
+            trigger: "/canva"
+          }
+        ]}
+        connectorsVisible
+        disabled={false}
+        isTuttiModeActive={false}
+        isTuttiModeUpdating={false}
+        labels={labels}
+        loading={false}
+        onCapabilitySettingsRequest={onCapabilitySettingsRequest}
+        onConnectorSelected={vi.fn()}
+        onRetryComposerOptions={onRetryComposerOptions}
+        selectedConnectorKeys={[]}
+        tuttiModeSupported={false}
+      />
+    );
+
+    fireEvent.pointerDown(
+      screen.getByTestId("connector-market-composer-trigger"),
+      { button: 0, ctrlKey: false, pointerType: "mouse" }
+    );
+    const item = screen.getByTestId("connector-market-composer-item-canva");
+    fireEvent.pointerDown(item, {
+      button: 0,
+      ctrlKey: false,
+      pointerType: "mouse"
+    });
+
+    expect(onCapabilitySettingsRequest).toHaveBeenCalledWith({
+      kind: "connector",
+      connectorKey: "canva",
+      action: "install"
+    });
+    expect(item).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => completeInstall());
+    expect(onRetryComposerOptions).toHaveBeenCalledWith({
+      section: "connectors"
+    });
   });
 
   it("keeps a shared connector catalog inspectable without mutation or management actions", () => {
