@@ -116,6 +116,12 @@ type SetupService struct {
 	accountUsageReconcileWake    chan struct{}
 	accountUsageNow              func() time.Time
 
+	managedRuntimeReconcileMu      sync.Mutex
+	managedRuntimeReconcilerActive bool
+	managedRuntimeReconcileWake    chan struct{}
+	runtimeInstallLocksMu          sync.Mutex
+	runtimeInstallLocks            map[string]*runtimeInstallLock
+
 	errMu     sync.Mutex
 	workerErr error
 }
