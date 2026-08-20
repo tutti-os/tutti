@@ -210,6 +210,27 @@ describe("AgentGUINode status controller integration", () => {
     });
   });
 
+  it("renders Host system actions in the all-provider config menu", () => {
+    mockViewModel = createViewModel({
+      conversationFilter: { kind: "all" }
+    });
+    const renderAgentConfigSystemActions = vi.fn(() => (
+      <div data-testid="host-system-actions">Host system actions</div>
+    ));
+
+    render(
+      <AgentGUINode
+        {...createProps()}
+        renderSlots={{
+          agentConfigSystemActions: renderAgentConfigSystemActions
+        }}
+      />
+    );
+
+    expect(renderAgentConfigSystemActions).toHaveBeenCalledOnce();
+    expect(latestViewProps().agentConfigSystemActionsContent).toBeTruthy();
+  });
+
   it("does not project status from the previous target after a target switch", () => {
     mockViewModel = createViewModel();
     let observer: AgentStatusStreamObserver | null = null;
@@ -456,6 +477,7 @@ describe("AgentGUINode status controller integration", () => {
 
 interface CapturedViewProps {
   agentConfigAccountContent?: React.ReactNode;
+  agentConfigSystemActionsContent?: React.ReactNode;
   onAgentConfigMenuOpen?: () => void;
   onAgentConfigMenuClose?: () => void;
   providerAuthAccountLabels?: Partial<Record<string, string>>;

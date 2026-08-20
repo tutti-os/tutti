@@ -27,6 +27,36 @@ const labels = {
 } as unknown as AgentGUIViewLabels;
 
 describe("AgentGUIConfigMenu", () => {
+  it("keeps Host system actions interactive after Agent settings", () => {
+    const onSystemAction = vi.fn();
+    render(
+      <AgentGUIConfigMenu
+        environmentSetupVisible={false}
+        labels={labels}
+        providerScopedActionsVisible
+        slashStatusLimits={[]}
+        slashStatusLimitsLoading={false}
+        slashStatusLimitsResolvedEmpty={false}
+        slashStatusUsageCapturedAtUnixMs={null}
+        slashStatusUsageDidFail={false}
+        slashStatusUsageAttempted={false}
+        systemActionsContent={
+          <button type="button" onClick={onSystemAction}>
+            Check for updates
+          </button>
+        }
+        onOpenAgentEnvSetup={vi.fn()}
+        onOpenAgentSettings={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+
+    expect(onSystemAction).toHaveBeenCalledOnce();
+    expect(screen.getByText("Settings")).toBeInTheDocument();
+  });
+
   it("replaces provider quota chrome only when the Host supplies account content", () => {
     const onOpen = vi.fn();
     render(

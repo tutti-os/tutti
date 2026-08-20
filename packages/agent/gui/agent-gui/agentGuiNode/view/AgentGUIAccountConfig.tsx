@@ -12,6 +12,7 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 
 interface AgentGUIConfigMenuProps {
   accountContent?: ReactNode;
+  systemActionsContent?: ReactNode;
   environmentSetupVisible: boolean;
   labels: AgentGUIViewLabels;
   providerScopedActionsVisible: boolean;
@@ -40,6 +41,7 @@ export function AgentGUIConfigAccountFallbackSuppressed(): null {
 
 export function AgentGUIConfigMenu({
   accountContent,
+  systemActionsContent,
   environmentSetupVisible,
   labels,
   providerScopedActionsVisible,
@@ -115,6 +117,7 @@ export function AgentGUIConfigMenu({
         align="end"
         className="w-[300px] max-w-[calc(100vw-32px)] gap-3 p-1 text-xs"
         data-testid="agent-gui-config-menu"
+        style={{ zIndex: "var(--z-panel-popover)" }}
       >
         <div className="flex min-w-0 flex-col gap-1">
           {hasAccountContent ? (
@@ -265,6 +268,14 @@ export function AgentGUIConfigMenu({
               <span>{labels.agentSettingsMenu}</span>
             </button>
           </div>
+          {systemActionsContent ? (
+            <>
+              <div className="px-2">
+                <span className="block h-px bg-[var(--border-1)]" />
+              </div>
+              {systemActionsContent}
+            </>
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>
