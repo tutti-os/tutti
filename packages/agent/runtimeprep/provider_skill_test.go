@@ -211,8 +211,10 @@ func TestConnectorDiscoveryPolicyRendersLocalSharedAndEnabledSet(t *testing.T) {
 		"You are a shared agent",
 		"Granted connector aliases `lark-cli=Lark CLI|飞书`",
 		"Currently enabled by the user: none",
-		"Skills and MCP execute as the Owner",
+		"CLI and MCP pick authority by whose data the task touches",
+		"connectorAuthority",
 		"TUTTI_CONNECTOR_CLI_REQUESTED_AUTHORITY=caller",
+		"Skills execute as the Owner",
 		"ask the user which side to use before calling",
 		"Each call commits to one authority",
 		"not re-sent as the other side",
@@ -221,7 +223,10 @@ func TestConnectorDiscoveryPolicyRendersLocalSharedAndEnabledSet(t *testing.T) {
 			t.Fatalf("shared policy missing %q: %s", want, shared)
 		}
 	}
-	if strings.Contains(shared, "CLI defaults to Owner") || strings.Contains(shared, "Never use a same-name") {
+	if strings.Contains(shared, "CLI defaults to Owner") ||
+		strings.Contains(shared, "Never use a same-name") ||
+		strings.Contains(shared, "Skills and MCP execute as the Owner") ||
+		strings.Contains(shared, "CLI executes as either side") {
 		t.Fatalf("shared policy leaked legacy wording: %s", shared)
 	}
 }
