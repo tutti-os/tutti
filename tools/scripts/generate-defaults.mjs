@@ -99,6 +99,7 @@ ${(specification.agentExtensions?.sources ?? [])
   .map(
     (source) => `\t\t\t{
 \t\t\t\tKey:                      ${goString(source.key)},
+\t\t\t\tPinnedVersion:            ${goString(source.pinnedVersion)},
 \t\t\t\tReleaseIndexURL:          ${goString(source.releaseIndexUrl)},
 \t\t\t\tFallbackReleaseIndexURLs: ${goStringSlice(source.fallbackReleaseIndexUrls)},
 \t\t\t\tSigningKeyID:             ${goString(source.signingKeyId)},

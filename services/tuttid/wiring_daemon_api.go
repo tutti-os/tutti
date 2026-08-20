@@ -250,6 +250,7 @@ func buildDaemonAPI(
 			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
 			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
 		}
+		agentTargetSetup.WakeManagedRuntimeReconciler()
 		agentTargetSetup.WakeAccountUsageCompanionReconciler()
 	})
 	agentRuntimeConfig := agentdaemon.Config{
@@ -789,6 +790,10 @@ func buildDaemonAPI(
 		replayComposition, agentModelCatalog, agentSessionService, events,
 	)
 
+	if err := agentTargetSetup.StartManagedRuntimeReconciler(); err != nil {
+		agentRuntime.Close()
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start managed agent runtime reconciler: %w", err)
+	}
 	if err := agentTargetSetup.StartAccountUsageCompanionReconciler(); err != nil {
 		agentRuntime.Close()
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start account usage companion reconciler: %w", err)

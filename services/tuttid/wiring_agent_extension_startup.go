@@ -40,6 +40,7 @@ func startAgentExtensionBackgroundRefresh(
 			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
 			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
 		}
+		setup.WakeManagedRuntimeReconciler()
 		setup.WakeAccountUsageCompanionReconciler()
 		slog.Info("agent extension background refresh completed",
 			"event", "tutti.agent_extension.refresh_completed",

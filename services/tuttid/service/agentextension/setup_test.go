@@ -664,6 +664,70 @@ func TestAgentTargetSetupPrefersCompatibleLocalCodeBuddy(t *testing.T) {
 	}
 }
 
+func TestManagedRuntimeReconcilerAutomaticallyInstallsClientPinnedRuntime(t *testing.T) {
+	binDir := t.TempDir()
+	writeVersionExecutable(t, filepath.Join(binDir, "codebuddy"), "2.121.2")
+	t.Setenv("PATH", binDir)
+	runner := &fixtureInstallRunner{
+		binary:      "codebuddy",
+		packageName: "@tencent-ai/codebuddy-code",
+		version:     "2.121.2",
+	}
+	service, targetID := setupFixture(
+		t,
+		"codebuddy",
+		"CodeBuddy Code",
+		"@tencent-ai/codebuddy-code",
+		"2.121.2",
+		"codebuddy",
+		">=2.121.2 <3.0.0",
+		runner,
+		&probeTransport{},
+	)
+
+	before, err := service.GetSetup(context.Background(), InstallPlanInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.RuntimeSource != "local" {
+		t.Fatalf("runtime before automatic reconcile = %#v, want compatible local fallback", before)
+	}
+	if err := service.StartManagedRuntimeReconciler(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var after SetupSnapshot
+	for {
+		after, err = service.GetSetup(context.Background(), InstallPlanInput{
+			WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Status == SetupReady && after.RuntimeSource == "managed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("automatic managed runtime reconcile did not converge: %#v", after)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if after.Status != SetupReady || after.RuntimeSource != "managed" || after.RuntimeVersion != "2.121.2" {
+		t.Fatalf("runtime after automatic reconcile = %#v", after)
+	}
+	if runner.callCount() != 1 {
+		t.Fatalf("automatic install calls = %d, want 1", runner.callCount())
+	}
+	if errs := service.ReconcileManagedRuntimes(context.Background()); len(errs) != 0 {
+		t.Fatalf("second ReconcileManagedRuntimes() errors = %v", errs)
+	}
+	if runner.callCount() != 1 {
+		t.Fatalf("automatic install calls after convergence = %d, want 1", runner.callCount())
+	}
+}
+
 func TestAgentTargetSetupAuthenticatesGenericRuntimeToReady(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	transport := &probeTransport{authRequired: true}

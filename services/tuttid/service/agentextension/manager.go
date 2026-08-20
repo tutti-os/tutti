@@ -114,69 +114,6 @@ func (m *Manager) Reconcile(ctx context.Context) []error {
 	return m.reconcile(ctx, featureFlags)
 }
 
-// RestoreActive registers verified local installations without contacting
-// extension release indexes. The boolean result reports whether an enabled
-// source has no usable local installation and therefore still needs a
-// synchronous reconcile before the daemon starts serving requests.
-func (m *Manager) RestoreActive(ctx context.Context) (bool, []error) {
-	m.reconcileMu.Lock()
-	defer m.reconcileMu.Unlock()
-
-	featureFlags := map[string]bool{}
-	if m.Preferences != nil {
-		preferences, err := m.Preferences.GetDesktopPreferences(ctx)
-		if err != nil {
-			return true, []error{fmt.Errorf("read agent extension feature flags: %w", err)}
-		}
-		featureFlags = preferences.FeatureFlags
-	}
-
-	requiresSynchronousReconcile := false
-	var errs []error
-	for _, source := range m.Sources {
-		if !sourceEnabled(source, featureFlags) {
-			if m.Store != nil {
-				if err := m.Store.DeleteAgentTarget(ctx, targetID(source.Key)); err != nil {
-					errs = append(errs, fmt.Errorf("disable extension %s target: %w", source.Key, err))
-				}
-			}
-			continue
-		}
-		if sourceUsesLocalPackage(source) {
-			// Development overrides are mutable inputs. Always snapshot the
-			// configured directory before serving requests so a missing,
-			// changed, or newly selected package cannot be hidden by an older
-			// local installation. Keep the persisted target until reconcile so
-			// registerTarget can preserve the user's enabled preference; a
-			// failed local reconcile removes the stale target.
-			requiresSynchronousReconcile = true
-			continue
-		}
-
-		installation, err := m.loadActive(source.Key)
-		if err != nil {
-			requiresSynchronousReconcile = true
-			if !errors.Is(err, os.ErrNotExist) {
-				errs = append(errs, fmt.Errorf("restore active agent extension %s: %w", source.Key, err))
-			}
-			continue
-		}
-		if !installationMatchesConfiguredSource(source, installation) {
-			requiresSynchronousReconcile = true
-			if m.Store != nil {
-				if err := m.Store.DeleteAgentTarget(ctx, targetID(source.Key)); err != nil {
-					errs = append(errs, fmt.Errorf("remove stale agent extension %s target: %w", source.Key, err))
-				}
-			}
-			continue
-		}
-		if err := m.registerTarget(ctx, installation); err != nil {
-			errs = append(errs, fmt.Errorf("register active agent extension %s: %w", source.Key, err))
-		}
-	}
-	return requiresSynchronousReconcile, errs
-}
-
 func (m *Manager) ReconcileDesktopPreferencesChange(ctx context.Context, previous, current preferencesbiz.DesktopPreferences) []error {
 	if !m.sourceActivationChanged(previous.FeatureFlags, current.FeatureFlags) {
 		return nil
@@ -222,7 +159,11 @@ func sourceUsesLocalPackage(source tuttitypes.AgentExtensionSource) bool {
 }
 
 func installationMatchesConfiguredSource(source tuttitypes.AgentExtensionSource, installation Installation) bool {
-	return sourceUsesLocalPackage(source) == installation.HasLocalPackageProvenance()
+	if sourceUsesLocalPackage(source) {
+		return installation.HasLocalPackageProvenance()
+	}
+	return !installation.HasLocalPackageProvenance() &&
+		validSemver(source.PinnedVersion) && installation.Version == source.PinnedVersion
 }
 
 func (m *Manager) ResolveRuntime(ctx context.Context, installationID string) (RuntimeBinding, error) {
@@ -256,6 +197,13 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 	}
 	if profile.SchemaVersion != "tutti.agent.discovery.v1" {
 		return RuntimeBinding{}, errors.New("unsupported discovery profile schema")
+	}
+	if installation.PreferManagedRuntime {
+		if binding, err := m.resolveInstalledManagedRuntime(ctx, installation, profile, cwd); err == nil {
+			return binding, nil
+		} else if errors.Is(err, ErrManagedRuntimeIntegrity) {
+			return RuntimeBinding{}, err
+		}
 	}
 	for _, candidate := range profile.Candidates {
 		env, err := m.discoveryRuntimeEnv(candidate)
@@ -421,6 +369,12 @@ func (m *Manager) reconcileSource(ctx context.Context, source tuttitypes.AgentEx
 	if installed, err := m.loadActive(source.Key); err == nil && installed.Version == record.Version &&
 		installed.ReleaseArtifactSHA256 == strings.ToLower(record.Release.ArtifactSHA256) &&
 		installed.ReleaseArtifactSizeBytes == record.Release.ArtifactSizeBytes {
+		if !installed.PreferManagedRuntime {
+			installed.PreferManagedRuntime = true
+			if err := m.Installations.PutActive(installed); err != nil {
+				return Installation{}, fmt.Errorf("record managed runtime preference: %w", err)
+			}
+		}
 		return installed, nil
 	}
 	artifact, err := m.getBytes(ctx, record.Release.ArtifactURL, maxArtifact)
@@ -504,7 +458,7 @@ func (m *Manager) installVerifiedRelease(release Release, artifact []byte, sourc
 		AgentKey: release.AgentKey, Version: release.Version, Provider: "acp:" + release.AgentKey,
 		PackageDir: finalDir, PackageContentSHA256: contentDigest,
 		ReleaseArtifactSHA256: strings.ToLower(release.ArtifactSHA256), ReleaseArtifactSizeBytes: release.ArtifactSizeBytes,
-		Manifest: manifest, InstalledAt: time.Now().UTC(),
+		PreferManagedRuntime: true, Manifest: manifest, InstalledAt: time.Now().UTC(),
 	}
 	locales := map[string]string{}
 	if err := readJSON(filepath.Join(finalDir, filepath.FromSlash(manifest.LocalizationInfo.DefaultFile)), &locales); err != nil {

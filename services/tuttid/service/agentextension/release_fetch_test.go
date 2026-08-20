@@ -179,3 +179,52 @@ func TestVerifyReleasePreservesSignedOptionalManifestFields(t *testing.T) {
 		t.Fatalf("verifyRelease() after persistence error = %v", err)
 	}
 }
+
+func TestSelectVersionUsesClientPinnedRelease(t *testing.T) {
+	document := Versions{
+		SchemaVersion: versionsSchema,
+		AgentKey:      "gemini",
+		Versions: []VersionRecord{
+			{Version: "2.0.0", MinTuttiVersion: "0.2.0", Status: "active"},
+			{Version: "1.0.0", MinTuttiVersion: "0.1.0", Status: "active", Release: Release{Version: "1.0.0"}},
+		},
+	}
+
+	record, err := selectVersion(document, "gemini", "0.3.0", "1.0.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.Version != "1.0.0" {
+		t.Fatalf("selected version = %q, want client pin 1.0.0", record.Version)
+	}
+}
+
+func TestSelectVersionRejectsUnavailableClientPin(t *testing.T) {
+	base := Versions{
+		SchemaVersion: versionsSchema,
+		AgentKey:      "gemini",
+		Versions:      []VersionRecord{{Version: "1.0.0", MinTuttiVersion: "0.2.0", Status: "active"}},
+	}
+	tests := []struct {
+		name       string
+		document   Versions
+		appVersion string
+		pin        string
+		want       string
+	}{
+		{name: "missing pin", document: base, appVersion: "0.3.0", pin: "2.0.0", want: "missing"},
+		{name: "invalid pin", document: base, appVersion: "0.3.0", pin: "latest", want: "pin is invalid"},
+		{name: "old client", document: base, appVersion: "0.1.0", pin: "1.0.0", want: "not active or compatible"},
+		{name: "inactive", document: Versions{SchemaVersion: versionsSchema, AgentKey: "gemini", Versions: []VersionRecord{{Version: "1.0.0", MinTuttiVersion: "0.0.0", Status: "withdrawn"}}}, appVersion: "0.3.0", pin: "1.0.0", want: "not active or compatible"},
+		{name: "unsupported capabilities", document: Versions{SchemaVersion: versionsSchema, AgentKey: "gemini", Versions: []VersionRecord{{Version: "1.0.0", MinTuttiVersion: "0.0.0", Status: "active", RequiredHostCapabilities: []string{"future"}}}}, appVersion: "0.3.0", pin: "1.0.0", want: "not active or compatible"},
+		{name: "mismatched release identity", document: Versions{SchemaVersion: versionsSchema, AgentKey: "gemini", Versions: []VersionRecord{{Version: "1.0.0", MinTuttiVersion: "0.0.0", Status: "active", Release: Release{Version: "2.0.0"}}}}, appVersion: "0.3.0", pin: "1.0.0", want: "release identity"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := selectVersion(test.document, "gemini", test.appVersion, test.pin)
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("selectVersion() error = %v, want %q", err, test.want)
+			}
+		})
+	}
+}

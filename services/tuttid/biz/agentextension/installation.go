@@ -17,6 +17,7 @@ type Installation struct {
 	PackageContentSHA256     string    `json:"packageContentSha256"`
 	ReleaseArtifactSHA256    string    `json:"releaseArtifactSha256,omitempty"`
 	ReleaseArtifactSizeBytes int64     `json:"releaseArtifactSizeBytes,omitempty"`
+	PreferManagedRuntime     bool      `json:"preferManagedRuntime,omitempty"`
 	Manifest                 Manifest  `json:"manifest"`
 	InstalledAt              time.Time `json:"installedAt"`
 	DisplayName              string    `json:"displayName"`
