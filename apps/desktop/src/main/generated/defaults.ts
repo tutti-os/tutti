@@ -37,6 +37,7 @@ export const generatedDefaults = {
     sources: [
       {
         key: "gemini",
+        pinnedVersion: "2.0.3",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/gemini/versions.json",
         signingKeyId: "tutti-gemini-release-v1",
@@ -46,6 +47,7 @@ export const generatedDefaults = {
       },
       {
         key: "codebuddy",
+        pinnedVersion: "2.0.3",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/codebuddy/versions.json",
         signingKeyId: "tutti-codebuddy-release-v1",
@@ -55,6 +57,7 @@ export const generatedDefaults = {
       },
       {
         key: "copilot",
+        pinnedVersion: "2.0.3",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/copilot/versions.json",
         signingKeyId: "tutti-copilot-release-v1",
@@ -64,6 +67,7 @@ export const generatedDefaults = {
       },
       {
         key: "kilo",
+        pinnedVersion: "2.0.3",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kilo/versions.json",
         signingKeyId: "tutti-kilo-release-v1",
@@ -73,6 +77,7 @@ export const generatedDefaults = {
       },
       {
         key: "qwen",
+        pinnedVersion: "2.0.3",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/qwen/versions.json",
         signingKeyId: "tutti-qwen-release-v1",
@@ -82,6 +87,7 @@ export const generatedDefaults = {
       },
       {
         key: "hermes",
+        pinnedVersion: "1.0.8",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
         signingKeyId: "tutti-hermes-release-v1",
@@ -91,6 +97,7 @@ export const generatedDefaults = {
       },
       {
         key: "kimi-code",
+        pinnedVersion: "1.0.11",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/account-usage-v1/versions.json",
         fallbackReleaseIndexUrls: [
@@ -104,6 +111,7 @@ export const generatedDefaults = {
       },
       {
         key: "grok",
+        pinnedVersion: "0.1.2",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json",
         signingKeyId: "tutti-grok-release-v2",

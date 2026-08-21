@@ -128,7 +128,7 @@ func TestManagerReconcileInstallsVerifiedPackageAndFallsBackOffline(t *testing.T
 	}))
 	baseURL = server.URL
 	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
-	manager := Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()), Store: store, Client: server.Client(), Sources: []tuttitypes.AgentExtensionSource{{Key: "gemini", ReleaseIndexURL: server.URL + "/versions.json", SigningKeyID: "test-key", SigningPublicKey: publicKeyPEM(t, publicKey), Enabled: true}}}
+	manager := Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()), Store: store, Client: server.Client(), Sources: []tuttitypes.AgentExtensionSource{{Key: "gemini", PinnedVersion: "1.0.0", ReleaseIndexURL: server.URL + "/versions.json", SigningKeyID: "test-key", SigningPublicKey: publicKeyPEM(t, publicKey), Enabled: true}}}
 	if errs := manager.Reconcile(context.Background()); len(errs) != 0 {
 		t.Fatalf("Reconcile() errors = %v", errs)
 	}
@@ -231,6 +231,7 @@ func TestManagerReconcileUsesFallbackReleaseIndex(t *testing.T) {
 		Client:        server.Client(),
 		Sources: []tuttitypes.AgentExtensionSource{{
 			Key:                      "gemini",
+			PinnedVersion:            "1.0.0",
 			ReleaseIndexURL:          server.URL + "/primary/versions.json",
 			FallbackReleaseIndexURLs: []string{server.URL + "/fallback/versions.json"},
 			SigningKeyID:             "test-key",
@@ -279,7 +280,7 @@ func TestManagerReconcileMigratesLegacyRemoteV2InstallationAndFallsBackOffline(t
 	manager := &Manager{
 		Installations: installationStore, Store: targets, Client: server.Client(),
 		Sources: []tuttitypes.AgentExtensionSource{{
-			Key: "gemini", ReleaseIndexURL: server.URL + "/versions.json", Enabled: true,
+			Key: "gemini", PinnedVersion: "1.0.0", ReleaseIndexURL: server.URL + "/versions.json", Enabled: true,
 		}},
 	}
 	if errs := manager.Reconcile(context.Background()); len(errs) != 0 {
@@ -292,7 +293,8 @@ func TestManagerReconcileMigratesLegacyRemoteV2InstallationAndFallsBackOffline(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !validPackageContentSHA256(migrated.PackageContentSHA256) || migrated.ReleaseArtifactSHA256 != "" || migrated.ReleaseArtifactSizeBytes != 0 {
+	if !validPackageContentSHA256(migrated.PackageContentSHA256) || migrated.ReleaseArtifactSHA256 != "" ||
+		migrated.ReleaseArtifactSizeBytes != 0 || !manager.isCurrentClientPinnedRemoteInstallation(migrated) {
 		t.Fatalf("migrated legacy installation identity = %#v", migrated)
 	}
 	loaded, err := manager.loadInstallationByID(legacy.ID)
@@ -506,6 +508,32 @@ func TestManagerRestoreActiveRequiresSynchronousReconcileWithoutCachedInstallati
 	}
 	if len(targets.targets) != 0 {
 		t.Fatalf("RestoreActive() targets = %#v, want none", targets.targets)
+	}
+}
+
+func TestManagerRestoreActiveRejectsReleaseFromAnotherClientPin(t *testing.T) {
+	installationStore := agentextensiondata.NewFileInstallationStore(t.TempDir())
+	targets := &targetStoreStub{targets: map[string]agenttargetbiz.Target{
+		"extension:gemini": {ID: "extension:gemini", Provider: "acp:gemini", Enabled: true},
+	}}
+	writeLegacyRemoteInstallationFixture(t, installationStore)
+	manager := Manager{
+		Installations: installationStore,
+		Store:         targets,
+		Sources: []tuttitypes.AgentExtensionSource{{
+			Key: "gemini", PinnedVersion: "2.0.0", ReleaseIndexURL: "https://example.test/versions.json", Enabled: true,
+		}},
+	}
+
+	requiresSynchronousReconcile, errs := manager.RestoreActive(context.Background())
+	if len(errs) != 0 {
+		t.Fatalf("RestoreActive() errors = %v", errs)
+	}
+	if !requiresSynchronousReconcile {
+		t.Fatal("RestoreActive() accepted an Extension release from another client pin")
+	}
+	if len(targets.targets) != 0 {
+		t.Fatalf("RestoreActive() targets = %#v, want stale target removed", targets.targets)
 	}
 }
 

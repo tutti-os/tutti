@@ -11,10 +11,13 @@ resources, and static assets.
 ## Trust And Distribution
 
 Configured sources live in `config/tutti.defaults.json`. Each source pins an
-agent key, HTTPS `versions.json` URL, default activation state, signing key ID,
-and Ed25519 public key. `tuttid` accepts only active compatible releases whose
+agent key, exact Extension version, HTTPS `versions.json` URL, default
+activation state, signing key ID, and Ed25519 public key. `tuttid` accepts only
+that client-pinned release when it remains active and compatible and its
 canonical release JSON signature, artifact SHA-256, byte size, manifest
-identity, and package contents all validate.
+identity, and package contents all validate. Publishing a newer release to the
+remote index does not change an already shipped Tutti client; adopting it
+requires a Tutti release that updates the source's `pinnedVersion`.
 
 During a versioned metadata-path rollout, a source may declare ordered fallback
 index URLs. Fallback is permitted only when a higher-priority index cannot be
@@ -32,7 +35,8 @@ shape must publish `versions.json` under a new versioned metadata path, leave
 the previous index unchanged for older Tutti builds, and switch the configured
 source URL only in a Tutti release that understands the new shape. Immutable
 artifacts may remain under the Agent's existing release path because older
-clients cannot discover them through their frozen metadata index.
+clients cannot select them through their frozen metadata index and exact
+version pin.
 
 Release ZIPs are data-only. Installation rejects path traversal, symlinks,
 executable regular files, unsupported file types, excessive entry counts, and
@@ -85,7 +89,11 @@ the installation record contract; `service/agentextension` owns release
 verification, package promotion, activation, and reconciliation; the narrow
 `data/agentextension` installation adapter alone derives `agent/extensions`
 paths and reads or atomically replaces `installation.json` and `active.json`.
-Service code must not reconstruct the daemon state root.
+Service code must not reconstruct the daemon state root. Managed-first Runtime
+selection is derived from the running client's exact source pin and is not an
+independent durable installation preference. Readers accept and discard the
+legacy `preferManagedRuntime` field so strict decoding remains compatible with
+records written during the initial rollout.
 
 The active record registers a system Agent Target with an
 `agent_extension` launch reference fixed to `<agentKey>@<version>`. The
@@ -99,8 +107,11 @@ active installation version.
 
 At launch the runtime controller asks `AgentRuntimeResolver` for unknown
 providers. The resolver verifies the fixed installation reference, evaluates
-the declarative discovery profile, prefers a compatible local runtime, and
-creates the generic standard ACP adapter. A candidate may add signed
+the declarative discovery profile, and creates the generic standard ACP
+adapter. Client-pinned remote installations prefer their matching
+Tutti-managed runtime, with a compatible local runtime as a temporary fallback
+while automatic convergence is pending. Local development snapshots retain
+local-first discovery. A candidate may add signed
 `searchPaths` entries with `scope: "user"`; every path must be a bounded
 relative path below the current user's home directory. Those paths are
 prepended to the shared runtime-command environment, so the extension can
@@ -316,10 +327,11 @@ daemon lifetime. A cached generic adapter now fails closed when the requested
 Target or fixed installation differs, while composer-context reuse uses the
 full scope above. Sessions persist `agentTargetId` and resume re-derives the
 extension installation from that Target. A composite session-pinned
-runtime/profile fingerprint remains required before automatic in-session
-extension upgrades. Stable sources may still be active by default; release
-activation remains deliberate and existing sessions stay pinned to their
-recorded Target installation.
+runtime/profile fingerprint remains required before any future automatic
+in-session migration. The daemon does not activate a newly published remote
+Extension dynamically: source activation is controlled by the Tutti client's
+exact version pins, and existing sessions stay pinned to their recorded Target
+installation.
 
 ## Target-managed Runtime Setup
 
@@ -332,6 +344,19 @@ submission supplies only the daemon-issued plan digest and a client action ID.
 installation, and verified package manifest before deriving the runner argv,
 exact package identity, install root, executable, launch arguments, and SHA-256
 plan digest. Renderer input cannot replace any execution field.
+
+After a client-pinned remote Extension is activated, a daemon-owned background
+reconciler automatically installs the exact Runtime declared by that signed
+Extension into Tutti's private runtime root. It runs once at startup, wakes
+after source refresh or activation, and tracks retry state independently for
+each Target. Transient installation failures use exponential backoff capped at
+30 minutes without rechecking settled Targets. Permanent contract, platform,
+or user-command ownership conflicts wait for a source or preference wake, or
+an explicit setup action, instead of retrying on a timer. It never writes to or replaces a
+user-owned PATH executable, and local development snapshots are excluded. The
+Target-scoped setup endpoints remain the observable repair and authentication
+surface; automatic convergence reuses the same verified install pipeline as an
+explicit setup action.
 
 Runtime roots use
 `~/.local/share/tutti/agent-runtimes/<agentKey>/<runtimeIdentity>`, where
@@ -373,8 +398,10 @@ and legacy packages are redownloaded into signed authority when their source is
 reachable rather than being reinterpreted as a signed installation.
 
 Setup probes a compatible executable from signed user-relative search paths and
-the shared daemon runtime PATH first. A compatible local runtime wins even when
-a managed runtime exists. The desktop daemon does not source interactive shell
+the shared daemon runtime PATH. Local development snapshots remain local-first.
+For a client-pinned remote installation, an already verified managed Runtime
+wins; a compatible local Runtime is used only until automatic managed-runtime
+convergence succeeds. The desktop daemon does not source interactive shell
 startup files such as `.zshrc`; vendor install locations outside its process
 PATH belong in extension metadata, not provider-specific core code. Otherwise,
 the installer runs manifest-owned argv directly in a private staging root beside
@@ -645,12 +672,17 @@ exists, the source is not registered and `tuttid` logs one
 `agent_extension.reconcile_failed` record with a JSON payload.
 
 Daemon startup restores and verifies every active source's local active
-installation before serving Agent Target reads. When every active source has
-a usable local installation, release-index refresh runs in the background and
-does not delay the daemon listener. If any enabled source has no usable local
+installation before serving Agent Target reads. A remote installation is usable
+only when its version equals the current client's exact source pin; an active
+record from another client pin forces source reconciliation and fails closed if
+that pinned release cannot be obtained. When every active source has a usable
+local installation, release-index refresh runs in the background and does not
+delay the daemon listener. If any enabled source has no usable local
 installation, startup keeps the synchronous reconcile path so that a first
 installation is registered before the daemon serves its initial Target
-catalog. Preference-driven activation changes also remain synchronous.
+catalog. Preference-driven activation changes also remain synchronous. After
+activation, managed Runtime convergence continues in the background and does
+not delay the daemon listener.
 
 Agent Target catalog reads continue to verify the installed extension package
 and managed runtime integrity before reporting availability. Successful runtime
@@ -664,8 +696,9 @@ authorization.
 Composite session-pinned adapter cache keys, richer tool/event profiles, and
 removal of remaining built-in catalogs remain migration work. Composer
 discovery is not setup state and does not infer
-installation or authentication readiness. Extensions use either a compatible
-local runtime or an explicitly confirmed Target-managed runtime; `tuttid`
+installation or authentication readiness. Client-pinned remote Extensions use
+an automatically managed Runtime with compatible local fallback while it is
+being installed; local development Extensions remain local-first. `tuttid`
 never installs into a user project.
 
 ## Declarative Grok Compatibility

@@ -72,6 +72,9 @@ func (r *AppRunner) notifyStateChanged(key string, state workspacebiz.AppRuntime
 
 func (r *AppRunner) waitForProcess(key string, process *appProcess) {
 	err := process.command.Wait()
+	if process.containment != nil {
+		_ = process.containment.close()
+	}
 	_ = process.logFile.Close()
 
 	r.mu.Lock()
@@ -147,6 +150,9 @@ func (r *AppRunner) finishStart(key string, ctx context.Context, start *appStart
 
 func waitForDetachedAppProcess(process *appProcess) {
 	err := process.command.Wait()
+	if process.containment != nil {
+		_ = process.containment.close()
+	}
 	_ = process.logFile.Close()
 	process.done <- err
 }

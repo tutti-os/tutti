@@ -1,6 +1,14 @@
-import { isValidElement, useState, type ReactNode } from "react";
+import { isValidElement, useId, useState, type ReactNode } from "react";
 import { Gauge, Wrench } from "lucide-react";
-import { Popover, PopoverContent, PopoverTrigger } from "@tutti-os/ui-system";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@tutti-os/ui-system";
 import { MoreHorizontalIcon } from "@tutti-os/ui-system/icons";
 import { AgentProbeUsageFreshness } from "../AgentProbeUsageFreshness";
 import { AgentUsageMeter } from "../AgentUsageMeter";
@@ -64,6 +72,7 @@ export function AgentGUIConfigMenu({
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
   const [open, setOpen] = useState(false);
+  const usageDescriptionId = useId();
   const builtInMaskIconUrl = resolveAgentGuiSessionProviderFlatIconUrl(
     provider ?? undefined
   );
@@ -88,7 +97,7 @@ export function AgentGUIConfigMenu({
   const providerAccountFallbackVisible =
     !accountFallbackSuppressed && !hasAccountContent;
   return (
-    <Popover
+    <DropdownMenu
       open={open}
       onOpenChange={(nextOpen) => {
         setOpen(nextOpen);
@@ -102,7 +111,7 @@ export function AgentGUIConfigMenu({
         }
       }}
     >
-      <PopoverTrigger asChild>
+      <DropdownMenuTrigger asChild>
         <button
           type="button"
           aria-label={labels.agentConfig}
@@ -111,28 +120,26 @@ export function AgentGUIConfigMenu({
         >
           <MoreHorizontalIcon aria-hidden="true" width={18} height={18} />
         </button>
-      </PopoverTrigger>
-      <PopoverContent
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
         side="right"
         align="end"
-        className="w-[300px] max-w-[calc(100vw-32px)] gap-3 p-1 text-xs"
+        className="w-[300px] max-w-[calc(100vw-32px)] p-1 text-xs"
         data-testid="agent-gui-config-menu"
         style={{ zIndex: "var(--z-panel-popover)" }}
       >
-        <div className="flex min-w-0 flex-col gap-1">
+        <DropdownMenuGroup className="min-w-0">
           {hasAccountContent ? (
             <>
               {accountContent}
-              <div className="px-2">
-                <span className="block h-px bg-[var(--border-1)]" />
-              </div>
+              <DropdownMenuSeparator />
             </>
           ) : null}
           {providerAccountFallbackVisible &&
           providerScopedActionsVisible &&
           providerAuthAccountLabel ? (
             <>
-              <div className="flex min-w-0 flex-col gap-2 p-2">
+              <DropdownMenuLabel className="flex min-w-0 flex-col gap-2 p-2 text-[var(--text-primary)]">
                 <div className="flex min-w-0 items-center gap-2">
                   {providerMaskIconUrl ? (
                     <span
@@ -158,13 +165,11 @@ export function AgentGUIConfigMenu({
                 <span className="text-[13px] leading-5 text-[var(--text-secondary)]">
                   {providerAuthAccountLabel}
                 </span>
-              </div>
+              </DropdownMenuLabel>
               {slashStatusLimits.length > 0 ||
               slashStatusUsageAttempted ||
               slashStatusLimitsLoading ? (
-                <div className="px-2">
-                  <span className="block h-px bg-[var(--border-1)]" />
-                </div>
+                <DropdownMenuSeparator />
               ) : null}
             </>
           ) : null}
@@ -174,7 +179,10 @@ export function AgentGUIConfigMenu({
             slashStatusUsageAttempted ||
             slashStatusLimitsLoading) ? (
             <>
-              <div className="flex min-w-0 flex-col gap-2 p-2">
+              <DropdownMenuLabel
+                className="flex min-w-0 flex-col gap-2 p-2 text-[var(--text-primary)]"
+                id={usageDescriptionId}
+              >
                 <div className="flex min-w-0 items-center justify-between gap-2">
                   <div className="flex min-w-0 items-center gap-2">
                     <Gauge
@@ -199,22 +207,6 @@ export function AgentGUIConfigMenu({
                       </span>
                     ) : null}
                   </div>
-                  <AgentProbeUsageFreshness
-                    testId="agent-gui-config-usage-refresh"
-                    capturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
-                    isLoading={slashStatusLimitsLoading}
-                    didFail={slashStatusUsageDidFail}
-                    disabled={!onAgentUsageRefresh}
-                    onRefresh={() => onAgentUsageRefresh?.()}
-                    labels={{
-                      justUpdated: labels.slashStatusUsageJustUpdated,
-                      minutesAgo: labels.slashStatusUsageMinutesAgo,
-                      hoursAgo: labels.slashStatusUsageHoursAgo,
-                      updating: labels.slashStatusUsageUpdating,
-                      refreshFailed: labels.slashStatusUsageRefreshFailed,
-                      refreshAria: labels.slashStatusUsageRefreshAria
-                    }}
-                  />
                 </div>
                 {slashStatusLimits.length > 0
                   ? slashStatusLimits.map((limit) => (
@@ -240,44 +232,56 @@ export function AgentGUIConfigMenu({
                     {slashStatusUsageErrorMessage}
                   </div>
                 ) : null}
-              </div>
-              <div className="px-2">
-                <span className="block h-px bg-[var(--border-1)]" />
-              </div>
+              </DropdownMenuLabel>
+              <AgentProbeUsageFreshness
+                ariaDescribedBy={usageDescriptionId}
+                capturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
+                didFail={slashStatusUsageDidFail}
+                disabled={!onAgentUsageRefresh}
+                isLoading={slashStatusLimitsLoading}
+                labels={{
+                  justUpdated: labels.slashStatusUsageJustUpdated,
+                  minutesAgo: labels.slashStatusUsageMinutesAgo,
+                  hoursAgo: labels.slashStatusUsageHoursAgo,
+                  updating: labels.slashStatusUsageUpdating,
+                  refreshFailed: labels.slashStatusUsageRefreshFailed,
+                  refreshAria: labels.slashStatusUsageRefreshAria
+                }}
+                onRefresh={() => onAgentUsageRefresh?.()}
+                presentation="menu-item"
+                testId="agent-gui-config-usage-refresh"
+              />
+              <DropdownMenuSeparator />
             </>
           ) : null}
-          <div className="flex min-w-0 flex-col gap-1">
+          <DropdownMenuGroup>
             {providerScopedActionsVisible && environmentSetupVisible ? (
-              <button
-                type="button"
+              <DropdownMenuItem
                 data-testid="agent-gui-config-env-setup"
-                className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
-                onClick={() => onOpenAgentEnvSetup()}
+                className="h-7"
+                onSelect={() => onOpenAgentEnvSetup()}
               >
                 <Wrench aria-hidden="true" size={16} strokeWidth={1.8} />
                 <span>{labels.agentEnvSetup}</span>
-              </button>
+              </DropdownMenuItem>
             ) : null}
-            <button
-              type="button"
+            <DropdownMenuItem
               data-testid="agent-gui-config-settings"
-              className="nodrag flex h-7 w-full items-center gap-2 rounded-[6px] px-2 text-[13px] text-[var(--text-primary)] transition-colors hover:bg-[var(--transparency-hover)] hover:text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:text-[var(--text-tertiary)] [-webkit-app-region:no-drag]"
-              onClick={() => onOpenAgentSettings()}
+              className="h-7"
+              onSelect={() => onOpenAgentSettings()}
             >
               <SettingsLinedIcon aria-hidden="true" width={16} height={16} />
               <span>{labels.agentSettingsMenu}</span>
-            </button>
-          </div>
+            </DropdownMenuItem>
+          </DropdownMenuGroup>
           {systemActionsContent ? (
             <>
-              <div className="px-2">
-                <span className="block h-px bg-[var(--border-1)]" />
-              </div>
+              <DropdownMenuSeparator />
               {systemActionsContent}
             </>
           ) : null}
-        </div>
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

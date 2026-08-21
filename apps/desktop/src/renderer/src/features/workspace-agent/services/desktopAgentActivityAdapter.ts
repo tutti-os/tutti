@@ -227,6 +227,9 @@ export function createDesktopAgentActivityAdapter({
             tuttidClient.getAgentProviderComposerOptions(
               workspaceAgentProvider(input.provider),
               {
+                ...(input.agentSessionId?.trim()
+                  ? { agentSessionId: input.agentSessionId.trim() }
+                  : {}),
                 ...(agentTargetId ? { agentTargetId } : {}),
                 ...(cwd ? { cwd } : {}),
                 ...(section !== "full" ? { section } : {}),

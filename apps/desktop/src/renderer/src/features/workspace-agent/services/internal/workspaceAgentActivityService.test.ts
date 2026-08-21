@@ -1671,7 +1671,7 @@ test("WorkspaceAgentActivityService reconciles a realtime message version gap af
   );
 });
 
-test("WorkspaceAgentActivityService reconciles cached messages after reconnect without waiting for another event", async () => {
+test("WorkspaceAgentActivityService reconciles the synchronized priority session after reconnect", async (t) => {
   let connectionListener:
     | ((state: "connected" | "disconnected") => void)
     | undefined;
@@ -1768,16 +1768,21 @@ test("WorkspaceAgentActivityService reconciles cached messages after reconnect w
     } as unknown as TuttidClient,
     runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
+  t.after(() => service.dispose());
 
   await service.load("ws-1");
-  await service.listSessionMessages({
-    agentSessionId: "session-1",
-    order: "desc",
-    workspaceId: "ws-1"
-  });
   assert.ok(connectionListener);
   connectionListener("connected");
   await new Promise((resolve) => setImmediate(resolve));
+
+  const releasePriority = service.ensureSessionSynchronized({
+    agentSessionId: "session-1",
+    workspaceId: "ws-1"
+  });
+  t.after(releasePriority);
+  for (let attempt = 0; attempt < 10 && messageRequests.length < 1; attempt++) {
+    await new Promise((resolve) => setImmediate(resolve));
+  }
   assert.equal(messageRequests.length, 1);
 
   connectionListener("disconnected");
@@ -1828,6 +1833,7 @@ test("WorkspaceAgentActivityService projects WebSocket message deltas and yields
     runtimeApi: { logTerminalDiagnostic: async () => {} }
   });
   await service.load("ws-1");
+  await new Promise((resolve) => setImmediate(resolve));
   const activityEvent = (
     payload: AgentActivityUpdatedEventV1["payload"]
   ): AgentActivityUpdatedEventV1 => ({
@@ -1839,8 +1845,12 @@ test("WorkspaceAgentActivityService projects WebSocket message deltas and yields
     version: 2
   });
   let notifications = 0;
+  let optimisticSessionEvents = 0;
   const unsubscribe = service.subscribe("ws-1", () => {
     notifications += 1;
+  });
+  const unsubscribeSessionEvents = service.onSessionEvent("ws-1", () => {
+    optimisticSessionEvents += 1;
   });
   const activityUpdated = listenersByTopic.get("agent.activity.updated");
   assert.ok(activityUpdated);
@@ -1863,28 +1873,35 @@ test("WorkspaceAgentActivityService projects WebSocket message deltas and yields
       }
     })
   );
-  activityUpdated(
-    activityEvent({
-      workspaceId: "ws-1",
-      agentSessionId: "session-1",
-      eventType: "message_delta",
-      data: {
+  for (let index = 0; index < 99; index += 1) {
+    activityUpdated(
+      activityEvent({
         workspaceId: "ws-1",
         agentSessionId: "session-1",
-        messageId: "message-1",
-        turnId: "turn-1",
-        role: "assistant",
-        kind: "text",
-        occurredAtUnixMs: 101,
-        content: { operation: "append_text", text: "lo" },
-        status: "streaming"
-      }
-    })
-  );
+        eventType: "message_delta",
+        data: {
+          workspaceId: "ws-1",
+          agentSessionId: "session-1",
+          messageId: "message-1",
+          turnId: "turn-1",
+          role: "assistant",
+          kind: "text",
+          occurredAtUnixMs: 101 + index,
+          content: { operation: "append_text", text: "x" },
+          status: "streaming"
+        }
+      })
+    );
+  }
   let message =
     service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0];
-  assert.equal(message?.payload.text, "Hello");
+  assert.equal(message?.payload.text, `Hel${"x".repeat(99)}`);
   assert.equal(message?.version, 0);
+  assert.equal(notifications, 0);
+  assert.equal(optimisticSessionEvents, 0);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  assert.equal(notifications, 1);
+  assert.equal(optimisticSessionEvents, 1);
 
   activityUpdated(
     activityEvent({
@@ -1903,7 +1920,10 @@ test("WorkspaceAgentActivityService projects WebSocket message deltas and yields
             kind: "text",
             messageId: "message-1",
             occurredAtUnixMs: 102,
-            payload: { content: "Hello", text: "Hello" },
+            payload: {
+              content: `Hel${"x".repeat(99)}`,
+              text: `Hel${"x".repeat(99)}`
+            },
             role: "assistant",
             sequence: 1,
             status: "completed",
@@ -1917,11 +1937,12 @@ test("WorkspaceAgentActivityService projects WebSocket message deltas and yields
   await new Promise((resolve) => setImmediate(resolve));
 
   message = service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0];
-  assert.equal(message?.payload.text, "Hello");
+  assert.equal(message?.payload.text, `Hel${"x".repeat(99)}`);
   assert.equal(message?.status, "completed");
   assert.equal(message?.version, 1);
-  assert.ok(notifications >= 3);
+  assert.ok(notifications >= 2);
   unsubscribe();
+  unsubscribeSessionEvents();
 });
 
 test("WorkspaceAgentActivityService dispose releases every event stream subscription", () => {

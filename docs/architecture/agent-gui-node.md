@@ -2024,6 +2024,11 @@ host adapters consume that projection and must not rebuild `$` versus `/`,
 plugin namespaces, or prompt-item versus text-trigger behavior from provider
 names.
 
+For an active Session, composer Skill discovery also scans that Session's
+isolated provider home. Opening slash search explicitly refreshes this catalog
+so newly created Skills appear without restarting the Session; runtime-managed
+Skills remain hidden through their `.tutti-managed-skill` marker.
+
 App-server-backed skill discovery follows the descriptor boundary. Tutti Agent
 requests only `skills/list` and retains the ordinary Skill projection through
 the shared app-server transport, capability contract, cache, and structured

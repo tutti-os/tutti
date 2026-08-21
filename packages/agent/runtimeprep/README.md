@@ -54,6 +54,15 @@ and later sessions reuse it. Hosts must therefore run preparation with `HOME`
 set to the provider user's stable local Home, never a session runtime directory
 or a remote filesystem projection.
 
+Desktop composition also supplies the provider user's stable personal Skill
+root. Runtime preparation exposes that directory directly as
+`$CODEX_HOME/skills` (a symlink on POSIX and a directory junction on Windows),
+so Codex's native skill-creator keeps its ordinary personal-by-default behavior
+without copying or promoting content from historical Session homes. Tutti-owned
+Session Skills remain under the run root and are registered through
+`skills/extraRoots/set`; they are never written into the personal root. Hosts
+that do not explicitly supply a personal root keep the isolated layout.
+
 `TuttiAgentPreparer.ResolveAuthSource` lets a host expose one explicit absolute
 credential authority into the session-scoped `TUTTI_AGENT_HOME`. When omitted,
 the Tutti desktop keeps its existing `~/.tutti-agent/auth.json` behavior. An

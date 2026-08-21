@@ -111,6 +111,13 @@ func TestControllerSessionEventSinkCommitsChildTerminalBeforePublish(t *testing.
 		Status:         SessionStatusReady,
 	}
 	controller.store(session)
+	childSession := Session{
+		RoomID:         session.RoomID,
+		AgentSessionID: "child-session-1",
+		Provider:       session.Provider,
+		Status:         SessionStatusReady,
+	}
+	controller.store(childSession)
 	stream, unsubscribe, ok := controller.Subscribe(session.RoomID, session.AgentSessionID)
 	if !ok {
 		t.Fatal("Subscribe returned ok=false")
@@ -120,6 +127,16 @@ func TestControllerSessionEventSinkCommitsChildTerminalBeforePublish(t *testing.
 	case <-stream:
 	case <-time.After(2 * time.Second):
 		t.Fatal("initial session snapshot was not published")
+	}
+	childStream, childUnsubscribe, ok := controller.Subscribe(childSession.RoomID, childSession.AgentSessionID)
+	if !ok {
+		t.Fatal("child Subscribe returned ok=false")
+	}
+	defer childUnsubscribe()
+	select {
+	case <-childStream:
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial child session snapshot was not published")
 	}
 
 	done := make(chan struct{})
@@ -143,7 +160,8 @@ func TestControllerSessionEventSinkCommitsChildTerminalBeforePublish(t *testing.
 	expectNoStreamEventType(t, stream, StreamEventStatePatch)
 
 	reporter.release <- nil
-	waitForPublishedSessionEvent(t, stream, EventTurnCompleted, "", "")
+	waitForPublishedSessionEvent(t, childStream, EventTurnCompleted, "", "")
+	expectNoStreamEventType(t, stream, StreamEventStatePatch)
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):

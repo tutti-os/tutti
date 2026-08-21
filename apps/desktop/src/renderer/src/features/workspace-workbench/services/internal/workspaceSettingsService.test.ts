@@ -801,6 +801,46 @@ test("WorkspaceSettingsService forwards the selected developer log export option
   ]);
 });
 
+test("WorkspaceSettingsService immediately reports that log export started", async () => {
+  let finishExport: () => void = () => {};
+  let resolverInstalled = false;
+  const infoTitles: string[] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        exportLogs: () =>
+          new Promise((resolve) => {
+            resolverInstalled = true;
+            finishExport = () =>
+              resolve({ canceled: true, fileCount: 0, filePath: null });
+          })
+      })
+    },
+    undefined,
+    {
+      _serviceBrand: undefined,
+      error() {},
+      info(input) {
+        infoTitles.push(input.title);
+      },
+      notify() {},
+      success() {},
+      warning() {}
+    }
+  );
+
+  const exportPromise = service.exportDeveloperLogs({
+    includeAgentSessions: false,
+    scope: "recent-10-minutes"
+  });
+
+  assert.deepEqual(infoTitles, ["Exporting..."]);
+  assert.equal(service.store.developerLogs.exporting, true);
+  assert.equal(resolverInstalled, true);
+  finishExport();
+  await exportPromise;
+});
+
 test("WorkspaceSettingsService clears workspace conversation history", async () => {
   const calls: string[] = [];
   const service = new WorkspaceSettingsService(

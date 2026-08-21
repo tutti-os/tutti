@@ -109,6 +109,7 @@ export function useAgentGUIComposerOptionsSync(input: {
         input.workspacePath.trim() ||
         "";
       const request = {
+        agentSessionId: input.activeConversationIdRef.current,
         workspaceId: input.workspaceId,
         cwd,
         force: options?.force || authorityRead.force ? true : undefined,

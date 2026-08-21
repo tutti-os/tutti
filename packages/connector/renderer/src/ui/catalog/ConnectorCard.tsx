@@ -143,11 +143,7 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
           size="sm"
           type="button"
           variant={
-            card.action === "disconnect"
-              ? "destructive-secondary"
-              : card.action === "install" || card.action === "update"
-                ? "outline"
-                : "secondary"
+            card.action === "disconnect" ? "destructive-secondary" : "secondary"
           }
           onClick={handleAction}
         >

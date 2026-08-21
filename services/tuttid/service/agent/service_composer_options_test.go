@@ -315,6 +315,83 @@ func (l *recordingComposerCapabilityLister) ListComposerCapabilityOptions(
 	}}, nil
 }
 
+type canonicalSkillCapabilityLister struct {
+	native ComposerCapabilityOption
+}
+
+func (l canonicalSkillCapabilityLister) ListComposerCapabilityOptions(
+	_ context.Context,
+	provider string,
+	_ string,
+	fallback []ComposerSkillOption,
+) ([]ComposerCapabilityOption, []string) {
+	return mergeCodexComposerCapabilityOptions(
+		composerCapabilityCatalogFromSkills(provider, fallback),
+		[]ComposerCapabilityOption{l.native},
+	), nil
+}
+
+func TestServiceGetComposerOptionsDoesNotReturnLegacySkillAlreadyRepresentedByNativeCatalog(t *testing.T) {
+	projectDir := t.TempDir()
+	fallbackDir := filepath.Join(projectDir, ".codex", "skills", "example")
+	if err := os.MkdirAll(fallbackDir, 0o755); err != nil {
+		t.Fatalf("create fallback skill directory: %v", err)
+	}
+	fallbackPath := filepath.Join(fallbackDir, "SKILL.md")
+	if err := os.WriteFile(fallbackPath, []byte("---\nname: example\ndescription: Example skill\n---\n"), 0o600); err != nil {
+		t.Fatalf("write fallback skill: %v", err)
+	}
+	nativePath := filepath.Join(projectDir, "native-skill.md")
+	if err := os.Link(fallbackPath, nativePath); err != nil {
+		t.Fatalf("create native skill alias: %v", err)
+	}
+
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.CapabilityLister = canonicalSkillCapabilityLister{native: ComposerCapabilityOption{
+		ID:         "skill:plugin:example",
+		Kind:       "skill",
+		Name:       "plugin:example",
+		Label:      "plugin:example",
+		Path:       nativePath,
+		Status:     "available",
+		Invocation: "promptItem",
+	}}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Cwd:      projectDir,
+	})
+	if err != nil {
+		t.Fatalf("GetComposerOptions returned error: %v", err)
+	}
+	for _, skill := range options.Skills {
+		if skill.Name == "example" {
+			t.Fatalf("legacy skill remained alongside native catalog entry: %#v", skill)
+		}
+	}
+	canonicalCount := 0
+	for _, option := range options.CapabilityCatalog {
+		if option.ID == "skill:plugin:example" {
+			canonicalCount++
+		}
+		if option.ID == "skill:example" {
+			t.Fatalf("capability catalog retained legacy skill alias: %#v", option)
+		}
+	}
+	if canonicalCount != 1 {
+		t.Fatalf("canonical native skill count = %d, want 1; catalog: %#v", canonicalCount, options.CapabilityCatalog)
+	}
+	runtimeSkills, ok := options.RuntimeContext["skills"].([]map[string]any)
+	if !ok {
+		t.Fatalf("runtime skills = %#v", options.RuntimeContext["skills"])
+	}
+	for _, skill := range runtimeSkills {
+		if skill["name"] == "example" {
+			t.Fatalf("runtime context retained legacy skill: %#v", skill)
+		}
+	}
+}
+
 func TestServiceGetComposerOptionsSkipsCapabilityCatalogWhenDisabled(t *testing.T) {
 	runtime := newFakeRuntime()
 	lister := &recordingComposerCapabilityLister{}

@@ -36,6 +36,7 @@ var generatedDefaults = generatedDefaultsSpec{
 		Sources: []generatedAgentExtensionSourceDefaults{
 			{
 				Key:                      "gemini",
+				PinnedVersion:            "2.0.3",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/gemini/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-gemini-release-v1",
@@ -44,6 +45,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "codebuddy",
+				PinnedVersion:            "2.0.3",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/codebuddy/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-codebuddy-release-v1",
@@ -52,6 +54,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "copilot",
+				PinnedVersion:            "2.0.3",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/copilot/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-copilot-release-v1",
@@ -60,6 +63,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "kilo",
+				PinnedVersion:            "2.0.3",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kilo/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-kilo-release-v1",
@@ -68,6 +72,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "qwen",
+				PinnedVersion:            "2.0.3",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/qwen/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-qwen-release-v1",
@@ -76,6 +81,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "hermes",
+				PinnedVersion:            "1.0.8",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-hermes-release-v1",
@@ -84,6 +90,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "kimi-code",
+				PinnedVersion:            "1.0.11",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/account-usage-v1/versions.json",
 				FallbackReleaseIndexURLs: []string{"https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/authentication-v1/versions.json", "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/versions.json"},
 				SigningKeyID:             "tutti-kimi-code-release-v1",
@@ -92,6 +99,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "grok",
+				PinnedVersion:            "0.1.2",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/grok/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-grok-release-v2",

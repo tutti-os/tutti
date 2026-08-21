@@ -2003,6 +2003,10 @@ export type AgentProviderComposerConfig = {
 
 export type GetAgentProviderComposerOptionsRequest = {
   /**
+   * Active Agent session whose isolated provider home contributes session-created Skills to the composer catalog.
+   */
+  agentSessionId?: string;
+  /**
    * Selects the independently loadable composer section. Core contains model, reasoning, speed, permission, and runtime settings; capabilities contains skills and capability catalog data; connectors contains only the local Connector Market projection. Full is retained for callers that need the combined legacy response.
    */
   section?: "full" | "core" | "capabilities" | "connectors";

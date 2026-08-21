@@ -866,9 +866,17 @@ describe("useAgentGUIComposerSettingsActions", () => {
 
     act(() => {
       rendered.result.current.retryComposerOptions();
+      rendered.result.current.retryComposerOptions({
+        force: true,
+        section: "capabilities"
+      });
     });
 
-    expect(loadDraftComposerOptions).toHaveBeenCalledWith();
+    expect(loadDraftComposerOptions).toHaveBeenNthCalledWith(1);
+    expect(loadDraftComposerOptions).toHaveBeenNthCalledWith(2, {
+      force: true,
+      section: "capabilities"
+    });
   });
 });
 

@@ -81,6 +81,7 @@ function refreshAfterSettings(
     return unchanged(state);
   }
   return requestLoad(state, {
+    agentSessionId: session.agentSessionId,
     commandId: `composer-options:after-settings:${settingsCommandId}`,
     cwd: session.cwd,
     force: true,
@@ -123,6 +124,7 @@ function requestLoad(
   }
   const section = intent.section;
   const signature = composerOptionsRequestSignature({
+    agentSessionId: intent.agentSessionId,
     provider,
     cwd: intent.cwd,
     settings: intent.settings
@@ -149,6 +151,9 @@ function requestLoad(
     commands: [
       {
         type: "composerOptions/load",
+        ...(intent.agentSessionId !== undefined
+          ? { agentSessionId: intent.agentSessionId }
+          : {}),
         commandId,
         correlationId: correlationKey(targetKey, section),
         targetKey,

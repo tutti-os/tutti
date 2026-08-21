@@ -80,6 +80,8 @@ func (s *SetupService) executeInstall(
 	if s.Plans.Manager == nil {
 		return errors.New("agent extension manager is not configured")
 	}
+	unlock := s.lockRuntimeInstall(plan.AgentKey + ":" + plan.RuntimeIdentity)
+	defer unlock()
 	installation, err := s.Plans.Manager.loadInstallationByID(plan.ExtensionInstallationID)
 	if err != nil {
 		return err

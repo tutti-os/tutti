@@ -127,6 +127,137 @@ test("AppUpdateService opens the official changelog without an IPC release-notes
   assert.deepEqual(opened, ["https://tutti.sh/en/changelog"]);
 });
 
+test("AppUpdateService reports an up-to-date manual check", async () => {
+  const notifications: Array<{
+    description?: string;
+    title: string;
+    type: string;
+  }> = [];
+  const service = new AppUpdateService(
+    createClient({
+      checkForUpdates: async () =>
+        createState({ currentVersion: "1.2.3", status: "up_to_date" })
+    }),
+    null,
+    undefined,
+    undefined,
+    {
+      notifications: {
+        error(input) {
+          notifications.push({ ...input, type: "error" });
+        },
+        info(input) {
+          notifications.push({ ...input, type: "info" });
+        },
+        success(input) {
+          notifications.push({ ...input, type: "success" });
+        }
+      }
+    }
+  );
+
+  await service.checkForUpdates();
+
+  assert.deepEqual(notifications, [
+    {
+      description: "Tutti 1.2.3 is currently the latest version.",
+      title: "You're up to date!",
+      type: "info"
+    }
+  ]);
+});
+
+test("AppUpdateService reports an available manual update", async () => {
+  const successes: Array<{ description?: string; title: string }> = [];
+  const service = new AppUpdateService(
+    createClient({
+      checkForUpdates: async () => createState({ status: "available" })
+    }),
+    null,
+    undefined,
+    undefined,
+    {
+      notifications: {
+        error() {},
+        info() {},
+        success(input) {
+          successes.push(input);
+        }
+      }
+    }
+  );
+
+  await service.checkForUpdates();
+
+  assert.deepEqual(successes, [{ title: "Update to New Version" }]);
+});
+
+test("AppUpdateService reports a failed manual check", async () => {
+  const errors: Array<{ description?: string; title: string }> = [];
+  const service = new AppUpdateService(
+    createClient({
+      checkForUpdates: async () => {
+        throw new Error("network unavailable");
+      }
+    }),
+    null,
+    undefined,
+    undefined,
+    {
+      notifications: {
+        error(input) {
+          errors.push(input);
+        },
+        info() {},
+        success() {}
+      }
+    }
+  );
+
+  await service.checkForUpdates();
+
+  assert.equal(errors.length, 1);
+  assert.equal(errors[0]?.title, "Unable to check for updates");
+  assert.equal(
+    errors[0]?.description,
+    "An unexpected service error occurred. Please try again."
+  );
+});
+
+test("AppUpdateService reports an unsupported manual check", async () => {
+  const errors: Array<{ description?: string; title: string }> = [];
+  const service = new AppUpdateService(
+    createClient({
+      checkForUpdates: async () =>
+        createState({
+          message: "Updates are unavailable in development.",
+          status: "unsupported"
+        })
+    }),
+    null,
+    undefined,
+    undefined,
+    {
+      notifications: {
+        error(input) {
+          errors.push(input);
+        },
+        info() {},
+        success() {}
+      }
+    }
+  );
+
+  await service.checkForUpdates();
+
+  assert.deepEqual(errors, [
+    {
+      description: "Updates are unavailable in development.",
+      title: "Unable to check for updates"
+    }
+  ]);
+});
+
 test("AppUpdateService keeps install action pending after IPC succeeds", async () => {
   let installCalls = 0;
   const service = new AppUpdateService(

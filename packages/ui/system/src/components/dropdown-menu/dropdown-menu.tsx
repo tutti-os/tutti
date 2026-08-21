@@ -97,7 +97,7 @@ function DropdownMenuItem({
       className={cn(
         "group/dropdown-menu-item",
         menuItemClassName,
-        "data-inset:pl-7 data-[variant=destructive]:text-[var(--state-danger)] data-[variant=destructive]:focus:bg-[color-mix(in_srgb,var(--state-danger)_10%,transparent)] data-[variant=destructive]:focus:text-[var(--state-danger)] data-[variant=destructive]:hover:bg-[color-mix(in_srgb,var(--state-danger)_10%,transparent)] data-[variant=destructive]:hover:text-[var(--state-danger)] data-[variant=destructive]:*:[svg]:text-[var(--state-danger)]",
+        "data-inset:pl-7 data-[variant=destructive]:text-[var(--state-danger)] data-[variant=destructive]:focus:bg-[var(--on-danger-hover)] data-[variant=destructive]:focus:text-[var(--state-danger)] data-[variant=destructive]:hover:bg-[var(--on-danger-hover)] data-[variant=destructive]:hover:text-[var(--state-danger)] data-[variant=destructive]:*:[svg]:text-[var(--state-danger)]",
         className
       )}
       {...props}

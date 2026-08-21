@@ -172,6 +172,42 @@ describe("useComposerPaletteCatalog", () => {
     ).toEqual(["review"]);
   });
 
+  it("keeps slash commands visible while composing a goal", () => {
+    const { result } = renderHook(() =>
+      useComposerPaletteCatalog({
+        provider: "codex",
+        isGoalModeActive: true,
+        goalSupported: true,
+        paletteDraftPrompt: "/",
+        availableCommands: [{ name: "status" }],
+        availableSkills: [],
+        hasCompactableContext: false,
+        compactSupported: false,
+        composerSettings: {
+          supportsPlanMode: false,
+          supportsBrowser: false,
+          supportsComputerUse: false,
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: [{ command: "status", effect: "showStatus" }],
+            commandCatalogAuthoritative: true
+          }
+        } as unknown as AgentGUIComposerSettingsVM,
+        capabilityControlsReadOnly: false,
+        labels: {} as AgentComposerProps["labels"],
+        uiLanguage: "en",
+        editorHandleRef: { current: null }
+      })
+    );
+
+    expect(result.current.slashQuery).toBe("");
+    expect(
+      result.current.slashPaletteEntries
+        .filter((entry) => entry.type === "command")
+        .map((entry) => entry.label)
+    ).toEqual(["status"]);
+  });
+
   it("shows /tutti only while the host Tutti Mode gate is enabled", () => {
     const { result, rerender } = renderHook(
       ({ enabled }: { enabled: boolean }) =>

@@ -7624,6 +7624,9 @@ type ForkWorkspaceAgentSessionRequest struct {
 
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
+	// AgentSessionId Active Agent session whose isolated provider home contributes session-created Skills to the composer catalog.
+	AgentSessionId *string `json:"agentSessionId,omitempty"`
+
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
 	AgentTargetId *string        `json:"agentTargetId,omitempty"`
 	Cwd           *string        `json:"cwd,omitempty"`

@@ -85,6 +85,7 @@ func (api DaemonAPI) GetAgentProviderComposerOptions(ctx context.Context, reques
 		Provider: string(request.Provider),
 	}
 	if request.Body != nil {
+		input.AgentSessionID = optionalStringValue(request.Body.AgentSessionId)
 		if request.Body.Section != nil {
 			input.Section = agentservice.ComposerOptionsSection(*request.Body.Section)
 		}
