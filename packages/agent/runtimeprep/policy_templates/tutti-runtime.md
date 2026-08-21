@@ -29,7 +29,8 @@
 - If a provider Skill tool exists, call the exact visible name.
 - If the Skill is unavailable, read its materialized `SKILL.md`.
 - Use the table fallback only when that Skill is unavailable.
-- Agent handoff decisions belong to `$tutti-handoff`; `$tutti-cli` is only its command reference.
+- Agent handoff decisions belong to `$tutti-handoff`.
+- Generic subagents use native tools; Tutti handoffs use `$tutti-handoff`.
 
 {{PROVIDER_SPECIFIC_MENTION_ROUTING}}
 

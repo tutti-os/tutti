@@ -17,7 +17,7 @@ func TestDefaultControllerUsesClaudeSDKAdapterByDefault(t *testing.T) {
 	}
 }
 
-func TestClaudeCodeSDKAdapterInteractiveApprovalRoundTrip(t *testing.T) {
+func TestClaudeCodeSDKAdapterInteractiveApprovalRoundTripIgnoresReplayedTerminalRequest(t *testing.T) {
 	adapter := NewClaudeCodeSDKAdapter(nil)
 	session := standardTestSession(ProviderClaudeCode)
 	conn := &recordingClaudeSDKConnection{}
@@ -109,6 +109,36 @@ func TestClaudeCodeSDKAdapterInteractiveApprovalRoundTrip(t *testing.T) {
 	}
 	if prompt := adapter.SessionState(session).PendingInteractive; prompt != nil {
 		t.Fatalf("pending prompt after resolve = %#v, want nil", prompt)
+	}
+	if got := adapter.InteractiveDisposition(session, "turn-approval", "approval-1"); got != InteractiveDispositionAnswered {
+		t.Fatalf("disposition after resolve = %q, want answered", got)
+	}
+
+	replayed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "turn-approval", claudeSDKSidecarEvent{
+		Type: "approval_requested",
+		Payload: map[string]any{
+			"turnId":     "turn-approval",
+			"requestId":  "approval-1",
+			"toolCallId": "toolu-approval",
+			"toolName":   "Bash",
+			"input":      map[string]any{"command": "touch approval.txt"},
+			"options": []any{
+				map[string]any{"kind": "allow_once", "name": "Allow", "optionId": "allow"},
+				map[string]any{"kind": "reject_once", "name": "Reject", "optionId": "reject"},
+			},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("replayed approval_requested err=%v terminal=%v", err, terminal)
+	}
+	if len(replayed) != 0 {
+		t.Fatalf("replayed events = %#v, want none after the request is answered", replayed)
+	}
+	if got := adapter.InteractiveDisposition(session, "turn-approval", "approval-1"); got != InteractiveDispositionAnswered {
+		t.Fatalf("disposition after replay = %q, want answered", got)
+	}
+	if prompt := adapter.SessionState(session).PendingInteractive; prompt != nil {
+		t.Fatalf("pending prompt after replay = %#v, want nil", prompt)
 	}
 }
 

@@ -22,7 +22,7 @@ func TestGeneratedComposerConfigOptionKeepsRequestedProvenance(t *testing.T) {
 		CurrentValue:   "default",
 		EffectiveValue: "claude-haiku-4-5-20251001",
 		Options: []agentservice.ComposerConfigOptionValue{
-			{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", Value: "gpt-5.6-sol"},
+			{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", Value: "gpt-5.6-sol", ConsumptionMultiplier: "0.71"},
 			{ID: "x-ai/grok-4.5", Label: "x-ai/grok-4.5", Value: "x-ai/grok-4.5", Requested: true},
 		},
 	})
@@ -31,6 +31,9 @@ func TestGeneratedComposerConfigOptionKeepsRequestedProvenance(t *testing.T) {
 	}
 	if generated.Options[0].Requested != nil {
 		t.Fatal("catalog entry must omit the requested field")
+	}
+	if generated.Options[0].ConsumptionMultiplier == nil || *generated.Options[0].ConsumptionMultiplier != "0.71" {
+		t.Fatalf("consumption multiplier = %#v, want 0.71", generated.Options[0].ConsumptionMultiplier)
 	}
 	if generated.Options[1].Requested == nil || !*generated.Options[1].Requested {
 		t.Fatal("requested-origin entry must project requested=true")
@@ -60,6 +63,12 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 				}
 				if input.Settings.Model != "gpt-5" || input.Settings.ReasoningEffort != "high" {
 					t.Fatalf("settings = %#v", input.Settings)
+				}
+				if input.Section != agentservice.ComposerOptionsSectionCore {
+					t.Fatalf("section = %q, want core", input.Section)
+				}
+				if !input.WaitForFreshModelCatalog {
+					t.Fatal("waitForFreshModelCatalog = false, want true")
 				}
 				return agentservice.ComposerOptions{
 					Capabilities: []string{"imageInput", "planMode", "browserUse"},
@@ -145,8 +154,10 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptions(t *testing.T) {
 	}))
 
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost, "/v1/agent-providers/codex/composer-options", map[string]any{
-		"cwd":    "/workspace/project",
-		"locale": "zh-CN",
+		"cwd":                      "/workspace/project",
+		"locale":                   "zh-CN",
+		"section":                  "core",
+		"waitForFreshModelCatalog": true,
 		"settings": map[string]any{
 			"model":            "gpt-5",
 			"permissionModeId": "auto",
@@ -306,15 +317,19 @@ func TestDaemonAPIGeneratedRoutesGetAgentProviderComposerOptionsLeavesTargetDefa
 
 func TestGeneratedAgentProviderCapabilityOptionsProjectsIconURL(t *testing.T) {
 	options := generatedAgentProviderCapabilityOptions([]agentservice.ComposerCapabilityOption{{
-		ID:         "connector:github",
-		Kind:       "connector",
-		Name:       "github",
-		Label:      "GitHub",
-		IconURL:    "data:image/png;base64,Z2l0aHVi",
-		Status:     "available",
-		Invocation: "textTrigger",
+		ID:                "connector:github",
+		Kind:              "connector",
+		Name:              "github",
+		Label:             "GitHub",
+		IconURL:           "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
+		InstalledAtUnixMS: 1786089600000,
+		Status:            "available",
+		Invocation:        "textTrigger",
 	}})
-	if len(options) != 1 || options[0].IconUrl == nil || *options[0].IconUrl != "data:image/png;base64,Z2l0aHVi" {
+	if len(options) != 1 || options[0].IconUrl == nil || *options[0].IconUrl != "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg" {
 		t.Fatalf("options = %#v, want connector icon URL", options)
+	}
+	if options[0].InstalledAtUnixMs == nil || *options[0].InstalledAtUnixMs != 1786089600000 {
+		t.Fatalf("options = %#v, want connector installation time", options)
 	}
 }

@@ -29,9 +29,14 @@ export function normalizeConfigOptionValue(value: unknown): string | null {
 
 export function typedGoalControlFromComposer(
   content: AgentPromptContentBlock[],
-  _displayPrompt?: string
+  _displayPrompt: string | undefined,
+  goalControlSupported: boolean
 ): { action: AgentActivityGoalControlAction; objective?: string } | null {
-  if (content.length !== 1 || content[0]?.type !== "text") {
+  if (
+    !goalControlSupported ||
+    content.length !== 1 ||
+    content[0]?.type !== "text"
+  ) {
     return null;
   }
   // Presentation-only displayPrompt must not hide or manufacture a control.
@@ -270,6 +275,9 @@ export function providerSkillsFromComposerOptions(
           ...(isConnector && capability.iconUrl
             ? { iconUrl: capability.iconUrl }
             : {}),
+          ...(isConnector && capability.installedAtUnixMs
+            ? { installedAtUnixMs: capability.installedAtUnixMs }
+            : {}),
           ...(capability.description
             ? { description: capability.description }
             : {}),
@@ -290,6 +298,7 @@ export function areProviderSkillOptionsEqual(
     left.name === right.name &&
     left.connectorKey === right.connectorKey &&
     left.iconUrl === right.iconUrl &&
+    left.installedAtUnixMs === right.installedAtUnixMs &&
     left.trigger === right.trigger &&
     left.invocation === right.invocation &&
     left.sourceKind === right.sourceKind &&
@@ -528,7 +537,7 @@ export function nodeDataFromComposerSettings(
     return {
       ...current,
       composerOverridesByAgentTargetId: {
-        ...(current.composerOverridesByAgentTargetId ?? {}),
+        ...current.composerOverridesByAgentTargetId,
         [agentTargetId]: composerOverrides
       }
     };
@@ -537,7 +546,7 @@ export function nodeDataFromComposerSettings(
     ...current,
     composerOverrides,
     composerOverridesByProvider: {
-      ...(current.composerOverridesByProvider ?? {}),
+      ...current.composerOverridesByProvider,
       [current.provider]: composerOverrides
     }
   };

@@ -463,6 +463,44 @@ detailHydrated:false`.
   [tutti_mode_host_context.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context.go),
   [tutti_mode_host_context_test.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context_test.go)
 
+### Tutti Mode review only offers request changes after preference drift
+
+- **Symptom:** A pending plan review shows only a request-changes action, or
+  accepting an existing plan is silently converted into a rejection after the
+  Composer effect or speed changes. The plan may also contain values that never
+  matched the Turn that produced it.
+- **Quick checks:** Compare three distinct values: the producing Turn's
+  `TuttiModeTurnSnapshot`, the current revision's explicit
+  `execution.effect`/`execution.speed`, and the Session's current Composer
+  preferences. If the first two differ, inspect the `plan propose` or
+  `plan revise` response for `tutti_mode_preference_snapshot_mismatch`. If only
+  the current Composer preferences differ, the drift happened legitimately
+  after proposal and both review decisions must remain available.
+- **Root cause:** Range validation alone allowed an Agent to persist plausible
+  but invented preference values. A hardcoded Host Context example could teach
+  the Agent different values than the frozen Turn snapshot. AgentGUI then
+  treated every post-proposal preference difference as implicit rejection, so
+  the user lost a direct way to accept the already-reviewed document.
+- **Fix:** Render Host Context examples from the exact Turn snapshot. Require
+  Agent CLI proposals and revisions to carry that active Turn ID, and have the
+  plan service validate both explicit values through the activation-service
+  snapshot reader before allocating IDs, writing revision content, or mutating
+  workflow state. In AgentGUI, expose `Request changes` beside `Accept` only
+  when both frozen values prove a real preference change; otherwise expose only
+  `Accept`. Accept must keep the visible checkpoint identity and never convert
+  into request-changes feedback.
+- **Validation:** Prove mismatched, missing-value, and missing-snapshot
+  documents leave revision content and workflow state untouched; prove a
+  matching document succeeds. In the UI, verify the divergent state exposes
+  both actions, request-changes rejects with current-preference feedback,
+  explicit accept records `accepted`, and matching empty-send still accepts.
+- **References:**
+  [workspace-workflows.md](../../architecture/workspace-workflows.md),
+  [agent-gui-node.md](../../architecture/agent-gui-node.md),
+  [service.go](../../../services/tuttid/service/tuttimodeplan/service.go),
+  [tutti_mode_host_context.go](../../../packages/agent/daemon/runtime/tutti_mode_host_context.go),
+  [useAgentGUITuttiWorkflow.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/view/useAgentGUITuttiWorkflow.ts)
+
 ### Tutti Mode Plan stops loading after a task-graph revision
 
 - **Symptom:** The configuration review panel works and `tutti plan revise`
@@ -769,26 +807,37 @@ be resent`). The app never opens.
   `renderer_adapter.create.resolved` and `api.create.completed`. Confirm the
   missing reconcile occurs while the engine still has a requested or uncertain
   new-session activation.
-- **Root cause:** Initial Tutti activation can publish
-  `workspace.tuttimode.updated` before the create transaction is query-visible
-  or its HTTP response returns. The renderer treats the event as a reconcile
-  hint and exposes its transient 404 as a detail failure even though the
-  independent create command is still in flight.
-- **Fix:** Ignore only this Tutti update hint when the exact Session has no
-  canonical record and its latest new-session activation is still requested or
-  uncertain. Let the authoritative create result confirm the Session. Do not
-  broadly swallow reconcile 404s: existing Sessions and other reconcile
-  sources still report their real failures. Tombstone only from explicit
-  deletion evidence such as `session_deleted` or a successful delete command.
-- **Validation:** Hold create in flight, publish
-  `workspace.tuttimode.updated`, and verify the Session read is not called and
-  no reconcile error is recorded. Then resolve create and verify the canonical
-  Session and active activation are present. Also prove the same event still
-  reconciles an existing Session and preserves its not-found diagnostic, while
-  an explicit `session_deleted` event tombstones it.
+- **Root cause:** Initial activation can publish activity or mode updates before
+  the create transaction is query-visible or its HTTP response returns. The
+  renderer treated those independent signals as permission to reconcile an
+  exact Session, so a normal not-yet-visible window became a transient 404 even
+  though the create command was still in flight. A topic-specific guard covered
+  only one of those signals and left the admission boundary fragmented.
+- **Fix:** Keep the new Session behind the admission fence while its activation
+  is still `requested`. The activity-core reconcile reducer records demand but
+  defers transport reads whenever the exact Session has no canonical record
+  and the create command still owns visibility. If the create result becomes
+  uncertain or its confirmation expires, enqueue one authoritative recovery
+  reconcile; that recovery is allowed to discover a Session that was committed
+  even though the create response was lost. A normal successful create still
+  releases the merged demand through `session/upserted`, regardless of whether
+  the trigger was an activity event, a mode update, or direct Session
+  synchronization. Do not broadly swallow reconcile 404s: existing Sessions
+  and settled activations still report real failures. Tombstone only from
+  explicit deletion evidence such as `session_deleted` or a successful delete
+  command.
+- **Validation:** Hold create in flight, publish both
+  `agent.activity.updated` and `workspace.tuttimode.updated`, and request direct
+  Session synchronization. Verify no Session read is called while activation
+  is requested. Then simulate a lost create response and verify one recovery
+  reconcile is admitted, discovers the canonical Session, and confirms the
+  activation. Also prove an existing Session still reconciles and preserves
+  its not-found diagnostic, while an explicit `session_deleted` event
+  tombstones it.
 - **References:**
+  [sessionReconcile.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionReconcile.reducer.ts)
+  [rootReducer.ts](../../../packages/agent/activity-core/src/engine/rootReducer.ts)
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
-  [workspaceEventCoordinator.ts](../../../packages/agent/activity-core/src/workspaceEventCoordinator.ts)
 
 ### A Tutti submission remains `delivery is still being confirmed`
 
@@ -1473,6 +1522,57 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [codex_appserver_turn_machine.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
   [codex_appserver_adapter_test.go](../../../packages/agent/daemon/runtime/codex_appserver_adapter_test.go)
 
+### Codex app-server Start/Resume waits after a lifecycle notification
+
+- Symptom:
+  Session start or resume reaches the provider, but Tutti waits for the
+  lifecycle RPC timeout even though Codex sent `thread/started`. A required MCP
+  server can show the same symptom when the only failure evidence is
+  `mcpServer/startupStatus/updated` with `status = failed` and there is no
+  stderr or JSON-RPC response.
+- Quick checks:
+  Inspect the app-server wire trace for `thread/started` or
+  `mcpServer/startupStatus/updated` before the missing `thread/start` or
+  `thread/resume` response. Distinguish this from a completely silent provider:
+  without an authoritative lifecycle notification, process termination, or
+  transport error, the call must still time out rather than manufacture success.
+  The Codex adapter allows 90 seconds for `thread/start`; `thread/resume` and
+  the `turn/start` acknowledgement retain their 30-second budgets.
+- Root cause:
+  App-server notifications and the response for their triggering RPC have no
+  safe application-order guarantee. Waiting only on the response leaves the
+  lifecycle call blocked when Codex has already published the authoritative
+  thread snapshot. A required MCP failure is terminal only when Codex reports
+  it through the lifecycle RPC itself. MCP stderr and startup-status
+  notifications are diagnostic state, not independent lifecycle failures:
+  optional MCP startup can fail while the Codex session is still usable. Child
+  terminal notifications can arrive before `receiverThreadIds` registers their
+  thread; dropping those unknown-thread terminal events loses the only
+  completion fact.
+- Fix:
+  Complete only the active method-matched `thread/start` or `thread/resume` wait
+  from a valid `thread/started` snapshot. Do not fail that wait from MCP stderr
+  or `mcpServer/startupStatus/updated`; record the warning and keep the session
+  alive. A real Codex lifecycle RPC error, process exit, or transport error
+  remains terminal and is still propagated. Keep ordinary foreign-thread
+  progress dropped, but retain a bounded terminal notification until child
+  registration and replay it with child identity. Warnings without a `turnId`
+  use a session audit event instead of a turn-scoped message.
+  Keep confirmed provider turn-id fences; only the existing unconfirmed steer
+  stub and goal-adopted exceptions may settle from a different or empty id.
+- Validation:
+  Run the notification-only Start/Resume wire test, the delayed MCP
+  failed-status tests, the turnless warning projection test, and
+  the child terminal-before-registration replay test.
+  Run the focused app-server suite with `-race` and the full
+  `go test ./packages/agent/daemon/runtime` package suite.
+- References:
+  [codex_appserver_client.go](../../../packages/agent/daemon/runtime/codex_appserver_client.go)
+  [codex_appserver_event_routing.go](../../../packages/agent/daemon/runtime/codex_appserver_event_routing.go)
+  [codex_appserver_turn_machine.go](../../../packages/agent/daemon/runtime/codex_appserver_turn_machine.go)
+  [codex_appserver_lifecycle_test.go](../../../packages/agent/daemon/runtime/codex_appserver_lifecycle_test.go)
+  [codex_appserver_events_test.go](../../../packages/agent/daemon/runtime/codex_appserver_events_test.go)
+
 ### Busy-turn message insertion fails or ends without sending the prompt
 
 - Symptom:
@@ -1831,6 +1931,40 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [service.go](../../../services/tuttid/service/agent/service.go)
   [service_session_list.go](../../../services/tuttid/service/agent/service_session_list.go)
 
+### Remote session stays planning while the provider already replied
+
+- Symptom:
+  A remote or cloud-backed AgentGUI conversation remains on its planning or
+  working placeholder after the provider has already settled the Turn. Reading
+  the authoritative Session directly reports `ready` with no active Turn, and
+  opening the Session event stream immediately reveals the missing assistant
+  response.
+- Quick checks:
+  First compare authoritative Session state with the renderer projection. Then
+  inspect host access logs for the exact Session event-stream subscription. If
+  the provider settled but the AgentGUI surface never requested the stream,
+  increasing HTTP or activation timeouts cannot repair the stale projection.
+- Root cause:
+  The focused conversation was hydrated once but did not retain the host's
+  optional Session synchronization lease. Hosts that use that lease to keep a
+  per-Session event stream open therefore receive no terminal state or message
+  events until another read happens to reconcile the Session.
+- Fix:
+  Keep synchronization ownership in the shared focused-conversation controller.
+  Acquire the exact Session lease on focus, keep repeated selection idempotent,
+  release the previous lease on switch or clear, and release the final lease on
+  disposal. Keep the host responsible for transport and authoritative
+  reconciliation; do not add provider-specific polling or longer timeouts.
+- Validation:
+  Add controller coverage for acquire, repeated selection, switch, clear, and
+  disposal. In the affected host, verify that selecting the conversation opens
+  the exact Session stream and that a terminal event updates both state and
+  transcript without a manual refresh.
+- References:
+  [agentConversationMessageController.ts](../../../packages/agent/gui/agentConversationMessageController.ts)
+  [useAgentConversationMessagePaging.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentConversationMessagePaging.ts)
+  [agent-activity-packages.md](../../architecture/agent-activity-packages.md)
+
 ### AgentGUI pin or unpin appears stuck for a live session
 
 - Symptom:
@@ -2035,7 +2169,10 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   intent. Merge its sparse fields only in the tuttid SQLite transaction, publish
   target invalidation after success, and reread defaults through
   composer-options. Keep Create Session inheritance in `agent.Service.Create`;
-  callers pass only explicit overrides. Do not repair this with debounce,
+  if AgentGUI forwards a presented inherited model or reasoning value, it must
+  also carry `modelExplicit=false` / `reasoningEffortExplicit=false` through
+  Engine and the HTTP request; explicit overrides carry `true`. Do not repair
+  this with debounce,
   localStorage, node/workbench overlays, or another full preferences write.
   Do not add workspace/cwd to the target-default patch. Extension model
   validation uses the daemon-observed last-known-good catalog for the exact
@@ -2253,8 +2390,9 @@ inline data URL instead`. Claude or standard ACP may instead receive no
 - Fix:
   Keep page sessions in the workspace engine. Cache only ordered membership ids,
   cursor, `hasMore`, and `totalCount` in the controller query, then join ids to
-  engine entities with a pure model projection. Keep active and pending sessions
-  as display overlays outside pagination. Preserve old scope chrome and metadata
+  engine entities with a pure model projection. Keep active, pending, and all
+  exact-target in-progress root sessions as display overlays outside pagination
+  until canonical membership catches up. Preserve old scope chrome and metadata
   atomically while a provider refetch is pending. Engine snapshots merge
   monotonically; only explicit `session/removed` owns deletion. Keep first-page
   bootstrap as a required narrow repository seam: one requested-section-driven
@@ -2834,6 +2972,46 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [claude_sdk_execution.go](../../../packages/agent/daemon/runtime/claude_sdk_execution.go)
   [claude_sdk_events.go](../../../packages/agent/daemon/runtime/claude_sdk_events.go)
 
+### A completed Turn loses its Fork entry after a rail refresh
+
+- Symptom:
+  A selected Session detail initially offers Fork on its latest completed Turn,
+  but switching provider scope, refreshing the conversation rail, or receiving
+  a section page removes the action. The canonical Turn still has
+  `root_provider_turn_id` and `provider_turn_binding_json`; a full Session
+  detail reports `providerForkBindingState=bound`, while the list projection
+  reports `recovery_required` for the same Turn and timestamp.
+- Quick checks:
+  Compare the list and full-detail payloads for the exact Session and Turn.
+  Then inspect the activity-engine Turn before and after
+  `session/snapshotReceived`. An image attachment is unrelated unless the
+  provider binding itself is absent.
+- Root cause:
+  Session list and section responses batch-project the latest Turn. Treating a
+  non-persisted provider-binding availability flag as canonical without
+  resolving it returns a fail-closed value. The rail then merges that
+  lightweight latest-Turn entity into the same canonical Turn as the
+  authoritative detail. Equal timestamps and outcomes permit the whole Turn
+  replacement, so the fail-closed list value overwrites `bound`.
+- Fix:
+  Resolve settled latest/active Turn forkability in the shared batch response
+  projector and cache duplicate probes within the request. Keep list Session
+  capabilities lightweight, but mark full capability projections explicitly.
+  In Activity Core, a lightweight Session snapshot may upgrade a provider Turn
+  binding but must not downgrade an already bound Turn. Keep message and
+  TuttiMode revisions monotonic for the same reason; Goal synchronization needs
+  its own update version because one Goal revision has multiple sync states.
+- Validation:
+  Cover the list entry point and duplicate active/latest projections through
+  the shared batch projector used by list and section reads, asserting one
+  cached provider probe per exact Turn and fail-closed provider errors.
+  Apply a lightweight `recovery_required` snapshot after an authoritative
+  `bound` snapshot and assert the canonical Turn remains bound. Also verify an
+  actual full projection can still supply authoritative lifecycle state.
+- References:
+  [service_turns.go](../../../services/tuttid/service/agent/service_turns.go)
+  [sessionEntities.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionEntities.reducer.ts)
+
 ### Claude Code Fork fails after the action is clicked
 
 - Symptom:
@@ -3110,6 +3288,34 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [desktopRichTextAtAgentContributors.ts](../../../apps/desktop/src/renderer/src/features/rich-text-at/services/internal/desktopRichTextAtAgentContributors.ts)
   [agent-gui-node.md](../../architecture/agent-gui-node.md)
 
+### AgentGUI @ browse fails after reopening
+
+- Symptom:
+  The AgentGUI `@` palette opens once, then shows a search failure after the
+  palette is closed and reopened, even though the workspace request itself is
+  healthy.
+- Quick checks:
+  Inspect the AgentGUI lifecycle diagnostics for a `browse.fetch.start` entry
+  followed by `AbortError` on the next open. The failing request usually has
+  the same browse key as the request canceled when the first palette closed.
+- Root cause:
+  A shared browse request was kept in its deduplication map until its promise's
+  asynchronous `finally` cleanup ran. A new consumer could arrive in that
+  window and attach to the already-aborted request, turning expected palette
+  cancellation into a visible search failure.
+- Fix:
+  Use `AbortableSingleFlight` for shared abortable requests. Evict the entry
+  synchronously when its final consumer leaves, and make late cleanup delete
+  only the exact request instance. An operation owner may also abort a stuck
+  request immediately without leaving a retryable stale entry.
+- Validation:
+  Cover concurrent deduplication, one-consumer cancellation, immediate retry
+  after final-consumer cancellation, operation-owner timeout cancellation, and
+  late completion of the old request after a replacement starts.
+- References:
+  [abortableSingleFlight.ts](../../../packages/agent/gui/shared/query/abortableSingleFlight.ts)
+  [AgentMentionSearchCache.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentMentionSearchCache.ts)
+
 ### Agent diagnostics flood while a turn is streaming
 
 - Symptom:
@@ -3298,11 +3504,50 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Run
   `pnpm --filter @tutti-os/desktop test -- workspaceAgentActivityService.test.ts`
   and verify the service integration coverage proves that realtime completion
-  becomes unread while a settled historical load remains read.
+  becomes unread while a settled historical load creates no attention record.
 - References:
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
   [attentionReadState.reducer.ts](../../../packages/agent/activity-core/src/engine/attentionReadState.reducer.ts)
+
+### Unfocused AgentGUI Session completion becomes read
+
+- Symptom:
+  A running Session settles after the user focuses another AgentGUI node or
+  window, but the original Session immediately loses its unread-completion lamp.
+- Quick checks:
+  Inspect `agent.gui.attention_read.decision`. The diagnostic identifies the
+  node, completion key, host focus, document exposure, visibility, and whether
+  the completion was read or preserved. A retained node with
+  `isSurfaceActive=false`, `isSurfaceVisible=false`, or
+  `isSurfaceDocumentExposed=false` must report `decision=preserve_unread`; its
+  local `activeConversationId` is not evidence that the user is reading it.
+- Root cause:
+  AgentGUI selection is local to each mounted controller, while attention/read
+  state is shared by the workspace engine. Treating every controller's active
+  Session as visually selected allowed a hidden or unfocused retained node to
+  dispatch the shared `attention/read` intent. Separately, historical Turns
+  without a durable marker were assigned `isUnread=false` and persisted into
+  `readIds`; a stale list/detail response could therefore turn an unseen live
+  completion into durable read state.
+- Fix:
+  Use unread-only attention state. Only a live completion transition or an
+  explicit unread request creates an unread record; `attention/read` removes
+  that record, and historical snapshots never mutate attention. Hydration
+  ignores legacy `readIds` and the next write clears those buckets. Pass
+  host-projected focus, host visibility, and renderer document focus/visibility
+  into the selection controller, and require all three before dispatching
+  `attention/read`. Keep the existing manual unread provenance rule so a
+  user-marked unread completion stays unread until the Session is selected
+  again.
+- Validation:
+  Keep two AgentGUI nodes mounted, run a Turn in the unfocused node's active
+  Session, and verify its completion key remains in `completed.unreadIds`.
+  Focusing and exposing that node should remove the exact key while leaving
+  `completed.readIds` empty.
+- References:
+  [AgentGUINode.tsx](../../../packages/agent/gui/agent-gui/agentGuiNode/AgentGUINode.tsx)
+  [useAgentGUIConversationSelectionController.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/useAgentGUIConversationSelectionController.ts)
 
 ### Completed agent session stays activating and disables the composer
 
@@ -3342,6 +3587,42 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [pendingIntents.reducer.ts](../../../packages/agent/activity-core/src/engine/pendingIntents.reducer.ts)
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
+
+### Forked conversation disappears from the Rail after completion
+
+- Symptom:
+  A newly forked conversation is visible and selected while its first Turn is
+  running, but disappears from the Rail as soon as that Turn settles. Opening
+  the exact Session still works, and a later full Rail reload may restore it.
+- Quick checks:
+  Correlate `session/forkThroughTurnRequested`, the canonical child
+  `session/upserted`, and the bounded `listSessionSectionPage` request. If the
+  child becomes canonical while selected but no exact request is made for its
+  inherited `railSectionKey`, inspect pending-creation membership rather than
+  the fork persistence path. Also verify that the child was initially visible
+  only through the active or running overlay.
+- Root cause:
+  Fork selected the child immediately, while membership reconciliation skipped
+  every newly observed active Session to avoid refreshing for historical detail
+  hydration. The fork child therefore never entered its bounded authoritative
+  section page. Its active/running overlay temporarily hid that omission and
+  settlement exposed it by removing the overlay row.
+- Fix:
+  Project in-flight fork targets and pending activations as pending-creation
+  reconciliation evidence. Keep that semantic marker separate from render
+  provenance. When the same identity becomes canonical, refresh its exact
+  persisted Rail section even when selected; continue skipping ordinary
+  selected historical hydration when no pending-creation evidence exists.
+- Validation:
+  Drive a real `AgentSessionEngine` and
+  `AgentGUIConversationRailQueryController` through a held fork command,
+  select the target before canonical upsert, then verify the controller requests
+  the inherited section and publishes the child in authoritative membership.
+  Retain the existing selected historical-Session no-refresh coverage.
+- References:
+  [agentGuiConversationRailMembershipRecords.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRailMembershipRecords.ts)
+  [agentGuiConversationRailMembershipRefresh.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRailMembershipRefresh.ts)
+  [AgentGUIConversationRailQueryController.spec.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.spec.ts)
 
 ### Shared Agent composer stays disabled after the target connects
 
@@ -4886,11 +5167,13 @@ agent target`, although the current model picker does not offer that model.
   provider-side reconfiguration failure.
 - Fix:
   At Create, distinguish a target-scoped persisted default from a model
-  explicitly supplied by the caller. For an Agent Extension, resolve an
-  obsolete persisted default to the current model reported by that same
-  extension; never use a different provider. Resolve non-explicit per-model
-  reasoning against that effective model while keeping explicit caller values
-  strict. Treat an explicit ACP model selection as identity-bearing: leave an
+  explicitly supplied by the caller. For a provider or Agent Extension,
+  resolve an obsolete persisted default to the current catalog default
+  reported by that same target; never use a different provider. Resolve
+  non-explicit per-model reasoning against that effective model while keeping
+  explicit caller values strict. A strict per-model reasoning catalog must
+  omit an inherited value when it cannot prove that the target model supports
+  it. Treat an explicit ACP model selection as identity-bearing: leave an
   already-selected model unchanged, and if a real model change is rejected,
   abort startup rather than falling back.
 - Validation:

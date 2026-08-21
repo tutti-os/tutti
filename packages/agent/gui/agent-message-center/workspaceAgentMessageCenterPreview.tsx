@@ -215,8 +215,6 @@ export function buildWorkspaceAgentInteractivePromptLabels(
     submitAnswers: t("agentHost.agentGui.submitAnswers"),
     answerPlaceholder: t("agentHost.agentGui.answerPlaceholder"),
     waitingForAnswer: t("agentHost.agentGui.waitingForAnswer"),
-    returnToConversation: t("agentHost.agentGui.returnToConversation"),
-    continueAnswering: t("agentHost.agentGui.continueAnswering"),
     planImplementationLead: t("agentHost.agentGui.planImplementationLead"),
     planImplementationConfirm: t(
       "agentHost.agentGui.planImplementationConfirm"

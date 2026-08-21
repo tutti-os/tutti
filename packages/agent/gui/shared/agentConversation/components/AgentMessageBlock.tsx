@@ -26,6 +26,7 @@ import type {
   AgentConversationParticipantPresentation
 } from "../contracts/agentConversationParticipantPresentation";
 import { AgentMessageDetailsDisclosure } from "./AgentMessageDetailsDisclosure";
+import agentSystemNoticeStyles from "./agentSystemNoticeStyles";
 import { AgentToolGroupRow } from "./AgentToolGroupRow";
 import {
   AgentVisibleErrorMessage,
@@ -49,12 +50,6 @@ const DEFAULT_TOOL_CALLS_LABEL = (count: number): string =>
   `${count} tool calls`;
 const TRANSPORT_RETRY_PROGRESS_PATTERN =
   /\b(reconnect(?:ing)?(?:\s*(?:\.\.\.|…|[.。]+|:|-))?\s*\(?\d+\s*\/\s*\d+\)?)/i;
-// All system-notice banners use the light-red danger surface. Yellow/warning
-// surfaces are banned for notice boxes — see "Badges And Status" in
-// docs/conventions/desktop-visual-language.md.
-const SYSTEM_NOTICE_CLASS_NAME =
-  "border-[var(--on-danger-hover)] bg-[var(--on-danger)]";
-
 interface AgentMessageBlockProps {
   workspaceRoot: string | null;
   basePath: string;
@@ -544,7 +539,7 @@ function AgentSystemNoticeMessage({
     return (
       <div
         role="status"
-        className="box-border w-full min-w-0 py-1 text-[13px] leading-5 text-[var(--text-primary)]"
+        className="box-border w-full min-w-0 py-1 text-[13px] leading-5 text-[var(--text-secondary)]"
       >
         {retryText}
       </div>
@@ -568,7 +563,7 @@ function AgentSystemNoticeMessage({
     return (
       <section
         role="alert"
-        className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${SYSTEM_NOTICE_CLASS_NAME}`}
+        className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${agentSystemNoticeStyles.contextHandoff}`}
       >
         <div className="font-medium text-[var(--state-danger)]">
           {translate("agentHost.agentGui.contextHandoffRequired")}
@@ -594,12 +589,16 @@ function AgentSystemNoticeMessage({
   return (
     <section
       role={isStatusNotice ? "status" : undefined}
-      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-primary)] ${SYSTEM_NOTICE_CLASS_NAME}`}
+      className={`box-border w-full min-w-0 rounded-[8px] border p-3 text-[13px] leading-5 text-[var(--text-secondary)] ${agentSystemNoticeStyles.routine}`}
     >
       <div className="min-w-0">
-        <div className="font-medium text-[var(--text-primary)]">{title}</div>
+        <div className="font-medium text-[var(--text-secondary)]">{title}</div>
         {detail ? (
-          <AgentMessageDetailsDisclosure detail={detail} className="mt-1" />
+          <AgentMessageDetailsDisclosure
+            detail={detail}
+            className="mt-1"
+            tone="muted"
+          />
         ) : null}
       </div>
     </section>

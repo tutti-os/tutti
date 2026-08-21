@@ -125,6 +125,9 @@ type ComposerSettingsPatch struct {
 type ProviderRuntimeSession struct {
 	ID                      string
 	WorkspaceID             string
+	Scope                   RuntimeSessionScope
+	SourceAgentSessionID    string
+	SideRequestID           string
 	UserID                  string
 	AgentTargetID           string
 	Provider                string
@@ -371,6 +374,12 @@ type ReprepareRuntimeSessionInput struct {
 	WorkspaceID           string
 	AgentSessionID        string
 	RuntimeContextOverlay map[string]any
+	// ExpectedRuntimeContext and ReplacementRuntimeContext are supplied
+	// together for a durable configuration rebind. Host prepares and launches
+	// from ReplacementRuntimeContext, then compare-and-swaps it into canonical
+	// state before admitting a Turn.
+	ExpectedRuntimeContext    map[string]any
+	ReplacementRuntimeContext map[string]any
 }
 
 // ReprepareRuntimeSessionAndSendInputInput atomically replaces an idle
@@ -398,6 +407,11 @@ type RuntimeExecInput struct {
 	HistoryReplacement              bool
 	RequireProviderAcceptance       bool
 	TuttiModeSnapshot               *TuttiModeTurnSnapshot
+	// ConnectorRoutingUpdate carries the current connector alias index when it
+	// diverged from the index materialized into the session's instructions.
+	// The runtime renders it into provider-only content; canonical prompt
+	// content never includes it. Nil means the instructions are still current.
+	ConnectorRoutingUpdate *string
 }
 
 type CapabilityReference = storesqlite.CapabilityReference
@@ -449,22 +463,6 @@ const (
 	RuntimeAcceptanceSourceTurnStartResponse RuntimeAcceptanceSource = "turn_start_response"
 	RuntimeAcceptanceSourceHistoryRead       RuntimeAcceptanceSource = "history_read"
 )
-
-// RuntimeProviderAcceptanceReceipt is positive provider evidence that a
-// replacement turn crossed the provider delivery boundary.
-type RuntimeProviderAcceptanceReceipt struct {
-	ProviderSessionID string
-	ProviderTurnID    string
-	Source            RuntimeAcceptanceSource
-}
-
-// RuntimeProviderDispatchResult separates an explicit provider outcome from a
-// transport failure whose effect is unknown. Acceptance is present only when
-// the provider supplied positive evidence for the dispatched turn.
-type RuntimeProviderDispatchResult struct {
-	Disposition RuntimeDispatchDisposition
-	Acceptance  *RuntimeProviderAcceptanceReceipt
-}
 
 type RuntimeHistoryTurn struct {
 	ID                  string
@@ -573,10 +571,6 @@ type RuntimeSubmitInteractiveInput struct {
 	Payload            map[string]any
 }
 
-type RuntimeSubmitInteractiveResult struct {
-	Disposition RuntimeInteractiveDisposition
-}
-
 type RuntimeInteractiveDisposition string
 
 const (
@@ -643,6 +637,18 @@ type RailPlacement struct {
 	SectionKey  string            `json:"sectionKey"`
 }
 
+// ResolveRuntimeSessionRailPlacementInput identifies the final prepared
+// runtime context whose canonical rail placement must be known before a
+// provider process starts.
+type ResolveRuntimeSessionRailPlacementInput struct {
+	WorkspaceID                string
+	AgentSessionID             string
+	Cwd                        string
+	RuntimeContext             map[string]any
+	RailPlacement              *RailPlacement
+	RailPlacementAuthoritative bool
+}
+
 // CreateSessionInput is the provider-neutral create contract. Adapter-only
 // import paths, workspace resolution, identity, and transport state are not
 // part of this type.
@@ -681,6 +687,11 @@ type CreateSessionInput struct {
 	ConversationDetailMode string
 	Visible                *bool
 	RailPlacement          *RailPlacement
+	// RailPlacementAuthoritative declares that RailPlacement was selected by
+	// an external canonical authority and may name a project absent from this
+	// Host's local project registry. It applies only to first initialization
+	// and never permits replacing an existing canonical placement.
+	RailPlacementAuthoritative bool
 }
 
 type SendInput struct {
@@ -694,6 +705,10 @@ type SendInput struct {
 	// overrides any legacy clientSubmitId value carried in Metadata.
 	ClientSubmitID string
 	Guidance       bool
+	// ConnectorRoutingUpdate is set by the service when the connector alias
+	// index changed after this session's instructions were prepared. See
+	// RuntimeExecInput.ConnectorRoutingUpdate.
+	ConnectorRoutingUpdate *string
 }
 
 type SubmitInteractiveInput struct {
@@ -1060,18 +1075,4 @@ type FenceGoalGenerationResult struct {
 	Fence          storesqlite.GoalGenerationFence
 	IntentAccepted bool
 	Settled        bool
-}
-
-type GoalReconcileRequiredInput struct {
-	WorkspaceID         string
-	AgentSessionID      string
-	RequestID           string
-	ProviderTurnID      string
-	Reason              string
-	FenceMode           string
-	ExpectedOperationID string
-	ExpectedRevision    int64
-	ExpectedRepairEpoch int64
-	QuiesceSucceeded    bool
-	QuiesceError        string
 }

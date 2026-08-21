@@ -7,6 +7,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
@@ -25,6 +26,7 @@ type RuntimeBinding struct {
 	ToolAliases                  map[string]string
 	AuthenticationMethods        map[string]AuthenticationMethodProfile
 	ModelConfigOptionID          string
+	ModelDescriptionFormat       string
 	PermissionConfigOptionID     string
 	ReasoningConfigOptionID      string
 	PermissionModes              map[string]string
@@ -37,6 +39,15 @@ type RuntimeBinding struct {
 	Capabilities                 []string
 	ExecutableIdentity           *agentruntime.ExecutableIdentity
 	Env                          []string
+}
+
+type AccountUsageRuntimeBinding struct {
+	NodePath       string
+	ScriptPath     string
+	Args           []string
+	Timeout        time.Duration
+	NodeIdentity   *agentruntime.ExecutableIdentity
+	ScriptIdentity *agentruntime.ExecutableIdentity
 }
 
 func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.AdapterResolveInput) (agentruntime.Adapter, error) {
@@ -74,6 +85,7 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		AuthMessage:                  binding.Installation.AuthMessage,
 		ToolAliases:                  binding.ToolAliases,
 		ModelConfigOptionID:          binding.ModelConfigOptionID,
+		ModelDescriptionFormat:       binding.ModelDescriptionFormat,
 		PermissionConfigOptionID:     binding.PermissionConfigOptionID,
 		ReasoningConfigOptionID:      binding.ReasoningConfigOptionID,
 		RestrictConfigOptions:        true,

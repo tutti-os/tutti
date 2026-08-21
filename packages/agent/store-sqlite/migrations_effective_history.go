@@ -133,3 +133,36 @@ END;
 	}
 	return nil
 }
+
+func (s *Store) applyWorkspaceAgentEffectiveHistoryV2(ctx context.Context) error {
+	applied, err := s.hasMigration(ctx, schemaMigrationWorkspaceAgentEffectiveHistoryV2)
+	if err != nil || applied {
+		return err
+	}
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin workspace agent effective history v2 migration: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	hasMetadata, err := hasColumnTx(ctx, tx, "workspace_agent_turn_submissions", "metadata_json")
+	if err != nil {
+		return err
+	}
+	if !hasMetadata {
+		if _, err := tx.ExecContext(ctx, `
+ALTER TABLE workspace_agent_turn_submissions
+ADD COLUMN metadata_json TEXT NOT NULL DEFAULT '{}'
+  CHECK (json_valid(metadata_json) AND json_type(metadata_json) = 'object')
+`); err != nil {
+			return fmt.Errorf("add workspace agent turn submission metadata: %w", err)
+		}
+	}
+	if err := recordMigrationTx(ctx, tx, schemaMigrationWorkspaceAgentEffectiveHistoryV2); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit workspace agent effective history v2 migration: %w", err)
+	}
+	return nil
+}

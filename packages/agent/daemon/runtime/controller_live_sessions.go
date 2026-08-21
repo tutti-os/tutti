@@ -13,7 +13,17 @@ import (
 func (c *Controller) ensureLiveAdapterSession(ctx context.Context, session Session, adapter Adapter) error {
 	probe, ok := adapter.(LiveSessionProbeAdapter)
 	if !ok || probe.HasLiveSession(session) {
+		if session.IsSideConversation() {
+			return nil
+		}
 		return c.applyRetainedGoalGenerationFencesOrClose(ctx, session, adapter)
+	}
+	if session.IsSideConversation() {
+		// Ephemeral provider threads are deliberately not durable/resumable.
+		// A lost process therefore expires the side instead of silently
+		// reconnecting it as if it were a canonical session.
+		c.forgetSideStreamEvents(session)
+		return ErrSideConversationExpired
 	}
 	if strings.TrimSpace(session.ProviderSessionID) == "" {
 		return ErrSessionDisconnected
@@ -62,6 +72,12 @@ func (c *Controller) ReleaseIdleLiveSessions(ctx context.Context, input ReleaseI
 	for key, session := range c.sessions {
 		session = c.reconcileSessionStatusLocked(key, session)
 		c.sessions[key] = session
+		// Side owns an explicit ephemeral lifecycle. The canonical idle
+		// reaper cannot synchronize the Host registration or emit a Side
+		// expiry transition, so it must not reclaim Side connections.
+		if session.IsSideConversation() {
+			continue
+		}
 		candidates = append(candidates, candidate{
 			session: session,
 			adapter: c.adapters[session.Provider],
@@ -372,7 +388,22 @@ func (c *Controller) CloseAllLiveSessions(ctx context.Context) CloseAllLiveSessi
 			continue
 		}
 		result.Scanned++
-		releaseLifecycleLock := c.acquireLifecycleLock(cand.session.RoomID, cand.session.AgentSessionID)
+		releaseLifecycleLock, lockErr := c.acquireLifecycleLockContext(ctx, cand.session.RoomID, cand.session.AgentSessionID)
+		if lockErr != nil {
+			result.Failed++
+			failedProviders[provider] = true
+			slog.Warn("agent live session shutdown lock failed",
+				"event", "agent_session.shutdown_close.lock_failed",
+				"room_id", cand.session.RoomID,
+				"agent_session_id", cand.session.AgentSessionID,
+				"provider", cand.session.Provider,
+				"error", lockErr.Error(),
+			)
+			if ctx.Err() != nil {
+				break
+			}
+			continue
+		}
 		err := cand.adapter.Close(ctx, cand.session)
 		releaseLifecycleLock()
 		if err != nil {
@@ -498,7 +529,7 @@ func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) e
 	if len(content) == 0 {
 		return fmt.Errorf("prompt is required")
 	}
-	providerContent := projectRuntimeConnectorPromptContent(content)
+	providerContent, _ := projectRuntimeConnectorPromptContent(content, session.AnnouncedConnectorKeys, true)
 	if promptAdapter, ok := adapter.(PromptContentAdapter); ok {
 		return promptAdapter.ValidatePromptContent(session, providerContent)
 	}

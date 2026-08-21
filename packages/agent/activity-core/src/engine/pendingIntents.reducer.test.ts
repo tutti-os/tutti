@@ -417,13 +417,23 @@ test("malformed turnless goal control result is rejected before session upsert",
 
 test("timed out activation remains uncertain until its exact session appears", () => {
   let state = reduce(createInitialPendingIntentsState(), activation()).state;
-  state = reduce(state, {
+  const timedOut = reduce(state, {
     commandId: "activate:activation-1",
     commandType: "session/activate",
     correlationId: "activation-1",
     outcome: "timedOut",
     type: "engine/commandResult"
-  }).state;
+  });
+  state = timedOut.state;
+  assert.deepEqual(timedOut.followUpIntents, [
+    {
+      agentSessionId: "session-new",
+      needsMessages: false,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
   assert.equal(
     state.activationsByRequestId["activation-1"]?.status,
     "uncertain"
@@ -665,7 +675,15 @@ test("typed activation results cannot omit or escape their requested scope", () 
     missingSession.state.activationsByRequestId["activation-1"]?.status,
     "uncertain"
   );
-  assert.deepEqual(missingSession.followUpIntents, undefined);
+  assert.deepEqual(missingSession.followUpIntents, [
+    {
+      agentSessionId: "session-new",
+      needsMessages: false,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
 
   const existingState = reduce(
     createInitialPendingIntentsState(),
@@ -728,7 +746,15 @@ test("typed activation rejects malformed nested Session entities", () => {
     result.state.activationsByRequestId["activation-1"]?.status,
     "uncertain"
   );
-  assert.deepEqual(result.followUpIntents, undefined);
+  assert.deepEqual(result.followUpIntents, [
+    {
+      agentSessionId: "session-new",
+      needsMessages: false,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
 });
 
 test("typed activation rejects malformed Goal synchronization evidence", () => {
@@ -766,7 +792,15 @@ test("typed activation rejects malformed Goal synchronization evidence", () => {
       result.state.activationsByRequestId["activation-1"]?.status,
       "uncertain"
     );
-    assert.deepEqual(result.followUpIntents, undefined);
+    assert.deepEqual(result.followUpIntents, [
+      {
+        agentSessionId: "session-new",
+        needsMessages: false,
+        needsState: true,
+        type: "session/reconcileRequested",
+        workspaceId: "workspace-1"
+      }
+    ]);
   }
 });
 
@@ -894,13 +928,23 @@ test("activation diagnostics preserve command and snapshot evidence through expi
     dueAtUnixMs: 120_000,
     expiryId: "activation:activation-1",
     type: "engine/intentExpired"
-  }).state.activationsByRequestId["activation-1"];
-  assert.equal(expired?.status, "failed");
-  assert.equal(expired?.commandOutcome, "timed_out");
-  assert.equal(expired?.commandSettledAtUnixMs, 90_001);
-  assert.equal(expired?.snapshotOutcome, "session_missing");
-  assert.equal(expired?.lastObservedStage, "expired");
-  assert.equal(expired?.errorCode, "activation_confirmation_expired");
+  });
+  assert.deepEqual(expired.followUpIntents, [
+    {
+      agentSessionId: "session-new",
+      needsMessages: false,
+      needsState: true,
+      type: "session/reconcileRequested",
+      workspaceId: "workspace-1"
+    }
+  ]);
+  const activationRecord = expired.state.activationsByRequestId["activation-1"];
+  assert.equal(activationRecord?.status, "failed");
+  assert.equal(activationRecord?.commandOutcome, "timed_out");
+  assert.equal(activationRecord?.commandSettledAtUnixMs, 90_001);
+  assert.equal(activationRecord?.snapshotOutcome, "session_missing");
+  assert.equal(activationRecord?.lastObservedStage, "expired");
+  assert.equal(activationRecord?.errorCode, "activation_confirmation_expired");
 });
 
 test("repeated identical activation snapshot evidence preserves state identity", () => {

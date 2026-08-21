@@ -25,18 +25,22 @@ func runDefaultProgram(t *testing.T, args []string, stdout *bytes.Buffer, stderr
 	return RunWithProgram(t.Context(), "tutti", args, stdout, stderr)
 }
 
-func TestCliInvokeContextFromEnvIncludesAgentSessionID(t *testing.T) {
+func TestCliInvokeContextFromEnvIncludesAgentRuntimeContext(t *testing.T) {
 	t.Setenv("TUTTI_APP_ID", " automation-app ")
 	t.Setenv("TUTTI_WORKSPACE_ID", " workspace-1 ")
 	t.Setenv("TUTTI_APP_CLI_PARENT_COMMAND_ID", " parent-1 ")
 	t.Setenv("TUTTI_AGENT_SESSION_ID", " session-1 ")
+	t.Setenv("TUTTI_AGENT_CWD", " /workspace/project/worktree ")
+	t.Setenv("TUTTI_AGENT_RAIL_PLACEMENT", ` {"version":1,"kind":"project","projectPath":"/workspace/project","sectionKey":"project:/workspace/project"} `)
 
 	context := cliInvokeContextFromEnv()
 	if context.AppID != "automation-app" ||
 		context.Source != "cli" ||
 		context.WorkspaceID != "workspace-1" ||
 		context.ParentCommandID != "parent-1" ||
-		context.AgentSessionID != "session-1" {
+		context.AgentSessionID != "session-1" ||
+		context.AgentCWD != "/workspace/project/worktree" ||
+		context.AgentRailPlacementJSON != `{"version":1,"kind":"project","projectPath":"/workspace/project","sectionKey":"project:/workspace/project"}` {
 		t.Fatalf("context = %#v", context)
 	}
 }

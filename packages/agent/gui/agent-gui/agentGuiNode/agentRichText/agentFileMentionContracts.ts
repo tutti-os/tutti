@@ -34,6 +34,8 @@ export interface AgentMentionFileItem {
   thumbnailUrl?: string | null;
   mentionNavigation?: AgentMentionFileNavigationAction;
   childCount?: number;
+  /** Ephemeral picker-only relative path and owning-workspace presentation. */
+  contextLabel?: string;
 }
 
 export type AgentComposerFileMentionStatus = "uploading" | "ready" | "error";

@@ -47,6 +47,8 @@ import type {
 import type { TuttiWorkflowDockLabels } from "../TuttiWorkflowDock";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
 import type { AgentGUISessionLaunchMode } from "../model/agentSessionLaunchMode";
+import type { AgentProjectDropdownOptions } from "../AgentComposerProjectMenu";
+import type { AgentGUISideConversationPresentation } from "../../../agentSideConversationPresentation";
 export type AgentMentionReferenceTargetResolver = (
   item: AgentContextMentionItem
 ) => ReferenceLocateTarget | null;
@@ -68,6 +70,8 @@ export interface AgentGUIConversationRailLayout {
 // Provider-gate labels live on AgentGUIProviderReadinessLabels; extend it
 // rather than restating every key here.
 export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
+  selectionAddToConversation: string;
+  selectionAskInSide: string;
   initialPlaceholder: string;
   followupPlaceholder: string;
   installRequiredPlaceholder: string;
@@ -294,8 +298,8 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   submitAnswers: string;
   answerPlaceholder: string;
   waitingForAnswer: string;
-  returnToConversation: string;
-  continueAnswering: string;
+  returnToConversation?: string;
+  continueAnswering?: string;
   thinkingLabel: string;
   toolCallsLabel: (count: number) => string;
   openConversationWindow: string;
@@ -433,7 +437,9 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   addContentConnectorConnect: string;
   addContentConnectorAuthorize: string;
   addContentConnectorEmpty: string;
+  addContentConnectorLoading: string;
   addContentConnectorMore: string;
+  addContentConnectorSelected: string;
   referenceWorkspaceFiles: string;
   handoffConversation: string;
   handoffConversationTooltip: string;
@@ -475,8 +481,10 @@ export type InteractivePromptLabels = {
   submitAnswers: string;
   answerPlaceholder: string;
   waitingForAnswer: string;
-  returnToConversation: string;
-  continueAnswering: string;
+  conversationReturn?: {
+    continueAnswering: string;
+    returnToConversation: string;
+  };
   planImplementationLead: string;
   planImplementationConfirm: string;
   planImplementationFeedbackPlaceholder: string;
@@ -576,7 +584,8 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
-  sessionForkEnabled?: boolean;
+  sideConversationEnabled?: boolean;
+  sideConversationPresentation?: AgentGUISideConversationPresentation | null;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>
@@ -588,6 +597,14 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   /** Host-owned presentation for exact Agent targets; tooltip behavior stays AgentGUI-owned. */
   renderAgentTargetInfo?: AgentGUIAgentTargetInfoRenderer;
   renderProjectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
+  projectSelectOptions?: AgentProjectDropdownOptions;
+  renderReferencePickerSidebarActions?: (
+    context: Parameters<
+      NonNullable<ReferenceSourcePickerProps["renderSidebarActions"]>
+    >[0] & {
+      purpose: "directory" | "reference";
+    }
+  ) => ReactNode;
   renderSidebarFooter?: AgentGUISidebarFooterRenderer;
   /** Renders the provider rail empty state in "exact" mode. See the type doc. */
   renderProviderRailEmpty?: AgentGUIAgentsEmptyRenderer;
@@ -629,6 +646,8 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   slashStatusUsageAttempted?: boolean;
   /** Host-rendered account/Commerce chrome for the exact selected target. */
   agentConfigAccountContent?: ReactNode;
+  /** Host-rendered system actions appended to the Agent config menu. */
+  agentConfigSystemActionsContent?: ReactNode;
   onAgentConfigMenuClose?: () => void;
   onAgentConfigMenuOpen?: () => void;
   /** Forces a fresh usage probe from the config menu's refresh control. */
@@ -682,7 +701,9 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
       permissionMode?: string;
     }) => void;
     /** Re-issues the composer-options load after a terminal error state. */
-    retryComposerOptions: () => void;
+    retryComposerOptions: NonNullable<
+      AgentComposerProps["onRetryComposerOptions"]
+    >;
     setTuttiModeActive: (active: boolean) => void;
     setTuttiModeEffect: (value: number) => void;
     setTuttiModeSpeed: (value: number) => void;

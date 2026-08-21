@@ -260,19 +260,23 @@ projection contracts; they are not sufficient to host a runtime controller
 because their state and message writes may use separate transactions.
 `agentdaemon.Config.Reporter` requires `DurableActivityReporter`, whose
 `ReportSubmitProvenance` method must atomically persist the canonical
-client-submit message against an already-durable Turn and return only after
-that message can be queried by `clientSubmitId`. A host decorator embeds or
-otherwise preserves this required interface; there is no optional capability
-probe to forward manually.
+client-submit message and the submitted Turn admission before provider
+dispatch, and return only after that message can be queried by
+`clientSubmitId`. A host decorator embeds or otherwise preserves this required
+interface; there is no optional capability probe to forward manually.
 
 The daemon service passes `ClientSubmitID` through typed create/send and runtime
-inputs. After `Exec` reports provider acceptance, the service explicitly calls
-the required `RuntimeController.DurablyReportSubmitProvenance` method before it
-accepts any submit claim. The runtime adapter delegates that call to the
-controller after `Exec` has released the session lifecycle lock; the controller
-places the uncoalesced barrier behind earlier reports in the same FIFO. A
-barrier failure is delivery-unknown, and provider work is never blindly
-replayed.
+inputs. `Exec` uses `ReportSubmitProvenance` as the pre-dispatch admission
+barrier. After `Exec` returns, the service explicitly calls the required
+`RuntimeController.DurablyReportSubmitProvenance` method as an idempotent
+reconciliation barrier before it accepts any submit claim; this second call
+does not represent a second provider admission. The runtime adapter delegates
+that call to the controller after `Exec` has released the session lifecycle
+lock; the controller places the uncoalesced barrier behind earlier reports in
+the same FIFO. A barrier failure is delivery-unknown, and provider work is
+never blindly replayed. Host-owned user submissions, including follow-up
+submissions, carry a stable `ClientSubmitID`; standalone internal runtime
+calls may retain their generated prompt-message identity.
 
 ```go
 client := agentsessionstore.NewClient(agentsessionstore.Config{

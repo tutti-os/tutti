@@ -1,0 +1,191 @@
+name: Repair Desktop Release Changelog
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published stable GitHub release tag to restore, such as v0.2.27
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: desktop-release-promotion
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  repair:
+    name: Restore Stable Changelog Entry
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      TUTTI_ARTIFACTS_AWS_ROLE_ARN: ${{ vars.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET }}
+      TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX: ${{ vars.TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX }}
+
+    steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Validate published stable release
+        id: release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          release_tag="${INPUT_RELEASE_TAG}"
+          if [[ ! "${release_tag}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "release_tag must identify a stable vX.Y.Z release." >&2
+            exit 1
+          fi
+
+          gh release view "${release_tag}" \
+            --json assets,isDraft,isPrerelease,tagName,targetCommitish > release.json
+          if [[ "$(jq -r .tagName release.json)" != "${release_tag}" ]]; then
+            echo "GitHub release tag does not match ${release_tag}." >&2
+            exit 1
+          fi
+          if [[ "$(jq -r .isDraft release.json)" != "false" || "$(jq -r .isPrerelease release.json)" != "false" ]]; then
+            echo "Only a published stable GitHub release can repair the public changelog." >&2
+            exit 1
+          fi
+          if ! jq -e '.assets[] | select(.name == "release-summary.json")' release.json >/dev/null; then
+            echo "GitHub release ${release_tag} is missing release-summary.json." >&2
+            exit 1
+          fi
+          if ! jq -e '.assets[] | select(.name == "SHA256SUMS.txt")' release.json >/dev/null; then
+            echo "GitHub release ${release_tag} is missing SHA256SUMS.txt." >&2
+            exit 1
+          fi
+
+          git fetch --force origin "refs/tags/${release_tag}:refs/tags/${release_tag}"
+          release_target="$(git rev-list -n 1 "${release_tag}")"
+          echo "release_tag=${release_tag}" >> "$GITHUB_OUTPUT"
+          echo "release_target=${release_target}" >> "$GITHUB_OUTPUT"
+
+      - name: Download staged release summary
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          mkdir -p release-assets
+          gh release download "${RELEASE_TAG}" \
+            --pattern release-summary.json \
+            --pattern SHA256SUMS.txt \
+            --dir release-assets
+
+      - name: Verify staged release summary checksum
+        run: |
+          cd release-assets
+          grep -E '^[0-9a-f]{64}  release-summary\.json$' SHA256SUMS.txt | sha256sum --check --strict
+
+      - name: Validate staged release summary
+        env:
+          RELEASE_CHANNEL: stable
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          RELEASE_TARGET: ${{ steps.release.outputs.release_target }}
+        run: node apps/desktop/scripts/validate-release-summary.mjs release-assets/release-summary.json
+
+      - name: Build approved summary from current release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_CHANNEL: stable
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+          RELEASE_TARGET: ${{ steps.release.outputs.release_target }}
+        run: |
+          gh release view "${RELEASE_TAG}" --json body --jq .body > approved-release-body.md
+          node apps/desktop/scripts/extract-approved-release-summary.mjs \
+            approved-release-body.md \
+            release-assets/release-summary.json \
+            approved-release-summary.json
+
+      - name: Install AWS CLI
+        run: |
+          if ! command -v aws >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends unzip
+            case "$(uname -m)" in
+              x86_64) awscli_arch="x86_64" ;;
+              aarch64|arm64) awscli_arch="aarch64" ;;
+              *)
+                echo "Unsupported architecture for AWS CLI installer: $(uname -m)" >&2
+                exit 1
+                ;;
+            esac
+            curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-${awscli_arch}.zip" -o /tmp/awscliv2.zip
+            unzip -q /tmp/awscliv2.zip -d /tmp
+            sudo /tmp/aws/install --update
+          fi
+          aws --version
+
+      - name: Validate AWS S3 release asset configuration
+        run: |
+          missing=()
+          for name in AWS_REGION TUTTI_ARTIFACTS_AWS_ROLE_ARN TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX; do
+            if [[ -z "${!name:-}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "Missing required AWS S3 release asset configuration: ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.TUTTI_ARTIFACTS_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Repair stable changelog metadata
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.release_tag }}
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          changelog_uri="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}/changelog.json"
+          aws s3 cp "${changelog_uri}" existing-changelog.json
+          node apps/desktop/scripts/upsert-release-changelog.mjs \
+            existing-changelog.json \
+            approved-release-summary.json \
+            changelog.json
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const before = JSON.parse(fs.readFileSync("existing-changelog.json", "utf8"));
+          const after = JSON.parse(fs.readFileSync("changelog.json", "utf8"));
+          const releaseTag = process.env.RELEASE_TAG;
+          const existingTags = new Set(before.entries.map((entry) => entry.tag));
+          const repairedEntries = after.entries.filter((entry) => entry.tag === releaseTag);
+          if (repairedEntries.length !== 1) {
+            throw new Error(`Expected exactly one repaired ${releaseTag} changelog entry.`);
+          }
+          for (const tag of existingTags) {
+            if (!after.entries.some((entry) => entry.tag === tag)) {
+              throw new Error(`Repair removed existing changelog entry ${tag}.`);
+            }
+          }
+          const expectedCount = before.entries.length + (existingTags.has(releaseTag) ? 0 : 1);
+          if (after.entries.length !== expectedCount) {
+            throw new Error(`Expected ${expectedCount} changelog entries after repair, found ${after.entries.length}.`);
+          }
+          NODE
+          aws s3 cp changelog.json "${changelog_uri}" \
+            --content-type "application/json" \
+            --cache-control "public, max-age=60"
+
+      - name: Verify repaired changelog metadata
+        run: |
+          prefix="${TUTTI_DESKTOP_RELEASE_ASSETS_S3_PREFIX%/}"
+          changelog_uri="s3://${TUTTI_DESKTOP_RELEASE_ASSETS_S3_BUCKET}/${prefix}/changelog.json"
+          aws s3 cp "${changelog_uri}" published-changelog.json
+          cmp changelog.json published-changelog.json

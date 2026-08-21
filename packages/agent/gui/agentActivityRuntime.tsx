@@ -119,17 +119,20 @@ export interface AgentActivityRuntimeSetSessionPinnedInput {
 }
 
 export interface AgentActivityRuntimeTrackSettingsProjectChangeInput {
-  action: "clear" | "create_new" | "select_existing";
+  action: "clear" | "create_new" | "import_directory" | "select_existing";
   agentSessionId: string | null;
   provider?: string | null;
   workspaceId: string;
 }
 
 export interface AgentActivityRuntimeGetComposerOptionsInput {
+  agentSessionId?: string | null;
   agentTargetId: string;
   cwd?: string | null;
   force?: boolean;
+  waitForFreshModelCatalog?: boolean;
   provider?: string;
+  section?: "full" | "core" | "capabilities" | "connectors";
   settings?: AgentHostAgentSessionComposerSettings | null;
   workspaceId: string;
 }
@@ -165,7 +168,9 @@ interface AgentActivityRuntimeActivateSessionInputBase {
   /** 仅展示用首轮文本(bundle 折叠成一个 chip);initialContent 仍带展开后的文件。 */
   initialDisplayPrompt?: string | null;
   isolation?: AgentActivityCreateSessionInput["isolation"];
+  modelExplicit?: boolean;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   submitDiagnostics?: AgentActivitySendInput["submitDiagnostics"];
   settings?: AgentActivitySessionSettings;
   title?: string;
@@ -481,10 +486,18 @@ export function useAgentActivitySnapshot(
 ): AgentActivitySnapshot {
   const runtime = useAgentGUIRuntime();
   const normalizedWorkspaceId = workspaceId.trim();
+  const workspaceStore = useMemo(
+    () => ({
+      getSnapshot: () => runtime.getSnapshot(normalizedWorkspaceId),
+      subscribe: (listener: () => void) =>
+        runtime.subscribe(normalizedWorkspaceId, listener)
+    }),
+    [normalizedWorkspaceId, runtime]
+  );
   return useSyncExternalStore(
-    (listener) => runtime.subscribe(normalizedWorkspaceId, listener),
-    () => runtime.getSnapshot(normalizedWorkspaceId),
-    () => runtime.getSnapshot(normalizedWorkspaceId)
+    workspaceStore.subscribe,
+    workspaceStore.getSnapshot,
+    workspaceStore.getSnapshot
   );
 }
 

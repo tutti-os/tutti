@@ -5,6 +5,7 @@ export interface AgentActivityComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  consumptionMultiplier?: string;
   supportsImageInput?: boolean;
   /** True when the entry mirrors the requested/current selection, not the provider catalog. */
   requested?: boolean;
@@ -48,6 +49,7 @@ export interface AgentActivityComposerCapabilityOption {
   invocation: "promptItem" | "textTrigger" | "none";
   description?: string;
   iconUrl?: string;
+  installedAtUnixMs?: number;
   source?: string;
   pluginName?: string;
   serverName?: string;
@@ -161,8 +163,12 @@ export interface AgentActivityLoadComposerOptionsInput {
    * port always supplies a non-empty value.
    */
   agentTargetId?: string | null;
+  agentSessionId?: string | null;
   workspaceId: string;
   provider: string;
+  section?: "full" | "core" | "capabilities" | "connectors";
+  /** Wait only when the user explicitly opens the model picker. */
+  waitForFreshModelCatalog?: boolean;
   cwd?: string | null;
   settings?: AgentActivityComposerSettings | null;
   signal?: AbortSignal;

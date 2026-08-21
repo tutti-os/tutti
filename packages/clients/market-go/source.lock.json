@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "repository": "https://github.com/tutti-lab/tsh-server",
+  "commit": "d257868a661af964835b3ac2263252128f731b25",
+  "files": [
+    {
+      "source": "api/sandbox/v1/market.pb.go",
+      "target": "packages/clients/market-go/generated/sandbox/v1/market.pb.go",
+      "sha256": "da5dcaa3fd3ef0eac70e72be5502654caad51326f566d74450dc1532554ca388"
+    },
+    {
+      "source": "api/sandbox/v1/market_http.pb.go",
+      "target": "packages/clients/market-go/generated/sandbox/v1/market_http.pb.go",
+      "sha256": "b9fab6d42ec3915e7bbb5ea91e189c01990d4ec41378e4a1e8075f3c1c9d9d48"
+    }
+  ]
+}

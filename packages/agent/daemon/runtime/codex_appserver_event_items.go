@@ -74,7 +74,7 @@ func (*CodexAppServerAdapter) appServerItemEvents(
 		if !completed {
 			return nil
 		}
-		normalizer.ApplyAssistantFinalText(asStringRaw(item["text"]))
+		normalizer.ApplyAssistantFinalText(normalizeAppServerFileCitations(asStringRaw(item["text"])))
 		return normalizer.Finish(session, turnID, messageStreamStateCompleted)
 	case "plan":
 		if !completed {

@@ -8,7 +8,7 @@ import (
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	connectorruntime "github.com/tutti-os/tutti/packages/connector/runtime"
 )
 
@@ -31,7 +31,7 @@ func (host *Host) checkCLIReadiness(ctx context.Context, route *connectorRoute, 
 	if err != nil {
 		return err
 	}
-	defer route.releaseProcess(processID, connection)
+	defer func() { _ = route.releaseProcess(processID, connection) }()
 	if graceful, ok := connection.(agentruntime.GracefulProcessConnection); ok {
 		_ = graceful.CloseInput()
 	}

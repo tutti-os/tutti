@@ -131,6 +131,9 @@ func (c *Controller) Sessions(roomID string) []Session {
 		if strings.TrimSpace(session.RoomID) != roomID {
 			continue
 		}
+		if session.IsSideConversation() {
+			continue
+		}
 		if c.sessionPublicationPendingLocked(key) {
 			continue
 		}
@@ -499,7 +502,10 @@ func (c *Controller) publishPendingConfigOptionsUpdates(session Session) {
 	c.publishConfigOptionsUpdates(session, pending)
 }
 
-func (c *Controller) publishConfigOptionsUpdates(session Session, pending []AgentSessionConfigOptionsUpdate) {
+func (c *Controller) publishConfigOptionsUpdates(
+	session Session,
+	pending []AgentSessionConfigOptionsUpdate,
+) {
 	if c == nil || len(pending) == 0 {
 		return
 	}
@@ -511,26 +517,6 @@ func (c *Controller) publishConfigOptionsUpdates(session Session, pending []Agen
 	}
 	c.publishStreamEvents(session.RoomID, session.AgentSessionID, events)
 	c.enqueueSessionSnapshotReport(context.Background(), session)
-}
-
-func (c *Controller) publish(session Session, events []activityshared.Event) {
-	if len(events) == 0 {
-		return
-	}
-	projected := ProjectActivityEventsToStreamEvents(session, events)
-	c.enrichStreamStateEventsWithSessionSnapshot(session, projected)
-	slog.Debug(
-		"agent session publish events",
-		"event", "agent_session.publish",
-		"room_id", session.RoomID,
-		"agent_session_id", session.AgentSessionID,
-		"provider", session.Provider,
-		"provider_session_id", session.ProviderSessionID,
-		"activity_event_count", len(events),
-		"projected_event_count", len(projected),
-		"projected_event_type_counts", streamEventTypeCounts(projected),
-	)
-	c.publishStreamEvents(session.RoomID, session.AgentSessionID, projected)
 }
 
 func streamEventTypeCounts(events []StreamEvent) []string {
@@ -727,6 +713,13 @@ func (c *Controller) applySessionEventsByAgentSessionID(agentSessionID string, e
 		session.UpdatedAtUnixMS = unixMS(now())
 	}
 	c.sessions[foundKey] = session
+	provisional := c.provisionalSessions[foundKey]
+	if provisional && session.IsSideConversation() {
+		c.pendingSideEvents[foundKey] = append(
+			c.pendingSideEvents[foundKey],
+			events...,
+		)
+	}
 	if initialization := c.sessionInitializations[foundKey]; initialization != nil {
 		initialization.events = append(initialization.events, events...)
 	}

@@ -1,11 +1,23 @@
 package providerregistry
 
-import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+import (
+	"strings"
+
+	canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+)
 
 const (
-	OpenCodeProviderID = canonical.OpenCodeProviderID
-	OpenCodeTargetID   = "local:opencode"
+	OpenCodeProviderID   = canonical.OpenCodeProviderID
+	OpenCodeTargetID     = "local:opencode"
+	OpenCodeSparkModelID = "openai/gpt-5.3-codex-spark"
 )
+
+// OpenCodeModelSupportsReasoningEffort describes the provider-specific model
+// capability that is narrower than the generic ACP descriptor.
+func OpenCodeModelSupportsReasoningEffort(modelID string, effort string) bool {
+	return !strings.EqualFold(strings.TrimSpace(modelID), OpenCodeSparkModelID) ||
+		!strings.EqualFold(strings.TrimSpace(effort), "none")
+}
 
 func openCodeDescriptor() ProviderDescriptor {
 	return ProviderDescriptor{
@@ -113,11 +125,10 @@ func openCodeDescriptor() ProviderDescriptor {
 			},
 			Skills: SkillDescriptor{Kind: SkillKindOpenCode, Invocation: SkillInvocationTextTrigger, ConfigDirSuffix: "opencode"},
 			SlashCommandPolicy: SlashCommandPolicyDescriptor{
-				FallbackCommands: []string{"compact", "goal", "review"},
+				FallbackCommands: []string{"compact", "review"},
 				CommandEffects: []SlashCommandEffectDescriptor{
 					{Command: "compact", Effect: SlashCommandEffectSubmitImmediate},
 					{Command: "review", Effect: SlashCommandEffectShowReviewPicker},
-					{Command: "goal", Effect: SlashCommandEffectActivateGoalMode},
 					{Command: "plan", Effect: SlashCommandEffectTogglePlanMode},
 				},
 			},

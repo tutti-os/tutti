@@ -7,6 +7,7 @@ import type {
 } from "@tutti-os/workspace-file-reference/contracts";
 import type { ReferenceSourceAggregator } from "@tutti-os/workspace-file-reference/core";
 import type { ReferenceSourcePickerProps } from "@tutti-os/workspace-file-reference/ui";
+import type { AgentProjectDropdownOptions } from "./AgentComposerProjectMenu";
 import type { AgentGuiWorkbenchCommandBridge } from "../../workbench/commands";
 import type { AgentSettings } from "../../contexts/settings/domain/agentSettings";
 import type { WorkspaceLinkAction } from "../../actions/workspaceLinkActions";
@@ -42,7 +43,10 @@ import type {
   AgentMentionReferenceTargetResolver,
   AgentWorkspaceReferenceInitialTargetResolver
 } from "./AgentGUINodeView";
-import type { AgentVisibleErrorOverrides } from "../../shared/agentEnv/agentErrorPresentation";
+import type {
+  AgentVisibleErrorOverrides,
+  AgentVisibleErrorPresentationScope
+} from "../../shared/agentEnv/agentErrorPresentation";
 import type {
   AgentComposerCapabilityMenuState,
   AgentComposerCapabilitySettingsTarget,
@@ -55,6 +59,7 @@ import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagemen
 import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
 import type { OpenAgentEnvPanelInput } from "../../shared/agentEnv";
 import type { AgentGUISessionLaunchMode } from "./model/agentSessionLaunchMode";
+import type { AgentGUISideConversationPresentation } from "../../agentSideConversationPresentation";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -127,8 +132,10 @@ export interface AgentGUINodeHostCapabilities {
   referenceProvenanceFilterEnabled?: boolean;
   /** Host-owned experimental opt-in for current-Session composer history. */
   sessionInputHistoryEnabled?: boolean;
-  /** Host-owned experimental opt-in for creating Session forks. */
-  sessionForkEnabled?: boolean;
+  /** Host-owned experimental opt-in for Side and transcript selection actions. */
+  sideConversationEnabled?: boolean;
+  /** Optional presentation-only bridge for rendering Side outside AgentGUI. */
+  sideConversationPresentation?: AgentGUISideConversationPresentation | null;
   /** Host-owned opt-in for launching self-owned local Sessions in git worktrees. */
   sessionWorktreeEnabled?: boolean;
   /** Host-owned durable launch preference projection for this workspace. */
@@ -148,6 +155,11 @@ export interface AgentGUINodeHostCapabilities {
    * AgentGUI owns the generic card; product domains own product semantics.
    */
   visibleErrorPresentationOverrides?: AgentVisibleErrorOverrides | null;
+  /**
+   * Presentation-only remediation authority for visible errors. Omission
+   * retains local-owner behavior for backwards compatibility.
+   */
+  visibleErrorPresentationScope?: AgentVisibleErrorPresentationScope;
   agentTargets?: readonly AgentGUIAgentTarget[];
   agentTargetsLoading?: boolean;
   /** Complete presentation-only catalog for resolving Agent mention identity. */
@@ -193,7 +205,7 @@ export interface AgentGUINodeHostActions {
   }) => void | Promise<void>;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
-  ) => void;
+  ) => void | Promise<void>;
   onAgentProviderLogin?: (provider: AgentGUIProvider) => void;
   onAgentEnvPanelOpen?: (input?: OpenAgentEnvPanelInput) => void;
   /**
@@ -237,6 +249,13 @@ export interface AgentGUIAgentConfigMenuContext {
   provider: AgentGUIProvider;
   label: string;
   ownership?: AgentGUIAgentOwnership;
+  /** The Host must render interactive account controls as ui-system menu items. */
+  presentation: "menu";
+}
+
+export interface AgentGUIConfigMenuPresentationContext {
+  /** Interactive slot content must use ui-system DropdownMenuItem/Sub primitives. */
+  presentation: "menu";
 }
 
 export interface AgentGUINodeRenderSlots {
@@ -250,9 +269,23 @@ export interface AgentGUINodeRenderSlots {
   /**
    * Optional Host chrome for the exact target's account/Commerce presentation.
    * Returning null preserves AgentGUI's provider account and quota content.
+   * Interactive content must honor the supplied menu presentation contract.
    */
   agentConfigAccount?: (context: AgentGUIAgentConfigMenuContext) => ReactNode;
+  /**
+   * Optional Host-owned system actions appended to the Agent config menu.
+   * Actions must be ui-system DropdownMenuItem/Sub primitives.
+   */
+  agentConfigSystemActions?: (
+    context: AgentGUIConfigMenuPresentationContext
+  ) => ReactNode;
   projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
+  projectSelectOptions?: AgentProjectDropdownOptions;
+  referencePickerSidebarActions?: (
+    context: Parameters<
+      NonNullable<ReferenceSourcePickerProps["renderSidebarActions"]>
+    >[0] & { purpose: "directory" | "reference" }
+  ) => ReactNode;
   providerRailEmpty?: AgentGUIAgentsEmptyRenderer;
   sidebarFooter?: (ctx: AgentGUISidebarFooterContext) => ReactNode;
 }
@@ -420,7 +453,8 @@ export function areAgentGUINodePropsEqual(
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
-    pc.sessionForkEnabled === nc.sessionForkEnabled &&
+    pc.sideConversationEnabled === nc.sideConversationEnabled &&
+    pc.sideConversationPresentation === nc.sideConversationPresentation &&
     pc.sessionWorktreeEnabled === nc.sessionWorktreeEnabled &&
     pc.sessionLaunchModesByProjectSectionKey ===
       nc.sessionLaunchModesByProjectSectionKey &&
@@ -488,11 +522,14 @@ export function areAgentGUINodePropsEqual(
     pa.onEngagementEvent === na.onEngagementEvent &&
     pa.onConversationRailLayoutChange === na.onConversationRailLayoutChange &&
     ps.agentConfigAccount === ns.agentConfigAccount &&
+    ps.agentConfigSystemActions === ns.agentConfigSystemActions &&
     ps.agentTargetInfo === ns.agentTargetInfo &&
     ps.composerFooterAccessory === ns.composerFooterAccessory &&
     ps.providerRailEmpty === ns.providerRailEmpty &&
     ps.projectDirectoryPickerHeaderActions ===
       ns.projectDirectoryPickerHeaderActions &&
+    ps.projectSelectOptions === ns.projectSelectOptions &&
+    ps.referencePickerSidebarActions === ns.referencePickerSidebarActions &&
     ps.sidebarFooter === ns.sidebarFooter
   );
 }

@@ -2,8 +2,10 @@ import type { DesktopFileDialogAccess } from "../host/desktopFileDialogAccess";
 import type { DesktopWorkspaceAppPayload } from "../../shared/contracts/ipc";
 import type { WorkspaceFileIconCacheStore } from "../host/workspaceFileIconCacheStore.ts";
 import type { WorkspaceLaunch } from "../host/workspaceLaunch";
+import type { DesktopHostPreferencesState } from "../desktopHostPreferences.ts";
 import { registerHostFilesIpc } from "./hostFiles";
 import { registerHostNotificationsIpc } from "./hostNotifications";
+import { registerHostPreferencesIpc } from "./hostPreferences.ts";
 import { registerHostWindowIpc } from "./hostWindow";
 import { registerHostWorkspaceIpc } from "./hostWorkspace";
 
@@ -19,6 +21,7 @@ export interface HostIpcDependencies {
   openWorkspaceAppFolder?: (
     payload: DesktopWorkspaceAppPayload
   ) => Promise<void>;
+  preferences: Pick<DesktopHostPreferencesState, "ensureInitialized">;
   workspaceFileIconCache?: WorkspaceFileIconCacheStore;
   workspaceLaunch: Pick<
     WorkspaceLaunch,
@@ -30,6 +33,7 @@ export interface HostIpcDependencies {
 }
 
 export function registerHostIpc(deps: HostIpcDependencies): void {
+  registerHostPreferencesIpc(deps.preferences);
   registerHostWindowIpc({
     workspaceLaunch: deps.workspaceLaunch
   });

@@ -1,6 +1,6 @@
 ---
-"@tutti-os/connector-authorization-protocol": minor
-"@tutti-os/connector-market": minor
+"@tutti-os/connector-contracts": minor
+"@tutti-os/connector-renderer": minor
 "@tutti-os/desktop": patch
 ---
 

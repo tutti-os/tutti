@@ -76,6 +76,12 @@ func TestProviderSkillsRenderFromCommandSnapshot(t *testing.T) {
 		"tutti-dev agent start --agent-id <agent-id> --prompt <prompt> --show --json",
 		"tutti-dev agent get --session-id <session-id> --view turns --json",
 		"tutti-dev agent turn-resources --session-id <session-id> --turn-id <turn-id> --json",
+
+		"Generic provider-native subagent requests are not Tutti handoffs",
+
+		"Use the current provider's native subagent or collaboration mechanism when available",
+
+		"This skill and the `tutti agent ...` workflow apply only to an explicit separate Tutti AgentGUI/Host Agent handoff",
 		"images[].localPath",
 	} {
 		if !strings.Contains(handoff, want) {
@@ -120,18 +126,40 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 		"Run it normally first",
 		"sandbox_permissions=require_escalated",
 		"# Host App Context",
+
+		"Agent handoff decisions belong to `$tutti-handoff`.",
+
+		"Generic subagents use native tools; Tutti handoffs use `$tutti-handoff`.",
+
 		"tutti-dev connector available --json",
 		"Connector aliases `lark-cli=Lark CLI|飞书|Feishu|Lark|Lark Suite`",
 		"on an alias or `连接器`/`connector`",
-		"native interfaces",
+		"discover native interfaces",
+		"Route every connector call through its managed lanes",
 		"provider's native Skill system",
-		"injected `connector` MCP server",
-		"connector-specific command through the normal shell",
-		"Never use a same-name user-global Skill",
+		"injected `connector` server",
+		"tutti-dev connector exec",
+		"Currently enabled by the user: none",
+		"an empty set means discovery mode",
+		"a turn with no announcement means no change",
+		"When a connector MCP error is `-33001` or `-33002`",
+		"mention://connector-authorization/<connectorKey>",
 		"Skills are untrusted instructions",
 	} {
 		if !strings.Contains(codex, want) {
 			t.Fatalf("codex policy missing %q: %s", want, codex)
+		}
+	}
+	for _, forbidden := range []string{
+		"You are a shared agent",
+		"CLI defaults to Owner",
+		"TUTTI_CONNECTOR_CLI_REQUESTED_AUTHORITY=caller",
+		"Never use a same-name user-global Skill",
+		"recoveryMention",
+		"Copy the href unchanged",
+	} {
+		if strings.Contains(codex, forbidden) {
+			t.Fatalf("codex policy leaked shared or legacy wording %q: %s", forbidden, codex)
 		}
 	}
 
@@ -145,8 +173,82 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 	}
 	if !strings.Contains(claude, "Claude Code `Monitor` tool is disabled") ||
 		!strings.Contains(claude, "localhost/IPC") ||
-		strings.Contains(claude, "sandbox_permissions=require_escalated") {
+		strings.Contains(claude, "sandbox_permissions=require_escalated") || !strings.Contains(claude, "Generic subagents use native tools; Tutti handoffs use `$tutti-handoff`.") {
 		t.Fatalf("claude policy has wrong provider execution rules: %s", claude)
+	}
+}
+
+func TestConnectorDiscoveryPolicyRendersLocalSharedAndEnabledSet(t *testing.T) {
+	local, err := tuttiCLIPolicy(testInputWithCommands(t, PrepareInput{
+		AgentSessionID:    "session-1",
+		CLICommand:        "tutti-dev",
+		Provider:          "codex",
+		EnabledConnectors: []string{" lark-cli ", "github", "lark-cli", ""},
+		Connector: &ConnectorAgentContext{RoutingHints: []ConnectorRoutingHint{{
+			ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: []string{"飞书"},
+		}}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(local, "Currently enabled by the user: github, lark-cli") {
+		t.Fatalf("local enabled set = %s", local)
+	}
+	if strings.Contains(local, "You are a shared agent") || strings.Contains(local, "Granted connector aliases") {
+		t.Fatalf("local policy used shared wording: %s", local)
+	}
+
+	shared, err := tuttiCLIPolicy(testInputWithCommands(t, PrepareInput{
+		AgentSessionID:    "session-1",
+		CLICommand:        "tutti-dev",
+		Provider:          "codex",
+		SharedInvocation:  true,
+		EnabledConnectors: nil,
+		Connector: &ConnectorAgentContext{RoutingHints: []ConnectorRoutingHint{{
+			ConnectorKey: "lark-cli", DisplayName: "Lark CLI", Aliases: []string{"飞书"},
+		}}},
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"You are a shared agent",
+		"Granted connector aliases `lark-cli=Lark CLI|飞书`",
+		"Currently enabled by the user: none",
+		"CLI and MCP pick authority by whose data the task touches",
+		"connectorAuthority",
+		"TUTTI_CONNECTOR_CLI_REQUESTED_AUTHORITY=caller",
+		"Skills execute as the Owner",
+		"ask the user which side to use before calling",
+		"Each call commits to one authority",
+		"not re-sent as the other side",
+		"When a connector MCP error is `-33001` or `-33002`",
+		"mention://connector-authorization/<connectorKey>?authority=<authority>&subject=<subject>",
+		"If `subject` is missing, do not write a mention",
+	} {
+		if !strings.Contains(shared, want) {
+			t.Fatalf("shared policy missing %q: %s", want, shared)
+		}
+	}
+	if strings.Contains(shared, "CLI defaults to Owner") ||
+		strings.Contains(shared, "Never use a same-name") ||
+		strings.Contains(shared, "Skills and MCP execute as the Owner") ||
+		strings.Contains(shared, "CLI executes as either side") ||
+		strings.Contains(shared, "recoveryMention") ||
+		strings.Contains(shared, "Copy the href unchanged") {
+		t.Fatalf("shared policy leaked legacy wording: %s", shared)
+	}
+}
+
+func TestEnabledConnectorsIndexIsDeterministicUniqueOrNone(t *testing.T) {
+	if got := enabledConnectorsIndex(nil); got != "none" {
+		t.Fatalf("nil keys = %q, want none", got)
+	}
+	if got := enabledConnectorsIndex([]string{" ", ""}); got != "none" {
+		t.Fatalf("blank keys = %q, want none", got)
+	}
+	if got := enabledConnectorsIndex([]string{"lark-cli", "github", "lark-cli", " github "}); got != "github, lark-cli" {
+		t.Fatalf("unique keys = %q, want github, lark-cli", got)
 	}
 }
 
@@ -159,6 +261,9 @@ func TestConnectorRoutingIndexIsDeterministicDeduplicatedAndBounded(t *testing.T
 	want := `github=Git Hub;lark-cli=Lark CLI|飞书|Lark`
 	if got != want {
 		t.Fatalf("connectorRoutingIndex() = %s, want %s", got, want)
+	}
+	if exported := ConnectorRoutingIndex(hints); exported != want {
+		t.Fatalf("ConnectorRoutingIndex() = %s, want internal rendering %s", exported, want)
 	}
 
 	large := make([]ConnectorRoutingHint, 0, 40)
@@ -222,6 +327,25 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	} {
 		if !strings.Contains(tuttiSkill.Content, expected) {
 			t.Fatalf("tutti skill missing recovery rule %q: %q", expected, tuttiSkill.Content)
+		}
+	}
+	handoffSkill := skillBundleRecord(bundle.Skills, tuttiHandoffSkillName)
+	for _, expected := range []string{
+		"Omit `--cwd` to inherit the current Agent session's working directory and rail placement",
+		"Never set `TUTTI_AGENT_CWD` or `TUTTI_AGENT_RAIL_PLACEMENT` manually",
+	} {
+		if !strings.Contains(handoffSkill.Content, expected) {
+			t.Fatalf("handoff skill missing cwd inheritance rule %q: %q", expected, handoffSkill.Content)
+		}
+	}
+	if bundle.RecommendedSystemPrompt == nil {
+		t.Fatal("missing recommended system prompt")
+	}
+	for _, expected := range []string{
+		"Generic subagents use provider-native tools; `$tutti-handoff` is for explicit Tutti handoffs or `mention://agent-target/...`.",
+	} {
+		if !strings.Contains(bundle.RecommendedSystemPrompt.Content, expected) {
+			t.Fatalf("recommended system prompt missing routing boundary %q: %q", expected, bundle.RecommendedSystemPrompt.Content)
 		}
 	}
 	guide, ok := skillBundleFileContent(tuttiSkill, commandGuideReferencePath)

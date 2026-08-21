@@ -4,6 +4,7 @@ import { delimiter, join } from "node:path";
 import {
   desktopIpcChannels,
   type DesktopComputerUseActionResult,
+  type DesktopComputerUseActionFailureReason,
   type DesktopComputerUseAuthorizationState,
   type DesktopComputerUsePermissionGrantStatus,
   type DesktopComputerUsePermissionPane,
@@ -20,6 +21,10 @@ import {
   parseCuaDriverDoctorStatus,
   parseCuaDriverPermissionsStatusDetail
 } from "./computerUsePermissions.ts";
+import {
+  buildWindowsCuaDriverCommand,
+  CUA_DRIVER_WINDOWS_VERSION
+} from "./computerUseWindows.ts";
 import { getDesktopLogger } from "../logging.ts";
 
 const CUA_DRIVER_INSTALL_SCRIPT_URL =
@@ -30,9 +35,6 @@ const CUA_DRIVER_WINDOWS_INSTALL_SCRIPT_URL =
   "https://cua.ai/driver/install.ps1";
 const CUA_DRIVER_WINDOWS_UNINSTALL_SCRIPT_URL =
   "https://cua.ai/driver/uninstall.ps1";
-// Keep the interactive desktop path aligned with the release validated by the
-// daemon contract. Bumping this value is an explicit compatibility decision.
-const CUA_DRIVER_WINDOWS_VERSION = "0.18.0";
 const CUA_DRIVER_APP_BINARY_PATH =
   "/Applications/CuaDriver.app/Contents/MacOS/cua-driver";
 const COMPUTER_USE_GRANT_TIMEOUT_MS = 75_000;
@@ -152,6 +154,8 @@ function runSubprocess(
       : "";
     let settled = false;
     let timedOut = false;
+    let exitCode: number | null = null;
+    let failureReason: DesktopComputerUseActionFailureReason | undefined;
     let timeout: ReturnType<typeof setTimeout> | null = null;
     let forceKillTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -189,10 +193,16 @@ function runSubprocess(
     if (options.timeoutMs && options.timeoutMs > 0) {
       timeout = setTimeout(() => {
         timedOut = true;
+        failureReason = "timeout";
         child.kill("SIGTERM");
         forceKillTimeout = setTimeout(() => {
           child.kill("SIGKILL");
-          finish({ success: false, output: buildOutput() });
+          finish({
+            success: false,
+            output: buildOutput(),
+            exitCode,
+            failureReason
+          });
         }, 3_000);
       }, options.timeoutMs);
     }
@@ -201,15 +211,74 @@ function runSubprocess(
     child.stderr?.on("data", (chunk: Buffer) => chunks.push(chunk));
 
     child.on("close", (code) => {
+      exitCode = typeof code === "number" ? code : null;
+      if (!timedOut && exitCode !== 0) {
+        failureReason = "exit-code";
+      }
       finish({
         success: !timedOut && code === 0,
-        output: buildOutput()
+        output: buildOutput(),
+        exitCode,
+        ...(failureReason ? { failureReason } : {})
       });
     });
 
     child.on("error", (err) => {
-      finish({ success: false, output: err.message });
+      failureReason = "spawn-error";
+      finish({
+        success: false,
+        output: err.message,
+        exitCode,
+        failureReason
+      });
     });
+  });
+}
+
+type CuaDriverAction = "install" | "uninstall";
+
+function logCuaDriverActionCompleted(
+  action: CuaDriverAction,
+  startedAtUnixMs: number,
+  result: DesktopComputerUseActionResult
+): void {
+  const logger = getDesktopLogger();
+  const log = result.success
+    ? logger.info.bind(logger)
+    : logger.warn.bind(logger);
+  log(`computer use driver ${action} completed`, {
+    operation: action,
+    success: result.success,
+    elapsedMs: Date.now() - startedAtUnixMs,
+    exitCode: result.exitCode ?? null,
+    failureReason: result.failureReason ?? null,
+    outputBytes: result.output.length,
+    diagnosticMessage: result.output
+      ? truncateComputerUseDiagnosticMessage(result.output)
+      : null
+  });
+}
+
+function runLoggedCuaDriverCommand(
+  action: CuaDriverAction,
+  command: string,
+  args: string[],
+  options: {
+    timeoutMs?: number;
+    timeoutOutput?: string;
+    logFields?: Record<string, unknown>;
+  } = {}
+): Promise<DesktopComputerUseActionResult> {
+  const startedAtUnixMs = Date.now();
+  getDesktopLogger().info(`computer use driver ${action} started`, {
+    operation: action,
+    command,
+    timeoutMs: options.timeoutMs ?? null,
+    ...options.logFields
+  });
+  return runSubprocess(command, args, options).then((result) => {
+    logCuaDriverActionCompleted(action, startedAtUnixMs, result);
+    return result;
   });
 }
 
@@ -237,7 +306,7 @@ function ensureCuaDriverPermissionGrantAction(): ComputerUseGrantActionState {
   state.promise = state.promise.then((result) => {
     state.result = result;
     const elapsedMs = Date.now() - startedAtUnixMs;
-    const timedOut = result.output.includes(COMPUTER_USE_GRANT_TIMEOUT_OUTPUT);
+    const timedOut = result.failureReason === "timeout";
     const logFields = {
       success: result.success,
       elapsedMs,
@@ -757,24 +826,28 @@ function restartCuaDriver(
 }
 
 function runWindowsCuaDriverScript(
+  action: CuaDriverAction,
   url: string
 ): Promise<DesktopComputerUseActionResult> {
-  const script =
-    "$ErrorActionPreference = 'Stop'; " +
-    `$env:CUA_DRIVER_RS_VERSION = '${CUA_DRIVER_WINDOWS_VERSION}'; ` +
-    `Invoke-RestMethod -Uri '${url}' | Invoke-Expression`;
-  return runSubprocess(
-    "powershell.exe",
-    ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", script],
-    { timeoutMs: 120_000, timeoutOutput: "Windows driver script timed out." }
-  );
+  const command = buildWindowsCuaDriverCommand(action, url);
+  return runLoggedCuaDriverCommand(action, command.command, command.args, {
+    timeoutMs: 120_000,
+    timeoutOutput: "Windows driver script timed out.",
+    logFields: {
+      scriptUrl: url,
+      driverVersion: CUA_DRIVER_WINDOWS_VERSION
+    }
+  });
 }
 
 function installCuaDriver(): Promise<DesktopComputerUseActionResult> {
   if (process.platform === "win32") {
-    return runWindowsCuaDriverScript(CUA_DRIVER_WINDOWS_INSTALL_SCRIPT_URL);
+    return runWindowsCuaDriverScript(
+      "install",
+      CUA_DRIVER_WINDOWS_INSTALL_SCRIPT_URL
+    );
   }
-  return runSubprocess("/bin/bash", [
+  return runLoggedCuaDriverCommand("install", "/bin/bash", [
     "-c",
     `curl -fsSL ${CUA_DRIVER_INSTALL_SCRIPT_URL} | bash`
   ]);
@@ -782,9 +855,12 @@ function installCuaDriver(): Promise<DesktopComputerUseActionResult> {
 
 function uninstallCuaDriver(): Promise<DesktopComputerUseActionResult> {
   if (process.platform === "win32") {
-    return runWindowsCuaDriverScript(CUA_DRIVER_WINDOWS_UNINSTALL_SCRIPT_URL);
+    return runWindowsCuaDriverScript(
+      "uninstall",
+      CUA_DRIVER_WINDOWS_UNINSTALL_SCRIPT_URL
+    );
   }
-  return runSubprocess("/bin/bash", [
+  return runLoggedCuaDriverCommand("uninstall", "/bin/bash", [
     "-c",
     `curl -fsSL ${CUA_DRIVER_UNINSTALL_SCRIPT_URL} | bash`
   ]);

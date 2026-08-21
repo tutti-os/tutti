@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+func TestCodexAppServerStartupTimeoutsStayScoped(t *testing.T) {
+	if got, want := codexAppServerThreadStartTimeout, 90*time.Second; got != want {
+		t.Fatalf("thread/start timeout = %s, want %s", got, want)
+	}
+	if got, want := acpStartCallTimeout, 30*time.Second; got != want {
+		t.Fatalf("generic ACP timeout = %s, want %s", got, want)
+	}
+	if got, want := defaultCodexAppServerTurnStartAckTimeout, 30*time.Second; got != want {
+		t.Fatalf("turn/start ACK timeout = %s, want %s", got, want)
+	}
+}
+
 func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 	t.Parallel()
 
@@ -28,6 +40,12 @@ func TestCodexAppServerAdapterStartCreatesThread(t *testing.T) {
 	}
 	if !containsString(spec.Env, codexAgentRoutingEnv) {
 		t.Fatalf("env = %#v, want agent routing env", spec.Env)
+	}
+	if !containsString(spec.Env, codexAppServerLogFormatEnv) {
+		t.Fatalf("env = %#v, want structured Codex logs", spec.Env)
+	}
+	if !containsString(spec.Env, codexAppServerRustLogEnv) {
+		t.Fatalf("env = %#v, want Codex startup span log level", spec.Env)
 	}
 
 	initialize := appServerRequestParams(t, transport.conn, appServerMethodInitialize)

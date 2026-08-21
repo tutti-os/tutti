@@ -1,10 +1,15 @@
 import { getActiveLocale } from "../../../../i18n/runtime.ts";
+import {
+  createTranslator,
+  type DesktopLocale
+} from "../../../../../../shared/i18n/index.ts";
+import type { NotificationService } from "@tutti-os/ui-notifications";
 import { AppUpdateActionClickedReporter } from "../../../analytics/reporters/app-update-action-clicked/appUpdateActionClickedReporter.ts";
 import type { IReporterService } from "../../../analytics/services/reporterService.interface.ts";
 import { resolveDesktopErrorMessage } from "../../../../lib/desktopErrors.ts";
 import { isSameAppUpdateState } from "../../../../../../shared/contracts/appUpdateState.ts";
 import type { AppUpdateState } from "@shared/contracts/ipc";
-import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopHostFilesApi, DesktopRuntimeApi } from "@preload/types";
 import type { IAppUpdateService } from "../appUpdateService.interface";
 import type { DesktopAppUpdateClient } from "./adapters/desktopAppUpdateClient";
 import { createAppUpdateStore } from "./appUpdateStore.ts";
@@ -14,6 +19,13 @@ let nextAppUpdateServiceInstanceNumber = 0;
 
 function formatError(error: unknown): string {
   return resolveDesktopErrorMessage(error, getActiveLocale());
+}
+
+/** Map the desktop locale to the public changelog; new locales intentionally fall back to English. */
+export function resolveOfficialChangelogUrl(locale: DesktopLocale): string {
+  return locale === "zh-CN"
+    ? "https://tutti.sh/zh/changelog"
+    : "https://tutti.sh/en/changelog";
 }
 
 export class AppUpdateService implements IAppUpdateService {
@@ -33,19 +45,30 @@ export class AppUpdateService implements IAppUpdateService {
     "logRendererDiagnostic"
   >;
   private readonly updateClient: DesktopAppUpdateClient;
+  private readonly hostFilesApi?: Pick<DesktopHostFilesApi, "openExternal">;
+  private readonly notifications?: Pick<
+    NotificationService,
+    "error" | "info" | "success"
+  >;
 
   constructor(
     updateClient: DesktopAppUpdateClient,
     reporterService: Pick<IReporterService, "trackEvents"> | null = null,
     reporterNow?: () => number,
     runtimeApi?: Pick<DesktopRuntimeApi, "logRendererDiagnostic">,
-    options: { supportsReleaseChannels?: boolean } = {}
+    options: {
+      hostFilesApi?: Pick<DesktopHostFilesApi, "openExternal">;
+      notifications?: Pick<NotificationService, "error" | "info" | "success">;
+      supportsReleaseChannels?: boolean;
+    } = {}
   ) {
     this.store = createAppUpdateStore(options.supportsReleaseChannels ?? true);
     this.updateClient = updateClient;
     this.reporterService = reporterService;
     this.reporterNow = reporterNow;
     this.runtimeApi = runtimeApi;
+    this.hostFilesApi = options.hostFilesApi;
+    this.notifications = options.notifications;
   }
 
   async load(): Promise<void> {
@@ -89,12 +112,20 @@ export class AppUpdateService implements IAppUpdateService {
     this.recordDiagnostic("app_update.check_started");
 
     try {
-      if (this.applyUpdateState(await this.updateClient.checkForUpdates())) {
+      const updateState = await this.updateClient.checkForUpdates();
+      if (this.applyUpdateState(updateState)) {
         this.recordDiagnostic("app_update.check_succeeded");
+      }
+      if (!this.disposed) {
+        this.notifyManualCheckResult(updateState);
       }
     } catch (error) {
       if (!this.disposed) {
         this.store.error = formatError(error);
+        this.notifications?.error({
+          description: this.store.error,
+          title: createTranslator(getActiveLocale()).t("updates.errorTitle")
+        });
         this.recordDiagnostic(
           "app_update.check_failed",
           {
@@ -109,6 +140,14 @@ export class AppUpdateService implements IAppUpdateService {
         this.updateView();
         this.recordDiagnostic("app_update.check_finished");
       }
+    }
+  }
+
+  async openReleaseNotes(): Promise<void> {
+    if (this.hostFilesApi) {
+      await this.hostFilesApi.openExternal(
+        resolveOfficialChangelogUrl(getActiveLocale())
+      );
     }
   }
 
@@ -240,6 +279,53 @@ export class AppUpdateService implements IAppUpdateService {
       this.store.updateState,
       this.store.isActing
     );
+  }
+
+  private notifyManualCheckResult(updateState: AppUpdateState): void {
+    if (!this.notifications) return;
+    const translator = createTranslator(getActiveLocale());
+    if (updateState.status === "up_to_date") {
+      this.notifications.info({
+        description: translator.t("desktop.menu.upToDateDetail", {
+          version: updateState.currentVersion
+        }),
+        title: translator.t("desktop.menu.upToDateMessage")
+      });
+      return;
+    }
+    if (updateState.status === "available") {
+      this.notifications.success({
+        title: translator.t("updates.availableTitle")
+      });
+      return;
+    }
+    if (updateState.status === "downloaded") {
+      this.notifications.success({
+        title: translator.t("updates.downloadedTitle")
+      });
+      return;
+    }
+    if (updateState.status === "downloading") {
+      this.notifications.info({
+        title: translator.t("updates.downloadingTitle", {
+          percent:
+            updateState.downloadPercent === null
+              ? ""
+              : `${Math.round(updateState.downloadPercent)}%`
+        })
+      });
+      return;
+    }
+    if (updateState.status === "checking" || updateState.status === "idle") {
+      this.notifications.info({
+        title: translator.t("updates.checkingTitle")
+      });
+      return;
+    }
+    this.notifications.error({
+      description: updateState.message ?? undefined,
+      title: translator.t("updates.errorTitle")
+    });
   }
 
   private recordDiagnostic(

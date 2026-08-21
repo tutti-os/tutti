@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 func TestPreparerVerifiesPromotesAndReusesLatestArtifact(t *testing.T) {
@@ -65,7 +65,7 @@ func TestPreparerVerifiesPromotesAndReusesLatestArtifact(t *testing.T) {
 	}
 }
 
-func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
+func TestResolvePreparedRejectsReleaseWithoutHTTPSIcon(t *testing.T) {
 	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
 	archive := testZIP(t, map[string][]byte{
 		packagedManifestPath: manifest,
@@ -79,7 +79,7 @@ func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	prepared, err := preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
+	_, err = preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
 		OperationID: "operation-1",
 		Release:     release,
 	})
@@ -87,20 +87,10 @@ func TestResolvePreparedAllowsLegacyReleaseWithoutIcon(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	legacyRelease := release
-	legacyRelease.Manifest.IconURL = ""
-	resolved, err := preparer.ResolvePrepared(context.Background(), legacyRelease)
-	if err != nil {
-		t.Fatalf("ResolvePrepared() rejected legacy presentation metadata: %v", err)
-	}
-	if resolved.PreparedPath != prepared.PreparedPath {
-		t.Fatalf("resolved path = %q, want %q", resolved.PreparedPath, prepared.PreparedPath)
-	}
-	if _, err := preparer.Prepare(context.Background(), market.PrepareArtifactRequest{
-		OperationID: "operation-2",
-		Release:     legacyRelease,
-	}); err == nil || !strings.Contains(err.Error(), "iconUrl") {
-		t.Fatalf("Prepare() error = %v, want full icon validation", err)
+	invalidRelease := release
+	invalidRelease.Manifest.IconURL = ""
+	if _, err := preparer.ResolvePrepared(context.Background(), invalidRelease); err == nil || !strings.Contains(err.Error(), "iconUrl") {
+		t.Fatalf("ResolvePrepared() error = %v, want iconUrl rejection", err)
 	}
 }
 
@@ -198,11 +188,43 @@ func TestPreparerRejectsArchivePathTraversal(t *testing.T) {
 		OperationID: "operation-1",
 		Release:     release,
 	})
-	if err == nil || !strings.Contains(err.Error(), "escapes the extraction root") {
+	if err == nil {
 		t.Fatalf("error = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(root, "escape")); !os.IsNotExist(err) {
 		t.Fatalf("escape file exists: %v", err)
+	}
+}
+
+func TestSafeArchiveEntryKeyRejectsWindowsUnsafePathsOnEveryHost(t *testing.T) {
+	for _, name := range []string{
+		`C:/runtime/gh.exe`, `\\server\share\gh.exe`, `runtime\gh.exe`, `runtime/gh.exe:stream`,
+		`runtime/CON`, `runtime/nul.txt`, `runtime/COM1.exe`, `runtime/trailing.`, `runtime/trailing `,
+	} {
+		t.Run(name, func(t *testing.T) {
+			if _, err := safeArchiveEntryKey(name); err == nil {
+				t.Fatalf("Windows-unsafe archive path %q was accepted", name)
+			}
+		})
+	}
+}
+
+func TestPreparerRejectsCaseCollidingArchiveEntries(t *testing.T) {
+	manifest := []byte(`{"schemaVersion":"1","connectorKey":"github"}`)
+	archive := testZIPEntries(t, []testZIPEntry{
+		{name: packagedManifestPath, content: manifest},
+		{name: "runtime/GH.exe", content: []byte("first")},
+		{name: "runtime/gh.exe", content: []byte("second")},
+	})
+	release := testRelease(archive, manifest)
+	preparer, err := NewPreparer(Config{RootDir: t.TempDir(),
+		Fetcher: &memoryFetcher{body: archive, mediaType: release.Artifact.MediaType}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = preparer.Prepare(context.Background(), market.PrepareArtifactRequest{OperationID: "operation-1", Release: release})
+	if err == nil || !strings.Contains(err.Error(), "case-colliding") {
+		t.Fatalf("case-colliding archive error = %v", err)
 	}
 }
 
@@ -263,14 +285,28 @@ func (fetcher *memoryFetcher) Fetch(context.Context, FetchRequest) (FetchRespons
 
 func testZIP(t *testing.T, files map[string][]byte) []byte {
 	t.Helper()
+	entries := make([]testZIPEntry, 0, len(files))
+	for name, content := range files {
+		entries = append(entries, testZIPEntry{name: name, content: content})
+	}
+	return testZIPEntries(t, entries)
+}
+
+type testZIPEntry struct {
+	name    string
+	content []byte
+}
+
+func testZIPEntries(t *testing.T, entries []testZIPEntry) []byte {
+	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
-	for name, content := range files {
-		file, err := writer.Create(name)
+	for _, entry := range entries {
+		file, err := writer.Create(entry.name)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if _, err := file.Write(content); err != nil {
+		if _, err := file.Write(entry.content); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -293,7 +329,7 @@ func testRelease(archive, manifest []byte) market.Release {
 		Manifest: market.Manifest{
 			SchemaVersion: "1",
 			DisplayName:   "GitHub",
-			IconURL:       "data:image/png;base64,iVBORw0KGgo=",
+			IconURL:       "https://cdn.example.test/tutti/connector-market/github/1.0.0/github-1.0.0-icon.svg",
 			Implementation: market.Implementation{
 				Kind: market.ImplementationKindManagedStdio,
 				ManagedStdio: &market.ManagedStdioImplementation{

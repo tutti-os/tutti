@@ -16,8 +16,9 @@ import (
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	userprojectbiz "github.com/tutti-os/tutti/services/tuttid/biz/userproject"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
@@ -63,6 +64,18 @@ func TestHostWorkspaceRuntimeDisconnectConformance(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestHostRuntimeConfigurationRebindConformance(t *testing.T) {
+	for _, scenario := range hostconformance.RuntimeConfigurationRebindScenarios() {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := hostconformance.RunRuntimeConfigurationRebind(context.Background(), driver, scenario); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -309,6 +322,9 @@ type legacyHostConformanceDriver struct {
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
 	d.runtime.guidanceTargetMismatch = fixture.GuidanceTargetMismatch
+	if fixture.CancelDeliveryUnconfirmed {
+		d.runtime.cancelErr = agenthost.ErrRuntimeCancelDeliveryUnconfirmed
+	}
 	d.sessions = &fakeSessionReader{
 		sessions: map[string]PersistedSession{}, tombstoned: map[string]bool{}, deletedAt: map[string]int64{},
 		parentByKey: map[string]string{},
@@ -396,6 +412,14 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.service.SessionReader = d.sessions
 	d.service.SessionPurgeStore = d.sessions
 	canonicalStore := openAgentServiceSQLiteStore(d.t)
+	for index, projectPath := range fixture.RailProjectPaths {
+		if _, err := canonicalStore.PutUserProject(context.Background(), userprojectbiz.Project{
+			ID: fmt.Sprintf("host-conformance-project-%d", index), Path: projectPath,
+			Label: projectPath, SectionKey: userprojectbiz.SectionKeyFromPath(projectPath),
+		}); err != nil {
+			return fmt.Errorf("register host conformance rail project %q: %w", projectPath, err)
+		}
+	}
 	d.service.SessionInitializer = legacyHostConformanceSessionInitializer{
 		canonicalStore: canonicalStore,
 		sessions:       d.sessions,
@@ -556,7 +580,11 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		settings.BrowserUse == nil && settings.ComputerUse == nil && settings.ReasoningEffort == "" && settings.Speed == "" {
 		settings.PlanMode = true
 	}
-	runtimeContext := map[string]any{"tuttiInitialTitleEstablished": seed.InitialTitleEstablished}
+	runtimeContext := clonePayload(seed.RuntimeContext)
+	if runtimeContext == nil {
+		runtimeContext = map[string]any{}
+	}
+	runtimeContext["tuttiInitialTitleEstablished"] = seed.InitialTitleEstablished
 	if seed.ExternalResumeSupported != nil {
 		runtimeContext["externalImportResumeSupported"] = *seed.ExternalResumeSupported
 	}
@@ -637,7 +665,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Provider: seed.Provider,
 			ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd, Status: "ready",
 			Settings: &settings, Title: seed.Title, InitialTitleEstablished: seed.InitialTitleEstablished,
-			Visible: true, PinnedAtUnixMS: boolUnixMS(seed.Pinned), CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
+			Visible: true, RuntimeContext: clonePayload(runtimeContext), PinnedAtUnixMS: boolUnixMS(seed.Pinned), CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
 		}
 	}
 	if fixture.Turn != nil {
@@ -681,19 +709,47 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		d.service.TurnStore = d.turns
 	}
 	if fixture.RecoverInteractive {
+		operationPayload := map[string]any{
+			"rootAgentSessionId": seed.AgentSessionID, "action": "", "optionId": "approve",
+			"payload": (map[string]any)(nil), "turnId": fixture.Interaction.TurnID,
+		}
+		if prompt := strings.TrimSpace(fixture.RecoverInteractiveFollowUpPrompt); prompt != "" {
+			operationPayload["followUpPrompt"] = prompt
+			operationPayload["followUpClientSubmitId"] = strings.TrimSpace(fixture.RecoverInteractiveFollowUpClientSubmitID)
+			operationPayload["followUpDisposition"] = string(fixture.RecoverInteractiveFollowUpDisposition)
+		}
 		d.operations.operation = agentactivitybiz.RuntimeOperation{
 			OperationID: runtimeOperationID(seed.WorkspaceID, seed.AgentSessionID, agentactivitybiz.RuntimeOperationKindInteractiveResponse, fixture.Interaction.TurnID+"\x00"+fixture.Interaction.RequestID),
 			WorkspaceID: seed.WorkspaceID, AgentSessionID: seed.AgentSessionID,
 			Kind: agentactivitybiz.RuntimeOperationKindInteractiveResponse, Status: agentactivitybiz.RuntimeOperationStatusLeased,
 			TurnID: fixture.Interaction.TurnID, RequestID: fixture.Interaction.RequestID,
-			Payload: map[string]any{
-				"rootAgentSessionId": seed.AgentSessionID, "action": "", "optionId": "approve",
-				"payload": (map[string]any)(nil), "turnId": fixture.Interaction.TurnID,
-			},
+			Payload:    operationPayload,
 			LeaseOwner: "dead-worker", LeaseExpiresAtMS: time.UnixMilli(1_000).Add(time.Hour).UnixMilli(),
 		}
 	}
 	return nil
+}
+
+func (d *legacyHostConformanceDriver) RebindAndSend(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+	reprepare agenthost.ReprepareRuntimeSessionInput,
+	send agenthost.SendInput,
+) (hostconformance.SendObservation, error) {
+	result, err := d.service.ApplicationHost().ReprepareRuntimeSessionAndSendInput(ctx, agenthost.ReprepareRuntimeSessionAndSendInputInput{Reprepare: reprepare, Send: send})
+	if err != nil {
+		return hostconformance.SendObservation{}, err
+	}
+	d.recordSubmittedTurn(ref.WorkspaceID, ref.AgentSessionID, result.TurnID)
+	return hostconformance.SendObservation{TurnID: result.TurnID, Kind: result.Kind}, nil
+}
+
+func (d *legacyHostConformanceDriver) CanonicalRuntimeContext(ctx context.Context, ref agenthost.SessionRef) (map[string]any, error) {
+	result, err := d.service.ApplicationHost().GetSession(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return clonePayload(result.Canonical.InternalRuntimeContext), nil
 }
 
 func (d *legacyHostConformanceDriver) ResetProviderlessTerminalExec(
@@ -791,7 +847,8 @@ func (d *legacyHostConformanceDriver) Create(
 		ProviderTargetRef: input.ProviderTargetRef, ReasoningEffort: input.ReasoningEffort,
 		RuntimeContext: input.RuntimeContext, Speed: input.Speed,
 		ConversationDetailMode: input.ConversationDetailMode, Visible: input.Visible,
-		RailPlacement: input.RailPlacement,
+		RailPlacement:              input.RailPlacement,
+		RailPlacementAuthoritative: input.RailPlacementAuthoritative,
 	})
 	if err != nil {
 		return hostconformance.SessionObservation{}, "", err
@@ -1020,19 +1077,28 @@ func (s *conformanceHistoricalStateStore) CaptureHistoricalSessionGraph(
 func (d *legacyHostConformanceDriver) CancelTurn(ctx context.Context, input agenthost.CancelTurnInput) (hostconformance.CancelObservation, error) {
 	if d.directHost {
 		result, err := d.service.ApplicationHost().CancelTurn(ctx, input)
-		if err != nil {
+		pending := errors.Is(err, agenthost.ErrRuntimeOperationInProgress) && result.IntentAccepted
+		if err != nil && !pending {
 			return hostconformance.CancelObservation{}, err
 		}
-		session, err := d.service.Get(ctx, input.WorkspaceID, input.AgentSessionID)
+		session, getErr := d.service.Get(ctx, input.WorkspaceID, input.AgentSessionID)
+		if getErr != nil {
+			return hostconformance.CancelObservation{}, getErr
+		}
 		turnID := ""
 		if result.Turn != nil {
 			turnID = result.Turn.TurnID
 		}
+		reason := CancelTurnReasonTurnCanceled
+		if pending {
+			reason = CancelTurnReasonCancelRequested
+		}
 		return hostconformance.CancelObservation{
 			Session: legacyHostSessionObservation(session), TurnID: turnID,
 			Canceled: result.Operation.Result == agentactivitybiz.RuntimeOperationResultCanceled,
-			Reason:   string(CancelTurnReasonTurnCanceled),
-		}, err
+			Pending:  pending,
+			Reason:   string(reason),
+		}, nil
 	}
 	result, err := d.service.CancelTurn(ctx, input.WorkspaceID, input.AgentSessionID, input.TurnID)
 	if err != nil {
@@ -1044,7 +1110,7 @@ func (d *legacyHostConformanceDriver) CancelTurn(ctx context.Context, input agen
 	}
 	return hostconformance.CancelObservation{
 		Session: legacyHostSessionObservation(result.Session), TurnID: turnID,
-		Canceled: result.Canceled, Reason: string(result.Reason),
+		Canceled: result.Canceled, Pending: result.Reason == CancelTurnReasonCancelRequested, Reason: string(result.Reason),
 	}, nil
 }
 
@@ -1365,6 +1431,12 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 		RuntimeStartReportWrites:   d.runtimeStartReportWrites,
 		RecoverySteps:              append([]string(nil), (*d.recoverySteps)...),
 	}
+	if len(d.runtime.startCalls) > 0 {
+		metrics.LastStartEnv = append([]string(nil), d.runtime.startCalls[len(d.runtime.startCalls)-1].Env...)
+	}
+	if len(d.runtime.resumeCalls) > 0 {
+		metrics.LastResumeEnv = append([]string(nil), d.runtime.resumeCalls[len(d.runtime.resumeCalls)-1].Env...)
+	}
 	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
 		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState
 	}
@@ -1397,6 +1469,7 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 	}
 	if len(d.runtime.execCalls) > 0 {
 		last := d.runtime.execCalls[len(d.runtime.execCalls)-1]
+		metrics.LastExecClientSubmitID = last.ClientSubmitID
 		metrics.LastInitialTitle = last.InitialTitle
 		metrics.LastExecRequiresProviderAcceptance =
 			last.RequireProviderAcceptance
@@ -1597,10 +1670,33 @@ type legacyHostConformanceSessionInitializer struct {
 	fail           bool
 }
 
+func (i legacyHostConformanceSessionInitializer) ResolveRuntimeSessionRailPlacement(
+	ctx context.Context,
+	input agenthost.ResolveRuntimeSessionRailPlacementInput,
+) (*agenthost.RailPlacement, error) {
+	if i.canonicalStore != nil && i.canonicalStore.AgentCanonicalStore() != nil {
+		canonical := i.canonicalStore.AgentCanonicalStore()
+		store := &agenthost.SQLiteWorkspaceStore{
+			StoreForWorkspace: func(string) *agentactivitybiz.Store { return canonical },
+		}
+		return store.ResolveRuntimeSessionRailPlacement(ctx, input)
+	}
+	return (fakeSessionInitializer{reader: i.sessions}).ResolveRuntimeSessionRailPlacement(ctx, input)
+}
+
 func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
 	ctx context.Context,
 	session ProviderRuntimeSession,
 	railPlacement *agenthost.RailPlacement,
+) (PersistedSession, error) {
+	return i.InitializeRuntimeSessionWithRailAuthority(ctx, session, railPlacement, false)
+}
+
+func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSessionWithRailAuthority(
+	ctx context.Context,
+	session ProviderRuntimeSession,
+	railPlacement *agenthost.RailPlacement,
+	railPlacementAuthoritative bool,
 ) (PersistedSession, error) {
 	if i.fail {
 		return PersistedSession{}, errors.New("injected canonical session initialization failure")
@@ -1629,12 +1725,22 @@ func (i legacyHostConformanceSessionInitializer) InitializeRuntimeSession(
 		} else if err != nil {
 			return PersistedSession{}, err
 		}
+		var canonicalRail *agentactivitybiz.RailSection
+		if railPlacement != nil {
+			canonicalRail = &agentactivitybiz.RailSection{
+				Kind:        string(railPlacement.Kind),
+				ProjectPath: railPlacement.ProjectPath,
+				Key:         railPlacement.SectionKey,
+			}
+		}
 		if _, err := i.canonicalStore.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
-			WorkspaceID:       persisted.WorkspaceID,
-			AgentSessionID:    persisted.ID,
-			Provider:          persisted.Provider,
-			ProviderSessionID: persisted.ProviderSessionID,
-			OccurredAtUnixMS:  persisted.UpdatedAtUnixMS,
+			WorkspaceID:                persisted.WorkspaceID,
+			AgentSessionID:             persisted.ID,
+			Provider:                   persisted.Provider,
+			ProviderSessionID:          persisted.ProviderSessionID,
+			RailPlacement:              canonicalRail,
+			RailPlacementAuthoritative: railPlacementAuthoritative,
+			OccurredAtUnixMS:           persisted.UpdatedAtUnixMS,
 		}); err != nil {
 			return PersistedSession{}, err
 		}

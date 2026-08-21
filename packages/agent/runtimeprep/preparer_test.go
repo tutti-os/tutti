@@ -1,6 +1,7 @@
 package runtimeprep
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,57 @@ import (
 	"testing"
 	"unicode/utf8"
 )
+
+func TestDesktopCodexPersonalSkillCreatedInOneSessionIsVisibleInAnother(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	personalRoot := filepath.Join(home, ".codex", "skills")
+	preparer := newTestPreparer(t.TempDir())
+	preparer.RegisterProvider(CodexPreparer{PersonalSkillRoot: personalRoot})
+
+	prepare := func(sessionID string) PreparedRuntime {
+		result, err := preparer.Prepare(t.Context(), PrepareInput{
+			WorkspaceID:    "workspace-1",
+			AgentSessionID: sessionID,
+			AgentTargetID:  "local:codex",
+			Provider:       "codex",
+			Cwd:            t.TempDir(),
+		})
+		if err != nil {
+			t.Fatalf("Prepare(%s) error = %v", sessionID, err)
+		}
+		return result
+	}
+
+	first := prepare("session-1")
+	firstSkills := filepath.Join(envValue(first.Env, "CODEX_HOME"), "skills")
+	created := filepath.Join(firstSkills, "created-skill", "SKILL.md")
+	writeSidecarTestFile(t, created, "---\nname: created-skill\ndescription: created\n---\n")
+
+	second := prepare("session-2")
+	secondSkill := filepath.Join(envValue(second.Env, "CODEX_HOME"), "skills", "created-skill", "SKILL.md")
+	firstInfo, err := os.Stat(created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	secondInfo, err := os.Stat(secondSkill)
+	if err != nil {
+		t.Fatalf("personal Skill missing from second Session: %v", err)
+	}
+	if !os.SameFile(firstInfo, secondInfo) {
+		t.Fatal("Sessions do not expose the same personal Skill file")
+	}
+	if _, err := os.Stat(filepath.Join(personalRoot, "tutti-cli", "SKILL.md")); !os.IsNotExist(err) {
+		t.Fatalf("Tutti-managed Skill leaked into personal root, err = %v", err)
+	}
+	var extraRoots []string
+	if err := json.Unmarshal([]byte(envValue(second.Env, tuttiAgentExtraSkillRootsEnv)), &extraRoots); err != nil {
+		t.Fatalf("decode extra Skill roots: %v", err)
+	}
+	if len(extraRoots) != 1 || filepath.Base(extraRoots[0]) != "codex-session-skills" {
+		t.Fatalf("extra Skill roots = %#v, want isolated session root", extraRoots)
+	}
+}
 
 func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T) {
 	home := t.TempDir()
@@ -97,8 +149,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatalf("codex AGENTS.md missing: %v", err)
 	}
 	// The active Connector alias index has its own 640-rune cap. Keep the full
-	// provider instructions bounded while reserving room for that routing data.
-	const maxCodexAgentsChars = 7200
+	// provider instructions bounded while reserving room for that routing data
+	// plus the session-sticky enable-set protocol in connector-discovery.
+	const maxCodexAgentsChars = 7600
 	if count := utf8.RuneCountInString(string(codexAgents)); count > maxCodexAgentsChars {
 		t.Fatalf("codex AGENTS.md chars = %d, want <= %d", count, maxCodexAgentsChars)
 	}
@@ -279,7 +332,9 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if !strings.Contains(string(skill), "`tutti <scope> --help`") ||
 		!strings.Contains(string(skill), "this skill's `command-guide.md`") ||
 		!strings.Contains(string(skill), "mention://agent-target") ||
-		!strings.Contains(string(skill), "handed off, not absorbed") {
+		!strings.Contains(string(skill), "handed off, not absorbed") ||
+		!strings.Contains(string(skill), "render the session as a descriptive Markdown link") ||
+		!strings.Contains(string(skill), "keep the raw `agentSessionId` only as secondary data") {
 		t.Fatalf("skill content = %q", string(skill))
 	}
 	commandGuideReference, err := os.ReadFile(filepath.Join(codexHome, "skills", "tutti-cli", commandGuideReferencePath))
@@ -1078,6 +1133,62 @@ func TestDefaultPreparerCodexExposesRelativeModelCatalogJSON(t *testing.T) {
 	}
 	if string(got) != catalogBody {
 		t.Fatalf("sandbox catalog body = %q, want %q", string(got), catalogBody)
+	}
+}
+
+func TestDefaultPreparerCodexReconcilesNativeSkillsAcrossRepeatedPrepare(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+
+	preparer := newTestPreparer(t.TempDir())
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	}
+	first, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	second, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+
+	firstCodexHome := envValue(first.Env, "CODEX_HOME")
+	secondCodexHome := envValue(second.Env, "CODEX_HOME")
+	if firstCodexHome != secondCodexHome {
+		t.Fatalf("repeated Prepare() CODEX_HOME = %q and %q, want the same durable home", firstCodexHome, secondCodexHome)
+	}
+	if _, err := os.Stat(filepath.Join(secondCodexHome, "skills", "tutti-cli", "SKILL.md")); err != nil {
+		t.Fatalf("stable tutti-cli skill missing after repeated Prepare(): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(secondCodexHome, "skills", "tutti-cli-tutti")); !os.IsNotExist(err) {
+		t.Fatalf("repeated Prepare() created a suffixed tutti-cli skill, err = %v", err)
+	}
+}
+
+func TestDefaultPreparerCodexSkipsSkillsForModelProbe(t *testing.T) {
+	preparer := newTestPreparer(t.TempDir())
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "model-probe-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+		SkipSkills:     true,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	if _, err := os.Stat(filepath.Join(codexHome, "skills")); !os.IsNotExist(err) {
+		t.Fatalf("model-only Prepare() created a Skill root, err = %v", err)
 	}
 }
 
@@ -2124,6 +2235,37 @@ func TestTuttiAgentManagedConfigPreservesLegacyProviderWithExtraKey(t *testing.T
 	}
 	if next != input {
 		t.Fatalf("next changed customized legacy provider:\n%s", next)
+	}
+}
+
+func TestDefaultPreparerClaudeReconcilesNativeSkillsAcrossRepeatedPrepare(t *testing.T) {
+	preparer := newTestPreparer(t.TempDir())
+	input := PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:claude-code",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+	}
+	first, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("first Prepare() error = %v", err)
+	}
+	second, err := preparer.Prepare(t.Context(), input)
+	if err != nil {
+		t.Fatalf("second Prepare() error = %v", err)
+	}
+
+	firstPluginDir := envValue(first.Env, claudePluginDirEnv)
+	secondPluginDir := envValue(second.Env, claudePluginDirEnv)
+	if firstPluginDir != secondPluginDir {
+		t.Fatalf("repeated Prepare() Claude plugin dir = %q and %q, want the same runtime root", firstPluginDir, secondPluginDir)
+	}
+	if _, err := os.Stat(filepath.Join(secondPluginDir, "skills", "tutti-cli", "SKILL.md")); err != nil {
+		t.Fatalf("stable tutti-cli skill missing after repeated Prepare(): %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(secondPluginDir, "skills", "tutti-cli-tutti")); !os.IsNotExist(err) {
+		t.Fatalf("repeated Prepare() created a suffixed tutti-cli skill, err = %v", err)
 	}
 }
 

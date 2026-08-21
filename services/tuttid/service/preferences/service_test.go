@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type preferencesStoreStub struct {
@@ -13,17 +15,33 @@ type preferencesStoreStub struct {
 	patchAgentTarget             string
 	patchInput                   preferencesbiz.AgentComposerDefaultsPatch
 	patchResult                  preferencesbiz.AgentComposerDefaults
+	patchErr                     error
 	patchLaunchWorkspaceID       string
 	patchLaunchProjectSectionKey string
 	patchLaunchMode              string
 	patchLaunchResult            preferencesbiz.DesktopPreferences
+	patchLaunchErr               error
 	putInput                     preferencesbiz.DesktopPreferences
+	initializeInput              preferencesbiz.DesktopPreferences
+	initializeResult             preferencesbiz.DesktopPreferences
+	initializeCreated            bool
+	initializeErr                error
 }
 
 type preferencesPublisherStub struct {
 	published []preferencesbiz.DesktopPreferences
 	err       error
 }
+
+type analyticsReporterStub struct {
+	events []reporterservice.Event
+}
+
+func (s *analyticsReporterStub) Track(_ context.Context, events ...reporterservice.Event) {
+	s.events = append(s.events, events...)
+}
+
+func (*analyticsReporterStub) Close() error { return nil }
 
 func (s preferencesStoreStub) GetDesktopPreferences(context.Context) (preferencesbiz.DesktopPreferences, error) {
 	return s.getResult, nil
@@ -34,17 +52,22 @@ func (s *preferencesStoreStub) PutDesktopPreferences(_ context.Context, preferen
 	return preferences, nil
 }
 
+func (s *preferencesStoreStub) InitializeDesktopPreferences(_ context.Context, preferences preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, bool, error) {
+	s.initializeInput = preferences
+	return s.initializeResult, s.initializeCreated, s.initializeErr
+}
+
 func (s *preferencesStoreStub) PatchAgentComposerDefaultsForTarget(_ context.Context, agentTargetID string, patch preferencesbiz.AgentComposerDefaultsPatch) (preferencesbiz.AgentComposerDefaults, error) {
 	s.patchAgentTarget = agentTargetID
 	s.patchInput = patch
-	return s.patchResult, nil
+	return s.patchResult, s.patchErr
 }
 
 func (s *preferencesStoreStub) PatchAgentSessionLaunchMode(_ context.Context, workspaceID string, projectSectionKey string, mode string) (preferencesbiz.DesktopPreferences, error) {
 	s.patchLaunchWorkspaceID = workspaceID
 	s.patchLaunchProjectSectionKey = projectSectionKey
 	s.patchLaunchMode = mode
-	return s.patchLaunchResult, nil
+	return s.patchLaunchResult, s.patchLaunchErr
 }
 
 type agentComposerDefaultsValidatorStub struct {
@@ -165,6 +188,177 @@ func TestServicePutNotifiesChangeObserversWithPreviousAndCurrentPreferences(t *t
 	}
 }
 
+func TestServicePutInitializeIfAbsentPublishesOnlyCreatedInitialization(t *testing.T) {
+	stored := preferencesbiz.DefaultDesktopPreferences()
+	initialized := stored
+	initialized.Initialized = true
+	store := &preferencesStoreStub{
+		getResult:         stored,
+		initializeResult:  initialized,
+		initializeCreated: true,
+	}
+	publisher := &preferencesPublisherStub{}
+	service := Service{Store: store, Publisher: publisher}
+	observed := 0
+	service.RegisterChangeObserver(func(_ context.Context, before, after preferencesbiz.DesktopPreferences) {
+		observed++
+		if before.Initialized {
+			t.Fatal("observer previous preferences initialized = true, want false")
+		}
+		if !after.Initialized {
+			t.Fatal("observer current preferences initialized = false, want true")
+		}
+	})
+
+	preferences, err := service.Put(context.Background(), PutInput{
+		WriteMode: DesktopPreferencesWriteModeInitializeIfAbsent,
+		FeatureFlags: map[string]bool{
+			preferencesbiz.DesktopStandaloneAgentModeFeatureFlag: false,
+			"agent.extension.gemini":                             true,
+		},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if !preferences.Initialized {
+		t.Fatal("Put() initialized = false, want true")
+	}
+	if !store.initializeInput.Initialized {
+		t.Fatal("InitializeDesktopPreferences() candidate initialized = false, want true")
+	}
+	if !store.initializeInput.FeatureFlags[preferencesbiz.DesktopStandaloneAgentModeFeatureFlag] {
+		t.Fatalf("InitializeDesktopPreferences() feature flags = %#v, want Agent mode", store.initializeInput.FeatureFlags)
+	}
+	if !store.initializeInput.FeatureFlags["agent.extension.gemini"] {
+		t.Fatalf("InitializeDesktopPreferences() feature flags = %#v, want unrelated flags preserved", store.initializeInput.FeatureFlags)
+	}
+	if store.putInput.Initialized {
+		t.Fatal("PutDesktopPreferences() was called for initialize-if-absent write")
+	}
+	if observed != 1 {
+		t.Fatalf("observer calls = %d, want 1", observed)
+	}
+	if len(publisher.published) != 1 {
+		t.Fatalf("published preferences = %d, want 1", len(publisher.published))
+	}
+}
+
+func TestServicePutInitializeIfAbsentReturnsExistingPreferencesWithoutPublishing(t *testing.T) {
+	existing := preferencesbiz.DefaultDesktopPreferences()
+	existing.Initialized = true
+	existing.FeatureFlags = map[string]bool{preferencesbiz.DesktopStandaloneAgentModeFeatureFlag: false}
+	store := &preferencesStoreStub{
+		getResult:         preferencesbiz.DefaultDesktopPreferences(),
+		initializeResult:  existing,
+		initializeCreated: false,
+	}
+	publisher := &preferencesPublisherStub{}
+	service := Service{Store: store, Publisher: publisher}
+	observed := 0
+	service.RegisterChangeObserver(func(context.Context, preferencesbiz.DesktopPreferences, preferencesbiz.DesktopPreferences) {
+		observed++
+	})
+
+	preferences, err := service.Put(context.Background(), PutInput{
+		WriteMode:    DesktopPreferencesWriteModeInitializeIfAbsent,
+		FeatureFlags: map[string]bool{preferencesbiz.DesktopStandaloneAgentModeFeatureFlag: true},
+	})
+	if err != nil {
+		t.Fatalf("Put() error = %v", err)
+	}
+	if preferences.FeatureFlags[preferencesbiz.DesktopStandaloneAgentModeFeatureFlag] {
+		t.Fatalf("Put() feature flags = %#v, want existing OS mode", preferences.FeatureFlags)
+	}
+	if observed != 0 {
+		t.Fatalf("observer calls = %d, want 0", observed)
+	}
+	if len(publisher.published) != 0 {
+		t.Fatalf("published preferences = %d, want 0", len(publisher.published))
+	}
+}
+
+func TestServicePutReportsWorkspaceUiModeInitializedOnlyOnCreation(t *testing.T) {
+	t.Parallel()
+
+	initialized := preferencesbiz.DefaultDesktopPreferences()
+	initialized.Initialized = true
+
+	t.Run("created initialization reports the assigned mode once", func(t *testing.T) {
+		t.Parallel()
+		store := &preferencesStoreStub{
+			getResult:         preferencesbiz.DefaultDesktopPreferences(),
+			initializeResult:  initialized,
+			initializeCreated: true,
+		}
+		reporter := &analyticsReporterStub{}
+		service := Service{Store: store, AnalyticsReporter: reporter}
+		if _, err := service.Put(context.Background(), PutInput{
+			WriteMode: DesktopPreferencesWriteModeInitializeIfAbsent,
+			FeatureFlags: map[string]bool{
+				preferencesbiz.DesktopStandaloneAgentModeFeatureFlag: false,
+			},
+		}); err != nil {
+			t.Fatalf("Put() error = %v", err)
+		}
+		if len(reporter.events) != 1 {
+			t.Fatalf("tracked events = %d, want 1", len(reporter.events))
+		}
+		event := reporter.events[0]
+		if event.Name != "settings.workspace_ui_mode_initialized" {
+			t.Fatalf("event name = %q, want settings.workspace_ui_mode_initialized", event.Name)
+		}
+		// The mode derives from the authoritative stored row, not the caller
+		// input: daemon policy owns the fresh default.
+		if got := event.Params["workspace_ui_mode"]; got != "agent" {
+			t.Fatalf("workspace_ui_mode = %v, want agent", got)
+		}
+	})
+
+	t.Run("existing row initialization reports nothing", func(t *testing.T) {
+		t.Parallel()
+		store := &preferencesStoreStub{
+			getResult:         initialized,
+			initializeResult:  initialized,
+			initializeCreated: false,
+		}
+		reporter := &analyticsReporterStub{}
+		service := Service{Store: store, AnalyticsReporter: reporter}
+		if _, err := service.Put(context.Background(), PutInput{
+			WriteMode: DesktopPreferencesWriteModeInitializeIfAbsent,
+		}); err != nil {
+			t.Fatalf("Put() error = %v", err)
+		}
+		if len(reporter.events) != 0 {
+			t.Fatalf("tracked events = %d, want 0", len(reporter.events))
+		}
+	})
+
+	t.Run("replace write reports nothing", func(t *testing.T) {
+		t.Parallel()
+		store := &preferencesStoreStub{getResult: initialized}
+		reporter := &analyticsReporterStub{}
+		service := Service{Store: store, AnalyticsReporter: reporter}
+		if _, err := service.Put(context.Background(), PutInput{
+			WriteMode: DesktopPreferencesWriteModeReplace,
+		}); err != nil {
+			t.Fatalf("Put() error = %v", err)
+		}
+		if len(reporter.events) != 0 {
+			t.Fatalf("tracked events = %d, want 0", len(reporter.events))
+		}
+	})
+}
+
+func TestServicePutRejectsUnsupportedWriteMode(t *testing.T) {
+	t.Parallel()
+
+	service := Service{Store: &preferencesStoreStub{}}
+	_, err := service.Put(context.Background(), PutInput{WriteMode: "merge"})
+	if err == nil {
+		t.Fatal("Put() error = nil, want unsupported write mode error")
+	}
+}
+
 func TestServicePutPreservesAgentSessionLaunchModesWhenFieldIsOmitted(t *testing.T) {
 	t.Parallel()
 
@@ -231,6 +425,30 @@ func TestServicePatchAgentSessionLaunchModeUsesDedicatedStoreAndPublishes(t *tes
 	}
 	if len(publisher.published) != 1 || publisher.published[0].AgentSessionLaunchModesByWorkspace["workspace-a"]["project:/alpha"] != "worktree" {
 		t.Fatalf("published preferences = %#v", publisher.published)
+	}
+}
+
+func TestServicePatchAgentSessionLaunchModeDoesNotPublishOrObserveStoreFailure(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{patchLaunchErr: workspacedata.ErrDesktopPreferencesNotInitialized}
+	publisher := &preferencesPublisherStub{}
+	observed := 0
+	service := Service{Store: store, Publisher: publisher}
+	service.RegisterChangeObserver(func(context.Context, preferencesbiz.DesktopPreferences, preferencesbiz.DesktopPreferences) {
+		observed++
+	})
+
+	_, err := service.PatchAgentSessionLaunchMode(context.Background(), PatchAgentSessionLaunchModeInput{
+		WorkspaceID:       "workspace-a",
+		ProjectSectionKey: "project:/alpha",
+		Mode:              "worktree",
+	})
+	if !errors.Is(err, workspacedata.ErrDesktopPreferencesNotInitialized) {
+		t.Fatalf("PatchAgentSessionLaunchMode() error = %v, want %v", err, workspacedata.ErrDesktopPreferencesNotInitialized)
+	}
+	if len(publisher.published) != 0 || observed != 0 {
+		t.Fatalf("side effects published=%d observed=%d, want none", len(publisher.published), observed)
 	}
 }
 
@@ -673,6 +891,33 @@ func TestServicePatchAgentComposerDefaultsForTargetValidatesStoresAndInvalidates
 	}
 	if len(publisher.agentTargetIDs) != 1 || publisher.agentTargetIDs[0] != "local:codex" {
 		t.Fatalf("invalidations = %#v", publisher.agentTargetIDs)
+	}
+}
+
+func TestServicePatchAgentComposerDefaultsForTargetDoesNotPublishStoreFailure(t *testing.T) {
+	t.Parallel()
+
+	store := &preferencesStoreStub{patchErr: workspacedata.ErrDesktopPreferencesNotInitialized}
+	validator := &agentComposerDefaultsValidatorStub{}
+	publisher := &agentComposerDefaultsPublisherStub{}
+	service := Service{
+		Store:                          store,
+		AgentComposerDefaultsValidator: validator,
+		AgentComposerDefaultsPublisher: publisher,
+	}
+	model := "gpt-5"
+
+	_, err := service.PatchAgentComposerDefaultsForTarget(context.Background(), PatchAgentComposerDefaultsForTargetInput{
+		AgentTargetID: "local:codex",
+		Patch: preferencesbiz.AgentComposerDefaultsPatch{
+			preferencesbiz.AgentComposerDefaultsFieldModel: &model,
+		},
+	})
+	if !errors.Is(err, workspacedata.ErrDesktopPreferencesNotInitialized) {
+		t.Fatalf("PatchAgentComposerDefaultsForTarget() error = %v, want %v", err, workspacedata.ErrDesktopPreferencesNotInitialized)
+	}
+	if len(publisher.agentTargetIDs) != 0 {
+		t.Fatalf("invalidations = %#v, want none", publisher.agentTargetIDs)
 	}
 }
 

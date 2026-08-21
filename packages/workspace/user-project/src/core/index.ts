@@ -6,6 +6,32 @@ import type {
   WorkspaceUserProjectSelectionPreparationInput
 } from "../contracts/index.ts";
 
+const workspaceUserProjectNameMaxUtf8Bytes = 255;
+const workspaceUserProjectInvalidNameCharacters = /[<>:"/\\|?*]/u;
+const workspaceUserProjectWindowsReservedName =
+  /^(?:CON|PRN|AUX|NUL|CONIN\$|CONOUT\$|COM[1-9]|LPT[1-9])(?:\.|$)/iu;
+
+export function isValidWorkspaceUserProjectName(name: string): boolean {
+  const normalized = String(name).normalize("NFC");
+  const trimmed = normalized.trim();
+  return (
+    normalized === trimmed &&
+    trimmed.length > 0 &&
+    trimmed !== "." &&
+    trimmed !== ".." &&
+    !workspaceUserProjectInvalidNameCharacters.test(trimmed) &&
+    !Array.from(trimmed).some((character) => character.charCodeAt(0) <= 0x1f) &&
+    !/[. ]$/u.test(trimmed) &&
+    !workspaceUserProjectWindowsReservedName.test(trimmed) &&
+    new TextEncoder().encode(trimmed).byteLength <=
+      workspaceUserProjectNameMaxUtf8Bytes
+  );
+}
+
+export function workspaceUserProjectNameIdentityKey(name: string): string {
+  return String(name).normalize("NFC").trim().toLocaleLowerCase("en-US");
+}
+
 export function upsertWorkspaceUserProject(
   projects: readonly WorkspaceUserProject[],
   project: WorkspaceUserProject

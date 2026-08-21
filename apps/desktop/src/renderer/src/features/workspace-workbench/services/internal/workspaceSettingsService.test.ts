@@ -9,10 +9,8 @@ import type { ReporterEventInput } from "../../../analytics/services/reporterSer
 import {
   AGENT_EXTENSION_ACTIVATION_FLAGS,
   AGENT_EXTENSION_GEMINI_FLAG,
-  AGENT_QUICK_PROMPT_LIBRARY_FLAG,
   LAB_CONNECTORS_FLAG,
-  LAB_ENABLED_FLAG,
-  MOBILE_REMOTE_ACCESS_SETTINGS_FLAG
+  LAB_ENABLED_FLAG
 } from "../../../../../../shared/featureFlags/catalog.ts";
 import type { DesktopWorkspaceSettingsClient } from "./adapters/desktopWorkspaceSettingsClient.ts";
 import { WorkspaceSettingsService } from "./workspaceSettingsService.ts";
@@ -599,55 +597,6 @@ test("WorkspaceSettingsService does not refresh Agent Targets after changing an 
   );
 });
 
-test("WorkspaceSettingsService reports a quick prompt specific save failure", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    { client: createWorkspaceSettingsClient({}) },
-    createDesktopPreferencesService({
-      onSetFeatureFlags: async () => {
-        throw new Error("preferences unavailable");
-      },
-      state: createPreferencesState({ featureFlags: {} })
-    }),
-    notifications.service
-  );
-
-  await service.changeFeatureFlags({
-    [AGENT_QUICK_PROMPT_LIBRARY_FLAG]: true
-  });
-
-  assert.equal(notifications.items.length, 1);
-  assert.ok(
-    notifications.items[0] ===
-      "We couldn't update quick-prompt library availability." ||
-      notifications.items[0] === "暂时无法更新快捷提示词库可用状态"
-  );
-});
-
-test("WorkspaceSettingsService reports a mobile remote access settings save failure", async () => {
-  const notifications = createNotificationRecorder();
-  const service = new WorkspaceSettingsService(
-    { client: createWorkspaceSettingsClient({}) },
-    createDesktopPreferencesService({
-      onSetFeatureFlags: async () => {
-        throw new Error("preferences unavailable");
-      },
-      state: createPreferencesState({ featureFlags: {} })
-    }),
-    notifications.service
-  );
-
-  await service.changeFeatureFlags({
-    [MOBILE_REMOTE_ACCESS_SETTINGS_FLAG]: true
-  });
-
-  assert.equal(notifications.items.length, 1);
-  assert.ok(
-    notifications.items[0] === "We couldn't update mobile remote access." ||
-      notifications.items[0] === "暂时无法更新手机远程访问设置"
-  );
-});
-
 test("WorkspaceSettingsService compares Agent Extension activation against pending flags", async () => {
   assert.deepEqual(
     await changeFeatureFlagsAndRecordEffects({
@@ -850,6 +799,46 @@ test("WorkspaceSettingsService forwards the selected developer log export option
   assert.deepEqual(inputs, [
     { includeAgentSessions: true, scope: "recent-3-days" }
   ]);
+});
+
+test("WorkspaceSettingsService immediately reports that log export started", async () => {
+  let finishExport: () => void = () => {};
+  let resolverInstalled = false;
+  const infoTitles: string[] = [];
+  const service = new WorkspaceSettingsService(
+    {
+      client: createWorkspaceSettingsClient({
+        exportLogs: () =>
+          new Promise((resolve) => {
+            resolverInstalled = true;
+            finishExport = () =>
+              resolve({ canceled: true, fileCount: 0, filePath: null });
+          })
+      })
+    },
+    undefined,
+    {
+      _serviceBrand: undefined,
+      error() {},
+      info(input) {
+        infoTitles.push(input.title);
+      },
+      notify() {},
+      success() {},
+      warning() {}
+    }
+  );
+
+  const exportPromise = service.exportDeveloperLogs({
+    includeAgentSessions: false,
+    scope: "recent-10-minutes"
+  });
+
+  assert.deepEqual(infoTitles, ["Exporting..."]);
+  assert.equal(service.store.developerLogs.exporting, true);
+  assert.equal(resolverInstalled, true);
+  finishExport();
+  await exportPromise;
 });
 
 test("WorkspaceSettingsService clears workspace conversation history", async () => {

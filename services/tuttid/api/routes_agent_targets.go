@@ -24,6 +24,14 @@ func registerAgentTargetRoutes(mux *http.ServeMux, wrapper *tuttigenerated.Serve
 		wrapper.SetSystemAgentTargetEnabled(w, r)
 	})
 
+	mux.HandleFunc("/v1/agent-targets/{agentTargetID}/account-usage", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ProbeAgentTargetAccountUsage(w, r)
+	})
+
 	mux.HandleFunc("/v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			tuttitypes.WriteMethodNotAllowed(w)

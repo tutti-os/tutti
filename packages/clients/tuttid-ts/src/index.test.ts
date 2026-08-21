@@ -2523,6 +2523,51 @@ test("shared tuttid client preserves connector market read and install routes", 
   });
 });
 
+test("shared tuttid client updates connector runtime activation", async () => {
+  const projected = { key: "notion", revision: 8 };
+  const { client, requests } = captureClient(() =>
+    jsonResponse(projected, 202)
+  );
+
+  assert.deepEqual(
+    await client.updateConnectorMarketConnectorRuntime("notion", {
+      clientRequestId: "runtime-1",
+      expectedRevision: 7,
+      expectedConnectorRevision: 6,
+      enabled: false
+    }),
+    projected
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: {
+      clientRequestId: "runtime-1",
+      expectedRevision: 7,
+      expectedConnectorRevision: 6,
+      enabled: false
+    },
+    method: "PUT",
+    path: "/v1/connector-market/connectors/notion/runtime",
+    query: {}
+  });
+});
+
+test("shared tuttid connector client cancels a pending authorization without a request body", async () => {
+  const { client, requests } = captureClient(
+    () => new Response(null, { status: 204 })
+  );
+
+  await client.cancelConnectorMarketAuthorization("supabase");
+
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "POST",
+    path: "/v1/connector-market/connectors/supabase/authorization:cancel",
+    query: {}
+  });
+});
+
 test("shared tuttid connector client preserves structured market errors", async () => {
   const details = {
     code: "connector_market_revision_conflict" as const,
@@ -2553,15 +2598,17 @@ test("shared tuttid connector client preserves category and cursor pagination", 
   const categories = {
     categories: [
       {
-        categoryId: "development",
+        categoryId: "business-operations",
         kind: "category" as const,
-        sortOrder: 20,
-        itemCount: 1
+        sortOrder: 60,
+        itemCount: 1,
+        displayNameZh: "商业与运营",
+        displayNameEn: "Business & Operations"
       }
     ]
   };
   const page = {
-    sectionId: "development",
+    sectionId: "business-operations",
     items: [],
     nextPageToken: "next-page",
     revision: 8
@@ -2573,7 +2620,8 @@ test("shared tuttid connector client preserves category and cursor pagination", 
   assert.deepEqual(await client.listConnectorMarketCategories(), categories);
   assert.deepEqual(
     await client.listConnectorMarketCatalog({
-      sectionId: "development",
+      installation: "not_installed",
+      sectionId: "business-operations",
       pageSize: 20,
       pageToken: "cursor-1"
     }),
@@ -2592,9 +2640,10 @@ test("shared tuttid connector client preserves category and cursor pagination", 
     method: "GET",
     path: "/v1/connector-market/catalog",
     query: {
+      installation: "not_installed",
       pageSize: "20",
       pageToken: "cursor-1",
-      sectionId: "development"
+      sectionId: "business-operations"
     }
   });
 });

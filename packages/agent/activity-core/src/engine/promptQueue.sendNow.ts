@@ -4,7 +4,8 @@ import type { PromptQueueState } from "./promptQueue.types.ts";
 export type PromptQueueSendNowStrategy =
   | "send_available"
   | "native_guidance"
-  | "cancel_then_send";
+  | "cancel_then_send"
+  | "await_capabilities";
 
 interface ActiveTurnDeliveryCapabilities {
   activeTurnGuidance?: boolean;
@@ -38,6 +39,9 @@ export function resolvePromptSendNowStrategy(
     availability.reason !== "active_turn"
   ) {
     return null;
+  }
+  if (capabilities == null) {
+    return "await_capabilities";
   }
   if (capabilities?.activeTurnGuidance === true) {
     return "native_guidance";

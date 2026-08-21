@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   AGENT_COMPOSER_HOME_DRAFT_SCOPE,
   areAgentComposerProjectPathsEqual,
+  isAgentComposerSessionDraftScope,
   normalizeAgentComposerDraftProjectPath,
   resolveAgentComposerDraftScopeKey
 } from "./agentComposerDraftScope";
@@ -54,5 +55,15 @@ describe("agentComposerDraftScope", () => {
         projectPath: "/workspace/project-a"
       })
     ).toBe("session:session-1");
+  });
+
+  it("treats only session-prefixed keys as session drafts", () => {
+    expect(isAgentComposerSessionDraftScope("session:session-1")).toBe(true);
+    expect(
+      isAgentComposerSessionDraftScope(AGENT_COMPOSER_HOME_DRAFT_SCOPE)
+    ).toBe(false);
+    expect(isAgentComposerSessionDraftScope("project:/workspace/app")).toBe(
+      false
+    );
   });
 });

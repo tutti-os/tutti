@@ -10,11 +10,14 @@ import (
 	"runtime"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/managednpm"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 )
+
+const managedNPMReplacementRetryDelay = 150 * time.Millisecond
 
 // displayNPMRegistry returns a registry URL safe to surface in status and logs.
 // A custom registry override (agentNPMRegistryEnv) can embed credentials as
@@ -66,6 +69,9 @@ func (s Service) runManagedNPMPackageAction(
 	spec ManagedNPMPackageInstallerSpec,
 	existingCLIPath string,
 ) (InstallCommandResult, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	packageName := strings.TrimSpace(spec.PackageName)
 	binaryName := strings.TrimSpace(spec.BinaryName)
 	if packageName == "" {
@@ -140,6 +146,18 @@ func (s Service) runManagedNPMPackageAction(
 	registries := s.rankedManagedNPMRegistries(ctx, spec)
 	var result InstallCommandResult
 	binConflictRepaired := false
+	runAttempt := func(registry string) (InstallCommandResult, error) {
+		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
+		defer cancel()
+		return s.installCommand(attemptCtx, InstallCommandInput{
+			Command: command,
+			Args:    commandArgs,
+			Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
+			OnStdout: func(output string) {
+				appendActiveActionStdout(ctx, provider, output)
+			},
+		})
+	}
 	// npm can leave a sibling .<package>-<hash> staging directory when an
 	// install is interrupted (for example, when the desktop window that started
 	// the action closes). The next npm install then fails before doing any useful
@@ -156,17 +174,30 @@ func (s Service) runManagedNPMPackageAction(
 			Registry:   registryDisplay,
 			NodeTarget: nodeTarget,
 		})
-		attemptCtx, cancel := context.WithTimeout(ctx, perRegistryInstallTimeout)
-		result, err = s.installCommand(attemptCtx, InstallCommandInput{
-			Command: command,
-			Args:    commandArgs,
-			Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
-			OnStdout: func(output string) {
-				appendActiveActionStdout(ctx, provider, output)
-			},
-		})
-		cancel()
-		if err == nil && result.ExitCode == 0 {
+		result, err = runAttempt(registry)
+		if err == nil && result.ExitCode == 0 && managedNPMResultHasReplacementLock(result) {
+			// npm can report exit 0 after failing to replace a running Windows
+			// shim/executable. Give the old process a short window to release the
+			// file, then run the same verified command once more. A successful
+			// exit is not accepted while the warning is still present.
+			slog.Warn(
+				"agent provider managed npm install reported a locked replacement",
+				"provider", provider,
+				"package", packageName,
+				"registry", registryDisplay,
+				"stderr", trimActionOutput(result.Stderr),
+			)
+			setActiveAction(ctx, provider, ActiveAction{
+				ID: actionID, Status: "running", Step: "retry", Registry: registryDisplay,
+				NodeTarget: nodeTarget,
+			})
+			if !sleepContext(ctx, managedNPMReplacementRetryDelay) {
+				return result, ctx.Err()
+			}
+			cleanupManagedNPMStagingDirs(installPrefix, packageName)
+			result, err = runAttempt(registry)
+		}
+		if err == nil && result.ExitCode == 0 && !managedNPMResultHasReplacementLock(result) {
 			setActiveAction(ctx, provider, ActiveAction{
 				ID:         actionID,
 				Status:     "running",
@@ -187,17 +218,8 @@ func (s Service) runManagedNPMPackageAction(
 				NodeTarget: nodeTarget,
 				Stdout:     result.Stdout,
 			})
-			attemptCtx, cancel = context.WithTimeout(ctx, perRegistryInstallTimeout)
-			result, err = s.installCommand(attemptCtx, InstallCommandInput{
-				Command: command,
-				Args:    commandArgs,
-				Env:     withAgentNPMRegistry(slices.Clone(baseEnv), registry),
-				OnStdout: func(output string) {
-					appendActiveActionStdout(ctx, provider, output)
-				},
-			})
-			cancel()
-			if err == nil && result.ExitCode == 0 {
+			result, err = runAttempt(registry)
+			if err == nil && result.ExitCode == 0 && !managedNPMResultHasReplacementLock(result) {
 				setActiveAction(ctx, provider, ActiveAction{
 					ID:         actionID,
 					Status:     "running",
@@ -223,6 +245,17 @@ func (s Service) runManagedNPMPackageAction(
 				"error", err,
 			)
 		}
+	}
+	if err == nil && result.ExitCode == 0 && managedNPMResultHasReplacementLock(result) {
+		// Do not let npm's exit-0 cleanup warning become a false-success install
+		// when the retry and all registry attempts still could not replace the
+		// live Windows executable/shim. The caller's runtime postcondition then
+		// reports the provider as unavailable and can offer repair again.
+		result.ExitCode = 1
+		result.Stderr = firstNonBlank(
+			result.Stderr,
+			"managed npm install could not replace a locked provider executable",
+		)
 	}
 	return result, err
 }
@@ -266,6 +299,26 @@ func cleanupManagedNPMStagingDirs(installPrefix, packageName string) {
 			"package", packageName,
 		)
 	}
+}
+
+func managedNPMResultHasReplacementLock(result InstallCommandResult) bool {
+	message := strings.ToLower(result.Stdout + "\n" + result.Stderr)
+	hasLockMarker := false
+	for _, marker := range []string{"eperm", "ebusy", "eacces", "permission denied", "operation not permitted"} {
+		if strings.Contains(message, marker) {
+			hasLockMarker = true
+			break
+		}
+	}
+	if !hasLockMarker {
+		return false
+	}
+	for _, marker := range []string{"unlink", "rename", "replace", "shim", ".exe", ".cmd"} {
+		if strings.Contains(message, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func managedNPMGlobalPackageDir(installPrefix, packageName string) (string, bool) {

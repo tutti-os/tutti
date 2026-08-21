@@ -13,11 +13,15 @@ var (
 		Name: "failed canonical initialization aborts unpublished runtime",
 		run:  runFailedCanonicalInitializationAbortsUnpublishedRuntime,
 	}
-	createWithRailPlacementScenario = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
-	resumePersistedSessionScenario  = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
-	sendInputScenario               = Scenario{Name: "send input", run: runSendInput}
-	sendConnectorOnlyInputScenario  = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
-	providerAcceptanceScenario      = Scenario{
+	createWithRailPlacementScenario              = Scenario{Name: "create with explicit rail placement", run: runCreateWithRailPlacement}
+	createWithAuthoritativeRailPlacementScenario = Scenario{
+		Name: "create with authoritative rail placement outside local project registry",
+		run:  runCreateWithAuthoritativeRailPlacement,
+	}
+	resumePersistedSessionScenario = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	sendInputScenario              = Scenario{Name: "send input", run: runSendInput}
+	sendConnectorOnlyInputScenario = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
+	providerAcceptanceScenario     = Scenario{
 		Name: "new turns require durable provider acceptance",
 		run:  runNewTurnsRequireDurableProviderAcceptance,
 	}
@@ -31,9 +35,11 @@ var (
 	}
 	duplicateClientSubmitIDScenario     = Scenario{Name: "duplicate client submit id", run: runDuplicateClientSubmitID}
 	exactTurnCancelScenario             = Scenario{Name: "exact turn cancel", run: runExactTurnCancel}
+	unconfirmedTurnCancelScenario       = Scenario{Name: "exact turn cancel keeps delivery-unconfirmed intent pending", run: runUnconfirmedTurnCancel}
 	interactiveResponseScenario         = Scenario{Name: "interactive response", run: runInteractiveResponse}
 	interactiveResponseReusedIDScenario = Scenario{Name: "interactive response reuses provider request id across turns", run: runInteractiveResponseReusedRequestID}
 	interactiveResponseRaceScenario     = Scenario{Name: "interactive response race", run: runInteractiveResponseRace}
+	interactiveFollowUpRecoveryScenario = Scenario{Name: "interactive follow-up recovers through Host admission", run: runInteractiveFollowUpRecovery}
 	planDecisionScenario                = Scenario{Name: "plan decision", run: runPlanDecision}
 	initialTitleCASScenario             = Scenario{Name: "initial title cas", run: runInitialTitleCAS}
 	getSessionScenario                  = Scenario{Name: "get session", run: runGetSession}
@@ -73,6 +79,7 @@ func Scenarios() []Scenario {
 		typedInitialGoalRailBarrierScenario,
 		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
+		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
@@ -144,9 +151,11 @@ func DeletionAdmissionScenarios() []Scenario {
 func CoordinatorScenarios() []Scenario {
 	return []Scenario{
 		exactTurnCancelScenario,
+		unconfirmedTurnCancelScenario,
 		interactiveResponseScenario,
 		interactiveResponseReusedIDScenario,
 		interactiveResponseRaceScenario,
+		interactiveFollowUpRecoveryScenario,
 		planDecisionScenario,
 		{Name: "recover operations before stale turns", run: runRecoveryOrder},
 	}
@@ -203,6 +212,16 @@ func InteractionTreeScenarios() []InteractionTreeScenario {
 	}}
 }
 
+// SideConversationScenarios fixes the provider-neutral contract: the source
+// remains untouched, Side output is transient, a Side survives source Turn
+// settlement, and explicit close releases the child.
+func SideConversationScenarios() []SideConversationScenario {
+	return []SideConversationScenario{{
+		Name: "active parent side stays transient",
+		run:  runActiveParentSideStaysTransient,
+	}}
+}
+
 // CommitObserverScenarios verify the typed post-commit seam independently of
 // any adapter-specific event transport. They intentionally include a failing
 // observer because observer delivery is advisory after the durable commit.
@@ -224,6 +243,7 @@ func ApplicationCoreScenarios() []Scenario {
 		typedInitialGoalRailBarrierScenario,
 		failedCanonicalInitializationScenario,
 		createWithRailPlacementScenario,
+		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,

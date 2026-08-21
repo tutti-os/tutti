@@ -9,6 +9,7 @@ type scriptedAppServerResponder interface {
 	Close() error
 	sendJSON(map[string]any)
 	sendJSONBatch(...map[string]any)
+	sendStderr([]byte)
 	notify(string, map[string]any)
 }
 

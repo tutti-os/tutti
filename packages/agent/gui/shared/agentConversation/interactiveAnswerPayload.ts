@@ -61,30 +61,3 @@ export function buildAskUserAnswerPayload(
   );
   return { answers, answersByQuestionId };
 }
-
-/**
- * Converts one ordinary-composer instruction into a canonical ask-user answer.
- * The same instruction is attached to every question because the composer is a
- * task-level escape hatch, not a second per-question form. The provider receives
- * the user's direction through its existing request-user-input response and can
- * resume the blocked turn without an interrupt or a replacement prompt.
- */
-export function buildAskUserComposerAnswerPayload(
-  rawQuestionIds: readonly string[],
-  rawAnswer: string
-): InteractiveAnswerPayload | null {
-  const answer = rawAnswer.trim();
-  if (!answer) return null;
-
-  const answersByQuestionId: Record<string, string> = {};
-  for (const rawQuestionId of rawQuestionIds) {
-    const questionId = rawQuestionId.trim();
-    if (!questionId || Object.hasOwn(answersByQuestionId, questionId)) {
-      continue;
-    }
-    writeOwnAnswer(answersByQuestionId, questionId, answer);
-  }
-  return Object.keys(answersByQuestionId).length > 0
-    ? buildAskUserAnswerPayload(answersByQuestionId)
-    : null;
-}

@@ -120,6 +120,34 @@ func TestClaudeSDKLifecycleLogArgsKeepsZeroCounts(t *testing.T) {
 	}
 }
 
+func TestClaudeSDKLifecycleLogArgsIncludesTaskUsage(t *testing.T) {
+	got := claudeSDKLifecycleLogArgs(map[string]any{
+		"taskId": "task-1",
+		"usage": map[string]any{
+			"total_tokens":                float64(12_345),
+			"input_tokens":                float64(2_000),
+			"output_tokens":               float64(345),
+			"cache_read_input_tokens":     float64(9_000),
+			"cache_creation_input_tokens": float64(1_000),
+			"tool_uses":                   float64(7),
+			"duration_ms":                 float64(4_200),
+		},
+	})
+	want := []any{
+		"task_id", "task-1",
+		"usage_total_tokens", int64(12_345),
+		"usage_input_tokens", int64(2_000),
+		"usage_output_tokens", int64(345),
+		"usage_cache_read_input_tokens", int64(9_000),
+		"usage_cache_creation_input_tokens", int64(1_000),
+		"usage_tool_uses", int64(7),
+		"usage_duration_ms", int64(4_200),
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("log args = %#v, want %#v", got, want)
+	}
+}
+
 func TestClaudeSDKContinuationDelayUsesWarningLogLevel(t *testing.T) {
 	if got := claudeSDKLifecycleEventLogLevel("continuation_delayed"); got != slog.LevelWarn {
 		t.Fatalf("log level = %v, want warning", got)
@@ -674,6 +702,27 @@ func TestClaudeCodeSDKAdapterScopesChildApprovalBySDKAgentID(t *testing.T) {
 		if event.AgentSessionID != child.AgentSessionID || event.Payload.TurnID != child.TurnID {
 			t.Fatalf("approval resolution scope = %#v, want child session=%q turn=%q", event, child.AgentSessionID, child.TurnID)
 		}
+	}
+
+	replayed, terminal, err := adapter.sidecarTurnEvents(adapterSession, session, "provider-turn-task", claudeSDKSidecarEvent{
+		Type: "approval_requested",
+		Payload: map[string]any{
+			"turnId":     "provider-turn-task",
+			"requestId":  "approval-child-write",
+			"toolCallId": "toolu-child-write",
+			"toolName":   "Write",
+			"agentId":    "agent-1",
+			"input":      map[string]any{"file_path": "/repo/permission-probe.txt", "content": "hello"},
+		},
+	})
+	if err != nil || terminal {
+		t.Fatalf("replayed child approval terminal=%v err=%v", terminal, err)
+	}
+	if len(replayed) != 0 {
+		t.Fatalf("replayed child approval events=%#v, want none", replayed)
+	}
+	if got := adapter.InteractiveDispositionForTarget(session, child.AgentSessionID, child.TurnID, "approval-child-write"); got != InteractiveDispositionAnswered {
+		t.Fatalf("child disposition after replay=%q, want answered", got)
 	}
 }
 

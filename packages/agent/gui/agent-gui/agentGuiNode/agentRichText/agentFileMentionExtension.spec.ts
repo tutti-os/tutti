@@ -177,6 +177,29 @@ describe("parseAgentMentionMarkdown", () => {
     });
   });
 
+  it("normalizes Windows separators when deriving a file directory", () => {
+    const href = String.raw`C:\Users\agent\workspace\report.md`;
+    expect(parseMentionItemFromHref({ name: "report.md", href })).toMatchObject(
+      {
+        kind: "file",
+        path: href,
+        directoryPath: "C:/Users/agent/workspace"
+      }
+    );
+  });
+
+  it("recognizes a Windows trailing separator as a local folder", () => {
+    const href = "C:\\Users\\agent\\workspace\\generated\\";
+    expect(parseMentionItemFromHref({ name: "generated", href })).toMatchObject(
+      {
+        kind: "file",
+        path: href,
+        entryKind: "directory",
+        directoryPath: "C:/Users/agent/workspace"
+      }
+    );
+  });
+
   it("does not classify trailing-slash URLs as directory mentions", () => {
     expect(
       parseAgentMentionMarkdown("[@OpenAI](https://openai.com/)")

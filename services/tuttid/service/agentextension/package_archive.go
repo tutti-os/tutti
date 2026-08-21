@@ -103,7 +103,7 @@ func validateInstalledPackage(root, key, version string) (Manifest, error) {
 	if !safeRelativePath(manifest.LocalizationInfo.DefaultFile) {
 		return Manifest{}, errors.New("installed extension default locale is invalid")
 	}
-	for _, referenced := range []string{manifest.Icon.Src, manifest.MaskIcon.Src, manifest.HeroImage.Src, manifest.LocalizationInfo.DefaultFile, manifest.Profiles.Discovery, manifest.Profiles.Tools, manifest.Profiles.Capabilities, manifest.Profiles.Composer, manifest.Profiles.Authentication, manifest.Profiles.Events} {
+	for _, referenced := range []string{manifest.Icon.Src, manifest.MaskIcon.Src, manifest.HeroImage.Src, manifest.LocalizationInfo.DefaultFile, manifest.Profiles.Discovery, manifest.Profiles.Tools, manifest.Profiles.Capabilities, manifest.Profiles.Composer, manifest.Profiles.Authentication, manifest.Profiles.AccountUsage, manifest.Profiles.Events} {
 		if referenced == "" {
 			continue
 		}

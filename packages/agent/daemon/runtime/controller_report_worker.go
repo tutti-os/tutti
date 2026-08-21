@@ -14,6 +14,9 @@ import (
 )
 
 func (c *Controller) enqueueSessionReport(ctx context.Context, session Session, events []activityshared.Event) {
+	if session.IsSideConversation() {
+		return
+	}
 	c.enqueueSessionReportWithInitializationState(ctx, session, events, false)
 }
 
@@ -32,6 +35,9 @@ func (c *Controller) enqueueSessionReportWithInitializationState(
 	events []activityshared.Event,
 	canonicalInitialized bool,
 ) {
+	if session.IsSideConversation() {
+		return
+	}
 	c.observeGoalControlLifecycle(ctx, session, events)
 	report := c.prepareSessionReportWithInitializationState(session, events, canonicalInitialized)
 	c.observeProviderObservations(ctx, session, report.ProviderObservations)
@@ -92,6 +98,9 @@ func (c *Controller) reportSessionBeforePublish(
 	session Session,
 	events []activityshared.Event,
 ) error {
+	if session.IsSideConversation() {
+		return nil
+	}
 	if c == nil || c.reporter == nil {
 		return nil
 	}
@@ -112,7 +121,7 @@ func (c *Controller) reportSessionBeforePublish(
 	if c.reportQueue == nil {
 		return c.report(request.ctx, request)
 	}
-	c.reportQueue.enqueue(request)
+	queueDepth := c.reportQueue.enqueue(request)
 	select {
 	case err := <-request.done:
 		return err
@@ -122,6 +131,7 @@ func (c *Controller) reportSessionBeforePublish(
 			"event", "agent_session.activity_report.terminal_barrier_timeout",
 			"room_id", session.RoomID,
 			"agent_session_id", session.AgentSessionID,
+			"queue_depth", queueDepth,
 			"error", reportCtx.Err(),
 		)
 		return reportCtx.Err()
@@ -222,14 +232,18 @@ func (c *Controller) observeProviderObservations(
 }
 
 // reportSubmittedTurnDurable is the acceptance barrier for a user submission.
-// The daemon reporter commits the submitted Turn and its session pointer before
-// Exec may publish the transition, start provider work, or return success.
+// The durable reporter commits the submitted Turn and canonical user message
+// together before Exec may publish the transition, start provider work, or
+// return success.
 func (c *Controller) reportSubmittedTurnDurable(
 	ctx context.Context,
 	session Session,
 	events []activityshared.Event,
 	keepProvisional bool,
 ) error {
+	if session.IsSideConversation() {
+		return nil
+	}
 	if c == nil || c.reporter == nil {
 		// Reporter-less controllers are used as standalone runtimes and have no
 		// durable projection. The wired tuttid runtime always provides a reporter.
@@ -243,7 +257,7 @@ func (c *Controller) reportSubmittedTurnDurable(
 	if keepProvisional {
 		hideProvisionalSessionReport(&report)
 	}
-	return c.reporter.Report(ctx, report)
+	return c.reporter.ReportSubmitProvenance(ctx, report)
 }
 
 func hideProvisionalSessionReport(report *agentsessionstore.ReportActivityInput) {
@@ -343,6 +357,9 @@ func (c *Controller) reportGoalReconcileControl(ctx context.Context, report agen
 }
 
 func (c *Controller) reportGoalReconcileDurable(ctx context.Context, session Session, request GoalReconcileDurableRequest) error {
+	if session.IsSideConversation() {
+		return nil
+	}
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
 		Connector:   &canonical.ConnectorInfo{ID: session.Provider, Version: "agent-gui-runtime"},
@@ -359,6 +376,9 @@ func (c *Controller) reportGoalReconcileDurable(ctx context.Context, session Ses
 }
 
 func (c *Controller) enqueueSessionSnapshotReport(ctx context.Context, session Session) {
+	if session.IsSideConversation() {
+		return
+	}
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
 		Connector: &canonical.ConnectorInfo{
@@ -376,6 +396,9 @@ func (c *Controller) enqueueSessionStatePatchReport(
 	session Session,
 	patch agentsessionstore.WorkspaceAgentStatePatch,
 ) {
+	if session.IsSideConversation() {
+		return
+	}
 	report := agentsessionstore.ReportActivityInput{
 		WorkspaceID: session.RoomID,
 		Connector: &canonical.ConnectorInfo{

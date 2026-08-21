@@ -63,6 +63,7 @@ import {
 } from "./composerOptions.reducer.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 import { deriveCanonicalSubmitAvailability } from "./sessionLifecycle.availability.ts";
+import { activeTurnIdForSession } from "./promptQueue.drainDecision.ts";
 import {
   createInitialSessionMutationsState,
   sessionMutationsReducer
@@ -300,21 +301,35 @@ export function rootEngineReducer(
     planTurnValid &&
     submitRequestAccepted
   );
+  const queuedSendNowTargetTurnId =
+    intent.type === "queue/sendNowRequested"
+      ? (intent.targetTurnId?.trim() ?? "")
+      : "";
+  const queuedSendNowCurrentTurnId =
+    intent.type === "queue/sendNowRequested"
+      ? (activeTurnIdForSession(
+          state.sessionLifecycle,
+          intent.agentSessionId
+        ) ?? "")
+      : "";
   const sendNowStrategy =
     intent.type === "submit/requested" && intent.routing === "send_now"
       ? submitSendNowStrategy
       : intent.type === "queue/sendNowRequested"
-        ? resolveQueuedPromptSendNowStrategy(
-            state.promptQueue,
-            intent.agentSessionId,
-            intent.promptId,
-            deriveCanonicalSubmitAvailability(
-              state.sessionLifecycle,
-              intent.agentSessionId
-            ),
-            state.sessionLifecycle.sessionsById[intent.agentSessionId.trim()]
-              ?.capabilities
-          )
+        ? queuedSendNowTargetTurnId &&
+          queuedSendNowTargetTurnId !== queuedSendNowCurrentTurnId
+          ? "send_available"
+          : resolveQueuedPromptSendNowStrategy(
+              state.promptQueue,
+              intent.agentSessionId,
+              intent.promptId,
+              deriveCanonicalSubmitAvailability(
+                state.sessionLifecycle,
+                intent.agentSessionId
+              ),
+              state.sessionLifecycle.sessionsById[intent.agentSessionId.trim()]
+                ?.capabilities
+            )
         : null;
   const expiringSubmitId =
     intent.type === "engine/intentExpired" &&
@@ -420,6 +435,17 @@ export function rootEngineReducer(
     intent,
     {
       deletedSessionIds: state.sessionLifecycle.deletedSessionIds,
+      // Once activation is uncertain, the command is no longer the owner of
+      // Session visibility. Its recovery follow-up must be allowed to issue
+      // the authoritative read that can discover a committed Session.
+      pendingNewSessionIds: new Set(
+        Object.values(pendingIntents.state.activationsByRequestId)
+          .filter(
+            (activation) =>
+              activation.mode === "new" && activation.status === "requested"
+          )
+          .map((activation) => activation.agentSessionId)
+      ),
       sessionsById: sessionLifecycle.state.sessionsById,
       workspaceReconcileCommandId:
         state.engineRuntime.workspaceReconcile.commandId
@@ -485,6 +511,7 @@ export function rootEngineReducer(
     ...(goalControl.followUpIntents ?? []),
     ...(sessionReconcile.followUpIntents ?? []),
     ...(sessionMutations.followUpIntents ?? []),
+    ...(sessionLifecycle.followUpIntents ?? []),
     ...(pendingIntents.followUpIntents ?? []),
     ...(promptExecutions.followUpIntents ?? []),
     ...(promptQueue.followUpIntents ?? [])

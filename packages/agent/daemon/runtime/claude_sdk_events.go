@@ -466,10 +466,9 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 			return events, true, nil
 		}
 		events := a.finishClaudeSDKTurnLifecycle(adapterSession, session, rootTurnID, claudeSDKTurnFinishFailed, "turn_failed")
-		events = append(events, claudeSDKRootProviderTurnCompletedEvent(session, rootTurnID, boundProviderTurnID, activityshared.TurnOutcomeFailed, map[string]any{
-			"adapter": claudeSDKSidecarAdapterName,
-			"error":   payloadString(event.Payload, "error"),
-		}))
+		failureMetadata := claudeProviderFailure(event.Payload).metadata()
+		failureMetadata["adapter"] = claudeSDKSidecarAdapterName
+		events = append(events, claudeSDKRootProviderTurnCompletedEvent(session, rootTurnID, boundProviderTurnID, activityshared.TurnOutcomeFailed, failureMetadata))
 		if len(goalEvents) > 0 {
 			events = append(events, goalEvents...)
 		} else {

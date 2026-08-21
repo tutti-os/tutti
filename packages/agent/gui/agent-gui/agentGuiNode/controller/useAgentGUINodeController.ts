@@ -66,6 +66,7 @@ export {
   permissionModeOptions
 } from "./agentGuiController.composerHelpers";
 import { trackAgentGUISettingsProjectChange } from "./agentGuiProjectAnalytics";
+import type { OptimisticComposerTarget } from "./agentGuiController.composerPresentation";
 export * from "./agentGuiController.conversationHelpers";
 export {
   agentGUIConversationDiagnosticDetails,
@@ -113,6 +114,8 @@ export type {
 
 export function useAgentGUINodeController({
   nodeId,
+  isSurfaceActive,
+  isSurfaceVisible,
   workspaceId,
   currentUserId,
   workspacePath,
@@ -284,6 +287,27 @@ export function useAgentGUINodeController({
         )
       )
   );
+  const optimisticComposerTarget =
+    useMemo<OptimisticComposerTarget | null>(() => {
+      if (
+        !isCreatingConversation ||
+        activePendingActivation?.mode !== "new" ||
+        activePendingActivation.agentSessionId !== activeConversationId ||
+        activePendingActivation.agentTargetId !==
+          selectedComposerTargetData.agentTargetId
+      ) {
+        return null;
+      }
+      return {
+        agentSessionId: activePendingActivation.agentSessionId,
+        target: selectedComposerTargetData
+      };
+    }, [
+      activeConversationId,
+      activePendingActivation,
+      isCreatingConversation,
+      selectedComposerTargetData
+    ]);
   // Bridges submitInteractivePrompt
   // updateComposerSettings (defined later); assigned right after the
   // callback's definition.
@@ -303,6 +327,7 @@ export function useAgentGUINodeController({
     activeSessionState,
     data,
     draftSettingsBySessionId,
+    optimisticComposerTarget,
     selectedComposerTargetData,
     sessionEngine
   });
@@ -505,10 +530,13 @@ export function useAgentGUINodeController({
     intent,
     isComposerHomeRef,
     isMountedRef,
+    isSurfaceActive,
+    isSurfaceVisible,
     loadDraftComposerOptions: () => loadDraftComposerOptionsRef.current(),
     loadSelectedConversationMessages,
     loadSessionState,
     markSelectedConversationDetailPending,
+    nodeId,
     onDataChangeRef,
     sessionEngine,
     requestRailReveal,
@@ -531,7 +559,7 @@ export function useAgentGUINodeController({
     (
       path: string | null,
       metadata?: {
-        action: "clear" | "create_new" | "select_existing";
+        action: "clear" | "create_new" | "import_directory" | "select_existing";
         project?: {
           id: string;
           path: string;
@@ -622,6 +650,7 @@ export function useAgentGUINodeController({
       loadDraftComposerOptionsRef,
       loadSessionState,
       onComposerDefaultsAuthorityReloadedRef,
+      optimisticComposerTarget,
       providerComposerOptions,
       selectedComposerTargetDataRef,
       selectedProjectPath,

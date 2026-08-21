@@ -18,6 +18,7 @@ import type {
   AgentGUIViewLabels
 } from "./AgentGUINodeView.types";
 import type { AgentGUIComposerFooterAccessoryRenderer } from "./AgentGUIComposerFooterAccessory.types";
+import type { AgentGUISideConversationPresentation } from "../../../agentSideConversationPresentation";
 
 type AgentGUIDetailExternalPromptProps = Pick<
   AgentComposerProps,
@@ -38,7 +39,8 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
   homeTargetProjection: AgentGUIManagedHomeTargetProjection;
   referenceProvenanceFilters?: AgentComposerProps["referenceProvenanceFilters"];
   sessionInputHistoryEnabled?: boolean;
-  sessionForkEnabled?: boolean;
+  sideConversationEnabled?: boolean;
+  sideConversationPresentation?: AgentGUISideConversationPresentation | null;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchModesByProjectSectionKey?: Readonly<
     Record<string, AgentGUISessionLaunchMode>
@@ -76,6 +78,7 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
       ) => Promise<WorkspaceReferencePickResult>)
     | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  projectSelectOptions?: AgentComposerProps["projectSelectOptions"];
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   onRequestComposerFocus: () => void;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];

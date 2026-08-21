@@ -9,6 +9,8 @@
  *   - vibe-design 应用:server/src/routes/references-routes.ts
  *   - ai-media-canvas 应用:apps/server/src/http/references.ts
  *   - app_factory 技能契约:app_factory_reference/references/manifest-contract.md
+ *   - TSH desktopd:tutti-lab/tsh/cmd/desktopd/biz/workspacefs/workspacefs.go
+ *     (`workspaceFileManagerExtensionsByCategory`)
  *
  * 分类口径:image(图片)/ video(视频)/ document(文档,含表格)/ webpage(网页)/ other(其他)。
  * 音频、代码、压缩包等未单列扩展名,统一归入 "other" 兜底。

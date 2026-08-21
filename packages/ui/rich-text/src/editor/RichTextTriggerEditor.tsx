@@ -46,6 +46,7 @@ import type {
 } from "../types/trigger.ts";
 import type { RichTextMentionService } from "../service/index.ts";
 import {
+  isRichTextFolderHref,
   normalizeRichTextContent,
   normalizeRichTextLinkHref,
   parseRichTextContentToDocument,
@@ -1161,7 +1162,7 @@ function renderInsertResultAsEditorContent(
         attrs: createRichTextMentionAttrs(providerId, result.mention)
       };
     case "markdown-link": {
-      const kind = result.href.endsWith("/") ? "folder" : "file";
+      const kind = isRichTextFolderHref(result.href) ? "folder" : "file";
       return {
         type: workspaceReferenceNodeName,
         attrs: {
@@ -1184,7 +1185,7 @@ function getWorkspaceReferenceFileKind(
   if (result.kind !== "markdown-link") {
     return undefined;
   }
-  return result.href.endsWith("/") ? "folder" : "file";
+  return isRichTextFolderHref(result.href) ? "folder" : "file";
 }
 
 function collectHydratableMentionNodes(

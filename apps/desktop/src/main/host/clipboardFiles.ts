@@ -4,6 +4,10 @@ import path from "node:path";
 import { clipboard, nativeImage } from "electron";
 import { writeImageToClipboardWriter } from "./clipboardImageWriter.ts";
 import { buildFilenamesPlist } from "./clipboardFilePlist.ts";
+import {
+  buildWindowsFileDropBuffer,
+  normalizeClipboardFilePaths
+} from "./clipboardFilePaths.ts";
 
 type SystemClipboardWriter = Pick<
   typeof clipboard,
@@ -35,14 +39,7 @@ export function writeFilesToSystemClipboard(
   filePaths: readonly string[],
   deps: SystemClipboardDependencies = {}
 ): void {
-  const normalizedPaths = [
-    ...new Set(
-      filePaths
-        .map((filePath) => filePath.trim())
-        .filter(Boolean)
-        .map((filePath) => path.resolve(filePath))
-    )
-  ];
+  const normalizedPaths = normalizeClipboardFilePaths(filePaths);
   if (normalizedPaths.length === 0) {
     throw new Error("clipboard file paths are required");
   }
@@ -69,26 +66,12 @@ export function writeFilesToSystemClipboard(
     clipboardWriter.clear();
     clipboardWriter.writeBuffer(
       "CF_HDROP",
-      buildCFHDropBuffer(normalizedPaths)
+      buildWindowsFileDropBuffer(normalizedPaths)
     );
     return;
   }
 
   throw new Error("clipboard file copy is unsupported on this platform");
-}
-
-function buildCFHDropBuffer(filePaths: readonly string[]): Buffer {
-  const widePaths =
-    filePaths.map((filePath) => `${path.win32.resolve(filePath)}\0`).join("") +
-    "\0";
-  const pathsBuffer = Buffer.from(widePaths, "utf16le");
-  const header = Buffer.alloc(20);
-  header.writeUInt32LE(20, 0);
-  header.writeUInt32LE(1, 4);
-  header.writeUInt32LE(0, 8);
-  header.writeInt32LE(0, 12);
-  header.writeInt32LE(0, 16);
-  return Buffer.concat([header, pathsBuffer]);
 }
 
 function isPathWithinRoot(rootPath: string, candidatePath: string): boolean {

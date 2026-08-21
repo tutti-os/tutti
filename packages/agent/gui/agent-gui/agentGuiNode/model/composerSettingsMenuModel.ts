@@ -61,6 +61,7 @@ export interface ComposerMenuOption {
 export interface ComposerModelOptionTooltip {
   title: string;
   description?: string;
+  consumptionMultiplier?: string;
   contextWindow?: string;
   version?: string;
 }
@@ -338,7 +339,12 @@ function modelMenuOptionFromSettingOption(
       : option.description,
     labels
   );
+  const consumptionMultiplier =
+    option.value === "default"
+      ? resolvedOption?.consumptionMultiplier
+      : option.consumptionMultiplier;
   const presentation = modelOptionPresentation({
+    consumptionMultiplier,
     description,
     label: displayLabel,
     labels
@@ -355,6 +361,7 @@ function modelMenuOptionFromSettingOption(
 }
 
 function modelOptionPresentation(input: {
+  consumptionMultiplier: string | undefined;
   description: string | undefined;
   label: string;
   labels: Pick<
@@ -378,6 +385,7 @@ function modelOptionPresentation(input: {
 } {
   const description = input.description?.trim() || "";
   const parsed = parseModelDescription(description);
+  const consumptionMultiplier = input.consumptionMultiplier?.trim() || "";
   const label = shortModelDisplayLabel(input.label);
   const summary = uniqueNonEmpty([
     parsed.contextWindow?.summary,
@@ -389,10 +397,13 @@ function modelOptionPresentation(input: {
   const tooltipDescription =
     parsed.body || (description && !parsed.title ? description : "");
   const tooltip =
-    description || summary.length > 0
+    description || summary.length > 0 || consumptionMultiplier
       ? {
           title: parsed.title ?? label,
           ...(tooltipDescription ? { description: tooltipDescription } : {}),
+          ...(consumptionMultiplier
+            ? { consumptionMultiplier: `${consumptionMultiplier}x` }
+            : {}),
           ...(parsed.contextWindow
             ? {
                 contextWindow: `${parsed.contextWindow.summary} ${input.labels.modelContextWindowSuffix}`

@@ -182,6 +182,14 @@ type Adapter interface {
 	Cancel(context.Context, Session, string) ([]activityshared.Event, error)
 }
 
+// CloseQuiesceAdapter lets a shared provider connection stop session-owned
+// work before Controller cancels the local Exec context and detaches the
+// session. Without this phase a local cancellation can erase the provider Turn
+// handle while the shared process remains alive for another session.
+type CloseQuiesceAdapter interface {
+	QuiesceForClose(context.Context, Session) error
+}
+
 // ConnectorCapabilityAdapter reports whether this exact provider runtime can
 // accept Tutti's session-scoped Connector binding. Implementations must return
 // false unless support is explicit; a missing implementation is unsupported.
@@ -218,6 +226,24 @@ type ProviderTurnBindingRecoveryAdapter interface {
 		context.Context,
 		ProviderTurnBindingRecoveryInput,
 	) (ProviderTurnBindingRecoveryResult, error)
+}
+
+// SideConversationAdapter is the provider-specific open surface for
+// runtime-only side conversations. The adapter decides whether a live source
+// connection or persisted provider identity can satisfy the request;
+// interactive Side flows additionally require the ordinary InteractiveAdapter
+// contract. Once OpenSide returns, the Controller
+// reuses Adapter Exec/Cancel/Close and the configured event/command/config
+// sinks against the returned side-scoped Session.
+//
+// OpenSide owns its failure cleanup: before returning an error it must
+// quiesce callbacks and release any provider child it created. Ownership
+// transfers to Adapter.Close only when the Controller validates the exact
+// side-scoped identity in the successful result; an invalid result remains
+// the provider's cleanup responsibility and is never passed to ordinary Close.
+type SideConversationAdapter interface {
+	SideCapabilities(context.Context, Session) (SideConversationCapabilities, error)
+	OpenSide(context.Context, SideConversationAdapterOpenInput) (SideConversationOpenResult, error)
 }
 
 // TargetedCancelAdapter maps canonical root/child targets onto provider-native
@@ -333,6 +359,25 @@ type ActiveTurnGuidanceAdapter interface {
 	GuideActiveTurn(context.Context, Session, []PromptContentBlock, string, string, EventSink, CommandSnapshotSink) ([]activityshared.Event, error)
 }
 
+// ActiveTurnGuidanceProviderDispatchAdapter adds the provider-dispatch verdict
+// needed to distinguish adapter-local preflight failures from a request whose
+// provider acknowledgement is unknown. Adapters that do not implement this
+// optional seam retain the conservative legacy behavior: any returned error is
+// treated as outcome_unknown.
+type ActiveTurnGuidanceProviderDispatchAdapter interface {
+	ActiveTurnGuidanceAdapter
+	GuideActiveTurnWithProviderDispatch(
+		context.Context,
+		Session,
+		[]PromptContentBlock,
+		string,
+		string,
+		EventSink,
+		CommandSnapshotSink,
+		ProviderDispatchSink,
+	) ([]activityshared.Event, error)
+}
+
 type ResumeProbeAdapter interface {
 	CanResume(Session) bool
 }
@@ -445,6 +490,10 @@ type ConfigOptionsUpdateSinkAdapter interface {
 }
 
 type InteractiveAdapter interface {
+	// SubmitInteractive returns ErrInteractiveResponseInvalid for malformed or
+	// unavailable response options, ErrInteractiveRequestNotLive for stale
+	// requests, and ErrInteractiveAlreadyAnswered after terminal resolution.
+	// This taxonomy is part of the provider-neutral Host/API contract.
 	SubmitInteractive(context.Context, Session, SubmitInteractiveInput) (SubmitInteractiveResult, error)
 }
 

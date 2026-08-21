@@ -5,6 +5,7 @@ import {
   createInitialAgentSessionEngineState,
   rootEngineReducer
 } from "./rootReducer.ts";
+import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 import type { AgentActivitySession } from "../types.ts";
 
 test("projects canonical engine state and preserves the snapshot reference", () => {
@@ -24,6 +25,55 @@ test("projects canonical engine state and preserves the snapshot reference", () 
   assert.equal(populated.sessions[0]?.latestTurn?.turnId, "turn-1");
   assert.equal(populated.sessions[0]?.latestTurnInteractions.length, 1);
   assert.equal(populated.sessions[0]?.pendingInteractions.length, 1);
+});
+
+test("root reducer marks a historical session unread from canonical turns", () => {
+  const source = session();
+  const settledTurn = {
+    ...source.latestTurn!,
+    outcome: "completed" as const,
+    phase: "settled" as const,
+    settledAtUnixMs: 30,
+    updatedAtUnixMs: 30
+  };
+  let state = rootEngineReducer(createInitialAgentSessionEngineState(), {
+    type: "session/snapshotReceived",
+    sessions: [
+      {
+        ...source,
+        activeTurn: null,
+        activeTurnId: null,
+        endedAtUnixMs: 30,
+        lastEventUnixMs: 30,
+        latestTurn: settledTurn,
+        latestTurnInteractions: [],
+        pendingInteractions: [],
+        updatedAtUnixMs: 30
+      }
+    ]
+  }).state;
+
+  const canonicalSession = state.sessionLifecycle.sessionsById["session-1"];
+  assert.ok(canonicalSession);
+  assert.equal("latestTurn" in canonicalSession, false);
+  assert.equal(
+    state.sessionLifecycle.turnsById[canonicalTurnKey("session-1", "turn-1")]
+      ?.phase,
+    "settled"
+  );
+
+  state = rootEngineReducer(state, {
+    type: "attention/unreadRequested",
+    agentSessionId: "session-1",
+    userId: "user-1"
+  }).state;
+
+  assert.equal(
+    state.attentionReadState.partitionsByUserId["user-1"]?.recordsBySessionId[
+      "session-1"
+    ]?.completionKey,
+    "turn:session-1:turn-1:completed"
+  );
 });
 
 test("reuses expensive projections when unrelated engine slices change", () => {

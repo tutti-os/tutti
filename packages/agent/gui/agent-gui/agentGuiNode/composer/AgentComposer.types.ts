@@ -9,6 +9,7 @@ import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/Agent
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto/agentSession";
 import type { WorkspaceUserProjectI18nRuntime } from "@tutti-os/workspace-user-project/i18n";
 import type { WorkspaceUserProjectApi } from "@tutti-os/workspace-user-project/contracts";
+import type { AgentProjectDropdownOptions } from "../AgentComposerProjectMenu";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentContextMentionItem } from "../agentRichText/agentFileMentionExtension";
 import type { AgentRichTextEditorProps } from "../agentRichText/AgentRichTextEditor.types";
@@ -53,6 +54,8 @@ export interface AgentComposerReferenceProvenanceFilters {
 }
 
 export interface AgentComposerSubmitOptions {
+  /** Exact draft captured by the Composer for conditional post-submit clearing. */
+  submittedDraft?: AgentComposerDraft;
   isolation?: "worktree";
   requiredSettingsPatch?: AgentActivitySubmitSettingsPatch;
   capabilityRefs?: readonly AgentComposerCapabilityReference[];
@@ -175,6 +178,11 @@ export interface AgentComposerProps {
   handoffLabel?: string;
   handoffMenuLabel?: string;
   labels: {
+    /** Capability plus copy for returning to a Composer that answers the prompt. */
+    conversationReturn?: {
+      continueAnswering: string;
+      returnToConversation: string;
+    };
     send: string;
     /**
      * Plan-review send copy: with an empty-send override active the send
@@ -344,8 +352,6 @@ export interface AgentComposerProps {
     submitAnswers: string;
     answerPlaceholder: string;
     waitingForAnswer: string;
-    returnToConversation: string;
-    continueAnswering: string;
     planImplementationLead: string;
     planImplementationConfirm: string;
     planImplementationFeedbackPlaceholder: string;
@@ -367,7 +373,9 @@ export interface AgentComposerProps {
     addContentConnectorConnect: string;
     addContentConnectorAuthorize: string;
     addContentConnectorEmpty: string;
+    addContentConnectorLoading: string;
     addContentConnectorMore: string;
+    addContentConnectorSelected: string;
     referenceWorkspaceFiles: string;
     handoffConversation: string;
     handoffConversationTooltip: string;
@@ -421,8 +429,12 @@ export interface AgentComposerProps {
     computerUse?: boolean;
     permissionModeId?: string | null;
   }) => void;
-  /** Retries the target-scoped composer options request after a terminal failure. */
-  onRetryComposerOptions?: () => void;
+  /** Retries or explicitly refreshes the target-scoped composer options. */
+  onRetryComposerOptions?: (options?: {
+    force?: boolean;
+    section?: "core" | "capabilities" | "connectors";
+    waitForFreshModelCatalog?: boolean;
+  }) => void;
   onTuttiModeChange?: (active: boolean) => void;
   onTuttiModeEffectChange?: (value: number) => void;
   onTuttiModeSpeedChange?: (value: number) => void;
@@ -430,7 +442,7 @@ export interface AgentComposerProps {
   capabilityControlsReadOnly?: boolean;
   onCapabilitySettingsRequest?: (
     capability: AgentComposerCapabilitySettingsTarget
-  ) => void;
+  ) => void | Promise<void>;
   onSlashStatusOpen?: () => void;
   onSlashStatusClose?: () => void;
   onSlashStatusRefresh?: () => void;
@@ -447,8 +459,7 @@ export interface AgentComposerProps {
   onSubmitEmpty?: () => void;
   /**
    * Overrides the empty-draft send button copy while the empty-send override
-   * is active (e.g. plan review with a diverged intensity reads "Request
-   * changes" instead of "Accept plan"). Falls back to labels.sendAccept.
+   * is active. Falls back to labels.sendAccept.
    */
   emptySubmitLabel?: string;
   onSubmitGuidance?: (
@@ -473,6 +484,7 @@ export interface AgentComposerProps {
   resolvePastedPath?: AgentRichTextEditorProps["onResolvePastedPath"] | null;
   promptAssetLimit?: number | null;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
+  projectSelectOptions?: AgentProjectDropdownOptions;
   /** Explicit project capability for lifecycle-free Composer embeddings. */
   userProjectApi?: WorkspaceUserProjectApi | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
@@ -484,7 +496,13 @@ export type AgentComposerCapabilitySettingsTarget =
   | {
       kind: "connector";
       connectorKey: string;
-      action?: "open";
+      action?: "install" | "open";
+    }
+  | {
+      kind: "connector";
+      connectorKey: string;
+      action: "set_runtime_enabled";
+      enabled: boolean;
     };
 
 export interface AgentComposerCapabilityMenuState {
@@ -503,6 +521,10 @@ export interface AgentComposerCapabilityMenuState {
    */
   connectors?: {
     enabled?: boolean | null;
+    /** Catalog remains inspectable but cannot select, authorize, install, or manage. */
+    readOnly?: boolean | null;
+    /** Controls the host management footer independently from catalog visibility. */
+    showViewMore?: boolean | null;
   };
   tuttiMode?: {
     enabled?: boolean | null;

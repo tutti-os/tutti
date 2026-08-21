@@ -41,6 +41,10 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 		closeOnTurnStart := s.closeOnTurnStart
 		turnStartError := s.turnStartError
 		s.mu.Unlock()
+		threadID := firstNonEmpty(
+			asString(message.Params["threadId"]),
+			"codex-thread-1",
+		)
 		if turnStartEntered != nil {
 			close(turnStartEntered)
 		}
@@ -86,7 +90,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 						"id":     "approval-1",
 						"method": appServerMethodCommandApproval,
 						"params": map[string]any{
-							"threadId":    "codex-thread-1",
+							"threadId":    threadID,
 							"turnId":      "turn-1",
 							"itemId":      "item-cmd",
 							"command":     "rm -rf build",
@@ -110,7 +114,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 		turnStartedNotification := map[string]any{
 			"method": appServerNotifyTurnStarted,
 			"params": map[string]any{
-				"threadId": "codex-thread-1",
+				"threadId": threadID,
 				"turn":     map[string]any{"id": "turn-1", "status": "inProgress", "items": []any{}},
 			},
 		}
@@ -122,7 +126,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 					"id":     "approval-1",
 					"method": appServerMethodCommandApproval,
 					"params": map[string]any{
-						"threadId":    "codex-thread-1",
+						"threadId":    threadID,
 						"turnId":      "turn-1",
 						"itemId":      "item-cmd",
 						"command":     "rm -rf build",
@@ -142,7 +146,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 					"id":     "question-1",
 					"method": appServerMethodRequestUserInput,
 					"params": map[string]any{
-						"threadId": "codex-thread-1",
+						"threadId": threadID,
 						"turnId":   "turn-1",
 						"itemId":   "item-question",
 						"questions": []any{
@@ -181,7 +185,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 		}
 		if emitPlan {
 			s.notify(appServerNotifyItemCompleted, map[string]any{
-				"threadId": "codex-thread-1",
+				"threadId": threadID,
 				"turnId":   "turn-1",
 				"item": map[string]any{
 					"type": "plan",
@@ -191,31 +195,31 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 			})
 		}
 		s.notify(appServerNotifyReasoningDelta, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1", "itemId": "item-think",
+			"threadId": threadID, "turnId": "turn-1", "itemId": "item-think",
 			"contentIndex": 0, "delta": "Need ",
 		})
 		s.notify(appServerNotifyReasoningDelta, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1", "itemId": "item-think",
+			"threadId": threadID, "turnId": "turn-1", "itemId": "item-think",
 			"contentIndex": 0, "delta": "context.",
 		})
 		s.notify(appServerNotifyAgentMessageDelta, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1", "itemId": "item-msg", "delta": "I'll ",
+			"threadId": threadID, "turnId": "turn-1", "itemId": "item-msg", "delta": "I'll ",
 		})
 		s.notify(appServerNotifyAgentMessageDelta, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1", "itemId": "item-msg", "delta": "check ",
+			"threadId": threadID, "turnId": "turn-1", "itemId": "item-msg", "delta": "check ",
 		})
 		s.notify(appServerNotifyAgentMessageDelta, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1", "itemId": "item-msg", "delta": "the repo.",
+			"threadId": threadID, "turnId": "turn-1", "itemId": "item-msg", "delta": "the repo.",
 		})
 		s.notify(appServerNotifyItemStarted, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1", "startedAtMs": 1750000000000,
+			"threadId": threadID, "turnId": "turn-1", "startedAtMs": 1750000000000,
 			"item": map[string]any{
 				"type": "commandExecution", "id": "item-cmd",
 				"command": "ls -la", "cwd": "/workspace", "status": "inProgress",
 			},
 		})
 		s.notify(appServerNotifyItemCompleted, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1", "completedAtMs": 1750000001000,
+			"threadId": threadID, "turnId": "turn-1", "completedAtMs": 1750000001000,
 			"item": map[string]any{
 				"type": "commandExecution", "id": "item-cmd",
 				"command": "ls -la", "cwd": "/workspace", "status": "completed",
@@ -223,7 +227,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 			},
 		})
 		s.notify(appServerNotifyTokenUsage, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1",
+			"threadId": threadID, "turnId": "turn-1",
 			"tokenUsage": map[string]any{
 				"last":               map[string]any{"totalTokens": 1200, "inputTokens": 1000, "cachedInputTokens": 0, "outputTokens": 200, "reasoningOutputTokens": 50},
 				"total":              map[string]any{"totalTokens": 1200, "inputTokens": 1000, "cachedInputTokens": 0, "outputTokens": 200, "reasoningOutputTokens": 50},
@@ -231,7 +235,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 			},
 		})
 		s.notify(appServerNotifyPlanUpdated, map[string]any{
-			"threadId": "codex-thread-1", "turnId": "turn-1",
+			"threadId": threadID, "turnId": "turn-1",
 			"plan": []any{
 				map[string]any{"step": "Inspect repo", "status": "completed"},
 				map[string]any{"step": "Run tests", "status": "inProgress"},
@@ -244,12 +248,12 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 			threadName = "Inspect repository structure"
 		}
 		s.notify(appServerNotifyThreadNameUpdated, map[string]any{
-			"threadId": "codex-thread-1", "threadName": threadName,
+			"threadId": threadID, "threadName": threadName,
 		})
 		if hold {
 			return true
 		}
-		s.completePendingTurn()
+		s.completePendingTurn(threadID)
 	case appServerMethodTurnInterrupt:
 		s.mu.Lock()
 		threadID := asString(message.Params["threadId"])
@@ -289,9 +293,7 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 			// Wedged codex: it acks the interrupt but never completes the turn.
 			return true
 		}
-		if threadID == "codex-thread-1" {
-			s.completePendingTurn()
-		}
+		s.completePendingTurn(threadID)
 	case appServerMethodTurnSteer:
 		s.mu.Lock()
 		hang := s.hangSteer
@@ -331,11 +333,15 @@ func (s *fakeCodexAppServer) handleTurnRPC(message scriptedAppServerMessage) boo
 // completePendingTurn finishes the in-flight turn the way the real
 // app-server does: with a turn/completed notification carrying the final
 // turn payload (the turn/start RPC already responded immediately).
-func (s *fakeCodexAppServer) completePendingTurn() {
+func (s *fakeCodexAppServer) completePendingTurn(threadIDs ...string) {
 	s.mu.Lock()
 	status := firstNonEmpty(s.turnStatus, "completed")
 	turnError := s.turnError
 	s.mu.Unlock()
+	threadID := "codex-thread-1"
+	if len(threadIDs) > 0 {
+		threadID = firstNonEmpty(threadIDs[0], threadID)
+	}
 	turn := map[string]any{
 		"id":     "turn-1",
 		"status": status,
@@ -347,7 +353,7 @@ func (s *fakeCodexAppServer) completePendingTurn() {
 		turn["error"] = turnError
 	}
 	s.notify(appServerNotifyTurnCompleted, map[string]any{
-		"threadId": "codex-thread-1",
+		"threadId": threadID,
 		"turn":     turn,
 	})
 }

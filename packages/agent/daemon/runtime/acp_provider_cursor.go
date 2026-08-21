@@ -35,6 +35,7 @@ import (
 	"os"
 	"strings"
 
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
@@ -146,6 +147,23 @@ func newCursorAdapterFromProviderDescriptor(
 		method:         cursorACPMethodTask,
 		observeMessage: logCursorACPTaskExtension,
 		observeUpdate:  logCursorACPTaskToolUpdate,
+	}
+	adapter.config.providerMessageHandler = func(
+		ctx context.Context,
+		client *acpClient,
+		session Session,
+		turnID string,
+		message acpMessage,
+		normalizer *acpTurnNormalizer,
+		emit EventSink,
+	) ([]activityshared.Event, bool, error) {
+		switch message.Method {
+		case cursorACPMethodAskQuestion, cursorACPMethodCreatePlan:
+			events, err := adapter.handleCursorInteractiveMessage(ctx, client, session, turnID, message, normalizer, emit)
+			return events, true, err
+		default:
+			return nil, false, nil
+		}
 	}
 	return adapter
 }

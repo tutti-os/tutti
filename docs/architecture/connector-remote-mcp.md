@@ -183,7 +183,13 @@ LegacyMCPClient
 - 不持久化或按 TTL 缓存 Tool 列表；每次 `tools/list` 和 `tools/call` 都以当前下游列表为准；
 - 原子替换生成 `Mcp-Param-*` Header 所需的 Tool Schema，已删除 Tool 不得残留。
 
-远程 Route Builder 调用 `server/discover` 和 `tools/list`，然后通过现有本地 Connector MCP Surface 发布带 Connector Namespace 的 Tool。调用 Gateway 时不得发送 `initialize` 或 `notifications/initialized`。
+远程 Route Builder 每次激活都调用 `server/discover`。同一进程内、同一授权身份
+（account、connector、release digest、本地 connection id、`connectionVersion`、
+`serverRevision`）的成功 `tools/list` 可以由 `ImplementationHost` 复用，避免
+Bootstrap 重建 Route 时重复探测；身份变化必须重新列出。该内存表没有 TTL，不写入
+SQLite，`Host.Close` 时丢弃，且不得缓存空列表、非法契约或 428/`-33001`/`-33002`。
+它只服务 Route 激活校验，不是 Agent 可见列表。调用 Gateway 时不得发送
+`initialize` 或 `notifications/initialized`。
 
 ## 授权与 Runtime Reconcile
 
@@ -204,7 +210,7 @@ sequenceDiagram
     G-->>T: revision + connected + connectionVersion
     T->>T: 原子保存账号级授权投影
     T->>R: 调度持久化 Reconcile
-    R->>G: server/discover + tools/list
+    R->>G: server/discover; tools/list unless same-boot identity hits Host memory
     R->>A: 发布或移除 Connector Route
 ```
 
@@ -223,7 +229,7 @@ sequenceDiagram
 - Active Default Connection 发生变化；
 - 已安装的 Connector Release 发生变化。
 
-生产环境 Composition Root 必须提供 `AuthorizationProjections` 和 `AccountRuntimeBindingResolver`。没有 Active Authorized Account Binding 的远程 Connector 必须处于 Disabled 状态，不得向 Agent 发布 Route。
+生产环境 Composition Root 必须提供 `AuthorizationProjections` 和 `AccountRuntimeBindingResolver`。没有 Active Authorized Account Binding 的远程 Connector 必须处于 Disabled 状态，不得向 Agent 发布 Route。安装阶段的 enabled Reconcile 若收到 HTTP 428 或 JSON-RPC `-33001`/`-33002`，必须写成过期投影并重规划 Disabled Desired，而不是把 428 当作可重试的安装失败。安装是设备事实；未授权的远程 Connector 可以已安装，但不向 Agent 发布 Route。
 
 ## Tool 生命周期
 
@@ -231,11 +237,11 @@ sequenceDiagram
 2. 授权阶段在 `tsh-server` 建立或更新账号级 Connection。
 3. Runtime Reconcile 判断远程 Route 是否启用。
 4. `server/discover` 在不访问上游 MCP 的情况下确认 Gateway 协议和公开能力。
-5. `tools/list` 返回当前 Connection 可用的 Tool；Tutti 使用 Connector Namespace 注册这些 Tool。
+5. `tools/list` 返回当前 Connection 可用的 Tool；同一授权身份在本进程内可复用上次成功的激活结果。Tutti 使用 Connector Namespace 注册这些 Tool。
 6. `tools/call` 携带已安装的 Connector Version 和当前 Tutti Session 转发给 Gateway。
 7. 授权失效时，通过同一个 Reconcile 流程移除或禁用 Route。
 
-Tool 不做本地业务缓存：Agent 的 `tools/list` 逐页直取下游；`tools/call` 只定位可能拥有该 Namespace 的 Connector，重新读取其当前 Tool 契约后调用，避免无关 Connector 超时阻塞。Route 安装时的 Tool 只用于启动校验，不作为 Agent 可见列表的真相。
+Agent 可见的 Tool 不做本地业务缓存：Agent 的 `tools/list` 逐页直取下游；`tools/call` 只定位可能拥有该 Namespace 的 Connector，重新读取其当前 Tool 契约后调用，避免无关 Connector 超时阻塞。Route 激活时的内存复用只跳过启动探测，不作为 Agent 可见列表的真相，也不得用 TTL 或 SQLite 代替下游当前列表。
 
 ## 端到端工作流程
 

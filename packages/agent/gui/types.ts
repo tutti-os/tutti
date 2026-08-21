@@ -79,6 +79,7 @@ export type AgentGUIProvider = string;
  */
 export type AgentGUIHomeSuggestionId =
   | "meet-tutti"
+  | "clone-github-repository"
   | "task-breakdown"
   | "quality-review"
   | "agent-interaction"

@@ -111,6 +111,59 @@ describe("useAgentGUIConversationDetail", () => {
     expect(result.current.isInterrupting).toBe(true);
   });
 
+  it("projects a Composer target only for one exact free-text question interaction", () => {
+    const interaction = {
+      agentSessionId: "session-1",
+      createdAtUnixMs: 1,
+      input: {
+        questions: [
+          {
+            allowFreeText: true,
+            header: "Scope",
+            id: "scope",
+            options: [],
+            question: "Which scope?"
+          }
+        ]
+      },
+      kind: "question" as const,
+      requestId: "request-1",
+      status: "pending" as const,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    };
+    const activeTurn = {
+      agentSessionId: "session-1",
+      origin: "user_prompt" as const,
+      phase: "waiting" as const,
+      startedAtUnixMs: 1,
+      turnId: "turn-1",
+      updatedAtUnixMs: 1
+    };
+    const rendered = renderHook(
+      ({ interactions }) =>
+        useAgentGUIConversationDetail(
+          conversationDetailInput({
+            activePendingInteractions: interactions,
+            activeTurn
+          })
+        ),
+      { initialProps: { interactions: [interaction] } }
+    );
+
+    expect(rendered.result.current.pendingQuestionComposerTarget).toEqual({
+      agentSessionId: "session-1",
+      questionIds: ["scope"],
+      requestId: "request-1",
+      turnId: "turn-1"
+    });
+
+    rendered.rerender({
+      interactions: [interaction, { ...interaction, requestId: "request-2" }]
+    });
+    expect(rendered.result.current.pendingQuestionComposerTarget).toBeNull();
+  });
+
   it("keeps the conversation projection stable for a draft-only update", () => {
     const input = conversationDetailInput({
       activeConversation: conversationSummary()

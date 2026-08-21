@@ -227,10 +227,11 @@ func currentRuntimeInfo() runtimeInfo {
 
 func (c reporterCommon) teaHeader() teaSDKHeader {
 	return teaSDKHeader{
-		AppVersion: c.appVersion,
-		OSName:     c.osName,
-		OSVersion:  c.osVersion,
-		CPUABI:     c.cpuABI,
+		AppVersion:      c.appVersion,
+		AppVersionMinor: c.appVersion,
+		OSName:          c.osName,
+		OSVersion:       c.osVersion,
+		CPUABI:          c.cpuABI,
 	}
 }
 
@@ -285,7 +286,7 @@ func normalizeEvents(events []Event, common map[string]any, header teaSDKHeader)
 		for key := range common {
 			delete(params, key)
 		}
-		for _, key := range []string{"app_version", "os_name", "os_version", "cpu_abi"} {
+		for _, key := range []string{"app_version", "app_version_minor", "os_name", "os_version", "cpu_abi"} {
 			delete(params, key)
 		}
 		eventID, _ := params["event_id"].(string)

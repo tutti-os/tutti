@@ -482,7 +482,7 @@ func writeUpdateWorkspaceAgentSessionVisibilityError(err error) tuttigenerated.U
 }
 
 func writeSubmitWorkspaceAgentInteractiveError(err error) tuttigenerated.SubmitWorkspaceAgentInteractiveResponseObject {
-	protocolErr := apierrors.Classify(err)
+	protocolErr := apierrors.ClassifyAgentInteractiveResponse(err)
 	switch protocolErr.Code {
 	case tuttigenerated.WorkspaceNotFound:
 		return tuttigenerated.SubmitWorkspaceAgentInteractive404JSONResponse{
@@ -491,6 +491,15 @@ func writeSubmitWorkspaceAgentInteractiveError(err error) tuttigenerated.SubmitW
 	case tuttigenerated.InvalidRequest:
 		return tuttigenerated.SubmitWorkspaceAgentInteractive400JSONResponse{
 			InvalidRequestErrorJSONResponse: invalidRequestError(protocolErr),
+		}
+	case tuttigenerated.WorkspaceOperationFailed:
+		if protocolErr.StatusCode == apierrors.StatusConflict {
+			return tuttigenerated.SubmitWorkspaceAgentInteractive409JSONResponse{
+				AgentInteractiveConflictErrorJSONResponse: agentInteractiveConflictError(protocolErr),
+			}
+		}
+		return tuttigenerated.SubmitWorkspaceAgentInteractive502JSONResponse{
+			WorkspaceOperationErrorJSONResponse: workspaceOperationError(protocolErr),
 		}
 	default:
 		return tuttigenerated.SubmitWorkspaceAgentInteractive502JSONResponse{

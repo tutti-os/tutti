@@ -121,7 +121,75 @@ describe("createConversationRailQuerySnapshotSelector", () => {
 
     engine.dispose();
   });
+
+  it("projects all running sessions for the exact target even before membership refresh", () => {
+    const engine = createTestAgentSessionEngine();
+    engine.dispatch({
+      sessions: [
+        createRunningSession("running-1", "local:codex"),
+        createRunningSession("running-2", "local:codex"),
+        createRunningSession("other-target", "local:opencode")
+      ],
+      type: "session/snapshotReceived"
+    });
+    const querySnapshot = createConversationRailQuerySnapshotSelector()(
+      {
+        agentTargetId: "local:codex",
+        queryState: {
+          pending: false,
+          reconcilingSessionIds: [],
+          resolvedScopeKey: "codex",
+          sectionPageStates: new Map(),
+          sections: []
+        },
+        runtimeRailFailed: false,
+        runtimeSectionsEnabled: true,
+        searchEnabled: false,
+        searchQuery: "",
+        searchRequestKey: null,
+        searchState: EMPTY_CONVERSATION_SEARCH_QUERY_STATE
+      },
+      undefined
+    );
+
+    const projected = createConversationRailConversationsSelector()({
+      engineState: engine.getSnapshot(),
+      interactionLocked: false,
+      querySnapshot
+    });
+
+    expect(projected.map(({ id }) => id)).toEqual(["running-1", "running-2"]);
+    engine.dispose();
+  });
 });
+
+function createRunningSession(agentSessionId: string, agentTargetId: string) {
+  return normalizeAgentActivitySession({
+    activeTurn: {
+      agentSessionId,
+      error: null,
+      origin: "user_prompt",
+      outcome: null,
+      phase: "running",
+      settledAtUnixMs: null,
+      startedAtUnixMs: 1,
+      turnId: `${agentSessionId}-turn`,
+      updatedAtUnixMs: 2
+    },
+    activeTurnId: `${agentSessionId}-turn`,
+    agentSessionId,
+    agentTargetId,
+    cwd: "/workspace",
+    kind: "root",
+    latestTurnInteractions: [],
+    pendingInteractions: [],
+    provider: agentTargetId.replace("local:", ""),
+    railSectionKey: "conversations",
+    title: agentSessionId,
+    updatedAtUnixMs: 2,
+    workspaceId: "test-workspace"
+  });
+}
 
 function createSession(
   agentSessionId: string,

@@ -83,6 +83,27 @@ const (
 	RegisterKeptExisting RegisterDisposition = "kept_existing"
 )
 
+// Retirement owns one exact link that has already been removed from Manager
+// authority. Close never looks the link up by key, so a delayed physical close
+// cannot affect a replacement registered for the same key.
+type Retirement struct {
+	once     sync.Once
+	close    func() error
+	closeErr error
+}
+
+func (r *Retirement) Close() error {
+	if r == nil {
+		return nil
+	}
+	r.once.Do(func() {
+		if r.close != nil {
+			r.closeErr = r.close()
+		}
+	})
+	return r.closeErr
+}
+
 type Manager[K comparable, M any] struct {
 	cfg ManagerConfig[K, M]
 
@@ -128,7 +149,9 @@ type managedLink[K comparable, M any] struct {
 	eventSequence  uint64
 	disconnected   bool
 	closed         bool
+	revokeOnce     sync.Once
 	closeOnce      sync.Once
+	closeErr       error
 }
 
 type EstablishFunc[K comparable, M any] func(context.Context, *Admission[K, M]) (Registration[K, M], error)
@@ -258,7 +281,7 @@ func (m *Manager[K, M]) Register(
 		admission.globalGeneration != m.globalGeneration ||
 		admission.keyGeneration != m.keyGenerations[admission.key] {
 		m.mu.Unlock()
-		incoming.closeTransport()
+		_ = incoming.closeTransport()
 		return "", ErrAdmissionInvalidated
 	}
 	admission.used = true
@@ -268,7 +291,7 @@ func (m *Manager[K, M]) Register(
 		withinCollisionWindow := age >= 0 && age <= m.cfg.CollisionWindow
 		if !withinCollisionWindow || existing.connectionID <= incoming.connectionID {
 			m.mu.Unlock()
-			incoming.closeTransport()
+			_ = incoming.closeTransport()
 			return RegisterKeptExisting, nil
 		}
 		replaced = existing
@@ -283,7 +306,7 @@ func (m *Manager[K, M]) Register(
 
 	if replaced != nil {
 		m.notify(replaced, LinkDisconnected)
-		replaced.closeTransport()
+		_ = replaced.closeTransport()
 	}
 	m.notify(incoming, LinkReady)
 	go m.acceptStreams(incoming)
@@ -392,9 +415,12 @@ func (m *Manager[K, M]) OpenOrConnect(
 	}
 }
 
-func (m *Manager[K, M]) Invalidate(key K) {
+// Retire advances the exact key generation, rejects in-flight admissions, and
+// removes the current link without waiting for transport I/O. The returned
+// handle owns only the removed link and may be closed asynchronously.
+func (m *Manager[K, M]) Retire(key K) Retirement {
 	if m == nil {
-		return
+		return Retirement{}
 	}
 	var closing *managedLink[K, M]
 	var cancelAdmissions []context.CancelCauseFunc
@@ -421,15 +447,30 @@ func (m *Manager[K, M]) Invalidate(key K) {
 		cancel(ErrAdmissionInvalidated)
 	}
 	if closing != nil {
+		closing.revokeHandlers()
 		m.notify(closing, LinkDisconnected)
-		closing.closeTransport()
+		return Retirement{close: closing.closeTransport}
 	}
+	return Retirement{}
 }
 
-// InvalidateAll advances the manager generation, cancels every in-flight
-// admission, and closes all pooled links. The manager remains reusable.
+func (m *Manager[K, M]) Invalidate(key K) {
+	retirement := m.Retire(key)
+	_ = retirement.Close()
+}
+
+// RetireAll advances the manager generation, cancels every in-flight
+// admission, and removes all pooled links without waiting for transport I/O.
+// The manager remains reusable and every returned handle owns one exact old
+// link.
+func (m *Manager[K, M]) RetireAll() []Retirement {
+	return m.retireAll(false)
+}
+
+// InvalidateAll preserves the legacy synchronous cleanup contract. Lifecycle
+// callers that must remain live across a blocked Link.Close use RetireAll.
 func (m *Manager[K, M]) InvalidateAll() {
-	m.invalidateAll(false)
+	closeRetirements(m.RetireAll())
 }
 
 // SetEnabled atomically pauses or resumes admission. Disabling advances the
@@ -489,14 +530,14 @@ func (m *Manager[K, M]) SetEnabled(enabled bool) error {
 	}
 	for _, link := range closing {
 		m.notify(link, LinkDisconnected)
-		link.closeTransport()
+		_ = link.closeTransport()
 	}
 	return nil
 }
 
 // BeginQuiescence permanently closes admission and cancels all stream handlers.
 func (m *Manager[K, M]) BeginQuiescence() {
-	m.invalidateAll(true)
+	closeRetirements(m.retireAll(true))
 }
 
 func (m *Manager[K, M]) WaitForQuiescence(ctx context.Context) error {
@@ -521,9 +562,9 @@ func (m *Manager[K, M]) WaitForQuiescence(ctx context.Context) error {
 	}
 }
 
-func (m *Manager[K, M]) invalidateAll(permanent bool) {
+func (m *Manager[K, M]) retireAll(permanent bool) []Retirement {
 	if m == nil {
-		return
+		return nil
 	}
 	var closing []*managedLink[K, M]
 	var cancelAdmissions []context.CancelCauseFunc
@@ -556,8 +597,19 @@ func (m *Manager[K, M]) invalidateAll(permanent bool) {
 		cancel(ErrAdmissionInvalidated)
 	}
 	for _, link := range closing {
+		link.revokeHandlers()
 		m.notify(link, LinkDisconnected)
-		link.closeTransport()
+	}
+	retirements := make([]Retirement, 0, len(closing))
+	for _, link := range closing {
+		retirements = append(retirements, Retirement{close: link.closeTransport})
+	}
+	return retirements
+}
+
+func closeRetirements(retirements []Retirement) {
+	for index := range retirements {
+		_ = retirements[index].Close()
 	}
 }
 
@@ -613,7 +665,7 @@ func (m *Manager[K, M]) remove(link *managedLink[K, M]) {
 	if removedCurrent {
 		m.notify(link, LinkDisconnected)
 	}
-	link.closeTransport()
+	_ = link.closeTransport()
 }
 
 func (m *Manager[K, M]) notify(link *managedLink[K, M], state LinkState) {
@@ -721,18 +773,31 @@ func (m *Manager[K, M]) expireIdle(link *managedLink[K, M], generation uint64) {
 	link.idleTimer = nil
 	m.mu.Unlock()
 	m.notify(link, LinkDisconnected)
-	link.closeTransport()
+	_ = link.closeTransport()
 }
 
-func (link *managedLink[K, M]) closeTransport() {
-	link.closeOnce.Do(func() {
+func (link *managedLink[K, M]) revokeHandlers() {
+	if link == nil {
+		return
+	}
+	link.revokeOnce.Do(func() {
 		if link.cancelHandlers != nil {
 			link.cancelHandlers()
 		}
+	})
+}
+
+func (link *managedLink[K, M]) closeTransport() error {
+	if link == nil {
+		return nil
+	}
+	link.closeOnce.Do(func() {
+		link.revokeHandlers()
 		if link.link != nil {
-			_ = link.link.Close()
+			link.closeErr = link.link.Close()
 		}
 	})
+	return link.closeErr
 }
 
 type managedStream struct {

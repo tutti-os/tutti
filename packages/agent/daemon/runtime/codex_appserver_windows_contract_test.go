@@ -4,12 +4,74 @@ package agentruntime
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestLocalProcessTransportUsesWindowsEnvironmentKeySemantics(t *testing.T) {
+	const helperEnvironment = "TUTTI_TEST_WINDOWS_AGENT_ENVIRONMENT_HELPER"
+	if os.Getenv(helperEnvironment) == "1" {
+		fmt.Printf("cwd=%s\nplacement=%s\n", os.Getenv("TUTTI_AGENT_CWD"), os.Getenv("TUTTI_AGENT_RAIL_PLACEMENT"))
+		return
+	}
+
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatalf("resolve test executable: %v", err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	conn, err := NewLocalProcessTransport().Start(ctx, ProcessSpec{
+		Command: []string{executable, "-test.run=^TestLocalProcessTransportUsesWindowsEnvironmentKeySemantics$"},
+		Env: []string{
+			helperEnvironment + "=1",
+			"TUTTI_AGENT_CWD=C:\\stale-exact",
+			"tutti_agent_cwd=C:\\stale-case-variant",
+			"TUTTI_AGENT_CWD=C:\\workspace\\canonical",
+			`TUTTI_AGENT_RAIL_PLACEMENT={"version":1,"kind":"conversations","sectionKey":"stale"}`,
+			`tutti_agent_rail_placement={"version":1,"kind":"conversations","sectionKey":"case-variant"}`,
+			`TUTTI_AGENT_RAIL_PLACEMENT={"version":1,"kind":"project","projectPath":"C:\\workspace","sectionKey":"project:C:\\workspace"}`,
+		},
+	})
+	if err != nil {
+		t.Fatalf("start environment helper: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	receiver, ok := conn.(ContextProcessConnection)
+	if !ok {
+		t.Fatal("local process connection does not support bounded receive")
+	}
+
+	var stdout strings.Builder
+	for {
+		frame, err := receiver.RecvContext(ctx)
+		if err != nil {
+			t.Fatalf("receive environment helper output: %v", err)
+		}
+		stdout.Write(frame.Stdout)
+		if frame.ExitCode == nil {
+			continue
+		}
+		if *frame.ExitCode != 0 {
+			t.Fatalf("environment helper exit code = %d, output=%q", *frame.ExitCode, stdout.String())
+		}
+		break
+	}
+	output := stdout.String()
+	if !strings.Contains(output, "cwd=C:\\workspace\\canonical\n") {
+		t.Fatalf("environment helper output = %q, want canonical cwd", output)
+	}
+	if !strings.Contains(output, `placement={"version":1,"kind":"project","projectPath":"C:\\workspace","sectionKey":"project:C:\\workspace"}`+"\n") {
+		t.Fatalf("environment helper output = %q, want canonical rail placement", output)
+	}
+	if strings.Contains(output, "stale") || strings.Contains(output, "case-variant") {
+		t.Fatalf("environment helper output retained an earlier case-insensitive value: %q", output)
+	}
+}
 
 // TestCodexAppServerWindowsTurnStartContract crosses the real Codex
 // app-server process boundary. Unit request-shape tests cannot catch Rust's

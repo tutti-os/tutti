@@ -10,6 +10,7 @@ export function emptyQueueRecord(
     failedPromptId: null,
     failureMessage: null,
     inFlight: null,
+    pendingSendNowByPromptId: undefined,
     prompts: [],
     sendNextPromptId: null,
     suspendReason: null,

@@ -50,6 +50,7 @@ const schemaMigrationWorkspaceAgentRuntimeOperationsV5 = "workspace_agent_runtim
 const schemaMigrationWorkspaceAgentSubmitClaimsV1 = "workspace_agent_submit_claims_v1"
 const schemaMigrationWorkspaceAgentSubmitClaimsV2 = "workspace_agent_submit_claims_v2"
 const schemaMigrationWorkspaceAgentSubmitClaimsV3 = "workspace_agent_submit_claims_v3"
+const schemaMigrationWorkspaceAgentSubmitClaimsV4 = "workspace_agent_submit_claims_v4_submission_metadata"
 const schemaMigrationAgentTargetsV1 = "agent_targets_v1"
 const schemaMigrationAgentTargetsV2 = "agent_targets_v2"
 const schemaMigrationAgentTargetsV3 = "agent_targets_v3"
@@ -82,6 +83,7 @@ const schemaMigrationWorkspaceAgentSessionForkV3 = "workspace_agent_session_fork
 const schemaMigrationWorkspaceAgentSessionForkV4 = "workspace_agent_session_fork_v4"
 const schemaMigrationWorkspaceAgentSessionForkV5 = "workspace_agent_session_fork_v5"
 const schemaMigrationWorkspaceAgentEffectiveHistoryV1 = "workspace_agent_effective_history_v1"
+const schemaMigrationWorkspaceAgentEffectiveHistoryV2 = "workspace_agent_effective_history_v2_submission_metadata"
 const schemaMigrationWorkspaceAgentSessionForkV6 = "workspace_agent_session_fork_v6_optimistic"
 const schemaMigrationWorkspaceAgentSessionForkV7 = "workspace_agent_session_fork_v7_full_turn_bindings"
 const schemaMigrationWorkspaceAgentProviderCheckpointV1 = "workspace_agent_provider_checkpoint_v1"
@@ -224,6 +226,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentSubmitClaimsV3(ctx); err != nil {
 		return err
 	}
+	if err := s.applyWorkspaceAgentSubmitClaimsV4(ctx); err != nil {
+		return err
+	}
 	if err := s.applyWorkspaceAgentSessionTitlesV1(ctx); err != nil {
 		return err
 	}
@@ -306,6 +311,9 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 		return err
 	}
 	if err := s.applyWorkspaceAgentEffectiveHistoryV1(ctx); err != nil {
+		return err
+	}
+	if err := s.applyWorkspaceAgentEffectiveHistoryV2(ctx); err != nil {
 		return err
 	}
 	if err := s.applyWorkspaceAgentSessionForkV6(ctx); err != nil {

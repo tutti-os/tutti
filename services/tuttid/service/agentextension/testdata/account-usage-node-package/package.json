@@ -1,0 +1,11 @@
+{
+  "name": "@example/gemini-account-usage",
+  "version": "1.0.0",
+  "private": true,
+  "bin": {
+    "gemini-account-usage": "dist/cli.cjs"
+  },
+  "files": [
+    "dist/cli.cjs"
+  ]
+}

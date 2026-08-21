@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 func (host *Host) buildRemoteRoute(ctx context.Context, request market.RuntimeReconcileRequest) (*connectorRoute, error) {
@@ -33,12 +33,17 @@ func (host *Host) buildRemoteRoute(ctx context.Context, request market.RuntimeRe
 	closeClient := func() { _ = client.Close(context.Background()) }
 	if _, err := client.Call(ctx, "server/discover", map[string]any{}); err != nil {
 		closeClient()
-		return nil, fmt.Errorf("discover remote connector MCP: %w", err)
+		return nil, wrapRemoteMCPAuthorizationError(fmt.Errorf("discover remote connector MCP: %w", err))
 	}
-	tools, err := listModernMCPTools(ctx, client)
-	if err != nil {
-		closeClient()
-		return nil, err
+	cacheKey := remoteMCPToolCacheKeyFrom(request)
+	tools, cached := host.remoteMCPTools.lookup(cacheKey)
+	if !cached {
+		var err error
+		tools, err = listModernMCPTools(ctx, client)
+		if err != nil {
+			closeClient()
+			return nil, wrapRemoteMCPAuthorizationError(err)
+		}
 	}
 	for _, tool := range tools {
 		if err := client.RegisterTool(tool.Name, tool.InputSchema); err != nil {
@@ -50,6 +55,9 @@ func (host *Host) buildRemoteRoute(ctx context.Context, request market.RuntimeRe
 	if err := host.registerMCPTools(route, client, tools); err != nil {
 		closeClient()
 		return nil, err
+	}
+	if !cached {
+		host.remoteMCPTools.store(cacheKey, tools)
 	}
 	route.remoteMCP = client
 	return route, nil
@@ -126,7 +134,8 @@ func listMCPToolsWithProtocol(ctx context.Context, client mcpCaller, requireComp
 			Tools      []mcpTool `json:"tools"`
 			NextCursor *string   `json:"nextCursor"`
 		}
-		if err := json.Unmarshal(raw, &listing); err != nil || (requireComplete && listing.ResultType != "complete") {
+		if err := json.Unmarshal(raw, &listing); err != nil ||
+			(requireComplete && listing.ResultType != "" && listing.ResultType != "complete") {
 			return nil, errors.New("connector MCP tools/list response is invalid")
 		}
 		result = append(result, listing.Tools...)

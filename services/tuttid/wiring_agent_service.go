@@ -29,13 +29,13 @@ func startAgentModelInvalidationAuthWatcher(
 	events *eventstreamservice.Service,
 ) *agentservice.ProviderAuthWatcher {
 	// External credential switchers (for example cc-switch) rewrite provider
-	// auth/config files without notifying tuttid. Watch those files so cached
-	// model catalogs are dropped and the GUI hears about it immediately.
+	// auth/config files without notifying tuttid. Watch those files so model
+	// catalogs become stale, provider sessions are closed, and the GUI hears
+	// about it immediately.
 	publisher := eventstreamservice.AgentModelCatalogPublisher{Service: events}
-	return startProviderAuthWatcher(replayComposition, func(providers []string) {
-		modelCatalog.Invalidate(providers...)
-		for _, provider := range providers {
-			sessions.InvalidateLiveComposerModels(provider)
+	publish := func(providers []string, event string, changes []agentservice.ProviderAuthChange) {
+		if len(providers) == 0 {
+			return
 		}
 		if err := publisher.PublishAgentModelCatalogInvalidated(context.Background(), providers); err != nil {
 			slog.Warn("agent model catalog invalidation publish failed",
@@ -43,13 +43,65 @@ func startAgentModelInvalidationAuthWatcher(
 				"providers", providers,
 				"error", err,
 			)
-			return
 		}
-		slog.Info("agent provider auth files changed; model catalog invalidated",
-			"event", "agent.model_catalog.invalidated",
+		slog.Info("agent model catalog invalidation published",
+			"event", event,
 			"providers", providers,
+			"changed_files", providerAuthChangeDiagnostics(changes),
 		)
-	})
+	}
+	watcher := startProviderAuthWatcher(
+		replayComposition,
+		nil,
+		func(changes []agentservice.ProviderAuthChange) {
+			providers := providerAuthChangeProviders(changes)
+			modelCatalog.Invalidate(providers...)
+			for _, provider := range providers {
+				sessions.InvalidateLiveComposerModels(provider)
+			}
+			publish(providers, "agent.model_catalog.invalidated", changes)
+		},
+	)
+	if watcher != nil {
+		modelCatalog.OnRefresh = func(provider string) {
+			publish([]string{provider}, "agent.model_catalog.refreshed", nil)
+		}
+		watcher.OnClose = func() {
+			_ = modelCatalog.Close()
+		}
+	}
+	return watcher
+}
+
+func providerAuthChangeProviders(changes []agentservice.ProviderAuthChange) []string {
+	providers := make([]string, 0, len(changes))
+	seen := make(map[string]struct{}, len(changes))
+	for _, change := range changes {
+		if change.Provider == "" {
+			continue
+		}
+		if _, ok := seen[change.Provider]; ok {
+			continue
+		}
+		seen[change.Provider] = struct{}{}
+		providers = append(providers, change.Provider)
+	}
+	return providers
+}
+
+func providerAuthChangeDiagnostics(changes []agentservice.ProviderAuthChange) []map[string]string {
+	if len(changes) == 0 {
+		return nil
+	}
+	result := make([]map[string]string, 0, len(changes))
+	for _, change := range changes {
+		result = append(result, map[string]string{
+			"provider": change.Provider,
+			"path":     change.Path,
+			"kind":     change.Kind,
+		})
+	}
+	return result
 }
 
 func agentWorkspaceIDs(

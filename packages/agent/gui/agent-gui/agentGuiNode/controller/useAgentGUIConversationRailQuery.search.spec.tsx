@@ -845,7 +845,9 @@ describe("useAgentGUIConversationRailQuery search", () => {
     expect(workspaceSection).toBeTruthy();
     const workspaceHeader = workspaceSection?.firstElementChild;
     expect(workspaceHeader).toBeTruthy();
-    expect((workspaceHeader as HTMLElement).draggable).toBe(true);
+    await waitFor(() =>
+      expect((workspaceHeader as HTMLElement).draggable).toBe(true)
+    );
     expect(screen.queryByText("Conversations")).toBeNull();
     expect(screen.queryByText("Conversation unavailable")).toBeNull();
   });
@@ -981,6 +983,8 @@ describe("useAgentGUIConversationRailQuery search", () => {
     expect(
       conversationsSection?.getAttribute("data-project-dragging")
     ).toBeNull();
+
+    await waitFor(() => expect(alphaHeader.draggable).toBe(true));
 
     const alphaToggle = alphaHeader.querySelector("button") as HTMLElement;
     const moreButton = screen.getAllByRole("button", {

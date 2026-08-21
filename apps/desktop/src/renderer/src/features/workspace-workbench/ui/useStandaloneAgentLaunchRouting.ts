@@ -32,6 +32,7 @@ import {
   requestWorkspaceIssueManagerLaunch
 } from "../services/workspaceIssueManagerLaunchCoordinator.ts";
 import { runStandaloneAgentLinkAction } from "../services/standaloneAgentLinkAction.ts";
+import { requestWorkspaceBrowserLaunch } from "../services/workspaceBrowserLaunchCoordinator.ts";
 
 interface StandaloneAgentLaunchRoutingInput {
   agentDirectorySnapshot: DesktopAgentDirectorySnapshot;
@@ -177,6 +178,7 @@ export function useStandaloneAgentLaunchRouting({
           return true;
         },
         launchGroupChat: () => false,
+        openBrowserUrl: requestWorkspaceBrowserLaunch,
         openExternalUrl,
         runtimeApi,
         workspaceId

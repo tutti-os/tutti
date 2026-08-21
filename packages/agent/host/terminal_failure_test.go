@@ -68,6 +68,36 @@ func TestCommandBoundaryCarriesStableIdentityAndDuration(t *testing.T) {
 	}
 }
 
+func TestCommandBoundaryCarriesProviderAcceptanceDiagnostics(t *testing.T) {
+	observer := &recordingTerminalFailureObserver{}
+	host := New(Config{TerminalFailureObserver: observer})
+	ctx, command := host.beginCommand(context.Background(), commandTerminalFailureInput{
+		flow: "message_send", workspaceID: "workspace-1", agentSessionID: "session-1",
+	})
+	recordProviderAcceptanceDiagnostics(ctx, RuntimeProviderDispatchResult{
+		Disposition: RuntimeDispatchDispositionOutcomeUnknown,
+		AcceptanceDiagnostics: &RuntimeProviderAcceptanceDiagnostics{
+			Status:                   "outcome_unknown",
+			ProviderSessionIDPresent: true,
+			ProviderTurnIDPresent:    false,
+			ProviderTurnIDSource:     "turn_start_response",
+			FailureReason:            "missing_provider_turn_id",
+		},
+	})
+	command.finish(ctx, host, ErrSubmitDeliveryUnknown)
+
+	if len(observer.failures) != 1 {
+		t.Fatalf("terminal failures = %#v, want 1", observer.failures)
+	}
+	got := observer.failures[0].ProviderAcceptanceDiagnostics
+	if got == nil || got.Status != "outcome_unknown" ||
+		!got.ProviderSessionIDPresent || got.ProviderTurnIDPresent ||
+		got.ProviderTurnIDSource != "turn_start_response" ||
+		got.FailureReason != "missing_provider_turn_id" {
+		t.Fatalf("provider acceptance diagnostics = %#v", got)
+	}
+}
+
 func TestCommandBoundaryEmitsOneFailureForTheFirstFailedStep(t *testing.T) {
 	observer := &recordingTerminalFailureObserver{}
 	host := New(Config{TerminalFailureObserver: observer})

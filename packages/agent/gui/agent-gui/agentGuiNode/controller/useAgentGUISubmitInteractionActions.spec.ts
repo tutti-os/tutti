@@ -127,6 +127,7 @@ function createGoalControlInput(
     dataRef: { current: {} },
     draftByScopeKeyRef,
     executePromptRef: { current: vi.fn() },
+    goalControlSupported: true,
     isComposerHomeRef: { current: false },
     isCurrentConversation: (agentSessionId: string) =>
       agentSessionId === "session-1",
@@ -474,7 +475,9 @@ describe("existing-session prompt submission", () => {
       result.current.submitGuidancePrompt(
         [{ type: "text", text: "steer this turn" }],
         undefined,
-        { capabilityRefs: [{ capability: "tutti", source: "slash_command" }] }
+        {
+          capabilityRefs: [{ capability: "tutti", source: "slash_command" }]
+        }
       )
     );
 
@@ -546,6 +549,61 @@ describe("existing-session prompt submission", () => {
     });
     expect(submitPrompt).not.toHaveBeenCalled();
     expect(setDraftByScopeKey).toHaveBeenCalledTimes(1);
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("");
+  });
+
+  it("clears the exact pending-question draft when the controller ref is stale", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        input: {
+          questions: [
+            {
+              allowFreeText: true,
+              header: "Execution",
+              id: "execution-mode",
+              options: [],
+              question: "How should the task continue?"
+            }
+          ]
+        },
+        kind: "question",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    const submittedDraft = draft("Continue with the exact draft");
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("stale projection")
+    };
+    vi.spyOn(sessionEngine, "submitInteractionResponse").mockReturnValue(true);
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    setDraftByScopeKey.mockImplementationOnce((update) => {
+      const current = { "session:session-1": submittedDraft };
+      const next = typeof update === "function" ? update(current) : update;
+      draftByScopeKeyRef.current = next;
+    });
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "Continue with the exact draft" }],
+        undefined,
+        { submittedDraft }
+      )
+    );
+
     expect(
       agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
     ).toBe("");
@@ -649,6 +707,64 @@ describe("existing-session prompt submission", () => {
     );
   });
 
+  it("keeps capability-bearing text on the ordinary queue path", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        input: {
+          questions: [
+            {
+              allowFreeText: true,
+              header: "Execution",
+              id: "execution-mode",
+              options: [],
+              question: "How should the task continue?"
+            }
+          ]
+        },
+        kind: "question",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    const submitInteractionResponse = vi.spyOn(
+      sessionEngine,
+      "submitInteractionResponse"
+    );
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "Continue with Tutti" }],
+        undefined,
+        {
+          capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
+          tuttiMode: { active: true, effect: 50, speed: 50 }
+        }
+      )
+    );
+
+    expect(submitInteractionResponse).not.toHaveBeenCalled();
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityRefs: [{ capability: "tutti", source: "slash_command" }]
+      })
+    );
+  });
+
   it("keeps ordinary queue routing when the pending interaction is not a question", () => {
     const goalControl = vi.fn(async () => undefined);
     const { input, sessionEngine } = createGoalControlInput(
@@ -725,6 +841,47 @@ describe("existing-session prompt submission", () => {
     ).toBe("");
   });
 
+  it("clears the draft captured by the Composer when the controller ref is stale", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    const submittedDraft = draft("continue");
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("stale projection")
+    };
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    setDraftByScopeKey.mockImplementationOnce((update) => {
+      const current = { "session:session-1": submittedDraft };
+      const next = typeof update === "function" ? update(current) : update;
+      draftByScopeKeyRef.current = next;
+    });
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "continue" }],
+        undefined,
+        {
+          submittedDraft
+        }
+      )
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: [{ type: "text", text: "continue" }]
+      })
+    );
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("");
+  });
+
   it("keeps the draft when the Engine does not admit the submission", () => {
     const goalControl = vi.fn(async () => undefined);
     const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
@@ -752,6 +909,34 @@ describe("existing-session prompt submission", () => {
 });
 
 describe("goal controls", () => {
+  it("submits typed Goal text normally when Goal control is unsupported", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.goalControlSupported = false;
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: false });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "/goal count to ten" }
+      ])
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentSessionId: "session-1",
+        content: [{ type: "text", text: "/goal count to ten" }]
+      })
+    );
+    expect(goalControl).not.toHaveBeenCalled();
+  });
+
   it("publishes the Engine-owned optimistic goal before transport settles", async () => {
     const goalControl = vi.fn(() => new Promise<void>(() => {}));
     const { input, sessionEngine } = createGoalControlInput(
@@ -1010,13 +1195,15 @@ describe("typedGoalControlFromComposer", () => {
     expect(
       typedGoalControlFromComposer(
         [{ type: "text", text: "/goal clear" }],
-        "clear chip"
+        "clear chip",
+        true
       )
     ).toEqual({ action: "clear" });
     expect(
       typedGoalControlFromComposer(
         [{ type: "text", text: "ordinary prompt" }],
-        "/goal clear"
+        "/goal clear",
+        true
       )
     ).toBeNull();
   });

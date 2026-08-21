@@ -71,7 +71,13 @@ export function useAgentGUIControllerRefs(
   const onShowMessageRef = useRef(input.onShowMessage);
   const handledPrefillPromptSequenceRef = useRef<number | null>(null);
   const handledComposerAppendSequenceRef = useRef<number | null>(null);
-  const loadDraftComposerOptionsRef = useRef<() => void>(() => {});
+  const loadDraftComposerOptionsRef = useRef<
+    (options?: {
+      force?: boolean;
+      section?: "core" | "capabilities" | "connectors";
+      waitForFreshModelCatalog?: boolean;
+    }) => void
+  >(() => {});
   const onComposerDefaultsAuthorityReloadedRef =
     useRef<AgentGUIComposerDefaultsAuthorityReconciler>({
       prepareRead: (_target, settings) => ({
@@ -98,6 +104,7 @@ export function useAgentGUIControllerRefs(
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        submittedDraft?: AgentComposerSubmitOptions["submittedDraft"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
       }

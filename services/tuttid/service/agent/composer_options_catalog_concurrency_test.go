@@ -2,8 +2,12 @@ package agent
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 type blockingComposerModelCatalog struct {
@@ -88,6 +92,156 @@ func TestServiceGetComposerOptionsLoadsModelAndCapabilityCatalogsConcurrently(t 
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("GetComposerOptions did not finish after catalog releases")
+	}
+}
+
+func TestServiceGetComposerOptionsCoreDoesNotStartCapabilityCatalog(t *testing.T) {
+	capabilityLister := &blockingComposerCapabilityLister{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.CapabilityLister = capabilityLister
+
+	result, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Section:  ComposerOptionsSectionCore,
+	})
+	if err != nil {
+		t.Fatalf("core composer options returned error: %v", err)
+	}
+	if result.Provider != "codex" {
+		t.Fatalf("provider = %q, want codex", result.Provider)
+	}
+	select {
+	case <-capabilityLister.started:
+		t.Fatal("core composer options started capability discovery")
+	default:
+	}
+}
+
+func TestServiceGetComposerOptionsCapabilitiesDoesNotStartModelCatalog(t *testing.T) {
+	modelCatalog := &blockingComposerModelCatalog{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.ModelCatalog = modelCatalog
+	includeCapabilities := true
+
+	_, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		IncludeCapabilityCatalog: &includeCapabilities,
+		Provider:                 "codex",
+		Section:                  ComposerOptionsSectionCapabilities,
+	})
+	if err != nil {
+		t.Fatalf("capabilities composer options returned error: %v", err)
+	}
+	select {
+	case <-modelCatalog.started:
+		t.Fatal("capabilities composer options started model discovery")
+	default:
+	}
+}
+
+func TestServiceGetComposerOptionsConnectorsDoesNotStartProviderCatalogs(t *testing.T) {
+	modelCatalog := &blockingComposerModelCatalog{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	capabilityLister := &blockingComposerCapabilityLister{
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.ModelCatalog = modelCatalog
+	service.CapabilityLister = capabilityLister
+	service.DesktopPreferencesReader = connectorCatalogPreferencesReader(true)
+	service.ConnectorMarketSnapshots = connectorMarketSnapshotStub{
+		snapshot: market.Snapshot{Connectors: []market.Connector{
+			localConnectorFixture(
+				"google-calendar",
+				market.InstallationStateInstalled,
+				market.AuthorizationStateConnected,
+				market.CompatibilityStateSupported,
+			),
+		}},
+	}
+
+	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
+		Provider: "codex",
+		Section:  ComposerOptionsSectionConnectors,
+	})
+	if err != nil {
+		t.Fatalf("connectors composer options returned error: %v", err)
+	}
+	if len(options.CapabilityCatalog) != 1 || options.CapabilityCatalog[0].ID != "connector:google-calendar" {
+		t.Fatalf("capability catalog = %#v, want local Google Calendar connector", options.CapabilityCatalog)
+	}
+	select {
+	case <-modelCatalog.started:
+		t.Fatal("connectors composer options started model discovery")
+	default:
+	}
+	select {
+	case <-capabilityLister.started:
+		t.Fatal("connectors composer options started provider capability discovery")
+	default:
+	}
+}
+
+type countingComposerCapabilityLister struct {
+	allow   chan struct{}
+	called  atomic.Int32
+	started chan struct{}
+	once    sync.Once
+}
+
+func (l *countingComposerCapabilityLister) ListComposerCapabilityOptions(
+	context.Context,
+	string,
+	string,
+	[]ComposerSkillOption,
+) ([]ComposerCapabilityOption, []string) {
+	l.called.Add(1)
+	l.once.Do(func() { close(l.started) })
+	<-l.allow
+	return []ComposerCapabilityOption{{ID: "test", Kind: "skill", Name: "test", Label: "test"}}, nil
+}
+
+func TestServiceGetComposerOptionsDeduplicatesCapabilityDiscovery(t *testing.T) {
+	lister := &countingComposerCapabilityLister{
+		allow:   make(chan struct{}),
+		started: make(chan struct{}),
+	}
+	service := newIsolatedAgentService(newFakeRuntime())
+	service.CapabilityLister = lister
+	includeCapabilities := true
+	inputs := ComposerOptionsInput{
+		IncludeCapabilityCatalog: &includeCapabilities,
+		Provider:                 "codex",
+		Section:                  ComposerOptionsSectionCapabilities,
+	}
+	results := make(chan error, 2)
+	for range 2 {
+		go func() {
+			_, err := service.GetComposerOptions(context.Background(), inputs)
+			results <- err
+		}()
+	}
+	select {
+	case <-lister.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("capability discovery did not start")
+	}
+	close(lister.allow)
+	for range 2 {
+		if err := <-results; err != nil {
+			t.Fatalf("composer options returned error: %v", err)
+		}
+	}
+	if got := lister.called.Load(); got != 1 {
+		t.Fatalf("capability discovery calls = %d, want 1", got)
 	}
 }
 

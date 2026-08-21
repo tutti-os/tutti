@@ -32,6 +32,11 @@ func (a *CodexAppServerAdapter) storeSession(agentSessionID string, session *cod
 	a.mu.Lock()
 	if session != nil {
 		session.ensureInitialized()
+		if strings.TrimSpace(session.runtimeSession.AgentSessionID) == "" {
+			if existing := a.sessions[strings.TrimSpace(agentSessionID)]; existing != nil {
+				session.runtimeSession = existing.runtimeSession
+			}
+		}
 		if session.serverInfo == nil {
 			session.serverInfo = map[string]any{}
 		}
@@ -45,7 +50,8 @@ func (a *CodexAppServerAdapter) storeSession(agentSessionID string, session *cod
 	// client (and its OS process) would otherwise leak without an owner.
 	var replaced *codexAppServerSession
 	if existing := a.sessions[key]; existing != nil && existing != session && existing.client != nil &&
-		(session == nil || existing.client != session.client) {
+		(session == nil || existing.client != session.client) &&
+		!a.clientReferencedLocked(existing.client, key) {
 		existing.releasing = true
 		existing.client.SetMessageHandler(nil)
 		replaced = existing
@@ -78,9 +84,10 @@ func (a *CodexAppServerAdapter) removeSession(agentSessionID string) {
 	a.mu.Unlock()
 }
 
-// invalidateSessionClient removes and closes only the client that failed its
-// turn/start acknowledgement. The identity check prevents a late failure from
-// closing a replacement process that another lifecycle operation installed.
+// invalidateSessionClient invalidates the entire transport, not one reference.
+// A failed turn/start acknowledgement classified as unhealthy means every
+// parent/Side thread on this process is disconnected. Normal lifecycle release
+// remains reference-counted in closeLiveSession.
 func (a *CodexAppServerAdapter) invalidateSessionClient(
 	agentSessionID string,
 	expectedClient *codexAppServerClient,
@@ -95,20 +102,43 @@ func (a *CodexAppServerAdapter) invalidateSessionClient(
 		a.mu.Unlock()
 		return false
 	}
-	pending := make([]*pendingInteractiveRequest, 0, len(appSession.pendingRequests))
-	for _, request := range appSession.pendingRequests {
-		pending = append(pending, request)
+	pending := make([]*pendingInteractiveRequest, 0)
+	for candidateID, candidate := range a.sessions {
+		if candidate == nil || candidate.client != expectedClient {
+			continue
+		}
+		for _, request := range candidate.pendingRequests {
+			pending = append(pending, request)
+		}
+		delete(a.sessions, candidateID)
 	}
-	delete(a.sessions, key)
 	a.mu.Unlock()
 
 	for _, request := range pending {
 		request.supersede(errPermissionRequestCanceled)
 	}
-	if err := expectedClient.Close(); err != nil {
+	if err := expectedClient.Close(); err != nil && !codexSessionAlreadyGone(err) {
 		a.retainRetiredCodexSession(key, appSession)
 	}
 	return true
+}
+
+func (a *CodexAppServerAdapter) clientReferencedLocked(
+	client *codexAppServerClient,
+	exceptAgentSessionID string,
+) bool {
+	if client == nil {
+		return false
+	}
+	exceptAgentSessionID = strings.TrimSpace(exceptAgentSessionID)
+	for agentSessionID, candidate := range a.sessions {
+		if agentSessionID != exceptAgentSessionID &&
+			candidate != nil &&
+			candidate.client == client {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *CodexAppServerAdapter) getSession(agentSessionID string) *codexAppServerSession {

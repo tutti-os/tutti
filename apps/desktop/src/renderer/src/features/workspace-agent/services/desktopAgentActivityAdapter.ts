@@ -39,6 +39,7 @@ import {
   TuttidProtocolError
 } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import { getActiveLocale } from "../../../i18n/runtime.ts";
 import { wrapLocalizedTuttidErrorIfSpecific } from "../../../lib/desktopErrors.ts";
 import { agentActivityComposerOptionsFromTuttidResult } from "../../../lib/agentComposerOptionsProjection.ts";
@@ -46,6 +47,11 @@ import { reportAgentSubmitTraceDiagnostic as reportDesktopAgentSubmitTrace } fro
 import { DESKTOP_AGENT_GUI_CURRENT_USER_ID } from "./desktopAgentGuiIdentity.ts";
 
 export interface CreateDesktopAgentActivityAdapterInput {
+  claimBrowserAutomationTurn?(input: {
+    agentSessionId: string;
+    agentTurnId: string;
+    workspaceId: string;
+  }): void;
   composerOptionsRequestTimeoutMs?: number;
   tuttidClient: TuttidClient;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
@@ -54,6 +60,21 @@ export interface CreateDesktopAgentActivityAdapterInput {
     workspaceId: string,
     recordingId: string
   ) => void;
+  uiMode?: DesktopWorkspaceUiMode;
+}
+
+function submitDiagnosticsWithUiMode<T extends { submitDiagnostics?: object }>(
+  input: T,
+  uiMode: DesktopWorkspaceUiMode | undefined
+): T {
+  if (!uiMode) return input;
+  return {
+    ...input,
+    submitDiagnostics: {
+      ...input.submitDiagnostics,
+      uiMode
+    }
+  };
 }
 
 // Cold ACP/model discovery is materially slower on Windows (Cursor can take
@@ -122,11 +143,13 @@ export function agentActivitySessionDetailFromTuttid(
 }
 
 export function createDesktopAgentActivityAdapter({
+  claimBrowserAutomationTurn,
   composerOptionsRequestTimeoutMs = defaultComposerOptionsRequestTimeoutMs,
   tuttidClient,
   runtimeApi,
   takePendingSessionRecording,
-  restorePendingSessionRecording
+  restorePendingSessionRecording,
+  uiMode
 }: CreateDesktopAgentActivityAdapterInput): DesktopAgentActivityCommandAdapter {
   return {
     async listSessions(input) {
@@ -197,14 +220,22 @@ export function createDesktopAgentActivityAdapter({
       const startedAt = Date.now();
       const cwd = input.cwd?.trim();
       const agentTargetId = input.agentTargetId?.trim();
+      const section = input.section ?? "full";
       try {
         const result = await withAbortableRequestTimeout(
           (signal) =>
             tuttidClient.getAgentProviderComposerOptions(
               workspaceAgentProvider(input.provider),
               {
+                ...(input.agentSessionId?.trim()
+                  ? { agentSessionId: input.agentSessionId.trim() }
+                  : {}),
                 ...(agentTargetId ? { agentTargetId } : {}),
                 ...(cwd ? { cwd } : {}),
+                ...(section !== "full" ? { section } : {}),
+                ...(input.waitForFreshModelCatalog
+                  ? { waitForFreshModelCatalog: true }
+                  : {}),
                 workspaceId: input.workspaceId,
                 settings: tuttiAgentSessionComposerSettingsFromActivity(
                   input.settings
@@ -218,20 +249,25 @@ export function createDesktopAgentActivityAdapter({
             timeoutMs: composerOptionsRequestTimeoutMs
           }
         );
+        const options = agentActivityComposerOptionsFromTuttidResult(
+          input.provider,
+          result
+        );
+        const modelNames = desktopComposerModelNames(options.models);
         reportDesktopAgentComposerOptionsDiagnostic(
           runtimeApi,
           input.workspaceId,
           {
             agentTargetId: agentTargetId ?? null,
             durationMs: Date.now() - startedAt,
+            modelCount: options.models.length,
+            ...(modelNames ? { modelNames } : {}),
             provider: input.provider,
+            section,
             status: "ready"
           }
         );
-        return agentActivityComposerOptionsFromTuttidResult(
-          input.provider,
-          result
-        );
+        return options;
       } catch (error) {
         reportDesktopAgentComposerOptionsDiagnostic(
           runtimeApi,
@@ -240,6 +276,7 @@ export function createDesktopAgentActivityAdapter({
             agentTargetId: agentTargetId ?? null,
             durationMs: Date.now() - startedAt,
             provider: input.provider,
+            section,
             status: "error",
             ...normalizeDesktopAgentDiagnosticError(error)
           }
@@ -275,13 +312,16 @@ export function createDesktopAgentActivityAdapter({
         const agentTargetId = requiredAgentTargetId(input.agentTargetId);
         recordingId = takePendingSessionRecording?.(input.workspaceId) ?? null;
         const request = tuttiCreateWorkspaceAgentSessionRequestFromActivity(
-          {
-            ...input,
-            agentSessionId,
-            agentTargetId,
-            noProject:
-              input.noProject ?? (normalizeText(input.cwd) ? null : true)
-          },
+          submitDiagnosticsWithUiMode(
+            {
+              ...input,
+              agentSessionId,
+              agentTargetId,
+              noProject:
+                input.noProject ?? (normalizeText(input.cwd) ? null : true)
+            },
+            uiMode
+          ),
           { recordingId }
         );
         const session = await tuttidClient.createWorkspaceAgentSession(
@@ -298,6 +338,13 @@ export function createDesktopAgentActivityAdapter({
           workspaceId: input.workspaceId,
           fields: { sessionStatus: workspaceAgentSessionStatus(session) }
         });
+        if (session.activeTurnId) {
+          claimBrowserAutomationTurn?.({
+            agentSessionId: session.id,
+            agentTurnId: session.activeTurnId,
+            workspaceId: input.workspaceId
+          });
+        }
         return agentActivitySessionFromTuttidSession(
           input.workspaceId,
           session
@@ -337,8 +384,9 @@ export function createDesktopAgentActivityAdapter({
         submitDiagnostics: input.submitDiagnostics,
         workspaceId: input.workspaceId
       });
-      const request =
-        tuttiSendWorkspaceAgentSessionInputRequestFromActivity(input);
+      const request = tuttiSendWorkspaceAgentSessionInputRequestFromActivity(
+        submitDiagnosticsWithUiMode(input, uiMode)
+      );
       let result: Awaited<
         ReturnType<TuttidClient["sendWorkspaceAgentSessionInput"]>
       >;
@@ -385,6 +433,11 @@ export function createDesktopAgentActivityAdapter({
           turnId: result.turnId,
           turnPhase: result.turn.phase
         }
+      });
+      claimBrowserAutomationTurn?.({
+        agentSessionId: input.agentSessionId,
+        agentTurnId: result.turnId,
+        workspaceId: input.workspaceId
       });
       return {
         kind: "turn",
@@ -727,6 +780,31 @@ function reportDesktopAgentComposerOptionsDiagnostic(
   } catch {
     // Diagnostic logging must not affect composer option loading.
   }
+}
+
+function desktopComposerModelNames(
+  models: readonly { value: string }[]
+): string | undefined {
+  const names: string[] = [];
+  const seen = new Set<string>();
+  let totalLength = 0;
+  for (const model of models) {
+    let withoutControls = "";
+    for (const character of model.value) {
+      const code = character.charCodeAt(0);
+      if ((code >= 0 && code <= 0x1f) || (code >= 0x7f && code <= 0x9f)) {
+        continue;
+      }
+      withoutControls += character;
+    }
+    const name = withoutControls.replace(/\s+/g, " ").trim().slice(0, 120);
+    if (!name || seen.has(name)) continue;
+    if (names.length >= 32 || totalLength + name.length > 1_024) break;
+    names.push(name);
+    seen.add(name);
+    totalLength += name.length;
+  }
+  return names.length > 0 ? names.join(",") : undefined;
 }
 
 function normalizeDesktopAgentDiagnosticError(

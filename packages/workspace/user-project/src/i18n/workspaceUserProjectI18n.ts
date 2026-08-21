@@ -31,7 +31,7 @@ const workspaceUserProjectEn = {
     createProjectNameConflict:
       "A project with this name already exists. Use another name.",
     createProjectNameInvalid:
-      "Project names cannot contain path separators or empty values.",
+      "Use a valid folder name without reserved characters, device names, trailing spaces or periods, or excessive length.",
     createProjectNameLabel:
       "Enter a project name. A folder will be created under /workspace",
     createProjectNamePlaceholder: "Project name",
@@ -40,6 +40,7 @@ const workspaceUserProjectEn = {
       "Tutti does not have permission to create folders under /workspace.",
     createProjectTitle: "Add project",
     linkExistingProject: "Use existing project",
+    importProject: "Import project",
     loadingProjects: "Loading projects",
     noProject: "No project",
     projectLabel: "Project",
@@ -58,13 +59,15 @@ const workspaceUserProjectZhCN = {
     createProjectDocumentsUnavailable: "无法访问 /workspace。请选择已有项目。",
     createProjectFailed: "无法创建项目",
     createProjectNameConflict: "同名项目已存在，请换一个名称。",
-    createProjectNameInvalid: "项目名称不能包含路径分隔符或为空。",
+    createProjectNameInvalid:
+      "请输入有效的文件夹名称，不能包含非法字符、系统保留名称、末尾空格或句点，也不能过长",
     createProjectNameLabel: "输入项目名称。系统会在 /workspace 下创建文件夹",
     createProjectNamePlaceholder: "项目名称",
     createProjectNameRequired: "请输入项目名称",
     createProjectPermissionDenied: "Tutti 没有权限在 /workspace 下创建文件夹。",
     createProjectTitle: "添加项目",
     linkExistingProject: "使用已有项目",
+    importProject: "导入项目",
     loadingProjects: "正在加载项目",
     noProject: "不使用项目",
     projectLabel: "项目",
@@ -89,6 +92,7 @@ export type WorkspaceUserProjectI18nKey =
   | "projectSelect.createProjectPermissionDenied"
   | "projectSelect.createProjectTitle"
   | "projectSelect.linkExistingProject"
+  | "projectSelect.importProject"
   | "projectSelect.loadingProjects"
   | "projectSelect.noProject"
   | "projectSelect.projectLabel"

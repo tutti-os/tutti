@@ -19,6 +19,7 @@ const (
 	openCodePermissionAsk        = "ask"
 	openCodePermissionFullAccess = "full-access"
 	openCodePermissionEnv        = "OPENCODE_PERMISSION"
+	openCodeSparkModelID         = providerregistry.OpenCodeSparkModelID
 )
 
 func newOpenCodeAdapterFromProviderDescriptor(
@@ -37,7 +38,134 @@ func newOpenCodeAdapterFromProviderDescriptor(
 	}
 	adapter.config.automaticPermissionDecision = openCodeAutomaticPermissionDecision
 	adapter.config.filterPermissionOptions = openCodePermissionOptions
+	adapter.config.validateSettings = validateOpenCodeSettings
+	adapter.config.filterRuntimeConfigOptionDescriptors = filterOpenCodeRuntimeConfigOptionDescriptors
+	adapter.config.filterRuntimeConfigOptionValues = filterOpenCodeRuntimeConfigOptionValues
 	return adapter
+}
+
+func validateOpenCodeSettings(session Session, patch SessionSettingsPatch) error {
+	settings := session.SettingsValue()
+	if patch.Model != nil {
+		settings.Model = strings.TrimSpace(*patch.Model)
+	}
+	if patch.ReasoningEffort != nil {
+		settings.ReasoningEffort = strings.TrimSpace(*patch.ReasoningEffort)
+	}
+	model := strings.TrimSpace(settings.Model)
+	effort := strings.TrimSpace(settings.ReasoningEffort)
+	if providerregistry.OpenCodeModelSupportsReasoningEffort(model, effort) {
+		return nil
+	}
+	// OpenCode's generic ACP descriptor advertises "none", but the selected
+	// Spark model rejects it at session/prompt. Do not silently choose a
+	// different reasoning level; the service-side model catalog filters this
+	// value for normal launches, while this adapter guard protects stale or
+	// out-of-band settings before any prompt is sent.
+	return fmt.Errorf(
+		"OpenCode model %q does not support reasoning effort %q; supported values: low, medium, high, xhigh",
+		model,
+		effort,
+	)
+}
+
+func filterOpenCodeRuntimeConfigOptionDescriptors(
+	session Session,
+	descriptors []map[string]any,
+) []map[string]any {
+	filtered := cloneConfigOptionDescriptors(descriptors)
+	if len(filtered) == 0 {
+		return filtered
+	}
+	currentModel := strings.TrimSpace(session.SettingsValue().Model)
+	for _, descriptor := range filtered {
+		if strings.TrimSpace(asString(descriptor["id"])) == "model" {
+			if currentModel == "" {
+				currentModel = strings.TrimSpace(asString(descriptor["currentValue"]))
+			}
+			for _, option := range configOptionEntries(descriptor["options"]) {
+				modelID := strings.TrimSpace(asString(option["value"]))
+				if strings.EqualFold(modelID, openCodeSparkModelID) {
+					filterOpenCodeModelReasoningEfforts(option)
+				}
+			}
+			continue
+		}
+		if strings.TrimSpace(asString(descriptor["id"])) == "reasoning_effort" &&
+			strings.EqualFold(currentModel, openCodeSparkModelID) {
+			filterOpenCodeReasoningDescriptor(descriptor)
+		}
+	}
+	return filtered
+}
+
+func filterOpenCodeRuntimeConfigOptionValues(
+	session Session,
+	values map[string]any,
+) map[string]any {
+	filtered := clonePayload(values)
+	if len(filtered) == 0 {
+		return filtered
+	}
+	currentModel := strings.TrimSpace(asString(filtered["model"]))
+	if currentModel == "" {
+		currentModel = strings.TrimSpace(session.SettingsValue().Model)
+	}
+	if strings.EqualFold(currentModel, openCodeSparkModelID) &&
+		!providerregistry.OpenCodeModelSupportsReasoningEffort(
+			openCodeSparkModelID,
+			asString(filtered["reasoning_effort"]),
+		) {
+		delete(filtered, "reasoning_effort")
+	}
+	return filtered
+}
+
+func filterOpenCodeModelReasoningEfforts(option map[string]any) {
+	efforts := configOptionEntries(option["reasoningEfforts"])
+	if len(efforts) == 0 {
+		return
+	}
+	filtered := make([]map[string]any, 0, len(efforts))
+	for _, effort := range efforts {
+		if providerregistry.OpenCodeModelSupportsReasoningEffort(
+			openCodeSparkModelID,
+			asString(effort["value"]),
+		) {
+			filtered = append(filtered, effort)
+		}
+	}
+	option["reasoningEfforts"] = filtered
+	if !providerregistry.OpenCodeModelSupportsReasoningEffort(
+		openCodeSparkModelID,
+		asString(option["reasoningEffort"]),
+	) {
+		if len(filtered) > 0 {
+			option["reasoningEffort"] = asString(filtered[0]["value"])
+		} else {
+			delete(option, "reasoningEffort")
+		}
+	}
+}
+
+func filterOpenCodeReasoningDescriptor(descriptor map[string]any) {
+	efforts := configOptionEntries(descriptor["options"])
+	filtered := make([]map[string]any, 0, len(efforts))
+	for _, effort := range efforts {
+		if providerregistry.OpenCodeModelSupportsReasoningEffort(
+			openCodeSparkModelID,
+			asString(effort["value"]),
+		) {
+			filtered = append(filtered, effort)
+		}
+	}
+	descriptor["options"] = filtered
+	if !providerregistry.OpenCodeModelSupportsReasoningEffort(
+		openCodeSparkModelID,
+		asString(descriptor["currentValue"]),
+	) && len(filtered) > 0 {
+		descriptor["currentValue"] = asString(filtered[0]["value"])
+	}
 }
 
 func openCodeConfigContent(

@@ -49,6 +49,29 @@ func TestTuttiAgentStartSetsExtraSkillRootsBeforeThread(t *testing.T) {
 	}
 }
 
+func TestCodexStartSetsPreparedExtraSkillRootsBeforeThread(t *testing.T) {
+	t.Parallel()
+	transport := newScriptedAppServerTransport()
+	adapter := NewCodexAppServerAdapter(transport)
+	root := filepath.Join(t.TempDir(), "session-skills")
+	session := testAppServerSession()
+	session.Provider = ProviderCodex
+	session.Env = []string{tuttiAgentExtraSkillRootsEnv + "=" + mustEncodeExtraRoots(t, root)}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	params := appServerRequestParams(t, transport.conn, appServerMethodSkillsExtraRootsSet)
+	if got := appServerStringSlice(params["extraRoots"]); !slices.Equal(got, []string{root}) {
+		t.Fatalf("skills/extraRoots/set roots = %#v, want %#v", got, []string{root})
+	}
+	assertAppServerMethodOrder(t, appServerSentMethods(t, transport.conn),
+		appServerMethodInitialize,
+		appServerMethodInitialized,
+		appServerMethodSkillsExtraRootsSet,
+		appServerMethodThreadStart,
+	)
+}
+
 func TestTuttiAgentStartStabilizesSystemSkillsBeforeThread(t *testing.T) {
 	t.Parallel()
 

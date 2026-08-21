@@ -57,8 +57,7 @@ export const en = {
     syncingStatus: "syncing",
     uiSystemNote:
       "The new UI system now owns tokens, icons, and shared primitives in one place.",
-    welcomeDescription:
-      "A local-first intelligent productivity platform that brings control and focus to your workflow.",
+    welcomeDescription: "Where people and agents build in tune.",
     welcomeTitle: "Welcome to Tutti",
     featureLocalTitle: "Local data storage",
     featureLocalDescription: "Privacy and safety stay under your control",
@@ -79,6 +78,7 @@ export const en = {
     errorTitle: "Unable to check for updates",
     restartAction: "Restart & install",
     retryAction: "Retry",
+    releaseNotesAction: "What's new",
     storeManaged: "Updates are managed by Microsoft Store."
   },
   desktop: {
@@ -257,6 +257,7 @@ export const en = {
         openRightPanel: "Open right panel",
         resizeSidebar: "Resize tool sidebar",
         shrinkPanel: "Shrink panel",
+        side: "Side",
         tasks: "Tasks",
         terminal: "Terminal",
         tool: "Tool",
@@ -365,6 +366,9 @@ export const en = {
       stageInstallDone: "CLI installed",
       stageAdapterDone: "Adapter installed",
       stageLoginDone: "Signed in",
+      apiUsageBilling: "API Usage Billing",
+      codingPlanBilling: "Coding Plan",
+      providerAccountBilling: "{{provider}} Account",
       stageLoginDoneApiBilling: "API billing configured",
       stageReadyDone: "Ready",
       networkCheckRegistry: "Install source",
@@ -1330,9 +1334,9 @@ export const en = {
         agentSessionRecordingDescription:
           "Show the developer entry for recording and replaying sessions on Agent Home.",
         agentSessionRecordingLabel: "Agent session recording",
-        agentSessionForkDescription:
-          "Allow creating a new Agent conversation from a supported completed turn.",
-        agentSessionForkLabel: "Session Fork",
+        agentSideConversationDescription:
+          "Enable /side, transient Side conversations, and the text-selection action toolbar in Agent conversations.",
+        agentSideConversationLabel: "Side conversations",
         codexSaverModeDescription:
           "Show a remembered Codex composer switch that delegates suitable subtasks to Luna Max.",
         codexSaverModeLabel: "Codex saver mode",
@@ -1343,11 +1347,6 @@ export const en = {
         referenceProvenanceFilterDescription:
           "Enable Agent source filtering in Agent conversation reference pickers.",
         referenceProvenanceFilterLabel: "Agent source filter",
-        quickPromptLibraryDescription:
-          "Show a personal quick-prompt library in the Agent composer.",
-        quickPromptLibraryLabel: "Quick-prompt library",
-        quickPromptLibrarySaveFailed:
-          "We couldn't update quick-prompt library availability.",
         releaseChannelOptions: {
           rc: "Preview",
           stable: "Stable"
@@ -1380,6 +1379,9 @@ export const en = {
           "Show agent integrations that Tutti is still testing and validating.",
         previewAgentsLabel: "Early access agent integrations",
         shortcutUnbound: "Unbound",
+        tuttiModeDescription:
+          "Shows the Tutti Mode switch and /tutti command in Agent conversations.",
+        tuttiModeLabel: "Tutti Mode",
         workbenchShortcutsDescription:
           "Enables configurable workbench shortcut actions.",
         workbenchShortcutsLabel: "Workbench shortcuts",

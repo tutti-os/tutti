@@ -5,6 +5,41 @@ import type { WorkbenchHostHandle } from "@tutti-os/workbench-surface";
 import type { DesktopRuntimeApi } from "@preload/types";
 import { createAgentProviderTerminalCommandRunner } from "./createAgentProviderTerminalCommandRunner.ts";
 import { defaultWorkspaceTerminalWorkbenchTypeId } from "./internal/workspaceTerminalWorkbenchConstants.ts";
+import { registerWorkspaceTerminalLoginLaunchHandler } from "../../workspace-agent/services/workspaceTerminalLoginLaunchCoordinator.ts";
+
+test("agent provider terminal runner prefers the registered workspace presenter", async () => {
+  const requests: unknown[] = [];
+  const closed: string[] = [];
+  const unregister = registerWorkspaceTerminalLoginLaunchHandler(
+    "workspace-presenter",
+    async (request) => {
+      requests.push(request);
+      return {
+        close: () => closed.push("terminal"),
+        startupCompletion: Promise.resolve("not_required")
+      };
+    }
+  );
+  try {
+    const runner = createAgentProviderTerminalCommandRunner(createRuntimeApi());
+    const handle = await runner.runTerminalCommand(
+      createCommand("claude auth login"),
+      { workspaceId: "workspace-presenter" }
+    );
+
+    assert.deepEqual(requests, [
+      {
+        command: "claude auth login",
+        cwd: undefined,
+        workspaceId: "workspace-presenter"
+      }
+    ]);
+    handle?.close();
+    assert.deepEqual(closed, ["terminal"]);
+  } finally {
+    unregister();
+  }
+});
 
 test("agent provider terminal runner opens a terminal with the login command", async () => {
   const launchRequests: unknown[] = [];

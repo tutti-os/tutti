@@ -11,7 +11,7 @@ import {
 } from "./agentProviderUsageProbe.ts";
 import { setOutboundFetcherForTesting } from "./net/outboundFetch.ts";
 
-// The probe caches usage results per provider in module state; clear it so one
+// The probe caches usage results per exact Agent Target in module state; clear it so one
 // case's result never leaks into the next.
 beforeEach(() => {
   resetUsageProbeCacheForTesting();
@@ -39,18 +39,94 @@ test("listDesktopWorkspaceAgentProbes resolves provider aliases through the cata
   assert.equal(result.providers[0]?.provider, "opencode");
 });
 
-test("listDesktopWorkspaceAgentProbes keeps extension usage provider-neutral", async () => {
-  const result = await listDesktopWorkspaceAgentProbes({
-    includeUsage: true,
-    providers: ["acp:kimi-code"],
-    refresh: true,
-    workspaceId: "workspace-1"
-  });
+test("listDesktopWorkspaceAgentProbes consumes provider-owned API billing", async () => {
+  const result = await listDesktopWorkspaceAgentProbes(
+    {
+      includeUsage: true,
+      agentTargetIds: ["extension:usage-fixture"],
+      providers: ["acp:usage-fixture"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    },
+    {
+      probeAgentTargetAccountUsage: async (agentTargetId) => ({
+        schemaVersion: "tutti.agent.account-usage.v2",
+        agentTargetId,
+        provider: "acp:usage-fixture",
+        outcome: "available",
+        capturedAtUnixMs: 123,
+        billingMode: "api",
+        quotaState: "not_applicable",
+        quotas: []
+      })
+    }
+  );
 
   assert.equal(result.providers.length, 1);
-  assert.equal(result.providers[0]?.provider, "acp:kimi-code");
+  assert.equal(result.providers[0]?.agentTargetId, "extension:usage-fixture");
+  assert.equal(result.providers[0]?.provider, "acp:usage-fixture");
   assert.equal(result.providers[0]?.availability.status, "unknown");
-  assert.equal(result.providers[0]?.lastError?.code, "unsupported");
+  assert.equal(result.providers[0]?.usage?.billingMode, "api");
+});
+
+test("listDesktopWorkspaceAgentProbes fails closed on an unknown provider-owned payload", async () => {
+  const result = await listDesktopWorkspaceAgentProbes(
+    {
+      includeUsage: true,
+      agentTargetIds: ["extension:usage-fixture"],
+      providers: ["acp:usage-fixture"],
+      refresh: true,
+      workspaceId: "workspace-1"
+    },
+    {
+      probeAgentTargetAccountUsage: async () =>
+        ({
+          schemaVersion: "tutti.agent.account-usage.v3",
+          agentTargetId: "extension:usage-fixture",
+          provider: "acp:usage-fixture",
+          outcome: "available",
+          capturedAtUnixMs: 123,
+          quotas: []
+        }) as never
+    }
+  );
+
+  assert.equal(result.providers[0]?.usage, undefined);
+  assert.equal(result.providers[0]?.lastError?.code, "parse_failed");
+});
+
+test("listDesktopWorkspaceAgentProbes strips provider diagnostics from projection", async () => {
+  const canaries = [
+    "bearer-secret",
+    "https://untrusted.invalid/private",
+    "/private/kimi/credentials/kimi-code.json",
+    "raw-provider-body"
+  ];
+  const result = await listDesktopWorkspaceAgentProbes(
+    {
+      includeUsage: true,
+      agentTargetIds: ["extension:usage-fixture"],
+      providers: ["acp:usage-fixture"],
+      workspaceId: "workspace-1"
+    },
+    {
+      probeAgentTargetAccountUsage: async () =>
+        ({
+          schemaVersion: "tutti.agent.account-usage.v2",
+          agentTargetId: "extension:usage-fixture",
+          provider: "acp:usage-fixture",
+          outcome: "error",
+          capturedAtUnixMs: 123,
+          errorCode: "execution_failed",
+          message: canaries.join(" ")
+        }) as never
+    }
+  );
+
+  assert.equal(result.providers[0]?.lastError?.code, "parse_failed");
+  const serialized = JSON.stringify(result);
+  for (const canary of canaries)
+    assert.equal(serialized.includes(canary), false);
 });
 
 test("listDesktopWorkspaceAgentProbes maps Codex OAuth usage windows", async () => {
@@ -441,6 +517,8 @@ test("listDesktopWorkspaceAgentProbes coalesces rapid repeat usage probes", asyn
   const previousHome = process.env.HOME;
   const directory = await mkdtemp(join(tmpdir(), "tutti-claude-throttle-"));
   let fetchCount = 0;
+  const fetchStarted = deferred();
+  const releaseFetch = deferred();
   try {
     process.env.HOME = directory;
     await mkdir(join(directory, ".claude"), { recursive: true });
@@ -456,6 +534,8 @@ test("listDesktopWorkspaceAgentProbes coalesces rapid repeat usage probes", asyn
     );
     setOutboundFetcherForTesting(async () => {
       fetchCount += 1;
+      fetchStarted.resolve();
+      await releaseFetch.promise;
       return new Response(
         JSON.stringify({
           five_hour: { utilization: 10, resets_at: "2026-06-11T12:00:00.000Z" }
@@ -470,9 +550,15 @@ test("listDesktopWorkspaceAgentProbes coalesces rapid repeat usage probes", asyn
       refresh: true,
       workspaceId: "workspace-1"
     };
-    const first = await listDesktopWorkspaceAgentProbes(input);
-    const second = await listDesktopWorkspaceAgentProbes(input);
-    const third = await listDesktopWorkspaceAgentProbes(input);
+    const probes = [
+      listDesktopWorkspaceAgentProbes(input),
+      listDesktopWorkspaceAgentProbes(input),
+      listDesktopWorkspaceAgentProbes(input)
+    ] as const;
+    await fetchStarted.promise;
+    assert.equal(fetchCount, 1);
+    releaseFetch.resolve();
+    const [first, second, third] = await Promise.all(probes);
 
     // Three back-to-back probes must hit the vendor API only once; the rest are
     // served from the short-lived cache.
@@ -527,8 +613,7 @@ test("listDesktopWorkspaceAgentProbes stops re-hitting a rate-limited usage endp
     // The 429 is surfaced once, then the cooldown suppresses further calls to
     // the already-limited endpoint.
     assert.equal(fetchCount, 1);
-    assert.equal(first.providers[0]?.lastError?.code, "execution_failed");
-    assert.match(first.providers[0]?.lastError?.message ?? "", /rate limited/i);
+    assert.equal(first.providers[0]?.lastError?.code, "rate_limited");
   } finally {
     restoreOptionalEnv("HOME", previousHome);
     setOutboundFetcherForTesting(null);
@@ -568,4 +653,15 @@ function fetchInputUrl(input: RequestInfo | URL): string {
     return input.href;
   }
   return input.url;
+}
+
+function deferred(): {
+  promise: Promise<void>;
+  resolve(): void;
+} {
+  let resolvePromise!: () => void;
+  const promise = new Promise<void>((resolve) => {
+    resolvePromise = resolve;
+  });
+  return { promise, resolve: resolvePromise };
 }

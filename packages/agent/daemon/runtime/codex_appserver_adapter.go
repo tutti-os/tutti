@@ -22,13 +22,17 @@ const (
 	appServerMethodAccountRead         = "account/read"
 	appServerMethodRateLimitsRead      = "account/rateLimits/read"
 	appServerMethodModelList           = "model/list"
+	appServerMethodPluginList          = "plugin/list"
 	appServerMethodSkillsExtraRootsSet = "skills/extraRoots/set"
+	appServerMethodSkillsList          = "skills/list"
 	// Experimental: collaboration mode presets (plan/pair/execute). Absence of
 	// the method on older binaries downgrades planMode capability gracefully.
 	appServerMethodCollaborationModeList = "collaborationMode/list"
 	appServerMethodThreadStart           = "thread/start"
 	appServerMethodThreadResume          = "thread/resume"
 	appServerMethodThreadFork            = "thread/fork"
+	appServerMethodThreadInjectItems     = "thread/inject_items"
+	appServerMethodThreadUnsubscribe     = "thread/unsubscribe"
 	appServerMethodThreadRollback        = "thread/rollback"
 	appServerMethodThreadRead            = "thread/read"
 	appServerMethodThreadCompact         = "thread/compact/start"
@@ -52,30 +56,33 @@ const (
 	appServerMethodPatchApprovalV1     = "applyPatchApproval"
 
 	// Server -> client notifications.
-	appServerNotifyThreadStarted         = "thread/started"
-	appServerNotifyTurnStarted           = "turn/started"
-	appServerNotifyTurnCompleted         = "turn/completed"
-	appServerNotifyAgentMessageDelta     = "item/agentMessage/delta"
-	appServerNotifyCommandOutputDelta    = "item/commandExecution/outputDelta"
-	appServerNotifyReasoningDelta        = "item/reasoning/textDelta"
-	appServerNotifyReasoningSummary      = "item/reasoning/summaryTextDelta"
-	appServerNotifyReasoningSummaryPart  = "item/reasoning/summaryPartAdded"
-	appServerNotifyThreadSettingsUpdated = "thread/settings/updated"
-	appServerNotifyItemStarted           = "item/started"
-	appServerNotifyItemCompleted         = "item/completed"
-	appServerNotifyTokenUsage            = "thread/tokenUsage/updated"
-	appServerNotifyPlanUpdated           = "turn/plan/updated"
-	appServerNotifyThreadNameUpdated     = "thread/name/updated"
-	appServerNotifyRateLimitsUpdated     = "account/rateLimits/updated"
-	appServerNotifyAccountUpdated        = "account/updated"
-	appServerNotifyError                 = "error"
-	appServerNotifyWarning               = "warning"
-	appServerNotifyDeprecation           = "deprecationNotice"
-	appServerNotifyModelRerouted         = "model/rerouted"
-	appServerNotifyThreadCompacted       = "thread/compacted"
-	appServerNotifyServerRequestResolved = "serverRequest/resolved"
-	appServerNotifyThreadGoalUpdated     = "thread/goal/updated"
-	appServerNotifyThreadGoalCleared     = "thread/goal/cleared"
+	appServerNotifyThreadStarted                 = "thread/started"
+	appServerNotifyTurnStarted                   = "turn/started"
+	appServerNotifyTurnCompleted                 = "turn/completed"
+	appServerNotifyAgentMessageDelta             = "item/agentMessage/delta"
+	appServerNotifyCommandOutputDelta            = "item/commandExecution/outputDelta"
+	appServerNotifyReasoningDelta                = "item/reasoning/textDelta"
+	appServerNotifyReasoningSummary              = "item/reasoning/summaryTextDelta"
+	appServerNotifyReasoningSummaryPart          = "item/reasoning/summaryPartAdded"
+	appServerNotifyThreadSettingsUpdated         = "thread/settings/updated"
+	appServerNotifyItemStarted                   = "item/started"
+	appServerNotifyItemCompleted                 = "item/completed"
+	appServerNotifyTokenUsage                    = "thread/tokenUsage/updated"
+	appServerNotifyPlanUpdated                   = "turn/plan/updated"
+	appServerNotifyThreadNameUpdated             = "thread/name/updated"
+	appServerNotifyRateLimitsUpdated             = "account/rateLimits/updated"
+	appServerNotifyAccountUpdated                = "account/updated"
+	appServerNotifyError                         = "error"
+	appServerNotifyWarning                       = "warning"
+	appServerNotifyDeprecation                   = "deprecationNotice"
+	appServerNotifyModelRerouted                 = "model/rerouted"
+	appServerNotifyThreadCompacted               = "thread/compacted"
+	appServerNotifyServerRequestResolved         = "serverRequest/resolved"
+	appServerNotifyThreadGoalUpdated             = "thread/goal/updated"
+	appServerNotifyThreadGoalCleared             = "thread/goal/cleared"
+	appServerNotifyMCPServerStartupStatusUpdated = "mcpServer/startupStatus/updated"
+	appServerNotifyMCPToolCallProgress           = "item/mcpToolCall/progress"
+	appServerNotifyMCPOAuthLoginCompleted        = "mcpServer/oauthLogin/completed"
 )
 
 const (
@@ -112,7 +119,83 @@ type CodexAppServerAdapterOptions struct {
 	// approval policy, and approval reviewer remain owned by the selected
 	// permission mode. Network proxy configuration remains a separate concern.
 	CommandNetworkAccess bool
+	// StartupSpanObserver receives Codex app-server startup span boundaries.
+	// It is best-effort observability only and must not influence provider
+	// startup or command correctness.
+	StartupSpanObserver CodexAppServerSpanObserver
+	// StartupObserver receives one bounded summary when a Codex app-server
+	// session start or resume finishes. It is best-effort observability only
+	// and must not influence provider startup or command correctness.
+	StartupObserver CodexAppServerStartupObserver
+	// StartupResourceObserver receives a best-effort snapshot of the resources
+	// exposed by the app-server. The snapshot is collected asynchronously and
+	// must not influence provider startup or command correctness.
+	StartupResourceObserver CodexAppServerResourceObserver
 }
+
+// CodexAppServerSpanObservation is one allowlisted startup span boundary
+// emitted by the Codex app-server. A new observation is emitted when the span
+// starts and a close observation uses the same SpanInstanceID. It intentionally
+// contains only bounded timing and session-scope facts; raw prompts, commands,
+// paths, and payloads are not part of this contract.
+type CodexAppServerSpanObservation struct {
+	Provider       string
+	RoomID         string
+	AgentSessionID string
+	SpanName       string
+	SpanPhase      string
+	SpanInstanceID string
+	SpanTarget     string
+	CodexTimestamp string
+	DurationMS     int64
+	SpanBusy       string
+	SpanIdle       string
+}
+
+// CodexAppServerSpanObserver consumes startup span boundary observations.
+// Implementations must be best-effort and must not affect provider behavior.
+type CodexAppServerSpanObserver func(CodexAppServerSpanObservation)
+
+// CodexAppServerStartupObservation is one bounded summary of a Codex
+// app-server session start or resume. Counts describe resources bound to the
+// Tutti session and completed allowlisted Codex spans.
+type CodexAppServerStartupObservation struct {
+	Provider           string
+	RoomID             string
+	AgentSessionID     string
+	StartedAt          string
+	Outcome            string
+	DurationMS         int64
+	MCPServerCount     int
+	CompletedSpanCount int
+}
+
+// CodexAppServerStartupObserver consumes one completed startup summary.
+// Implementations must be best-effort and must not affect provider behavior.
+type CodexAppServerStartupObserver func(CodexAppServerStartupObservation)
+
+// CodexAppServerResourceObservation is a bounded snapshot of the resources
+// visible to one app-server startup attempt. MCPServerCount is the number of
+// bindings supplied by the Tutti session. PluginCount and SkillCount are
+// Codex-native counts; -1 means that the corresponding list request did not
+// produce a trustworthy response.
+type CodexAppServerResourceObservation struct {
+	Provider           string
+	RoomID             string
+	AgentSessionID     string
+	StartedAt          string
+	Outcome            string
+	DurationMS         int64
+	MCPServerCount     int
+	PluginCount        int
+	SkillCount         int
+	PluginQueryOutcome string
+	SkillQueryOutcome  string
+}
+
+// CodexAppServerResourceObserver consumes one best-effort resource snapshot.
+// Implementations must be best-effort and must not affect provider behavior.
+type CodexAppServerResourceObserver func(CodexAppServerResourceObservation)
 
 // defaultCodexAppServerCancelGraceWindow is how long Cancel waits for codex to
 // honor turn/interrupt gracefully before force-closing the app-server process.
@@ -147,10 +230,14 @@ type CodexAppServerAdapter struct {
 	transport                  ProcessTransport
 	host                       HostMetadata
 	config                     appServerAdapterConfig
+	startupSpanObserver        CodexAppServerSpanObserver
+	startupObserver            CodexAppServerStartupObserver
+	startupResourceObserver    CodexAppServerResourceObserver
 	preparer                   ProviderLaunchPreparer
 	commandResolver            ProviderCommandResolver
 	mu                         sync.Mutex
 	sessions                   map[string]*codexAppServerSession
+	pendingSideRoutes          map[*codexAppServerClient]*codexPendingSideRoute
 	retiredSessions            map[string][]*codexAppServerSession
 	terminalInteractions       terminalInteractiveDispositionStore
 	interactiveDispositionSink InteractiveDispositionSink
@@ -209,6 +296,9 @@ type codexAppServerSessionLock struct {
 
 type codexAppServerSession struct {
 	client *codexAppServerClient
+	// runtimeSession is the routing identity for connection-scoped clients
+	// that host multiple app-server threads. It is never persisted.
+	runtimeSession Session
 	// releaseFailed preserves ownership after a physical Close error while
 	// making the client unavailable to Exec. A successful replacement moves
 	// this handle to retiredSessions until bounded cleanup confirms closure.
@@ -284,9 +374,13 @@ type codexAppServerSession struct {
 	planModeMask    map[string]any
 	defaultModeMask map[string]any
 	defaultModel    string
-	authState       string
-	authMessage     string
-	activeTurnID    string
+	// tuttiModeHostContext is the latest Tutti-owned developer context applied
+	// to this thread. A Side fork preserves it alongside the provider mode so
+	// the fork cannot silently lose session and workspace context.
+	tuttiModeHostContext string
+	authState            string
+	authMessage          string
+	activeTurnID         string
 	// activeTurnStartConfirmed reports whether a turn/started notification
 	// confirmed activeTurnID. A turn/start issued while another turn is
 	// already running responds with a stub turn id that codex never starts
@@ -312,9 +406,15 @@ type codexAppServerSession struct {
 	canceledProviderThreads map[string]struct{}
 	activeTurn              *codexAppServerActiveTurn
 	childThreads            map[string]*codexAppServerThreadContext
-	// recentForeignDrops remembers recently dropped unknown thread ids so a
-	// late registration can report how many events the ordering gap lost.
+	// recentForeignDrops remembers recently observed unknown thread ids so a
+	// late registration can report the ordering gap; terminal notifications are
+	// retained separately for replay while ordinary progress remains dropped.
 	recentForeignDrops map[string]int
+	// pendingForeignTerminalNotifications retains one terminal notification per
+	// unknown child thread until receiverThreadIds registers that child. This
+	// closes the provider announce/stream ordering gap without admitting
+	// ordinary foreign-thread progress into the parent session.
+	pendingForeignTerminalNotifications map[string]appServerBufferedNotification
 	acpLiveState
 	pendingRequests map[string]*pendingInteractiveRequest
 }
@@ -330,9 +430,15 @@ type codexAppServerThreadContext struct {
 	parentItemID         string
 	normalizer           *acpTurnNormalizer
 	// droppedBeforeRegistration counts events for this thread that arrived
-	// (and were dropped as unknown) before its receiverThreadIds registration
-	// - permanent telemetry for ADR 0003's ordering question.
+	// before its receiverThreadIds registration - permanent telemetry for ADR
+	// 0003's ordering question. Terminal events are replayed after registration;
+	// ordinary progress remains dropped.
 	droppedBeforeRegistration int
+}
+
+type appServerBufferedNotification struct {
+	method string
+	params map[string]any
 }
 
 // codexAppServerActiveTurn carries the streaming context of an in-flight
@@ -398,6 +504,9 @@ func NewCodexAppServerAdapterWithHostMetadataAndOptions(
 ) *CodexAppServerAdapter {
 	adapter := NewCodexAppServerAdapterWithHostMetadataAndCommandResolver(transport, host, nil)
 	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
+	adapter.startupSpanObserver = options.StartupSpanObserver
+	adapter.startupObserver = options.StartupObserver
+	adapter.startupResourceObserver = options.StartupResourceObserver
 	return adapter
 }
 
@@ -444,6 +553,9 @@ func NewTuttiAgentAppServerAdapterWithHostMetadataAndOptions(
 ) *CodexAppServerAdapter {
 	adapter := newTuttiAgentAppServerAdapterWithHostMetadata(transport, host)
 	adapter.config.commandNetworkAccess = options.CommandNetworkAccess
+	adapter.startupSpanObserver = options.StartupSpanObserver
+	adapter.startupObserver = options.StartupObserver
+	adapter.startupResourceObserver = options.StartupResourceObserver
 	return adapter
 }
 

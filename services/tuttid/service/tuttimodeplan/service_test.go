@@ -3,11 +3,13 @@ package tuttimodeplan
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
@@ -55,6 +57,88 @@ func TestServiceProposePersistsPlanRevisionAndSingleTaskReviewCheckpoint(t *test
 	}
 	if !result.Snapshot.Workflow.CreatedAt.Equal(now) || !result.Snapshot.Checkpoints[0].CreatedAt.Equal(now) {
 		t.Fatalf("timestamps do not use service clock: %#v", result.Snapshot)
+	}
+}
+
+func TestServiceProposeRejectsTurnPreferenceSnapshotMismatchBeforePersistence(t *testing.T) {
+	t.Parallel()
+
+	for name, markdown := range map[string][]byte{
+		"mismatched values": taskGraphMarkdownWithPreferences("Mismatched proposal", 90, 55),
+		"missing values":    taskGraphMarkdownWithoutPreferences("Missing preference snapshot"),
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			store := newMemoryWorkflowStore()
+			store.turnSnapshots[turnSnapshotStoreKey("workspace-1", "session-1", "turn-1")] = activationbiz.TurnSnapshot{
+				ActivationID: "activation-1",
+				RevisionID:   "activation-revision-1",
+				Revision:     1,
+				State:        activationbiz.StateActive,
+				Source:       activationbiz.SourceSlashCommand,
+				Effect:       50,
+				Speed:        50,
+			}
+			service := newTestService(
+				t,
+				store,
+				time.UnixMilli(1_700_000_000_000).UTC(),
+				"workflow-1",
+				"revision-1",
+				"checkpoint-1",
+			)
+
+			_, err := service.Propose(context.Background(), ProposeInput{
+				WorkspaceID:     "workspace-1",
+				SourceSessionID: "session-1",
+				SourceTurnID:    "turn-1",
+				RequestID:       "request-1",
+				Markdown:        markdown,
+			})
+			if !errors.Is(err, ErrPreferenceSnapshotMismatch) || !errors.Is(err, ErrInvalidInput) {
+				t.Fatalf("Propose() error = %v, want typed preference snapshot mismatch", err)
+			}
+			if len(store.snapshots) != 0 || len(store.mutations) != 0 {
+				t.Fatalf(
+					"preference mismatch persisted workflow state: snapshots=%#v mutations=%#v",
+					store.snapshots,
+					store.mutations,
+				)
+			}
+		})
+	}
+}
+
+func TestServiceProposeRejectsMissingSourceTurnSnapshotBeforePersistence(t *testing.T) {
+	t.Parallel()
+
+	store := newMemoryWorkflowStore()
+	service := newTestService(
+		t,
+		store,
+		time.UnixMilli(1_700_000_000_000).UTC(),
+		"workflow-1",
+		"revision-1",
+		"checkpoint-1",
+	)
+	delete(store.turnSnapshots, turnSnapshotStoreKey("workspace-1", "session-1", "turn-1"))
+
+	_, err := service.Propose(context.Background(), ProposeInput{
+		WorkspaceID:     "workspace-1",
+		SourceSessionID: "session-1",
+		SourceTurnID:    "turn-1",
+		RequestID:       "request-1",
+		Markdown:        taskGraphMarkdown("Missing Turn snapshot"),
+	})
+	if !errors.Is(err, ErrTurnSnapshotUnavailable) || !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Propose() error = %v, want typed unavailable Turn snapshot", err)
+	}
+	if len(store.snapshots) != 0 || len(store.mutations) != 0 {
+		t.Fatalf(
+			"missing Turn snapshot persisted workflow state: snapshots=%#v mutations=%#v",
+			store.snapshots,
+			store.mutations,
+		)
 	}
 }
 
@@ -526,6 +610,56 @@ func TestServiceReviseEnforcesPhaseStateMachine(t *testing.T) {
 	}
 }
 
+func TestServiceReviseRejectsTurnPreferenceSnapshotMismatchBeforeRevisionWrite(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusRejected,
+		workflowbiz.WorkflowStatusInProgress,
+		now,
+	)
+	service := newTestService(t, store, now.Add(time.Minute), "revision-2", "checkpoint-2")
+	durableRevisions := service.Revisions
+	documentPath, digest, err := durableRevisions.Write(
+		"workflow-1",
+		taskGraphMarkdown("Current plan"),
+	)
+	if err != nil {
+		t.Fatalf("seed current revision: %v", err)
+	}
+	current := store.snapshots[workflowStoreKey("workspace-1", "workflow-1")]
+	current.Revisions[0].DocumentPath = documentPath
+	current.Revisions[0].SHA256 = digest
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = current
+	countingRevisions := &countingRevisionContentStore{delegate: durableRevisions}
+	service.Revisions = countingRevisions
+
+	_, err = service.Revise(context.Background(), ReviseInput{
+		WorkspaceID:      "workspace-1",
+		WorkflowID:       "workflow-1",
+		ProducedByTurnID: "turn-2",
+		RequestID:        "request-2",
+		Markdown:         taskGraphMarkdownWithPreferences("Mismatched revision", 90, 55),
+	})
+	if !errors.Is(err, ErrPreferenceSnapshotMismatch) {
+		t.Fatalf("Revise() error = %v, want preference snapshot mismatch", err)
+	}
+	if countingRevisions.writes != 0 {
+		t.Fatalf("mismatched revision file writes = %d, want 0", countingRevisions.writes)
+	}
+	persisted := store.snapshots[workflowStoreKey("workspace-1", "workflow-1")]
+	if len(persisted.Revisions) != 1 || len(store.mutations) != 0 {
+		t.Fatalf(
+			"preference mismatch persisted revision state: revisions=%#v mutations=%#v",
+			persisted.Revisions,
+			store.mutations,
+		)
+	}
+}
+
 func TestServiceReviseRetriesAfterMetadataCommitFailureWithoutRevisionFileConflict(t *testing.T) {
 	t.Parallel()
 
@@ -724,6 +858,61 @@ func TestServiceDecideMapsCheckpointDecisionToWorkflowAndOperation(t *testing.T)
 	}
 }
 
+func TestServiceDecideRejectsAStaleRenderedCheckpointBeforeMaterialization(t *testing.T) {
+	t.Parallel()
+
+	now := time.UnixMilli(1_700_000_000_000).UTC()
+	store := newMemoryWorkflowStore()
+	snapshot := workflowSnapshotFixture(
+		workflowbiz.CheckpointKindTaskReview,
+		workflowbiz.CheckpointStatusPending,
+		workflowbiz.WorkflowStatusPendingReview,
+		now,
+	)
+	snapshot.Workflow.CurrentRevisionID = "revision-2"
+	snapshot.Revisions = append(snapshot.Revisions, workflowbiz.PlanRevision{
+		ID:               "revision-2",
+		WorkflowID:       "workflow-1",
+		Sequence:         2,
+		SchemaVersion:    SchemaV1,
+		DocumentPath:     "tutti-mode-plans/workflow-1/revisions/" + strings.Repeat("b", 64) + ".md",
+		SHA256:           strings.Repeat("b", 64),
+		ProducedByTurnID: "turn-2",
+		CreatedAt:        now.Add(time.Minute),
+	})
+	snapshot.Checkpoints = append(snapshot.Checkpoints, workflowbiz.WorkflowCheckpoint{
+		ID:         "checkpoint-2",
+		WorkflowID: "workflow-1",
+		Kind:       workflowbiz.CheckpointKindTaskReview,
+		RevisionID: "revision-2",
+		Status:     workflowbiz.CheckpointStatusPending,
+		CreatedAt:  now.Add(time.Minute),
+		UpdatedAt:  now.Add(time.Minute),
+	})
+	store.snapshots[workflowStoreKey("workspace-1", "workflow-1")] = snapshot
+	service := newTestService(t, store, now.Add(2*time.Minute))
+	materializer := &recordingIssueMaterializer{issueID: "must-not-exist"}
+	service.IssueMaterializer = materializer
+
+	_, err := service.Decide(context.Background(), DecideInput{
+		WorkspaceID:  "workspace-1",
+		WorkflowID:   "workflow-1",
+		CheckpointID: "checkpoint-1",
+		Decision:     workflowbiz.CheckpointStatusAccepted,
+		DecidedBy:    "user-1",
+	})
+	if !errors.Is(err, ErrCheckpointMissing) {
+		t.Fatalf("Decide(stale visible checkpoint) error = %v, want ErrCheckpointMissing", err)
+	}
+	if len(materializer.inputs) != 0 {
+		t.Fatalf("stale visible checkpoint materialized inputs = %#v", materializer.inputs)
+	}
+	persisted := store.snapshots[workflowStoreKey("workspace-1", "workflow-1")]
+	if persisted.Checkpoints[0].Status != workflowbiz.CheckpointStatusPending || len(persisted.Operations) != 0 {
+		t.Fatalf("stale visible checkpoint mutated workflow = %#v", persisted)
+	}
+}
+
 func TestServiceRevisionCompletesDecisionOperationLifecycle(t *testing.T) {
 	t.Parallel()
 
@@ -837,7 +1026,12 @@ func TestServiceAcceptTaskGraphMaterializesActionableItemsAndCompletesOperation(
 	if len(materializer.inputs) != 1 || len(materializer.inputs[0].ActionableItems) != 1 {
 		t.Fatalf("materializer inputs = %#v", materializer.inputs)
 	}
-	if materializer.inputs[0].ActionableItems[0].Task.ID != "task-1" || materializer.inputs[0].SourceSessionID != "session-1" {
+	if materializer.inputs[0].Title != "Executable plan" ||
+		materializer.inputs[0].Content != "Task graph narrative\n" ||
+		materializer.inputs[0].Execution.Effect == nil || *materializer.inputs[0].Execution.Effect != 50 ||
+		materializer.inputs[0].Execution.Speed == nil || *materializer.inputs[0].Execution.Speed != 50 ||
+		materializer.inputs[0].ActionableItems[0].Task.ID != "task-1" ||
+		materializer.inputs[0].SourceSessionID != "session-1" {
 		t.Fatalf("materializer input = %#v", materializer.inputs[0])
 	}
 	replayed, err := service.Decide(context.Background(), DecideInput{
@@ -1382,11 +1576,26 @@ func TestServiceWaitRepairsMissingFollowUpOperationAfterDecisionCrashGap(t *test
 
 func newTestService(t *testing.T, store *memoryWorkflowStore, now time.Time, ids ...string) *Service {
 	t.Helper()
+	for _, turnID := range []string{"turn-1", "turn-2"} {
+		key := turnSnapshotStoreKey("workspace-1", "session-1", turnID)
+		if _, found := store.turnSnapshots[key]; !found {
+			store.turnSnapshots[key] = activationbiz.TurnSnapshot{
+				ActivationID: "activation-1",
+				RevisionID:   "activation-revision-1",
+				Revision:     1,
+				State:        activationbiz.StateActive,
+				Source:       activationbiz.SourceSlashCommand,
+				Effect:       50,
+				Speed:        50,
+			}
+		}
+	}
 	index := 0
 	return &Service{
-		Store:     store,
-		Revisions: workspacedata.WorkflowRevisionFiles{StateDir: t.TempDir()},
-		Now:       func() time.Time { return now },
+		Store:         store,
+		TurnSnapshots: store,
+		Revisions:     workspacedata.WorkflowRevisionFiles{StateDir: t.TempDir()},
+		Now:           func() time.Time { return now },
 		NewID: func() string {
 			if index >= len(ids) {
 				t.Fatalf("unexpected id allocation after %d ids", len(ids))
@@ -1403,11 +1612,24 @@ func configurationMarkdown(title string) []byte {
 }
 
 func planMarkdownWithoutPhase(title string) []byte {
-	return []byte("---\nschema: tutti-mode-plan/v1\ntitle: " + title + "\ntopicId: topic-1\nexecution:\n  mode: sequential\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\nbudget:\n  mode: auto\n  tokenLimit: 0\n  quotaWaterlinePercent: 0\ntasks:\n  - id: task-1\n    title: Implement task\n    priority: medium\n---\nPlan narrative with tasks\n")
+	return []byte("---\nschema: tutti-mode-plan/v1\ntitle: " + title + "\ntopicId: topic-1\nexecution:\n  mode: sequential\n  effect: 50\n  speed: 50\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\nbudget:\n  mode: auto\n  tokenLimit: 0\n  quotaWaterlinePercent: 0\ntasks:\n  - id: task-1\n    title: Implement task\n    priority: medium\n---\nPlan narrative with tasks\n")
 }
 
 func taskGraphMarkdown(title string) []byte {
+	return taskGraphMarkdownWithPreferences(title, 50, 50)
+}
+
+func taskGraphMarkdownWithoutPreferences(title string) []byte {
 	return []byte("---\nschema: tutti-mode-plan/v1\nphase: task_graph\ntitle: " + title + "\ntopicId: topic-1\nexecution:\n  mode: sequential\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\nbudget:\n  mode: auto\n  tokenLimit: 0\n  quotaWaterlinePercent: 0\ntasks:\n  - id: task-1\n    title: Implement task\n    priority: medium\n---\nTask graph narrative\n")
+}
+
+func taskGraphMarkdownWithPreferences(title string, effect int, speed int) []byte {
+	return []byte(
+		"---\nschema: tutti-mode-plan/v1\nphase: task_graph\ntitle: " + title +
+			"\ntopicId: topic-1\nexecution:\n  mode: sequential\n  effect: " +
+			fmt.Sprint(effect) + "\n  speed: " + fmt.Sprint(speed) +
+			"\n  reasoningIntensity: 50\n  orchestrationIntensity: 50\nbudget:\n  mode: auto\n  tokenLimit: 0\n  quotaWaterlinePercent: 0\ntasks:\n  - id: task-1\n    title: Implement task\n    priority: medium\n---\nTask graph narrative\n",
+	)
 }
 
 func workflowSnapshotFixture(kind workflowbiz.CheckpointKind, checkpointStatus workflowbiz.CheckpointStatus, workflowStatus workflowbiz.WorkflowStatus, now time.Time) workflowbiz.Snapshot {
@@ -1483,6 +1705,7 @@ type memoryWorkflowStore struct {
 	mu               sync.Mutex
 	snapshots        map[string]workflowbiz.Snapshot
 	mutations        map[string]workflowbiz.WorkflowMutation
+	turnSnapshots    map[string]activationbiz.TurnSnapshot
 	getCount         int
 	appendFailures   int
 	completeFailures int
@@ -1492,6 +1715,20 @@ type recordingWorkflowPublisher struct {
 	updates []workflowbiz.Update
 }
 
+type countingRevisionContentStore struct {
+	delegate RevisionContentStore
+	writes   int
+}
+
+func (store *countingRevisionContentStore) Write(workflowID string, raw []byte) (string, string, error) {
+	store.writes++
+	return store.delegate.Write(workflowID, raw)
+}
+
+func (store *countingRevisionContentStore) Read(workflowID string, documentPath string, expectedSHA256 string) ([]byte, error) {
+	return store.delegate.Read(workflowID, documentPath, expectedSHA256)
+}
+
 func (publisher *recordingWorkflowPublisher) PublishWorkspaceWorkflowUpdated(_ context.Context, update workflowbiz.Update) error {
 	publisher.updates = append(publisher.updates, update)
 	return nil
@@ -1499,9 +1736,29 @@ func (publisher *recordingWorkflowPublisher) PublishWorkspaceWorkflowUpdated(_ c
 
 func newMemoryWorkflowStore() *memoryWorkflowStore {
 	return &memoryWorkflowStore{
-		snapshots: make(map[string]workflowbiz.Snapshot),
-		mutations: make(map[string]workflowbiz.WorkflowMutation),
+		snapshots:     make(map[string]workflowbiz.Snapshot),
+		mutations:     make(map[string]workflowbiz.WorkflowMutation),
+		turnSnapshots: make(map[string]activationbiz.TurnSnapshot),
 	}
+}
+
+func turnSnapshotStoreKey(workspaceID string, sessionID string, turnID string) string {
+	return strings.Join([]string{workspaceID, sessionID, turnID}, "\x00")
+}
+
+func (store *memoryWorkflowStore) ExistingTurnSnapshot(
+	_ context.Context,
+	workspaceID string,
+	agentSessionID string,
+	turnID string,
+) (activationbiz.TurnSnapshot, error) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	snapshot, found := store.turnSnapshots[turnSnapshotStoreKey(workspaceID, agentSessionID, turnID)]
+	if !found {
+		return activationbiz.TurnSnapshot{}, fmt.Errorf("turn snapshot not found")
+	}
+	return snapshot, nil
 }
 
 func workflowStoreKey(workspaceID string, workflowID string) string {

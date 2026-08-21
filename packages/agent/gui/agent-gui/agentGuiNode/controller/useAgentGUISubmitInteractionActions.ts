@@ -94,12 +94,14 @@ interface UseAgentGUISubmitInteractionActionsInput {
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        submittedDraft?: AgentComposerSubmitOptions["submittedDraft"];
         targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
       }
     ) => void
   >;
+  goalControlSupported: boolean;
   isComposerHomeRef: RefObject<boolean>;
   isCurrentConversation(agentSessionId: string): boolean;
   isRespondingToInteraction: boolean;
@@ -156,6 +158,7 @@ export function useAgentGUISubmitInteractionActions(
     dataRef,
     draftByScopeKeyRef,
     executePromptRef,
+    goalControlSupported,
     isComposerHomeRef,
     isCurrentConversation,
     isRespondingToInteraction,
@@ -220,6 +223,7 @@ export function useAgentGUISubmitInteractionActions(
         immediate?: boolean;
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        submittedDraft?: AgentComposerSubmitOptions["submittedDraft"];
         targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -249,6 +253,7 @@ export function useAgentGUISubmitInteractionActions(
           options.sourceScopeKey ??
           resolveAgentComposerDraftScopeKey({ agentSessionId });
         const submittedDraft =
+          options?.submittedDraft ??
           draftByScopeKeyRef.current[sourceScopeKey] ??
           emptyAgentComposerDraft();
         submittedDraftSnapshotsRef.current[submitTrace.clientSubmitId] = {
@@ -396,6 +401,7 @@ export function useAgentGUISubmitInteractionActions(
         capabilityRefs?: AgentComposerSubmitOptions["capabilityRefs"];
         requiredSettingsPatch?: AgentComposerSubmitOptions["requiredSettingsPatch"];
         sendNow?: boolean;
+        submittedDraft?: AgentComposerSubmitOptions["submittedDraft"];
         targetTurnId?: AgentComposerSubmitOptions["targetTurnId"];
         sourceScopeKey?: string;
         trackDraft?: boolean;
@@ -427,6 +433,7 @@ export function useAgentGUISubmitInteractionActions(
         requiredSettingsPatch: options?.requiredSettingsPatch,
         targetTurnId: options?.targetTurnId,
         sendNow: options?.sendNow === true,
+        submittedDraft: options?.submittedDraft,
         sourceScopeKey: options?.sourceScopeKey,
         trackDraft: options?.trackDraft === true
       });
@@ -510,7 +517,8 @@ export function useAgentGUISubmitInteractionActions(
         displayPrompt && displayPrompt.trim() ? displayPrompt : undefined;
       const typedGoal = typedGoalControlFromComposer(
         normalizedContent,
-        displayPromptText
+        displayPromptText,
+        goalControlSupported
       );
       if (
         !promptImagesSupported &&
@@ -567,6 +575,7 @@ export function useAgentGUISubmitInteractionActions(
               {
                 capabilityRefs: options?.capabilityRefs,
                 requiredSettingsPatch: options?.requiredSettingsPatch,
+                submittedDraft: options?.submittedDraft,
                 sourceScopeKey: resolveAgentComposerDraftScopeKey({}),
                 trackDraft: true
               }
@@ -576,7 +585,9 @@ export function useAgentGUISubmitInteractionActions(
         }
         const homeDraftKey = resolveAgentComposerDraftScopeKey({});
         const submittedHomeDraft = snapshotAgentComposerDraft(
-          draftByScopeKeyRef.current[homeDraftKey] ?? emptyAgentComposerDraft()
+          options?.submittedDraft ??
+            draftByScopeKeyRef.current[homeDraftKey] ??
+            emptyAgentComposerDraft()
         );
         const activationResult = startConversation(
           normalizedContent,
@@ -610,21 +621,21 @@ export function useAgentGUISubmitInteractionActions(
         return;
       }
       const activeTurnId = activeEngineActiveTurn?.turnId.trim() ?? "";
-      const pendingQuestionResponse = options?.requiredSettingsPatch
-        ? null
-        : resolvePendingQuestionComposerResponse({
-            activeTurnId,
-            agentSessionId,
-            content: normalizedContent,
-            pendingInteractions: activeEnginePendingInteractions
-          });
+      const pendingQuestionResponse = resolvePendingQuestionComposerResponse({
+        activeTurnId,
+        agentSessionId,
+        content: normalizedContent,
+        pendingInteractions: activeEnginePendingInteractions,
+        submitOptions: options
+      });
       if (pendingQuestionResponse) {
         const sourceScopeKey = resolveAgentComposerDraftScopeKey({
           agentSessionId
         });
         const submittedDraftSnapshot: SubmittedDraftSnapshot = {
           content: snapshotAgentComposerDraft(
-            draftByScopeKeyRef.current[sourceScopeKey] ??
+            options?.submittedDraft ??
+              draftByScopeKeyRef.current[sourceScopeKey] ??
               emptyAgentComposerDraft()
           ),
           sourceScopeKey,
@@ -662,6 +673,7 @@ export function useAgentGUISubmitInteractionActions(
         {
           capabilityRefs: options?.capabilityRefs,
           requiredSettingsPatch: options?.requiredSettingsPatch,
+          submittedDraft: options?.submittedDraft,
           trackDraft: true
         }
       );
@@ -671,9 +683,10 @@ export function useAgentGUISubmitInteractionActions(
       activeEnginePendingInteractions,
       agentActivityRuntime,
       conversationListQuery,
-      promptImagesSupported,
       goalControl,
+      goalControlSupported,
       persistActiveConversation,
+      promptImagesSupported,
       startConversation,
       submitExistingPrompt,
       submitInteractivePrompt,
@@ -716,6 +729,7 @@ export function useAgentGUISubmitInteractionActions(
         {
           capabilityRefs: options?.capabilityRefs,
           sendNow: true,
+          submittedDraft: options?.submittedDraft,
           targetTurnId: activeTurnId,
           trackDraft: true
         }

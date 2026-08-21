@@ -90,21 +90,32 @@ func TestResolveAgentExtensionSourcesUsesGeneratedActivationDefaults(t *testing.
 			t.Fatalf("stable agent extension trust configuration is incomplete: %#v", source)
 		}
 	}
+	wantPinnedVersions := map[string]string{
+		"gemini": "2.0.3", "codebuddy": "2.0.5", "copilot": "2.0.3", "kilo": "2.0.3",
+		"qwen": "2.0.3", "hermes": "1.0.8", "kimi-code": "1.0.11", "grok": "0.1.2",
+	}
+	for key, wantVersion := range wantPinnedVersions {
+		if got := agentExtensionSourceByKey(t, sources, key).PinnedVersion; got != wantVersion {
+			t.Fatalf("agent extension source %q pinned version = %q, want %q", key, got, wantVersion)
+		}
+	}
 }
 
 func TestResolveAgentExtensionSourcesAppliesLocalPackageOnlyInDevelopment(t *testing.T) {
 	packageDir := filepath.Join(t.TempDir(), "package")
+	helperExecutable := filepath.Join(t.TempDir(), "account-usage")
 	t.Setenv("TUTTI_ENV", "development")
 	t.Setenv("TUTTI_AGENT_EXTENSION_CODEBUDDY_PACKAGE_DIR", packageDir)
+	t.Setenv("TUTTI_AGENT_EXTENSION_CODEBUDDY_ACCOUNT_USAGE_EXECUTABLE", helperExecutable)
 
 	development := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "codebuddy")
-	if development.Enabled || development.LocalPackageDir != packageDir {
+	if development.Enabled || development.LocalPackageDir != packageDir || development.LocalAccountUsageExecutable != helperExecutable {
 		t.Fatalf("development local package override not applied: %#v", development)
 	}
 
 	t.Setenv("TUTTI_ENV", "production")
 	production := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "codebuddy")
-	if production.Enabled || production.LocalPackageDir != "" {
+	if production.Enabled || production.LocalPackageDir != "" || production.LocalAccountUsageExecutable != "" {
 		t.Fatalf("production local package override must be ignored: %#v", production)
 	}
 }
@@ -128,14 +139,15 @@ func TestGrokAgentExtensionSourcePinsApprovedSigningIdentity(t *testing.T) {
 	}
 }
 
-func TestKimiCodeAgentExtensionSourceUsesAuthenticationCompatibleIndex(t *testing.T) {
+func TestKimiCodeAgentExtensionSourceUsesAccountUsageCompatibleIndex(t *testing.T) {
 	source := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "kimi-code")
 	if !source.Enabled || source.SigningKeyID != "tutti-kimi-code-release-v1" ||
-		source.ReleaseIndexURL != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/authentication-v1/versions.json" {
+		source.ReleaseIndexURL != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/account-usage-v1/versions.json" {
 		t.Fatalf("kimi-code source activation/key identity = %#v", source)
 	}
-	if len(source.FallbackReleaseIndexURLs) != 1 ||
-		source.FallbackReleaseIndexURLs[0] != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/versions.json" {
+	if len(source.FallbackReleaseIndexURLs) != 2 ||
+		source.FallbackReleaseIndexURLs[0] != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/authentication-v1/versions.json" ||
+		source.FallbackReleaseIndexURLs[1] != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/versions.json" {
 		t.Fatalf("kimi-code fallback release indexes = %#v", source.FallbackReleaseIndexURLs)
 	}
 }

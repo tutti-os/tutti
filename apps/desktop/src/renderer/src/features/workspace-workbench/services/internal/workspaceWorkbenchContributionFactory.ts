@@ -74,7 +74,7 @@ export interface DesktopWorkbenchContributionContext {
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
-  ) => void;
+  ) => void | Promise<void>;
   agentsService: Pick<IAgentsService, "getSnapshot" | "subscribe">;
   renderAgentsEmpty?: AgentGUIAgentsEmptyRenderer;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];

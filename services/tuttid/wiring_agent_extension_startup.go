@@ -3,11 +3,29 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"time"
 
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 )
+
+func startAgentExtensionReconcilers(setup *agentextensionservice.SetupService) error {
+	if err := setup.StartManagedRuntimeReconciler(); err != nil {
+		return errors.Join(
+			fmt.Errorf("start managed agent runtime reconciler: %w", err),
+			setup.Close(),
+		)
+	}
+	if err := setup.StartAccountUsageCompanionReconciler(); err != nil {
+		return errors.Join(
+			fmt.Errorf("start account usage companion reconciler: %w", err),
+			setup.Close(),
+		)
+	}
+	return nil
+}
 
 func restoreAgentExtensionsForStartup(
 	ctx context.Context,
@@ -28,7 +46,10 @@ func restoreAgentExtensionsForStartup(
 	return false
 }
 
-func startAgentExtensionBackgroundRefresh(manager *agentextensionservice.Manager) {
+func startAgentExtensionBackgroundRefresh(
+	manager *agentextensionservice.Manager,
+	setup *agentextensionservice.SetupService,
+) {
 	go func() {
 		startedAt := time.Now()
 		slog.Info("agent extension background refresh started",
@@ -37,6 +58,8 @@ func startAgentExtensionBackgroundRefresh(manager *agentextensionservice.Manager
 			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
 			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
 		}
+		setup.WakeManagedRuntimeReconciler()
+		setup.WakeAccountUsageCompanionReconciler()
 		slog.Info("agent extension background refresh completed",
 			"event", "tutti.agent_extension.refresh_completed",
 			"durationMs", time.Since(startedAt).Milliseconds())

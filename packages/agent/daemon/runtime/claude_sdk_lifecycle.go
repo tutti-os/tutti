@@ -130,6 +130,13 @@ func (a *ClaudeCodeSDKAdapter) startClaudeSDKSession(ctx context.Context, sessio
 		if err != nil {
 			a.removeSession(session.AgentSessionID, adapterSession)
 			a.closeOrRetainClaudeSDKSession(session.AgentSessionID, adapterSession)
+			if errors.Is(err, context.DeadlineExceeded) {
+				// The process is already launched and the start request has been
+				// sent. A deadline at this boundary means the provider never
+				// established its runtime Session, rather than preparation or
+				// delivery timing out before provider readiness was observable.
+				err = errors.Join(ErrProviderStartTimeout, err)
+			}
 			return nil, err
 		}
 		eventCtx := context.Background()

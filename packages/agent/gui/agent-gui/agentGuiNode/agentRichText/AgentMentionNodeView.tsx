@@ -37,6 +37,7 @@ import {
 } from "./agentMentionNodeResolution";
 import { AGENT_RICH_TEXT_CARET_ANCHOR } from "./agentRichTextCaretAnchor";
 import { agentExternalPromptFileErrorI18nKey } from "../model/agentExternalPromptFiles";
+import { dirnameFromPath } from "./agentMentionMarkdown";
 
 type AgentMentionNodeViewKind =
   | "file"
@@ -129,14 +130,6 @@ function normalizeKind(value: string): AgentMentionNodeViewKind {
     return "custom";
   }
   return "file";
-}
-
-function dirnameFromPath(path: string): string {
-  const parts = path.split("/").filter(Boolean);
-  if (parts.length <= 1) {
-    return path.startsWith("/") ? "/" : "";
-  }
-  return `/${parts.slice(0, -1).join("/")}`;
 }
 
 function mentionViewModel(

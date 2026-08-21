@@ -51,20 +51,24 @@ func (a *App) Run(ctx context.Context) error {
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigCh)
 
+	serveDone := make(chan error, 1)
 	go func() {
-		select {
-		case <-ctx.Done():
-			a.shutdown(context.Background(), "context-cancelled", nil)
-		case sig := <-sigCh:
-			a.shutdown(context.Background(), "signal", sig)
+		if a.Listener != nil {
+			serveDone <- a.Server.Serve(a.Listener)
+			return
 		}
+		serveDone <- a.Server.ListenAndServe()
 	}()
 
 	var err error
-	if a.Listener != nil {
-		err = a.Server.Serve(a.Listener)
-	} else {
-		err = a.Server.ListenAndServe()
+	select {
+	case err = <-serveDone:
+	case <-ctx.Done():
+		a.shutdown(context.Background(), "context-cancelled", nil)
+		err = <-serveDone
+	case sig := <-sigCh:
+		a.shutdown(context.Background(), "signal", sig)
+		err = <-serveDone
 	}
 
 	if err != nil && !errors.Is(err, http.ErrServerClosed) {
@@ -72,7 +76,6 @@ func (a *App) Run(ctx context.Context) error {
 		return err
 	}
 
-	logger.Info("tuttid main exiting", "event", "tutti.main.exit")
 	return nil
 }
 

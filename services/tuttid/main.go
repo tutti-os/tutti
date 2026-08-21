@@ -60,12 +60,13 @@ func run(args []string, stdout io.Writer, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "build tuttid server: %v\n", err)
 		return 1
 	}
-	defer func() {
-		_ = wiring.Close()
-	}()
-
-	if err := tuttiapp.New(srv, listener, loggerSetup.LogFilePath).Run(ctx); err != nil {
-		fmt.Fprintf(stderr, "tuttid exited: %v\n", err)
+	runErr := tuttiapp.New(srv, listener, loggerSetup.LogFilePath).Run(ctx)
+	if closeErr := wiring.Close(); closeErr != nil {
+		slog.Warn("tuttid wiring close failed", "event", "tutti.wiring.close_failed", "error", closeErr)
+	}
+	slog.Info("tuttid main exiting", "event", "tutti.main.exit")
+	if runErr != nil {
+		fmt.Fprintf(stderr, "tuttid exited: %v\n", runErr)
 		return 1
 	}
 	return 0

@@ -31,7 +31,7 @@ type RemoteAuthProbeResult struct {
 
 // ProbeRemoteAuth converts a descriptor-owned HTTP bearer request into the
 // shared authentication evidence vocabulary. Only explicit provider rejection
-// (401/403) revokes local configuration; rate limits, server failures and
+// (401) revokes local configuration; forbidden, rate limits, server failures and
 // transport errors remain probe failures so local credentials stay launchable.
 func ProbeRemoteAuth(
 	ctx context.Context,
@@ -88,7 +88,7 @@ func ProbeRemoteAuth(
 		result.Body = body
 		result.Evidence = AuthEvidence{Kind: AuthEvidenceRemoteSuccess}
 		return result
-	case response.StatusCode == http.StatusUnauthorized || response.StatusCode == http.StatusForbidden:
+	case response.StatusCode == http.StatusUnauthorized:
 		result.Evidence = AuthEvidence{
 			Kind:   AuthEvidenceRemoteAuthFailure,
 			Reason: AuthReasonSessionExpired,

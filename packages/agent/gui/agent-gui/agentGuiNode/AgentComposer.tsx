@@ -15,7 +15,7 @@ import {
 import { type AgentFileMentionSuggestionState } from "./agentRichText/agentFileMentionExtension";
 import { formatSlashStatusTokenCount } from "./AgentSlashStatusPanel";
 import { useOptionalAgentGUIRuntime } from "../../agentActivityRuntime";
-import { useComposerDraftAttachments } from "./composer/useComposerDraftAttachments";
+import { useComposerDraftAttachmentsWithConnectors } from "./composer/useComposerDraftAttachmentsWithConnectors";
 import { goalDraftObjectiveFromPrompt } from "./composer/composerDraftUtils";
 import {
   INITIAL_DOCK_COMPOSER_METRICS,
@@ -39,13 +39,14 @@ import { useScopedProjectMissingState } from "./composer/useScopedProjectMissing
 import type { AgentComposerProps } from "./composer/AgentComposer.types";
 import { withAgentComposerTuttiModeSnapshot } from "./composer/agentComposerSubmitOptions";
 import {
-  agentComposerDraftAttachmentProjection,
   agentComposerDraftFiles,
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
+  agentComposerDraftQuotes,
   agentComposerDraftHasContent,
   agentComposerDraftPrompt
 } from "./model/agentComposerDraft";
+import { agentComposerDraftAttachmentProjection } from "./model/agentComposerDraftAttachmentProjection";
 import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
 import { projectAgentGUIComposerGateControls } from "./model/agentGuiComposerGate";
 import {
@@ -53,6 +54,8 @@ import {
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
 import { useComposerInputHistory } from "./composer/useComposerInputHistory";
+import { refreshComposerSlashCapabilities } from "./composer/useComposerSlashCapabilitiesRefresh";
+import { useComposerDraftCapabilitiesRequest } from "./composer/useComposerDraftCapabilitiesRequest";
 
 export { formatSlashStatusTokenCount };
 
@@ -151,6 +154,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onPromptImagesUnsupported,
     onSubmitInteractivePrompt,
     onCapabilitySettingsRequest,
+    onRetryComposerOptions,
     onSlashStatusOpen,
     onLinkAction,
     onRequestWorkspaceReferences = null,
@@ -160,6 +164,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onRequestGitBranches = null,
     referenceProvenanceFilters = null
   } = props;
+  const slashCapabilitiesRefreshedSessionRef = useRef<string | null>(null);
+  const handleDraftContentChange = useComposerDraftCapabilitiesRequest({
+    agentSessionId,
+    onDraftContentChange,
+    onRetryComposerOptions,
+    provider
+  });
   const {
     canQueueWhileBusy,
     editorDisabled: disabled,
@@ -170,6 +181,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     presentationSubmitDisabled
   });
   const draftPrompt = agentComposerDraftPrompt(draftContent);
+  const draftQuoteCount = agentComposerDraftQuotes(draftContent).length;
   const goalDraftObjective = canGoalControl
     ? goalDraftObjectiveFromPrompt(draftPrompt)
     : null;
@@ -298,7 +310,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     entries: inputHistory,
     hasOlderPage: inputHistoryHasOlderPage,
     isLoadingOlderPage: inputHistoryIsLoadingOlderPage,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     onRequestOlderPage: onRequestOlderInputHistoryPage,
     runtime: agentActivityRuntime,
     workspaceId
@@ -367,7 +379,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [skillQueryMatch?.prefix, skillQueryMatch?.query, slashQuery]);
+    refreshComposerSlashCapabilities({
+      agentSessionId,
+      isPaletteOpen,
+      onRetryComposerOptions,
+      refreshedSessionRef: slashCapabilitiesRefreshedSessionRef,
+      slashQuery
+    });
+  }, [
+    agentSessionId,
+    isPaletteOpen,
+    onRetryComposerOptions,
+    skillQueryMatch?.prefix,
+    skillQueryMatch?.query,
+    slashQuery
+  ]);
 
   useEffect(() => {
     const preferredKey =
@@ -463,7 +489,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     // missing flag as enabled.
     tuttiModeSupported: capabilityMenuState?.tuttiMode?.enabled === true,
     capabilityControlsReadOnly,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     onSettingsChange,
     onSubmit: submitWithComposerModifiers,
     onSubmitEmpty,
@@ -515,7 +541,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     draftPromptRef,
     setPaletteDraftPrompt,
     setIsPaletteOpen,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     showFileMentionPalette,
     mentionHighlightedKey,
     mentionSearchState,
@@ -539,7 +565,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   });
   const { clearActiveFileMentionTrigger } = mentionActions;
 
-  const attachments = useComposerDraftAttachments({
+  const attachments = useComposerDraftAttachmentsWithConnectors({
     workspaceId,
     workspacePath,
     draftContent,
@@ -559,7 +585,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     setPaletteDraftPrompt,
     setIsPaletteOpen,
     clearActiveFileMentionTrigger,
-    onDraftContentChange,
+    onDraftContentChange: handleDraftContentChange,
     onPromptImagesUnsupported,
     onContentEntered: reportContentEntered,
     onRequestWorkspaceReferences,
@@ -661,7 +687,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     dockComposerMetrics,
     setDockComposerMetrics,
     draftImages,
-    draftLargeTexts
+    draftLargeTexts,
+    draftQuoteCount
   });
   const { activePromptTip, promptTipStyle, rotatingPromptTips } = layout;
   const presentation = useComposerPresentation({

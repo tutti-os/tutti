@@ -61,7 +61,6 @@ function isSlashCommandCapability(
 
 export function useComposerPaletteCatalog({
   provider,
-  isGoalModeActive,
   goalSupported,
   paletteDraftPrompt,
   availableCommands,
@@ -82,9 +81,7 @@ export function useComposerPaletteCatalog({
   const computerPresentationSupported =
     computerExecutable ||
     capabilityMenuState?.computerUse?.presentationSupported === true;
-  const slashQuery = isGoalModeActive
-    ? null
-    : getPromptStartSlashCommandQuery(paletteDraftPrompt);
+  const slashQuery = getPromptStartSlashCommandQuery(paletteDraftPrompt);
   const slashCommandPolicy = composerSettings.slashCommandPolicy;
   const promptBeforeSelection =
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";

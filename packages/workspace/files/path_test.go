@@ -41,15 +41,46 @@ func TestNormalizeLogicalPathWithinRoot(t *testing.T) {
 }
 
 func TestNormalizeLogicalPathWithinWindowsRootAcceptsDriveAbsolutePath(t *testing.T) {
-	got, err := NormalizeLogicalPathWithinRoot(
+	for _, input := range []string{
 		`C:\\Users\\test\\project`,
-		`C:\\Users\\test\\project`,
-	)
+		`c:/Users/test/project`,
+		`/c/Users/test/project`,
+	} {
+		t.Run(input, func(t *testing.T) {
+			got, err := NormalizeLogicalPathWithinRoot(
+				input,
+				`C:\\Users\\test\\project`,
+			)
+			if err != nil {
+				t.Fatalf("NormalizeLogicalPathWithinRoot() error = %v", err)
+			}
+			if got != "/C:/Users/test/project" {
+				t.Fatalf("NormalizeLogicalPathWithinRoot() = %q, want /C:/Users/test/project", got)
+			}
+		})
+	}
+}
+
+func TestNormalizeLogicalPathWithinWindowsRootKeepsPosixDriveLikePathPosix(t *testing.T) {
+	got, err := NormalizeLogicalPathWithinRoot("/c/Users/test/project", "/")
 	if err != nil {
 		t.Fatalf("NormalizeLogicalPathWithinRoot() error = %v", err)
 	}
-	if got != "/C:/Users/test/project" {
-		t.Fatalf("NormalizeLogicalPathWithinRoot() = %q, want /C:/Users/test/project", got)
+	if got != "/c/Users/test/project" {
+		t.Fatalf("NormalizeLogicalPathWithinRoot() = %q, want /c/Users/test/project", got)
+	}
+}
+
+func TestLogicalRelativePathMatchesWindowsDrivePathsCaseInsensitively(t *testing.T) {
+	got, err := LogicalRelativePath(
+		"/c:/users/test/project/src/App.tsx",
+		`C:\\Users\\test\\project`,
+	)
+	if err != nil {
+		t.Fatalf("LogicalRelativePath() error = %v", err)
+	}
+	if got != "src/App.tsx" {
+		t.Fatalf("LogicalRelativePath() = %q, want src/App.tsx", got)
 	}
 }
 

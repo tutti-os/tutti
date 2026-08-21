@@ -534,11 +534,15 @@ configure_desktop_dev_version() {
 
 configure_agent_extension_sources() {
   local package_dir="${DEV_GUI_KIMI_CODE_PACKAGE_DIR:-}"
+  local helper_executable="${DEV_GUI_KIMI_CODE_ACCOUNT_USAGE_EXECUTABLE:-}"
+  local helper_candidate=""
+  local account_usage_profile=""
 
   if [[ -z "${package_dir}" ]]; then
     # A stale shell or launchd override must not silently shadow the signed
     # remote release used by the shipped product.
     unset TUTTI_AGENT_EXTENSION_KIMI_CODE_PACKAGE_DIR
+    unset TUTTI_AGENT_EXTENSION_KIMI_CODE_ACCOUNT_USAGE_EXECUTABLE
     return
   fi
 
@@ -550,6 +554,32 @@ configure_agent_extension_sources() {
   package_dir="$(cd "${package_dir}" && pwd -P)"
   export TUTTI_AGENT_EXTENSION_KIMI_CODE_PACKAGE_DIR="${package_dir}"
   log "using local kimi-code agent extension at ${package_dir}"
+
+  if [[ -z "${helper_executable}" ]]; then
+    helper_candidate="${package_dir}/../../../packages/account-usage-probe/dist/cli.cjs"
+    if [[ -f "${helper_candidate}" && -x "${helper_candidate}" ]]; then
+      helper_executable="${helper_candidate}"
+    fi
+  fi
+  if [[ -z "${helper_executable}" ]]; then
+    account_usage_profile="$(
+      node -e '
+        const fs = require("node:fs");
+        const manifest = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+        process.stdout.write(manifest.profiles?.accountUsage ?? "");
+      ' "${package_dir}/tutti.agent.json"
+    )" || fail "could not inspect local kimi-code account usage profile"
+    if [[ -n "${account_usage_profile}" ]]; then
+      fail "local kimi-code account usage helper is missing; build it or set DEV_GUI_KIMI_CODE_ACCOUNT_USAGE_EXECUTABLE"
+    fi
+    unset TUTTI_AGENT_EXTENSION_KIMI_CODE_ACCOUNT_USAGE_EXECUTABLE
+    return
+  fi
+  [[ -f "${helper_executable}" && -x "${helper_executable}" ]] || fail \
+    "local kimi-code account usage helper is not executable: ${helper_executable}"
+  helper_executable="$(cd "$(dirname "${helper_executable}")" && pwd -P)/$(basename "${helper_executable}")"
+  export TUTTI_AGENT_EXTENSION_KIMI_CODE_ACCOUNT_USAGE_EXECUTABLE="${helper_executable}"
+  log "using local kimi-code account usage helper"
 }
 
 resolve_tuttid_binary_name() {
@@ -561,6 +591,21 @@ resolve_tuttid_binary_name() {
       printf 'tuttid\n'
       ;;
   esac
+}
+
+resolve_node_process_path() {
+  local candidate_path="$1"
+
+  if [[ "$(node -p 'process.platform')" != "win32" ]]; then
+    printf '%s\n' "${candidate_path}"
+    return
+  fi
+
+  if ! command_exists cygpath; then
+    fail "cygpath is required to launch Windows processes from the managed POSIX shell."
+  fi
+
+  cygpath -w -- "${candidate_path}"
 }
 
 ensure_workspace_dependencies() {
@@ -621,6 +666,7 @@ install_dev_cli() {
 
 start_desktop_dev() {
   local tuttid_bin_path="$1"
+  local node_tuttid_bin_path
   local status
   # why-did-you-render instruments every React component and hook. On a real
   # workspace that work can block the renderer for seconds while AgentGUI
@@ -629,6 +675,7 @@ start_desktop_dev() {
   # normal development path has production-like scheduling characteristics.
   local why_did_you_render="${VITE_TUTTI_WHY_DID_YOU_RENDER:-0}"
 
+  node_tuttid_bin_path="$(resolve_node_process_path "${tuttid_bin_path}")"
   log "starting desktop dev with prebuilt tuttid"
   if [[ "${why_did_you_render}" == "1" ]]; then
     log "why-did-you-render diagnostics enabled"
@@ -637,7 +684,7 @@ start_desktop_dev() {
   DEV_GUI_DESKTOP_STARTED=1
   (
     cd "${ROOT_DIR}"
-    TUTTID_BIN="${tuttid_bin_path}" \
+    TUTTID_BIN="${node_tuttid_bin_path}" \
       TUTTID_LOG_OUTPUT="${TUTTID_LOG_OUTPUT:-tee}" \
       VITE_TUTTI_WHY_DID_YOU_RENDER="${why_did_you_render}" \
       pnpm dev:desktop < /dev/null

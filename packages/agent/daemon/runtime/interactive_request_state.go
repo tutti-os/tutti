@@ -23,6 +23,7 @@ type pendingInteractiveRequest struct {
 	input           map[string]any
 	kind            string
 	approvalPurpose string
+	providerMethod  string
 	name            string
 	toolName        string
 	prompt          *SessionInteractivePrompt

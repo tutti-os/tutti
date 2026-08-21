@@ -34,6 +34,19 @@ type closeRuntimeBackend struct {
 	input agentruntime.CloseInput
 }
 
+type mismatchCancelRuntimeBackend struct {
+	RuntimeBackend
+	input agentruntime.CancelInput
+}
+
+func (b *mismatchCancelRuntimeBackend) Cancel(
+	_ context.Context,
+	input agentruntime.CancelInput,
+) (agentruntime.CancelResult, error) {
+	b.input = input
+	return agentruntime.CancelResult{AgentSessionID: input.RootAgentSessionID}, agentruntime.ErrCancelTargetMismatch
+}
+
 type workspaceDisconnectBackend struct {
 	RuntimeBackend
 	sessions  []agentruntime.Session
@@ -103,6 +116,24 @@ func TestRuntimeControllerBridgesWorkspaceRuntimeDisconnect(t *testing.T) {
 	disconnected, err = controller.DisconnectRuntimeSessionTarget(t.Context(), targets[0])
 	if err != nil || !disconnected || backend.target.ConnectionGeneration != 7 {
 		t.Fatalf("target disconnect=%v err=%v backend=%#v", disconnected, err, backend.target)
+	}
+}
+
+func TestRuntimeControllerMapsExactCancelMismatchToDeliveryUnconfirmed(t *testing.T) {
+	t.Parallel()
+	backend := &mismatchCancelRuntimeBackend{}
+	controller := &RuntimeController{Backend: backend}
+
+	result, err := controller.Cancel(t.Context(), host.RuntimeCancelInput{
+		WorkspaceID: "workspace-1", RootAgentSessionID: "root-session", Reason: "user_requested",
+		Targets: []host.RuntimeCancelTarget{{AgentSessionID: "child-session", TurnID: "child-turn"}},
+	})
+	if !errors.Is(err, host.ErrRuntimeCancelDeliveryUnconfirmed) {
+		t.Fatalf("Cancel() error = %v, want delivery-unconfirmed", err)
+	}
+	if result.TargetAbsent || result.Canceled || backend.input.RootAgentSessionID != "root-session" || len(backend.input.Targets) != 1 ||
+		backend.input.Targets[0].AgentSessionID != "child-session" || backend.input.Targets[0].TurnID != "child-turn" {
+		t.Fatalf("Cancel() result=%#v backend input=%#v", result, backend.input)
 	}
 }
 
@@ -217,8 +248,12 @@ func TestMapRuntimeErrorPreservesProviderDiagnostics(t *testing.T) {
 func TestMapRuntimeErrorKeepsTransportOutcomeUnknown(t *testing.T) {
 	for _, target := range []error{context.Canceled, context.DeadlineExceeded} {
 		t.Run(target.Error(), func(t *testing.T) {
+			code := "request_failed"
+			if errors.Is(target, context.DeadlineExceeded) {
+				code = "request_timed_out"
+			}
 			runtimeErr := &agentruntime.AppError{
-				Code:  "request_failed",
+				Code:  code,
 				Cause: fmt.Errorf("provider response: %w", target),
 			}
 			mapped := mapRuntimeError(runtimeErr)
@@ -233,6 +268,32 @@ func TestMapRuntimeErrorKeepsTransportOutcomeUnknown(t *testing.T) {
 	}
 }
 
+func TestMapRuntimeErrorPreservesProviderStartTimeoutVerdict(t *testing.T) {
+	runtimeErr := &agentruntime.AppError{
+		Code:         "request_timed_out",
+		Message:      "Agent could not start before the request timed out.",
+		DebugMessage: "provider startup exceeded its deadline",
+		Cause: errors.Join(
+			agentruntime.ErrProviderStartTimeout,
+			fmt.Errorf("provider start: %w", context.DeadlineExceeded),
+		),
+	}
+	mapped := mapRuntimeError(fmt.Errorf("daemon runtime: %w", runtimeErr))
+	var providerErr *host.ProviderError
+	if !errors.As(mapped, &providerErr) {
+		t.Fatalf("mapped error = %v, want ProviderError", mapped)
+	}
+	if providerErr.Code != host.ProviderErrorCodeStartTimeout {
+		t.Fatalf("ProviderError code = %q, want %q", providerErr.Code, host.ProviderErrorCodeStartTimeout)
+	}
+	if providerErr.Message != runtimeErr.Message || providerErr.DebugMessage != runtimeErr.DebugMessage {
+		t.Fatalf("ProviderError = %#v, want presentation diagnostics from %#v", providerErr, runtimeErr)
+	}
+	if !errors.Is(mapped, context.DeadlineExceeded) || !errors.Is(mapped, runtimeErr) {
+		t.Fatalf("mapped error did not preserve runtime deadline chain: %v", mapped)
+	}
+}
+
 func TestMapRuntimeErrorMapsDisconnectedSessionAcrossHostBoundary(t *testing.T) {
 	runtimeErr := fmt.Errorf("fence requires live provider: %w", agentruntime.ErrSessionDisconnected)
 	mapped := mapRuntimeError(runtimeErr)
@@ -241,6 +302,27 @@ func TestMapRuntimeErrorMapsDisconnectedSessionAcrossHostBoundary(t *testing.T) 
 	}
 	if !errors.Is(mapped, agentruntime.ErrSessionDisconnected) {
 		t.Fatalf("mapped error = %v, want source runtime sentinel preserved", mapped)
+	}
+}
+
+func TestMapRuntimeErrorMapsInteractiveContractAcrossHostBoundary(t *testing.T) {
+	for _, test := range []struct {
+		runtime error
+		host    error
+	}{
+		{agentruntime.ErrInteractiveRequestNotLive, host.ErrInteractiveRequestNotLive},
+		{agentruntime.ErrInteractiveAlreadyAnswered, host.ErrInteractiveAlreadyAnswered},
+		{agentruntime.ErrInteractiveResponseInvalid, host.ErrInteractiveResponseInvalid},
+	} {
+		mapped := mapRuntimeError(test.runtime)
+		if !errors.Is(mapped, test.host) || !errors.Is(mapped, test.runtime) {
+			t.Fatalf(
+				"mapped error = %v, want host %v and runtime %v",
+				mapped,
+				test.host,
+				test.runtime,
+			)
+		}
 	}
 }
 

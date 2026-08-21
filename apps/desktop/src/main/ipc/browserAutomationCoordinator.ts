@@ -7,11 +7,14 @@ import {
   desktopIpcChannels,
   type DesktopBrowserAutomationHostReady,
   type DesktopBrowserAutomationRequest,
-  type DesktopBrowserAutomationResponse
+  type DesktopBrowserAutomationResponse,
+  type DesktopBrowserAutomationTurnClaim
 } from "../../shared/contracts/ipc.ts";
 
 const requestTimeoutMs = 10_000;
+const defaultTurnClaimWaitTimeoutMs = 1_000;
 const maximumRevealedAgentTurns = 256;
+const maximumTurnSurfaceClaims = 512;
 
 interface PendingRequest {
   reject(error: Error): void;
@@ -36,6 +39,7 @@ export interface DesktopBrowserAutomationCoordinatorOptions {
     workspaceId: string;
   }): Promise<void>;
   ensureUserBrowserHost(input: { workspaceId: string }): Promise<void>;
+  turnClaimWaitTimeoutMs?: number;
   runtime: {
     activateHost(sender: Electron.WebContents): void;
     ipc: Pick<IpcMain, "off" | "on">;
@@ -57,6 +61,11 @@ export function createDesktopBrowserAutomationCoordinator(
   const readyWaiters = new Map<string, Set<() => void>>();
   const targetOwnerIds = new Map<string, number>();
   const revealedAgentTurns = new Map<string, true>();
+  const turnSurfaceRoles = new Map<string, "agent" | "user">();
+  const turnSurfaceWaiters = new Map<
+    string,
+    Set<(surfaceRole: "agent" | "user" | null) => void>
+  >();
 
   const handleHostReady = (
     event: IpcMainEvent,
@@ -115,11 +124,37 @@ export function createDesktopBrowserAutomationCoordinator(
     }
     request.resolve(response.nodeId);
   };
+  const handleTurnClaim = (
+    event: IpcMainEvent,
+    input: DesktopBrowserAutomationTurnClaim
+  ): void => {
+    const workspaceId = input?.workspaceId?.trim() ?? "";
+    const agentSessionId = input?.agentSessionId?.trim() ?? "";
+    const agentTurnId = input?.agentTurnId?.trim() ?? "";
+    if (!workspaceId || !agentSessionId || !agentTurnId) return;
+    const hostContext = runtime.resolveHostContext(event.sender);
+    if (!hostContext || hostContext.workspaceId !== workspaceId) return;
+    const key = turnKey(workspaceId, agentSessionId, agentTurnId);
+    turnSurfaceRoles.set(key, hostContext.kind === "agent" ? "agent" : "user");
+    const surfaceRole = turnSurfaceRoles.get(key) ?? null;
+    for (const resolve of turnSurfaceWaiters.get(key) ?? []) {
+      resolve(surfaceRole);
+    }
+    turnSurfaceWaiters.delete(key);
+    if (turnSurfaceRoles.size > maximumTurnSurfaceClaims) {
+      const oldestKey = turnSurfaceRoles.keys().next().value;
+      if (oldestKey !== undefined) turnSurfaceRoles.delete(oldestKey);
+    }
+  };
   runtime.ipc.on(
     desktopIpcChannels.browser.automationHostReady,
     handleHostReady
   );
   runtime.ipc.on(desktopIpcChannels.browser.automationResponse, handleResponse);
+  runtime.ipc.on(
+    desktopIpcChannels.browser.automationTurnClaim,
+    handleTurnClaim
+  );
 
   const sendToHost = (
     senderId: number,
@@ -241,6 +276,10 @@ export function createDesktopBrowserAutomationCoordinator(
         desktopIpcChannels.browser.automationResponse,
         handleResponse
       );
+      runtime.ipc.off(
+        desktopIpcChannels.browser.automationTurnClaim,
+        handleTurnClaim
+      );
       for (const request of pending.values()) {
         clearTimeout(request.timeout);
         request.reject(new Error("In-app Browser automation stopped"));
@@ -253,14 +292,33 @@ export function createDesktopBrowserAutomationCoordinator(
       readyWaiters.clear();
       targetOwnerIds.clear();
       revealedAgentTurns.clear();
+      turnSurfaceRoles.clear();
+      for (const waiters of turnSurfaceWaiters.values()) {
+        for (const resolve of waiters) resolve(null);
+      }
+      turnSurfaceWaiters.clear();
     },
-    requestTarget(input) {
+    async requestTarget(input) {
+      const agentSessionId = input.agentSessionId?.trim() ?? "";
+      const agentTurnId = input.agentTurnId?.trim() ?? "";
+      const claimedSurfaceRole =
+        agentSessionId && agentTurnId
+          ? await waitForTurnSurfaceRole({
+              agentSessionId,
+              agentTurnId,
+              timeoutMs:
+                options.turnClaimWaitTimeoutMs ?? defaultTurnClaimWaitTimeoutMs,
+              turnSurfaceRoles,
+              turnSurfaceWaiters,
+              workspaceId: input.workspaceId
+            })
+          : undefined;
       const request = {
         action: "create",
         agentSessionId: input.agentSessionId,
         agentTurnId: input.agentTurnId,
         nodeId: input.requestedPageId ?? null,
-        surfaceRole: "user",
+        surfaceRole: claimedSurfaceRole ?? "user",
         url: input.url ?? null,
         workspaceId: input.workspaceId
       } satisfies Omit<DesktopBrowserAutomationRequest, "requestId">;
@@ -313,6 +371,51 @@ function hostKey(workspaceId: string, surfaceRole: "agent" | "user"): string {
 
 function targetKey(workspaceId: string, nodeId: string): string {
   return `${workspaceId}\u0000${nodeId}`;
+}
+
+function turnKey(
+  workspaceId: string,
+  agentSessionId: string,
+  agentTurnId: string
+): string {
+  return `${workspaceId}\u0000${agentSessionId}\u0000${agentTurnId}`;
+}
+
+async function waitForTurnSurfaceRole(input: {
+  agentSessionId: string;
+  agentTurnId: string;
+  timeoutMs: number;
+  turnSurfaceRoles: Map<string, "agent" | "user">;
+  turnSurfaceWaiters: Map<
+    string,
+    Set<(surfaceRole: "agent" | "user" | null) => void>
+  >;
+  workspaceId: string;
+}): Promise<"agent" | "user" | undefined> {
+  const key = turnKey(
+    input.workspaceId,
+    input.agentSessionId,
+    input.agentTurnId
+  );
+  const existing = input.turnSurfaceRoles.get(key);
+  if (existing) return existing;
+  return await new Promise((resolve) => {
+    const waiters = input.turnSurfaceWaiters.get(key) ?? new Set();
+    const handleClaim = (surfaceRole: "agent" | "user" | null) => {
+      clearTimeout(timeout);
+      resolve(surfaceRole ?? undefined);
+    };
+    const timeout = setTimeout(
+      () => {
+        waiters.delete(handleClaim);
+        if (waiters.size === 0) input.turnSurfaceWaiters.delete(key);
+        resolve(undefined);
+      },
+      Math.max(0, input.timeoutMs)
+    );
+    waiters.add(handleClaim);
+    input.turnSurfaceWaiters.set(key, waiters);
+  });
 }
 
 function resolveReadyHostIds(

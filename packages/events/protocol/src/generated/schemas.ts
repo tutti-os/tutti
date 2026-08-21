@@ -1799,6 +1799,527 @@ export const agentQuickpromptUpdatedPayloadSchema = {
   }
 } as const;
 
+export const agentSideUpdatedPayloadSchema = {
+  type: "object",
+  required: [
+    "workspaceId",
+    "sideAgentSessionId",
+    "sourceAgentSessionId",
+    "sequence",
+    "eventType",
+    "data"
+  ],
+  properties: {
+    workspaceId: {
+      type: "string",
+      minLength: 1
+    },
+    sideAgentSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    sourceAgentSessionId: {
+      type: "string",
+      minLength: 1
+    },
+    sequence: {
+      type: "integer",
+      minimum: 1
+    },
+    eventType: {
+      enum: [
+        "message_delta",
+        "message_update",
+        "state_patch",
+        "available_commands_update",
+        "config_options_update",
+        "session_audit"
+      ]
+    },
+    data: {
+      type: "object",
+      additionalProperties: true
+    }
+  },
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "workspaceId",
+        "sideAgentSessionId",
+        "sourceAgentSessionId",
+        "sequence",
+        "eventType",
+        "data"
+      ],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        sideAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sourceAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sequence: {
+          type: "integer",
+          minimum: 1
+        },
+        eventType: {
+          const: "message_delta"
+        },
+        data: {
+          type: "object",
+          additionalProperties: true,
+          required: ["messageId", "turnId", "role"],
+          properties: {
+            messageId: {
+              type: "string",
+              minLength: 1
+            },
+            turnId: {
+              type: "string",
+              minLength: 1
+            },
+            role: {
+              type: "string",
+              minLength: 1
+            },
+            kind: {
+              type: "string"
+            },
+            occurredAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            },
+            content: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operation"],
+              properties: {
+                operation: {
+                  enum: ["append_text", "set"]
+                },
+                text: {
+                  type: "string"
+                },
+                value: true
+              }
+            },
+            payloadSet: {
+              type: "object",
+              additionalProperties: true
+            },
+            payloadUnset: {
+              type: "array",
+              items: {
+                type: "string",
+                minLength: 1
+              },
+              uniqueItems: true
+            },
+            semantics: {
+              type: "object",
+              additionalProperties: true
+            },
+            toolOutput: {
+              type: "object",
+              additionalProperties: false,
+              required: ["operation", "text"],
+              properties: {
+                operation: {
+                  type: "string",
+                  minLength: 1
+                },
+                text: {
+                  type: "string"
+                },
+                offsetBytes: {
+                  type: "integer",
+                  minimum: 0
+                }
+              }
+            },
+            status: {
+              type: "string"
+            },
+            startedAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            },
+            completedAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "workspaceId",
+        "sideAgentSessionId",
+        "sourceAgentSessionId",
+        "sequence",
+        "eventType",
+        "data"
+      ],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        sideAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sourceAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sequence: {
+          type: "integer",
+          minimum: 1
+        },
+        eventType: {
+          const: "message_update"
+        },
+        data: {
+          type: "object",
+          additionalProperties: true,
+          required: ["messageId", "role"],
+          properties: {
+            messageId: {
+              type: "string",
+              minLength: 1
+            },
+            turnId: {
+              type: "string"
+            },
+            role: {
+              type: "string",
+              minLength: 1
+            },
+            kind: {
+              type: "string"
+            },
+            status: {
+              type: "string"
+            },
+            seq: {
+              type: "integer",
+              minimum: 1
+            },
+            callId: {
+              type: "string"
+            },
+            parentCallId: {
+              type: "string"
+            },
+            rootCallId: {
+              type: "string"
+            },
+            title: {
+              type: "string"
+            },
+            semantics: {
+              type: "object",
+              additionalProperties: true
+            },
+            contentDelta: {
+              type: "string"
+            },
+            payload: {
+              type: "object",
+              additionalProperties: true
+            },
+            occurredAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            },
+            startedAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            },
+            completedAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "workspaceId",
+        "sideAgentSessionId",
+        "sourceAgentSessionId",
+        "sequence",
+        "eventType",
+        "data"
+      ],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        sideAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sourceAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sequence: {
+          type: "integer",
+          minimum: 1
+        },
+        eventType: {
+          const: "state_patch"
+        },
+        data: {
+          type: "object",
+          additionalProperties: true,
+          properties: {
+            provider: {
+              type: "string"
+            },
+            cwd: {
+              type: "string"
+            },
+            title: {
+              type: "string"
+            },
+            lifecycleStatus: {
+              type: "string"
+            },
+            currentPhase: {
+              type: "string"
+            },
+            status: {
+              type: "string"
+            },
+            occurredAtUnixMs: {
+              type: "integer",
+              minimum: 1
+            },
+            turnLifecycle: {
+              type: "object",
+              additionalProperties: true,
+              properties: {
+                activeTurnId: {
+                  type: ["string", "null"]
+                }
+              }
+            },
+            turn: {
+              type: "object",
+              additionalProperties: true,
+              required: ["turnId"],
+              properties: {
+                turnId: {
+                  type: "string",
+                  minLength: 1
+                },
+                activeTurnId: {
+                  type: ["string", "null"]
+                },
+                phase: {
+                  type: "string"
+                },
+                outcome: {
+                  type: "string"
+                },
+                origin: {
+                  type: "string"
+                },
+                error: {
+                  type: ["object", "null"],
+                  additionalProperties: true
+                },
+                fileChanges: {
+                  type: ["object", "null"],
+                  additionalProperties: true
+                },
+                startedAtUnixMs: {
+                  type: "integer",
+                  minimum: 1
+                },
+                completedAtUnixMs: {
+                  type: "integer",
+                  minimum: 1
+                },
+                updatedAtUnixMs: {
+                  type: "integer",
+                  minimum: 1
+                }
+              }
+            },
+            interactionTransition: {
+              type: "object",
+              additionalProperties: true,
+              required: ["requestId", "turnId", "kind", "status"],
+              properties: {
+                requestId: {
+                  type: "string",
+                  minLength: 1
+                },
+                turnId: {
+                  type: "string",
+                  minLength: 1
+                },
+                kind: {
+                  enum: ["approval", "question", "plan"]
+                },
+                status: {
+                  type: "string",
+                  minLength: 1
+                },
+                toolName: {
+                  type: "string"
+                },
+                input: {
+                  type: "object",
+                  additionalProperties: true
+                },
+                metadata: {
+                  type: "object",
+                  additionalProperties: true
+                },
+                output: {
+                  type: "object",
+                  additionalProperties: true
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "workspaceId",
+        "sideAgentSessionId",
+        "sourceAgentSessionId",
+        "sequence",
+        "eventType",
+        "data"
+      ],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        sideAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sourceAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sequence: {
+          type: "integer",
+          minimum: 1
+        },
+        eventType: {
+          const: "available_commands_update"
+        },
+        data: {
+          type: "object",
+          additionalProperties: true
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "workspaceId",
+        "sideAgentSessionId",
+        "sourceAgentSessionId",
+        "sequence",
+        "eventType",
+        "data"
+      ],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        sideAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sourceAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sequence: {
+          type: "integer",
+          minimum: 1
+        },
+        eventType: {
+          const: "config_options_update"
+        },
+        data: {
+          type: "object",
+          additionalProperties: true
+        }
+      }
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "workspaceId",
+        "sideAgentSessionId",
+        "sourceAgentSessionId",
+        "sequence",
+        "eventType",
+        "data"
+      ],
+      properties: {
+        workspaceId: {
+          type: "string",
+          minLength: 1
+        },
+        sideAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sourceAgentSessionId: {
+          type: "string",
+          minLength: 1
+        },
+        sequence: {
+          type: "integer",
+          minimum: 1
+        },
+        eventType: {
+          const: "session_audit"
+        },
+        data: {
+          type: "object",
+          additionalProperties: true
+        }
+      }
+    }
+  ]
+} as const;
+
 export const analyticsDebugReportedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -1845,6 +2366,10 @@ export const connectorMarketChangedPayloadSchema = {
       minLength: 1
     },
     revision: {
+      type: "integer",
+      minimum: 1
+    },
+    cursor: {
       type: "integer",
       minimum: 1
     }
@@ -3540,6 +4065,7 @@ export const businessEventPayloadSchemas = {
   "agent.model.configuration.changed":
     agentModelConfigurationChangedPayloadSchema,
   "agent.quickprompt.updated": agentQuickpromptUpdatedPayloadSchema,
+  "agent.side.updated": agentSideUpdatedPayloadSchema,
   "analytics.debug.reported": analyticsDebugReportedPayloadSchema,
   "connector.market.changed": connectorMarketChangedPayloadSchema,
   "preferences.agent.composer.defaults.changed":

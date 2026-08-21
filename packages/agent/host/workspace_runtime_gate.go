@@ -3,12 +3,57 @@ package agenthost
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"sort"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 var errWorkspaceRuntimeDisconnectReentrant = errors.New("workspace runtime disconnect requested by an admitted operation")
 var errWorkspaceRuntimeDisconnectFenceReleased = errors.New("workspace runtime disconnect fence is released")
+
+// WorkspaceRuntimeOperationInfo identifies one runtime mutation for admission
+// diagnostics. OperationID is caller-owned when available; Host generates one
+// when the caller does not provide it.
+type WorkspaceRuntimeOperationInfo struct {
+	WorkspaceID    string
+	OperationID    string
+	Kind           string
+	AgentSessionID string
+	Source         string
+}
+
+// WorkspaceRuntimeOperationSnapshot describes one mutation currently admitted
+// by a Workspace runtime gate.
+type WorkspaceRuntimeOperationSnapshot struct {
+	OperationID    string
+	Kind           string
+	AgentSessionID string
+	Source         string
+	StartedAt      time.Time
+}
+
+// WorkspaceRuntimeDisconnectSnapshot describes one acquired disconnect fence.
+type WorkspaceRuntimeDisconnectSnapshot struct {
+	FenceID    string
+	AcquiredAt time.Time
+	Exclusive  bool
+}
+
+// WorkspaceRuntimeAdmissionSnapshot is a point-in-time diagnostic view of one
+// Workspace runtime gate. It is read-only and does not affect admission.
+type WorkspaceRuntimeAdmissionSnapshot struct {
+	WorkspaceID       string
+	Operations        int
+	Disconnectors     int
+	Disconnecting     bool
+	Exclusive         bool
+	OperationHolders  []WorkspaceRuntimeOperationSnapshot
+	DisconnectHolders []WorkspaceRuntimeDisconnectSnapshot
+}
 
 type workspaceRuntimeAdmission struct {
 	mu     sync.Mutex
@@ -16,13 +61,15 @@ type workspaceRuntimeAdmission struct {
 }
 
 type workspaceRuntimeAdmissionState struct {
-	changed       chan struct{}
-	operations    int
-	disconnecting bool
-	disconnectors int
-	exclusive     bool
-	refs          int
-	deferred      []func(context.Context)
+	changed           chan struct{}
+	operations        int
+	disconnecting     bool
+	disconnectors     int
+	exclusive         bool
+	refs              int
+	deferred          []func(context.Context)
+	operationHolders  map[string]WorkspaceRuntimeOperationSnapshot
+	disconnectHolders map[string]WorkspaceRuntimeDisconnectSnapshot
 }
 
 // WorkspaceRuntimeDisconnectFence closes Workspace runtime admission as soon
@@ -33,6 +80,8 @@ type WorkspaceRuntimeDisconnectFence struct {
 	gate        *workspaceRuntimeAdmission
 	workspaceID string
 	state       *workspaceRuntimeAdmissionState
+	holderID    string
+	fenceID     string
 
 	mu        sync.Mutex
 	released  bool
@@ -52,11 +101,45 @@ func newWorkspaceRuntimeAdmission() *workspaceRuntimeAdmission {
 	return &workspaceRuntimeAdmission{states: make(map[string]*workspaceRuntimeAdmissionState)}
 }
 
+func normalizeWorkspaceRuntimeOperationInfo(
+	ctx context.Context,
+	info WorkspaceRuntimeOperationInfo,
+) WorkspaceRuntimeOperationInfo {
+	info.WorkspaceID = strings.TrimSpace(info.WorkspaceID)
+	if command := commandTerminalFailureFrom(ctx); command != nil {
+		command.mu.Lock()
+		if info.OperationID == "" {
+			info.OperationID = strings.TrimSpace(command.operationID)
+		}
+		if info.Kind == "" {
+			info.Kind = strings.TrimSpace(command.flow)
+		}
+		if info.AgentSessionID == "" {
+			info.AgentSessionID = strings.TrimSpace(command.agentSessionID)
+		}
+		if info.Source == "" && command.flow != "" {
+			info.Source = "host.command." + strings.TrimSpace(command.flow)
+		}
+		command.mu.Unlock()
+	}
+	if info.OperationID == "" {
+		info.OperationID = "runtime-operation:" + uuid.NewString()
+	}
+	if info.Kind == "" {
+		info.Kind = "runtime_operation"
+	}
+	if info.Source == "" {
+		info.Source = "host.workspace_runtime_operation"
+	}
+	return info
+}
+
 func (g *workspaceRuntimeAdmission) enterOperation(
 	ctx context.Context,
-	workspaceID string,
+	info WorkspaceRuntimeOperationInfo,
 ) (context.Context, func(), error) {
-	workspaceID = strings.TrimSpace(workspaceID)
+	info = normalizeWorkspaceRuntimeOperationInfo(ctx, info)
+	workspaceID := info.WorkspaceID
 	if g == nil || workspaceID == "" {
 		return ctx, func() {}, ErrInvalidArgument
 	}
@@ -71,6 +154,14 @@ func (g *workspaceRuntimeAdmission) enterOperation(
 		g.mu.Lock()
 		state := g.stateLocked(workspaceID)
 		if !state.disconnecting {
+			holderID := uuid.NewString()
+			state.operationHolders[holderID] = WorkspaceRuntimeOperationSnapshot{
+				OperationID:    info.OperationID,
+				Kind:           info.Kind,
+				AgentSessionID: info.AgentSessionID,
+				Source:         info.Source,
+				StartedAt:      time.Now(),
+			}
 			state.operations++
 			g.mu.Unlock()
 			operationCtx := context.WithValue(ctx, workspaceRuntimeAdmissionContextKey{}, workspaceRuntimeAdmissionContext{
@@ -78,7 +169,7 @@ func (g *workspaceRuntimeAdmission) enterOperation(
 			})
 			var once sync.Once
 			return operationCtx, func() {
-				once.Do(func() { g.leaveOperation(workspaceID, state) })
+				once.Do(func() { g.leaveOperation(workspaceID, state, holderID) })
 			}, nil
 		}
 		changed := state.changed
@@ -137,13 +228,21 @@ func (g *workspaceRuntimeAdmission) acquireDisconnectFence(
 	}
 	g.mu.Lock()
 	state := g.stateLocked(workspaceID)
+	holderID := uuid.NewString()
+	fenceID := uuid.NewString()
 	state.disconnectors++
+	state.disconnectHolders[holderID] = WorkspaceRuntimeDisconnectSnapshot{
+		FenceID: fenceID, AcquiredAt: time.Now(), Exclusive: false,
+	}
 	if !state.disconnecting {
 		state.disconnecting = true
 		g.notifyLocked(state)
 	}
 	g.mu.Unlock()
-	return &WorkspaceRuntimeDisconnectFence{gate: g, workspaceID: workspaceID, state: state}, nil
+	return &WorkspaceRuntimeDisconnectFence{
+		gate: g, workspaceID: workspaceID, state: state,
+		holderID: holderID, fenceID: fenceID,
+	}, nil
 }
 
 // Wait drains already-admitted operations and grants one exclusive disconnect
@@ -154,6 +253,7 @@ func (f *WorkspaceRuntimeDisconnectFence) Wait(ctx context.Context) (context.Con
 		return ctx, ErrInvalidArgument
 	}
 	if err := ctx.Err(); err != nil {
+		f.logWaitFailure(err)
 		return ctx, err
 	}
 	f.mu.Lock()
@@ -179,6 +279,10 @@ func (f *WorkspaceRuntimeDisconnectFence) Wait(ctx context.Context) (context.Con
 			}
 			f.state.exclusive = true
 			f.exclusive = true
+			if holder, ok := f.state.disconnectHolders[f.holderID]; ok {
+				holder.Exclusive = true
+				f.state.disconnectHolders[f.holderID] = holder
+			}
 			f.mu.Unlock()
 			f.gate.mu.Unlock()
 			return context.WithValue(ctx, workspaceRuntimeAdmissionContextKey{}, workspaceRuntimeAdmissionContext{
@@ -189,7 +293,9 @@ func (f *WorkspaceRuntimeDisconnectFence) Wait(ctx context.Context) (context.Con
 		f.gate.mu.Unlock()
 		select {
 		case <-ctx.Done():
-			return ctx, ctx.Err()
+			err := ctx.Err()
+			f.logWaitFailure(err)
+			return ctx, err
 		case <-changed:
 		}
 	}
@@ -213,6 +319,7 @@ func (f *WorkspaceRuntimeDisconnectFence) Release() {
 		f.state.exclusive = false
 		f.exclusive = false
 	}
+	delete(f.state.disconnectHolders, f.holderID)
 	f.state.disconnectors--
 	if f.state.disconnectors == 0 && len(f.state.deferred) == 0 {
 		f.state.disconnecting = false
@@ -226,15 +333,20 @@ func (f *WorkspaceRuntimeDisconnectFence) Release() {
 func (g *workspaceRuntimeAdmission) stateLocked(workspaceID string) *workspaceRuntimeAdmissionState {
 	state := g.states[workspaceID]
 	if state == nil {
-		state = &workspaceRuntimeAdmissionState{changed: make(chan struct{})}
+		state = &workspaceRuntimeAdmissionState{
+			changed:           make(chan struct{}),
+			operationHolders:  make(map[string]WorkspaceRuntimeOperationSnapshot),
+			disconnectHolders: make(map[string]WorkspaceRuntimeDisconnectSnapshot),
+		}
 		g.states[workspaceID] = state
 	}
 	state.refs++
 	return state
 }
 
-func (g *workspaceRuntimeAdmission) leaveOperation(workspaceID string, state *workspaceRuntimeAdmissionState) {
+func (g *workspaceRuntimeAdmission) leaveOperation(workspaceID string, state *workspaceRuntimeAdmissionState, holderID string) {
 	g.mu.Lock()
+	delete(state.operationHolders, holderID)
 	state.operations--
 	g.notifyLocked(state)
 	var deferred []func(context.Context)
@@ -302,6 +414,60 @@ func (g *workspaceRuntimeAdmission) releaseReferenceLocked(workspaceID string, s
 	}
 }
 
+func (g *workspaceRuntimeAdmission) snapshot(workspaceID string) WorkspaceRuntimeAdmissionSnapshot {
+	workspaceID = strings.TrimSpace(workspaceID)
+	snapshot := WorkspaceRuntimeAdmissionSnapshot{WorkspaceID: workspaceID}
+	if g == nil || workspaceID == "" {
+		return snapshot
+	}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	state := g.states[workspaceID]
+	if state == nil {
+		return snapshot
+	}
+	snapshot.Operations = state.operations
+	snapshot.Disconnectors = state.disconnectors
+	snapshot.Disconnecting = state.disconnecting
+	snapshot.Exclusive = state.exclusive
+	for _, holder := range state.operationHolders {
+		snapshot.OperationHolders = append(snapshot.OperationHolders, holder)
+	}
+	for _, holder := range state.disconnectHolders {
+		snapshot.DisconnectHolders = append(snapshot.DisconnectHolders, holder)
+	}
+	sort.Slice(snapshot.OperationHolders, func(i, j int) bool {
+		left, right := snapshot.OperationHolders[i], snapshot.OperationHolders[j]
+		if !left.StartedAt.Equal(right.StartedAt) {
+			return left.StartedAt.Before(right.StartedAt)
+		}
+		return left.OperationID < right.OperationID
+	})
+	sort.Slice(snapshot.DisconnectHolders, func(i, j int) bool {
+		return snapshot.DisconnectHolders[i].FenceID < snapshot.DisconnectHolders[j].FenceID
+	})
+	return snapshot
+}
+
+func (f *WorkspaceRuntimeDisconnectFence) logWaitFailure(err error) {
+	if f == nil || f.gate == nil || err == nil {
+		return
+	}
+	snapshot := f.gate.snapshot(f.workspaceID)
+	slog.Warn("workspace runtime disconnect drain wait failed",
+		"event", "agent.host.workspace_runtime.disconnect.drain_wait_failed",
+		"workspace_id", snapshot.WorkspaceID,
+		"fence_id", f.fenceID,
+		"error", err,
+		"operations", snapshot.Operations,
+		"disconnectors", snapshot.Disconnectors,
+		"disconnecting", snapshot.Disconnecting,
+		"exclusive", snapshot.Exclusive,
+		"operation_holders", snapshot.OperationHolders,
+		"disconnect_holders", snapshot.DisconnectHolders,
+	)
+}
+
 func (*workspaceRuntimeAdmission) notifyLocked(state *workspaceRuntimeAdmissionState) {
 	close(state.changed)
 	state.changed = make(chan struct{})
@@ -312,10 +478,18 @@ func (h *Host) withWorkspaceRuntimeOperation(
 	workspaceID string,
 	fn func(context.Context) error,
 ) error {
+	return h.withWorkspaceRuntimeOperationInfo(ctx, WorkspaceRuntimeOperationInfo{WorkspaceID: workspaceID}, fn)
+}
+
+func (h *Host) withWorkspaceRuntimeOperationInfo(
+	ctx context.Context,
+	info WorkspaceRuntimeOperationInfo,
+	fn func(context.Context) error,
+) error {
 	if h == nil || h.workspaceRuntimeAdmission == nil || fn == nil {
 		return ErrInvalidArgument
 	}
-	operationCtx, release, err := h.workspaceRuntimeAdmission.enterOperation(ctx, workspaceID)
+	operationCtx, release, err := h.workspaceRuntimeAdmission.enterOperation(ctx, info)
 	if err != nil {
 		return err
 	}
@@ -333,6 +507,28 @@ func (h *Host) WithWorkspaceRuntimeOperation(
 	fn func(context.Context) error,
 ) error {
 	return h.withWorkspaceRuntimeOperation(ctx, workspaceID, fn)
+}
+
+// WithWorkspaceRuntimeOperationInfo runs one caller-owned runtime mutation
+// under Host's Workspace admission with diagnostics supplied by the caller.
+// It is an additive variant of WithWorkspaceRuntimeOperation for adapters that
+// can name the concrete runtime operation and session.
+func (h *Host) WithWorkspaceRuntimeOperationInfo(
+	ctx context.Context,
+	info WorkspaceRuntimeOperationInfo,
+	fn func(context.Context) error,
+) error {
+	return h.withWorkspaceRuntimeOperationInfo(ctx, info, fn)
+}
+
+// SnapshotWorkspaceRuntimeAdmission returns the current diagnostic state for
+// one Workspace runtime gate. The snapshot is empty when the Workspace has no
+// live gate state.
+func (h *Host) SnapshotWorkspaceRuntimeAdmission(workspaceID string) WorkspaceRuntimeAdmissionSnapshot {
+	if h == nil || h.workspaceRuntimeAdmission == nil {
+		return WorkspaceRuntimeAdmissionSnapshot{WorkspaceID: strings.TrimSpace(workspaceID)}
+	}
+	return h.workspaceRuntimeAdmission.snapshot(workspaceID)
 }
 
 // AcquireWorkspaceRuntimeDisconnectFence synchronously prevents new runtime

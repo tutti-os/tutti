@@ -174,10 +174,13 @@ export interface IWorkspaceAgentActivityService {
     signal?: AbortSignal
   ): Promise<AgentActivitySession>;
   getComposerOptions(input: {
+    agentSessionId?: string | null;
     agentTargetId: string;
     cwd?: string | null;
     force?: boolean;
+    waitForFreshModelCatalog?: boolean;
     provider?: string;
+    section?: "full" | "core" | "capabilities" | "connectors";
     signal?: AbortSignal;
     settings?: AgentHostAgentSessionComposerSettings | null;
     workspaceId: string;

@@ -258,6 +258,118 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
+  it("refreshes a selected fork creation into its authoritative rail page", async () => {
+    const source = normalizeAgentActivitySession({
+      ...createTestSession("source-session", "conversations"),
+      lifecycleCapabilities: { fork: true, forkThroughTurn: true }
+    });
+    const child = normalizeAgentActivitySession({
+      ...source,
+      agentSessionId: "fork-child",
+      forkedFrom: {
+        forkedAtUnixMs: 2,
+        operationId: "fork-operation",
+        sourceAgentSessionId: source.agentSessionId,
+        sourceTurnId: "source-turn",
+        targetTurnId: "fork-target-turn"
+      },
+      title: "Fork child",
+      updatedAtUnixMs: 2
+    });
+    let resolveForkCommand: (value: unknown) => void = () => {};
+    const engine = createTestAgentSessionEngine("test-workspace", {
+      execute: async (command) => {
+        if (command.type === "session/forkThroughTurn") {
+          return new Promise((resolve) => {
+            resolveForkCommand = resolve;
+          });
+        }
+        return { ok: true };
+      }
+    });
+    let activeConversationId: string | null = null;
+    const listSessionSectionPage = vi.fn(async (input) => ({
+      hasMore: false,
+      kind: "conversations" as const,
+      sectionKey: input.sectionKey,
+      sessions: [child, source],
+      totalCount: 2
+    }));
+    const controller = new AgentGUIConversationRailQueryController({
+      engine,
+      getActiveConversationId: () => activeConversationId,
+      runtime: {
+        listSessionSectionPage,
+        listSessionSections: async (input) => ({
+          sections: [
+            {
+              hasMore: false,
+              kind: "conversations",
+              sectionKey: "conversations",
+              sessions: [source],
+              totalCount: 1
+            }
+          ],
+          workspaceId: input.workspaceId
+        })
+      },
+      workspaceId: "test-workspace"
+    });
+    controller.configure({
+      conversationFilter: { kind: "all" },
+      userProjects: []
+    });
+    const detach = controller.attach();
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
+
+    engine.dispatch({
+      live: true,
+      turn: {
+        agentSessionId: source.agentSessionId,
+        completedCommand: null,
+        error: null,
+        fileChanges: null,
+        origin: "user_prompt",
+        outcome: "completed",
+        phase: "settled",
+        providerForkBindingAvailable: true,
+        settledAtUnixMs: 2,
+        startedAtUnixMs: 1,
+        turnId: "source-turn",
+        updatedAtUnixMs: 2
+      },
+      type: "turn/upserted"
+    });
+    engine.dispatch({
+      requestId: "fork-request",
+      sourceAgentSessionId: source.agentSessionId,
+      targetAgentSessionId: child.agentSessionId,
+      turnId: "source-turn",
+      type: "session/forkThroughTurnRequested",
+      workspaceId: "test-workspace"
+    });
+    activeConversationId = child.agentSessionId;
+    engine.dispatch({ session: child, type: "session/upserted" });
+
+    await vi.waitFor(() =>
+      expect(listSessionSectionPage).toHaveBeenCalledWith(
+        expect.objectContaining({ sectionKey: "conversations" })
+      )
+    );
+    await vi.waitFor(() =>
+      expect(
+        controller.getSnapshot().runtimeRailMemberships?.[0]?.sessionIds
+      ).toEqual([child.agentSessionId, source.agentSessionId])
+    );
+
+    resolveForkCommand({});
+    await Promise.resolve();
+    detach();
+    engine.dispose();
+  });
+
   it("does not start a targeted page refresh while the rail scope is pending", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({
@@ -624,6 +736,9 @@ describe("AgentGUIConversationRailQueryController", () => {
     await vi.waitFor(() =>
       expect(listSessionSections).toHaveBeenCalledTimes(1)
     );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
+    );
     detachFirst();
 
     const detachSecond = controller.attach();
@@ -716,7 +831,7 @@ describe("AgentGUIConversationRailQueryController", () => {
     engine.dispose();
   });
 
-  it("keeps the committed snapshot when targeted membership refresh fails", async () => {
+  it("keeps existing rows interactive when a targeted membership refresh is rejected", async () => {
     const engine = createTestAgentSessionEngine();
     const session = normalizeAgentActivitySession({
       activeTurnId: null,
@@ -732,10 +847,14 @@ describe("AgentGUIConversationRailQueryController", () => {
       workspaceId: "test-workspace"
     });
     const listPinnedSessionsPage = vi.fn(async () => {
-      throw new Error("pinned page failed");
+      throw Object.assign(new Error("pinned page rejected"), {
+        statusCode: 403
+      });
     });
     const listSessionSectionPage = vi.fn(async () => {
-      throw new Error("section page failed");
+      throw Object.assign(new Error("section page rejected"), {
+        statusCode: 403
+      });
     });
     const controller = new AgentGUIConversationRailQueryController({
       engine,
@@ -779,11 +898,13 @@ describe("AgentGUIConversationRailQueryController", () => {
     await vi.waitFor(() =>
       expect(controller.getSnapshot().runtimeRailFailed).toBe(true)
     );
-    expect(controller.isInteractionLocked()).toBe(true);
-    expect(presentation.getSnapshot()[0]?.pinnedAtUnixMs).toBeNull();
+    expect(controller.isInteractionLocked()).toBe(false);
+    expect(presentation.getSnapshot()[0]?.pinnedAtUnixMs).toBe(10);
     expect(
       controller.getSnapshot().runtimeRailMemberships?.[0]?.sessionIds
     ).toEqual(["session-1"]);
+    expect(listPinnedSessionsPage).toHaveBeenCalledTimes(1);
+    expect(listSessionSectionPage).toHaveBeenCalledTimes(1);
 
     presentation.dispose();
     detach();
@@ -885,7 +1006,11 @@ describe("AgentGUIConversationRailQueryController", () => {
       NonNullable<ConversationRailQueryRuntime["listSessionSections"]>
     >(async (input) => {
       requestCount += 1;
-      if (requestCount === 2) throw new Error("transient failure");
+      if (requestCount === 2) {
+        throw Object.assign(new Error("request rejected"), {
+          statusCode: 403
+        });
+      }
       return {
         workspaceId: input.workspaceId,
         sections: [
@@ -1366,6 +1491,9 @@ describe("AgentGUIConversationRailQueryController", () => {
     const detach = controller.attach();
     await vi.waitFor(() =>
       expect(listSessionSections).toHaveBeenCalledTimes(1)
+    );
+    await vi.waitFor(() =>
+      expect(controller.getSnapshot().runtimeRailSectionsPending).toBe(false)
     );
 
     controller.configure(scope("local:claude-code"));

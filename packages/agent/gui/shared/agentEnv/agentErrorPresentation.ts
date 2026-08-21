@@ -10,6 +10,8 @@ import type { AgentEnvPanelFocus } from "./agentEnvPanelActions";
  */
 export type AgentRunErrorCode =
   | "auth_required"
+  | "account_not_allowed"
+  | "billing_error"
   | "cli_not_found"
   | "cli_version_unsupported"
   | "network_error"
@@ -19,6 +21,10 @@ export type AgentRunErrorCode =
   | "provider_stream_disconnected"
   | "provider_empty_response"
   | "provider_concurrency_limit"
+  | "provider_unavailable"
+  | "invalid_request"
+  | "model_not_available"
+  | "max_output_tokens"
   | "insufficient_credits"
   | "model_not_allowed"
   | "plugin_unavailable"
@@ -28,6 +34,15 @@ export type AgentRunErrorCode =
   | "process_exited"
   | "provider_error"
   | "unknown";
+
+/**
+ * Identifies who can remediate a visible error in the current AgentGUI view.
+ * This is presentation-only host context; it does not alter canonical Turns
+ * or provider error data.
+ */
+export type AgentVisibleErrorPresentationScope =
+  | "local_owner"
+  | "shared_caller";
 
 export interface AgentVisibleErrorOverride {
   message: string;
@@ -69,6 +84,34 @@ export interface AgentErrorPresentation {
 
 const NO_CTA = { focus: null, actionKey: null } as const;
 
+const SHARED_CALLER_OWNER_REMEDIABLE_CODES: readonly string[] = [
+  "auth_required",
+  "cli_not_found",
+  "cli_version_unsupported",
+  "runtime_unavailable",
+  "execution_start_failed",
+  "execution_lost",
+  "insufficient_credits",
+  "subscription_required",
+  "quota_exhausted",
+  "model_not_allowed",
+  "plugin_unavailable"
+];
+
+/**
+ * Returns whether a structured failure requires the shared Agent owner to
+ * remediate it. Transport and ambiguous failures deliberately stay neutral so
+ * callers retain the existing retry guidance.
+ */
+export function isSharedCallerOwnerRemediableError(
+  code: string | null | undefined
+): boolean {
+  return (
+    typeof code === "string" &&
+    SHARED_CALLER_OWNER_REMEDIABLE_CODES.includes(code)
+  );
+}
+
 // The escape hatch for hard failures whose cause is ambiguous from the message
 // alone (a non-zero exit, an unclassified provider error): send the user into
 // the wizard to self-detect, but keep the generic message.
@@ -85,6 +128,8 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
     focus: "auth",
     actionKey: "agentHost.agentGui.visibleErrorActionRelogin"
   },
+  account_not_allowed: { messageKey: null, ...NO_CTA },
+  billing_error: { messageKey: null, ...NO_CTA },
   cli_not_found: {
     messageKey: "agentHost.agentGui.visibleErrorCliNotFound",
     focus: "install",
@@ -128,6 +173,10 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
     messageKey: "agentHost.agentGui.visibleErrorConcurrencyLimit",
     ...NO_CTA
   },
+  provider_unavailable: { messageKey: null, ...NO_CTA },
+  invalid_request: { messageKey: null, ...NO_CTA },
+  model_not_available: { messageKey: null, ...NO_CTA },
+  max_output_tokens: { messageKey: null, ...NO_CTA },
   insufficient_credits: {
     messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
     ...NO_CTA
@@ -164,12 +213,20 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
  * no call-to-action.
  */
 export function resolveAgentErrorPresentation(
-  code: string | null | undefined
+  code: string | null | undefined,
+  scope: AgentVisibleErrorPresentationScope = "local_owner"
 ): AgentErrorPresentation | null {
   if (!code) {
     return null;
   }
-  return PRESENTATIONS[code as AgentRunErrorCode] ?? null;
+  const presentation = PRESENTATIONS[code as AgentRunErrorCode] ?? null;
+  if (!presentation || scope !== "shared_caller") {
+    return presentation;
+  }
+  // Shared callers must never be sent to the current device's Agent Env
+  // wizard. The caller-contact copy is rendered separately for structured
+  // Owner-remediable failures; transient failures preserve their current copy.
+  return { ...presentation, ...NO_CTA };
 }
 
 const FAILED_MESSAGE_CODE_MARKERS: ReadonlyArray<

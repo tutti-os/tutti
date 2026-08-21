@@ -13,7 +13,10 @@ import { resolveDesktopWindowBackgroundColor } from "../desktopTheme";
 import { resolveDesktopPerformanceHeadless } from "../defaults.ts";
 import { getDesktopLogger } from "../logging";
 import type { DesktopLocale } from "../../shared/i18n";
-import type { DesktopDockPlacement } from "../../shared/preferences/index.ts";
+import type {
+  DesktopDockPlacement,
+  DesktopWorkspaceUiMode
+} from "../../shared/preferences/index.ts";
 import type { DesktopThemeState } from "../../shared/theme/index.ts";
 import {
   applyDesktopWindowIntent,
@@ -35,7 +38,10 @@ import {
   resolveStandaloneAgentWindowWorkArea
 } from "./standaloneAgentWindowBounds.ts";
 import { WorkspaceWindowRegistry } from "./workspaceWindowRegistry.ts";
-import { resolveWorkspaceWindowChromeOptions } from "./workspaceWindowChrome.ts";
+import {
+  resolveWorkspaceWindowChromeOptions,
+  syncWorkspaceWindowTitleBarOverlayTargets
+} from "./workspaceWindowChrome.ts";
 import { supportsWorkspaceWindowCloseGuard } from "./workspaceWindowCloseGuard.ts";
 
 export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
@@ -134,7 +140,8 @@ export function createWorkspaceWindow(
       : defaultAgentWindowBounds;
   const windowChromeOptions = resolveWorkspaceWindowChromeOptions(
     process.platform,
-    windowKind
+    windowKind,
+    options.theme.appearance
   );
   const workspaceWindow = new BrowserWindow({
     backgroundColor: resolveDesktopWindowBackgroundColor(),
@@ -379,6 +386,24 @@ export function getWorkspaceWindowWorkspaceID(
   return workspaceWindows.getWorkspaceID(workspaceWindow);
 }
 
+export function syncWorkspaceWindowTitleBarOverlayColors(
+  appearance: DesktopThemeState["appearance"]
+): void {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  syncWorkspaceWindowTitleBarOverlayTargets({
+    appearance,
+    getWindowKind: (workspaceWindow) =>
+      workspaceWindows.getKind(workspaceWindow),
+    isDestroyed: (workspaceWindow) => workspaceWindow.isDestroyed(),
+    setTitleBarOverlay: (workspaceWindow, titleBarOverlay) =>
+      workspaceWindow.setTitleBarOverlay(titleBarOverlay),
+    targets: BrowserWindow.getAllWindows()
+  });
+}
+
 export function findWorkspaceWindow(
   workspaceID: string,
   kind: "agent" | "workspace"
@@ -402,6 +427,7 @@ export function loadAgentWindowContent(
     provider?: string | null;
     theme: DesktopThemeState;
     userProjectPath?: string | null;
+    workspaceUiMode: DesktopWorkspaceUiMode;
   }
 ): void {
   const windowIntentSearchOptions = {
@@ -410,7 +436,8 @@ export function loadAgentWindowContent(
     reportPredefinePageview:
       reportPredefinePageviewByWindow.get(agentWindow) === true,
     themeAppearance: options.theme.appearance,
-    themeSource: options.theme.source
+    themeSource: options.theme.source,
+    workspaceUiMode: options.workspaceUiMode
   };
   const intent = createAgentWindowIntent({
     agentDirectorySnapshot: options.agentDirectorySnapshot,
@@ -450,6 +477,7 @@ export function loadWorkspaceWindowContent(
   > & {
     dockPlacement: DesktopDockPlacement;
     theme: DesktopThemeState;
+    workspaceUiMode: DesktopWorkspaceUiMode;
   }
 ): void {
   const windowIntentSearchOptions = {
@@ -458,7 +486,8 @@ export function loadWorkspaceWindowContent(
     reportPredefinePageview:
       reportPredefinePageviewByWindow.get(workspaceWindow) === true,
     themeAppearance: options.theme.appearance,
-    themeSource: options.theme.source
+    themeSource: options.theme.source,
+    workspaceUiMode: options.workspaceUiMode
   };
   if (options.rendererUrl) {
     void workspaceWindow.loadURL(

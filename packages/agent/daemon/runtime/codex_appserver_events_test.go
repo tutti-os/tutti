@@ -158,6 +158,68 @@ func TestCodexAppServerCompactionKeepsUnrelatedWarnings(t *testing.T) {
 	}
 }
 
+func TestCodexAppServerFinalFileCitationsBecomePortableFileMentions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{
+			name: "Windows output",
+			text: `Created :codex-file-citation{path="C:\Users\local user\output.docx" purpose="output"}`,
+			want: `Created [@output.docx](<C:/Users/local%20user/output.docx>)`,
+		},
+		{
+			name: "Windows UNC remains provider text",
+			text: `Created :codex-file-citation{path="\\server\share\output.docx" purpose="output"}`,
+			want: `Created :codex-file-citation{path="\\server\share\output.docx" purpose="output"}`,
+		},
+		{
+			name: "POSIX output with reordered attributes",
+			text: `Created :codex-file-citation{purpose="output" path="/Users/local user/output.docx"}`,
+			want: `Created [@output.docx](</Users/local%20user/output.docx>)`,
+		},
+		{
+			name: "relative path remains provider text",
+			text: `Created :codex-file-citation{path="output.docx" purpose="output"}`,
+			want: `Created :codex-file-citation{path="output.docx" purpose="output"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			session := reportTestSession()
+			normalizer := newACPTurnNormalizer()
+			events := newCodexAppServerReducer(&CodexAppServerAdapter{}).ReduceNotification(
+				nil,
+				session,
+				"turn-1",
+				acpMessage{
+					Method: appServerNotifyItemCompleted,
+					Params: mustJSONRawMessage(t, map[string]any{
+						"item": map[string]any{"type": "agentMessage", "text": tt.text},
+					}),
+				},
+				normalizer,
+				nil,
+			).Events
+			if len(events) != 1 || events[0].Payload.Content != tt.want {
+				t.Fatalf("item/completed events = %#v, want content %q", events, tt.want)
+			}
+
+			turnText := appServerTurnFinalAssistantText(map[string]any{
+				"items": []any{map[string]any{"type": "agentMessage", "text": tt.text}},
+			})
+			if turnText != tt.want {
+				t.Fatalf("turn/completed text = %q, want %q", turnText, tt.want)
+			}
+		})
+	}
+}
+
 func TestCodexAppServerCommandOutputDeltaUsesToolOutputFastLane(t *testing.T) {
 	t.Parallel()
 	session := reportTestSession()
@@ -1325,6 +1387,83 @@ func TestCodexAppServerChildRegistrationReportsEarlyDrops(t *testing.T) {
 	clean, ok := adapter.appServerChildThread(session.AgentSessionID, "child-clean-2")
 	if !ok || clean.droppedBeforeRegistration != 0 {
 		t.Fatalf("child-clean-2 droppedBeforeRegistration = %#v (ok=%v), want 0", clean, ok)
+	}
+}
+
+func TestCodexAppServerChildTerminalBeforeRegistrationIsReplayed(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		method        string
+		params        map[string]any
+		terminalEvent activityshared.EventType
+	}{
+		{
+			name:          "turn completed",
+			method:        appServerNotifyTurnCompleted,
+			params:        map[string]any{"turn": map[string]any{"id": "child-turn-1", "status": "completed"}},
+			terminalEvent: activityshared.EventTurnCompleted,
+		},
+		{
+			name:          "terminal error",
+			method:        appServerNotifyError,
+			params:        map[string]any{"willRetry": false, "error": map[string]any{"message": "child failed"}},
+			terminalEvent: activityshared.EventTurnFailed,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			adapter := NewCodexAppServerAdapter(nil)
+			session := Session{
+				AgentSessionID:    "agent-session-1",
+				Provider:          ProviderCodex,
+				ProviderSessionID: "parent-thread-1",
+				CWD:               "/workspace",
+			}
+			adapter.storeSession(session.AgentSessionID, &codexAppServerSession{threadID: session.ProviderSessionID})
+			reducer := newCodexAppServerReducer(adapter)
+			normalizer := newACPTurnNormalizer()
+
+			terminalParams := clonePayload(test.params)
+			terminalParams["threadId"] = "child-thread-1"
+			terminalParams["turnId"] = "child-turn-1"
+			if events := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
+				Method: test.method,
+				Params: mustJSONRawMessage(t, terminalParams),
+			}, normalizer, nil).Events; len(events) != 0 {
+				t.Fatalf("early terminal events = %#v, want buffered until child registration", events)
+			}
+
+			events := reducer.ReduceNotification(nil, session, "parent-turn-1", acpMessage{
+				Method: appServerNotifyItemStarted,
+				Params: mustJSONRawMessage(t, map[string]any{
+					"threadId": session.ProviderSessionID,
+					"turnId":   "parent-turn-1",
+					"item": map[string]any{
+						"type":              "collabAgentToolCall",
+						"id":                "spawn-child-1",
+						"tool":              "spawnAgent",
+						"status":            "inProgress",
+						"receiverThreadIds": []any{"child-thread-1"},
+					},
+				}),
+			}, normalizer, nil).Events
+
+			terminalCount := 0
+			for _, event := range events {
+				if event.Type == test.terminalEvent {
+					terminalCount++
+					if event.SessionKind != "child" || event.ProviderSessionID != "child-thread-1" {
+						t.Fatalf("terminal event = %#v, want child routing", event)
+					}
+				}
+			}
+			if terminalCount != 1 {
+				t.Fatalf("terminal events = %#v, want exactly one replayed %s", events, test.terminalEvent)
+			}
+		})
 	}
 }
 

@@ -49,6 +49,7 @@ test("semantic new-Session activation owns scope, confirmation window, and comma
     clientSubmitId: " submit-new ",
     cwd: " /workspace ",
     isolation: "worktree",
+    modelExplicit: false,
     initialContent: [{ text: "display instructions", type: "text" }],
     initialDisplayPrompt: " /browser ",
     initialGoalControl: { action: "set", objective: "ship it" },
@@ -62,6 +63,7 @@ test("semantic new-Session activation owns scope, confirmation window, and comma
       version: 1
     },
     railSectionKey: " project:/workspace ",
+    reasoningEffortExplicit: true,
     requestId: " activation-1 ",
     runtimeContent: [{ text: "runtime instructions", type: "text" }],
     settings: { model: "model-1" },
@@ -86,6 +88,7 @@ test("semantic new-Session activation owns scope, confirmation window, and comma
     content: [{ text: "display instructions", type: "text" }],
     cwd: "/workspace",
     isolation: "worktree",
+    modelExplicit: false,
     expiresAtUnixMs: 120_100,
     initialDisplayPrompt: "/browser",
     initialGoalControl: { action: "set", objective: "ship it" },
@@ -105,6 +108,7 @@ test("semantic new-Session activation owns scope, confirmation window, and comma
       version: 1
     },
     railSectionKey: "project:/workspace",
+    reasoningEffortExplicit: true,
     requestId: "activation-1",
     requestedAtUnixMs: 100,
     runtimeContent: [{ text: "runtime instructions", type: "text" }],
@@ -126,6 +130,7 @@ test("semantic new-Session activation owns scope, confirmation window, and comma
       correlationId: "activation-1",
       cwd: "/workspace",
       isolation: "worktree",
+      modelExplicit: false,
       initialContent: [{ text: "runtime instructions", type: "text" }],
       initialDisplayPrompt: "/browser",
       initialGoalControl: { action: "set", objective: "ship it" },
@@ -142,6 +147,7 @@ test("semantic new-Session activation owns scope, confirmation window, and comma
         sectionKey: "project:/workspace",
         version: 1
       },
+      reasoningEffortExplicit: true,
       settings: { model: "model-1" },
       submitDiagnostics: { source: "test", submittedAtUnixMs: 100 },
       timeoutMs: 90_000,

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   buildCardPayload,
+  buildCandidatePromotionElements,
   buildSummaryElements,
   loadRelease,
   resolveMirroredAssetUrl,
@@ -74,30 +75,57 @@ test("release Feishu card marks beta tags as prereleases", () => {
   assert.match(resolveIntroText("v1.12.19-beta.0"), /Beta 预览通道/);
 });
 
-test("release Feishu card clearly marks draft builds without claiming public publication", () => {
-  assert.equal(
-    resolveReleaseKind("v1.12.20", "draft"),
-    "Draft stable candidate"
-  );
-  assert.match(resolveIntroText("v1.12.20", "draft"), /仍为 Draft/);
-  assert.match(resolveIntroText("v1.12.20", "draft"), /尚未更新公开下载通道/);
+test("release Feishu card clearly marks candidates without claiming public publication", () => {
+  assert.equal(resolveReleaseKind("v1.12.20", "candidate"), "Stable candidate");
+  assert.match(resolveIntroText("v1.12.20", "candidate"), /候选版本/);
+  assert.match(resolveIntroText("v1.12.20", "candidate"), /尚未向用户开放更新/);
 
   const payload = buildCardPayload({
     actor: "jomeswang",
     branch: "release/0704",
     macUrl: "https://example.com/tutti.dmg",
-    publicationStatus: "draft",
+    publicationStatus: "candidate",
+    promotionUrl:
+      "https://github.com/tutti-os/tutti/actions/workflows/desktop-release-promote.yml",
     releaseUrl: "https://github.com/tutti-os/tutti/releases/tag/v1.12.20",
     runUrl: "https://github.com/tutti-os/tutti/actions/runs/1",
     tag: "v1.12.20",
     target: "4039186abcdef0"
   });
 
-  assert.equal(payload.card.header.title.content, "Tutti Draft 构建完成");
+  assert.equal(payload.card.header.title.content, "Tutti 候选版本待确认");
   assert.equal(payload.card.header.template, "orange");
-  assert.equal(
-    extractFieldMap(payload).get("构建类型"),
-    "Draft stable candidate"
+  assert.equal(extractFieldMap(payload).get("构建类型"), "Stable candidate");
+  assert.equal(extractFieldMap(payload).has("Commit"), false);
+  assert.equal(extractFieldMap(payload).has("部署分支"), false);
+
+  const promotionInstructions = payload.card.elements.find((element) =>
+    element.text?.content?.includes("发布审核操作")
+  );
+  assert.match(
+    promotionInstructions.text.content,
+    /Branch 选择 `release\/0704`/
+  );
+  assert.match(
+    promotionInstructions.text.content,
+    /`release_tag` 填写 `v1\.12\.20`/
+  );
+
+  const actionLabels = payload.card.elements
+    .find((element) => element.tag === "action")
+    .actions.map((action) => action.text.content);
+  assert.ok(actionLabels.includes("打开发布审核流水线"));
+  assert.ok(!actionLabels.includes("提交发布审核"));
+});
+
+test("release Feishu card omits promotion instructions without a workflow URL", () => {
+  assert.deepEqual(
+    buildCandidatePromotionElements({
+      branch: "release/0704",
+      promotionUrl: "",
+      tag: "v1.12.20"
+    }),
+    []
   );
 });
 
@@ -119,8 +147,6 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
   assert.equal(payload.card.header.title.content, "Tutti 发布完成");
   assert.equal(fields.get("版本号"), "v1.12.20");
   assert.equal(fields.get("构建类型"), "Stable latest release");
-  assert.equal(fields.get("Commit"), "4039186");
-  assert.equal(fields.get("部署分支"), "main");
   assert.equal(fields.get("部署人"), "jomeswang");
 
   const actionLabels = payload.card.elements
@@ -130,8 +156,8 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
   assert.deepEqual(actionLabels, [
     "下载 macOS",
     "下载 Windows（未签名）",
-    "打开 Release 页面",
-    "查看流水线"
+    "查看完整更新日志",
+    "查看技术详情"
   ]);
 });
 
@@ -144,7 +170,8 @@ test("release Feishu card uses the mirrored Windows installer URL", () => {
     runUrl: "https://github.com/tutti-os/tutti/actions/runs/1",
     tag: "v1.12.20-rc.0",
     target: "4039186abcdef0",
-    winUrl: "https://downloads.example.com/v1.12.20-rc.0/Tutti-1.12.20-rc.0-win-x64.exe"
+    winUrl:
+      "https://downloads.example.com/v1.12.20-rc.0/Tutti-1.12.20-rc.0-win-x64.exe"
   });
 
   const windowsAction = payload.card.elements
@@ -185,7 +212,7 @@ test("release Feishu card includes Chinese release summary when available", () =
 
   assert.ok(summaryElement);
   assert.match(summaryElement.text.content, /稳定包下载入口只指向正式 release/);
-  assert.match(summaryElement.text.content, /QA 重点/);
+  assert.doesNotMatch(summaryElement.text.content, /QA 重点/);
 });
 
 test("release Feishu card skips summary elements when summary is missing", () => {
@@ -241,5 +268,17 @@ test("release Feishu card resolves mirrored macOS URLs from local artifact names
       "v0.1.0-rc.4"
     ),
     "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-desktop-release-assets/v0.1.0-rc.4/Tutti-0.1.0-rc.4-win-x64.exe"
+  );
+});
+
+test("release Feishu card keeps candidate path segments while encoding asset names", () => {
+  assert.equal(
+    resolveMirroredAssetUrl(
+      ["Tutti 1.2.3-mac-universal.dmg"],
+      /\.dmg$/i,
+      "https://downloads.example.com/desktop",
+      "candidates/v1.2.3-abcdef0-run42"
+    ),
+    "https://downloads.example.com/desktop/candidates/v1.2.3-abcdef0-run42/Tutti%201.2.3-mac-universal.dmg"
   );
 });

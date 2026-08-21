@@ -246,6 +246,10 @@ func cliInvokeContextFromEnv() daemon.InvokeContext {
 		WorkspaceID:     strings.TrimSpace(os.Getenv("TUTTI_WORKSPACE_ID")),
 		ParentCommandID: strings.TrimSpace(os.Getenv("TUTTI_APP_CLI_PARENT_COMMAND_ID")),
 		AgentSessionID:  strings.TrimSpace(os.Getenv("TUTTI_AGENT_SESSION_ID")),
+		AgentCWD:        strings.TrimSpace(os.Getenv("TUTTI_AGENT_CWD")),
+		AgentRailPlacementJSON: strings.TrimSpace(
+			os.Getenv("TUTTI_AGENT_RAIL_PLACEMENT"),
+		),
 	}
 }
 

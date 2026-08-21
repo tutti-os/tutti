@@ -1780,23 +1780,35 @@ test("next checkpoint fast-forwards without skipping the stable boundary", async
     assert.deepEqual(commands.at(-1), { command: "resume" });
 
     let slowOperationSettled = false;
+    let settleSlowOperation;
+    const slowOperation = new Promise((resolveSlowOperation) => {
+      settleSlowOperation = resolveSlowOperation;
+    });
     const controlSlowOperation = (async () => {
-      await delay(20);
       await writeFile(
         controlPath,
         JSON.stringify(replayControlRouter(replayCassetteAID, 3, "pause"))
       );
-      await delay(70);
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        if (commands.at(-1)?.command === "pause") break;
+        await delay(25);
+      }
       assert.equal(slowOperationSettled, false);
       assert.deepEqual(commands.at(-1), { command: "pause" });
       await writeFile(
         controlPath,
         JSON.stringify(replayControlRouter(replayCassetteAID, 4, "resume"))
       );
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        if (commands.at(-1)?.command === "resume") break;
+        await delay(25);
+      }
+      assert.deepEqual(commands.at(-1), { command: "resume" });
+      settleSlowOperation();
     })();
     await Promise.all([
       playback
-        .runWhilePolling(() => delay(160))
+        .runWhilePolling(() => slowOperation)
         .finally(() => {
           slowOperationSettled = true;
         }),

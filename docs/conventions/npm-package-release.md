@@ -19,8 +19,8 @@ The current fixed release group is:
 @tutti-os/analytics
 @tutti-os/analytics-debug
 @tutti-os/event-stream-core
-@tutti-os/connector-authorization-protocol
-@tutti-os/connector-market
+@tutti-os/connector-contracts
+@tutti-os/connector-renderer
 @tutti-os/workspace-file-manager
 @tutti-os/workspace-file-reference
 @tutti-os/workspace-issue-manager
@@ -178,8 +178,8 @@ pnpm add @tutti-os/workspace-file-reference@beta
 pnpm add @tutti-os/workspace-file-preview@beta
 pnpm add @tutti-os/workspace-file-manager@beta
 pnpm add @tutti-os/workspace-issue-manager@beta
-pnpm add @tutti-os/connector-market@beta
-pnpm add @tutti-os/connector-authorization-protocol@beta
+pnpm add @tutti-os/connector-renderer@beta
+pnpm add @tutti-os/connector-contracts@beta
 pnpm add @tutti-os/workspace-app-center@beta
 pnpm add @tutti-os/workspace-terminal@beta
 pnpm add @tutti-os/workbench-electron@beta
@@ -359,16 +359,11 @@ The stable package entrypoints are:
 @tutti-os/ui-rich-text/plugins
 @tutti-os/ui-rich-text/types
 @tutti-os/ui-react-hooks
-@tutti-os/connector-market
-@tutti-os/connector-authorization-protocol
-@tutti-os/connector-authorization-protocol/v1
-@tutti-os/connector-market/contracts
-@tutti-os/connector-market/authorization
-@tutti-os/connector-market/core
-@tutti-os/connector-market/i18n
-@tutti-os/connector-market/openapi/connector-market.v1.yaml
-@tutti-os/connector-market/services
-@tutti-os/connector-market/ui
+@tutti-os/connector-contracts/authorization/v1
+@tutti-os/connector-contracts/openapi/connector-market.v1.yaml
+@tutti-os/connector-renderer/application
+@tutti-os/connector-renderer/i18n
+@tutti-os/connector-renderer/ui
 @tutti-os/workspace-app-center
 @tutti-os/workspace-app-center/contracts
 @tutti-os/workspace-app-center/core
@@ -423,8 +418,10 @@ The stable package entrypoints are:
 @tutti-os/ui-system/utils
 ```
 
-`@tutti-os/connector-market/renderer` remains a compatibility alias for
-`@tutti-os/connector-market/ui`; new consumers must import the `/ui` entrypoint.
+Connector packages intentionally expose no root barrel. Import wire protocols
+from `@tutti-os/connector-contracts/authorization/v1`, frontend services from
+`@tutti-os/connector-renderer/application`, and React components from
+`@tutti-os/connector-renderer/ui`.
 
 New public subpaths should be added only when a real consumer needs them.
 

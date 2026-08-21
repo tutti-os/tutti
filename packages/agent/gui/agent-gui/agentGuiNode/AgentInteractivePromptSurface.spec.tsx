@@ -1384,9 +1384,11 @@ describe("AgentInteractivePromptSurface", () => {
     render(
       <AgentInteractivePromptSurface
         prompt={{
+          agentSessionId: "session-return-to-conversation",
           kind: "ask-user",
           requestId: "request-return-to-conversation",
           title: "One question",
+          turnId: "turn-return-to-conversation",
           questions: [
             {
               id: "scope",
@@ -1402,6 +1404,10 @@ describe("AgentInteractivePromptSurface", () => {
               multiSelect: true
             }
           ]
+        }}
+        conversationReturn={{
+          continueAnswering: labels.continueAnswering,
+          returnToConversation: labels.returnToConversation
         }}
         isSubmitting={false}
         onSubmit={onSubmit}
@@ -1435,6 +1441,7 @@ describe("AgentInteractivePromptSurface", () => {
 
     fireEvent.click(screen.getByRole("button", { name: labels.submitAnswers }));
     expect(onSubmit).toHaveBeenCalledWith({
+      agentSessionId: "session-return-to-conversation",
       requestId: "request-return-to-conversation",
       action: "submit",
       payload: {
@@ -1442,8 +1449,147 @@ describe("AgentInteractivePromptSurface", () => {
         answersByQuestionId: {
           scope: ["Small"]
         }
-      }
+      },
+      turnId: "turn-return-to-conversation"
     });
+  });
+
+  it("fails closed when conversation return lacks an exact interaction tuple", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          kind: "ask-user",
+          requestId: "request-missing-tuple",
+          title: "One question",
+          questions: [
+            {
+              id: "scope",
+              header: "Scope",
+              question: "Which scope?",
+              options: [{ label: "Small", description: "Focused change" }],
+              multiSelect: false
+            }
+          ]
+        }}
+        conversationReturn={{
+          continueAnswering: labels.continueAnswering,
+          returnToConversation: labels.returnToConversation
+        }}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={labels}
+      />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: labels.returnToConversation })
+    ).toBeNull();
+    expect(screen.getByPlaceholderText(labels.answerPlaceholder)).toBeTruthy();
+  });
+
+  it("fails closed when a fixed-choice prompt cannot be answered by Composer text", () => {
+    render(
+      <AgentInteractivePromptSurface
+        prompt={{
+          agentSessionId: "session-fixed-choice",
+          kind: "ask-user",
+          requestId: "request-fixed-choice",
+          title: "One question",
+          turnId: "turn-fixed-choice",
+          questions: [
+            {
+              allowFreeText: false,
+              id: "scope",
+              header: "Scope",
+              question: "Which scope?",
+              options: [{ label: "Small", description: "Focused change" }],
+              multiSelect: false
+            }
+          ]
+        }}
+        conversationReturn={{
+          continueAnswering: labels.continueAnswering,
+          returnToConversation: labels.returnToConversation
+        }}
+        isSubmitting={false}
+        onSubmit={vi.fn()}
+        labels={labels}
+      />
+    );
+
+    expect(
+      screen.queryByRole("button", { name: labels.returnToConversation })
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: /Small/ })).toBeTruthy();
+  });
+
+  it("resets presentation state for the exact interaction when request ids repeat", () => {
+    const onSubmit = vi.fn();
+    const firstPrompt = {
+      agentSessionId: "session-1",
+      kind: "ask-user" as const,
+      requestId: "request-reused",
+      title: "First question",
+      turnId: "turn-1",
+      questions: [
+        {
+          id: "first",
+          header: "First",
+          question: "First turn question?",
+          options: [],
+          multiSelect: false
+        }
+      ]
+    };
+    const { rerender } = render(
+      <AgentInteractivePromptSurface
+        prompt={firstPrompt}
+        conversationReturn={{
+          continueAnswering: labels.continueAnswering,
+          returnToConversation: labels.returnToConversation
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: labels.returnToConversation })
+    );
+    expect(
+      screen.getByTestId("agent-question-request-reused-collapsed")
+    ).toBeTruthy();
+
+    rerender(
+      <AgentInteractivePromptSurface
+        prompt={{
+          ...firstPrompt,
+          title: "Second question",
+          turnId: "turn-2",
+          questions: [
+            {
+              ...firstPrompt.questions[0]!,
+              id: "second",
+              header: "Second",
+              question: "Second turn question?"
+            }
+          ]
+        }}
+        conversationReturn={{
+          continueAnswering: labels.continueAnswering,
+          returnToConversation: labels.returnToConversation
+        }}
+        isSubmitting={false}
+        onSubmit={onSubmit}
+        labels={labels}
+      />
+    );
+
+    expect(
+      screen.queryByTestId("agent-question-request-reused-collapsed")
+    ).toBeNull();
+    expect(screen.getByText("Second turn question?")).toBeTruthy();
   });
 
   it("can return to the conversation when provider interaction controls are disabled", () => {
@@ -1451,9 +1597,11 @@ describe("AgentInteractivePromptSurface", () => {
     render(
       <AgentInteractivePromptSurface
         prompt={{
+          agentSessionId: "session-disabled-return",
           kind: "ask-user",
           requestId: "request-disabled-return",
           title: "One question",
+          turnId: "turn-disabled-return",
           questions: [
             {
               id: "scope",
@@ -1463,6 +1611,10 @@ describe("AgentInteractivePromptSurface", () => {
               multiSelect: false
             }
           ]
+        }}
+        conversationReturn={{
+          continueAnswering: labels.continueAnswering,
+          returnToConversation: labels.returnToConversation
         }}
         isSubmitting={false}
         isInteractionDisabled
@@ -1476,12 +1628,19 @@ describe("AgentInteractivePromptSurface", () => {
       name: labels.returnToConversation
     });
     expect(returnToConversation).toBeEnabled();
+    expect(returnToConversation.closest('[aria-disabled="true"]')).toBeNull();
+    expect(screen.getByRole("button", { name: /Small/ })).toBeDisabled();
     fireEvent.click(returnToConversation);
 
     expect(onSubmit).not.toHaveBeenCalled();
-    expect(
-      screen.getByTestId("agent-question-request-disabled-return-collapsed")
-    ).toBeTruthy();
+    const collapsed = screen.getByTestId(
+      "agent-question-request-disabled-return-collapsed"
+    );
+    expect(collapsed).toBeTruthy();
+    const continueAnswering = screen.getByRole("button", {
+      name: labels.continueAnswering
+    });
+    expect(continueAnswering.closest('[aria-disabled="true"]')).toBeNull();
   });
 
   it("collects answers for ask-user prompts before submission", () => {
@@ -1532,6 +1691,11 @@ describe("AgentInteractivePromptSurface", () => {
     const largeOption = screen.getByRole("button", {
       name: "Large Broader cleanup"
     });
+
+    expect(
+      screen.queryByRole("button", { name: labels.returnToConversation })
+    ).toBeNull();
+    expect(screen.getByPlaceholderText(labels.answerPlaceholder)).toBeTruthy();
 
     expect(
       screen.getByTestId("agent-question-request-ask-scope")

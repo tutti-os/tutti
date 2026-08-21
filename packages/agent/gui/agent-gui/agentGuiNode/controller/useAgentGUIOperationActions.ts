@@ -26,7 +26,7 @@ type NewConversationInput = Parameters<
 
 type UseAgentGUIOperationActionsInput = Omit<
   SubmitInput,
-  "isSessionMarkedNonResumable" | "startConversation"
+  "goalControlSupported" | "isSessionMarkedNonResumable" | "startConversation"
 > &
   Omit<HomeInput, "submitPrefillPrompt"> &
   Omit<NewConversationInput, "getCachedComposerOptions"> &
@@ -125,6 +125,10 @@ export function useAgentGUIOperationActions(
 
   const submitActions = useAgentGUISubmitInteractionActions({
     ...input,
+    goalControlSupported:
+      input.providerComposerOptions?.slashCommandPolicy?.commandEffects.some(
+        ({ effect }) => effect === "activateGoalMode"
+      ) === true,
     isSessionMarkedNonResumable,
     startConversation
   });

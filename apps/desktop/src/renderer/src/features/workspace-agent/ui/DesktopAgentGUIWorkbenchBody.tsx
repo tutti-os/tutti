@@ -72,6 +72,8 @@ import { resolveDesktopAgentGUIEmbeddedDesktopSize } from "./desktopAgentGUIEmbe
 import { scheduleDesktopAgentGUIWorkbenchHydration } from "./desktopAgentGUIWorkbenchHydration.ts";
 import { resolveDesktopAgentGUIWorkbenchBodyVisibility } from "./desktopAgentGUIWorkbenchVisibility.ts";
 import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
+import { DesktopAgentConfigSystemActions } from "./DesktopAgentConfigSystemActions.tsx";
+import { shouldShowDesktopAgentConfigSystemActions } from "./desktopAgentConfigSystemActionsModel.ts";
 import { hasDesktopLocalTuttiAgent } from "./desktopAgentConfigCommerceContext.ts";
 import { useDesktopAgentGUIComposerFooterAccessory } from "./useDesktopAgentGUIComposerFooterAccessory.tsx";
 import { useDesktopAgentGUIOpenSessionComposerRequest } from "./useDesktopAgentGUIOpenSessionComposerRequest.ts";
@@ -89,14 +91,20 @@ import {
   AGENT_REFERENCE_PROVENANCE_FILTER_FLAG,
   LAB_CONVERSATION_ACTIVITY_VIEW_FLAG,
   isFeatureEnabled,
-  LAB_AGENT_SESSION_FORK_FLAG,
+  LAB_AGENT_SIDE_CONVERSATION_FLAG,
   LAB_CODEX_SAVER_MODE_FLAG,
-  LAB_CONNECTORS_FLAG
+  LAB_CONNECTORS_FLAG,
+  LAB_TUTTI_MODE_FLAG,
+  resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 const EMPTY_AGENT_SESSION_LAUNCH_MODES_BY_PROJECT_SECTION_KEY: Readonly<
   Record<string, AgentGUISessionLaunchMode>
 > = Object.freeze({});
+
+const renderDesktopAgentConfigSystemActions: NonNullable<
+  AgentGUIProps["renderSlots"]["agentConfigSystemActions"]
+> = () => <DesktopAgentConfigSystemActions />;
 
 const AgentSessionReplayNodeReadiness = lazy(() =>
   import("../../agent-session-replay/ui/AgentSessionReplayNodeReadiness.tsx").then(
@@ -106,6 +114,8 @@ const AgentSessionReplayNodeReadiness = lazy(() =>
 
 function DesktopAgentGUISurfaceImpl({
   agentActivityRuntime: hostAgentActivityRuntime,
+  agentSideConversationRuntime = null,
+  agentSideConversationPresentation = null,
   agentHostApi,
   agentSessionReplayService,
   agentStatusSource,
@@ -569,7 +579,7 @@ function DesktopAgentGUISurfaceImpl({
         enabled: isFeatureEnabled(featureFlags, LAB_CONNECTORS_FLAG)
       },
       tuttiMode: {
-        enabled: true
+        enabled: isFeatureEnabled(featureFlags, LAB_TUTTI_MODE_FLAG)
       }
     };
   }, [
@@ -586,9 +596,10 @@ function DesktopAgentGUISurfaceImpl({
     AGENT_REFERENCE_PROVENANCE_FILTER_FLAG
   );
   const sessionInputHistoryEnabled = true;
-  const sessionForkEnabled = isFeatureEnabled(
-    desktopPreferencesState.featureFlags,
-    LAB_AGENT_SESSION_FORK_FLAG
+  const sideConversationEnabled = isFeatureEnabled(
+    desktopPreferencesState.changingFeatureFlags ??
+      desktopPreferencesState.featureFlags,
+    LAB_AGENT_SIDE_CONVERSATION_FLAG
   );
   const codexSaverModeEntryEnabled = isFeatureEnabled(
     desktopPreferencesState.featureFlags,
@@ -617,6 +628,10 @@ function DesktopAgentGUISurfaceImpl({
       desktopPreferencesState.featureFlags,
       AGENT_SESSION_RECORDING_FLAG
     ) && agentSessionReplayService !== null;
+  const workspaceUiMode = resolveDesktopWorkspaceUiMode(
+    desktopPreferencesState.changingFeatureFlags ??
+      desktopPreferencesState.featureFlags
+  );
   const renderComposerFooterAccessory =
     useDesktopAgentGUIComposerFooterAccessory({
       agentSessionReplayService,
@@ -666,8 +681,9 @@ function DesktopAgentGUISurfaceImpl({
     },
     hostCapabilities: {
       referenceProvenanceFilterEnabled,
+      sideConversationEnabled,
+      sideConversationPresentation: agentSideConversationPresentation,
       sessionInputHistoryEnabled,
-      sessionForkEnabled,
       sessionWorktreeEnabled: true,
       sessionLaunchModesByProjectSectionKey,
       codexSaverModeEntryEnabled,
@@ -705,6 +721,11 @@ function DesktopAgentGUISurfaceImpl({
     },
     renderSlots: {
       agentConfigAccount: renderAgentConfigAccount,
+      agentConfigSystemActions: shouldShowDesktopAgentConfigSystemActions(
+        workspaceUiMode
+      )
+        ? renderDesktopAgentConfigSystemActions
+        : undefined,
       composerFooterAccessory: renderComposerFooterAccessory,
       sidebarFooter: renderSidebarFooter
     }
@@ -729,7 +750,11 @@ function DesktopAgentGUISurfaceImpl({
         allAgentsPresentation={allAgentsPresentation}
         renderAgentsEmpty={renderAgentsEmpty}
         agentActivityRuntime={agentActivityRuntime}
+        agentSideConversationRuntime={
+          sideConversationEnabled ? agentSideConversationRuntime : null
+        }
         agentHostApi={agentHostApiWithToast}
+        disabled={["clone-github-repository"]}
         tuttiModePlanReviewRuntime={
           capabilityMenuState?.tuttiMode?.enabled === false
             ? null

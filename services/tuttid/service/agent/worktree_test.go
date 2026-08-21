@@ -28,6 +28,10 @@ func (a *recordingSessionDirectoryAllocator) CreateSessionDirectory(context.Cont
 	return a.path, nil
 }
 
+func (*recordingSessionDirectoryAllocator) ReleaseSessionDirectory(_ context.Context, path string) error {
+	return os.RemoveAll(path)
+}
+
 func initSessionWorktreeRepo(t *testing.T) string {
 	t.Helper()
 	if _, err := exec.LookPath("git"); err != nil {

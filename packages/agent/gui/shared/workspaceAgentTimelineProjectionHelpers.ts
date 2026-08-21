@@ -147,10 +147,12 @@ export function visibleErrorFromPayload(
   payload: Record<string, unknown> | null
 ): WorkspaceAgentSessionDetailMessage["visibleError"] {
   if (stringRecordValue(payload, "kind") !== "agent_visible_error") return null;
+  const origin = stringRecordValue(payload, "origin");
   return {
     code: stringRecordValue(payload, "code"),
     phase: stringRecordValue(payload, "phase"),
     provider: stringRecordValue(payload, "provider"),
+    ...(origin ? { origin } : {}),
     detail: stringRecordValue(payload, "detail"),
     retryable: booleanRecordValue(payload, "retryable")
   };

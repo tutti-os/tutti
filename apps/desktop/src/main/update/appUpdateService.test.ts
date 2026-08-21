@@ -203,6 +203,41 @@ test("createAppUpdateService configures the static RC feed before checking", asy
   }
 });
 
+test("createAppUpdateService keeps release notes unset for the resolved update", async () => {
+  let notifyAvailable: ((info: UpdateInfo) => void) | null = null;
+  const driver = createFakeDriver({
+    async checkForUpdates() {
+      notifyAvailable?.(createUpdateInfoFixture("1.2.3"));
+    },
+    onUpdateAvailable(listener) {
+      notifyAvailable = listener;
+      return noop;
+    }
+  });
+  const service = createAppUpdateService(driver, {
+    currentVersion: "1.2.2",
+    releaseFeedResolver: async () => ({
+      feedUrl: "https://updates.example.test/v1.2.3",
+      releasedAt: "2026-08-17T00:00:00.000Z",
+      tag: "v1.2.3",
+      updaterChannel: "latest",
+      version: "1.2.3"
+    }),
+    supportsUpdates: true
+  });
+
+  try {
+    await service.configure({ channel: "stable", policy: "prompt" });
+    await waitFor(
+      () => service.getState().status === "available",
+      "update did not become available"
+    );
+    assert.equal(service.getState().releaseNotesUrl, null);
+  } finally {
+    service.dispose();
+  }
+});
+
 test("createAppUpdateService reports static feed resolution errors", async () => {
   const driver = createFakeDriver();
   const service = createAppUpdateService(driver, {

@@ -54,6 +54,18 @@ func TestDefaultAgentRuntimeDir(t *testing.T) {
 	}
 }
 
+func TestDefaultAgentRuntimeDirUsesExplicitOverride(t *testing.T) {
+	want := filepath.Join(t.TempDir(), "agent-runtimes")
+	t.Setenv("TUTTI_AGENT_RUNTIME_DIR", want)
+	got, err := DefaultAgentRuntimeDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("DefaultAgentRuntimeDir() = %q, want %q", got, want)
+	}
+}
+
 func TestDefaultAgentExecutableDir(t *testing.T) {
 	homeDir := t.TempDir()
 	t.Setenv("HOME", homeDir)

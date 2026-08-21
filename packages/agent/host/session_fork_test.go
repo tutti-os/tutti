@@ -1101,12 +1101,26 @@ func (r liveSessionForkRuntime) Session(
 func assertPreparedForkSource(t *testing.T, source ProviderRuntimeSession) {
 	t.Helper()
 	if source.Cwd != "/prepared" ||
-		!reflect.DeepEqual(source.Env, []string{"FORK_ENV=prepared"}) ||
 		!reflect.DeepEqual(source.ProviderTargetRef, map[string]any{"target": "prepared"}) ||
 		!reflect.DeepEqual(source.RuntimeContext, map[string]any{"origin": "prepared"}) ||
 		source.Settings == nil ||
 		source.Settings.Model != "prepared-model" {
 		t.Fatalf("prepared source=%#v", source)
+	}
+	if value, found := testEnvironmentValue(source.Env, "FORK_ENV"); !found || value != "prepared" {
+		t.Fatalf("prepared source env=%#v, want preserved FORK_ENV", source.Env)
+	}
+	if cwd, found := testEnvironmentValue(source.Env, AgentCWDEnvironmentVariable); !found || cwd != "/prepared" {
+		t.Fatalf("prepared source cwd env=%q found=%v, env=%#v", cwd, found, source.Env)
+	}
+	encoded, found := testEnvironmentValue(source.Env, AgentRailPlacementEnvironmentVariable)
+	if !found {
+		t.Fatalf("prepared source env=%#v, want rail placement", source.Env)
+	}
+	placement, err := ParseAgentRailPlacementEnvironment(encoded)
+	if err != nil || placement.Kind != RailPlacementKindConversations ||
+		placement.SectionKey != storesqlite.RailSectionKeyConversations {
+		t.Fatalf("prepared source rail placement=%#v error=%v", placement, err)
 	}
 }
 

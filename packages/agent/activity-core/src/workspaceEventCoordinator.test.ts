@@ -16,7 +16,12 @@ import type {
 } from "./types.ts";
 import { createAgentActivityWorkspaceEventCoordinator } from "./workspaceEventCoordinator.ts";
 
-function createHarness() {
+function createHarness(options?: {
+  notificationScheduler?: {
+    schedule(delayMs: number, task: () => void): { cancel(): void };
+  };
+  onCanonicalRead?: () => void;
+}) {
   const commands: EngineExternalCommand[] = [];
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => 10 },
@@ -33,9 +38,25 @@ function createHarness() {
     }
   });
   const projectCanonical = createAgentActivitySnapshotProjector("workspace-1");
-  const readCanonicalSnapshot = () => projectCanonical(engine.getSnapshot());
+  const readCanonicalSnapshot = () => {
+    options?.onCanonicalRead?.();
+    return projectCanonical(engine.getSnapshot());
+  };
   const coordinator = createAgentActivityWorkspaceEventCoordinator({
     engine,
+    notificationScheduler: options?.notificationScheduler ?? {
+      schedule(_delayMs, task) {
+        let canceled = false;
+        queueMicrotask(() => {
+          if (!canceled) task();
+        });
+        return {
+          cancel() {
+            canceled = true;
+          }
+        };
+      }
+    },
     readCanonicalSnapshot,
     workspaceId: "workspace-1"
   });
@@ -712,7 +733,7 @@ test("preserves unrelated Session message projections during an optimistic delta
   harness.engine.dispose();
 });
 
-test("reconnect hydrates the workspace, priority session, and cached messages", () => {
+test("reconnect hydrates only the workspace, priority sessions, and optimistic messages", () => {
   const harness = createHarness();
   harness.engine.dispatch({
     messages: [
@@ -775,13 +796,13 @@ test("reconnect hydrates the workspace, priority session, and cached messages", 
         command.scope === "state_and_messages"
     )
   );
-  assert.ok(
+  assert.equal(
     harness.commands.some(
       (command) =>
         command.type === "session/reconcile" &&
-        command.agentSessionId === "session-cached" &&
-        command.scope === "state_and_messages"
-    )
+        command.agentSessionId === "session-cached"
+    ),
+    false
   );
   assert.ok(
     harness.commands.some(
@@ -791,6 +812,92 @@ test("reconnect hydrates the workspace, priority session, and cached messages", 
         command.scope === "state_and_messages"
     )
   );
+  harness.coordinator.dispose();
+  harness.engine.dispose();
+});
+
+test("coalesces optimistic delta notifications without dropping ordered content", () => {
+  const scheduled: Array<{ cancelled: boolean; task: () => void }> = [];
+  let canonicalReads = 0;
+  const harness = createHarness({
+    onCanonicalRead: () => {
+      canonicalReads += 1;
+    },
+    notificationScheduler: {
+      schedule(_delayMs, task) {
+        const entry = { cancelled: false, task };
+        scheduled.push(entry);
+        return {
+          cancel() {
+            entry.cancelled = true;
+          }
+        };
+      }
+    }
+  });
+  let notifications = 0;
+  harness.coordinator.subscribe(() => {
+    notifications += 1;
+  });
+
+  for (let index = 0; index < 100; index += 1) {
+    harness.coordinator.ingestEvent({
+      workspaceId: "workspace-1",
+      agentSessionId: "session-streaming",
+      eventType: "message_delta",
+      data: {
+        workspaceId: "workspace-1",
+        agentSessionId: "session-streaming",
+        messageId: "message-streaming",
+        turnId: "turn-streaming",
+        role: "assistant",
+        kind: "text",
+        occurredAtUnixMs: index + 1,
+        content:
+          index === 0
+            ? { operation: "set", value: "0" }
+            : { operation: "append_text", text: String(index) }
+      }
+    });
+  }
+
+  assert.equal(notifications, 0);
+  assert.equal(scheduled.length, 1);
+  assert.equal(canonicalReads, 0);
+  scheduled[0]?.task();
+  assert.equal(notifications, 1);
+  assert.equal(
+    harness.coordinator.project(harness.readCanonicalSnapshot())
+      .sessionMessagesById["session-streaming"]?.[0]?.payload.text,
+    Array.from({ length: 100 }, (_, index) => String(index)).join("")
+  );
+
+  harness.coordinator.ingestEvent({
+    workspaceId: "workspace-1",
+    agentSessionId: "session-streaming",
+    eventType: "message_delta",
+    data: {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-streaming",
+      messageId: "message-streaming",
+      turnId: "turn-streaming",
+      role: "assistant",
+      kind: "text",
+      occurredAtUnixMs: 101,
+      content: { operation: "append_text", text: "100" }
+    }
+  });
+
+  assert.equal(notifications, 1);
+  assert.equal(scheduled.length, 2);
+  scheduled[1]?.task();
+  assert.equal(notifications, 2);
+  assert.equal(
+    harness.coordinator.project(harness.readCanonicalSnapshot())
+      .sessionMessagesById["session-streaming"]?.[0]?.payload.text,
+    Array.from({ length: 101 }, (_, index) => String(index)).join("")
+  );
+
   harness.coordinator.dispose();
   harness.engine.dispose();
 });

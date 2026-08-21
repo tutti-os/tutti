@@ -402,9 +402,11 @@ export interface AgentActivityCreateSessionInput {
   browserUse?: boolean | null;
   codexSaverMode?: boolean | null;
   model?: string | null;
+  modelExplicit?: boolean;
   planMode?: boolean | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
+  reasoningEffortExplicit?: boolean;
   speed?: string | null;
   title?: string | null;
   visible?: boolean | null;
@@ -438,6 +440,7 @@ export interface AgentActivitySubmitDiagnostics {
   promptLength?: number;
   queued?: boolean;
   source?: string;
+  uiMode?: "os" | "agent";
 }
 
 export type AgentActivitySendInputResult =

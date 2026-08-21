@@ -204,7 +204,11 @@ export function isSettingsRequireNewSessionErrorCode(
 
 export function buildProviderSessionNotFoundActivationError(
   message?: string | null
-): { code: AppErrorCode; message: string; debugMessage?: string } {
+): {
+  code: AppErrorCode;
+  message: string;
+  debugMessage?: string;
+} {
   const normalizedMessage = message?.trim() || null;
   return {
     code: AGENT_PROVIDER_SESSION_NOT_FOUND_ERROR,
@@ -215,7 +219,11 @@ export function buildProviderSessionNotFoundActivationError(
 
 export function buildResumeSessionNotLocalActivationError(
   message?: string | null
-): { code: AppErrorCode; message: string; debugMessage?: string } {
+): {
+  code: AppErrorCode;
+  message: string;
+  debugMessage?: string;
+} {
   const normalizedMessage = message?.trim() || null;
   return {
     code: AGENT_RESUME_SESSION_NOT_LOCAL_ERROR,

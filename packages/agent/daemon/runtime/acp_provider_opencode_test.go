@@ -43,6 +43,42 @@ func TestOpenCodeAdapterUsesOfficialACPCommand(t *testing.T) {
 	}
 }
 
+func TestOpenCodeAdapterRejectsSparkNoneBeforePrompt(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-spark-session")
+	transport.conn.configOptions = []map[string]any{
+		{
+			"id": "model",
+			"options": []any{
+				map[string]any{"name": "GPT-5.3 Codex Spark", "value": openCodeSparkModelID},
+			},
+		},
+		{
+			"id":           "effort",
+			"currentValue": "none",
+			"options": []any{
+				map[string]any{"name": "Off", "value": "none"},
+				map[string]any{"name": "Low", "value": "low"},
+			},
+		},
+	}
+	adapter := newOpenCodeTestAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	session.Settings = &SessionSettings{Model: openCodeSparkModelID, ReasoningEffort: "none"}
+
+	if _, err := adapter.Start(context.Background(), session); err == nil ||
+		!strings.Contains(err.Error(), `does not support reasoning effort "none"`) {
+		t.Fatalf("Start error = %v, want actionable Spark capability error", err)
+	}
+	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
+		t.Fatalf("startup config calls = %#v, want none after preflight rejection", calls)
+	}
+	if transport.conn.promptCallCount != 0 {
+		t.Fatalf("prompt call count = %d, want no prompt after preflight rejection", transport.conn.promptCallCount)
+	}
+}
+
 func TestOpenCodeACPEnvInjectsModelConfigContent(t *testing.T) {
 	t.Parallel()
 
@@ -403,5 +439,102 @@ func TestOpenCodeApplySessionSettingsRejectsUnadvertisedEffortBeforeACPCall(t *t
 	}
 	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
 		t.Fatalf("config option calls = %#v, want none", calls)
+	}
+}
+
+func TestOpenCodeApplySessionSettingsRejectsSparkNoneBeforeACPCall(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-spark-live-session")
+	transport.conn.configOptions = []map[string]any{
+		{
+			"id": "model",
+			"options": []any{
+				map[string]any{"name": "GPT-5.3 Codex Spark", "value": openCodeSparkModelID},
+			},
+		},
+		{
+			"id": "effort",
+			"options": []any{
+				map[string]any{"name": "Off", "value": "none"},
+				map[string]any{"name": "Low", "value": "low"},
+			},
+		},
+	}
+	adapter := newOpenCodeTestAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	model := openCodeSparkModelID
+	effort := "none"
+	patch := SessionSettingsPatch{Model: &model, ReasoningEffort: &effort}
+	if err := adapter.ValidateSessionSettings(session, patch); err == nil || !strings.Contains(err.Error(), "does not support") {
+		t.Fatalf("ValidateSessionSettings error = %v, want Spark none rejection", err)
+	}
+	if err := adapter.ApplySessionSettings(context.Background(), session, patch); err == nil || !strings.Contains(err.Error(), "does not support") {
+		t.Fatalf("ApplySessionSettings error = %v, want Spark none rejection", err)
+	}
+	if calls := transport.conn.setConfigOptionCalls(); len(calls) != 0 {
+		t.Fatalf("config option calls = %#v, want none", calls)
+	}
+}
+
+func TestOpenCodeSessionStateFiltersSparkNoneFromRuntimeContext(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-spark-context-session")
+	transport.conn.configOptions = []map[string]any{
+		{
+			"id":           "model",
+			"currentValue": openCodeSparkModelID,
+			"options": []any{
+				map[string]any{
+					"name":             "GPT-5.3 Codex Spark",
+					"value":            openCodeSparkModelID,
+					"reasoningEffort":  "none",
+					"reasoningEfforts": []any{map[string]any{"value": "none"}, map[string]any{"value": "low"}},
+				},
+			},
+		},
+		{
+			"id":           "effort",
+			"currentValue": "none",
+			"options": []any{
+				map[string]any{"name": "Off", "value": "none"},
+				map[string]any{"name": "Low", "value": "low"},
+			},
+		},
+	}
+	adapter := newOpenCodeTestAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	session.Settings = &SessionSettings{Model: openCodeSparkModelID, ReasoningEffort: "low"}
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	state := adapter.SessionState(session)
+	descriptors, ok := state.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok {
+		t.Fatalf("runtime configOptions = %#v, want descriptors", state.RuntimeContext["configOptions"])
+	}
+	for _, descriptor := range descriptors {
+		for _, option := range configOptionEntries(descriptor["options"]) {
+			if strings.EqualFold(asString(option["value"]), "none") {
+				t.Fatalf("runtime descriptor %q exposes Spark-incompatible none: %#v", descriptor["id"], descriptor)
+			}
+			for _, effort := range configOptionEntries(option["reasoningEfforts"]) {
+				if strings.EqualFold(asString(effort["value"]), "none") {
+					t.Fatalf("runtime model descriptor exposes Spark-incompatible none: %#v", descriptor)
+				}
+			}
+		}
+	}
+	if got := state.RuntimeContext["reasoningEffort"]; strings.EqualFold(asString(got), "none") {
+		t.Fatalf("runtime context exposes Spark-incompatible reasoning effort: %#v", state.RuntimeContext)
+	}
+	if state.Settings != nil && strings.EqualFold(state.Settings.ReasoningEffort, "none") {
+		t.Fatalf("session settings expose Spark-incompatible reasoning effort: %#v", state.Settings)
 	}
 }

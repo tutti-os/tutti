@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -24,6 +25,20 @@ func TestConnectorProcessFixture(_ *testing.T) {
 		_, _ = fmt.Sscanf(fd, "%d", &descriptor)
 		secret, _ := io.ReadAll(os.NewFile(uintptr(descriptor), "credential"))
 		fmt.Printf(" credential=%s", secret)
+	}
+}
+
+func TestValidateConnectorProcessSpecMarksContractViolationInvalid(t *testing.T) {
+	err := validateConnectorProcessSpec(ProcessSpec{
+		Command:            []string{"/usr/bin/node"},
+		ExecutableIdentity: &ExecutableIdentity{SHA256: "abc", SizeBytes: 1},
+		Env: []string{
+			"HTTP_PROXY=http://127.0.0.1:7897",
+			"http_proxy=http://127.0.0.1:7897",
+		},
+	})
+	if !errors.Is(err, ErrProcessSpecInvalid) {
+		t.Fatalf("err = %v, want ErrProcessSpecInvalid", err)
 	}
 }
 

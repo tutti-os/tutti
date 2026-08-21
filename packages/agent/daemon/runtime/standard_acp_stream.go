@@ -34,6 +34,11 @@ func (a *standardACPAdapter) handleACPMessage(
 		"message_method", message.Method,
 		"message_id", rawMessageLogValue(message.ID),
 	)
+	if handler := a.config.providerMessageHandler; handler != nil {
+		if events, handled, err := handler(ctx, client, session, turnID, message, normalizer, emit); handled || err != nil {
+			return events, err
+		}
+	}
 	if diagnostics := a.config.messageDiagnostics; diagnostics != nil &&
 		message.Method == diagnostics.method {
 		if diagnostics.observeMessage != nil {
@@ -453,7 +458,13 @@ func (a *standardACPAdapter) applyACPUpdate(agentSessionID string, raw json.RawM
 	if session == nil {
 		return nil
 	}
-	return applyACPUpdateToLiveState(&session.acpLiveState, agentSessionID, raw)
+	return applyACPUpdateToLiveState(
+		&session.acpLiveState,
+		agentSessionID,
+		raw,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
 }
 
 func (a *standardACPAdapter) storePendingApproval(pending *pendingACPApproval) {

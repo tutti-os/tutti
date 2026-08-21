@@ -56,6 +56,7 @@ func (h *Host) persistRuntimeSubmitOutcome(
 	prepared preparedPromptContent,
 	displayPrompt string,
 	capabilityRefs []CapabilityReference,
+	metadata map[string]any,
 	tuttiModeSnapshot *TuttiModeTurnSnapshot,
 ) error {
 	return h.persistSubmitAfterRuntimeOutcome(
@@ -70,6 +71,7 @@ func (h *Host) persistRuntimeSubmitOutcome(
 		displayPrompt,
 		false,
 		capabilityRefs,
+		metadata,
 		tuttiModeSnapshot,
 	)
 }
@@ -90,6 +92,7 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 	displayPrompt string,
 	guidance bool,
 	capabilityRefs []CapabilityReference,
+	metadata map[string]any,
 	tuttiModeSnapshot *TuttiModeTurnSnapshot,
 ) error {
 	if h == nil || strings.TrimSpace(turnID) == "" {
@@ -126,6 +129,7 @@ func (h *Host) persistSubmitAfterRuntimeOutcome(
 		persistedContent,
 		displayPrompt,
 		capabilityRefs,
+		metadata,
 		tuttiModeSnapshot,
 	)
 }

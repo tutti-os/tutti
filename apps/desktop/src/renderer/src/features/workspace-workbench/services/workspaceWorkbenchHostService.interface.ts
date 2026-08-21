@@ -97,7 +97,13 @@ export type WorkspaceWorkbenchCapabilitySettingsTarget =
   | {
       kind: "connector";
       connectorKey: string;
-      action?: "open";
+      action?: "install" | "open";
+    }
+  | {
+      kind: "connector";
+      connectorKey: string;
+      action: "set_runtime_enabled";
+      enabled: boolean;
     };
 
 export interface WorkspaceBrowserPageOpenInput {
@@ -154,7 +160,7 @@ export interface WorkspaceWorkbenchHostSessionUpdate {
   i18n: WorkspaceWorkbenchDesktopI18nRuntime;
   onCapabilitySettingsRequest?: (
     target: WorkspaceWorkbenchCapabilitySettingsTarget
-  ) => void;
+  ) => void | Promise<void>;
   comingSoonAgentProviders?: readonly AgentGUIProvider[];
   renderFilesNodeBody: (
     context: WorkspaceWorkbenchBodyRendererContext

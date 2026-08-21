@@ -271,6 +271,15 @@ func serviceProviderDispatchFromRuntime(
 	projected := agenthost.RuntimeProviderDispatchResult{
 		Disposition: agenthost.RuntimeDispatchDisposition(dispatch.Disposition),
 	}
+	if diagnostics := dispatch.AcceptanceDiagnostics; diagnostics != nil {
+		projected.AcceptanceDiagnostics = &agenthost.RuntimeProviderAcceptanceDiagnostics{
+			Status:                   diagnostics.Status,
+			ProviderSessionIDPresent: diagnostics.ProviderSessionIDPresent,
+			ProviderTurnIDPresent:    diagnostics.ProviderTurnIDPresent,
+			ProviderTurnIDSource:     diagnostics.ProviderTurnIDSource,
+			FailureReason:            diagnostics.FailureReason,
+		}
+	}
 	if dispatch.Acceptance != nil {
 		projected.Acceptance = &agenthost.RuntimeProviderAcceptanceReceipt{
 			ProviderSessionID: dispatch.Acceptance.ProviderSessionID,
@@ -416,7 +425,8 @@ func (a agentRuntimeAdapter) SubmitInteractive(ctx context.Context, input agents
 		Payload:            input.Payload,
 	})
 	mapped := agentservice.RuntimeSubmitInteractiveResult{
-		Disposition: agentservice.RuntimeInteractiveDisposition(result.Disposition),
+		Disposition:    agentservice.RuntimeInteractiveDisposition(result.Disposition),
+		FollowUpPrompt: result.FollowUpPrompt,
 	}
 	if err != nil {
 		return mapped, mapAgentRuntimeError(err)

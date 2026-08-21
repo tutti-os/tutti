@@ -50,6 +50,7 @@ func (p *ActivityProjection) ObserveCommitted(ctx context.Context, delta agentho
 		p.observeSessionMessages(ctx, committed.Input, committed.Reply)
 	}
 	for _, settled := range delta.RootTurnsSettled {
+		p.reportRootTurnTerminalEvent(ctx, settled)
 		if settled.StartupReconciled {
 			// Startup reconciliation force-settles every turn left on disk.
 			// Waking the Tutti-mode and automation observers for those would

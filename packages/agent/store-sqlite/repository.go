@@ -681,8 +681,12 @@ type ListSessionInteractionsInput struct {
 // StaleTurnSettlement identifies one turn that startup reconciliation
 // force-settled with outcome interrupted.
 type StaleTurnSettlement struct {
-	TransactionID   string           `json:"-"`
-	CommitDelta     TransactionDelta `json:"-"`
+	TransactionID string           `json:"-"`
+	CommitDelta   TransactionDelta `json:"-"`
+	// Turn is the complete canonical row after startup reconciliation commits
+	// its settled/interrupted transition. Consumers must use this copy instead
+	// of reconstructing provenance from the scalar notification identity.
+	Turn            Turn
 	WorkspaceID     string
 	AgentSessionID  string
 	TurnID          string
@@ -717,15 +721,19 @@ type SessionStateReport struct {
 	ImportProjectPath string
 	// RailPlacement is an explicit caller-selected placement for a newly
 	// created session. The first accepted value is immutable.
-	RailPlacement    *RailSection
-	Title            string
-	Status           string
-	CurrentPhase     string
-	LastError        string
-	OccurredAtUnixMS int64
-	StartedAtUnixMS  int64
-	EndedAtUnixMS    int64
-	CreatedAtUnixMS  int64
+	RailPlacement *RailSection
+	// RailPlacementAuthoritative accepts an explicit project placement even
+	// when it is absent from this store's local project registry. It does not
+	// permit changing an existing session's immutable placement.
+	RailPlacementAuthoritative bool
+	Title                      string
+	Status                     string
+	CurrentPhase               string
+	LastError                  string
+	OccurredAtUnixMS           int64
+	StartedAtUnixMS            int64
+	EndedAtUnixMS              int64
+	CreatedAtUnixMS            int64
 }
 
 type StateReportResult struct {

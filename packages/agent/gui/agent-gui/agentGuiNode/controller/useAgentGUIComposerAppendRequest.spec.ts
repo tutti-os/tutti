@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendAgentGUIComposerConnector,
   appendAgentGUIComposerFiles,
   appendAgentGUIComposerPrompt,
   resolveAgentGUIComposerAppendRequest,
@@ -7,6 +8,7 @@ import {
 } from "./useAgentGUIComposerAppendRequest";
 import {
   agentComposerDraftFiles,
+  agentComposerDraftConnectors,
   agentComposerDraftPrompt,
   agentComposerDraftToPromptContent,
   buildAgentComposerDraft
@@ -24,6 +26,25 @@ const archivedContextFile = {
   path: "/tmp/context.txt",
   sizeBytes: 42
 };
+
+describe("appendAgentGUIComposerConnector", () => {
+  it("selects a connector semantically without changing the typed prompt", () => {
+    const draft = buildAgentComposerDraft({ prompt: "Summarize my workspace" });
+    const next = appendAgentGUIComposerConnector(draft, "notion");
+
+    expect(agentComposerDraftPrompt(next)).toBe("Summarize my workspace");
+    expect(agentComposerDraftConnectors(next)).toEqual([
+      { connectorKey: "notion" }
+    ]);
+    expect(appendAgentGUIComposerConnector(next, "notion")).toBe(next);
+    expect(
+      agentComposerDraftToPromptContent({ draft: next, skills: [] })
+    ).toEqual([
+      { type: "text", text: "Summarize my workspace" },
+      { type: "connector", connectorKey: "notion" }
+    ]);
+  });
+});
 
 describe("appendAgentGUIComposerFiles", () => {
   it("preserves the public files contract and appends landed attachments", () => {
@@ -93,6 +114,35 @@ describe("appendAgentGUIComposerPrompt", () => {
 });
 
 describe("resolveAgentGUIComposerAppendRequest", () => {
+  it("routes a connector selection to the exact active draft once", () => {
+    const request: AgentGUIComposerAppendRequest = {
+      agentSessionId: "session-1",
+      connectorKey: "notion",
+      sequence: 9
+    };
+    const resolved = resolveAgentGUIComposerAppendRequest({
+      activeConversationId: "session-1",
+      draftByScopeKey: {
+        "session:session-1": buildAgentComposerDraft({ prompt: "Keep me" })
+      },
+      handledSequence: null,
+      request
+    });
+
+    expect(agentComposerDraftPrompt(resolved!.nextDraft)).toBe("Keep me");
+    expect(agentComposerDraftConnectors(resolved!.nextDraft)).toEqual([
+      { connectorKey: "notion" }
+    ]);
+    expect(
+      resolveAgentGUIComposerAppendRequest({
+        activeConversationId: "session-1",
+        draftByScopeKey: { "session:session-1": resolved!.nextDraft },
+        handledSequence: 9,
+        request
+      })
+    ).toBeNull();
+  });
+
   it("waits for the exact target session before appending a routed prompt", () => {
     const request: AgentGUIComposerAppendRequest = {
       agentSessionId: "source-session",

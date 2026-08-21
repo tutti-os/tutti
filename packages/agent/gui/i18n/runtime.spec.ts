@@ -15,4 +15,18 @@ describe("AgentGUI bundled i18n runtime", () => {
       );
     }
   );
+
+  it.each([
+    ["en", "Account quota is currently unavailable"],
+    ["zh-CN", "账户额度暂不可用"]
+  ] as const)(
+    "uses precise unavailable account quota copy for %s",
+    (locale, expected) => {
+      const { runtime } = resolveAgentGuiI18nRuntime({ locale });
+
+      expect(runtime.t("agentHost.agentGui.slashStatusLimitsUnavailable")).toBe(
+        expected
+      );
+    }
+  );
 });

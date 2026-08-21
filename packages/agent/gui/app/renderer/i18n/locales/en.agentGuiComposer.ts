@@ -7,5 +7,7 @@ export const enAgentGuiComposer = {
   sendFailed: "The message could not be sent.",
   returnToConversation: "Back to conversation",
   continueAnswering: "Continue answering",
-  inheritedUnavailable: "Inherited / unavailable"
+  inheritedUnavailable: "Inherited / unavailable",
+  modelConsumptionSpeedLabel: "Consumption rate",
+  modelConsumptionMultiplierSuffix: "multiplier"
 };

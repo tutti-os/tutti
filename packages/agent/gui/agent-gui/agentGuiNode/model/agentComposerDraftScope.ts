@@ -33,3 +33,7 @@ export function resolveAgentComposerDraftScopeKey(input: {
   }
   return AGENT_COMPOSER_HOME_DRAFT_SCOPE;
 }
+
+export function isAgentComposerSessionDraftScope(scopeKey: string): boolean {
+  return scopeKey.startsWith("session:");
+}

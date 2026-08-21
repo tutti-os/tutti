@@ -135,7 +135,11 @@ func renderTuttiModeHostContextForCLI(snapshot *TuttiModeTurnSnapshot, cliName s
 			"Copy effect and speed into the optional execution.effect and execution.speed preference snapshots. Keep the existing execution.reasoningIntensity and execution.orchestrationIntensity meanings unchanged: reasoningIntensity is the Issue/provider reasoning strength, while orchestrationIntensity is decomposition, dependency, review, and retry strength and must never represent speed. For every task, state concrete validation expectations scaled by effect: low means one focused check, balanced means relevant tests plus integration checks when applicable, and high means broad relevant tests, edge/variant coverage, and an explicit final review. Do not invent tasks merely to fill parallelTarget; actual concurrency is limited by real dependency and ownership boundaries, safe isolation, budget, ready work, and workspace capacity. " +
 			"Read-only investigation (for example reading files or listing directories) is allowed when needed to write an accurate plan, but do not start making changes or produce final deliverables. " +
 			"Use this Tutti plan workflow for the turn; do not substitute a provider-native planning mode for it."
-		workflowGuide = renderTuttiModeWorkflowGuide(cliName)
+		workflowGuide = renderTuttiModeWorkflowGuide(
+			cliName,
+			normalized.Effect,
+			normalized.Speed,
+		)
 	}
 	return `<tutti-host-context schemaVersion="1">` + "\n" +
 		string(facts) + "\n" +
@@ -150,7 +154,7 @@ func renderTuttiModeHostContextForCLI(snapshot *TuttiModeTurnSnapshot, cliName s
 // Providers repeatedly misread the bare directive as referring to a built-in
 // tool they lack and fall back to provider planning surfaces, so each step
 // carries the concrete shell command and document shape it expects.
-func renderTuttiModeWorkflowGuide(cliName string) string {
+func renderTuttiModeWorkflowGuide(cliName string, effect int, speed int) string {
 	return fmt.Sprintf("Workflow examples. `%[1]s` is the Tutti CLI executable on PATH in your shell; every plan command below is a shell command, not a built-in tool. Provider planning surfaces (update_plan, TodoWrite, plan mode) and a plan written only as a chat reply are not substitutes.\n"+
 		"Step 1 example, only when something material is unknown, ask and stop: \"Should the FAQ target end users or contributors, and where in the README should it live?\"\n"+
 		"Step 2 example, first discover launch options (read-only), then write the plan file, then run propose:\n"+
@@ -170,9 +174,9 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"topicId: default\n"+
 		"execution:\n"+
 		"  mode: sequential\n"+
-		"  effect: 80\n"+
-		"  speed: 60\n"+
-		"  reasoningIntensity: 80\n"+
+		"  effect: %[2]d\n"+
+		"  speed: %[3]d\n"+
+		"  reasoningIntensity: %[2]d\n"+
 		"  orchestrationIntensity: 50\n"+
 		"tasks:\n"+
 		"  - id: task-1\n"+
@@ -214,7 +218,7 @@ func renderTuttiModeWorkflowGuide(cliName string) string {
 		"Step 3, end the turn as soon as propose returns a workflowId (nextAction \"stop\") — there is no wait command, and polling with plan get wastes the turn. The user reviews the plan in their own time; their decision reaches you as a new user message. "+
 		"If that message requests changes, update the plan document, run `%[1]s plan revise --workflow-id <workflowId> --file <absolute path> --request-id <new id>`, and end the turn again. If the user accepts, Tutti materializes an inert Issue plus an initial execution checkpoint, and this conversation becomes the plan's orchestrator. Inspect the checkpoint and board state, choose no more than parallelTarget exact ready task IDs to run, then invoke `%[1]s plan issue schedule --issue-id <issueId> --checkpoint-id <checkpointId> --expected-graph-revision <revision> --task-ids-json '[\"task-1\"]' --request-id <stable-id>`; the command must schedule exactly the task IDs you selected. After every task settles this conversation is woken again to review evidence and explicitly decide the next graph command; it never executes the child tasks' work itself. The user can steer you with messages at any time, and stopping this conversation stops every running task. A dispatch-paused Issue must stay quiet; when the user explicitly asks to continue, the original source conversation can run `%[1]s plan issue resume --issue-id <issueId> --json` before using the unchanged active checkpoint. When all tasks becoming terminal starts Goal Review, review whether the user's goal is actually satisfied and never infer completion from task counts. Add and schedule more work when needed; otherwise finish only with `%[1]s plan issue complete --issue-id <issueId> --checkpoint-id <checkpointId> --expected-graph-revision <revision> --decision goal_satisfied --request-id <stable-id>`. An independent reviewer verdict is advisory evidence; a negative or inconclusive verdict requires an audited disagreement reason before completion.\n"+
 		"A Tutti plan exists only after plan propose returns a workflowId; a plan that was only shown in chat was never submitted.\n",
-		cliName)
+		cliName, effect, speed)
 }
 
 func appendTuttiModeHostContextPrompt(content []map[string]any, snapshot *TuttiModeTurnSnapshot) []map[string]any {

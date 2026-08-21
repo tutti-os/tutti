@@ -68,6 +68,7 @@ var (
 	_ host.RuntimeSubmitProvenanceReporter         = (*RuntimeController)(nil)
 	_ host.SessionForkRuntime                      = (*RuntimeController)(nil)
 	_ host.SessionForkTurnBindingRecoveryRuntime   = (*RuntimeController)(nil)
+	_ host.SideConversationRuntime                 = (*RuntimeController)(nil)
 	_ host.GoalRuntimeController                   = (*RuntimeController)(nil)
 	_ host.GoalRuntimeControlLifecycleRegistrar    = (*RuntimeController)(nil)
 	_ host.GoalRuntimeReconciler                   = (*RuntimeController)(nil)
@@ -77,19 +78,6 @@ var (
 
 type runtimeSessionReprepareBackend interface {
 	Reprepare(context.Context, agentruntime.ResumeInput) (agentruntime.Session, error)
-}
-
-type sessionForkRuntimeBackend interface {
-	ForkCapabilities(context.Context, agentruntime.Session) (agentruntime.SessionForkCapabilities, error)
-	CanForkProviderTurn(context.Context, agentruntime.ProviderTurnForkabilityInput) (bool, error)
-	Fork(context.Context, agentruntime.SessionForkInput) (agentruntime.SessionForkResult, error)
-}
-
-type providerTurnBindingRecoveryBackend interface {
-	RecoverProviderTurnBinding(
-		context.Context,
-		agentruntime.ProviderTurnBindingRecoveryInput,
-	) (agentruntime.ProviderTurnBindingRecoveryResult, error)
 }
 
 func (a *RuntimeController) SupportsEffectiveHistory(
@@ -348,12 +336,16 @@ func (a *RuntimeController) Cancel(ctx context.Context, input host.RuntimeCancel
 	for _, target := range result.ConfirmedTargets {
 		confirmed = append(confirmed, host.RuntimeCancelTarget{AgentSessionID: target.AgentSessionID, TurnID: target.TurnID})
 	}
-	return host.RuntimeCancelResult{
+	hostResult := host.RuntimeCancelResult{
 		AgentSessionID:   result.AgentSessionID,
 		Canceled:         result.Canceled,
 		TargetAbsent:     result.TargetAbsent,
 		ConfirmedTargets: confirmed,
-	}, mapRuntimeError(err)
+	}
+	if errors.Is(err, agentruntime.ErrCancelTargetMismatch) {
+		return hostResult, host.ErrRuntimeCancelDeliveryUnconfirmed
+	}
+	return hostResult, mapRuntimeError(err)
 }
 
 func (a *RuntimeController) SubmitInteractive(ctx context.Context, input host.RuntimeSubmitInteractiveInput) (host.RuntimeSubmitInteractiveResult, error) {
@@ -365,7 +357,10 @@ func (a *RuntimeController) SubmitInteractive(ctx context.Context, input host.Ru
 		AgentSessionID: input.AgentSessionID, TurnID: input.TurnID, RequestID: input.RequestID,
 		Action: input.Action, OptionID: input.OptionID, Payload: cloneMap(input.Payload),
 	})
-	return host.RuntimeSubmitInteractiveResult{Disposition: host.RuntimeInteractiveDisposition(result.Disposition)}, mapRuntimeError(err)
+	return host.RuntimeSubmitInteractiveResult{
+		Disposition:    host.RuntimeInteractiveDisposition(result.Disposition),
+		FollowUpPrompt: result.FollowUpPrompt,
+	}, mapRuntimeError(err)
 }
 
 func (a *RuntimeController) InteractiveDisposition(workspaceID, rootSessionID, sessionID, turnID, requestID string) host.RuntimeInteractiveDisposition {
@@ -550,35 +545,6 @@ func (a *RuntimeController) CanForkProviderTurn(
 	)
 }
 
-func (a *RuntimeController) RecoverProviderTurnBinding(
-	ctx context.Context,
-	input host.RuntimeProviderTurnBindingRecoveryInput,
-) (host.RuntimeProviderTurnBindingRecoveryResult, error) {
-	if err := a.requireBackend(); err != nil {
-		return host.RuntimeProviderTurnBindingRecoveryResult{}, err
-	}
-	backend, ok := a.Backend.(providerTurnBindingRecoveryBackend)
-	if !ok {
-		return host.RuntimeProviderTurnBindingRecoveryResult{},
-			host.ErrSessionForkUnsupported
-	}
-	result, err := backend.RecoverProviderTurnBinding(
-		ctx,
-		agentruntime.ProviderTurnBindingRecoveryInput{
-			Source:               runtimeSession(input.Source),
-			CanonicalTurnID:      input.CanonicalTurnID,
-			RecoveryToken:        input.RecoveryToken,
-			LegacyTextHMACKey:    input.LegacyTextHMACKey,
-			LegacyTextHMACDigest: input.LegacyTextHMACDigest,
-		},
-	)
-	return host.RuntimeProviderTurnBindingRecoveryResult{
-		ProviderSessionID:       result.ProviderSessionID,
-		ProviderTurnID:          result.ProviderTurnID,
-		ProviderTurnBindingJSON: append([]byte(nil), result.ProviderTurnBindingJSON...),
-	}, mapRuntimeError(err)
-}
-
 func firstNonEmptyString(values ...string) string {
 	for _, value := range values {
 		if value = strings.TrimSpace(value); value != "" {
@@ -672,6 +638,31 @@ func mapRuntimeError(err error) error {
 	if errors.Is(err, agentruntime.ErrEffectiveHistoryUnsupported) {
 		return host.ErrRuntimeHistoryUnsupported
 	}
+	if errors.Is(err, agentruntime.ErrSideConversationUnsupported) {
+		return errors.Join(host.ErrSideConversationUnsupported, err)
+	}
+	if errors.Is(err, agentruntime.ErrSideConversationConflict) {
+		return errors.Join(host.ErrSideConversationConflict, err)
+	}
+	if errors.Is(err, agentruntime.ErrSideConversationExpired) {
+		return errors.Join(host.ErrSideConversationExpired, err)
+	}
+	if errors.Is(err, agentruntime.ErrInteractiveRequestNotLive) {
+		return errors.Join(host.ErrInteractiveRequestNotLive, err)
+	}
+	if errors.Is(err, agentruntime.ErrInteractiveAlreadyAnswered) {
+		return errors.Join(host.ErrInteractiveAlreadyAnswered, err)
+	}
+	if errors.Is(err, agentruntime.ErrInteractiveResponseInvalid) {
+		return errors.Join(host.ErrInteractiveResponseInvalid, err)
+	}
+	if errors.Is(err, agentruntime.ErrProviderStartTimeout) {
+		var appErr *agentruntime.AppError
+		if errors.As(err, &appErr) && appErr != nil {
+			return host.NewProviderStartTimeoutError(appErr.Message, appErr.DebugMessage, err)
+		}
+		return host.NewProviderStartTimeoutError("", "", err)
+	}
 	var appErr *agentruntime.AppError
 	if errors.As(err, &appErr) && appErr != nil {
 		if errors.Is(appErr, context.Canceled) || errors.Is(appErr, context.DeadlineExceeded) {
@@ -690,6 +681,8 @@ func (a *RuntimeController) fromSession(session agentruntime.Session) host.Provi
 	}
 	return host.ProviderRuntimeSession{
 		ID: session.AgentSessionID, WorkspaceID: session.RoomID, UserID: a.currentUserID(),
+		Scope:                host.RuntimeSessionScope(session.Scope),
+		SourceAgentSessionID: session.SourceAgentSessionID, SideRequestID: session.SideRequestID,
 		AgentTargetID: session.AgentTargetID, Provider: session.Provider, ProviderSessionID: session.ProviderSessionID,
 		Resumable: session.Resumable,
 		Cwd:       session.CWD, Env: append([]string(nil), session.Env...), MCPServers: hostMCPServerBindings(session.MCPServers), Settings: settings,
@@ -708,6 +701,8 @@ func runtimeSession(session host.ProviderRuntimeSession) agentruntime.Session {
 	}
 	return agentruntime.Session{
 		RoomID: session.WorkspaceID, AgentSessionID: session.ID,
+		Scope:                agentruntime.RuntimeSessionScope(session.Scope),
+		SourceAgentSessionID: session.SourceAgentSessionID, SideRequestID: session.SideRequestID,
 		AgentTargetID: session.AgentTargetID, Provider: session.Provider,
 		ProviderSessionID: session.ProviderSessionID, Resumable: session.Resumable,
 		CWD: session.Cwd, Env: append([]string(nil), session.Env...), MCPServers: runtimeMCPServerBindings(session.MCPServers),
@@ -795,7 +790,16 @@ func runtimeExecInput(input host.RuntimeExecInput) agentruntime.ExecInput {
 		Metadata: cloneMap(input.Metadata), Guidance: input.Guidance,
 		HistoryReplacement:        input.HistoryReplacement,
 		RequireProviderAcceptance: input.RequireProviderAcceptance,
+		ConnectorRoutingUpdate:    cloneStringPointer(input.ConnectorRoutingUpdate),
 	}
+}
+
+func cloneStringPointer(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
 }
 
 func runtimeHistoryInput(input host.RuntimeHistoryInput) agentruntime.EffectiveHistoryInput {

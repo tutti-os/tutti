@@ -93,7 +93,7 @@ func testCommandCapabilities() []CommandCapability {
 		command("workspace-apps.app.open", []string{"app", "open"}, []string{"app-id"}, nil),
 		command("references.task.list", []string{"reference", "list"}, []string{"source", "id"}, []string{"group-id"}),
 		command("agent-context.agent.list", []string{"agent", "list"}, nil, []string{"agent-id"}),
-		command("agent-context.agent.start", []string{"agent", "start"}, []string{"agent-id", "prompt"}, []string{"show", "image"}),
+		command("agent-context.agent.start", []string{"agent", "start"}, []string{"agent-id", "prompt"}, []string{"show", "image", "cwd"}),
 		command("agent-context.agent.send", []string{"agent", "send"}, []string{"session-id", "prompt"}, nil),
 		command("agent-context.agent.get", []string{"agent", "get"}, []string{"session-id"}, []string{"view", "turns", "turn-id"}),
 		command("agent-context.agent.sessions", []string{"agent", "sessions"}, nil, nil),

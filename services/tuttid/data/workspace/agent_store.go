@@ -39,7 +39,10 @@ func newAgentStore(db *sql.DB) *agentactivitybiz.Store {
 			legacyIDLocalClaudeCode: agenttargetbiz.IDLocalClaudeCode,
 		},
 		TargetIDBackfillByProvider: defaultTargetIDBackfillByProvider(),
-		TransactionParticipant:     tuttiModeSourceActivityParticipant{},
+		TransactionParticipant: agentTransactionParticipants{
+			tuttiModeSourceActivityParticipant{},
+			agentTurnTerminalAnalyticsParticipant{},
+		},
 	})
 }
 
@@ -366,6 +369,10 @@ func (s *SQLiteStore) UpdateSessionTitle(ctx context.Context, workspaceID string
 
 func (s *SQLiteStore) GetTurn(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.Turn, bool, error) {
 	return s.agentReadStore().GetTurn(ctx, workspaceID, agentSessionID, turnID)
+}
+
+func (s *SQLiteStore) GetTurnSubmission(ctx context.Context, workspaceID string, agentSessionID string, turnID string) (agentactivitybiz.TurnSubmission, bool, error) {
+	return s.agentReadStore().GetTurnSubmission(ctx, workspaceID, agentSessionID, turnID)
 }
 
 func (s *SQLiteStore) GetLatestTurn(ctx context.Context, workspaceID string, agentSessionID string) (agentactivitybiz.Turn, bool, error) {

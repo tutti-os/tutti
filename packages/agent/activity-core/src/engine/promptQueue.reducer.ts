@@ -1,12 +1,12 @@
 import type { AgentActivityMessage } from "../types.ts";
 import type {
   EngineCommand,
-  EngineCommandResultIntent,
   EngineIntent,
   EngineReducerResult
 } from "./types.ts";
 import type {
   PromptQueueIntent,
+  PromptQueuePendingSendNow,
   PromptQueueRecord,
   PromptQueueState
 } from "./promptQueue.types.ts";
@@ -42,15 +42,19 @@ import {
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 import { promptVisibleInQueueAdmission } from "./promptQueue.admission.ts";
 import { affectedPromptQueueSessionIds } from "./promptQueue.affectedSessions.ts";
+import {
+  pendingSendNowFromSubmit,
+  resolvePendingSendNow,
+  setPendingSendNowForPrompt
+} from "./promptQueue.pendingSendNow.ts";
 import { queuedPromptFromSubmitIntent } from "./promptQueue.submit.ts";
 import {
   requestPromptExecution,
   settlePromptSettingsPrecondition
 } from "./promptQueue.precondition.ts";
-import {
-  queueOwnedReconcileCommand,
-  settleOwnedQueueReconcile
-} from "./promptQueue.ownedReconcile.ts";
+import { settleOwnedQueueReconcile } from "./promptQueue.ownedReconcile.ts";
+import { isPreTurnSendFailure } from "./promptSendFailure.ts";
+import { settleQueueCommand } from "./promptQueue.settle.ts";
 import type { RootEngineReducerResult } from "./rootReducer.types.ts";
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
@@ -83,7 +87,7 @@ export function promptQueueReducer(
   if (intent.type === "submit/requested" && intent.routing === "immediate") {
     return reduced;
   }
-  if (isNoActiveTurnSendFailure(intent)) {
+  if (isPreTurnSendFailure(intent)) {
     return reduced;
   }
   return drainAffectedSessions(
@@ -115,13 +119,20 @@ function reduceQueueOwnedState(
       }
       if (intent.routing === "send_now") {
         if (!context.sendNowStrategy) return unchanged(state);
+        const targetTurnId =
+          intent.targetTurnId ??
+          activeTurnIdForSession(context.lifecycle, intent.agentSessionId);
         return requestQueuedPromptSendNow(
           enqueueSubmit(state, intent, context.lifecycle).state,
           intent.agentSessionId,
           intent.clientSubmitId,
           context.sendNowStrategy,
-          intent.targetTurnId ??
-            activeTurnIdForSession(context.lifecycle, intent.agentSessionId)
+          targetTurnId,
+          pendingSendNowFromSubmit(
+            intent,
+            context.sendNowStrategy,
+            targetTurnId
+          )
         );
       }
       return enqueueSubmit(state, intent, context.lifecycle);
@@ -154,12 +165,26 @@ function reduceQueueOwnedState(
       ) {
         return unchanged(state);
       }
+      const activeTurnId = activeTurnIdForSession(
+        context.lifecycle,
+        intent.agentSessionId
+      );
+      const targetTurnId = intent.targetTurnId?.trim() || activeTurnId;
       return requestQueuedPromptSendNow(
         state,
         intent.agentSessionId,
         intent.promptId,
         context.sendNowStrategy,
-        activeTurnIdForSession(context.lifecycle, intent.agentSessionId)
+        targetTurnId,
+        context.sendNowStrategy === "await_capabilities" && targetTurnId
+          ? {
+              awaitingTurnExpiresAtUnixMs: intent.awaitingTurnExpiresAtUnixMs,
+              cancelCommandId: intent.cancelCommandId,
+              promptId: intent.promptId,
+              targetTurnId,
+              timeoutMs: intent.timeoutMs
+            }
+          : null
       );
     case "queue/suspended":
       return suspendQueue(state, intent.agentSessionId, intent.reason);
@@ -307,6 +332,11 @@ function removePrompt(
     failureMessage:
       current.failedPromptId === promptId ? null : current.failureMessage,
     prompts: current.prompts.filter((prompt) => prompt.id !== promptId),
+    pendingSendNowByPromptId: setPendingSendNowForPrompt(
+      current.pendingSendNowByPromptId,
+      promptId,
+      null
+    ),
     sendNextPromptId:
       current.sendNextPromptId === promptId ? null : current.sendNextPromptId
   });
@@ -322,7 +352,8 @@ function requestQueuedPromptSendNow(
   rawAgentSessionId: string,
   rawPromptId: string,
   strategy: PromptQueueSendNowStrategy,
-  targetTurnId?: string
+  targetTurnId?: string,
+  pendingSendNow: PromptQueuePendingSendNow | null = null
 ): EngineReducerResult<PromptQueueState> {
   const agentSessionId = rawAgentSessionId.trim();
   const promptId = rawPromptId.trim();
@@ -337,15 +368,21 @@ function requestQueuedPromptSendNow(
   const selectedWithoutGuidance = { ...selected! };
   delete selectedWithoutGuidance.guidance;
   delete selectedWithoutGuidance.targetTurnId;
-  prompts.unshift(
-    strategy === "native_guidance"
-      ? {
-          ...selectedWithoutGuidance,
-          guidance: true,
-          ...(targetTurnId?.trim() ? { targetTurnId: targetTurnId.trim() } : {})
-        }
-      : selectedWithoutGuidance
-  );
+  if (strategy === "await_capabilities") {
+    prompts.splice(index, 0, selectedWithoutGuidance);
+  } else {
+    prompts.unshift(
+      strategy === "native_guidance"
+        ? {
+            ...selectedWithoutGuidance,
+            guidance: true,
+            ...(targetTurnId?.trim()
+              ? { targetTurnId: targetTurnId.trim() }
+              : {})
+          }
+        : selectedWithoutGuidance
+    );
+  }
   return result(
     replaceRecord(state, agentSessionId, {
       ...current,
@@ -353,6 +390,11 @@ function requestQueuedPromptSendNow(
         current.failedPromptId === promptId ? null : current.failedPromptId,
       failureMessage:
         current.failedPromptId === promptId ? null : current.failureMessage,
+      pendingSendNowByPromptId: setPendingSendNowForPrompt(
+        current.pendingSendNowByPromptId,
+        promptId,
+        strategy === "await_capabilities" ? pendingSendNow : null
+      ),
       prompts,
       sendNextPromptId: strategy === "cancel_then_send" ? promptId : null,
       suspendReason: null
@@ -395,90 +437,6 @@ function resumeQueue(
       );
 }
 
-function settleQueueCommand(
-  state: PromptQueueState,
-  intent: EngineCommandResultIntent,
-  validation: SendInputResultValidation | null
-): EngineReducerResult<PromptQueueState> {
-  const entry = Object.entries(state.recordsBySessionId).find(
-    ([, record]) => record.inFlight?.commandId === intent.commandId
-  );
-  if (!entry) return unchanged(state);
-  const [agentSessionId, current] = entry;
-  const inFlight = current.inFlight!;
-  if (intent.outcome === "succeeded" && validation?.kind === "valid") {
-    const deliveryBarrierTurnId =
-      validation.result.kind === "goalControl"
-        ? null
-        : validation.result.turnId;
-    const record = compactQueueRecord({
-      ...current,
-      deliveryBarrierTurnId,
-      failedPromptId: null,
-      failureMessage: null,
-      inFlight: null,
-      prompts: current.prompts.filter(
-        (prompt) => prompt.id !== inFlight.promptId
-      ),
-      sendNextPromptId:
-        current.sendNextPromptId === inFlight.promptId
-          ? null
-          : current.sendNextPromptId
-    });
-    return result(
-      record
-        ? replaceRecord(state, agentSessionId, record)
-        : deleteRecord(state, agentSessionId)
-    );
-  }
-  if (intent.outcome === "timedOut" || intent.outcome === "succeeded") {
-    const record = {
-      ...current,
-      failedPromptId: inFlight.promptId,
-      failureMessage: null,
-      inFlight: null,
-      uncertainDelivery: inFlight
-    };
-    return {
-      commands: [
-        queueOwnedReconcileCommand(agentSessionId, current.workspaceId, intent)
-      ],
-      state: replaceRecord(state, agentSessionId, record)
-    };
-  }
-  if (isNoActiveTurnSendFailure(intent)) {
-    return {
-      commands: [
-        queueOwnedReconcileCommand(agentSessionId, current.workspaceId, intent)
-      ],
-      state: replaceRecord(state, agentSessionId, {
-        ...current,
-        failedPromptId: null,
-        failureMessage: null,
-        inFlight: null
-      })
-    };
-  }
-  return result(
-    replaceRecord(state, agentSessionId, {
-      ...current,
-      failedPromptId: inFlight.promptId,
-      failureMessage: intent.errorMessage?.trim() || null,
-      inFlight: null
-    })
-  );
-}
-
-function isNoActiveTurnSendFailure(intent: EngineIntent): boolean {
-  return (
-    intent.type === "engine/commandResult" &&
-    intent.commandType === "queue/sendPrompt" &&
-    intent.outcome === "failed" &&
-    (intent.errorReason?.trim() === "agent.no_active_turn" ||
-      intent.errorCode?.trim() === "agent.no_active_turn")
-  );
-}
-
 function confirmDeliveredPrompts(
   state: PromptQueueState,
   messages: readonly AgentActivityMessage[]
@@ -508,6 +466,11 @@ function confirmDeliveredPrompts(
       inFlight:
         current.inFlight?.promptId === matched.id ? null : current.inFlight,
       prompts: current.prompts.filter((prompt) => prompt.id !== matched.id),
+      pendingSendNowByPromptId: setPendingSendNowForPrompt(
+        current.pendingSendNowByPromptId,
+        matched.id,
+        null
+      ),
       sendNextPromptId:
         current.sendNextPromptId === matched.id
           ? null
@@ -608,6 +571,26 @@ function drainSession(
     lifecycle,
     agentSessionId
   );
+  const pendingResolution = resolvePendingSendNow({
+    activeTurnId: activeTurnIdForSession(lifecycle, agentSessionId),
+    availability,
+    capabilities: lifecycle.sessionsById[agentSessionId]?.capabilities,
+    record
+  });
+  if (pendingResolution.kind === "waiting") {
+    return state === originalState ? unchanged(state) : result(state);
+  }
+  if (pendingResolution.record !== record) {
+    record = pendingResolution.record;
+    state = replaceRecord(state, agentSessionId, record);
+  }
+  if (pendingResolution.kind === "request") {
+    return {
+      commands: NO_COMMANDS,
+      followUpIntents: [pendingResolution.intent],
+      state
+    };
+  }
   // The guidance flag was resolved when the prompt entered the queue; whether
   // it can steer is decided here, against the availability observed at drain
   // time. A prompt queued as guidance behind a turn that has since settled is

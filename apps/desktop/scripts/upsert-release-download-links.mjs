@@ -34,7 +34,7 @@ function findAssetName(assetNames, pattern) {
 
 function resolveDesktopDownloadLinks(
   assetNames,
-  releaseTag,
+  releaseAssetPath,
   releaseAssetBaseUrl
 ) {
   const desktopAssets = [
@@ -56,6 +56,11 @@ function resolveDesktopDownloadLinks(
     }
   ];
   const normalizedBaseUrl = normalizeBaseUrl(releaseAssetBaseUrl);
+  const normalizedAssetPath = releaseAssetPath
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
 
   return desktopAssets
     .map(({ label, pattern }) => {
@@ -64,7 +69,7 @@ function resolveDesktopDownloadLinks(
         return null;
       }
 
-      const assetUrl = `${normalizedBaseUrl}/${encodeURIComponent(releaseTag)}/${encodeURIComponent(assetName)}`;
+      const assetUrl = `${normalizedBaseUrl}/${normalizedAssetPath}/${encodeURIComponent(assetName)}`;
       return `- [${label}](${assetUrl})`;
     })
     .filter(Boolean);
@@ -74,17 +79,18 @@ function buildUpdatedReleaseBody({
   assetNames,
   existingBody,
   releaseAssetBaseUrl,
-  releaseTag
+  releaseTag,
+  releaseAssetPath = releaseTag
 }) {
   const cleanedBody = removeManagedSection(existingBody);
 
-  if (!releaseTag || !releaseAssetBaseUrl) {
+  if (!releaseAssetPath || !releaseAssetBaseUrl) {
     return buildLimitedGithubReleaseBody({ existingBody: cleanedBody });
   }
 
   const directDownloadLinks = resolveDesktopDownloadLinks(
     [...assetNames].sort((left, right) => left.localeCompare(right)),
-    releaseTag,
+    releaseAssetPath,
     releaseAssetBaseUrl
   );
 
@@ -115,6 +121,9 @@ async function main() {
   }
 
   const releaseTag = (process.env.RELEASE_TAG ?? "").trim();
+  const releaseAssetPath = (
+    process.env.RELEASE_ASSET_PATH ?? releaseTag
+  ).trim();
   const releaseAssetBaseUrl = (process.env.RELEASE_ASSET_BASE_URL ?? "").trim();
   const existingBody = await readFile(existingBodyPath, "utf8");
   const assetNames = (await readdir(assetDirPath)).map((name) =>
@@ -124,6 +133,7 @@ async function main() {
     assetNames,
     existingBody,
     releaseAssetBaseUrl,
+    releaseAssetPath,
     releaseTag
   });
 

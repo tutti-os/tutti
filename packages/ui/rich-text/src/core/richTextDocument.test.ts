@@ -2,12 +2,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendRichTextLinksToContent,
+  createRichTextLinkMarkdown,
   createRichTextMarkdownLink,
   createRichTextMentionHref,
   createRichTextMentionMarkdown,
   extractRichTextLinksFromContent,
   extractPlainTextFromContent,
   extractRichTextMentionsFromContent,
+  isRichTextFolderHref,
   normalizeRichTextLinkHref,
   parseRichTextContentToDocument,
   parseRichTextMentionHref,
@@ -282,6 +284,22 @@ test("manages generic markdown link refs without workspace-specific exports", ()
   assert.equal(
     removeRichTextLinkFromContent(content, "/workspace/docs/README.md"),
     "Notes [docs](/workspace/docs/)"
+  );
+});
+
+test("recognizes native Windows folder links and keeps their basename", () => {
+  const nativeFolder = "C:\\Users\\demo\\workspace\\generated\\";
+
+  assert.equal(isRichTextFolderHref(nativeFolder), true);
+  assert.equal(normalizeRichTextLinkHref(nativeFolder, "folder"), nativeFolder);
+  const escapedFolder = nativeFolder.replace(/[\\()]/g, "\\$&");
+  assert.equal(
+    createRichTextMarkdownLink({ href: nativeFolder, label: "generated" }),
+    `[generated](${escapedFolder})`
+  );
+  assert.equal(
+    createRichTextLinkMarkdown({ path: nativeFolder, kind: "folder" }),
+    `[generated](${escapedFolder})`
   );
 });
 

@@ -22,8 +22,9 @@ export type DesktopAgentGUIHostProps = {
   hostCapabilities: Pick<
     AgentGUIProps["hostCapabilities"],
     | "referenceProvenanceFilterEnabled"
+    | "sideConversationEnabled"
+    | "sideConversationPresentation"
     | "sessionInputHistoryEnabled"
-    | "sessionForkEnabled"
     | "sessionWorktreeEnabled"
     | "sessionLaunchModesByProjectSectionKey"
     | "codexSaverModeEntryEnabled"
@@ -57,7 +58,10 @@ export type DesktopAgentGUIHostProps = {
   >;
   renderSlots: Pick<
     AgentGUIProps["renderSlots"],
-    "agentConfigAccount" | "composerFooterAccessory" | "sidebarFooter"
+    | "agentConfigAccount"
+    | "agentConfigSystemActions"
+    | "composerFooterAccessory"
+    | "sidebarFooter"
   >;
 };
 
@@ -106,9 +110,11 @@ export function useStableDesktopAgentGUIHostProps({
     hostCapabilities: {
       referenceProvenanceFilterEnabled:
         nextHostCapabilities.referenceProvenanceFilterEnabled,
+      sideConversationEnabled: nextHostCapabilities.sideConversationEnabled,
+      sideConversationPresentation:
+        nextHostCapabilities.sideConversationPresentation,
       sessionInputHistoryEnabled:
         nextHostCapabilities.sessionInputHistoryEnabled,
-      sessionForkEnabled: nextHostCapabilities.sessionForkEnabled,
       sessionWorktreeEnabled: nextHostCapabilities.sessionWorktreeEnabled,
       sessionLaunchModesByProjectSectionKey:
         nextHostCapabilities.sessionLaunchModesByProjectSectionKey,
@@ -146,6 +152,7 @@ export function useStableDesktopAgentGUIHostProps({
     },
     renderSlots: {
       agentConfigAccount: nextRenderSlots.agentConfigAccount,
+      agentConfigSystemActions: nextRenderSlots.agentConfigSystemActions,
       composerFooterAccessory: nextRenderSlots.composerFooterAccessory,
       sidebarFooter: nextRenderSlots.sidebarFooter
     }

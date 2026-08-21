@@ -395,6 +395,9 @@ function numberValue(value: unknown): number | null {
 
 function claudeProbeErrorCode(error: unknown): string {
   const message = errorMessage(error).toLowerCase();
+  if (message.includes("rate limit") || message.includes("429")) {
+    return "rate_limited";
+  }
   if (message.includes("unauthorized") || message.includes("expired")) {
     return "session_expired";
   }

@@ -90,7 +90,7 @@ test("local source lists up to 100 recent references", async () => {
   assert.equal(observedRecentLimit, 100);
 });
 
-test("local source hides recent on Windows and keeps it on macOS", () => {
+test("local source hides recent on Windows and keeps it on macOS", async () => {
   const adapter: WorkspaceFileReferenceAdapter = {};
   const windowsSource = createWorkspaceFileReferenceSource({
     adapter,
@@ -103,16 +103,15 @@ test("local source hides recent on Windows and keeps it on macOS", () => {
     os: "darwin"
   });
 
+  const windowsGroups = await windowsSource.loadSidebarGroups?.(scope, {});
+  const macGroups = await macSource.loadSidebarGroups?.(scope, {});
+
   assert.equal(
-    windowsSource
-      .listSidebarGroups?.(scope)
-      .some((entry) => entry.ref.nodeId === "__recent__"),
+    windowsGroups?.entries.some((entry) => entry.ref.nodeId === "__recent__"),
     false
   );
   assert.equal(
-    macSource
-      .listSidebarGroups?.(scope)
-      .some((entry) => entry.ref.nodeId === "__recent__"),
+    macGroups?.entries.some((entry) => entry.ref.nodeId === "__recent__"),
     true
   );
 });

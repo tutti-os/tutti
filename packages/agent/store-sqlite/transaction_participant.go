@@ -39,15 +39,17 @@ type TransactionParticipant interface {
 }
 
 type TransactionMutation struct {
-	MutationID         string `json:"mutationId"`
-	WorkspaceID        string `json:"workspaceId"`
-	AgentSessionID     string `json:"agentSessionId"`
-	RootAgentSessionID string `json:"rootAgentSessionId,omitempty"`
-	RootTurnID         string `json:"rootTurnId,omitempty"`
-	EntityKind         string `json:"entityKind"`
-	EntityID           string `json:"entityId"`
-	Operation          string `json:"operation"`
-	Version            int64  `json:"version"`
+	MutationID             string `json:"mutationId"`
+	WorkspaceID            string `json:"workspaceId"`
+	AgentSessionID         string `json:"agentSessionId"`
+	RootAgentSessionID     string `json:"rootAgentSessionId,omitempty"`
+	RootTurnID             string `json:"rootTurnId,omitempty"`
+	EntityKind             string `json:"entityKind"`
+	EntityID               string `json:"entityId"`
+	Operation              string `json:"operation"`
+	Version                int64  `json:"version"`
+	TurnTerminalTransition bool   `json:"turnTerminalTransition,omitempty"`
+	StartupReconciled      bool   `json:"startupReconciled,omitempty"`
 }
 
 type TransactionDelta struct {
@@ -62,6 +64,19 @@ func transactionMutation(workspaceID, agentSessionID, entityKind, entityID, oper
 		EntityKind: strings.TrimSpace(entityKind), EntityID: strings.TrimSpace(entityID),
 		Operation: strings.TrimSpace(operation), Version: version,
 	}
+}
+
+func terminalTurnMutation(
+	workspaceID, agentSessionID, turnID, operation string,
+	version int64,
+	startupReconciled bool,
+) TransactionMutation {
+	mutation := transactionMutation(
+		workspaceID, agentSessionID, MutationEntityTurn, turnID, operation, version,
+	)
+	mutation.TurnTerminalTransition = true
+	mutation.StartupReconciled = startupReconciled
+	return mutation
 }
 
 func interactionMutationEntityID(turnID, requestID string) string {

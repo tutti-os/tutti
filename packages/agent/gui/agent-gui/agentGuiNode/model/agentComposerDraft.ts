@@ -3,13 +3,24 @@ import type { AgentActivityRuntimeStagePastedTextResult } from "../../../agentAc
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentComposerDraft,
+  AgentComposerDraftConnector,
   AgentComposerFileBlock,
   AgentComposerDraftFile,
   AgentComposerDraftLargeText,
   AgentComposerDraftImage,
+  AgentComposerQuoteBlock,
   AgentComposerDraftContent,
   AgentGUIProviderSkillOption
 } from "./agentGuiNodeTypes";
+import {
+  agentComposerDraftQuotes,
+  agentComposerQuotePromptContent
+} from "./agentComposerDraftQuotes";
+
+export {
+  agentComposerDraftQuotes,
+  appendAgentComposerDraftQuote
+} from "./agentComposerDraftQuotes";
 import {
   AGENT_PASTED_TEXT_BLOCK_KIND,
   AGENT_PASTED_TEXT_MENTION_KIND
@@ -23,13 +34,33 @@ import {
 } from "./agentExternalPromptFiles";
 import { agentComposerFileMentionReferences } from "../agentRichText/agentMentionMarkdown";
 import { pastedTextDraftDisplayName } from "../../../shared/pastedTextReferenceProjection";
+import {
+  agentComposerDraftConnectorBlocks,
+  agentComposerDraftConnectors,
+  agentPromptContentConnectors,
+  mergeAgentComposerDraftConnectorKeys
+} from "./agentComposerDraftConnectors";
+import {
+  agentPromptImageBlockToDraftImage,
+  type AgentPromptImageContentBlock
+} from "./agentComposerDraftImages";
+import {
+  projectLocalConnectorPrompt,
+  promptForProviderSkills,
+  skillTriggerForPrefix
+} from "./agentSkillOptions";
+
+export {
+  agentComposerDraftConnectors,
+  agentComposerDraftPreservingConnectors
+} from "./agentComposerDraftConnectors";
+export { formatAgentComposerDraftBytes } from "./agentComposerDraftImages";
 
 export {
   extractPastedTextArchivePaths,
   linkifyPastedTextReferences,
   pastedTextDraftDisplayName
 } from "../../../shared/pastedTextReferenceProjection";
-
 const PASTED_TEXT_MENTION_PREVIEW_MAX_CHARS = 10;
 
 /**
@@ -131,21 +162,8 @@ export function applyPastedTextStagingResult(
     uploading: false
   };
 }
-import {
-  projectLocalConnectorPrompt,
-  promptForProviderSkills,
-  skillTriggerForPrefix
-} from "./agentSkillOptions";
 
 export const MAX_AGENT_COMPOSER_DRAFT_IMAGES = 8;
-
-type AgentPromptImageContentBlock = AgentPromptContentBlock & {
-  type: "image";
-  mimeType: "image/png" | "image/jpeg" | "image/webp";
-  attachmentId?: string;
-  data?: string;
-  path?: string;
-};
 
 export function emptyAgentComposerDraft(): AgentComposerDraft {
   return [{ type: "text", text: "" }];
@@ -209,36 +227,13 @@ export function agentComposerDraftLargeTexts(
     .map(({ type: _type, kind: _kind, ...item }) => item);
 }
 
-interface AgentComposerDraftAttachmentProjection {
-  images: AgentComposerDraftImage[];
-  files: AgentComposerDraftFile[];
-  largeTexts: AgentComposerDraftLargeText[];
-}
-
-const attachmentProjectionByDraft = new WeakMap<
-  AgentComposerDraftContent,
-  AgentComposerDraftAttachmentProjection
->();
-
-export function agentComposerDraftAttachmentProjection(
-  draft: AgentComposerDraftContent
-): AgentComposerDraftAttachmentProjection {
-  const cached = attachmentProjectionByDraft.get(draft);
-  if (cached) return cached;
-  const projection = {
-    images: agentComposerDraftImages(draft),
-    files: agentComposerDraftFiles(draft),
-    largeTexts: agentComposerDraftLargeTexts(draft)
-  };
-  attachmentProjectionByDraft.set(draft, projection);
-  return projection;
-}
-
 export function buildAgentComposerDraft(input: {
   prompt: string;
   images?: readonly AgentComposerDraftImage[];
   files?: readonly AgentComposerDraftFile[];
   largeTexts?: readonly AgentComposerDraftLargeText[];
+  quotes?: readonly AgentComposerQuoteBlock[];
+  connectors?: readonly AgentComposerDraftConnector[];
 }): AgentComposerDraft {
   return [
     { type: "text", text: input.prompt },
@@ -257,7 +252,9 @@ export function buildAgentComposerDraft(input: {
         kind: AGENT_PASTED_TEXT_BLOCK_KIND,
         ...item
       })
-    )
+    ),
+    ...(input.quotes ?? []).map((quote) => ({ ...quote })),
+    ...agentComposerDraftConnectorBlocks(input.connectors ?? [])
   ];
 }
 
@@ -268,13 +265,17 @@ export function updateAgentComposerDraft(
     images: readonly AgentComposerDraftImage[];
     files: readonly AgentComposerDraftFile[];
     largeTexts: readonly AgentComposerDraftLargeText[];
+    quotes: readonly AgentComposerQuoteBlock[];
+    connectors: readonly AgentComposerDraftConnector[];
   }>
 ): AgentComposerDraft {
   return buildAgentComposerDraft({
     prompt: update.prompt ?? agentComposerDraftPrompt(draft),
     images: update.images ?? agentComposerDraftImages(draft),
     files: update.files ?? agentComposerDraftFiles(draft),
-    largeTexts: update.largeTexts ?? agentComposerDraftLargeTexts(draft)
+    largeTexts: update.largeTexts ?? agentComposerDraftLargeTexts(draft),
+    quotes: update.quotes ?? agentComposerDraftQuotes(draft),
+    connectors: update.connectors ?? agentComposerDraftConnectors(draft)
   });
 }
 
@@ -295,6 +296,8 @@ export function agentComposerDraftHasContent(
   );
   if (
     textWithoutComposerFiles.trim() ||
+    agentComposerDraftConnectors(draft).length > 0 ||
+    agentComposerDraftQuotes(draft).length > 0 ||
     agentComposerDraftFiles(draft).some((file) =>
       referencedFileIds.has(file.id)
     )
@@ -304,6 +307,8 @@ export function agentComposerDraftHasContent(
   return draft.some((block) => {
     if (block.type === "text") return false;
     if (block.type === "image") return true;
+    if (block.type === "connector") return true;
+    if (block.type === "quote") return block.text.trim() !== "";
     return block.kind === "file"
       ? false
       : block.text.trim() !== "" || Boolean(block.path || block.url);
@@ -472,7 +477,8 @@ export function agentPromptContentToComposerDraft(
         agentPromptImageBlockToDraftImage(image, idPrefix, index)
       ),
     files,
-    largeTexts
+    largeTexts,
+    connectors: agentPromptContentConnectors(normalizedContent)
   });
 }
 
@@ -513,13 +519,18 @@ export function agentComposerDraftToPromptContent(input: {
     prompt,
     skills: input.skills
   });
+  const connectorKeys = mergeAgentComposerDraftConnectorKeys(
+    input.draft,
+    connectorProjection.connectorKeys
+  );
   return normalizeAgentPromptContentBlocks([
     ...textPromptContent(connectorProjection.prompt),
+    ...agentComposerQuotePromptContent(agentComposerDraftQuotes(input.draft)),
     ...promptItemBlocksForProviderSkills({
       prompt: connectorProjection.prompt,
       skills: input.skills
     }),
-    ...connectorProjection.connectorKeys.map((connectorKey) => ({
+    ...connectorKeys.map((connectorKey) => ({
       type: "connector" as const,
       connectorKey
     })),
@@ -547,6 +558,7 @@ export function agentComposerDraftSubmittedText(
   return agentPromptContentDisplayText(
     normalizeAgentPromptContentBlocks([
       ...textPromptContent(agentComposerDraftPrompt(draft)),
+      ...agentComposerQuotePromptContent(agentComposerDraftQuotes(draft)),
       ...largeTextPromptContent(agentComposerDraftLargeTexts(draft))
     ])
   );
@@ -566,10 +578,13 @@ export function agentComposerDraftDisplayPrompt(
     (item) =>
       Boolean(item.path || item.url) && !item.uploading && !item.uploadError
   );
-  if (!largeTexts.length) {
+  const quoteText = agentPromptContentDisplayText(
+    agentComposerQuotePromptContent(agentComposerDraftQuotes(draft))
+  );
+  if (!largeTexts.length && !quoteText) {
     return prompt.includes("](mention://") ? prompt : undefined;
   }
-  const parts = [prompt].filter(Boolean);
+  const parts = [prompt, quoteText].filter(Boolean);
   parts.push(
     ...largeTexts
       .map((item, index) => pastedTextMentionMarkdown(item, index))
@@ -742,38 +757,4 @@ export function materializePastedTextInstructions(
 // break the parse-back in {@link linkifyPastedTextReferences}.
 function sanitizePastedTextPreviewForContent(name: string | undefined): string {
   return (name ?? "").replace(/["\n\r]/g, " ").trim();
-}
-
-export function formatAgentComposerDraftBytes(sizeBytes: number): string {
-  if (sizeBytes < 1024) {
-    return `${sizeBytes} B`;
-  }
-  const kib = sizeBytes / 1024;
-  if (kib < 1024) {
-    return `${kib.toFixed(kib >= 10 ? 0 : 1)} KB`;
-  }
-  const mib = kib / 1024;
-  return `${mib.toFixed(mib >= 10 ? 0 : 1)} MB`;
-}
-
-function agentPromptImageBlockToDraftImage(
-  image: AgentPromptImageContentBlock,
-  idPrefix: string,
-  index: number
-): AgentComposerDraftImage {
-  return {
-    id: `${idPrefix}:image:${index}`,
-    name: image.name?.trim() || `image-${index + 1}`,
-    mimeType: image.mimeType,
-    ...(image.attachmentId ? { attachmentId: image.attachmentId } : {}),
-    ...(image.data ? { data: image.data } : {}),
-    ...(image.url ? { url: image.url } : {}),
-    ...(image.path ? { path: image.path } : {}),
-    previewUrl:
-      typeof image.data === "string" && image.data
-        ? image.data.startsWith("data:")
-          ? image.data
-          : `data:${image.mimeType};base64,${image.data}`
-        : (image.url ?? "")
-  };
 }

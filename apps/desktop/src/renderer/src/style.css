@@ -2,7 +2,7 @@
 @source "../../../../../packages/agent/gui";
 @source "../../../../../packages/analytics/debug/src";
 @source "../../../../../packages/browser/workbench-node/src";
-@source "../../../../../packages/connector/market/src";
+@source "../../../../../packages/connector/renderer/src";
 @source "../../../../../packages/desktop/update-admission/src/react";
 @source "../../../../../packages/ui/rich-text/src";
 @source "../../../../../packages/ui/system/src";

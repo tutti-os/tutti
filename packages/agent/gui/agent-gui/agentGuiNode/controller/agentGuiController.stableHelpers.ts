@@ -501,6 +501,7 @@ export function areComposerSettingsVMsEqual(
     (left.composerOptionsLoadStatus ?? null) ===
       (right.composerOptionsLoadStatus ?? null) &&
     !!left.isCapabilityOptionsLoading === !!right.isCapabilityOptionsLoading &&
+    !!left.isConnectorOptionsLoading === !!right.isConnectorOptionsLoading &&
     !!left.isModelOptionsLoading === !!right.isModelOptionsLoading &&
     areComposerModelChoiceHistoriesEqual(
       left.modelChoiceHistory,

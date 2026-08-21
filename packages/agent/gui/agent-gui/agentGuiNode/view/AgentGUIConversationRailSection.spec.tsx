@@ -12,11 +12,11 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
       items: [
         conversation("newest", "Newest", "ready", 30),
         conversation("running-a", "Running A", "working", 20),
-        conversation("waiting-b", "Waiting B", "waiting", 10),
+        conversation("waiting-b", "Waiting B", "waiting", 10)
       ],
       pinnedAtUnixMs: 0,
       visibleItemLimit: 1,
-      onToggleProjectPinned: vi.fn(() => Promise.resolve()),
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
     });
 
     expect(screen.getByText("Newest")).toBeInTheDocument();
@@ -29,14 +29,14 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
       onCreateConversation,
       pinnedAtUnixMs: 0,
       sectionKind: "conversations",
-      onToggleProjectPinned: vi.fn(() => Promise.resolve()),
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
     });
 
     fireEvent.click(screen.getByRole("button", { name: "New session" }));
 
     expect(onCreateConversation).toHaveBeenCalledWith({
       projectPath: null,
-      source: "unscoped_section",
+      source: "unscoped_section"
     });
   });
 
@@ -44,24 +44,24 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
     const onToggleProjectPinned = vi.fn(() => Promise.resolve());
     renderProjectSection({
       pinnedAtUnixMs: 10,
-      onToggleProjectPinned,
+      onToggleProjectPinned
     });
 
     expect(
-      screen.getByRole("button", { name: "Pinned project: Alpha" }),
+      screen.getByRole("button", { name: "Pinned project: Alpha" })
     ).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByText("No sessions")).toBeInTheDocument();
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Project actions" }),
-      { button: 0, ctrlKey: false },
+      { button: 0, ctrlKey: false }
     );
     const menuItems = await screen.findAllByRole("menuitem");
     expect(menuItems.map((item) => item.textContent)).toEqual([
       "Open folder",
       "Unpin project",
       "Delete sessions",
-      "Remove project",
+      "Remove project"
     ]);
     fireEvent.click(screen.getByRole("menuitem", { name: "Unpin project" }));
     expect(onToggleProjectPinned).toHaveBeenCalledWith("alpha", false);
@@ -72,15 +72,15 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
     renderProjectSection({
       pinnedAtUnixMs: 0,
       searchActive: true,
-      onToggleProjectPinned,
+      onToggleProjectPinned
     });
 
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Project actions" }),
-      { button: 0, ctrlKey: false },
+      { button: 0, ctrlKey: false }
     );
     fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Pin project" }),
+      await screen.findByRole("menuitem", { name: "Pin project" })
     );
     expect(onToggleProjectPinned).toHaveBeenCalledWith("alpha", true);
   });
@@ -89,11 +89,11 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
     renderProjectSection({
       pinnedAtUnixMs: 0,
       projectActionLocked: true,
-      onToggleProjectPinned: vi.fn(() => Promise.resolve()),
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
     });
 
     expect(
-      screen.getByRole("button", { name: "Project actions" }),
+      screen.getByRole("button", { name: "Project actions" })
     ).toBeDisabled();
   });
 
@@ -102,16 +102,16 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
     renderProjectSection({
       pinnedAtUnixMs: 0,
       onProjectMenuOpenChange,
-      onToggleProjectPinned: vi.fn(() => Promise.resolve()),
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
     });
 
     expect(screen.queryByRole("menuitem")).toBeNull();
     fireEvent.pointerDown(
       screen.getByRole("button", { name: "Project actions" }),
-      { button: 0, ctrlKey: false },
+      { button: 0, ctrlKey: false }
     );
     expect(
-      await screen.findByRole("menuitem", { name: "Open folder" }),
+      await screen.findByRole("menuitem", { name: "Open folder" })
     ).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: "Escape" });
@@ -125,16 +125,16 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
     const initialInput = {
       hasMore: true,
       pinnedAtUnixMs: 0,
-      onToggleProjectPinned,
+      onToggleProjectPinned
     };
     const { rerender } = renderProjectSection(initialInput);
     const projectActionsButton = screen.getByRole("button", {
-      name: "Project actions",
+      name: "Project actions"
     });
 
     fireEvent.pointerDown(projectActionsButton, { button: 0, ctrlKey: false });
     const deleteItem = await screen.findByRole("menuitem", {
-      name: "Delete sessions",
+      name: "Delete sessions"
     });
     expect(deleteItem).not.toHaveAttribute("data-disabled");
 
@@ -142,17 +142,17 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
       renderProjectSectionElement({
         ...initialInput,
         projectActionLocked: true,
-        searchActive: true,
-      }),
+        searchActive: true
+      })
     );
 
     expect(projectActionsButton).toBeDisabled();
     expect(deleteItem).toHaveAttribute("data-disabled");
     expect(
-      screen.getByRole("menuitem", { name: "Pin project" }),
+      screen.getByRole("menuitem", { name: "Pin project" })
     ).toHaveAttribute("data-disabled");
     expect(
-      screen.getByRole("menuitem", { name: "Remove project" }),
+      screen.getByRole("menuitem", { name: "Remove project" })
     ).toHaveAttribute("data-disabled");
     expect(projectActionsButton).toBeDisabled();
     expect(projectActionsButton.isConnected).toBe(true);
@@ -164,7 +164,7 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
       pinnedAtUnixMs: 0,
       projectDragDisabled: true,
       onProjectDragStart,
-      onToggleProjectPinned: vi.fn(() => Promise.resolve()),
+      onToggleProjectPinned: vi.fn(() => Promise.resolve())
     };
     const { rerender } = renderProjectSection(initialInput);
     const section = screen.getByText("Alpha").closest("section");
@@ -174,8 +174,8 @@ describe("AgentGUIConversationRailSection project pin presentation", () => {
     rerender(
       renderProjectSectionElement({
         ...initialInput,
-        projectDragDisabled: false,
-      }),
+        projectDragDisabled: false
+      })
     );
 
     const unlockedHeader = screen.getByText("Alpha").closest("section")
@@ -267,8 +267,8 @@ function renderProjectSectionElement(input: {
                     label: "Alpha",
                     path: "/alpha",
                     pinnedAtUnixMs: input.pinnedAtUnixMs,
-                    sectionKey: "project:/alpha",
-                  },
+                    sectionKey: "project:/alpha"
+                  }
           }}
           sectionHasMore={input.hasMore ?? false}
           sectionTotalCount={input.hasMore ? 1 : 0}
@@ -306,7 +306,7 @@ function conversation(
   id: string,
   title: string,
   status: ConversationSection["items"][number]["status"],
-  updatedAtUnixMs: number,
+  updatedAtUnixMs: number
 ): ConversationSection["items"][number] {
   return {
     id,
@@ -314,7 +314,7 @@ function conversation(
     title,
     status,
     cwd: "/alpha",
-    updatedAtUnixMs,
+    updatedAtUnixMs
   };
 }
 
@@ -336,5 +336,5 @@ const LABELS = {
   relativeTimeYears: (count: number) => `${count}y`,
   showLessConversations: "Show less",
   showMoreConversations: "Show more",
-  unpinProject: "Unpin project",
+  unpinProject: "Unpin project"
 } as AgentGUIViewLabels;

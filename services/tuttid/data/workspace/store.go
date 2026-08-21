@@ -23,6 +23,7 @@ import (
 )
 
 var ErrWorkspaceNotFound = errors.New("workspace not found")
+var ErrDesktopPreferencesNotInitialized = errors.New("desktop preferences are not initialized")
 var ErrWorkbenchSnapshotNotFound = errors.New("workspace workbench snapshot not found")
 var ErrWorkspaceAppNotFound = errors.New("workspace app not found")
 var ErrWorkspaceAppFactoryJobNotFound = errors.New("workspace app factory job not found")
@@ -58,6 +59,7 @@ type AgentActivityStore interface {
 	agentactivitybiz.Repository
 	agentactivitybiz.SessionTurnSummaryReader
 	agentactivitybiz.EffectiveSessionTurnReader
+	agentactivitybiz.TurnSubmissionReader
 	CheckpointRuntimeOperation(context.Context, agentactivitybiz.CheckpointRuntimeOperationInput) (agentactivitybiz.RuntimeOperation, bool, error)
 	CompletePlanDecisionRuntimeOperation(context.Context, agentactivitybiz.CompletePlanDecisionRuntimeOperationInput) (agentactivitybiz.RuntimeOperationCompletion, bool, error)
 	FindTurnByClientSubmitID(context.Context, string, string, string) (string, bool, error)
@@ -111,6 +113,10 @@ type AgentQuickPromptStore interface {
 type PreferencesStore interface {
 	GetDesktopPreferences(context.Context) (preferencesbiz.DesktopPreferences, error)
 	PutDesktopPreferences(context.Context, preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, error)
+}
+
+type DesktopPreferencesInitializer interface {
+	InitializeDesktopPreferences(context.Context, preferencesbiz.DesktopPreferences) (preferencesbiz.DesktopPreferences, bool, error)
 }
 
 // AgentProviderRuntimeSelectionStore persists an explicit local runtime choice.

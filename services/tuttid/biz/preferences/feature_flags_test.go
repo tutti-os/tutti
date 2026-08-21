@@ -17,14 +17,14 @@ func TestAgentSessionRecordingCapabilityFlagFailsClosed(t *testing.T) {
 	}
 }
 
-func TestMobileRemoteAccessCapabilityFlagFailsClosed(t *testing.T) {
+func TestMobileRemoteAccessCapabilityFlagIsPermanentlyDisabled(t *testing.T) {
 	if IsCapabilityFlagEnabled(nil, FeatureFlagMobileRemoteAccess) {
-		t.Fatal("absent mobile remote access flag must resolve false")
+		t.Fatal("absent mobile remote access flag must remain disabled")
 	}
-	if !IsCapabilityFlagEnabled(
+	if IsCapabilityFlagEnabled(
 		map[string]bool{FeatureFlagMobileRemoteAccess: true},
 		FeatureFlagMobileRemoteAccess,
 	) {
-		t.Fatal("stored mobile remote access true must win")
+		t.Fatal("stored mobile remote access true must be ignored")
 	}
 }

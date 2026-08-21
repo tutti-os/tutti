@@ -14,7 +14,7 @@ export const enAgentGuiUsageStatus = {
   slashStatusContextValue:
     "{{percentLeft}}% left ({{usedTokens}} used / {{totalTokens}})",
   slashStatusContextUnavailable: "Context usage unavailable",
-  slashStatusLimitsUnavailable: "Rate limits unavailable from this agent",
+  slashStatusLimitsUnavailable: "Account quota is currently unavailable",
   slashStatusEmptyValue: "—",
   slashStatusUsageJustUpdated: "Updated just now",
   slashStatusUsageMinutesAgo: "Updated {{count}}m ago",

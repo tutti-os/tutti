@@ -44,6 +44,9 @@ func DefaultStateDir() string {
 }
 
 func DefaultAgentRuntimeDir() (string, error) {
+	if override := strings.TrimSpace(os.Getenv("TUTTI_AGENT_RUNTIME_DIR")); override != "" {
+		return override, nil
+	}
 	homeDir, err := userHomeDir()
 	if err != nil {
 		return "", err

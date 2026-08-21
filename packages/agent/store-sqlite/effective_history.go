@@ -50,9 +50,14 @@ type TurnSubmission struct {
 	DisplayPrompt         string
 	CapabilityRefsJSON    string
 	TuttiModeSnapshotJSON string
+	MetadataJSON          string
 	ClientSubmitID        string
 	CreatedAtUnixMS       int64
 	UpdatedAtUnixMS       int64
+}
+
+type TurnSubmissionReader interface {
+	GetTurnSubmission(context.Context, string, string, string) (TurnSubmission, bool, error)
 }
 
 func (s *Store) GetSessionHistory(ctx context.Context, workspaceID, agentSessionID string) (SessionHistory, bool, error) {
@@ -117,10 +122,16 @@ func (s *Store) RecordTurnSubmission(ctx context.Context, input TurnSubmission) 
 	input.AgentSessionID = strings.TrimSpace(input.AgentSessionID)
 	input.TurnID = strings.TrimSpace(input.TurnID)
 	input.ClientSubmitID = strings.TrimSpace(input.ClientSubmitID)
+	if strings.TrimSpace(input.MetadataJSON) == "" {
+		input.MetadataJSON = "{}"
+	}
+	var metadata map[string]any
+	metadataErr := json.Unmarshal([]byte(input.MetadataJSON), &metadata)
 	if input.WorkspaceID == "" || input.AgentSessionID == "" || input.TurnID == "" ||
 		!json.Valid([]byte(input.ContentJSON)) ||
 		!json.Valid([]byte(input.CapabilityRefsJSON)) ||
-		!json.Valid([]byte(input.TuttiModeSnapshotJSON)) {
+		!json.Valid([]byte(input.TuttiModeSnapshotJSON)) ||
+		metadataErr != nil || metadata == nil {
 		return TurnSubmission{}, false, errors.New("record workspace agent turn submission: invalid envelope")
 	}
 	if input.CreatedAtUnixMS <= 0 {
@@ -132,12 +143,12 @@ func (s *Store) RecordTurnSubmission(ctx context.Context, input TurnSubmission) 
 	result, err := s.db.ExecContext(ctx, `
 INSERT INTO workspace_agent_turn_submissions (
   workspace_id, agent_session_id, turn_id, content_json, display_prompt,
-  capability_refs_json, tutti_mode_snapshot_json, client_submit_id,
+  capability_refs_json, tutti_mode_snapshot_json, metadata_json, client_submit_id,
   created_at_unix_ms, updated_at_unix_ms
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 ON CONFLICT(workspace_id, agent_session_id, turn_id) DO NOTHING
 `, input.WorkspaceID, input.AgentSessionID, input.TurnID, input.ContentJSON, input.DisplayPrompt,
-		input.CapabilityRefsJSON, input.TuttiModeSnapshotJSON, input.ClientSubmitID,
+		input.CapabilityRefsJSON, input.TuttiModeSnapshotJSON, input.MetadataJSON, input.ClientSubmitID,
 		input.CreatedAtUnixMS, input.UpdatedAtUnixMS)
 	if err != nil {
 		return TurnSubmission{}, false, fmt.Errorf("record workspace agent turn submission: %w", err)
@@ -170,14 +181,14 @@ func (s *Store) GetTurnSubmission(ctx context.Context, workspaceID, agentSession
 	var result TurnSubmission
 	err := s.db.QueryRowContext(ctx, `
 SELECT workspace_id, agent_session_id, turn_id, content_json, display_prompt,
-       capability_refs_json, tutti_mode_snapshot_json, client_submit_id,
+       capability_refs_json, tutti_mode_snapshot_json, metadata_json, client_submit_id,
        created_at_unix_ms, updated_at_unix_ms
 FROM workspace_agent_turn_submissions
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ?
 `, workspaceID, agentSessionID, turnID).Scan(
 		&result.WorkspaceID, &result.AgentSessionID, &result.TurnID,
 		&result.ContentJSON, &result.DisplayPrompt, &result.CapabilityRefsJSON,
-		&result.TuttiModeSnapshotJSON, &result.ClientSubmitID,
+		&result.TuttiModeSnapshotJSON, &result.MetadataJSON, &result.ClientSubmitID,
 		&result.CreatedAtUnixMS, &result.UpdatedAtUnixMS,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -197,5 +208,6 @@ func sameTurnSubmissionEnvelope(left, right TurnSubmission) bool {
 		left.DisplayPrompt == right.DisplayPrompt &&
 		left.CapabilityRefsJSON == right.CapabilityRefsJSON &&
 		left.TuttiModeSnapshotJSON == right.TuttiModeSnapshotJSON &&
+		left.MetadataJSON == right.MetadataJSON &&
 		left.ClientSubmitID == right.ClientSubmitID
 }

@@ -2,6 +2,7 @@ import { enAgentGui } from "./en.agentGui.ts";
 import { enMessages } from "./en.messages.ts";
 import { enSettingsPanel } from "./en.settingsPanel.ts";
 import { enWebsiteNode } from "./en.websiteNode.ts";
+import { enWorkspaceAgentProbeQuota } from "./en.workspaceAgentProbeQuota.ts";
 export const en = {
   common: {
     add: "Add",
@@ -761,9 +762,8 @@ export const en = {
     workspaceAgentProbeDetailStatus: "Status",
     workspaceAgentProbeDetailQuota: "Quota",
     workspaceAgentProbeUsageUnsupported: "Usage data not available",
-    workspaceAgentProbeQuotaRemaining: "{{percent}}% remaining",
     workspaceAgentProbeQuotaResetTimeLabel: "{{label}} reset time",
-    workspaceAgentProbeQuotaDollarRemaining: "${{amount}} remaining",
+    ...enWorkspaceAgentProbeQuota,
     workspaceAgentProbeLoadingUsage: "Loading usage…",
     workspaceAgentProbeScrollListRight: "Show more agents",
     workspaceAgentProbeScrollListLeft: "Show previous agents",

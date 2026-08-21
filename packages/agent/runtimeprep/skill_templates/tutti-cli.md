@@ -105,6 +105,7 @@ Output rules:
 
 - Follow each capability's advertised default output mode and JSON support.
 - Save ids returned by create/start/run-create commands and reuse them.
+- When an Agent command returns `mentionUri`, render the session as a descriptive Markdown link using that exact value; keep the raw `agentSessionId` only as secondary data.
   {{if .OutputModes}}- Advertised default modes in this snapshot: {{range .OutputModes}}`{{.}}` {{end}}
   {{end}}
 

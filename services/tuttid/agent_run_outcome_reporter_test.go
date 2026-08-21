@@ -6,6 +6,7 @@ import (
 
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
+	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
 )
 
 type submitProvenanceCaptureReporter struct {
@@ -21,50 +22,12 @@ func (r *submitProvenanceCaptureReporter) ReportSubmitProvenance(_ context.Conte
 	return nil
 }
 
-func TestMessageLooksLikeAuthFailureMatchesRealClaude401(t *testing.T) {
-	// The exact shape seen in the field logs: a failed runtime text message.
-	payload := map[string]any{
-		"source":  "runtime",
-		"content": "Failed to authenticate. API Error: 401 Invalid authentication credentials",
-		"text":    "Failed to authenticate. API Error: 401 Invalid authentication credentials",
-	}
-	if !messageLooksLikeAuthFailure("failed", payload) {
-		t.Fatal("a failed Claude 401 message should be classified as an auth failure")
-	}
-}
-
-func TestMessageLooksLikeAuthFailureMatchesRealGeminiVertexADCFailure(t *testing.T) {
-	payload := map[string]any{
-		"text": "Could not load the default credentials. Browse to Google Cloud authentication documentation for more information",
-	}
-	if !messageLooksLikeAuthFailure("failed", payload) {
-		t.Fatal("a failed Gemini Vertex ADC message should be classified as an auth failure")
-	}
-}
-
-func TestMessageLooksLikeAuthFailureUsesStructuredCode(t *testing.T) {
-	if !messageLooksLikeAuthFailure("failed", map[string]any{"code": "auth_required"}) {
-		t.Fatal("an explicit auth_required code should classify as auth failure")
-	}
-}
-
-func TestMessageLooksLikeAuthFailureIgnoresNonFailedAndNonAuth(t *testing.T) {
-	if messageLooksLikeAuthFailure("completed", map[string]any{"text": "401 auth"}) {
-		t.Fatal("a non-failed message must not be an auth failure")
-	}
-	if messageLooksLikeAuthFailure("failed", map[string]any{"text": "rate limit exceeded"}) {
-		t.Fatal("a non-auth failure must not match")
-	}
-}
-
 func TestReportRunOutcomeAuthFailureWinsOverCompletion(t *testing.T) {
 	input := agentsessionstore.ReportActivityInput{
 		Source: canonical.EventSource{Provider: "claude-code"},
-		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{
-			{Status: "completed", Payload: map[string]any{"text": "hi"}},
-			{Status: "failed", Payload: map[string]any{
-				"text": "Failed to authenticate. API Error: 401 Invalid authentication credentials",
-			}},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{
+			{RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{Phase: agentsessionstore.RootProviderTurnPhaseCompleted, Outcome: "completed"}},
+			{RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{Phase: agentsessionstore.RootProviderTurnPhaseCompleted, Outcome: "failed", ErrorCode: "auth_required"}},
 		},
 	}
 	if got := reportRunOutcome(input); got != runOutcomeAuthFailed {
@@ -75,12 +38,51 @@ func TestReportRunOutcomeAuthFailureWinsOverCompletion(t *testing.T) {
 func TestReportRunOutcomeSuccessClears(t *testing.T) {
 	input := agentsessionstore.ReportActivityInput{
 		Source: canonical.EventSource{Provider: "codex"},
-		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{
-			{Status: "completed", Payload: map[string]any{"text": "done"}},
+		StatePatches: []agentsessionstore.WorkspaceAgentStatePatch{
+			{RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{Phase: agentsessionstore.RootProviderTurnPhaseCompleted, Outcome: "completed"}},
 		},
 	}
 	if got := reportRunOutcome(input); got != runOutcomeSuccess {
 		t.Fatalf("reportRunOutcome = %v, want success", got)
+	}
+}
+
+func TestReportRunOutcomeIgnoresMessageTextAndToolCompletion(t *testing.T) {
+	input := agentsessionstore.ReportActivityInput{
+		MessageUpdates: []agentsessionstore.WorkspaceAgentMessageUpdate{{Status: "failed", Payload: map[string]any{"text": "401 unauthorized auth token"}}},
+		TimelineItems:  []agentsessionstore.WorkspaceAgentTimelineItem{{Status: "completed"}},
+	}
+	if got := reportRunOutcome(input); got != runOutcomeNone {
+		t.Fatalf("reportRunOutcome = %v, want none", got)
+	}
+}
+
+func TestAgentRunOutcomeReporterScopesProviderGlobalAuthentication(t *testing.T) {
+	store := agentstatusservice.NewRunOutcomeStore()
+	reporter := agentRunOutcomeReporter{
+		DurableActivityReporter: &submitProvenanceCaptureReporter{},
+		store:                   store,
+	}
+	failure := []agentsessionstore.WorkspaceAgentStatePatch{{
+		RootProviderTurn: &canonical.WorkspaceAgentRootProviderTurnTransition{
+			Phase: agentsessionstore.RootProviderTurnPhaseCompleted, Outcome: "failed", ErrorCode: "auth_required",
+		},
+	}}
+	if err := reporter.Report(context.Background(), agentsessionstore.ReportActivityInput{
+		Source: canonical.EventSource{Provider: "claude-code"}, StatePatches: failure,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, found := store.AuthEvidence("claude-code"); found {
+		t.Fatal("model-plan/extension scoped failure must not mutate provider-global authentication")
+	}
+	if err := reporter.Report(context.Background(), agentsessionstore.ReportActivityInput{
+		Source: canonical.EventSource{Provider: "claude-code", ProviderGlobalAuthEligible: true}, StatePatches: failure,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if !store.AuthInvalidated("claude-code") {
+		t.Fatal("provider-native typed authentication failure must invalidate provider authentication")
 	}
 }
 

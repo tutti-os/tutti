@@ -67,6 +67,9 @@ func generatedAgentProviderCapabilityOptions(options []agentservice.ComposerCapa
 		if iconURL := strings.TrimSpace(option.IconURL); iconURL != "" {
 			generated.IconUrl = optionalStringPointer(iconURL)
 		}
+		if option.InstalledAtUnixMS > 0 {
+			generated.InstalledAtUnixMs = &option.InstalledAtUnixMS
+		}
 		if source := strings.TrimSpace(option.Source); source != "" {
 			generated.Source = optionalStringPointer(source)
 		}
@@ -170,6 +173,9 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 		}
 		if strings.TrimSpace(option.Description) != "" {
 			resultOption.Description = optionalStringPointer(option.Description)
+		}
+		if strings.TrimSpace(option.ConsumptionMultiplier) != "" {
+			resultOption.ConsumptionMultiplier = optionalStringPointer(option.ConsumptionMultiplier)
 		}
 		if option.SupportsImageInput != nil {
 			resultOption.SupportsImageInput = option.SupportsImageInput

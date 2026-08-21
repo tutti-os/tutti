@@ -12,6 +12,34 @@ export {
   AGENT_PASTED_TEXT_MENTION_KIND
 } from "./shared/pastedTextKinds";
 export { AgentGUI } from "./AgentGUI";
+export {
+  AgentSideConversationRuntimeProvider,
+  useAgentSideConversationSnapshot,
+  useOptionalAgentSideConversationRuntime
+} from "./agentSideConversationRuntime";
+export type {
+  AgentSideCapabilities,
+  AgentSideConversationRuntime,
+  AgentSideConversationSnapshot,
+  AgentSideConversationState,
+  AgentSideInteraction,
+  AgentSideInteractionAction
+} from "./agentSideConversationRuntime";
+export { createAgentSideConversationRuntime } from "./agentSideConversationController";
+export type {
+  AgentSideConversationStreamEvent,
+  AgentSideConversationTransport
+} from "./agentSideConversationController";
+export {
+  createAgentGUISideConversationPresentation,
+  type AgentGUISideConversationIdentity,
+  type AgentGUISideConversationPresentation,
+  type AgentGUISideConversationProjection
+} from "./agentSideConversationPresentation";
+export {
+  AgentGUISideConversationSurface,
+  type AgentGUISideConversationSurfaceProps
+} from "./agent-gui/agentGuiNode/view/AgentGUISideConversationPane";
 export type {
   AgentGUIProps,
   AgentGUIReferenceProvenanceFilterCatalog
@@ -78,7 +106,8 @@ export type {
   AgentRunErrorCode,
   AgentVisibleErrorOverride,
   AgentVisibleErrorOverrideCode,
-  AgentVisibleErrorOverrides
+  AgentVisibleErrorOverrides,
+  AgentVisibleErrorPresentationScope
 } from "./shared/agentEnv/agentErrorPresentation";
 export type {
   AgentGUIComposerContentType,
@@ -219,6 +248,7 @@ export type {
   AgentGUIFirstTokenKind,
   AgentGUIPerformanceDurationBucket,
   AgentGUIPerformanceEvent,
+  AgentGUIPerformanceFailureStage,
   AgentGUIPerformanceMonitor
 } from "./agentGUIPerformanceMonitor";
 export type {

@@ -36,8 +36,7 @@ import { skillTriggerForPrefix } from "../model/agentSkillOptions";
 import { moveSlashCommandHighlight } from "../model/agentSlashCommands";
 import {
   agentComposerDraftHasContent,
-  buildAgentComposerDraft,
-  emptyAgentComposerDraft,
+  agentComposerDraftPreservingConnectors,
   projectAgentComposerDraftSubmission,
   textPromptContent,
   updateAgentComposerDraft
@@ -167,8 +166,8 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
     draftPromptRef.current = "";
     setPaletteDraftPrompt("");
     setIsPaletteOpen(false);
-    onDraftContentChange(emptyAgentComposerDraft());
-  }, [onDraftContentChange]);
+    onDraftContentChange(agentComposerDraftPreservingConnectors(draftContent));
+  }, [draftContent, onDraftContentChange]);
 
   const closeSlashStatusPanel = useCallback((): void => {
     setIsSlashStatusPanelOpen(false);
@@ -499,7 +498,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         return;
       }
       const nextPrompt = draftPromptRef.current;
-      const nextDraftContent = buildAgentComposerDraft({
+      const nextDraftContent = updateAgentComposerDraft(draftContent, {
         prompt: nextPrompt,
         images: currentDraftImages,
         files: currentDraftFiles,
@@ -549,6 +548,7 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
         draft: nextDraftContent,
         skills: availableSkills
       });
+      const submitOptions = { submittedDraft: nextDraftContent };
       const fileReferences = agentComposerFileMentionReferences(nextPrompt);
       const draftFileIds = new Set(currentDraftFiles.map((file) => file.id));
       reportAgentComposerDiagnostic(agentActivityRuntime, {
@@ -580,15 +580,19 @@ export function useComposerSlashActions(input: UseComposerSlashActionsInput) {
           return;
         }
         if (submission.displayPrompt) {
-          onSubmitGuidance(submission.content, submission.displayPrompt);
+          onSubmitGuidance(
+            submission.content,
+            submission.displayPrompt,
+            submitOptions
+          );
         } else {
-          onSubmitGuidance(submission.content);
+          onSubmitGuidance(submission.content, undefined, submitOptions);
         }
       } else {
         if (submission.displayPrompt) {
-          onSubmit(submission.content, submission.displayPrompt);
+          onSubmit(submission.content, submission.displayPrompt, submitOptions);
         } else {
-          onSubmit(submission.content);
+          onSubmit(submission.content, undefined, submitOptions);
         }
       }
       // The controller owns draft clearing: an in-session send clears the

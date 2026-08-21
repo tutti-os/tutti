@@ -129,6 +129,8 @@ func TestRunTuttiModePlanCommandsUseDynamicDaemonCapabilityProtocol(t *testing.T
 			t.Setenv("TUTTI_WORKSPACE_ID", "workspace-1")
 			t.Setenv("TUTTI_AGENT_SESSION_ID", "session-1")
 			t.Setenv("TUTTI_APP_CLI_PARENT_COMMAND_ID", "tool-call-1")
+			t.Setenv("TUTTI_AGENT_CWD", "/workspace/project/worktree")
+			t.Setenv("TUTTI_AGENT_RAIL_PLACEMENT", `{"version":1,"kind":"project","projectPath":"/workspace/project","sectionKey":"project:/workspace/project"}`)
 
 			var stdout bytes.Buffer
 			var stderr bytes.Buffer
@@ -144,7 +146,7 @@ func TestRunTuttiModePlanCommandsUseDynamicDaemonCapabilityProtocol(t *testing.T
 				t.Fatalf("input = %s, want %s", encoded, mustJSON(t, tt.wantInput))
 			}
 			contextValue, ok := invokedBody["context"].(map[string]any)
-			if !ok || contextValue["source"] != "cli" || contextValue["workspaceID"] != "workspace-1" || contextValue["agentSessionId"] != "session-1" || contextValue["parentCommandId"] != "tool-call-1" {
+			if !ok || contextValue["source"] != "cli" || contextValue["workspaceID"] != "workspace-1" || contextValue["agentSessionId"] != "session-1" || contextValue["parentCommandId"] != "tool-call-1" || contextValue["agentCwd"] != "/workspace/project/worktree" || contextValue["agentRailPlacementJSON"] != `{"version":1,"kind":"project","projectPath":"/workspace/project","sectionKey":"project:/workspace/project"}` {
 				t.Fatalf("context = %#v", invokedBody["context"])
 			}
 			if !strings.Contains(stdout.String(), `"workflowId": "WF-1"`) {

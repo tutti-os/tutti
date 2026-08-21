@@ -19,6 +19,13 @@ func codexProcessCleanupPendingError(cause error) error {
 	}
 }
 
+// A provider process can disappear before its owner gets to close the local
+// connection. Once the provider reports that the session is already gone,
+// there is no resource left for the ownership registry to retain or retry.
+func codexSessionAlreadyGone(err error) bool {
+	return errors.Is(err, ErrSessionNotFound)
+}
+
 func (a *CodexAppServerAdapter) retainRetiredCodexSession(agentSessionID string, session *codexAppServerSession) {
 	if a == nil || session == nil || session.client == nil {
 		return
@@ -46,6 +53,9 @@ func (a *CodexAppServerAdapter) closeOrRetainCodexSession(agentSessionID string,
 	}
 	session.client.SetMessageHandler(nil)
 	if err := session.client.Close(); err != nil {
+		if codexSessionAlreadyGone(err) {
+			return
+		}
 		a.retainRetiredCodexSession(agentSessionID, session)
 	}
 }
@@ -112,6 +122,14 @@ func (a *CodexAppServerAdapter) retryOneCodexSessionLocked(agentSessionID string
 		current.client.SetMessageHandler(nil)
 		a.mu.Unlock()
 		if err := current.client.Close(); err != nil {
+			if codexSessionAlreadyGone(err) {
+				a.mu.Lock()
+				if a.sessions[agentSessionID] == current {
+					delete(a.sessions, agentSessionID)
+				}
+				a.mu.Unlock()
+				return true, nil
+			}
 			a.mu.Lock()
 			if a.sessions[agentSessionID] == current {
 				current.releasing = false
@@ -142,6 +160,10 @@ func (a *CodexAppServerAdapter) retryOneCodexSessionLocked(agentSessionID string
 	target.client.SetMessageHandler(nil)
 	a.mu.Unlock()
 	if err := target.client.Close(); err != nil {
+		if codexSessionAlreadyGone(err) {
+			a.removeRetiredCodexSession(agentSessionID, target)
+			return true, nil
+		}
 		a.mu.Lock()
 		target.releasing = false
 		a.mu.Unlock()

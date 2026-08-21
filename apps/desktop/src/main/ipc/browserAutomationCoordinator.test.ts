@@ -77,6 +77,21 @@ function createHarness() {
     );
   };
 
+  const claimTurn = (
+    host: FakeHost,
+    input: {
+      agentSessionId: string;
+      agentTurnId: string;
+      workspaceId: string;
+    }
+  ) => {
+    ipc.emit(
+      desktopIpcChannels.browser.automationTurnClaim,
+      { sender: sender(host) },
+      input
+    );
+  };
+
   const coordinator = createDesktopBrowserAutomationCoordinator({
     async ensureAgentBrowserHost(input) {
       ensureCalls.push(input);
@@ -119,13 +134,15 @@ function createHarness() {
         const host = hosts.get(id);
         return host ? sender(host) : null;
       }
-    }
+    },
+    turnClaimWaitTimeoutMs: 5
   });
 
   return {
     activatedHostIds,
     addHost,
     announceReady,
+    claimTurn,
     coordinator,
     ensureCalls,
     ensureUserCalls,
@@ -133,18 +150,23 @@ function createHarness() {
   };
 }
 
-test("Agent new_page creates and reveals a full User Browser page", async () => {
+test("Agent new_page uses the ready standalone Agent Browser surface", async () => {
   const harness = createHarness();
-  const workspaceHost = harness.addHost(
+  const agentHost = harness.addHost(
     4,
-    { kind: "workspace", workspaceId: "workspace-a" },
+    { kind: "agent", workspaceId: "workspace-a" },
     (request) => ({
       nodeId: request.action === "create" ? "user-page" : request.nodeId,
       ok: true,
       requestId: request.requestId
     })
   );
-  harness.announceReady(workspaceHost);
+  harness.announceReady(agentHost);
+  harness.claimTurn(agentHost, {
+    agentSessionId: "session-a",
+    agentTurnId: "turn-a",
+    workspaceId: "workspace-a"
+  });
   const nodeId = await harness.coordinator.requestTarget({
     agentSessionId: "session-a",
     agentTurnId: "turn-a",
@@ -155,15 +177,91 @@ test("Agent new_page creates and reveals a full User Browser page", async () => 
   assert.equal(nodeId, "user-page");
   assert.deepEqual(harness.ensureCalls, []);
   assert.deepEqual(harness.activatedHostIds, [4]);
-  assert.equal(workspaceHost.requests[0]?.surfaceRole, "user");
-  assert.equal(workspaceHost.requests[0]?.agentSessionId, "session-a");
-  assert.equal(workspaceHost.requests[0]?.agentTurnId, "turn-a");
-  assert.equal(workspaceHost.requests[0]?.reveal, true);
+  assert.equal(agentHost.requests[0]?.surfaceRole, "agent");
+  assert.equal(agentHost.requests[0]?.agentSessionId, "session-a");
+  assert.equal(agentHost.requests[0]?.agentTurnId, "turn-a");
+  assert.equal(agentHost.requests[0]?.reveal, true);
   harness.coordinator.dispose();
 });
 
-test("Agent new_page opens a workspace Browser host when none is ready", async () => {
+test("Agent new_page creates an Agent Browser host when its originating window is not ready", async () => {
   const harness = createHarness();
+  const agentHost = harness.addHost(
+    4,
+    { kind: "agent", workspaceId: "workspace-a" },
+    () => ({ nodeId: null, ok: true, requestId: "unused" })
+  );
+  harness.claimTurn(agentHost, {
+    agentSessionId: "session-a",
+    agentTurnId: "turn-a",
+    workspaceId: "workspace-a"
+  });
+  const nodeId = await harness.coordinator.requestTarget({
+    agentSessionId: "session-a",
+    agentTurnId: "turn-a",
+    url: "https://example.com",
+    workspaceId: "workspace-a"
+  });
+
+  assert.equal(nodeId, "background-page");
+  assert.deepEqual(harness.ensureCalls, [
+    { agentSessionId: "session-a", workspaceId: "workspace-a" }
+  ]);
+  assert.deepEqual(harness.ensureUserCalls, []);
+  assert.deepEqual(harness.activatedHostIds, [99]);
+  harness.coordinator.dispose();
+});
+
+test("Agent new_page waits for a canonical Turn claim that arrives after the request", async () => {
+  const harness = createHarness();
+  const agentHost = harness.addHost(
+    4,
+    { kind: "agent", workspaceId: "workspace-a" },
+    () => ({ nodeId: null, ok: true, requestId: "unused" })
+  );
+  const pendingNodeId = harness.coordinator.requestTarget({
+    agentSessionId: "session-a",
+    agentTurnId: "turn-a",
+    workspaceId: "workspace-a"
+  });
+
+  harness.claimTurn(agentHost, {
+    agentSessionId: "session-a",
+    agentTurnId: "turn-a",
+    workspaceId: "workspace-a"
+  });
+
+  assert.equal(await pendingNodeId, "background-page");
+  assert.deepEqual(harness.ensureCalls, [
+    { agentSessionId: "session-a", workspaceId: "workspace-a" }
+  ]);
+  assert.deepEqual(harness.ensureUserCalls, []);
+  harness.coordinator.dispose();
+});
+
+test("Workspace-originated Turn stays in Workspace Browser while an Agent host is ready", async () => {
+  const harness = createHarness();
+  const workspaceHost = harness.addHost(
+    3,
+    { kind: "workspace", workspaceId: "workspace-a" },
+    () => ({ nodeId: null, ok: true, requestId: "unused" })
+  );
+  const agentHost = harness.addHost(
+    4,
+    { kind: "agent", workspaceId: "workspace-a" },
+    (request) => ({
+      nodeId: "wrong-agent-page",
+      ok: true,
+      requestId: request.requestId
+    })
+  );
+  harness.announceReady(agentHost);
+  harness.claimTurn(workspaceHost, {
+    agentSessionId: "session-a",
+    agentTurnId: "turn-a",
+    workspaceId: "workspace-a"
+  });
+
   const nodeId = await harness.coordinator.requestTarget({
     agentSessionId: "session-a",
     agentTurnId: "turn-a",
@@ -173,8 +271,20 @@ test("Agent new_page opens a workspace Browser host when none is ready", async (
 
   assert.equal(nodeId, "workspace-page");
   assert.deepEqual(harness.ensureUserCalls, [{ workspaceId: "workspace-a" }]);
-  assert.deepEqual(harness.ensureCalls, []);
-  assert.deepEqual(harness.activatedHostIds, [98]);
+  assert.deepEqual(agentHost.requests, []);
+  harness.coordinator.dispose();
+});
+
+test("unclaimed legacy Turn keeps the Workspace Browser fallback", async () => {
+  const harness = createHarness();
+  const nodeId = await harness.coordinator.requestTarget({
+    agentSessionId: "session-a",
+    agentTurnId: "turn-a",
+    workspaceId: "workspace-a"
+  });
+
+  assert.equal(nodeId, "workspace-page");
+  assert.deepEqual(harness.ensureUserCalls, [{ workspaceId: "workspace-a" }]);
   harness.coordinator.dispose();
 });
 
@@ -300,16 +410,23 @@ test("ready announcements cannot claim another workspace or surface role", async
 
 test("Agent new_page activates the Browser host only once per turn", async () => {
   const harness = createHarness();
-  const workspaceHost = harness.addHost(
+  const agentHost = harness.addHost(
     4,
-    { kind: "workspace", workspaceId: "workspace-a" },
+    { kind: "agent", workspaceId: "workspace-a" },
     (request) => ({
       nodeId: `page-${request.requestId}`,
       ok: true,
       requestId: request.requestId
     })
   );
-  harness.announceReady(workspaceHost);
+  harness.announceReady(agentHost);
+  for (const agentTurnId of ["turn-a", "turn-b"]) {
+    harness.claimTurn(agentHost, {
+      agentSessionId: "session-a",
+      agentTurnId,
+      workspaceId: "workspace-a"
+    });
+  }
 
   await Promise.all(
     ["one", "two", "three"].map((suffix) =>
@@ -327,9 +444,9 @@ test("Agent new_page activates the Browser host only once per turn", async () =>
     workspaceId: "workspace-a"
   });
 
-  assert.equal(workspaceHost.requests.length, 4);
+  assert.equal(agentHost.requests.length, 4);
   assert.deepEqual(
-    workspaceHost.requests.map((request) => request.reveal),
+    agentHost.requests.map((request) => request.reveal),
     [true, false, false, true]
   );
   assert.deepEqual(harness.activatedHostIds, [4, 4]);

@@ -11,10 +11,13 @@ import { enAgentGuiCollaboration } from "./en.agentGuiCollaboration.ts";
 import { enAgentGuiUsageStatus } from "./en.agentGuiUsageStatus.ts";
 import { enAgentGuiComposer } from "./en.agentGuiComposer.ts";
 import { enAgentGuiProjectLaunch } from "./en.agentGuiProjectLaunch.ts";
+import { enAgentGuiSide } from "./en.agentGuiSide.ts";
+import { enAgentGuiHomeSuggestions } from "./en.agentGuiHomeSuggestions.ts";
 
 export const enAgentGui = {
   imageDownloaded: "Image downloaded",
   imageLoadFailed: "Image failed to load",
+  imageTemporarilyUnavailable: "Image temporarily unavailable",
   retryImage: "Retry",
   initialPlaceholder: "Type @ to reference sessions, files, tasks, and apps",
   followupPlaceholder: "Request follow-up changes from {{provider}}",
@@ -50,7 +53,7 @@ export const enAgentGui = {
   providerGatePendingRefresh: "Checking…",
   targetSetupTitle: "Set up {{provider}}",
   targetSetupDescription:
-    "Use a compatible local runtime, or let Tutti install and verify the pinned runtime.",
+    "Already have {{provider}} installed? Tutti can use it — or set it up for you.",
   targetSetupAuthRequired:
     "Runtime is installed and responds over ACP, but authentication is required.",
   targetSetupReady:
@@ -394,31 +397,7 @@ export const enAgentGui = {
     }
   },
   empty: "What can {{provider}} help you with?",
-  homeSuggestionsClose: "Close suggestions",
-  homeSuggestions: {
-    about: {
-      title: "Meet Tutti",
-      prompt: "Tell me what Tutti can help me do"
-    },
-    breakdown: {
-      title: "Task breakdown",
-      taskCenterLabel: "Task management",
-      prompt:
-        "Use {{taskCenterMention}} to help me break down the task, topic { enter here }"
-    },
-    review: {
-      title: "Quality review",
-      prompt: "Have { @agent } review the output quality of { @agent session }"
-    },
-    interaction: {
-      title: "Agent interaction",
-      prompt:
-        "Have { @agent } and { @agent } work together to { do something }, topic { enter here }"
-    },
-    import: {
-      title: "Import session"
-    }
-  },
+  ...enAgentGuiHomeSuggestions,
   conversations: "Sessions",
   newConversation: "New session",
   agentConfig: "Check & Settings",
@@ -792,5 +771,6 @@ export const enAgentGui = {
   syncPending: "Saved locally, syncing to cloud",
   syncSynced: "Synced to cloud",
   syncFailed: "Cloud sync failed",
+  ...enAgentGuiSide,
   ...enAgentGuiCollaboration
 } as const;

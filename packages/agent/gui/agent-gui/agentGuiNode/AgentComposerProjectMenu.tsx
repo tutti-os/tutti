@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import {
   WorkspaceUserProjectSelect,
   type WorkspaceUserProjectSelectChangeAction,
-  type WorkspaceUserProjectSelectLabelOverrides
+  type WorkspaceUserProjectSelectLabelOverrides,
+  type WorkspaceUserProjectSelectProps
 } from "@tutti-os/workspace-user-project/ui";
 import type {
   WorkspaceUserProject,
@@ -27,9 +28,18 @@ export interface AgentProjectPathChangeMetadata {
   project?: WorkspaceUserProject;
 }
 
+export type AgentProjectDropdownOptions = Pick<
+  WorkspaceUserProjectSelectProps,
+  "labels" | "menuActions" | "showKnownProjectOptions"
+> & {
+  /** Optional Host-owned import flow. Absent by default, so existing Hosts are unchanged. */
+  importDirectory?: WorkspaceUserProjectApi["importDirectory"];
+};
+
 export function AgentProjectDropdown({
   composerSettings,
   labels,
+  options,
   i18n,
   selectProjectDirectory,
   userProjectApi,
@@ -45,6 +55,7 @@ export function AgentProjectDropdown({
   >;
   i18n: WorkspaceUserProjectI18nRuntime;
   labels: AgentProjectDropdownLabels;
+  options?: AgentProjectDropdownOptions;
   selectProjectDirectory?: () => Promise<{ path: string } | null>;
   userProjectApi?: WorkspaceUserProjectApi | null;
   onDismissAutoFocus?: (event: Event) => void;
@@ -61,10 +72,11 @@ export function AgentProjectDropdown({
   const resolvedUserProjectApi = useMemo(
     () =>
       createAgentGUIUserProjectSelectionApi({
+        importDirectory: options?.importDirectory,
         selectProjectDirectory,
         userProjects: projectSource
       }),
-    [projectSource, selectProjectDirectory]
+    [options?.importDirectory, projectSource, selectProjectDirectory]
   );
 
   return (
@@ -85,7 +97,8 @@ export function AgentProjectDropdown({
         )
       }}
       i18n={i18n}
-      labels={labels}
+      labels={{ ...options?.labels, ...labels }}
+      menuActions={options?.menuActions}
       projectLocked={Boolean(composerSettings.projectLocked)}
       renderAddProjectIcon={() => (
         <NewWorkspaceLinedIcon
@@ -103,6 +116,7 @@ export function AgentProjectDropdown({
       shouldApplyPreparedSelection={
         composerSettings.shouldApplyPreparedProjectSelection === true
       }
+      showKnownProjectOptions={options?.showKnownProjectOptions}
       onDismissAutoFocus={onDismissAutoFocus}
       onProjectMissingChange={onProjectMissingChange}
       onProjectPathChange={onProjectPathChange}

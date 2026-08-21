@@ -4,6 +4,7 @@ import {
   getCommandRenderData,
   getFileChangeRenderData,
   getImageGenerationRenderData,
+  getPlanModeRenderData,
   getSearchRenderData,
   getSkillRenderData,
   getTaskRenderData,
@@ -69,6 +70,20 @@ describe("agentToolRenderData", () => {
       imageUri: "/workspace/output/canonical.webp",
       mimeType: "image/webp"
     });
+  });
+
+  it("derives a Windows plan file name from the native path", () => {
+    const data = getPlanModeRenderData(
+      makeCall({
+        rendererKind: "plan-enter",
+        input: {
+          filePath: "C:\\Users\\demo\\workspace\\plans\\plan.md"
+        }
+      })
+    );
+
+    expect(data.filePath).toBe("C:\\Users\\demo\\workspace\\plans\\plan.md");
+    expect(data.fileName).toBe("plan.md");
   });
 
   it("extracts canonical command render data", () => {

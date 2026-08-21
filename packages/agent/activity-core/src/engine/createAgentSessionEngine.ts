@@ -303,14 +303,18 @@ export function createAgentSessionEngine({
 
     const commandId = nextComposerOptionsCommandId();
     const signature = composerOptionsRequestSignature({
+      agentSessionId: input.agentSessionId,
       cwd: input.cwd,
       provider,
       settings: input.settings
     });
-    const initialEntry =
-      publicSnapshot.composerOptions.entriesByTargetKey[targetKey];
+    const section = input.section;
+    const initialEntry = section
+      ? publicSnapshot.composerOptions.sectionEntriesByTargetKey[targetKey]?.[
+          section
+        ]
+      : publicSnapshot.composerOptions.entriesByTargetKey[targetKey];
     const joinedCommandId =
-      !input.force &&
       initialEntry?.status === "loading" &&
       initialEntry.loadingSignature === signature
         ? initialEntry.inFlightCommandId
@@ -344,7 +348,9 @@ export function createAgentSessionEngine({
       const observe = (): void => {
         if (settled || !awaitedCommandId) return;
         const composerOptions = publicSnapshot.composerOptions;
-        const entry = composerOptions.entriesByTargetKey[targetKey];
+        const entry = section
+          ? composerOptions.sectionEntriesByTargetKey[targetKey]?.[section]
+          : composerOptions.entriesByTargetKey[targetKey];
         if (entry?.inFlightCommandId === awaitedCommandId) {
           previousEntry = entry;
           return;
@@ -374,10 +380,15 @@ export function createAgentSessionEngine({
       input.signal?.addEventListener("abort", onAbort, { once: true });
       pendingComposerOptionsDisposals.add(onDispose);
       engine.dispatch({
+        agentSessionId: input.agentSessionId,
         commandId,
         cwd: input.cwd,
         force: input.force,
         provider,
+        ...(input.waitForFreshModelCatalog
+          ? { waitForFreshModelCatalog: true }
+          : {}),
+        ...(section !== undefined ? { section } : {}),
         settings: input.settings,
         targetKey,
         type: "composerOptions/loadRequested",
@@ -385,7 +396,9 @@ export function createAgentSessionEngine({
       });
 
       const composerOptions = publicSnapshot.composerOptions;
-      const entry = composerOptions.entriesByTargetKey[targetKey];
+      const entry = section
+        ? composerOptions.sectionEntriesByTargetKey[targetKey]?.[section]
+        : composerOptions.entriesByTargetKey[targetKey];
       if (entry?.status === "ready" && entry.settledSignature === signature) {
         resolveOnce(composerOptions.optionsByTargetKey[targetKey]);
         return;
@@ -393,7 +406,7 @@ export function createAgentSessionEngine({
       awaitedCommandId =
         entry?.inFlightCommandId === commandId
           ? commandId
-          : !input.force && entry?.loadingSignature === signature
+          : entry?.loadingSignature === signature
             ? (entry.inFlightCommandId ?? null)
             : null;
       previousEntry = entry;

@@ -2,44 +2,22 @@ package agentruntime
 
 import "testing"
 
-func TestACPInferTerminalToolStatusTreatsGitDiffOneAsCompleted(t *testing.T) {
+func TestACPInferTerminalToolStatusUsesProviderStatusBeforeExitCode(t *testing.T) {
 	tests := []struct {
-		name    string
-		command any
+		name      string
+		rawOutput map[string]any
+		expected  string
 	}{
-		{name: "string", command: "git diff --no-index -- /dev/null README.md"},
-		{name: "argv", command: []any{"git", "diff", "--quiet", "HEAD"}},
-		{name: "shell wrapper", command: []any{"/bin/sh", "-lc", "git diff --exit-code HEAD^ HEAD"}},
+		{name: "provider completed owns nonzero exit", rawOutput: map[string]any{"status": "completed", "exitCode": 1}, expected: messageStreamStateCompleted},
+		{name: "provider failed owns zero exit", rawOutput: map[string]any{"state": "failed", "exitCode": 0}, expected: messageStreamStateFailed},
+		{name: "zero exit fallback completes", rawOutput: map[string]any{"exitCode": 0}, expected: messageStreamStateCompleted},
+		{name: "nonzero exit fallback fails", rawOutput: map[string]any{"exitCode": 1}, expected: messageStreamStateFailed},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			update := map[string]any{
-				"rawInput": map[string]any{"command": test.command},
-			}
-			rawOutput := map[string]any{"exitCode": 1}
-			if got := acpInferTerminalToolStatus(update, rawOutput); got != messageStreamStateCompleted {
-				t.Fatalf("status = %q, want completed", got)
+			if got := acpInferTerminalToolStatus(test.rawOutput); got != test.expected {
+				t.Fatalf("status = %q, want %q", got, test.expected)
 			}
 		})
-	}
-}
-
-func TestACPInferTerminalToolStatusKeepsOtherExitOneFailed(t *testing.T) {
-	commands := []string{
-		"go test ./...",
-		"git diff --quiet && false",
-		"false && git diff --quiet",
-		"git diff --quiet&&false",
-		"false||git diff --quiet",
-		"git diff --quiet;false",
-	}
-	for _, command := range commands {
-		update := map[string]any{
-			"rawInput": map[string]any{"command": command},
-		}
-		rawOutput := map[string]any{"exitCode": 1}
-		if got := acpInferTerminalToolStatus(update, rawOutput); got != messageStreamStateFailed {
-			t.Fatalf("command %q status = %q, want failed", command, got)
-		}
 	}
 }

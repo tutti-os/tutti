@@ -162,13 +162,21 @@ session-level child summaries.
 - Check: correlate app-server `threadId` with the root
   `provider_session_id` and the child session's provider thread handle.
 - Cause: notifications sharing one connection were normalized against the root
-  session instead of their registered child thread.
+  session instead of their registered child thread. The live publication
+  boundary can also receive root and child Activity Events in one callback; if
+  that mixed batch is projected under the root scope, the business-event bridge
+  rejects every child delta and emits a reconcile request for every delta.
 - Fix: unknown foreign threads never mutate the root. A registered child thread
   emits events owned by its child session/turn and carries immutable root and
-  parent relations. AgentGUI keeps child rows out of the root transcript and
-  attaches them under `parentToolCallId`.
+  parent relations. The Controller groups live projections by canonical
+  `AgentSessionID` before publication, and AgentGUI keeps child rows out of the
+  root transcript and attaches them under `parentToolCallId`. The business-event
+  bridge coalesces concurrent/recent reconcile requests per workspace/session
+  while retaining bounded retries.
 - Validate: inject root, known-child, and unknown-thread notifications in one
-  run; assert three distinct routing outcomes.
+  run; assert three distinct routing outcomes. Then replay one root plus at
+  least three children with high-frequency deltas and assert each scope matches
+  its payload and one reconcile request is emitted per throttle window.
 
 ### Codex subagents ran but AgentGUI shows no child lanes
 

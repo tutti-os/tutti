@@ -52,6 +52,48 @@ func TestControllerStartFailureDoesNotCreateCanonicalSessionOrTurnlessMessage(t 
 	}
 }
 
+func TestControllerStartPreservesTypedProviderTimeoutWithoutChangingPresentationCode(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController([]Adapter{typedProviderStartTimeoutAdapter{}}, nil)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-timeout",
+		AgentSessionID: "agent-timeout",
+		Provider:       hermesExtensionTestProvider,
+		CWD:            "/workspace",
+	})
+	if code := AppErrorCode(err); code != "request_timed_out" {
+		t.Fatalf("Start error code = %q (err=%v), want request_timed_out", code, err)
+	}
+	if !errors.Is(err, ErrProviderStartTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start error = %v, want typed provider-start timeout and deadline cause", err)
+	}
+	if stored, ok := controller.get("room-timeout", "agent-timeout"); ok {
+		t.Fatalf("stored session = %#v, want no runtime session after start timeout", stored)
+	}
+}
+
+func TestControllerStartDoesNotInferProviderTimeoutFromCallerDeadline(t *testing.T) {
+	t.Parallel()
+
+	controller := NewController([]Adapter{callerDeadlineStartAdapter{}}, nil)
+	_, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-caller-timeout",
+		AgentSessionID: "agent-caller-timeout",
+		Provider:       hermesExtensionTestProvider,
+		CWD:            "/workspace",
+	})
+	if code := AppErrorCode(err); code != "request_timed_out" {
+		t.Fatalf("Start error code = %q (err=%v), want request_timed_out", code, err)
+	}
+	if errors.Is(err, ErrProviderStartTimeout) {
+		t.Fatalf("Start error = %v, arbitrary caller deadline gained provider-start verdict", err)
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start error = %v, want caller deadline preserved", err)
+	}
+}
+
 func TestControllerStartPreservesStructuredCleanupBackpressureError(t *testing.T) {
 	t.Parallel()
 
@@ -734,6 +776,18 @@ func (a *recordingPromptAdapter) ValidatePromptContent(_ Session, content []Prom
 }
 
 type failingStartAdapter struct{}
+
+type typedProviderStartTimeoutAdapter struct{ failingStartAdapter }
+
+func (typedProviderStartTimeoutAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
+	return nil, errors.Join(ErrProviderStartTimeout, fmt.Errorf("provider start: %w", context.DeadlineExceeded))
+}
+
+type callerDeadlineStartAdapter struct{ failingStartAdapter }
+
+func (callerDeadlineStartAdapter) Start(context.Context, Session) ([]activityshared.Event, error) {
+	return nil, fmt.Errorf("caller request: %w", context.DeadlineExceeded)
+}
 
 type cleanupPendingStartAdapter struct{ failingStartAdapter }
 

@@ -51,15 +51,14 @@ bodies, while the action keeps picker exposure distinct from successful use.
 
 The native Mobile composer consumes the same device-global list through its
 authenticated Desktop connection rather than creating Mobile-owned prompt
-state. Its authenticated-device service reads the stored
-`agent.quickPromptLibrary` desktop feature gate and the canonical quick-prompt
-list through the generated tuttid client. When enabled, the Mobile `+` menu
+state. Its authenticated-device service reads the canonical quick-prompt list
+through the generated tuttid client. The Mobile `+` menu
 offers a searchable, read-only selector; choosing a prompt adds its text at the
 current plain-text input position without replacing the existing draft,
 restores input focus, and never sends automatically. Create, edit, delete, and
 reorder remain Desktop management actions. DeviceLink permits only exact
-`GET /v1/preferences/desktop` and `GET /v1/agent-quick-prompts` reads for this
-flow; mutation and per-prompt routes remain blocked.
+`GET /v1/agent-quick-prompts` reads for this flow; mutation and per-prompt
+routes remain blocked.
 
 The native Mobile new-conversation Composer presents Agent Target and working
 directory as peer context selectors directly above the input. The Agent Target
@@ -222,14 +221,58 @@ entry capability may additionally hide or disable an experimental control; the
 activation boundary must fail closed as well, so a remembered `true` value
 cannot outlive a disabled host entry. Provider support comes from the resolved
 composer descriptor rather than provider-name checks in shared UI code.
-Extension-owned model catalogs can change independently of target-scoped
+Provider and extension model catalogs can change independently of target-scoped
 remembered defaults. On Create, the daemon treats such a default as a fallback
-preference and resolves an obsolete value to the extension runtime's current
-model. Non-explicit model-dependent settings, such as reasoning effort, resolve
-against that effective model rather than remaining bound to the obsolete
-preference. A model or dependent setting explicitly supplied by the caller
-remains strict. If the runtime rejects an explicit model selection, startup
-fails rather than continuing with an undisclosed provider default.
+preference and resolves an obsolete value to the current catalog default from
+the same target. Because AgentGUI also sends its presented effective value, the
+activation request carries explicit provenance bits for model and reasoning;
+Engine and the tuttid adapter must preserve them through the HTTP boundary.
+Legacy direct Create callers that omit provenance retain the compatibility rule
+that a supplied non-empty value is explicit. Non-explicit model-dependent settings, such as reasoning
+effort, resolve against that effective model rather than remaining bound to the
+obsolete preference. A strict per-model catalog never forwards an inherited
+value that the target model did not advertise. A model or dependent setting
+explicitly supplied by the caller remains strict. If the runtime rejects an
+explicit model selection, startup fails rather than continuing with an
+undisclosed provider default.
+
+Create resolves and freezes the effective launch cwd before the first
+cwd-sensitive model-catalog lookup. A no-project session therefore queries the
+catalog from its allocated session directory, which is also passed to runtime;
+it must not inherit the tuttid process cwd. Worktree creation intentionally
+queries from the selected source checkout before creating the isolated checkout.
+The no-project directory remains a provisional allocation until Host creates
+the Session (or delivery becomes uncertain); any earlier catalog, plan,
+reasoning, preparation, or runtime failure releases it so failed requests cannot
+consume the allocator's daily name space.
+
+Composer model catalogs are daemon-owned snapshots. A provider auth/config
+change invalidates the snapshot and closes its provider app-server session, but
+the daemon may return the last known list as stale while refreshing it in the
+background. AgentGUI may render that stale projection with its loading state;
+model validation must wait for an authoritative snapshot. The daemon shares
+concurrent catalog loads, reuses a warm app-server session, and publishes the
+existing catalog invalidation hint after a successful refresh so open composers
+can converge without owning provider or cache policy.
+
+Connector capability catalogs follow the same projection boundary. Each host
+reads its authoritative local Connector Market snapshot, then uses
+`packages/agent/daemon/composercatalog` to map manifest identity, icon,
+installation, compatibility, and authorization state into the closed Composer
+capability contract. Host transports only serialize that projection and route
+semantic open intents; they must not duplicate Connector readiness rules or
+derive Composer entries from renderer-local market state. The snapshot uses the
+host's current account scope so Composer status and prompt admission include the
+same authorization overlay as Connector Market management. Connector Market
+change events invalidate retained Composer options, while a menu open may still
+force an authoritative reread as a recovery path.
+
+Hosts may project a Connector catalog as inspectable but read-only. In that
+mode AgentGUI keeps the menu and host-provided readiness descriptions visible,
+but suppresses selection, setup or authorization opens, selected chips, and
+the optional management footer. Read-only presentation never becomes execution
+authority; the Host remains responsible for Connector admission at submit or
+runtime preparation.
 
 Settings that affect provider preparation are immutable after launch. The
 daemon validates them against current product policy and resolved provider
@@ -268,6 +311,134 @@ An observation gap does not settle, interrupt, or otherwise rewrite the
 canonical Turn. The Host owns reconnect and catch-up fencing and must remove
 the gap only after the same Turn is authoritative again. When the capability
 is absent, AgentGUI preserves its existing lifecycle presentation.
+
+### 2.5.1 Live Side transient lane
+
+Side is a provider-neutral, surface-owned live conversation fork. It is
+intentionally separate from the durable command and observation paths:
+
+```text
+AgentGUI Side pane
+  -> AgentSideConversationRuntime port
+  -> Desktop generated tuttid client adapter
+  -> tuttid Side HTTP handlers
+  -> packages/agent/host Side lifecycle
+  -> packages/agent/daemon provider Side adapter
+
+provider Side runtime observation
+  -> SideStreamObserver
+  -> tuttid agent.side.updated publisher
+  -> Desktop business-event adapter
+  -> AgentGUI Side event normalizer
+  -> activity-core ephemeral conversation projector
+  -> shared AgentConversationVM projection
+  -> Side timeline + composer instances
+```
+
+The runtime `SideStreamObserver` seam includes both event observation and
+explicit ephemeral-identity cleanup. Host calls the cleanup operation when a
+Side closes, is removed, or expires, so bridge-local ordering state cannot
+outlive the Side identity.
+
+The provider adapter owns provider-specific context snapshot mechanics. Host
+owns Side identity, idempotent open, exact-Turn commands, scope isolation, and
+cleanup. tuttid projects those commands through generated OpenAPI contracts and
+publishes only the transient `agent.side.updated` envelope. Desktop is a thin
+transport adapter. AgentGUI owns capability gating, the transient event
+projection, and presentation; it contains no provider-name branches.
+
+Side has no persistent button in the main composer. Desktop exposes Side and
+the transcript text-selection action toolbar only after the user enables the
+default-off `lab.agentSideConversation` developer preference. The host passes
+that preference as an explicit AgentGUI capability and omits the Side runtime
+while it is disabled; AgentGUI therefore does not resolve provider support,
+show the toolbar or slash entry, or intercept typed `/side` input. After the
+host opt-in, AgentGUI injects the provider-neutral `/side` entry into the slash
+command palette with a local `submitImmediate` selection effect only when the
+exact source Session reports every required Side capability. Selecting the
+entry immediately submits the local `/side` intent, ensures the source runtime
+is available, and opens Side; typed `/side <prompt>` opens it and sends the
+prompt in one action.
+After capability discovery has enabled `/side`, submission creates the local
+`opening` projection immediately and renders the Side shell plus its empty
+temporary-conversation explanation before the provider fork finishes. It does
+not perform another renderer capability request on the open path; Host and
+Runtime remain the authoritative live-source validators.
+Capability resolution is fail-closed: pending, unavailable, and unsupported
+providers do not show `/side`, including when a provider advertises a command
+with that name. A typed `/side` invocation remains a Side-only intent in those
+states: AgentGUI reports the unavailable operation and never forwards its text
+through the main conversation submit path.
+A released canonical provider connection may be resumed from
+the source Session before capability resolution; the runtime remains the final
+authority for whether the operation can open.
+
+Desktop supplies a Side runtime factory rather than a workspace singleton.
+Each mounted embedded or detached AgentGUI surface creates and disposes its
+own runtime instance, so transient identity and cleanup ownership cannot race
+between windows.
+
+The Side controller is not an `AgentSessionEngine` and must never dispatch Side
+events into the durable workspace engine. AgentGUI normalizes the transient
+envelope into the React-free `activity-core` ephemeral conversation projector,
+which emits the same `AgentActivitySnapshot`/Turn vocabulary consumed by the
+shared conversation projection. This reuse is projection-only: it does not
+load, retain, reconcile, or persist a workspace Session.
+
+The controller retains only the selected surface's active Side identity,
+ephemeral projection, pending Interaction, sequence, and error. Embedded
+AgentGUI keeps Side attached to its source identity when the selected source
+changes and shows it again when that source is reselected. A host that injects
+the optional external Side presentation bridge opts into fail-closed source
+switching: changing the selected canonical Session closes the old Side. The
+owning AgentGUI surface otherwise closes it only through the explicit Side
+close action or when the surface-owned runtime is destroyed. Its external-store
+subscription owns the transient event and connection subscriptions. Once the
+last surface subscriber is gone, those subscriptions are released. Disconnect,
+source-identity mismatch, or a sequence gap expires local state and prevents
+further rendering; no canonical reconciliation fallback exists for this
+ephemeral lane.
+
+The shared Side surface creates a second instance of the conversation timeline
+and composer. Embedded AgentGUI wraps it as a docked sibling of the main detail
+surface, not an overlay or nested durable Session route. Standalone AgentGUI
+publishes the exact surface projection through an optional presentation-only
+external store; Desktop maps that projection to a contextual `side` tab in the
+shared right tool sidebar and suppresses the inline wrapper. The bridge carries
+only exact source/Side identity, surface props, and the close intent. It owns no
+Side lifecycle or durable state. Each surface instance owns its own draft,
+scroll-follow state, focus/shortcut scope, Turn gate, and interrupt action. The
+Side composer inherits the provider/model/cwd boundary captured at open time
+and presents those settings read-only. A normal main-composer submission always
+stays on the main Session; only the explicit `/side` command opens or targets
+the Side lane.
+
+The transcript selection toolbar stages selected text as a removable quote in
+the target composer. **Add to conversation** updates only the main draft.
+**Ask in Side** opens an empty Side when needed and updates only its draft; it
+never creates a Turn until the user explicitly submits that composer. Quote
+blocks are UI-local draft state and materialize as Markdown blockquote text at
+the existing submit boundary, so the Side transport remains text-only. When a
+typed question accompanies those quotes, Side keeps the blockquotes in provider
+content but projects only the typed question as the visible user message; a
+quote-only submission keeps the existing blockquote display fallback. Focus
+ownership follows the currently visible Side pane: an unmounted or
+source-mismatched Side cannot keep the main composer inactive, and pane cleanup
+must release its focus scope.
+
+Side capability is enabled only when the exact selected source runtime, after
+any required canonical-session resume, reports all mandatory facts: native
+support, active-source-Turn snapshot support, ephemeral lifetime, hidden
+inherited history, and an injected model boundary. The Side may be opened after
+the source has started and may continue after the source Turn settles; the
+source Turn only determines whether the provider has live context to snapshot,
+not the lifetime of an already-open Side. Attachments
+are rejected at the AgentGUI controller and Desktop adapter until the
+transport contract can preserve them without degradation. Approval and
+question state remains Side-local and is answered through the exact
+`(workspaceId, sideAgentSessionId, turnId, requestId)` command.
+
+### 2.5.2 Interaction admission and execution presentation
 
 An exact pending Interaction is a separate admission scope. When its Host
 supplies interaction readiness, that exact result owns transport presentation
@@ -316,6 +487,15 @@ Submission acknowledgment and execution are separate presentation signals:
 This keeps feedback optimistic for responsiveness while keeping claims about
 Agent work grounded in the canonical Turn/runtime projection.
 
+The Composer also hands the exact draft used to build a submission to the
+AgentGUI controller. The controller snapshots that handoff for conditional
+post-submit clearing; it must clear only when the current draft still matches
+the submitted snapshot, so a queue admission or accepted send cannot erase a
+newer edit made while the request is in flight. For image blocks, provider
+locators and preview/upload-progress metadata may settle asynchronously and do
+not count as user edits; upload errors and unknown fields remain part of the
+comparison.
+
 ### 2.6 On-demand status
 
 AgentGUI owns one provider-neutral `AgentStatusController` for `/status`, Agent
@@ -340,12 +520,38 @@ presentation data.
 
 Tutti Desktop creates one status source per workspace renderer and injects it
 into every AgentGUI surface in that workspace. The source shares the one-hour
-Provider snapshot, five-second refresh debounce, and in-flight Provider probe
-by provider, while each surface keeps its own controller and therefore its own
+Agent Target snapshot, five-second refresh debounce, and in-flight status probe
+by exact `agentTargetId`, while each surface keeps its own controller and therefore its own
 query, loading, close, and stale-response state. Sharing the controller itself
 is invalid because one surface could replace or close another surface's active
 request. Standalone renderer processes have their own source; the Electron main
-process remains the cross-window short-lived Provider cache.
+process remains the cross-window short-lived exact-target cache.
+
+Account-usage probing for an Agent Extension is an optional, versioned,
+target-scoped capability declared by the signed Extension. The provider-owned
+Helper owns provider config, credentials, trusted origins, private endpoints,
+and response parsing; `tuttid` runs only the exact companion script installed
+and fingerprinted in that Target's independent companion runtime through a
+separately verified Node interpreter. Companion availability never changes ACP
+readiness. A daemon-owned reconciler installs the companion outside setup
+actions, wakes after runtime or Extension activation, retries failures with
+bounded backoff, and rechecks persisted activation on restart. Account-usage
+requests are joined and cached for a short TTL by exact `agentTargetId`; the TTL
+starts when execution completes, and Node identity derivation is reused while
+the executable file identity is unchanged. The daemon accepts existing v1
+helper output and returns the normalized provider-neutral
+`tutti.agent.account-usage.v2` discriminated result. Desktop validates the
+schema and echoed Target/provider identity, then projects billing identity,
+quota completeness, and optional exact Provider-neutral amounts without
+changing ACP readiness. A complete quota set is distinct from a known account
+whose quota is unavailable and from API billing where quota is not applicable;
+only the complete state may carry rows. Presentation maps API `not_applicable`
+to a resolved empty limits row (`—`), while `unavailable` uses localized
+account-quota-unavailable copy; neither becomes a refresh failure. Missing
+profiles and older Extensions are `unsupported`; unknown schemas, enums,
+shapes, partial exact amounts, or a claimed complete result without quotas fail
+closed as `parse_failed`. No provider message, path, endpoint, response body,
+credential, account ID, or raw account record crosses the port or enters logs.
 
 A source emits at most one cached `snapshot` followed by at most one
 `refreshed` value, then completes. Backend probing may continue independently
@@ -356,6 +562,13 @@ or transport diagnostics. The limits projection preserves stable codes such as
 `auth_required`, `session_expired`, and `subscription_required` through
 `AgentStatusValue.limitsErrorCode`; AgentGUI owns their localized presentation
 and maps unknown codes to one generic failure label.
+
+A provider quota may carry an optional exact provider-neutral amount and unit
+when a percentage alone would hide useful account information. The host owns
+the provider request, credential handling, package aggregation, and percentage
+normalization; AgentGUI only renders the projected amount and uses the optional
+percentage for progress presentation. Raw account and package records never
+cross this boundary.
 
 An explicit unsupported usage probe is a successful bounded read with no
 quotas and `limitsState: unavailable`; it must not become a refresh failure.
@@ -401,6 +614,12 @@ command, marker, token, or API key proves only `configured`. A provider-backed
 account probe or successful agent request proves `authenticated`. An explicit
 remote authentication failure proves `required` and outranks stale local
 credentials until credentials change or a later provider request succeeds.
+Conversation failures may update this provider-global state only for a
+provider-native runtime and only from the typed completed root-provider Turn:
+`auth_required` records required, while a completed outcome records success.
+Model Plan and Agent Extension failures are connection-scoped and never mutate
+the provider-global login state. Shared layers do not infer authentication from
+provider prose, HTTP 403, gateway timeouts, billing, quota, or model errors.
 `packages/agent/daemon/providerstatus` owns evidence reduction; `tuttid` owns
 the live outcome store, cache invalidation, and public status projection. Tutti
 Desktop management surfaces and AgentGUI consume that same status. They may
@@ -415,6 +634,11 @@ Desktop windows reconcile stale providers on focus/visibility activation and
 on the 15-minute poll. API-key configuration skips subscription OAuth checks.
 Explicit authentication rejection is authoritative; rate limits, server
 errors, and network failures leave the weaker `configured` state intact.
+Conversation error adapters preserve typed provider code, HTTP status,
+retryability, origin, and sanitized upstream detail. AgentGUI shows sanitized
+provider-origin detail directly; Tutti-owned transport and lifecycle failures
+continue to use localized product copy. Secrets are redacted before logging,
+persistence, or presentation.
 These checks validate current access but do not rotate refresh tokens; refresh
 ownership requires a separate serialized credential lifecycle that can gate on
 live provider processes.
@@ -617,6 +841,13 @@ child lane only through the immutable `parentToolCallId`; it must not parse
 provider-native spawn events, invent a missing parent card, or create a
 presentation-only child lane.
 
+The parent-side child lane preserves the latest canonical assistant message as
+complete Markdown both while it streams and after the child settles. The same
+safe streaming Markdown/link boundary used by ordinary assistant messages owns
+that presentation. Bounded plain-text activity is only a fallback before the
+child emits assistant content; character-level activity truncation must never
+corrupt a generated-file link or drop earlier assistant context.
+
 User-initiated Fork creates a new root Session rather than a provider-native
 subagent. The child records durable lineage to the source Session and inclusive
 boundary Turn, but receives a caller-reserved canonical Session id and a
@@ -655,12 +886,10 @@ descendants, and historical prefix provenance do not hide Fork actions for
 earlier settled Turns. Only an in-flight Fork for that exact canonical Turn
 disables its button.
 
-Session Fork is also a default-off Developer capability. Desktop exposes its
-persisted `lab.agentSessionFork` switch in Developer settings and maps it to an
-explicit AgentGUI host opt-in, so provider support alone does not expose the
-action. Tuttid independently enforces the same flag on new Fork writes;
-disabling it leaves existing lineage, operation reads, and operation
-acknowledgements available.
+Session Fork is available whenever the exact provider/runtime and selected Turn
+project the capabilities described above. Desktop exposes that capability
+directly, and tuttid verifies the same provider and Turn facts when executing a
+new Fork write; no separate feature preference gates the action.
 
 Execution accepts a worktree-isolated source. A provider-native Fork retains
 the provider cwd, and Tutti freezes the same cwd and isolation coordinates into
@@ -1224,6 +1453,15 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
 - a queued-prompt `Send next` action uses native guidance when the provider
   supports it, even when the provider also supports interruption; guidance
   stays on the same canonical Turn and follows the provider's native semantics
+- when an active-turn `Send now` arrives before the Session has an authoritative
+  capability snapshot, the workspace Engine retains the exact prompt and
+  send-now decision without dispatching guidance or cancellation. A later
+  authoritative snapshot resolves that same intent to native guidance or
+  cancel-then-send. An explicit complete snapshot that supports neither keeps
+  the prompt in the ordinary queue until canonical availability returns; a
+  missing snapshot must never discard the prompt or be treated as unsupported.
+  Each queued prompt owns its deferred decision and exact target Turn; a later
+  Turn must not inherit guidance or cancellation intended for its predecessor
 - Claude SDK guidance acknowledges delivery only after its SDK interrupt has
   succeeded and the guidance prompt has been enqueued; a failed interrupt is a
   failed guidance request and must not allow the old response to keep running.
@@ -1514,13 +1752,40 @@ non-blocking error through the host toast capability, falling back to the UI
 System toast when that optional capability is absent. An unresolved empty Rail
 scope retains the centered error state and its retry action.
 
+AgentGUI owns one bounded retry for first-page and targeted membership reads so
+every host receives the same recovery behavior across daemon restarts, transient
+upstream failures, and transport loss. A fast transient failure retries once
+after a short deterministic jitter while publication remains pending. A request
+that already reached its timeout publishes the retained or empty failure state,
+releases the interaction lock, and performs its one retry after a longer
+background delay. Cancellation and permanent authorization, parameter, or other
+non-retryable client failures never retry. Scope replacement and surface detach
+abort both the active read and any scheduled retry; hosts must propagate the
+controller-owned `AbortSignal` while retaining their own request timeout.
+
 Presentation-invisible Sessions remain canonical engine entities and stay
 available through exact Session selectors for trusted open, reconcile, and
 command flows. Plural consumer selectors exclude them before Rail and Message
 Center collection projection; a hidden Session must not become a list row just
 because it is resumable or receives later canonical updates.
 
-When runtime sections are enabled, projection unions IDs from the current section, search, and reconciliation, then joins canonical Sessions. Unchanged summaries preserve structural sharing so unrelated engine updates do not rebuild the whole Rail snapshot.
+When runtime sections are enabled, projection unions IDs from the current
+section, search, reconciliation, and every in-progress root Session in the
+exact target scope, then joins canonical Sessions. In-progress Sessions remain
+display overlays until the bounded section query contains them; overlay rows
+do not alter cursors, `hasMore`, or server totals. Unchanged summaries preserve
+structural sharing so unrelated engine updates do not rebuild the whole Rail
+snapshot.
+
+A locally initiated Session creation projects its exact target identity as
+pending-creation reconciliation evidence until the canonical Session arrives.
+This covers both new-conversation activation and Session fork, and the marker
+is independent from any optimistic or runtime-overlay render source. When that
+identity becomes canonical, the Rail controller refreshes the exact persisted
+`railSectionKey` even if the new Session is currently selected. The selected
+historical-Session fast path remains valid only when no pending-creation
+evidence exists. An active or running overlay must never mask a missing
+authoritative section membership that would disappear after the Turn settles.
 
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
 
@@ -1780,10 +2045,22 @@ host adapters consume that projection and must not rebuild `$` versus `/`,
 plugin namespaces, or prompt-item versus text-trigger behavior from provider
 names.
 
+For an active Session, composer Skill discovery also scans that Session's
+isolated provider home. Opening slash search explicitly refreshes this catalog
+so newly created Skills appear without restarting the Session; runtime-managed
+Skills remain hidden through their `.tutti-managed-skill` marker.
+
 App-server-backed skill discovery follows the descriptor boundary. Tutti Agent
 requests only `skills/list` and retains the ordinary Skill projection through
 the shared app-server transport, capability contract, cache, and structured
 prompt-item submission path.
+
+Model-only app-server catalog probes are a separate read path: they request
+`model/list` without `skills/list` and pass the runtime launch preparation
+contract's `SkipSkills` flag. These probes do not create a live Session and
+must not resolve or materialize provider Skill directories. A Composer-options
+read that returns both models and Skills keeps the normal Skill preparation
+path.
 
 Tutti Desktop's slash connector section is a local catalog projection,
 not a Provider connector catalog. `services/tuttid/service/agent` reads the
@@ -1797,6 +2074,17 @@ ensuring that only installed and authorized connectors can be invoked. AgentGUI
 does not scan external MCP, plugin, or package-manager configuration and does not
 infer installation from a remote market response.
 
+Authorization and draft selection are separate facts. Selected connectors are
+stored as semantic draft blocks, rendered as removable chips, and submitted as
+structured prompt content without synthesizing slash text. The compact Composer
+trigger previews installed and authorized connectors independently from draft
+selection, while preserving selected connectors first in that bounded preview.
+A matching send on a session-scoped draft keeps those connector blocks and
+clears the rest of the draft; home and other non-session scopes clear the
+full draft. `/clear` keeps the session enable set. A new conversation starts
+empty. The GUI submits the full enable set every turn; the daemon remembers
+the last announced set and injects only the delta into the provider turn.
+
 The device-global `lab.connectors` UI-preference flag controls whether that
 projection is returned. The daemon fails closed when the preference is absent
 or unreadable and removes Provider-reported connector entries as well as local
@@ -1808,11 +2096,23 @@ converge on the next canonical read without exposing stale entries. The flag
 does not uninstall connectors, stop their runtimes, or reject an already
 structured connector prompt.
 
-Desktop also projects the flag through AgentGUI's existing host-owned
-capability-menu state. The primary footer capability slot is mutually
-exclusive: when `lab.connectors` is off it renders Tutti Mode, and when the
-flag is on it renders only the Connectors menu. The same footer serves both the
-home hero and existing-session dock, so the two AgentGUI contexts cannot drift.
+Desktop also projects these flags through AgentGUI's existing host-owned
+capability-menu state. The footer renders the Connectors menu only when
+`lab.connectors` is on. The independent `lab.tuttiMode` flag defaults off; when
+enabled, the same footer renders the Tutti Mode activation switch and the slash
+palette exposes `/tutti`, including when Connectors are also enabled. When the
+flag is off, both Tutti Mode entry points are omitted. The same footer serves
+both the home hero and existing-session dock, so the two AgentGUI contexts
+cannot drift.
+The menu, selection-chip, and Palette-item implementations plus their neutral
+item contracts belong to `@tutti-os/connector-renderer/ui`. AgentGUI owns only
+the React-free capability projection under `integrations/connector`, Composer
+placement, draft/prompt semantics, canonical option refresh request, and Tutti
+Mode fallback. Its existing `onCapabilitySettingsRequest` host port emits the
+exact connector key; the host delegates that intent to Connector Market's
+shared open use case and mounts one window-level Connector Market dialog host.
+AgentGUI does not load Connector Market state, construct its Root, or implement
+Connector-specific visuals.
 
 ### 5.3 Agent Directory and setup
 
@@ -2059,6 +2359,18 @@ plan panel starts with the plan title and body; it does not repeat mode,
 review-kind, or pending-state badges already communicated by the workflow
 banner.
 
+The reviewed document's effect and speed are immutable plan inputs, while the
+Composer preferences remain mutable for the next Turn. A change is proven only
+when the document carries both explicit frozen values and either differs from
+the current Composer value; legacy documents with a missing pair never infer a
+change from reasoning or orchestration fields. With a proven change, the empty
+Composer shows `Request changes` beside `Accept`; without one, it shows only
+`Accept`. Accept always targets the checkpoint bound to the currently projected
+revision and therefore executes exactly the visible plan. The daemon rejects a
+checkpoint that is no longer bound to the workflow's current revision, so a
+stale render cannot execute replacement content. Typed feedback continues to
+request changes and includes the current preferences when they diverge.
+
 Task-assignment directories and target option catalogs are workspace query
 projections, not Plan, Session, or Turn state. The Desktop assignment source
 retains them in the shared bounded workspace query cache: directories are keyed
@@ -2111,8 +2423,10 @@ remains a separate adjacent action, and all controls stay disabled while an
 activation update is unresolved. The Desktop command host and HTTP adapter must
 preserve the optimistic CAS revision and both optional preferences; dropping
 any field turns a valid UI intent into a stale or semantically mismatched
-response. Tutti Desktop always advertises the Tutti Mode host capability;
-historical `lab.tuttiMode` preference values do not hide or disable it.
+response. Tutti Desktop advertises the Tutti Mode host capability only while
+the default-off `lab.tuttiMode` preference is enabled. Toggling the preference
+changes presentation without mutating an existing session's durable activation
+or workflow state.
 
 The preference popup uses two independent 0-100 sliders. `effect` raises the
 minimum model capability and task-verification breadth. `speed` asks the
@@ -2327,14 +2641,27 @@ tab state. It also owns the single browser chrome instance for that surface.
 Its controller may activate an existing page by URL inside that one surface;
 the product Host remains responsible for choosing among Browser surfaces and
 focusing the owning top-level node or window.
+Desktop mode adapters register the same semantic Terminal, Browser, and Files
+launch coordinators in each renderer. A Workspace adapter presents through its
+Workbench host; a standalone Agent adapter presents through the right-side tool
+sidebar and waits for the exact mounted controller when necessary. The
+standalone AgentGUI `surface.host` represents the Agent node and must not be
+used as a tool-launch host. After a canonical Turn is created, its originating
+renderer claims the Browser presentation role through Electron main; Browser
+automation then selects or creates that exact Agent or Workspace surface.
+Automation may wait briefly when a provider tool request races ahead of that
+claim. Unclaimed legacy Turns retain the user/Workspace fallback. Host
+readiness must not be used to infer Turn origin. These tools remain Desktop
+chrome and do not enter AgentGUI lifecycle state.
 Hosts compose window controls into the tab strip through `defaultActions`,
 pass draggable-header semantics through `dragHandleProps`, and use
 `navigationActions` for address-row actions. A host must not wrap the panel in
 a second visible title bar or recreate the browser header outside the panel.
 
-Host-issued `runtimeRequests.composerAppend` values are one-shot requests.
+Host-issued `runtimeRequests.composerAppend` values are one-shot requests. An
+append may carry prompt text, prepared files, or one semantic connector key.
 AgentGUI waits until the exact requested Session is the active conversation,
-applies the append once, and then calls
+applies the append once to the structured draft, and then calls
 `hostActions.onComposerAppendHandled(sequence)`. A Host that retains routed
 requests must clear only the acknowledged sequence; it must not let an older
 open-Session append mask a newer request.
@@ -2384,6 +2711,15 @@ login/logout, external navigation, reward receipt persistence, clipboard
 writes, notifications, localization, feature gating, and menu lifecycle.
 Neither AgentGUI nor the frontend Commerce package may receive a Cookie or
 start a Commerce request.
+For a shared Agent conversation, the Host sets the presentation-only
+`hostCapabilities.visibleErrorPresentationScope` to `shared_caller`.
+AgentGUI preserves the canonical structured reason and existing diagnostic
+disclosure, substitutes caller-safe contact guidance only when the structured
+code identifies an Owner-remediable failure, and suppresses current-device and
+current-account remediation actions. Transport and ambiguous failure copy stays
+neutral and retry-oriented. Omitting the scope preserves `local_owner`
+behavior. The scope must not enter Turn, activity, Engine, event, persistence,
+or provider contracts.
 The optional `renderSlots.agentConfigAccount` is a presentation-only Host
 chrome seam for the exact selected Agent Target. Its paired
 `hostActions.onAgentConfigMenuOpen` notification lets the Host refresh account
@@ -2461,8 +2797,10 @@ before calling either the runtime `getComposerOptions` or exposed Engine
 with exact duration. An unmatched start therefore remains observable when a
 Provider options request never settles. The facts distinguish runtime from
 session-Engine entry, force refresh, directory presence, bounded error
-category, and model count without carrying paths, settings, model names, or
-error messages.
+category, section/stage, and model count. Settled Composer events may include
+a bounded, deduplicated, control-character-cleaned allowlist of model
+identifiers; paths, settings, prompts, credentials, and error messages remain
+excluded.
 Hosts map those facts to their own analytics catalogs; they must not copy the
 Turn-binding, early-event buffering, duration-bucket, or token-classification
 logic.
@@ -2495,11 +2833,10 @@ The optional quick-prompt library follows that host-capability boundary. Tutti
 Desktop projects the device-global `tuttid` quick-prompt CRUD service through
 `AgentHostApi.quickPrompts`; AgentGUI owns only the picker/editor presentation
 and inserts a selected prompt into the current TipTap selection without
-submitting it. The library snapshot, developer feature gate, and cross-window
-invalidation are not Session or Turn state and must not enter
-`AgentGUIRuntime` or the workspace engine. Hosts that omit the capability,
-and hosts whose capability reports the developer gate disabled, render no
-quick-prompt composer entry. AgentGUI may also present a small, localized set
+submitting it. The library snapshot and cross-window invalidation are not
+Session or Turn state and must not enter `AgentGUIRuntime` or the workspace
+engine. Hosts that omit the capability render no quick-prompt composer entry.
+AgentGUI may also present a small, localized set
 of recommended templates; those only prefill the existing editor and remain
 client-local until the user explicitly saves them through the CRUD capability.
 
@@ -2607,6 +2944,14 @@ The reusable tool-sidebar contract lives in
 `packages/agent/gui/workbench/tool-sidebar`. Hosts provide the supported panel
 catalog and render adapters; the shared component owns tab selection, picker,
 sizing, toolbar mechanics, and a structured `AgentToolSidebarHeaderLayout`.
+Standalone Desktop registers Side only while the exact external projection
+exists, opens the matching source-Session tab, and uses the existing Side width
+bounds (`440px` default, `360px` minimum, `600px` maximum). Collapsing the
+sidebar retains the Side tab/runtime and releases Side focus; closing the exact
+tab invokes the projected close intent. Stream updates notify only the mounted
+Side panel, while the sidebar subscribes to a stable identity projection so it
+does not rerender for each delta. Other hosts keep explicit panel catalogs and
+do not receive Side implicitly.
 Hosts may hide the shared toolbar toggle through the explicit
 `showToggleButton` presentation input; omission preserves the standard visible
 entry. Hiding the entry does not duplicate or override sidebar behavior in the
@@ -2803,8 +3148,11 @@ Every surface shares the exact interaction identity
 Collapsing an ask-user surface back into the conversation is presentation-only:
 the canonical Interaction remains `pending`, no response or cancellation is
 dispatched, and the mounted answer flow retains its in-memory draft for that
-surface. The collapsed surface keeps a visible resume affordance. In the full
-conversation surface, a question with structured options does not add a second
+surface. The collapsed surface keeps a visible resume affordance. Hosts expose
+this action only when their ordinary Composer can answer the exact pending
+Interaction; Side and other prompt-only composers do not infer support from a
+full-size layout. In the supported full conversation surface, a question with
+structured options does not add a second
 free-text answer field; users give a new direction through the ordinary
 composer instead. When the active root Turn is waiting on exactly one pending
 question whose normalized fields all accept free text, a text-only ordinary
@@ -2902,11 +3250,23 @@ Rail state writer because it has no Workbench node-state source. The callback
 contract contains no Tutti Desktop preference or product policy, so other hosts
 such as TSH may persist their own Rail state without adopting Desktop behavior.
 
-Attention state preserves explicit user intent: marking the currently selected
-Session unread keeps its unread indicator while that selection remains open.
-Selecting the Session again marks it read. A new live completion or a durable
-unread completion discovered by hydration is still marked read immediately when
-its Session is already selected.
+Attention state is unread-only: a live completion or explicit user unread
+request creates a durable unread completion, and real user exposure removes it.
+Absence of an unread completion means read; no separate durable read marker is
+authoritative. Historical list/detail reads own canonical content but never
+create, remove, or reconcile attention. Hydration restores only
+`completed.unreadIds` and `failed.unreadIds`; legacy `readIds` are ignored on
+read and every write payload explicitly empties both read buckets so stale read
+markers cannot survive migration.
+
+Selection is node-local while attention state is shared. An active Session may
+remove unread attention only while its AgentGUI surface is host-focused,
+host-visible, and the renderer document is visible and focused. A retained
+hidden, occluded, unfocused, or backgrounded node must preserve unread
+attention even when its local `activeConversationId` still names the Session.
+The read-decision diagnostic records the exact node, completion, host focus,
+document exposure, visibility, and decision reason without logging on stream
+updates.
 
 Read-only host surfaces reuse the complete workbench header and declare the
 session actions they support. Omitting that capability list preserves the full

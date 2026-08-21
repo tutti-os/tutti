@@ -10,9 +10,12 @@ import { zhCNAgentGuiCollaboration } from "./zh-CN.agentGuiCollaboration.ts";
 import { zhCNTuttiModePlan } from "./zh-CN.tuttiModePlan.ts";
 import { zhCNAgentGuiComposer } from "./zh-CN.agentGuiComposer.ts";
 import { zhCNAgentGuiProjectLaunch } from "./zh-CN.agentGuiProjectLaunch.ts";
+import { zhCNAgentGuiSide } from "./zh-CN.agentGuiSide.ts";
+import { zhCNAgentGuiHomeSuggestions } from "./zh-CN.agentGuiHomeSuggestions.ts";
 export const zhCNAgentGui = {
   imageDownloaded: "图片已下载",
   imageLoadFailed: "图片加载失败",
+  imageTemporarilyUnavailable: "图片暂时无法查看",
   retryImage: "重试",
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:
@@ -50,7 +53,7 @@ export const zhCNAgentGui = {
   providerGatePendingRefresh: "正在检测…",
   targetSetupTitle: "设置 {{provider}}",
   targetSetupDescription:
-    "优先使用兼容的本地运行时，也可由 Tutti 安装并验证固定版本",
+    "已经安装了 {{provider}}？Tutti 可以直接使用，也可以为你安装",
   targetSetupAuthRequired: "运行时已安装并通过 ACP 检测，但仍需完成登录",
   targetSetupReady: "已检测到运行时，可重新检测或重新登录",
   targetSetupOpen: "打开设置",
@@ -316,7 +319,7 @@ export const zhCNAgentGui = {
   slashStatusContextValue:
     "{{percentLeft}}% 剩余（已用 {{usedTokens}} / {{totalTokens}}）",
   slashStatusContextUnavailable: "—",
-  slashStatusLimitsUnavailable: "当前 Agent 未提供额度限制",
+  slashStatusLimitsUnavailable: "账户额度暂不可用",
   slashStatusEmptyValue: "—",
   slashStatusUsageJustUpdated: "刚刚更新",
   slashStatusUsageMinutesAgo: "{{count}} 分钟前更新",
@@ -425,29 +428,7 @@ export const zhCNAgentGui = {
     }
   },
   empty: "需要 {{provider}} 帮你做些什么？",
-  homeSuggestionsClose: "收起建议",
-  homeSuggestions: {
-    about: {
-      title: "认识 Tutti",
-      prompt: "介绍一下 Tutti 能帮我做些什么"
-    },
-    breakdown: {
-      title: "任务拆解",
-      taskCenterLabel: "任务管理",
-      prompt: "使用 {{taskCenterMention}} 帮我拆解任务，任务主题 { 请输入 }"
-    },
-    review: {
-      title: "质量审查",
-      prompt: "让 { @agent } 审查 { @agent 会话 } 的产物质量"
-    },
-    interaction: {
-      title: "Agent 互动",
-      prompt: "让 { @agent } 和 { @agent } 一起 { 做些什么 }，主题 { 请输入 }"
-    },
-    import: {
-      title: "导入会话"
-    }
-  },
+  ...zhCNAgentGuiHomeSuggestions,
   conversations: "会话",
   newConversation: "新建会话",
   agentConfig: "检测与设置",
@@ -793,5 +774,6 @@ export const zhCNAgentGui = {
   syncPending: "已保存到本地，正在同步到云端",
   syncSynced: "已同步到云端",
   syncFailed: "云端同步失败",
+  ...zhCNAgentGuiSide,
   ...zhCNAgentGuiCollaboration
 } as const;

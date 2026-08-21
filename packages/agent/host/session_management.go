@@ -48,7 +48,10 @@ func (h *Host) GetSession(ctx context.Context, ref SessionRef) (GetSessionResult
 // lock used by resume protects both paths.
 func (h *Host) UpdateSettings(ctx context.Context, input UpdateSettingsInput) (UpdateSettingsResult, error) {
 	var result UpdateSettingsResult
-	err := h.withWorkspaceRuntimeOperation(ctx, input.WorkspaceID, func(operationCtx context.Context) error {
+	err := h.withWorkspaceRuntimeOperationInfo(ctx, WorkspaceRuntimeOperationInfo{
+		WorkspaceID: input.WorkspaceID, Kind: "settings_update",
+		AgentSessionID: input.AgentSessionID, Source: "host.UpdateSettings",
+	}, func(operationCtx context.Context) error {
 		var updateErr error
 		result, updateErr = h.updateSettings(operationCtx, input)
 		return updateErr

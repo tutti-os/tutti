@@ -99,6 +99,7 @@ export interface AgentGUIComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  consumptionMultiplier?: string;
   supportsImageInput?: boolean;
   /** Bound plan identity for options aggregated from model access plans. */
   modelPlanId?: string | null;
@@ -136,6 +137,8 @@ export interface AgentGUIProviderSkillOption {
   connectorKey?: string;
   /** Presentation icon projected by the connector catalog. */
   iconUrl?: string;
+  /** Successful installation time used only for stable composer ordering. */
+  installedAtUnixMs?: number;
   /** Daemon-issued invocation contract; never infer this from provider id. */
   invocation?: "promptItem" | "textTrigger";
   sourceKind:
@@ -206,6 +209,13 @@ export interface AgentComposerPastedTextBlock extends AgentComposerFileBlockBase
   text: string;
 }
 
+/** Transcript text retained as visible, unsent composer context. */
+export interface AgentComposerQuoteBlock {
+  type: "quote";
+  id: string;
+  text: string;
+}
+
 export type AgentComposerFileBlock =
   | AgentComposerRegularFileBlock
   | AgentComposerPastedTextBlock;
@@ -214,13 +224,23 @@ export type AgentComposerAttachmentBlock =
   | AgentComposerImageBlock
   | AgentComposerFileBlock;
 
+export interface AgentComposerConnectorBlock {
+  type: "connector";
+  connectorKey: string;
+}
+
+export type AgentComposerSupplementaryBlock =
+  | AgentComposerAttachmentBlock
+  | AgentComposerQuoteBlock
+  | AgentComposerConnectorBlock;
+
 export type AgentComposerDraftBlock =
   | AgentComposerTextBlock
-  | AgentComposerAttachmentBlock;
+  | AgentComposerSupplementaryBlock;
 
 export type AgentComposerDraftContent = [
   AgentComposerTextBlock,
-  ...AgentComposerAttachmentBlock[]
+  ...AgentComposerSupplementaryBlock[]
 ];
 
 /** One atomic, unsent composer message. */
@@ -243,6 +263,10 @@ export type AgentComposerDraftLargeText = Omit<
   AgentComposerPastedTextBlock,
   "type" | "kind"
 >;
+export type AgentComposerDraftConnector = Omit<
+  AgentComposerConnectorBlock,
+  "type"
+>;
 
 /**
  * Built-in glyph for a home-suggestion category chip. Keeps the localized data
@@ -256,6 +280,7 @@ export type AgentHomeSuggestionIcon =
   | "breakdown"
   | "review"
   | "interaction"
+  | "github"
   | "about"
   | "import";
 
@@ -338,6 +363,8 @@ export interface AgentGUIComposerSettingsVM {
   composerOptionsLoadStatus?: AgentActivityComposerOptionsLoadStatus;
   /** Initial slash command and capability catalog request is in flight. */
   isCapabilityOptionsLoading?: boolean;
+  /** Local Connector Market projection is being loaded or refreshed. */
+  isConnectorOptionsLoading?: boolean;
   isModelOptionsLoading?: boolean;
   /** Device-local model recents/favorites identity and catalog testimony. */
   modelChoiceHistory?: AgentGUIComposerModelChoiceHistoryVM;
@@ -542,6 +569,8 @@ export interface AgentGUIComposerViewModel {
 
 export interface AgentGUIInteractionViewModel {
   approvalDisabledReason: string | null;
+  /** The visible prompt is the one exact pending question Composer can answer. */
+  canAnswerPendingInteractivePromptFromComposer?: boolean;
   interactivePromptDisabledReason: string | null;
   isRespondingApproval: boolean;
   isRespondingInteractivePrompt: boolean;

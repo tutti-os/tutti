@@ -1093,7 +1093,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
     expect(toolRows[0]?.calls[0]?.toolName).toBe("Agent");
   });
 
-  it("projects Codex warning notices without appending them to assistant text", () => {
+  it("drops source-less skills warnings but preserves explicit non-runtime matches", () => {
     const conversation = projectWorkspaceAgentMessagesToConversationVM({
       activity: activity(),
       session: session(),
@@ -1119,7 +1119,26 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
             severity: "warning",
             title: "Codex warning",
             detail:
-              "Skill descriptions were shortened to fit the 2% skills context budget.",
+              "Skill descriptions were shortened to fit the skills context budget. Codex can still see every skill, but some descriptions are shorter.",
+            text: "Codex warning",
+            content: "Codex warning",
+            contentMode: "snapshot"
+          }
+        }),
+        message({
+          messageId: "notice-2",
+          id: 3,
+          version: 3,
+          role: "assistant",
+          kind: "text",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "warning",
+            severity: "warning",
+            title: "Codex warning",
+            source: "user",
+            detail:
+              "Skill descriptions were shortened to fit the skills context budget.",
             text: "Codex warning",
             content: "Codex warning",
             contentMode: "snapshot"
@@ -1127,8 +1146,8 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         }),
         message({
           messageId: "assistant-1",
-          id: 3,
-          version: 3,
+          id: 4,
+          version: 4,
           role: "assistant",
           kind: "text",
           payload: {
@@ -1152,14 +1171,59 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
       noticeKind: "warning",
       severity: "warning",
       title: "Codex warning",
+      source: "user",
       detail:
-        "Skill descriptions were shortened to fit the 2% skills context budget.",
+        "Skill descriptions were shortened to fit the skills context budget.",
       retryable: null
     });
-    expect(assistantRows[0]?.messages[0]?.body).toBe("Codex warning");
+    expect(assistantRows[1]?.messages[0]?.systemNotice).toBeNull();
     expect(assistantRows[1]?.messages[0]?.body).toBe(
       "你好。有什么需要我在这个 workspace 里处理?"
     );
+  });
+
+  it("keeps fallback metadata warnings when runtime metadata is absent", () => {
+    const metadataWarning =
+      "Model metadata for `minimax/minimax-m2.5` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.";
+    const conversation = projectWorkspaceAgentMessagesToConversationVM({
+      activity: activity(),
+      session: session(),
+      workspaceRoot: "/workspace/demo",
+      messages: [
+        message({
+          messageId: "notice-1",
+          id: 1,
+          version: 1,
+          role: "assistant",
+          kind: "text",
+          payload: {
+            kind: "agent_system_notice",
+            noticeKind: "warning",
+            severity: "warning",
+            title: metadataWarning,
+            detail: metadataWarning,
+            text: "Codex warning",
+            content: "Codex warning",
+            contentMode: "snapshot"
+          }
+        })
+      ]
+    });
+
+    const warning = conversation.rows.find(
+      (row) => row.kind === "message" && row.speaker === "assistant"
+    );
+    expect(warning).toMatchObject({
+      kind: "message",
+      messages: [
+        {
+          systemNotice: expect.objectContaining({
+            noticeKind: "warning",
+            detail: metadataWarning
+          })
+        }
+      ]
+    });
   });
 
   it("renders an image-only optimistic prompt without synthetic text", () => {

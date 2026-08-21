@@ -210,6 +210,51 @@ func TestCodexAndClaudeApprovalOptionsProjectSemantics(t *testing.T) {
 	}
 }
 
+func TestInteractiveAdaptersClassifyMalformedResponsesConsistently(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderCodex)
+	adapters := []struct {
+		name   string
+		submit func() error
+	}{
+		{
+			name: "codex",
+			submit: func() error {
+				_, err := (&CodexAppServerAdapter{}).SubmitInteractive(
+					context.Background(), session, SubmitInteractiveInput{},
+				)
+				return err
+			},
+		},
+		{
+			name: "standard-acp",
+			submit: func() error {
+				_, err := (&standardACPAdapter{}).SubmitInteractive(
+					context.Background(), session, SubmitInteractiveInput{},
+				)
+				return err
+			},
+		},
+		{
+			name: "claude-sdk",
+			submit: func() error {
+				_, err := NewClaudeCodeSDKAdapter(nil).SubmitInteractive(
+					context.Background(), session, SubmitInteractiveInput{},
+				)
+				return err
+			},
+		},
+	}
+	for _, adapter := range adapters {
+		t.Run(adapter.name, func(t *testing.T) {
+			if err := adapter.submit(); !errors.Is(err, ErrInteractiveResponseInvalid) {
+				t.Fatalf("SubmitInteractive error = %v, want ErrInteractiveResponseInvalid", err)
+			}
+		})
+	}
+}
+
 func TestPendingInteractiveRequestAllowsOnlyOnePendingToResolvingClaim(t *testing.T) {
 	t.Parallel()
 	pending := &pendingInteractiveRequest{requestID: "request-1"}

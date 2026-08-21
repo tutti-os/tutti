@@ -63,8 +63,10 @@ type acpPendingCall struct {
 
 type acpActiveHandler struct {
 	ctx     context.Context
+	method  string
 	handler acpMessageHandler
 	errors  chan error
+	results chan json.RawMessage
 }
 
 type acpError struct {
@@ -89,11 +91,8 @@ func (e *acpCallError) AuthRequired() bool {
 	if e == nil {
 		return false
 	}
-	haystack := strings.ToLower(e.Err.Message + " " + string(e.Err.Data))
-	if structuredProviderFailureCode(haystack) != "" {
-		return false
-	}
-	return strings.Contains(haystack, "auth")
+	failure := failureFromACPCall(e)
+	return failure.AuthImpact == providerFailureAuthRequired
 }
 
 func newACPClientWithStderrMessageMapper(conn ProcessConnection, mapper acpStderrMessageMapper) *acpClient {
@@ -260,7 +259,13 @@ func (c *acpClient) callLocked(
 	if params != nil {
 		message["params"] = params
 	}
-	active := &acpActiveHandler{ctx: ctx, handler: handler, errors: make(chan error, 1)}
+	active := &acpActiveHandler{
+		ctx:     ctx,
+		method:  method,
+		handler: handler,
+		errors:  make(chan error, 1),
+		results: make(chan json.RawMessage, 1),
+	}
 	pending := &acpPendingCall{response: make(chan acpMessage, 1)}
 	c.registerCall(id, pending, active)
 	defer c.unregisterCall(id, active)
@@ -285,15 +290,19 @@ func (c *acpClient) callLocked(
 				err = io.EOF
 			}
 			return nil, err
+		case result := <-active.results:
+			return result, nil
 		case message := <-pending.response:
 			if message.Error != nil {
+				sanitizedMessage := sanitizeProviderFailureText(message.Error.Message)
+				sanitizedData := sanitizeProviderFailureText(string(message.Error.Data))
 				slog.Warn("agent session ACP request failed",
 					"event", "agent_session.acp.request.failed",
 					"method", method,
 					"id", id,
 					"error_code", message.Error.Code,
-					"error_message", message.Error.Message,
-					"error_data", truncateACPLogValue(string(message.Error.Data), 1200),
+					"error_message", sanitizedMessage,
+					"error_data", truncateACPLogValue(sanitizedData, 1200),
 				)
 				return nil, &acpCallError{Method: method, Err: *message.Error}
 			}
@@ -382,6 +391,26 @@ func (c *acpClient) unregisterCall(id int64, active *acpActiveHandler) {
 		c.active = nil
 	}
 	c.mu.Unlock()
+}
+
+// completeActiveHandler supplies a synthetic success result to the active
+// request when the provider emits an authoritative lifecycle notification but
+// loses the matching JSON-RPC response. The method fence prevents an
+// unrelated notification from completing another request's waiter.
+func (c *acpClient) completeActiveHandler(method string, result json.RawMessage) {
+	if c == nil || method == "" || len(result) == 0 {
+		return
+	}
+	c.mu.Lock()
+	active := c.active
+	c.mu.Unlock()
+	if active == nil || active.method != method {
+		return
+	}
+	select {
+	case active.results <- result:
+	default:
+	}
 }
 
 func (c *acpClient) Respond(ctx context.Context, id json.RawMessage, result any, responseErr *acpError) error {

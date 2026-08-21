@@ -9,6 +9,49 @@ import (
 	"testing"
 )
 
+func TestNormalizeGitPatchCwdForPlatform(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name    string
+		input   string
+		windows bool
+		want    string
+	}{
+		{
+			name:    "windows git bash drive",
+			input:   `/c/Users/demo/project`,
+			windows: true,
+			want:    `C:/Users/demo/project`,
+		},
+		{
+			name:    "windows git bash drive root",
+			input:   `/d`,
+			windows: true,
+			want:    `D:`,
+		},
+		{
+			name:    "posix path remains posix",
+			input:   `/c/Users/demo/project`,
+			windows: false,
+			want:    `/c/Users/demo/project`,
+		},
+		{
+			name:    "native windows path",
+			input:   `C:\Users\demo\project`,
+			windows: true,
+			want:    `C:/Users/demo/project`,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			if got := normalizeGitPatchCwdForPlatform(tt.input, tt.windows); got != tt.want {
+				t.Fatalf("normalizeGitPatchCwdForPlatform(%q, %t) = %q, want %q", tt.input, tt.windows, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestApplyGitPatchRevertsDiffAndCleansTempDir(t *testing.T) {
 	t.Parallel()
 	requireGitForPatchTest(t)

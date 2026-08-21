@@ -55,6 +55,20 @@ export {
   type AgentActivityWorkspaceEventInput
 } from "./workspaceEventCoordinator.ts";
 export {
+  createAgentActivityEphemeralConversationProjector,
+  type AgentActivityEphemeralConversationApplyResult,
+  type AgentActivityEphemeralConversationChange,
+  type AgentActivityEphemeralConversationEvent,
+  type AgentActivityEphemeralConversationExpiryReason,
+  type AgentActivityEphemeralConversationIdentity,
+  type AgentActivityEphemeralConversationProjection,
+  type AgentActivityEphemeralConversationProjector,
+  type AgentActivityEphemeralConversationSeed,
+  type AgentActivityEphemeralInteractionPatch,
+  type AgentActivityEphemeralStatePatch,
+  type AgentActivityEphemeralTurnPatch
+} from "./ephemeralConversationProjector.ts";
+export {
   createAgentActivitySessionReconcileExecutor,
   type AgentActivityChildMessageHydration,
   type AgentActivitySessionReconcileExecutor,
@@ -198,11 +212,13 @@ export {
 export type { SessionMessagesState } from "./engine/sessionMessages.types.ts";
 export {
   selectComposerOptions,
-  selectComposerOptionsLoadStatus
+  selectComposerOptionsLoadStatus,
+  selectComposerOptionsSectionLoadStatus
 } from "./engine/composerOptions.selectors.ts";
 export type {
   ComposerOptionsIntent,
   ComposerOptionsCommand,
+  ComposerOptionsSection,
   ComposerOptionsState
 } from "./engine/composerOptions.types.ts";
 export type {

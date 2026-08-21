@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	"github.com/tutti-os/tutti/packages/agent/daemon/composercatalog"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 )
 
@@ -36,7 +37,7 @@ func (s *Service) validatePromptConnectors(ctx context.Context, content []Prompt
 	if s == nil || s.ConnectorMarketSnapshots == nil {
 		return fmt.Errorf("%w: local connector state is unavailable", ErrInvalidArgument)
 	}
-	snapshot, err := s.ConnectorMarketSnapshots.Snapshot(ctx)
+	snapshot, err := connectorMarketSnapshot(ctx, s.ConnectorMarketSnapshots, s.ConnectorMarketCurrentScope)
 	if err != nil {
 		return fmt.Errorf("read local connector state: %w", err)
 	}
@@ -45,7 +46,7 @@ func (s *Service) validatePromptConnectors(ctx context.Context, content []Prompt
 		if _, ok := requested[key]; !ok {
 			continue
 		}
-		if localConnectorCapabilityStatus(connector) != "available" {
+		if composercatalog.ConnectorStatus(connector) != composercatalog.CapabilityStatusAvailable {
 			return fmt.Errorf("%w: local connector %q is not ready", ErrInvalidArgument, key)
 		}
 		delete(requested, key)
@@ -59,54 +60,24 @@ func (s *Service) validatePromptConnectors(ctx context.Context, content []Prompt
 func localConnectorCapabilityOptions(
 	ctx context.Context,
 	source market.SnapshotReader,
+	currentScope func() market.OperationScope,
 ) ([]ComposerCapabilityOption, error) {
-	if source == nil {
-		return nil, nil
-	}
-	snapshot, err := source.Snapshot(ctx)
+	snapshot, err := connectorMarketSnapshot(ctx, source, currentScope)
 	if err != nil {
 		return nil, err
 	}
-	options := make([]ComposerCapabilityOption, 0, len(snapshot.Connectors))
-	for _, connector := range snapshot.Connectors {
-		key := strings.TrimSpace(connector.Key)
-		if key == "" {
-			continue
-		}
-		label := strings.TrimSpace(connector.Release.Manifest.DisplayName)
-		if label == "" {
-			label = key
-		}
-		options = append(options, ComposerCapabilityOption{
-			ID:          "connector:" + key,
-			Kind:        "connector",
-			Name:        key,
-			Label:       label,
-			IconURL:     strings.TrimSpace(connector.Release.Manifest.IconURL),
-			Description: strings.TrimSpace(connector.Release.Manifest.Description),
-			Status:      localConnectorCapabilityStatus(connector),
-			Source:      "local-db",
-			Trigger:     "/" + key,
-			Invocation:  "textTrigger",
-		})
-	}
-	return options, nil
+	return composercatalog.ProjectConnectorOptions(snapshot), nil
 }
 
-func localConnectorCapabilityStatus(connector market.Connector) string {
-	if connector.Compatibility.State != "" &&
-		connector.Compatibility.State != market.CompatibilityStateSupported {
-		return "unsupported"
+func connectorMarketSnapshot(
+	ctx context.Context,
+	source market.SnapshotReader,
+	currentScope func() market.OperationScope,
+) (market.Snapshot, error) {
+	if scoped, ok := source.(market.ScopedSnapshotReader); ok && currentScope != nil {
+		return scoped.SnapshotForScope(ctx, currentScope())
 	}
-	if connector.Installation.State != market.InstallationStateInstalled {
-		return "setupRequired"
-	}
-	switch connector.Authorization.State {
-	case market.AuthorizationStateNotRequired, market.AuthorizationStateConnected:
-		return "available"
-	default:
-		return "authRequired"
-	}
+	return source.Snapshot(ctx)
 }
 
 func replaceComposerConnectorCapabilities(

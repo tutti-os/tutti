@@ -1,3 +1,5 @@
+import { normalizeWorkspaceFilePath as normalizeLogicalWorkspaceFilePath } from "@tutti-os/workspace-file-manager/services";
+
 const URL_LIKE_LINK_PATTERN = /^[a-zA-Z][a-zA-Z\d+.-]*:|^#/;
 const LOCAL_ASSET_ROOT = "/var/cache/tsh/local-assets";
 
@@ -32,8 +34,12 @@ export function resolveWorkspaceFilePathCandidate({
     return null;
   }
 
+  const selectedRoot = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
+  const sessionRoot = normalizeWorkspaceFilePath(basePath?.trim() ?? "");
+  const root = selectedRoot || sessionRoot;
   const normalizedPath = normalizeWorkspaceFilePath(
-    stripWorkspaceFileLineAnchor(rawPath)
+    stripWorkspaceFileLineAnchor(rawPath),
+    sessionRoot || root
   );
   if (isUnsupportedSpecialWorkspaceFilePath(normalizedPath)) {
     return null;
@@ -46,8 +52,7 @@ export function resolveWorkspaceFilePathCandidate({
     return {
       path: normalizedPath,
       directoryPath,
-      workspaceRoot:
-        normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "") || directoryPath
+      workspaceRoot: selectedRoot || directoryPath
     };
   }
   if (
@@ -59,14 +64,10 @@ export function resolveWorkspaceFilePathCandidate({
     return {
       path: normalizedPath,
       directoryPath,
-      workspaceRoot:
-        normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "") || directoryPath
+      workspaceRoot: selectedRoot || directoryPath
     };
   }
 
-  const selectedRoot = normalizeWorkspaceFilePath(workspaceRoot?.trim() ?? "");
-  const sessionRoot = normalizeWorkspaceFilePath(basePath?.trim() ?? "");
-  const root = selectedRoot || sessionRoot;
   if (!root) {
     return null;
   }
@@ -94,8 +95,22 @@ export function resolveWorkspaceFilePathCandidate({
   };
 }
 
-export function normalizeWorkspaceFilePath(path: string): string {
+export function normalizeWorkspaceFilePath(
+  path: string,
+  rootPath?: string | null
+): string {
   const normalizedPath = path.trim().replaceAll("\\", "/");
+  const normalizedRootPath = rootPath?.trim().replaceAll("\\", "/");
+  if (
+    isWindowsAbsolutePath(normalizedPath) ||
+    isGitBashWindowsAbsolutePath(normalizedPath, normalizedRootPath)
+  ) {
+    return normalizeLogicalWorkspaceFilePath(
+      normalizedPath,
+      normalizedRootPath
+    );
+  }
+
   const drive = /^[A-Za-z]:/.exec(normalizedPath)?.[0] ?? "";
   const startsWithSlash = normalizedPath.startsWith("/");
   const pathBody = drive
@@ -154,7 +169,8 @@ function stripWorkspaceFileLineAnchor(path: string): string {
 }
 
 export function workspaceFilePathBasename(path: string): string {
-  return path.split("/").filter(Boolean).at(-1) ?? path;
+  const normalized = path.trim().replaceAll("\\", "/");
+  return normalized.split("/").filter(Boolean).at(-1) ?? path;
 }
 
 export function isInsideOrEqualWorkspaceFilePath(
@@ -206,7 +222,22 @@ function dirnameForHomeRelativePath(path: string): string {
 }
 
 function isWindowsAbsolutePath(path: string): boolean {
-  return /^[A-Za-z]:\//.test(path);
+  return /^\/?[A-Za-z]:\//.test(path);
+}
+
+function isGitBashWindowsAbsolutePath(
+  path: string,
+  rootPath?: string | null
+): boolean {
+  const rootDrive = readWindowsDrive(rootPath ?? "");
+  const pathDrive = /^\/([A-Za-z])(?=\/|$)/.exec(path)?.[1];
+  return Boolean(
+    rootDrive && pathDrive && `${pathDrive}:`.toUpperCase() === rootDrive
+  );
+}
+
+function readWindowsDrive(path: string): string {
+  return /^\/?([A-Za-z]:)(?=\/|$)/.exec(path)?.[1]?.toUpperCase() ?? "";
 }
 
 function isUncWorkspaceFilePath(path: string): boolean {

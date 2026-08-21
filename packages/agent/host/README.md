@@ -32,6 +32,8 @@ The module owns:
   attachment staging, durable lineage, and startup recovery policy;
 - the durable edit-retry saga, effective-history revision fence, authoritative
   provider-history reconciliation, and explicit replacement recovery policy;
+- the provider-neutral runtime-only Side lifecycle, including live-source
+  capability checks, idempotent open, transient execution, and cleanup;
 - typed conformance scenarios under `conformance`.
 
 `CreateSession` has three explicit modes: an empty session, one command with
@@ -153,6 +155,27 @@ and persists its opaque `SectionKey` exactly on first creation. An idempotent
 retry that supplies a placement must use the same placement; project deletion
 or another adapter-side view change never reassigns an existing session to
 `conversations`.
+By default, a new explicit project placement must still exist in the Host's
+local project registry, which fences a stale local selection after project
+deletion. A trusted adapter may set
+`CreateSessionInput.RailPlacementAuthoritative` when an external canonical
+authority already fixed the placement. That opt-in accepts a project absent
+from the local registry, but it applies only to first initialization and never
+allows an existing session's immutable placement to change.
+Before provider startup, Host resolves the final placement from the immutable
+existing session, an explicit caller placement, or the prepared cwd through the
+canonical store. It then installs the prepared cwd in `TUTTI_AGENT_CWD` and the
+normalized versioned `RailPlacement` JSON in
+`TUTTI_AGENT_RAIL_PLACEMENT`. Create, resume, runtime reprepare, and historical
+Session Fork sources all receive that same pair. Nested callers inherit it when
+they omit an explicit cwd; an explicit cwd is a new placement-selection request,
+not a request to reinterpret the caller's environment. Adapters must not derive
+placement from a session id, binding id, PeerCommand, or another view lookup.
+
+Host supplies the exact canonical assignments last; the runtime process adapter
+owns target-platform environment-key semantics when it materializes the child
+process environment.
+
 Cancellation exposes durable intent acceptance, provider confirmation, and
 canonical settlement as separate facts. `GoalControl`, `GetGoalState`, and
 `ReconcileGoal` are provider-neutral Host APIs; typed `/goal` commands enter the
@@ -165,6 +188,14 @@ that durable operation exists, even when immediate runtime readiness or
 delivery returns an error; `GoalState` then distinguishes pending delivery
 from terminal failure. A provider-accepted or applied Goal is also canonical
 resume evidence for a turnless Goal session after the live runtime disappears.
+
+An exact-provider cancel response can be delivery-unconfirmed: the provider
+received the request but could not prove it stopped the requested Turn. Host
+retains that exact durable operation for retry and canonical reconciliation; it
+does not infer either `canceled` or `failed` from the response. If the canonical
+Turn reaches a terminal state first, the operation completes as a no-op and
+preserves that existing outcome.
+
 `AdoptProviderGoal` is the narrow
 reverse boundary for a Goal created by a provider tool during an already
 accepted Turn. It atomically records the active provider generation as a
@@ -330,6 +361,19 @@ into the current provider response without interrupting it. A preemptive
 adapter must close the interrupted response's live message/tool projections
 and publish its provider-turn terminal boundary before admitting guided output.
 Neither form is a canonical Turn cancel or a second user Turn.
+
+Interactive responses follow the same ownership rule. Runtime may return a
+provider-neutral follow-up intent after an interactive denial, but it does not
+dispatch that prompt itself. Host checkpoints the intent on the leased
+interactive operation, waits for the answered Turn to become idle, and submits
+the prompt through `SendInput` with the stable id
+`interactive-deny:<operation-id>`. The checkpoint also persists the terminal
+interactive disposition, so recovery does not depend on Controller memory or
+an existing Runtime Session. Recovery reuses that disposition and id; if the
+provider connection is temporarily absent, the operation remains retryable
+until ordinary Host admission can replay the prompt without creating a
+duplicate Turn.
+
 Accepted runtime Session reports reconcile their Goal snapshot through the
 canonical bottom-up observation path without overwriting a newer desired
 intent. When that changes the public Goal projection, the same transaction
@@ -366,7 +410,14 @@ provider code and diagnostic text remain local observations rather than a
 stable cross-service taxonomy; coordination layers persist only their own
 coarse product reason when needed. `NewProviderError` deliberately leaves
 cancellation and deadline failures unclassified because their delivery result
-is unknown and must remain recoverable.
+is unknown and must remain recoverable. The narrow
+`NewProviderStartTimeoutError` exception is used only after the runtime owner
+has observed the provider adapter's Start stage time out before establishing a
+runtime Session. The daemon keeps the existing `request_timed_out` AppError
+code for API and presentation behavior and carries that narrow verdict as
+`ErrProviderStartTimeout` in the error chain. The Host runtime adapter maps the
+marker to `provider_start_timeout` while preserving the deadline cause; callers
+must not infer that verdict from an arbitrary context deadline.
 `UpdateSettings` serializes with runtime resume:
 historical sessions persist settings only, while live sessions update the
 runtime first and persist the resulting settings only after the runtime
@@ -475,10 +526,10 @@ through Host. HTTP adapters may project it as structured diagnostic metadata
 while preserving their existing coarse conflict reason; transcript payloads
 and attachment contents never enter that reason.
 
-Session Fork is default-off behind the `lab.agentSessionFork` product flag.
-Desktop exposes the persisted switch in Developer settings, and Desktop plus
-Tuttid enforce the same opt-in for new Fork writes while retaining read and
-acknowledgement access to existing durable operations.
+Session Fork is exposed directly when the provider/runtime attestation and the
+selected canonical Turn satisfy the capability boundary. Product adapters do
+not add a separate feature-preference gate; execution still revalidates the
+exact provider and Turn facts before dispatch.
 
 Capability projection is preparation-free. It reads either the live runtime
 observation or the persisted runtime/driver attestation and never resolves

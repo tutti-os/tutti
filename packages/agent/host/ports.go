@@ -16,9 +16,26 @@ type CanonicalSessionStore interface {
 	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
+// CanonicalRuntimeContextCASStore is the narrow durable commit required by a
+// runtime configuration rebind. It remains optional so external read/custom
+// stores are not source-broken; rebind fails closed when it is unavailable.
+type CanonicalRuntimeContextCASStore interface {
+	CompareAndSwapSessionRuntimeContext(context.Context, string, string, map[string]any, map[string]any) (storesqlite.Session, bool, error)
+}
+
+// RuntimeSessionRailPlacementResolver is the optional create-time capability
+// that resolves a prepared runtime's final canonical rail placement before a
+// provider process starts. Keeping it separate preserves source compatibility
+// for external CanonicalStore implementations; CreateSession fails closed
+// when the capability is unavailable.
+type RuntimeSessionRailPlacementResolver interface {
+	ResolveRuntimeSessionRailPlacement(context.Context, ResolveRuntimeSessionRailPlacementInput) (*RailPlacement, error)
+}
+
 type RuntimeSessionInitialization struct {
-	Session       ProviderRuntimeSession
-	RailPlacement *RailPlacement
+	Session                    ProviderRuntimeSession
+	RailPlacement              *RailPlacement
+	RailPlacementAuthoritative bool
 }
 
 type CanonicalTurnStore interface {
@@ -156,6 +173,14 @@ type SessionForkTurnBindingRecoveryStore interface {
 		context.Context,
 		storesqlite.ProviderTurnBindingRecovery,
 	) (storesqlite.ProviderTurnBindingRecoveryResult, error)
+}
+
+// SideConversationRuntime opens only the provider-native ephemeral branch.
+// Host owns lifecycle/idempotency and then reuses RuntimeController for
+// execution, cancellation, interaction responses, and close.
+type SideConversationRuntime interface {
+	ResolveSideConversation(context.Context, ProviderRuntimeSession) (SideConversationCapabilities, error)
+	OpenSideConversation(context.Context, RuntimeOpenSideConversationInput) (OpenSideConversationResult, error)
 }
 
 // SessionForkContextPolicy decides whether host-owned session context can be
@@ -558,20 +583,21 @@ type LifecycleObserver interface {
 // settlement. It carries the failure stage and original error text so adapters
 // can report without depending on user-supplied logs.
 type TerminalFailure struct {
-	Flow            string
-	FailureStage    string
-	WorkspaceID     string
-	AgentSessionID  string
-	TurnID          string
-	OperationID     string
-	ClientSubmitID  string
-	RequestID       string
-	Provider        string
-	ErrorCode       string
-	ErrorMessage    string
-	ToolNameFamily  string
-	InteractionKind string
-	TurnOutcome     string
+	Flow                          string
+	FailureStage                  string
+	WorkspaceID                   string
+	AgentSessionID                string
+	TurnID                        string
+	OperationID                   string
+	ClientSubmitID                string
+	RequestID                     string
+	Provider                      string
+	ErrorCode                     string
+	ErrorMessage                  string
+	ProviderAcceptanceDiagnostics *RuntimeProviderAcceptanceDiagnostics
+	ToolNameFamily                string
+	InteractionKind               string
+	TurnOutcome                   string
 	// DurationMS is populated only when the canonical terminal fact carries a
 	// valid start and settlement timestamp. Zero means unavailable.
 	DurationMS int64

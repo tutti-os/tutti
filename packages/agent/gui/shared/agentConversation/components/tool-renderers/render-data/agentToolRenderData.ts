@@ -1,5 +1,6 @@
 import type { AgentToolCallVM } from "../../../contracts/agentToolCallVM";
 import { extractImageGenerationPreview } from "../../../../imageGenerationTool";
+import { workspaceFilePathBasename } from "../../../../../actions/workspaceFilePathCandidate";
 import type { AgentTaskStepVM } from "../../../contracts/agentTaskItemVM";
 import type {
   AgentCommandRenderData,
@@ -258,7 +259,7 @@ export function getPlanModeRenderData(
             nonEmpty(call.summary)
           ),
     filePath,
-    fileName: filePath ? (filePath.split("/").pop() ?? null) : null
+    fileName: filePath ? workspaceFilePathBasename(filePath) : null
   };
 }
 

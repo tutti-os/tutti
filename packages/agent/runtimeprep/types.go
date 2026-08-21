@@ -30,11 +30,15 @@ type SkillBundleRenderer interface {
 }
 
 type PrepareInput struct {
-	WorkspaceID            string
-	AgentSessionID         string
-	AgentTargetID          string
-	Provider               string
-	Cwd                    string
+	WorkspaceID    string
+	AgentSessionID string
+	AgentTargetID  string
+	Provider       string
+	Cwd            string
+	// SkipSkills keeps provider preparation limited to the runtime data needed
+	// by a model-only probe. It must not be used when launching a live Agent
+	// Session or when the caller needs the provider's Skill catalog.
+	SkipSkills             bool
 	CLICommand             string
 	CodexSaverMode         bool
 	Title                  string
@@ -62,6 +66,13 @@ type PrepareInput struct {
 	// SkillRoot points at the active release's verified, content-addressed Skill
 	// tree and remains stable across Connector runtime restarts.
 	ConnectorRoutingHints []ConnectorRoutingHint
+	// SharedInvocation is true when this runtime is prepared for a shared
+	// agent: the Owner provides the environment and the Caller operates it
+	// through a grant. Local sessions leave this false.
+	SharedInvocation bool
+	// EnabledConnectors is the user-enabled connector set at prepare time.
+	// Rendered into session policy as a deterministic unique list, or "none".
+	EnabledConnectors []string
 	// MCPServers are daemon-issued, session-scoped native MCP bindings. They
 	// are typed runtime configuration and must never be rendered into prompts.
 	MCPServers []MCPServerBinding

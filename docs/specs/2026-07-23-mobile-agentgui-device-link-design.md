@@ -1,6 +1,6 @@
 # Mobile AgentGUI And DeviceLink Design
 
-Status: accepted product direction; Personal direct-lane MVP in implementation
+Status: accepted product direction; Personal direct-lane MVP currently disabled
 
 ## Implementation progress (2026-08-11)
 
@@ -175,10 +175,10 @@ Mobile 使用稳定 Bootstrap container。未登录 child 与登录后 child 互
 
 设备级快捷提示词由登录后的设备 scope 中的独立 service 读取，不进入 workspace
 `AgentSessionEngine`、Session 或移动端持久存储。该 service 通过生成客户端读取电脑端
-`agent.quickPromptLibrary` 开关和 canonical 提示词顺序；开关打开时，Composer 的 `+`
-菜单提供搜索与只读选择，点选后在当前输入位置添加文本，不替换已有草稿，恢复输入焦点且不自动发送。
-新增、编辑、删除和排序仍由电脑端负责。DeviceLink 只为此能力开放精确的桌面偏好和
-快捷提示词列表 GET 路由，不开放 mutation 或单条记录路由。
+canonical 提示词顺序；Composer 的 `+` 菜单提供搜索与只读选择，点选后在当前输入位置
+添加文本，不替换已有草稿，恢复输入焦点且不自动发送。
+新增、编辑、删除和排序仍由电脑端负责。DeviceLink 只为此能力开放精确的快捷提示词
+列表 GET 路由，不开放 mutation 或单条记录路由。
 
 ## 7. DeviceLink 边界
 
@@ -264,12 +264,10 @@ Cookie，也不新增移动端账号实体。Android 在浏览器 provider 支�
 5. tsh-server 校验同账号和 challenge 状态；
 6. Desktop 显式确认配对。
 
-Desktop 的账号登录入口与手机远程访问入口独立发布。Tutti Agent 及工作区账号菜单
-默认显示且不再提供独立的开发者可见性开关。独立持久化的
-`mobile.remoteAccessSettings` feature flag 控制手机远程访问能力和「连接」设置入口；
-关闭时 `tuttid` owner host 不得轮询账号、配对或 DeviceLink attempt 控制面，并关闭
-已有远程链路；开启时立即开始 owner-side discovery。「连接」页承载账号登录、退出、
-刷新、手机配对和远程访问能力。该开关不创建第二套登录态、设备实体或协议能力。
+Desktop 的账号登录入口与手机远程访问入口独立发布。手机远程访问当前已停用；
+`mobile.remoteAccessSettings` 仅作为旧 profile 的持久化兼容键保留，desktop daemon
+会强制忽略它，不启动 owner-side discovery，也不提供手机配对 UI。「连接」页仍承载
+账号登录、退出和刷新。该开关不创建第二套登录态、设备实体或协议能力。
 
 QR 不包含 bearer token、私钥、原始候选或可长期使用的连接凭据。
 

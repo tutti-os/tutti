@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -128,7 +129,7 @@ func TestManagerReconcileInstallsVerifiedPackageAndFallsBackOffline(t *testing.T
 	}))
 	baseURL = server.URL
 	store := &targetStoreStub{targets: map[string]agenttargetbiz.Target{}}
-	manager := Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()), Store: store, Client: server.Client(), Sources: []tuttitypes.AgentExtensionSource{{Key: "gemini", ReleaseIndexURL: server.URL + "/versions.json", SigningKeyID: "test-key", SigningPublicKey: publicKeyPEM(t, publicKey), Enabled: true}}}
+	manager := Manager{Installations: agentextensiondata.NewFileInstallationStore(t.TempDir()), Store: store, Client: server.Client(), Sources: []tuttitypes.AgentExtensionSource{{Key: "gemini", PinnedVersion: "1.0.0", ReleaseIndexURL: server.URL + "/versions.json", SigningKeyID: "test-key", SigningPublicKey: publicKeyPEM(t, publicKey), Enabled: true}}}
 	if errs := manager.Reconcile(context.Background()); len(errs) != 0 {
 		t.Fatalf("Reconcile() errors = %v", errs)
 	}
@@ -231,6 +232,7 @@ func TestManagerReconcileUsesFallbackReleaseIndex(t *testing.T) {
 		Client:        server.Client(),
 		Sources: []tuttitypes.AgentExtensionSource{{
 			Key:                      "gemini",
+			PinnedVersion:            "1.0.0",
 			ReleaseIndexURL:          server.URL + "/primary/versions.json",
 			FallbackReleaseIndexURLs: []string{server.URL + "/fallback/versions.json"},
 			SigningKeyID:             "test-key",
@@ -279,7 +281,7 @@ func TestManagerReconcileMigratesLegacyRemoteV2InstallationAndFallsBackOffline(t
 	manager := &Manager{
 		Installations: installationStore, Store: targets, Client: server.Client(),
 		Sources: []tuttitypes.AgentExtensionSource{{
-			Key: "gemini", ReleaseIndexURL: server.URL + "/versions.json", Enabled: true,
+			Key: "gemini", PinnedVersion: "1.0.0", ReleaseIndexURL: server.URL + "/versions.json", Enabled: true,
 		}},
 	}
 	if errs := manager.Reconcile(context.Background()); len(errs) != 0 {
@@ -292,7 +294,8 @@ func TestManagerReconcileMigratesLegacyRemoteV2InstallationAndFallsBackOffline(t
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !validPackageContentSHA256(migrated.PackageContentSHA256) || migrated.ReleaseArtifactSHA256 != "" || migrated.ReleaseArtifactSizeBytes != 0 {
+	if !validPackageContentSHA256(migrated.PackageContentSHA256) || migrated.ReleaseArtifactSHA256 != "" ||
+		migrated.ReleaseArtifactSizeBytes != 0 || !manager.isCurrentClientPinnedRemoteInstallation(migrated) {
 		t.Fatalf("migrated legacy installation identity = %#v", migrated)
 	}
 	loaded, err := manager.loadInstallationByID(legacy.ID)
@@ -506,6 +509,32 @@ func TestManagerRestoreActiveRequiresSynchronousReconcileWithoutCachedInstallati
 	}
 	if len(targets.targets) != 0 {
 		t.Fatalf("RestoreActive() targets = %#v, want none", targets.targets)
+	}
+}
+
+func TestManagerRestoreActiveRejectsReleaseFromAnotherClientPin(t *testing.T) {
+	installationStore := agentextensiondata.NewFileInstallationStore(t.TempDir())
+	targets := &targetStoreStub{targets: map[string]agenttargetbiz.Target{
+		"extension:gemini": {ID: "extension:gemini", Provider: "acp:gemini", Enabled: true},
+	}}
+	writeLegacyRemoteInstallationFixture(t, installationStore)
+	manager := Manager{
+		Installations: installationStore,
+		Store:         targets,
+		Sources: []tuttitypes.AgentExtensionSource{{
+			Key: "gemini", PinnedVersion: "2.0.0", ReleaseIndexURL: "https://example.test/versions.json", Enabled: true,
+		}},
+	}
+
+	requiresSynchronousReconcile, errs := manager.RestoreActive(context.Background())
+	if len(errs) != 0 {
+		t.Fatalf("RestoreActive() errors = %v", errs)
+	}
+	if !requiresSynchronousReconcile {
+		t.Fatal("RestoreActive() accepted an Extension release from another client pin")
+	}
+	if len(targets.targets) != 0 {
+		t.Fatalf("RestoreActive() targets = %#v, want stale target removed", targets.targets)
 	}
 }
 
@@ -1003,17 +1032,23 @@ func TestComposerProfileACPConfigOptionIDs(t *testing.T) {
 	t.Run("canonical", func(t *testing.T) {
 		profile := ComposerProfile{SchemaVersion: "tutti.agent.composer.v1"}
 		profile.ConfigOptions = &struct {
-			Model      ComposerConfigOptionReference `json:"model"`
-			Permission ComposerConfigOptionReference `json:"permission"`
-			Reasoning  ComposerConfigOptionReference `json:"reasoning"`
+			Model      ComposerModelConfigOptionReference `json:"model"`
+			Permission ComposerConfigOptionReference      `json:"permission"`
+			Reasoning  ComposerConfigOptionReference      `json:"reasoning"`
 		}{
-			Model:      ComposerConfigOptionReference{ACPOptionID: "model-choice"},
+			Model: ComposerModelConfigOptionReference{
+				ACPOptionID:               "model-choice",
+				DescriptionMetadataFormat: agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1,
+			},
 			Permission: ComposerConfigOptionReference{ACPOptionID: "approval-mode"},
 			Reasoning:  ComposerConfigOptionReference{ACPOptionID: "thought-level"},
 		}
 		model, permission, reasoning := profile.ACPConfigOptionIDs()
 		if model != "model-choice" || permission != "approval-mode" || reasoning != "thought-level" {
 			t.Fatalf("config option ids = %q, %q, %q", model, permission, reasoning)
+		}
+		if format := profile.ModelDescriptionMetadataFormat(); format != agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
+			t.Fatalf("model description metadata format = %q", format)
 		}
 	})
 
@@ -1125,6 +1160,14 @@ func TestValidateComposerProfileRejectsInvalidSignedCommandDeclarations(t *testi
 		{
 			name: "unsupported effect",
 			raw:  `{"schemaVersion":"tutti.agent.composer.v1","slashCommands":{"commands":[{"name":"status","effect":"runArbitraryCode"}]}}`,
+		},
+		{
+			name: "unsupported model description metadata format",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","configOptions":{"model":{"acpOptionId":"model","descriptionMetadataFormat":"extension-supplied-parser"}}}`,
+		},
+		{
+			name: "model description metadata format without model option",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","configOptions":{"model":{"descriptionMetadataFormat":"credit-consumption-multiplier-v1"}}}`,
 		},
 		{
 			name: "unknown launch placeholder",
@@ -1497,6 +1540,9 @@ func testPackageZIPFor(t *testing.T, manifest Manifest, discovery string) []byte
 	}
 	if manifest.Profiles.Authentication != "" {
 		files[manifest.Profiles.Authentication] = []byte(`{"schemaVersion":"tutti.agent.authentication.v1","methods":[{"id":"login","type":"terminal","command":{"strategy":"runtime-subcommand","args":["login"]}}]}`)
+	}
+	if manifest.Profiles.AccountUsage != "" {
+		files[manifest.Profiles.AccountUsage] = []byte(`{"schemaVersion":"tutti.agent.account-usage-probe.v1","runtime":{"package":"@example/gemini-account-usage@1.0.0","kind":"node-script","script":"${installRoot}/node_modules/@example/gemini-account-usage/dist/cli.cjs","args":["--output","json"],"timeoutMs":10000}}`)
 	}
 	for name, content := range files {
 		header := &zip.FileHeader{Name: name, Method: zip.Store}

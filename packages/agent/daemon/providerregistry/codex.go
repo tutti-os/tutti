@@ -18,6 +18,7 @@ func codexDescriptor() ProviderDescriptor {
 			Command:             []string{"codex", "app-server"},
 			ClientInfoName:      "codex_cli_rs",
 			AuthRequiredMessage: "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
+			AppServerSkillRoots: AppServerSkillRootsStrategyTuttiStable,
 			NativeSessionFork:   true,
 			AppServerFork: AppServerForkDescriptor{
 				UserAgentBrand:        "codex",
@@ -85,6 +86,10 @@ func codexDescriptor() ProviderDescriptor {
 						Paths:          []string{"auth.json", "config.toml"},
 					},
 				},
+				// Codex and external credential switchers commonly rewrite these
+				// files atomically. Compare content so an identical rewrite does
+				// not evict the warm model catalog or its app-server process.
+				ContentFingerprint: AuthWatchContentFingerprintFullFile,
 			},
 		},
 
@@ -160,7 +165,7 @@ func codexDescriptor() ProviderDescriptor {
 			TurnLifecycleProjection: TurnLifecycleProjectionExplicit,
 		},
 		Sidecar: SidecarDescriptor{ExecutionEnvironment: SidecarExecutionEnvironmentCodexSandbox},
-		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
+		Desktop: DesktopIntegrationDescriptor{Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, AuthProbeAfterCredentialSync: true, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
 		ExternalImport: ExternalImportDescriptor{
 			Enabled:                  true,
 			RootEnvVar:               "CODEX_HOME",

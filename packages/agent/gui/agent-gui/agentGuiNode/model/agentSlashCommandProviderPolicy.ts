@@ -418,6 +418,12 @@ function isSlashPaletteCommandVisible(
   commandName: string,
   policy?: AgentSlashCommandPolicy | null
 ): boolean {
+  // AgentGUI injects /side only when the host provides the provider-neutral
+  // Side runtime. It is a host command and therefore is not expected to be in
+  // a provider's authoritative command catalog.
+  if (commandName === "side") {
+    return true;
+  }
   if (policy?.commandCatalogAuthoritative === true) {
     const fallbackCommands = Array.isArray(policy.fallbackCommands)
       ? policy.fallbackCommands

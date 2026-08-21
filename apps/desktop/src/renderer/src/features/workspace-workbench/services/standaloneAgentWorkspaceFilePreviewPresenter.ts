@@ -1,14 +1,11 @@
-import type { DesktopHostFilesApi } from "@preload/types";
 import type { WorkspaceFilePreviewSurfacePresenter } from "@renderer/features/workspace-file-preview";
 
 export function createStandaloneAgentWorkspaceFilePreviewPresenter(input: {
-  hostFilesApi: Pick<DesktopHostFilesApi, "openFile">;
-  workspaceId: string;
+  openFile(path: string): Promise<boolean> | boolean;
 }): WorkspaceFilePreviewSurfacePresenter {
   return {
     async present(target) {
-      await input.hostFilesApi.openFile(input.workspaceId, target.path);
-      return true;
+      return input.openFile(target.path);
     },
     unsupportedFallbackNotification: "suppress"
   };

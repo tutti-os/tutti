@@ -334,7 +334,9 @@ interface AgentSessionActivateEffectInputBase {
   initialContent?: AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   settings?: AgentActivitySessionSettings;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   title?: string;
@@ -456,9 +458,12 @@ export type AgentSessionEngineListener = (
 export type AgentSessionEngineIntentObserver = (intent: EngineIntent) => void;
 
 export interface AgentSessionLoadComposerOptionsInput {
+  agentSessionId?: string | null;
   cwd?: string | null;
   force?: boolean;
+  waitForFreshModelCatalog?: boolean;
   provider: string;
+  section?: import("./composerOptions.types.ts").ComposerOptionsSection;
   settings?: AgentActivityComposerSettings | null;
   signal?: AbortSignal;
   targetKey: string;
@@ -485,8 +490,10 @@ interface AgentSessionActivationInputBase {
   initialContent?: readonly AgentPromptContentBlock[];
   initialDisplayPrompt?: string;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   initialTurnExpected?: boolean;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   railSectionKey?: string;
   requestId: string;
   runtimeContent?: readonly AgentPromptContentBlock[];

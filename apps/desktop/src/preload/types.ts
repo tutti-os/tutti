@@ -2,6 +2,7 @@ import type {
   AgentProviderProbeListInput,
   AgentProviderProbeListResult
 } from "@tutti-os/agent-gui";
+import type { DesktopPreferencesStateResponse } from "@tutti-os/client-tuttid-ts";
 import type {
   DesktopFeatureAvailabilityApi,
   DesktopMinimumVersionApi
@@ -67,6 +68,7 @@ import type {
   DesktopArchiveAgentPromptFileResult,
   DesktopBrowserAutomationRequest,
   DesktopBrowserAutomationHostReady,
+  DesktopBrowserAutomationTurnClaim,
   DesktopBrowserAutomationResponse
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
@@ -281,8 +283,13 @@ export interface DesktopHostFilesApi {
 export interface DesktopHostApi {
   files: DesktopHostFilesApi;
   notifications: DesktopHostNotificationsApi;
+  preferences?: DesktopHostPreferencesApi;
   window: DesktopHostWindowApi;
   workspace: DesktopHostWorkspaceApi;
+}
+
+export interface DesktopHostPreferencesApi {
+  ensureInitialized(): Promise<DesktopPreferencesStateResponse>;
 }
 
 export type DesktopBrowserApi = Pick<
@@ -317,6 +324,7 @@ export type DesktopBrowserApi = Pick<
   | "updateAutomationTarget"
 > & {
   announceAutomationHostReady?(input: DesktopBrowserAutomationHostReady): void;
+  claimAutomationTurn?(input: DesktopBrowserAutomationTurnClaim): void;
   onAutomationRequest(
     listener: (request: DesktopBrowserAutomationRequest) => void
   ): () => void;

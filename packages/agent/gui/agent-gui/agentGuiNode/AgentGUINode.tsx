@@ -120,7 +120,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false,
     sessionInputHistoryEnabled = false,
-    sessionForkEnabled = false,
+    sideConversationEnabled = false,
+    sideConversationPresentation = null,
     sessionWorktreeEnabled = false,
     sessionLaunchModesByProjectSectionKey,
     codexSaverModeEntryEnabled = false
@@ -153,10 +154,13 @@ export const AgentGUINode = memo(function AgentGUINode({
   } = hostActions;
   const {
     agentConfigAccount: renderAgentConfigAccount,
+    agentConfigSystemActions: renderAgentConfigSystemActions,
     agentTargetInfo: renderAgentTargetInfo,
     composerFooterAccessory: renderComposerFooterAccessory,
     projectDirectoryPickerHeaderActions:
       renderProjectDirectoryPickerHeaderActions,
+    projectSelectOptions,
+    referencePickerSidebarActions: renderReferencePickerSidebarActions,
     providerRailEmpty: renderProviderRailEmpty,
     sidebarFooter: renderSidebarFooter
   } = renderSlots;
@@ -282,6 +286,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   ]);
   const { viewModel, actions } = useAgentGUINodeController({
     nodeId,
+    isSurfaceActive: isActive,
+    isSurfaceVisible: isVisible,
     workspaceId,
     currentUserId,
     workspacePath,
@@ -395,6 +401,8 @@ export const AgentGUINode = memo(function AgentGUINode({
   const agentConfigAccountContent = agentConfigMenuContext
     ? (renderAgentConfigAccount?.(agentConfigMenuContext) ?? null)
     : null;
+  const agentConfigSystemActionsContent =
+    renderAgentConfigSystemActions?.({ presentation: "menu" }) ?? null;
 
   return (
     <AgentGUIMentionServiceBoundary
@@ -508,6 +516,7 @@ export const AgentGUINode = memo(function AgentGUINode({
                 controllerRailStatus?.resolvedEmpty ?? false
               }
               agentConfigAccountContent={agentConfigAccountContent}
+              agentConfigSystemActionsContent={agentConfigSystemActionsContent}
               providerAuthAccountLabels={effectiveProviderAuthAccountLabels}
               onAgentConfigMenuClose={handleAgentConfigMenuClose}
               onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
@@ -579,7 +588,8 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilters={referenceProvenanceFilters}
               sessionInputHistoryEnabled={sessionInputHistoryEnabled}
-              sessionForkEnabled={sessionForkEnabled}
+              sideConversationEnabled={sideConversationEnabled}
+              sideConversationPresentation={sideConversationPresentation}
               sessionWorktreeEnabled={sessionWorktreeEnabled}
               sessionLaunchModesByProjectSectionKey={
                 sessionLaunchModesByProjectSectionKey
@@ -589,6 +599,10 @@ export const AgentGUINode = memo(function AgentGUINode({
               }
               renderProjectDirectoryPickerHeaderActions={
                 renderProjectDirectoryPickerHeaderActions
+              }
+              projectSelectOptions={projectSelectOptions}
+              renderReferencePickerSidebarActions={
+                renderReferencePickerSidebarActions
               }
               renderComposerFooterAccessory={renderComposerFooterAccessory}
             />
@@ -627,6 +641,7 @@ function resolveAgentConfigMenuContext(
     agentTargetId,
     provider,
     label: target.label,
+    presentation: "menu",
     ...(target.ownership ? { ownership: target.ownership } : {})
   };
 }

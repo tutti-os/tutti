@@ -82,7 +82,9 @@ export function composerTargetDataForConversation(input: {
   }
   if (
     input.optimisticTarget?.agentSessionId === input.activeConversationId &&
-    !nodeDataMatchesComposerTarget(input.data, input.optimisticTarget.target)
+    (!input.activeSessionTarget ||
+      input.activeSessionTarget.agentSessionId !== input.activeConversationId ||
+      !nodeDataMatchesComposerTarget(input.data, input.optimisticTarget.target))
   ) {
     return input.optimisticTarget.target;
   }

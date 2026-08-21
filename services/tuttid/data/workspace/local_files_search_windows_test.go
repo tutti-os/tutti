@@ -3,8 +3,6 @@
 package workspace
 
 import (
-	"context"
-	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -67,44 +65,5 @@ func TestParseWindowsSearchOutputUsesCanonicalItemURL(t *testing.T) {
 	}
 	if got, want := paths[0], filepath.Clean(`C:\Users\local\report one.md`); got != want {
 		t.Fatalf("first path = %q, want %q", got, want)
-	}
-}
-
-func TestWindowsSearchProviderIntegration(t *testing.T) {
-	if os.Getenv("TUTTI_TEST_WINDOWS_SEARCH") != "1" {
-		t.Skip("set TUTTI_TEST_WINDOWS_SEARCH=1 to query the local Windows Search index")
-	}
-	home, err := os.UserHomeDir()
-	if err != nil {
-		t.Fatal(err)
-	}
-	paths, err := (windowsSearchProvider{}).Search(context.Background(), localFileSearchRequest{
-		CandidateLimit: 20,
-		Query:          "package.go",
-		SearchRootPath: home,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(paths) == 0 {
-		t.Fatal("Windows Search returned no indexed package.go candidates")
-	}
-	for _, candidate := range paths {
-		if _, ok := relativePathWithin(home, candidate); !ok {
-			t.Fatalf("candidate %q is outside home %q", candidate, home)
-		}
-	}
-
-	filteredPaths, err := (windowsSearchProvider{}).Search(context.Background(), localFileSearchRequest{
-		CandidateLimit: 20,
-		Filters:        []string{"other"},
-		Query:          "package.go",
-		SearchRootPath: home,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(filteredPaths) == 0 {
-		t.Fatal("Windows Search returned no package.go candidates for the other filter")
 	}
 }

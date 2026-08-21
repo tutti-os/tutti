@@ -436,6 +436,7 @@ function renderNewConversationScenario(input: {
       dataRef,
       draftByScopeKeyRef,
       executePromptRef: { current: vi.fn() },
+      goalControlSupported: true,
       isComposerHomeRef,
       isCurrentConversation: () => false,
       isRespondingToInteraction: false,

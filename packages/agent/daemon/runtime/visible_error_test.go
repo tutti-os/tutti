@@ -4,8 +4,33 @@ import (
 	"errors"
 	"testing"
 
+	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
+
+func TestModelPlanAuthenticationFailureDoesNotOfferProviderLogin(t *testing.T) {
+	session := Session{Provider: "claude-code", AgentSessionID: "session-1", ProviderSessionID: "provider-1"}
+	event := newTurnActivityEvent(session, EventTurnFailed, "turn-1", SessionStatusFailed, "", "", map[string]any{
+		"code": "auth_required", "authImpact": "required", "origin": "provider",
+		"error": "relay rejected request: HTTP 401",
+	})
+	if event.Type != activityshared.EventTurnFailed {
+		t.Fatalf("event type = %q", event.Type)
+	}
+	projection, ok := projectVisibleFailure(canonical.EventSource{
+		Provider: "claude-code", ProviderGlobalAuthEligible: false,
+	}, event)
+	if !ok || projection.payload["code"] != "provider_error" || projection.content != "relay rejected request: HTTP 401" {
+		t.Fatalf("projection = %#v ok=%v", projection, ok)
+	}
+
+	nativeProjection, ok := projectVisibleFailure(canonical.EventSource{
+		Provider: "claude-code", ProviderGlobalAuthEligible: true,
+	}, event)
+	if !ok || nativeProjection.payload["code"] != "auth_required" {
+		t.Fatalf("provider-native projection = %#v ok=%v", nativeProjection, ok)
+	}
+}
 
 type testRuntimeTransportFailure struct {
 	code string
@@ -42,10 +67,10 @@ func TestVisibleFailureCodeClassifiesDeadlineExceededAsRequestTimedOut(t *testin
 	}
 }
 
-func TestIsAuthenticationRequiredClassifiesGeminiMissingAPIKey(t *testing.T) {
+func TestIsAuthenticationRequiredDoesNotInferFromProviderText(t *testing.T) {
 	err := errors.New("Gemini API key is missing or not configured")
-	if !IsAuthenticationRequired(err) {
-		t.Fatalf("IsAuthenticationRequired(%q) = false, want true", err)
+	if IsAuthenticationRequired(err) {
+		t.Fatalf("IsAuthenticationRequired(%q) = true, want false without typed evidence", err)
 	}
 }
 
@@ -151,6 +176,18 @@ func TestVisibleFailureCodeDoesNotTreatMcpServerAuthAsCodexAuth(t *testing.T) {
 	}
 	if got := visibleFailureCode(detail); got != "session_interrupted" {
 		t.Fatalf("visibleFailureCode() = %q, want session_interrupted (clean exit-0 MCP failure)", got)
+	}
+}
+
+func TestVisibleFailureCodeClassifiesMcpServerAuthWithoutProcessExit(t *testing.T) {
+	detail := `codex MCP server figma startup failed (reauthenticationRequired): ` +
+		`rmcp::transport::worker AuthRequired(AuthRequiredError { ` +
+		`resource_metadata="https://mcp.figma.com/.well-known/oauth-protected-resource" })`
+	if got := visibleFailureCode(detail); got != "mcp_server_auth_required" {
+		t.Fatalf("visibleFailureCode() = %q, want mcp_server_auth_required", got)
+	}
+	if !visibleFailureRetryable("mcp_server_auth_required", detail) {
+		t.Fatal("mcp_server_auth_required should be retryable")
 	}
 }
 

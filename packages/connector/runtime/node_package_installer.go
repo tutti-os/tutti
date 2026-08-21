@@ -10,12 +10,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
-	market "github.com/tutti-os/tutti/packages/connector/host"
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 
 	"golang.org/x/mod/semver"
 	"gopkg.in/yaml.v3"
@@ -41,13 +42,15 @@ type NodePackageInstallerConfig struct {
 // invocations. All connectors share one content-addressed store and one
 // Corepack cache while retaining a release-scoped node_modules link tree.
 type NodePackageInstaller struct {
-	rootDir     string
-	runtimes    ConnectorRuntimeResolver
-	processes   agentruntime.ProcessTransport
-	pnpmVersion string
-	timeout     time.Duration
-	environ     func() []string
-	mu          sync.Mutex
+	rootDir        string
+	runtimes       ConnectorRuntimeResolver
+	processes      agentruntime.ProcessTransport
+	pnpmVersion    string
+	timeout        time.Duration
+	environ        func() []string
+	mu             sync.Mutex
+	connectorLanes map[string]*sync.Mutex
+	installSlots   chan struct{}
 }
 
 var _ market.CLIInstallationManager = (*NodePackageInstaller)(nil)
@@ -76,7 +79,8 @@ func NewNodePackageInstaller(config NodePackageInstallerConfig) (*NodePackageIns
 		environ = os.Environ
 	}
 	return &NodePackageInstaller{rootDir: filepath.Clean(root), runtimes: config.Runtimes,
-		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout, environ: environ}, nil
+		processes: config.Processes, pnpmVersion: pnpmVersion, timeout: timeout, environ: environ,
+		connectorLanes: make(map[string]*sync.Mutex), installSlots: make(chan struct{}, 4)}, nil
 }
 
 func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request market.InstallCLIRequest) (market.CLIInstallationReceipt, error) {
@@ -93,8 +97,14 @@ func (installer *NodePackageInstaller) InstallCLI(ctx context.Context, request m
 	if strings.TrimSpace(request.OperationID) == "" {
 		return market.CLIInstallationReceipt{}, errors.New("connector CLI installation operation id is required")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.Release.ConnectorKey)
+	defer releaseLane()
+	select {
+	case installer.installSlots <- struct{}{}:
+		defer func() { <-installer.installSlots }()
+	case <-ctx.Done():
+		return market.CLIInstallationReceipt{}, ctx.Err()
+	}
 
 	resolved, node, err := installer.resolveNode(ctx, managed.Runtime)
 	if err != nil {
@@ -177,8 +187,8 @@ func (installer *NodePackageInstaller) ResolveCLI(ctx context.Context, release m
 	if err != nil {
 		return market.CLIInstallationReceipt{}, err
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(release.ConnectorKey)
+	defer releaseLane()
 	resolved, node, err := installer.resolveNode(ctx, managed.Runtime)
 	if err != nil {
 		return market.CLIInstallationReceipt{}, err
@@ -203,8 +213,8 @@ func (installer *NodePackageInstaller) RemoveCLI(ctx context.Context, request ma
 	if installer == nil || !safeCLIPathSegment(request.ConnectorKey) || !isSHA256Hex(request.ReleaseDigest) {
 		return errors.New("connector CLI removal identity is invalid")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.ConnectorKey)
+	defer releaseLane()
 	target := installer.installRoot(request.ConnectorKey, request.ReleaseDigest)
 	if !pathWithin(installer.rootDir, target) {
 		return errors.New("connector CLI removal path escapes package root")
@@ -225,8 +235,8 @@ func (installer *NodePackageInstaller) RemoveConnector(
 	if installer == nil || !safeCLIPathSegment(request.ConnectorKey) {
 		return errors.New("connector CLI removal identity is invalid")
 	}
-	installer.mu.Lock()
-	defer installer.mu.Unlock()
+	releaseLane := installer.lockConnector(request.ConnectorKey)
+	defer releaseLane()
 	target := filepath.Join(installer.rootDir, "packages", request.ConnectorKey)
 	if !pathWithin(installer.rootDir, target) {
 		return errors.New("connector CLI removal path escapes package root")
@@ -235,6 +245,18 @@ func (installer *NodePackageInstaller) RemoveConnector(
 		return fmt.Errorf("remove Connector CLI installations: %w", err)
 	}
 	return nil
+}
+
+func (installer *NodePackageInstaller) lockConnector(connectorKey string) func() {
+	installer.mu.Lock()
+	lane := installer.connectorLanes[connectorKey]
+	if lane == nil {
+		lane = &sync.Mutex{}
+		installer.connectorLanes[connectorKey] = lane
+	}
+	installer.mu.Unlock()
+	lane.Lock()
+	return lane.Unlock
 }
 
 type connectorNodeSharedPaths struct{ store, corepack, npmCache, pnpmHome string }
@@ -285,6 +307,9 @@ func (installer *NodePackageInstaller) runManagedNode(ctx context.Context, resol
 		Command: append([]string{node.Path}, args...), Env: env,
 		ExecutableIdentity: &agentruntime.ExecutableIdentity{SHA256: node.SHA256, SizeBytes: node.SizeBytes}})
 	if err != nil {
+		if errors.Is(err, agentruntime.ErrProcessSpecInvalid) {
+			return fmt.Errorf("%w: %w", market.ErrPermanentInstallFailure, err)
+		}
 		return err
 	}
 	defer connection.Close()
@@ -345,6 +370,11 @@ func uniquePaths(values []string) []string {
 	return result
 }
 
+// allowedNodePackageInstallEnvironment projects the inherited environment onto
+// the installer allow-list. Keys are folded case-insensitively and emitted in
+// one canonical upper-case form: the connector process contract rejects two
+// entries that differ only by case, so POSIX hosts exporting both HTTP_PROXY
+// and http_proxy must not produce two entries here.
 func allowedNodePackageInstallEnvironment(environment []string) []string {
 	allowed := map[string]struct{}{
 		"ALL_PROXY": {}, "COMSPEC": {}, "HTTP_PROXY": {}, "HTTPS_PROXY": {},
@@ -352,15 +382,26 @@ func allowedNodePackageInstallEnvironment(environment []string) []string {
 		"NODE_EXTRA_CA_CERTS": {}, "PATHEXT": {}, "SSL_CERT_DIR": {}, "SSL_CERT_FILE": {},
 		"SYSTEMROOT": {},
 	}
-	result := make([]string, 0, len(allowed))
+	values := make(map[string]string, len(allowed))
 	for _, item := range environment {
-		key, _, ok := strings.Cut(item, "=")
+		key, value, ok := strings.Cut(item, "=")
 		if !ok {
 			continue
 		}
-		if _, ok := allowed[strings.ToUpper(key)]; ok {
-			result = append(result, item)
+		canonical := strings.ToUpper(key)
+		if _, permitted := allowed[canonical]; !permitted {
+			continue
 		}
+		values[canonical] = value
+	}
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	result := make([]string, 0, len(keys))
+	for _, key := range keys {
+		result = append(result, key+"="+values[key])
 	}
 	return result
 }

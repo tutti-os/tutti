@@ -3,9 +3,12 @@ package agent
 import (
 	"context"
 	"crypto/sha256"
+	"errors"
 	"strings"
 	"testing"
 
+	storesqlite "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	modelbindingbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelbinding"
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 )
@@ -13,6 +16,124 @@ import (
 type staticBindingSource struct {
 	binding modelbindingbiz.Binding
 	err     error
+}
+
+type countingPlanSource struct {
+	staticPlanSource
+	calls int
+}
+
+func (s *countingPlanSource) GetModelPlan(ctx context.Context, workspaceID string, planID string) (modelplanbiz.Plan, error) {
+	s.calls++
+	return s.staticPlanSource.GetModelPlan(ctx, workspaceID, planID)
+}
+
+func TestDuplicateSubmitDoesNotRebindUpdatedModelPlan(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	store := openAgentServiceSQLiteStore(t)
+	service.SubmitClaimStore = store
+	service.ConfigureModelPlanBinding(staticBindingSource{binding: modelbindingbiz.Binding{
+		WorkspaceID: "ws-1", AgentTargetID: agenttargetbiz.IDLocalOpenCode,
+		ModelPlanID: "mp-1", DefaultModel: "plan-default",
+	}}, staticPlanSource{plan: modelplanbiz.Plan{
+		ID: "mp-1", WorkspaceID: "ws-1", Revision: 7, Protocol: modelplanbiz.ProtocolOpenAI, Enabled: true,
+		BaseURL: "https://old.example/v1", APIKey: "old-secret", Models: []modelplanbiz.Model{{ID: "plan-default"}},
+	}})
+	if _, err := service.Create(context.Background(), "ws-1", CreateSessionInput{
+		AgentSessionID: "78787878-7878-4878-8878-787878787878", AgentTargetID: agenttargetbiz.IDLocalOpenCode,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	input := SendInput{Content: TextPromptContent("hello"), Metadata: map[string]any{"clientSubmitId": "submit-plan-retry"}}
+	if _, err := service.SendInput(context.Background(), "ws-1", "78787878-7878-4878-8878-787878787878", input); err != nil {
+		t.Fatalf("first SendInput() error = %v", err)
+	}
+	updated := &countingPlanSource{staticPlanSource: staticPlanSource{plan: modelplanbiz.Plan{
+		ID: "mp-1", WorkspaceID: "ws-1", Revision: 8, Protocol: modelplanbiz.ProtocolOpenAI, Enabled: true,
+		BaseURL: "https://new.example/v1", APIKey: "new-secret", Models: []modelplanbiz.Model{{ID: "plan-default"}},
+	}}}
+	service.ConfigureModelPlanBinding(staticBindingSource{binding: modelbindingbiz.Binding{
+		WorkspaceID: "ws-1", AgentTargetID: agenttargetbiz.IDLocalOpenCode,
+		ModelPlanID: "mp-1", DefaultModel: "plan-default",
+	}}, updated)
+	if _, err := service.SendInput(context.Background(), "ws-1", "78787878-7878-4878-8878-787878787878", input); !errors.Is(err, ErrSubmitDeliveryUnknown) {
+		t.Fatalf("duplicate SendInput() error = %v, want delivery replay outcome", err)
+	}
+	if updated.calls != 0 {
+		t.Fatalf("updated Model Plan reads = %d, want 0 for an existing submit claim", updated.calls)
+	}
+}
+
+func TestModelPlanRebindAdvancesSnapshotToCurrentRevision(t *testing.T) {
+	tests := []struct {
+		provider  string
+		targetID  string
+		protocol  modelplanbiz.Protocol
+		wantModel string
+	}{
+		{provider: "claude-code", targetID: "local:claude-code", protocol: modelplanbiz.ProtocolAnthropic, wantModel: "plan-alt"},
+		{provider: "codex", targetID: "local:codex", protocol: modelplanbiz.ProtocolOpenAI, wantModel: "plan-alt"},
+		{provider: "tutti-agent", targetID: "local:tutti-agent", protocol: modelplanbiz.ProtocolOpenAI, wantModel: "plan-alt"},
+		{provider: "opencode", targetID: "local:opencode", protocol: modelplanbiz.ProtocolOpenAI, wantModel: "tutti-model-plan/plan-alt"},
+	}
+	for _, test := range tests {
+		t.Run(test.provider, func(t *testing.T) {
+			initial := newPlanBoundService(test.protocol, true)
+			initialResolution := initial.resolveModelPlan(context.Background(), "ws", test.targetID, test.provider, "plan-alt")
+			runtimeContext := runtimeContextWithSessionRuntimeSnapshot(nil, CreateSessionInput{
+				AgentTargetID: test.targetID, HarnessAgentTargetID: test.targetID,
+				Model: stringPointer("plan-alt"),
+			}, test.provider, initialResolution)
+			current := newPlanBoundService(test.protocol, true)
+			current.modelPlanBinding.Plans = staticPlanSource{plan: modelplanbiz.Plan{
+				ID: "mp-1", WorkspaceID: "ws", Revision: 8, Name: "Updated relay",
+				Protocol: test.protocol, APIKey: "new-secret", BaseURL: "https://new.example/v1", Enabled: true,
+				Models: []modelplanbiz.Model{{ID: "plan-default"}, {ID: "plan-alt"}},
+			}}
+			input, needed, err := current.modelPlanRebindInput(context.Background(), "ws", storesqlite.Session{
+				ID: "session-1", WorkspaceID: "ws", AgentTargetID: test.targetID, Provider: test.provider,
+				InternalRuntimeContext: runtimeContext,
+			})
+			if err != nil || !needed {
+				t.Fatalf("modelPlanRebindInput() needed=%v error=%v", needed, err)
+			}
+			rebound, exists, err := sessionRuntimeSnapshotFromContext(input.ReplacementRuntimeContext, test.provider)
+			if err != nil || !exists || rebound.ModelPlanRevision != 8 || rebound.Model != test.wantModel {
+				t.Fatalf("rebound snapshot=%#v exists=%v error=%v", rebound, exists, err)
+			}
+			original, _, err := sessionRuntimeSnapshotFromContext(input.ExpectedRuntimeContext, test.provider)
+			if err != nil || original.ModelPlanRevision != 7 {
+				t.Fatalf("expected snapshot mutated: %#v error=%v", original, err)
+			}
+			endpoint, err := current.modelEndpointFromSessionRuntimeSnapshot(context.Background(), "ws", rebound, rebound.Model)
+			if err != nil || endpoint == nil || endpoint.BaseURL != "https://new.example/v1" || endpoint.APIKey != "new-secret" {
+				t.Fatalf("rebound endpoint=%#v error=%v", endpoint, err)
+			}
+		})
+	}
+}
+
+func TestModelPlanRebindSkipsProviderNativeAgents(t *testing.T) {
+	for _, provider := range []string{"cursor", "nexight", "openclaw", "acp:kimi-code", "acp:hermes"} {
+		t.Run(provider, func(t *testing.T) {
+			input, needed, err := (&Service{}).modelPlanRebindInput(context.Background(), "ws", storesqlite.Session{
+				ID: "session-1", Provider: provider,
+				InternalRuntimeContext: map[string]any{
+					"sessionRuntimeSnapshot": map[string]any{
+						"version": float64(1), "provider": provider,
+						"agentTargetId": "local:" + provider, "harnessAgentTargetId": "local:" + provider,
+						"modelConfiguration": map[string]any{
+							"source": "provider-native", "fingerprint": newProviderNativeModelConfiguration(provider, "local:"+provider).Fingerprint,
+						},
+					},
+				},
+			})
+			if err != nil || needed || input.AgentSessionID != "" {
+				t.Fatalf("modelPlanRebindInput() = %#v needed=%v error=%v", input, needed, err)
+			}
+		})
+	}
 }
 
 func (s staticBindingSource) GetAgentModelBinding(context.Context, string, string) (modelbindingbiz.Binding, error) {
@@ -50,6 +171,16 @@ func TestApplyRequestedModelPlanOverridesAgentDefault(t *testing.T) {
 
 func (s staticPlanSource) GetModelPlan(context.Context, string, string) (modelplanbiz.Plan, error) {
 	return s.plan, s.err
+}
+
+func (s staticPlanSource) GetModelPlanRevision(_ context.Context, _ string, _ string, revision uint64) (modelplanbiz.Plan, error) {
+	if s.err != nil {
+		return modelplanbiz.Plan{}, s.err
+	}
+	if s.plan.Revision != revision {
+		return modelplanbiz.Plan{}, errors.New("model plan revision not found")
+	}
+	return s.plan, nil
 }
 
 type recordingModelCatalog struct {

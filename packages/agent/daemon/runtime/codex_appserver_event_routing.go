@@ -47,6 +47,7 @@ func (a *CodexAppServerAdapter) appServerNotificationRoute(
 			return appServerNotificationRoute{drop: true}
 		}
 		a.recordForeignThreadDrop(session.AgentSessionID, eventThreadID)
+		a.bufferForeignThreadTerminal(session.AgentSessionID, eventThreadID, method, params)
 		a.logAppServerForeignThreadDrop(session, method, params, eventThreadID)
 		return appServerNotificationRoute{drop: true}
 	}
@@ -101,10 +102,13 @@ func appServerEventsForChild(events []activityshared.Event, child *codexAppServe
 
 const appServerForeignDropTrackerCap = 64
 
-// recordForeignThreadDrop remembers an unknown-thread drop so a later child
-// registration can report events lost to the announce/stream ordering gap
-// (ADR 0003 verification telemetry). Bounded; unrelated foreign threads age
-// out by never being registered.
+const appServerForeignTerminalBufferCap = 64
+
+// recordForeignThreadDrop remembers an unknown-thread arrival so a later child
+// registration can report the announce/stream ordering gap (ADR 0003
+// verification telemetry). Ordinary progress remains dropped; terminal
+// notifications are buffered separately. Bounded; unrelated foreign threads
+// age out by never being registered.
 func (a *CodexAppServerAdapter) recordForeignThreadDrop(agentSessionID string, threadID string) {
 	if a == nil {
 		return
@@ -124,6 +128,52 @@ func (a *CodexAppServerAdapter) recordForeignThreadDrop(agentSessionID string, t
 		}
 	}
 	appSession.recentForeignDrops[threadID]++
+}
+
+func (a *CodexAppServerAdapter) bufferForeignThreadTerminal(
+	agentSessionID string,
+	threadID string,
+	method string,
+	params map[string]any,
+) {
+	if a == nil || !appServerIsForeignTerminalNotification(method, params) {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	appSession := a.sessions[strings.TrimSpace(agentSessionID)]
+	if appSession == nil {
+		return
+	}
+	if appSession.pendingForeignTerminalNotifications == nil {
+		appSession.pendingForeignTerminalNotifications = make(map[string]appServerBufferedNotification)
+	}
+	if len(appSession.pendingForeignTerminalNotifications) >= appServerForeignTerminalBufferCap {
+		if _, tracked := appSession.pendingForeignTerminalNotifications[threadID]; !tracked {
+			return
+		}
+	}
+	if existing, tracked := appSession.pendingForeignTerminalNotifications[threadID]; tracked {
+		if existing.method == appServerNotifyTurnCompleted || method != appServerNotifyTurnCompleted {
+			return
+		}
+	}
+	appSession.pendingForeignTerminalNotifications[threadID] = appServerBufferedNotification{
+		method: method,
+		params: clonePayload(params),
+	}
+}
+
+func appServerIsForeignTerminalNotification(method string, params map[string]any) bool {
+	switch method {
+	case appServerNotifyTurnCompleted:
+		return true
+	case appServerNotifyError:
+		willRetry, _ := params["willRetry"].(bool)
+		return !willRetry
+	default:
+		return false
+	}
 }
 
 func (a *CodexAppServerAdapter) rememberAppServerChildThreads(
@@ -193,6 +243,7 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(
 	}
 	added := make([]string, 0, len(childThreadIDs))
 	addedContexts := make([]*codexAppServerThreadContext, 0, len(childThreadIDs))
+	bufferedTerminals := make(map[string]appServerBufferedNotification)
 	for _, childThreadID := range childThreadIDs {
 		if childThreadID == "" || childThreadID == parentThreadID {
 			continue
@@ -222,6 +273,10 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(
 			)
 		}
 		appSession.childThreads[childThreadID] = context
+		if buffered, ok := appSession.pendingForeignTerminalNotifications[childThreadID]; ok {
+			bufferedTerminals[childThreadID] = buffered
+			delete(appSession.pendingForeignTerminalNotifications, childThreadID)
+		}
 		added = append(added, childThreadID)
 		addedContexts = append(addedContexts, context)
 	}
@@ -231,6 +286,10 @@ func (a *CodexAppServerAdapter) rememberAppServerChildThreads(
 		childSession := appServerChildSession(session, added[index], child)
 		if event := appServerChildStartedEvent(childSession, child); event.Type != "" {
 			events = append(events, event)
+		}
+		if buffered, ok := bufferedTerminals[added[index]]; ok {
+			terminalEvents := appServerChildTerminalEvents(childSession, child, buffered.method, buffered.params)
+			events = append(events, appServerEventsForChild(terminalEvents, child)...)
 		}
 	}
 	return added, events

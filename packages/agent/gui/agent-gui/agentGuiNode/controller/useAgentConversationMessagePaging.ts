@@ -164,7 +164,7 @@ export interface ConversationMessagePagingDiagnosticsPort {
     agentSessionId: string;
     context?: Record<string, unknown>;
     error: unknown;
-    phase: "load_session_messages";
+    phase: "load_session_messages" | "synchronize_session";
   }): void;
   page(input: {
     agentSessionId: string;
@@ -201,9 +201,21 @@ export function useAgentConversationMessagePaging(
               error,
               phase: "load_session_messages"
             }),
-          page: (event) => inputRef.current.diagnostics.page(event)
+          page: (event) => inputRef.current.diagnostics.page(event),
+          synchronizationError: ({ agentSessionId, error }) =>
+            inputRef.current.diagnostics.error({
+              agentSessionId,
+              error,
+              phase: "synchronize_session"
+            })
         },
         engine: input.sessionEngine,
+        ensureSessionSynchronized: ({ agentSessionId, onError, workspaceId }) =>
+          inputRef.current.runtime.ensureSessionSynchronized?.({
+            agentSessionId,
+            onError,
+            workspaceId
+          }) ?? (() => {}),
         isAvailable: (agentSessionId) =>
           inputRef.current.isMounted() &&
           (!agentSessionId ||

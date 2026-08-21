@@ -5,7 +5,7 @@ info:
   description: Versioned local daemon API for tutti desktop, CLI, and approved local integrations.
 x-tutti-openapi-fragments:
   - packages/workspace/issue-manager/openapi/issue-manager.v1.yaml
-  - packages/connector/market/openapi/connector-market.v1.yaml
+  - packages/connector/contracts/openapi/connector-market.v1.yaml
   - services/tuttid/api/openapi/mobile-remote-access.v1.yaml
 servers:
   - url: http://127.0.0.1:4545
@@ -832,6 +832,42 @@ paths:
           $ref: "#/components/responses/MethodNotAllowedError"
         "502":
           $ref: "#/components/responses/PreferencesOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/agent-targets/{agentTargetID}/account-usage:
+    post:
+      operationId: probeAgentTargetAccountUsage
+      tags:
+        - agent-target
+      summary: Probe provider-owned account usage for one Agent Target
+      description: >
+        Executes only a versioned account-usage capability declared by the
+        exact verified Agent Extension installation. The daemon validates the
+        companion executable under the Target-scoped managed runtime and
+        returns a provider-neutral result containing stable error codes only.
+        Account-usage availability never changes Agent runtime readiness.
+      parameters:
+        - name: agentTargetID
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Provider-owned account usage result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AgentTargetAccountUsageProbeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/AgentTargetNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-targets/{agentTargetID}/setup:
@@ -5238,6 +5274,241 @@ paths:
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-capabilities:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    get:
+      operationId: resolveWorkspaceAgentSideCapabilities
+      tags:
+        - agent-session
+      summary: Resolve transient Side support for a live agent session
+      responses:
+        "200":
+          description: Side capabilities for the live source session
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSideCapabilitiesResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The source session is not eligible for Side
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/side-conversations:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - $ref: "#/components/parameters/AgentSessionID"
+    post:
+      operationId: openWorkspaceAgentSideConversation
+      tags:
+        - agent-session
+      summary: Open one runtime-only Side conversation from a live source session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OpenWorkspaceAgentSideConversationRequest"
+      responses:
+        "200":
+          description: Opened or reconciled transient Side conversation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSideConversationResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: Side identity conflicts, is opening, or the source is ineligible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - in: path
+        name: sideAgentSessionID
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    delete:
+      operationId: closeWorkspaceAgentSideConversation
+      tags:
+        - agent-session
+      summary: Close and release one runtime-only Side conversation
+      responses:
+        "204":
+          description: Side conversation closed or already absent
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - in: path
+        name: sideAgentSessionID
+        required: true
+        schema:
+          type: string
+          minLength: 1
+    post:
+      operationId: sendWorkspaceAgentSideConversationInput
+      tags:
+        - agent-session
+      summary: Send one input to a runtime-only Side conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendWorkspaceAgentSideConversationInputRequest"
+      responses:
+        "200":
+          description: Accepted transient Side turn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSideTurnResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The Side conversation has expired or cannot accept input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/cancel:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - in: path
+        name: sideAgentSessionID
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      - $ref: "#/components/parameters/AgentTurnID"
+    post:
+      operationId: cancelWorkspaceAgentSideConversationTurn
+      tags:
+        - agent-session
+      summary: Cancel the exact active turn in a runtime-only Side conversation
+      responses:
+        "200":
+          description: Side turn cancel result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSideTurnCancelResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The Side conversation has expired
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/workspaces/{workspaceID}/agent-side-conversations/{sideAgentSessionID}/turns/{turnID}/interactive/{requestID}:
+    parameters:
+      - $ref: "#/components/parameters/WorkspaceID"
+      - in: path
+        name: sideAgentSessionID
+        required: true
+        schema:
+          type: string
+          minLength: 1
+      - $ref: "#/components/parameters/AgentTurnID"
+      - $ref: "#/components/parameters/AgentPermissionRequestID"
+    post:
+      operationId: submitWorkspaceAgentSideConversationInteractive
+      tags:
+        - agent-session
+      summary: Respond to one live interactive request in a Side conversation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SubmitWorkspaceAgentSideConversationInteractiveRequest"
+      responses:
+        "200":
+          description: Side interactive response disposition
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceAgentSideInteractiveResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "404":
+          $ref: "#/components/responses/WorkspaceNotFoundError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          description: The Side conversation or interaction is no longer live
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApiErrorResponse"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
   /v1/workspaces/{workspaceID}/agent-sessions/{agentSessionID}/turns/{turnID}/plan-decisions/{requestID}:
     parameters:
       - $ref: "#/components/parameters/WorkspaceID"
@@ -5582,6 +5853,8 @@ paths:
           $ref: "#/components/responses/WorkspaceNotFoundError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "409":
+          $ref: "#/components/responses/AgentInteractiveConflictError"
         "502":
           $ref: "#/components/responses/WorkspaceOperationError"
         "503":
@@ -7039,6 +7312,19 @@ components:
                     failureKind: missing
                   retryable: false
                   developerMessage: codex configuration dependency model_instructions_file is unavailable
+    AgentInteractiveConflictError:
+      description: Interactive response no longer matches a pending canonical request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ApiErrorResponse"
+          examples:
+            staleInteractiveResponse:
+              value:
+                error:
+                  code: workspace_operation_failed
+                  reason: agent_interactive_request_stale
+                  developerMessage: interactive request is no longer live
     AgentTargetNotFoundError:
       description: Agent target was not found
       content:
@@ -7665,6 +7951,14 @@ components:
         agentSessionId:
           type: string
           description: Caller agent session id hint. This is not an authorization boundary.
+          nullable: true
+        agentCwd:
+          type: string
+          description: Host-injected caller Agent working directory inherited by nested Agent starts that omit an explicit cwd. This is not an authorization boundary.
+          nullable: true
+        agentRailPlacementJSON:
+          type: string
+          description: Host-injected versioned RailPlacement JSON inherited together with agentCwd. The Agent command provider validates this value before use.
           nullable: true
     CliInvokeRequest:
       type: object
@@ -8371,8 +8665,26 @@ components:
       required:
         - preferences
       properties:
+        writeMode:
+          $ref: "#/components/schemas/DesktopPreferencesWriteMode"
         preferences:
           $ref: "#/components/schemas/DesktopPreferences"
+    DesktopPreferencesWriteMode:
+      type: string
+      description: >-
+        replace performs the normal full preference update, and omitting
+        writeMode is equivalent to replace. initializeIfAbsent atomically
+        creates the preference row only when it does not exist after applying
+        the daemon-owned Agent workspace-mode default to the supplied
+        preferences. If the row already exists, it returns the authoritative
+        stored preferences unchanged.
+      default: replace
+      enum:
+        - replace
+        - initializeIfAbsent
+      x-enum-varnames:
+        - DesktopPreferencesWriteModeReplace
+        - DesktopPreferencesWriteModeInitializeIfAbsent
     DesktopUpdateAdmissionProduct:
       type: string
       enum:
@@ -8714,6 +9026,181 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/AgentTarget"
+    AgentTargetAccountUsageProbeResult:
+      oneOf:
+        - $ref: "#/components/schemas/AgentTargetAccountUsageAvailableResult"
+        - $ref: "#/components/schemas/AgentTargetAccountUsageUnsupportedResult"
+        - $ref: "#/components/schemas/AgentTargetAccountUsageErrorResult"
+      discriminator:
+        propertyName: outcome
+        mapping:
+          available: "#/components/schemas/AgentTargetAccountUsageAvailableResult"
+          unsupported: "#/components/schemas/AgentTargetAccountUsageUnsupportedResult"
+          error: "#/components/schemas/AgentTargetAccountUsageErrorResult"
+    AgentTargetAccountUsageAvailableResult:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - agentTargetId
+        - provider
+        - outcome
+        - capturedAtUnixMs
+        - billingMode
+        - quotaState
+        - quotas
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+            - tutti.agent.account-usage.v2
+        agentTargetId:
+          type: string
+          minLength: 1
+        provider:
+          $ref: "#/components/schemas/AgentTargetProvider"
+        outcome:
+          type: string
+          enum:
+            - available
+        capturedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        billingMode:
+          $ref: "#/components/schemas/AgentTargetAccountUsageBillingMode"
+        quotaState:
+          $ref: "#/components/schemas/AgentTargetAccountUsageQuotaState"
+        quotas:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/AgentTargetAccountUsageQuota"
+    AgentTargetAccountUsageUnsupportedResult:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - agentTargetId
+        - provider
+        - outcome
+        - capturedAtUnixMs
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+            - tutti.agent.account-usage.v2
+        agentTargetId:
+          type: string
+          minLength: 1
+        provider:
+          $ref: "#/components/schemas/AgentTargetProvider"
+        outcome:
+          type: string
+          enum:
+            - unsupported
+        capturedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+    AgentTargetAccountUsageErrorResult:
+      type: object
+      additionalProperties: false
+      required:
+        - schemaVersion
+        - agentTargetId
+        - provider
+        - outcome
+        - capturedAtUnixMs
+        - errorCode
+      properties:
+        schemaVersion:
+          type: string
+          enum:
+            - tutti.agent.account-usage.v2
+        agentTargetId:
+          type: string
+          minLength: 1
+        provider:
+          $ref: "#/components/schemas/AgentTargetProvider"
+        outcome:
+          type: string
+          enum:
+            - error
+        capturedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        errorCode:
+          $ref: "#/components/schemas/AgentTargetAccountUsageErrorCode"
+    AgentTargetAccountUsageBillingMode:
+      type: string
+      enum:
+        - subscription
+        - api
+        - coding_plan
+        - provider_account
+    AgentTargetAccountUsageQuotaState:
+      type: string
+      enum:
+        - complete
+        - unavailable
+        - not_applicable
+    AgentTargetAccountUsageErrorCode:
+      type: string
+      enum:
+        - auth_required
+        - config_invalid
+        - execution_failed
+        - no_data
+        - parse_failed
+        - rate_limited
+        - runtime_unavailable
+        - session_expired
+        - timeout
+    AgentTargetAccountUsageQuotaType:
+      type: string
+      enum:
+        - session
+        - daily
+        - weekly
+        - monthly
+        - model
+        - credits
+        - cost
+    AgentTargetAccountUsageQuota:
+      type: object
+      additionalProperties: false
+      required:
+        - quotaType
+        - percentRemaining
+      properties:
+        quotaType:
+          $ref: "#/components/schemas/AgentTargetAccountUsageQuotaType"
+        percentRemaining:
+          type: number
+          minimum: 0
+          maximum: 100
+        amountRemaining:
+          type: number
+          format: double
+          minimum: 0
+        amountLimit:
+          type: number
+          format: double
+          minimum: 0
+        amountUnit:
+          type: string
+          enum:
+            - credits
+        resetsAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 0
+        modelName:
+          type: string
+          minLength: 1
+          maxLength: 128
     SetSystemAgentTargetEnabledRequest:
       type: object
       additionalProperties: false
@@ -11459,6 +11946,12 @@ components:
           minLength: 1
         description:
           type: string
+        consumptionMultiplier:
+          type: string
+          description: >-
+            Provider-reported credit consumption multiplier without the
+            display suffix. Runtime adapters normalize provider wire data into
+            this typed field; clients must not infer it from description.
         supportsImageInput:
           type: boolean
         requested:
@@ -11496,6 +11989,31 @@ components:
       type: object
       additionalProperties: false
       properties:
+        agentSessionId:
+          type: string
+          description: >-
+            Active Agent session whose isolated provider home contributes
+            session-created Skills to the composer catalog.
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+            - connectors
+          default: full
+          description: >-
+            Selects the independently loadable composer section. Core contains
+            model, reasoning, speed, permission, and runtime settings;
+            capabilities contains skills and capability catalog data;
+            connectors contains only the local Connector Market projection.
+            Full is retained for callers that need the combined legacy response.
+        waitForFreshModelCatalog:
+          type: boolean
+          description: >-
+            Waits for an authoritative model catalog when the cached result is
+            stale. Use only for an explicit model-picker request; ordinary
+            composer loads should render the last successful catalog first.
         agentTargetId:
           type: string
           description:
@@ -11515,6 +12033,15 @@ components:
       type: object
       additionalProperties: false
       properties:
+        section:
+          type: string
+          enum:
+            - full
+            - core
+            - capabilities
+            - connectors
+          default: full
+          description: Independently loadable composer section.
         locale:
           $ref: "#/components/schemas/DesktopLocale"
         settings:
@@ -11728,6 +12255,10 @@ components:
           type: string
         iconUrl:
           type: string
+        installedAtUnixMs:
+          type: integer
+          format: int64
+          minimum: 1
         status:
           type: string
           enum:
@@ -13613,10 +14144,13 @@ components:
         reason:
           type: string
           description: >-
-            turn_canceled reports an active turn was stopped. already_settled
-            and not_found are idempotent no-op successes, not errors.
+            turn_canceled reports an active turn was stopped. cancel_requested
+            reports accepted cancellation whose exact provider delivery still
+            needs canonical reconciliation. already_settled and not_found are
+            idempotent no-op successes, not errors.
           enum:
             - turn_canceled
+            - cancel_requested
             - already_settled
             - not_found
     WorkspaceAgentTurnCancelResponse:
@@ -14541,9 +15075,17 @@ components:
         model:
           type: string
           nullable: true
+        modelExplicit:
+          type: boolean
+          nullable: true
+          description: True only when model came from an explicit caller selection; false identifies an inherited or remembered fallback preference.
         reasoningEffort:
           type: string
           nullable: true
+        reasoningEffortExplicit:
+          type: boolean
+          nullable: true
+          description: True only when reasoning effort came from an explicit caller selection; false identifies a model-dependent inherited value.
         noProject:
           type: boolean
           nullable: true
@@ -15054,6 +15596,156 @@ components:
         sectionKey:
           type: string
           minLength: 1
+    WorkspaceAgentSideCapabilities:
+      type: object
+      additionalProperties: false
+      required:
+        - supported
+        - activeSourceTurn
+        - ephemeral
+        - hideInheritedTurns
+        - modelBoundaryInjected
+      properties:
+        supported:
+          type: boolean
+        activeSourceTurn:
+          type: boolean
+        ephemeral:
+          type: boolean
+        hideInheritedTurns:
+          type: boolean
+        modelBoundaryInjected:
+          type: boolean
+    WorkspaceAgentSideCapabilitiesResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - capabilities
+      properties:
+        capabilities:
+          $ref: "#/components/schemas/WorkspaceAgentSideCapabilities"
+    OpenWorkspaceAgentSideConversationRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - sideAgentSessionId
+        - requestId
+      properties:
+        sideAgentSessionId:
+          type: string
+          minLength: 1
+        requestId:
+          type: string
+          minLength: 1
+    WorkspaceAgentSideConversation:
+      type: object
+      additionalProperties: false
+      required:
+        - workspaceId
+        - sourceAgentSessionId
+        - sideAgentSessionId
+        - provider
+        - status
+        - capabilities
+      properties:
+        workspaceId:
+          type: string
+          minLength: 1
+        sourceAgentSessionId:
+          type: string
+          minLength: 1
+        sideAgentSessionId:
+          type: string
+          minLength: 1
+        provider:
+          type: string
+          minLength: 1
+        status:
+          type: string
+          minLength: 1
+        capabilities:
+          $ref: "#/components/schemas/WorkspaceAgentSideCapabilities"
+    WorkspaceAgentSideConversationResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - side
+      properties:
+        side:
+          $ref: "#/components/schemas/WorkspaceAgentSideConversation"
+    SendWorkspaceAgentSideConversationInputRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - turnId
+        - clientSubmitId
+        - content
+      properties:
+        turnId:
+          type: string
+          minLength: 1
+        clientSubmitId:
+          type: string
+          minLength: 1
+        content:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/AgentPromptContentBlock"
+        displayPrompt:
+          type: string
+          nullable: true
+    WorkspaceAgentSideTurnResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - sideAgentSessionId
+        - turnId
+        - accepted
+        - status
+      properties:
+        sideAgentSessionId:
+          type: string
+          minLength: 1
+        turnId:
+          type: string
+          minLength: 1
+        accepted:
+          type: boolean
+        status:
+          type: string
+          minLength: 1
+    WorkspaceAgentSideTurnCancelResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - canceled
+        - targetAbsent
+      properties:
+        canceled:
+          type: boolean
+        targetAbsent:
+          type: boolean
+    SubmitWorkspaceAgentSideConversationInteractiveRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+        optionId:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+    WorkspaceAgentSideInteractiveResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - disposition
+      properties:
+        disposition:
+          type: string
+          minLength: 1
     SendWorkspaceAgentSessionInputRequest:
       type: object
       additionalProperties: false
@@ -15108,6 +15800,11 @@ components:
           type: boolean
         source:
           type: string
+        uiMode:
+          type: string
+          enum:
+            - os
+            - agent
     AgentPromptContentBlock:
       type: object
       additionalProperties: false

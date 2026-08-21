@@ -1,5 +1,6 @@
 import type {
   AgentGUIRuntime,
+  AgentSideConversationRuntime,
   AgentGUIProps,
   AgentHostInputApi,
   TuttiModePlanReviewRuntime
@@ -10,6 +11,7 @@ import type {
   TuttidEventStreamClient
 } from "@tutti-os/client-tuttid-ts";
 import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
+import { isRichTextFolderHref } from "@tutti-os/ui-rich-text/core";
 import type {
   DesktopHostFilesApi,
   DesktopPlatformApi,
@@ -59,9 +61,11 @@ import { createDesktopAgentExternalPromptEntryResolver } from "./internal/resolv
 import { createDesktopTuttiModePlanReviewRuntime } from "./internal/desktopWorkspaceWorkflowRuntime.ts";
 import type { AgentSessionReplayDesktopComposition } from "../../agent-session-replay/services/agentSessionReplayDesktopComposition.ts";
 import type { AgentSessionReplayService } from "../../agent-session-replay/services/agentSessionReplayService.ts";
+import { createDesktopAgentSideConversationRuntime } from "./internal/desktopAgentSideConversationRuntime.ts";
 
 export interface DesktopAgentGUIWorkbenchHostInput {
   agentActivityRuntime: AgentGUIRuntime;
+  createAgentSideConversationRuntime(): AgentSideConversationRuntime | null;
   agentHostApi: AgentHostInputApi;
   agentSessionReplayService: AgentSessionReplayService | null;
   tuttiModePlanReviewRuntime: TuttiModePlanReviewRuntime;
@@ -238,7 +242,7 @@ export function createDesktopAgentGUIWorkbenchHostInput({
             return [
               {
                 displayName: insert.label,
-                kind: insert.href.endsWith("/") ? "folder" : "file",
+                kind: isRichTextFolderHref(insert.href) ? "folder" : "file",
                 path: insert.href
               }
             ];
@@ -269,6 +273,12 @@ export function createDesktopAgentGUIWorkbenchHostInput({
     createDesktopAgentExternalPromptEntryResolver({ platformApi });
   return {
     agentActivityRuntime,
+    createAgentSideConversationRuntime: () =>
+      createDesktopAgentSideConversationRuntime({
+        tuttidClient,
+        eventStreamClient,
+        workspaceId
+      }),
     agentHostApi: resolvedAgentHostApi,
     agentSessionReplayService: agentSessionReplayComposition?.service ?? null,
     tuttiModePlanReviewRuntime: createDesktopTuttiModePlanReviewRuntime({

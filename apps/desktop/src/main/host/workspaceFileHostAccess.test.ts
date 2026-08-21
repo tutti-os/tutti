@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -252,6 +252,45 @@ test("workspace file host access resolves terminal links for workspace, relative
   }
 });
 
+test("workspace file host access normalizes Git Bash paths at the native boundary", async () => {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const openedPaths: string[] = [];
+  const revealedPaths: string[] = [];
+  const hostAccess = createWorkspaceFileHostAccess({
+    openPath: async (targetPath) => {
+      openedPaths.push(targetPath);
+      return "";
+    },
+    showItemInFolder(targetPath) {
+      revealedPaths.push(targetPath);
+    },
+    stat: (async () => ({
+      isDirectory: () => false
+    })) as unknown as typeof stat
+  });
+
+  await hostAccess.openFile({
+    path: "/c/Users/test/project/notes.txt",
+    workspaceID: "workspace-1"
+  });
+  await hostAccess.revealWorkspaceFile({
+    path: "/c/Users/test/project/notes.txt",
+    workspaceID: "workspace-1"
+  });
+  await hostAccess.openTerminalLink({
+    cwd: "C:\\Users\\test\\project",
+    path: "/c/Users/test/project/notes.txt",
+    workspaceID: "workspace-1"
+  });
+
+  const expectedPath = path.resolve("C:/Users/test/project/notes.txt");
+  assert.deepEqual(openedPaths, [expectedPath, expectedPath]);
+  assert.deepEqual(revealedPaths, [expectedPath]);
+});
+
 test("workspace file host access reveals workspace files and directories", async () => {
   const workspaceRoot = await createWorkspaceRootWithFile("src/App.tsx", "app");
   const directoryPath = path.join(workspaceRoot, "notes");
@@ -371,6 +410,31 @@ test("workspace file host access rejects an existing project directory name", as
   );
 });
 
+test("workspace file host access rejects case-only duplicate project names", async () => {
+  const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
+  await mkdir(path.join(documentsRoot, "tutti", "Demo project"), {
+    recursive: true
+  });
+  const hostAccess = createWorkspaceFileHostAccess({
+    getDocumentsPath: () => documentsRoot
+  });
+
+  await assert.rejects(
+    () =>
+      hostAccess.createUserDocumentsProjectDirectory({
+        name: "demo PROJECT"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(
+        (error as NodeJS.ErrnoException).code,
+        desktopErrorCodes.projectDirectoryAlreadyExists
+      );
+      return true;
+    }
+  );
+});
+
 test("workspace file host access treats an existing directory as success when allowExisting is set", async () => {
   const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
   const sessionName = "session-cf25318a-0f29-437d-943b-dfb8a478bc64";
@@ -418,13 +482,20 @@ test("workspace file host access gives project-specific codes for create failure
   );
 });
 
-test("workspace file host access rejects project names that escape Documents", async () => {
+test("workspace file host access rejects unsafe cross-platform project names", async () => {
   const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
   const hostAccess = createWorkspaceFileHostAccess({
     getDocumentsPath: () => documentsRoot
   });
 
-  for (const name of ["../outside", ""]) {
+  for (const name of [
+    "../outside",
+    "",
+    "bad:name",
+    "trailing.",
+    "CON",
+    "x".repeat(256)
+  ]) {
     await assert.rejects(
       () => hostAccess.createUserDocumentsProjectDirectory({ name }),
       (error: unknown) => {

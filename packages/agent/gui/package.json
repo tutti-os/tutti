@@ -8,6 +8,8 @@
     ".": "./index.ts",
     "./agent-gui": "./AgentGUI.tsx",
     "./startup-shell": "./AgentGUIStartupShell.tsx",
+    "./side-conversation": "./side-conversation.ts",
+    "./side-conversation/controller": "./agentSideConversationController.ts",
     "./quick-composer": "./AgentGUIQuickComposer.tsx",
     "./composer-settings-core": "./composer-settings-core/index.ts",
     "./agents": "./agents.ts",
@@ -15,6 +17,7 @@
     "./dock-icons": "./dockIcons.ts",
     "./layout": "./layout.ts",
     "./mention-search": "./agent-gui/agentGuiNode/AgentMentionSearchController.ts",
+    "./abortable-single-flight": "./abortable-single-flight.ts",
     "./agent-message-center": "./agent-message-center/index.ts",
     "./agent-conversation": "./agent-conversation/index.ts",
     "./agent-conversation/follow-end": "./shared/agentConversation/agentConversationFollowEndController.ts",
@@ -70,6 +73,7 @@
     "@tanstack/react-virtual": "^3.14.8",
     "@tutti-os/agent-activity-core": "workspace:*",
     "@tutti-os/browser-node": "workspace:*",
+    "@tutti-os/connector-renderer": "workspace:*",
     "@tutti-os/ui-i18n-runtime": "workspace:*",
     "@tutti-os/ui-react-hooks": "workspace:*",
     "@tutti-os/ui-rich-text": "workspace:*",
@@ -108,6 +112,7 @@
     "@tiptap/suggestion": "^3.11.1",
     "@tutti-os/client-tuttid-ts": "workspace:*",
     "@tutti-os/config-tsconfig": "workspace:*",
+    "@tutti-os/event-protocol": "workspace:*",
     "@types/lodash": "^4.17.24",
     "@types/node": "^24.0.1",
     "@types/react": "^19.1.6",
@@ -148,6 +153,14 @@
         "types": "./dist/startup-shell.d.ts",
         "import": "./dist/startup-shell.js"
       },
+      "./side-conversation": {
+        "types": "./dist/side-conversation.d.ts",
+        "import": "./dist/side-conversation.js"
+      },
+      "./side-conversation/controller": {
+        "types": "./dist/side-conversation/controller.d.ts",
+        "import": "./dist/side-conversation/controller.js"
+      },
       "./quick-composer": {
         "types": "./dist/quick-composer.d.ts",
         "import": "./dist/quick-composer.js"
@@ -175,6 +188,10 @@
       "./mention-search": {
         "types": "./dist/mention-search.d.ts",
         "import": "./dist/mention-search.js"
+      },
+      "./abortable-single-flight": {
+        "types": "./dist/abortable-single-flight.d.ts",
+        "import": "./dist/abortable-single-flight.js"
       },
       "./agent-message-center": {
         "types": "./dist/agent-message-center/index.d.ts",
@@ -315,8 +332,17 @@
         "startup-shell": [
           "./dist/startup-shell.d.ts"
         ],
+        "side-conversation": [
+          "./dist/side-conversation.d.ts"
+        ],
+        "side-conversation/controller": [
+          "./dist/side-conversation/controller.d.ts"
+        ],
         "quick-composer": [
           "./dist/quick-composer.d.ts"
+        ],
+        "composer-settings-core": [
+          "./dist/composer-settings-core/index.d.ts"
         ],
         "agents": [
           "./dist/agents.d.ts"
@@ -335,6 +361,9 @@
         ],
         "mention-search": [
           "./dist/mention-search.d.ts"
+        ],
+        "abortable-single-flight": [
+          "./dist/abortable-single-flight.d.ts"
         ],
         "agent-conversation": [
           "./dist/agent-conversation/index.d.ts"

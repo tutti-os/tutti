@@ -85,11 +85,47 @@ partial selection, leaves the picker open for retry, and surfaces an error. The
 source owns transport, materialization, and the resulting consumer-readable
 locator; the shared picker must not interpret a host path or capability handle.
 
-The picker source heading is the source-root navigation target. When a source
-does not provide explicit sidebar groups, its root folders may appear as
-shortcuts below that heading, but the picker must not synthesize another
-same-named root folder. This keeps root-level files reachable without producing
-duplicated structures such as `Workspace / Workspace`.
+The picker source heading is the source-root navigation target. Every source
+implements the asynchronous `loadSidebarGroups()` protocol for shortcuts below
+that heading. Sidebar navigation never falls back to
+`listChildren(source-root)`, so loading navigation cannot populate or reuse
+directory-content state. The picker must not synthesize another same-named root
+folder; this keeps root-level files reachable without producing duplicated
+structures such as `Workspace / Workspace`.
+
+### Picker Runtime Reads
+
+The picker uses three distinct lifetimes:
+
+- The top-level source tabs have a UI-owned, process-memory snapshot keyed by
+  aggregator and workspace. Opening paints that snapshot immediately, always
+  calls `listSources()` in parallel, and reconciles the visible tabs when the
+  fresh catalog arrives. The snapshot is never persisted.
+- Sidebar groups are per-open state. After the source catalog is validated, the
+  picker calls `loadSidebarGroups()` for every visible source. Closing clears
+  the results; reopening reads them again. Sidebar pagination has its own cursor
+  and never shares directory pagination state.
+- Directory children are also per-open state. They are read only when the
+  active root or group is entered and are cleared on close. There is no
+  cross-open directory-content cache.
+
+`ReferenceReadRequestCoordinator` may be shared by picker instances. It merges
+only identical reads that are currently in flight; its key includes namespace,
+workspace, request epoch, operation, and normalized request inputs. It stores
+neither successful results nor errors. Consumers cancel independently, and the
+underlying request is aborted when its final consumer leaves. Catalog, sidebar,
+directory, search, and preview reads may use the coordinator.
+
+Confirmation is deliberately outside that coordinator.
+`prepareSelection()` runs against the source on every confirmation transaction;
+a cached tab or an earlier prepared host path is never authoritative.
+
+Host-local paths and permission-derived locations must not be persisted.
+Permission or host-capability changes call
+`invalidateReferenceSourcePickerRuntimeCache()` to clear the tab snapshot and
+abort the aggregator's matching in-flight reads. Hosts that construct an
+aggregator with `getRequestEpoch` also advance that epoch so later requests
+cannot join a request started under the previous permission state.
 
 OS clipboard and drop entries may enter the same ordinary file/folder mention
 model without going through a picker. AgentGUI asks the synchronous host
@@ -225,15 +261,54 @@ re-sort it by node kind or label. Host-only collections such as open Dock files
 may provide the empty-query browse list and presentation metadata, but must not
 be prepended to ranked query results.
 
+The Desktop AgentGUI file provider adds one host-context tier without creating
+a second relevance model: when the composer working directory resolves to a
+registered current project, matching candidates are placed before candidates
+from elsewhere, while the daemon's order is preserved within both tiers. The
+provider also supplies each row's parent path relative to the search root and
+its owning registered-project label. AgentGUI renders that combined context
+after the basename; it does not parse absolute paths, discover projects, or
+infer current-workspace ownership.
+
 Picker purpose constrains result kinds before pagination: the reference picker
 searches files only, while the project-directory picker searches folders only.
-A file-type filter by itself remains in browse mode, filters files in the
-recursively loaded source tree, and keeps only folders with matching descendant
-files. The traversal is cancellable and the picker remains loading until the
-filtered projection is complete. When a keyword is present, the same category
-ids are passed to the source for pre-pagination filtering. Search rows render a
-source-provided `contextLabel` when available and otherwise omit the subtitle;
-opaque `nodeId` values are never presentation copy.
+A file-type filter by itself normally remains in browse mode, filters files in
+the recursively loaded source tree, and keeps only folders with matching
+descendant files. A source may instead declare `filtersUseSearch` when it can
+enforce the categories before pagination. The traversal and search request are
+cancellable. When a keyword is present, the same category ids are passed to the
+source for pre-pagination filtering. Search rows render a source-provided
+`contextLabel` when available and otherwise omit the subtitle; opaque `nodeId`
+values are never presentation copy.
+
+A source opts into search continuation independently from browse pagination.
+`capabilities.paginated` only describes `listChildren()` cursors; existing
+sources continue using the growing-limit search protocol by default. A source
+must declare `capabilities.searchPagination: "cursor"` before the controller
+passes an opaque `nextCursor` to fixed-size search requests. A
+`SearchResult.searchPagination` value may override that default for one query,
+which lets a source keep ordinary cursor search while routing a provenance
+query through a legacy backend.
+
+For cursor search, the controller uses cursor presence—not a returned-count
+heuristic or a growing total limit—to decide whether more data exists. It keeps
+an incremental identity set and inspects only the incoming page before
+appending unique nodes to an immutable, bounded-block index in source order.
+Appending copies only the bounded tail block, and previously observed picker
+snapshots remain unchanged. The view performs random access through that index
+and renders only an overscanned virtual window. Historical entries remain
+reachable by scrolling without retaining one DOM row, icon subscription, or
+focus/selection render dependency per result. Repeated
+or cyclic `nextCursor` values stop continuation with a stable visible error.
+This removes any controller-owned total result ceiling.
+Legacy search retains the growing-limit behavior and compatibility ceiling.
+
+If a host reports cursor expiry with `ReferenceSearchCursorExpiredError`, the
+controller clears the stale pages and automatically restarts the unchanged
+search from page one. Other invalid or mismatched cursor errors remain visible
+failures because retrying them would hide a source or request-contract bug.
+An explicit retry of a visible search error also starts at page one after
+discarding stale continuation state.
 
 Local-file queries are field-aware:
 
@@ -353,6 +428,16 @@ cache expires; they do not claim exhaustive history.
 - Keep picker snapshots and source-service inputs as plain structured-cloneable
   data; never pass state-library proxies across host boundaries.
 - Append cursor pages without reordering already loaded entries.
+- Drive deep-search continuation from the virtual window's logical end rather
+  than assuming an appended page will produce another native scroll event.
+- Keep source tabs as runtime-only stale-while-revalidate metadata; every picker
+  open must still refresh the source catalog.
+- Read sidebar groups through `loadSidebarGroups()` on every open; never derive
+  or cache them through directory children.
+- Keep directory children within one picker-open lifecycle and merge only
+  identical requests that are simultaneously in flight.
+- Run `prepareSelection()` on every confirmation and never reuse a prepared
+  host path from cache.
 - Hide unavailable sources before rendering their tabs or sidebar groups.
 - Expose only running workspace apps in the app-artifact sidebar; installed or
   enabled apps that are not running are not valid reference sources.

@@ -18,6 +18,7 @@ import type {
 import type { DesktopAgentDirectorySnapshot } from "./agentDirectory.ts";
 import type {
   AgentProviderStatus,
+  DesktopPreferencesStateResponse,
   WorkspaceAgentProvider
 } from "@tutti-os/client-tuttid-ts";
 import type {
@@ -191,6 +192,7 @@ export const desktopIpcChannels = {
     automationHostReady: "browser:automation-host-ready",
     automationRequest: "browser:automation-request",
     automationResponse: "browser:automation-response",
+    automationTurnClaim: "browser:automation-turn-claim",
     capturePreview: "browser:capturePreview",
     chooseDownloadDirectory: "browser:chooseDownloadDirectory",
     clearBrowsingData: "browser:clearBrowsingData",
@@ -264,6 +266,9 @@ export const desktopIpcChannels = {
     setCustom: "wallpaper:setCustom"
   },
   host: {
+    preferences: {
+      ensureInitialized: "host:preferences:ensureInitialized"
+    },
     files: {
       createUserDocumentsProjectDirectory:
         "host:files:createUserDocumentsProjectDirectory",
@@ -1033,9 +1038,18 @@ export function desktopComputerUseStatusesEqual(
   );
 }
 
+export type DesktopComputerUseActionFailureReason =
+  | "timeout"
+  | "spawn-error"
+  | "exit-code";
+
 export interface DesktopComputerUseActionResult {
   success: boolean;
   output: string;
+  /** The child-process exit code, when the process reached close normally. */
+  exitCode?: number | null;
+  /** A stable reason that lets the renderer distinguish common failures. */
+  failureReason?: DesktopComputerUseActionFailureReason;
 }
 
 export type DesktopComputerUsePermissionPane =
@@ -1077,6 +1091,12 @@ export interface DesktopBrowserAutomationRequest {
 
 export interface DesktopBrowserAutomationHostReady {
   surfaceRole: "agent" | "user";
+  workspaceId: string;
+}
+
+export interface DesktopBrowserAutomationTurnClaim {
+  agentSessionId: string;
+  agentTurnId: string;
   workspaceId: string;
 }
 
@@ -1251,6 +1271,7 @@ export interface DesktopInvokePayloadByChannel {
   [desktopIpcChannels.wallpaper.clearCustom]: undefined;
   [desktopIpcChannels.wallpaper.getCustom]: undefined;
   [desktopIpcChannels.wallpaper.setCustom]: DesktopSetCustomWallpaperInput;
+  [desktopIpcChannels.host.preferences.ensureInitialized]: undefined;
   [desktopIpcChannels.host.files
     .createUserDocumentsProjectDirectory]: DesktopCreateUserDocumentsProjectDirectoryInput;
   [desktopIpcChannels.host.files.openExternal]: string;
@@ -1466,6 +1487,8 @@ export interface DesktopInvokeResultByChannel {
   [desktopIpcChannels.wallpaper.clearCustom]: void;
   [desktopIpcChannels.wallpaper.getCustom]: DesktopCustomWallpaperImage | null;
   [desktopIpcChannels.wallpaper.setCustom]: DesktopCustomWallpaperImage;
+  [desktopIpcChannels.host.preferences
+    .ensureInitialized]: DesktopPreferencesStateResponse;
   [desktopIpcChannels.host.files
     .createUserDocumentsProjectDirectory]: DesktopCreateUserDocumentsProjectDirectoryResult;
   [desktopIpcChannels.host.files.openExternal]: void;

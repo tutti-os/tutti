@@ -17,7 +17,14 @@ test("maps daemon composer options into the canonical activity contract", () => 
     modelConfig: {
       configurable: true,
       effectiveValue: "claude-haiku-4-5-20251001",
-      options: [{ id: "gpt-5", label: "GPT-5", value: "gpt-5" }]
+      options: [
+        {
+          id: "gpt-5",
+          label: "GPT-5",
+          value: "gpt-5",
+          consumptionMultiplier: "0.71"
+        }
+      ]
     },
     permissionConfig: { configurable: false, modes: [] },
     reasoningConfig: { configurable: false, options: [] },
@@ -34,7 +41,13 @@ test("maps daemon composer options into the canonical activity contract", () => 
   assert.equal(options.effectiveSettings?.codexSaverMode, true);
   assert.equal(options.modelConfigurable, true);
   assert.equal(options.effectiveModel, "claude-haiku-4-5-20251001");
-  assert.deepEqual(options.models, [{ label: "GPT-5", value: "gpt-5" }]);
+  assert.deepEqual(options.models, [
+    {
+      label: "GPT-5",
+      value: "gpt-5",
+      consumptionMultiplier: "0.71"
+    }
+  ]);
   assert.equal(options.effectiveSettings?.model, "gpt-5");
 });
 
@@ -84,6 +97,7 @@ test("projects connector presentation icons from the daemon catalog", () => {
         status: "available",
         invocation: "textTrigger",
         iconUrl: "data:image/png;base64,Z2l0aHVi",
+        installedAtUnixMs: 1_786_089_600_000,
         trigger: "/github"
       }
     ],
@@ -106,5 +120,9 @@ test("projects connector presentation icons from the daemon catalog", () => {
   assert.equal(
     options.capabilityCatalog?.[0]?.iconUrl,
     "data:image/png;base64,Z2l0aHVi"
+  );
+  assert.equal(
+    options.capabilityCatalog?.[0]?.installedAtUnixMs,
+    1_786_089_600_000
   );
 });

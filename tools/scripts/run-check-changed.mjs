@@ -211,6 +211,7 @@ function buildChangedLanes() {
         "exec",
         "oxlint",
         "--deny-warnings",
+        "--no-error-on-unmatched-pattern",
         ...lintFiles
       ],
       inputFiles: lintFiles

@@ -158,7 +158,8 @@ export function createWorkspaceAppCenterDockEntries(input: {
           clickBehavior: projection.clickBehavior,
           index,
           launchEnabled: projection.launchEnabled,
-          state: projection.state
+          state: projection.state,
+          visibility: projection.visibility
         })
       )
   ];
@@ -200,6 +201,7 @@ function createWorkspaceAppDockEntry(input: {
   index: number;
   launchEnabled: boolean;
   state?: WorkbenchHostDockEntry["state"];
+  visibility: WorkbenchHostDockEntry["visibility"];
 }): WorkbenchHostDockEntry {
   const dockEntryId = workspaceAppDockEntryId(input.app.appId);
   const appTitle = resolveWorkspaceAppDisplayName(input.app);
@@ -236,7 +238,7 @@ function createWorkspaceAppDockEntry(input: {
     sectionId: "apps",
     state: input.state,
     typeId: workspaceAppWebviewTypeID,
-    visibility: "always"
+    visibility: input.visibility
   };
 }
 

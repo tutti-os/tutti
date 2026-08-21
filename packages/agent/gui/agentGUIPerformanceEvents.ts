@@ -16,6 +16,13 @@ export type AgentGUIFirstTokenKind = "other" | "plan" | "reasoning" | "text";
 
 export type AgentGUIComposerOptionsLoadSource = "runtime" | "session-engine";
 
+export type AgentGUIPerformanceFailureStage =
+  | "options_load"
+  | "session_activation"
+  | "prompt_admission"
+  | "turn_settlement"
+  | "unknown";
+
 interface AgentGUIPerformanceEventBase {
   agentSessionId: string;
   durationBucket: AgentGUIPerformanceDurationBucket;
@@ -32,6 +39,8 @@ export type AgentGUIPerformanceEvent =
       commandDurationMs?: number;
       commandOutcome: PendingActivationCommandOutcome;
       errorCategory?: string;
+      errorCode?: string;
+      failureStage?: AgentGUIPerformanceFailureStage;
       hasInitialPrompt: boolean;
       lastObservedStage: PendingActivationLastObservedStage;
       mode: "existing" | "new";
@@ -42,6 +51,8 @@ export type AgentGUIPerformanceEvent =
     })
   | (AgentGUIPerformanceEventBase & {
       errorCategory?: string;
+      errorCode?: string;
+      failureStage?: AgentGUIPerformanceFailureStage;
       outcome: "accepted" | "failed";
       queued: boolean;
       source: "activation" | "submit";
@@ -57,6 +68,8 @@ export type AgentGUIPerformanceEvent =
     })
   | (AgentGUIPerformanceEventBase & {
       errorCategory?: string;
+      errorCode?: string;
+      failureStage?: AgentGUIPerformanceFailureStage;
       outcome: "canceled" | "completed" | "failed" | "interrupted";
       source: "activation" | "submit";
       turnId: string;
@@ -79,9 +92,12 @@ export type AgentGUIPerformanceEvent =
       durationBucket: AgentGUIPerformanceDurationBucket;
       durationMs: number;
       errorCategory?: string;
+      errorCode?: string;
+      failureStage?: AgentGUIPerformanceFailureStage;
       force: boolean;
       hasDirectory: boolean;
       modelCount?: number;
+      modelNames?: string[];
       observedAtUnixMs: number;
       operationId: string;
       outcome: "completed" | "failed";
@@ -90,9 +106,50 @@ export type AgentGUIPerformanceEvent =
       startedAtUnixMs: number;
       type: "composer_options_load_settled";
       workspaceId: string;
+    }
+  | {
+      agentTargetId: string;
+      force: boolean;
+      hasDirectory: boolean;
+      observedAtUnixMs: number;
+      operationId: string;
+      provider: string;
+      section: string;
+      source: AgentGUIComposerOptionsLoadSource;
+      stage: string;
+      startedAtUnixMs: number;
+      type: "composer_options_stage_started";
+      workspaceId: string;
+    }
+  | {
+      agentTargetId: string;
+      durationBucket: AgentGUIPerformanceDurationBucket;
+      durationMs: number;
+      errorCategory?: string;
+      errorCode?: string;
+      failureStage?: AgentGUIPerformanceFailureStage;
+      force: boolean;
+      hasDirectory: boolean;
+      modelNames?: string[];
+      observedAtUnixMs: number;
+      operationId: string;
+      outcome: "completed" | "failed";
+      provider: string;
+      section: string;
+      source: AgentGUIComposerOptionsLoadSource;
+      stage: string;
+      startedAtUnixMs: number;
+      type: "composer_options_stage_settled";
+      workspaceId: string;
     };
 
 export type AgentGUIComposerOptionsPerformanceEvent = Extract<
   AgentGUIPerformanceEvent,
-  { type: "composer_options_load_settled" | "composer_options_load_started" }
+  {
+    type:
+      | "composer_options_load_settled"
+      | "composer_options_load_started"
+      | "composer_options_stage_settled"
+      | "composer_options_stage_started";
+  }
 >;

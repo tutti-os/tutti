@@ -337,9 +337,7 @@ func acpFailureMetadata(err error) map[string]any {
 	if err == nil {
 		return nil
 	}
-	payload := map[string]any{
-		"error": err.Error(),
-	}
+	payload := map[string]any{"error": sanitizeProviderFailureText(err.Error())}
 	var transportFailure RuntimeTransportFailure
 	if errors.As(err, &transportFailure) {
 		if code := boundedRuntimeTransportFailureCode(transportFailure.RuntimeTransportFailureCode()); code != "" {
@@ -357,16 +355,22 @@ func acpFailureMetadata(err error) map[string]any {
 	if !errors.As(err, &callErr) {
 		return payload
 	}
+	for key, value := range failureFromACPCall(callErr).metadata() {
+		payload[key] = value
+	}
 	payload["acpErrorCode"] = callErr.Err.Code
 	if message := strings.TrimSpace(callErr.Err.Message); message != "" {
-		payload["acpErrorMessage"] = message
+		payload["acpErrorMessage"] = sanitizeProviderFailureText(message)
 	}
 	data := acpErrorDataPayload(callErr.Err.Data)
-	if message := strings.TrimSpace(asString(data["message"])); message != "" {
-		payload["error"] = message
-		payload["errorMessage"] = message
+	if rawData := sanitizeProviderFailureText(string(callErr.Err.Data)); rawData != "" && rawData != "null" {
+		payload["acpErrorData"] = rawData
 	}
-	if codexErrorInfo := firstNonEmpty(asString(data["codex_error_info"]), asString(data["codexErrorInfo"])); codexErrorInfo != "" {
+	if message := strings.TrimSpace(asString(data["message"])); message != "" {
+		payload["error"] = sanitizeProviderFailureText(message)
+		payload["errorMessage"] = sanitizeProviderFailureText(message)
+	}
+	if codexErrorInfo := clonePayloadValue(firstPresentAny(data["codex_error_info"], data["codexErrorInfo"])); codexErrorInfo != nil {
 		payload["codexErrorInfo"] = codexErrorInfo
 	}
 	return payload

@@ -7,6 +7,10 @@ import {
   type ReactNode
 } from "react";
 import { selectWorkspaceAgentConsumerCounts } from "@tutti-os/agent-activity-core";
+import type {
+  AgentGUISideConversationIdentity,
+  AgentGUISideConversationPresentation
+} from "@tutti-os/agent-gui";
 import {
   AgentToolPanelIcon,
   AgentToolSidebar,
@@ -25,7 +29,9 @@ import type {
   WorkbenchHostHandle
 } from "@tutti-os/workbench-surface";
 import type { DesktopBrowserApi } from "@preload/types";
+import type { DesktopRuntimeApi } from "@preload/types";
 import type { WorkspaceAgentActivityService } from "@renderer/features/workspace-agent";
+import { registerWorkspaceTerminalLoginLaunchHandler } from "@renderer/features/workspace-agent/services/workspaceTerminalLoginLaunchCoordinator.ts";
 import {
   resolveWorkspaceAppDisplayName,
   useWorkspaceAppCenterService
@@ -39,7 +45,15 @@ import {
 } from "./StandaloneAgentToolSidebarPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
 import { createStandaloneAgentToolHostGroup } from "./standaloneAgentToolWorkbench.ts";
+import { createStandaloneAgentTerminalLoginPresenter } from "../services/standaloneAgentTerminalLoginPresenter.ts";
+import { registerWorkspaceBrowserLaunchHandler } from "../services/workspaceBrowserLaunchCoordinator.ts";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
+import {
+  closeStandaloneAgentSideWithRecovery,
+  resolveStandaloneAgentSideTabReconciliation,
+  shouldCloseStandaloneAgentSide,
+  type StandaloneAgentSideTabIdentity
+} from "./standaloneAgentSideToolPanel.ts";
 
 export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebarPanel.tsx";
 
@@ -47,7 +61,7 @@ const browserControllerReadyTimeoutMs = 8_000;
 
 interface StandaloneAgentToolSidebarProps {
   activityService: WorkspaceAgentActivityService;
-  agentSessionId: string | null;
+  agentSideConversationPresentation: AgentGUISideConversationPresentation;
   appOpenId?: string | null;
   appI18n: I18nRuntime<string>;
   browserApi?: DesktopBrowserApi;
@@ -70,12 +84,13 @@ interface StandaloneAgentToolSidebarProps {
     width: number,
     animate?: boolean
   ) => Promise<{ width: number }>;
+  runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
   workspaceId: string;
 }
 
 export function StandaloneAgentToolSidebar({
   activityService,
-  agentSessionId,
+  agentSideConversationPresentation,
   appOpenId = null,
   appI18n,
   browserApi,
@@ -92,6 +107,7 @@ export function StandaloneAgentToolSidebar({
   onLayoutWidthChange,
   onToolHostReady,
   resizeWindowContentWidth,
+  runtimeApi,
   workspaceId
 }: StandaloneAgentToolSidebarProps): ReactNode {
   const { i18n, locale } = useTranslation();
@@ -105,6 +121,7 @@ export function StandaloneAgentToolSidebar({
   mainContentMinWidthRef.current = mainContentMinWidthPx ?? 0;
   const [activePanel, setActivePanel] = useState<AgentToolPanelId | null>(null);
   const [mountedTabs, setMountedTabs] = useState<readonly AgentToolTab[]>([]);
+  const sideTabRef = useRef<StandaloneAgentSideTabIdentity | null>(null);
   const lastHandledAppOpenIdRef = useRef<string | null>(null);
   const lastHandledFileOpenRequestRef = useRef<string | null>(null);
   const fileOpenRequestTabIdRef = useRef<string | null>(null);
@@ -113,6 +130,12 @@ export function StandaloneAgentToolSidebar({
   const toolHostGroup = useMemo(createStandaloneAgentToolHostGroup, []);
   const browserControllersRef = useRef(
     new Map<string, { controller: AgentToolBrowserController; tabId: string }>()
+  );
+  const browserControllersByTabIdRef = useRef(
+    new Map<string, AgentToolBrowserController>()
+  );
+  const browserTabControllerWaitersRef = useRef(
+    new Map<string, Set<(controller: AgentToolBrowserController) => void>>()
   );
   const browserControllerWaitersRef = useRef(
     new Map<
@@ -137,6 +160,11 @@ export function StandaloneAgentToolSidebar({
     () =>
       selectWorkspaceAgentConsumerCounts(sessionEngine.getSnapshot()).working
   );
+  const sideIdentity =
+    useExternalStoreValue<AgentGUISideConversationIdentity | null>(
+      agentSideConversationPresentation.subscribeIdentity,
+      agentSideConversationPresentation.getIdentitySnapshot
+    );
   const automationBrowserCount = mountedTabs.filter(
     (tab) => tab.panel === "browser" && Boolean(tab.resourceId)
   ).length;
@@ -156,9 +184,18 @@ export function StandaloneAgentToolSidebar({
       {
         id: "messages",
         label: i18n.t("workspace.agentGui.toolSidebar.messages")
-      }
+      },
+      ...(sideIdentity
+        ? [
+            {
+              canAdd: false,
+              id: "side" as const,
+              label: i18n.t("workspace.agentGui.toolSidebar.side")
+            }
+          ]
+        : [])
     ],
-    [i18n]
+    [i18n, sideIdentity]
   );
   const copy = useMemo<AgentToolSidebarCopy>(
     () => ({
@@ -209,6 +246,20 @@ export function StandaloneAgentToolSidebar({
       controller: AgentToolBrowserController | null
     ) => {
       const sessionId = browserAgentSessionId?.trim() ?? "";
+      const existingTabController =
+        browserControllersByTabIdRef.current.get(tabId);
+      if (!controller) {
+        if (existingTabController) {
+          browserControllersByTabIdRef.current.delete(tabId);
+        }
+      } else {
+        browserControllersByTabIdRef.current.set(tabId, controller);
+        const tabWaiters = browserTabControllerWaitersRef.current.get(tabId);
+        if (tabWaiters) {
+          browserTabControllerWaitersRef.current.delete(tabId);
+          for (const resolve of tabWaiters) resolve(controller);
+        }
+      }
       if (!sessionId) return;
       const existing = browserControllersRef.current.get(sessionId);
       if (!controller) {
@@ -225,6 +276,67 @@ export function StandaloneAgentToolSidebar({
       for (const resolve of waiters) resolve(entry);
     },
     []
+  );
+
+  const waitForBrowserTabController = useCallback(
+    (tabId: string): Promise<AgentToolBrowserController> => {
+      const existing = browserControllersByTabIdRef.current.get(tabId);
+      if (existing) return Promise.resolve(existing);
+      return new Promise((resolve, reject) => {
+        const waiters =
+          browserTabControllerWaitersRef.current.get(tabId) ?? new Set();
+        const handleReady = (controller: AgentToolBrowserController) => {
+          clearTimeout(timeout);
+          resolve(controller);
+        };
+        const timeout = setTimeout(() => {
+          waiters.delete(handleReady);
+          if (waiters.size === 0) {
+            browserTabControllerWaitersRef.current.delete(tabId);
+          }
+          reject(new Error("Agent Browser surface did not become ready"));
+        }, browserControllerReadyTimeoutMs);
+        waiters.add(handleReady);
+        browserTabControllerWaitersRef.current.set(tabId, waiters);
+      });
+    },
+    []
+  );
+
+  useEffect(
+    () =>
+      registerWorkspaceTerminalLoginLaunchHandler(
+        workspaceId,
+        createStandaloneAgentTerminalLoginPresenter({
+          closeTab: (tabId) => sidebarRef.current?.closeTab(tabId),
+          contributions: contributions ?? [],
+          openTab: (sessionId) =>
+            sidebarRef.current?.addPanel("terminal", sessionId) ?? null,
+          runtimeApi
+        })
+      ),
+    [contributions, runtimeApi, workspaceId]
+  );
+
+  useEffect(
+    () =>
+      registerWorkspaceBrowserLaunchHandler(workspaceId, async (request) => {
+        const tabId = sidebarRef.current?.openPanel("browser") ?? null;
+        if (!tabId) return null;
+        const controller = await waitForBrowserTabController(tabId);
+        if (request.kind === "focus") {
+          if (request.preferredNodeId) {
+            controller.selectPage(request.preferredNodeId);
+          }
+          return controller.surfaceNodeId;
+        }
+        return (
+          (request.reuseIfOpen
+            ? controller.activatePageByUrl(request.url)
+            : null) ?? controller.createPage(request.url)
+        );
+      }),
+    [waitForBrowserTabController, workspaceId]
   );
 
   useEffect(() => {
@@ -272,12 +384,16 @@ export function StandaloneAgentToolSidebar({
           if (!sessionId) {
             throw new Error("Agent Browser request requires an agent session");
           }
-          if (request.action === "create" && request.reveal !== false) {
-            sidebarRef.current?.openPanel("browser", sessionId);
-          }
-          const entry = await waitForController(sessionId);
           if (request.action === "create") {
-            const nodeId = entry.controller.createPage(request.url);
+            const tabId =
+              request.reveal === false
+                ? sidebarRef.current?.ensurePanel("browser", sessionId)
+                : sidebarRef.current?.openPanel("browser", sessionId);
+            if (!tabId) {
+              throw new Error("Agent Browser panel did not open");
+            }
+            const controller = await waitForBrowserTabController(tabId);
+            const nodeId = controller.createPage(request.url);
             browserApi.respondAutomationRequest({
               nodeId,
               ok: true,
@@ -285,6 +401,7 @@ export function StandaloneAgentToolSidebar({
             });
             return;
           }
+          const entry = await waitForController(sessionId);
           const nodeId = request.nodeId?.trim() ?? "";
           if (!nodeId) throw new Error("Browser page id is required");
           if (request.action === "select") {
@@ -322,7 +439,13 @@ export function StandaloneAgentToolSidebar({
       disconnectAutomation();
       onToolHostReady(null);
     };
-  }, [browserApi, onToolHostReady, toolHostGroup, workspaceId]);
+  }, [
+    browserApi,
+    onToolHostReady,
+    toolHostGroup,
+    waitForBrowserTabController,
+    workspaceId
+  ]);
 
   useEffect(() => {
     const appId = appOpenId?.trim() || null;
@@ -359,6 +482,29 @@ export function StandaloneAgentToolSidebar({
       sidebarRef.current?.openPanel("tasks") ?? null;
   }, [issueManagerOpenRequest]);
   useEffect(() => {
+    const reconciliation = resolveStandaloneAgentSideTabReconciliation({
+      current: sideTabRef.current,
+      next: sideIdentity
+    });
+    if (reconciliation.closeTabId) {
+      sidebarRef.current?.closeTab(reconciliation.closeTabId);
+    }
+    if (!reconciliation.open) {
+      if (!sideIdentity) sideTabRef.current = null;
+      return;
+    }
+    const tabId = sidebarRef.current?.addPanel(
+      "side",
+      reconciliation.open.sourceAgentSessionId
+    );
+    sideTabRef.current = tabId
+      ? {
+          ...reconciliation.open,
+          tabId
+        }
+      : null;
+  }, [sideIdentity]);
+  useEffect(() => {
     if (appCenterState.catalogStatus !== "ready") return;
     const availableAppIds = new Set(
       appCenterState.apps.map((app) => app.appId)
@@ -382,6 +528,38 @@ export function StandaloneAgentToolSidebar({
   );
   const handleTabClose = useCallback(
     (tab: AgentToolTab) => {
+      if (tab.panel === "side") {
+        const identity = sideTabRef.current;
+        if (identity?.tabId === tab.id) {
+          const projection = agentSideConversationPresentation.getSnapshot();
+          if (
+            projection &&
+            shouldCloseStandaloneAgentSide({
+              closingTabId: tab.id,
+              current: identity,
+              projection
+            })
+          ) {
+            void closeStandaloneAgentSideWithRecovery({
+              closing: identity,
+              close: projection.close,
+              getProjection:
+                agentSideConversationPresentation.getIdentitySnapshot,
+              restore: (restoredIdentity) => {
+                const tabId = sidebarRef.current?.addPanel(
+                  "side",
+                  restoredIdentity.sourceAgentSessionId
+                );
+                sideTabRef.current = tabId
+                  ? { ...restoredIdentity, tabId }
+                  : null;
+              }
+            });
+          }
+          sideTabRef.current = null;
+        }
+        return;
+      }
       if (tab.panel !== "apps" || !tab.resourceId) return;
       if (lastHandledAppOpenIdRef.current === tab.resourceId) {
         lastHandledAppOpenIdRef.current = null;
@@ -395,7 +573,7 @@ export function StandaloneAgentToolSidebar({
         });
       }
     },
-    [appCenterService, workspaceId]
+    [agentSideConversationPresentation, appCenterService, workspaceId]
   );
   const resolveTabLabel = useCallback(
     (tab: AgentToolTab, defaultLabel: string) => {
@@ -471,7 +649,6 @@ export function StandaloneAgentToolSidebar({
         renderPanel={({ active, closeSidebar, tab }) => (
           <StandaloneAgentToolSidebarPanel
             active={active}
-            agentSessionId={agentSessionId}
             appI18n={appI18n}
             activityService={activityService}
             browserApi={browserApi}
@@ -490,6 +667,9 @@ export function StandaloneAgentToolSidebar({
             i18n={i18n}
             locale={locale}
             messageCenterOpen={active && tab.panel === "messages"}
+            agentSideConversationPresentation={
+              agentSideConversationPresentation
+            }
             setToolHost={toolHostGroup.setHost}
             tab={tab}
             workspaceId={workspaceId}

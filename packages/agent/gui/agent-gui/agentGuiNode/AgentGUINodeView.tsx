@@ -31,10 +31,8 @@ import { AgentGUIConfigMenu } from "./view/AgentGUIAccountConfig";
 import { AgentGUIProviderRail } from "./view/AgentGUIProviderRail";
 import { type AgentGUIConversationRailState } from "./view/AgentGUIConversationRailPane";
 import { AgentGUIConversationRailController } from "./controller/AgentGUIConversationRailController";
-import {
-  AgentGUIDetailPane,
-  EMPTY_WORKSPACE_APP_ICONS
-} from "./view/AgentGUIDetailPane";
+import { AgentGUIDetailPane } from "./view/AgentGUIDetailPane";
+import { EMPTY_WORKSPACE_APP_ICONS } from "./view/agentGUIDetailConstants";
 import { mergeWorkspaceAppIconsFromCommands } from "./view/agentGUIDetailModelHelpers";
 import { AgentGUIRenameConversationDialog } from "./view/AgentGUIRenameConversationDialog";
 import { AgentGUIReferencePickerSurface } from "./view/AgentGUIReferencePickerSurface";
@@ -79,12 +77,15 @@ export function AgentGUINodeView({
   mentionAgentTargets,
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
-  sessionForkEnabled = false,
+  sideConversationEnabled = false,
+  sideConversationPresentation = null,
   sessionWorktreeEnabled = false,
   sessionLaunchModesByProjectSectionKey,
   onSessionLaunchModePreferenceChange,
   renderAgentTargetInfo,
   renderProjectDirectoryPickerHeaderActions,
+  projectSelectOptions,
+  renderReferencePickerSidebarActions,
   renderSidebarFooter,
   renderProviderRailEmpty,
   providerRailAllPresentation,
@@ -112,6 +113,7 @@ export function AgentGUINodeView({
   slashStatusUsageErrorMessage = null,
   slashStatusUsageAttempted = false,
   agentConfigAccountContent,
+  agentConfigSystemActionsContent,
   onAgentConfigMenuClose,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
@@ -269,7 +271,6 @@ export function AgentGUINodeView({
       if (conversationRailCollapsed || event.button !== 0) {
         return;
       }
-
       event.preventDefault();
       event.currentTarget.setPointerCapture?.(event.pointerId);
       railResizeInteractionRef.current = {
@@ -283,7 +284,6 @@ export function AgentGUINodeView({
     },
     [conversationRailCollapsed, conversationRailWidthPx]
   );
-
   const handleConversationRailResizePointerMove =
     useAgentGUIConversationRailResizePointerMove({
       clampConversationRailWidth,
@@ -292,7 +292,6 @@ export function AgentGUINodeView({
       providerRailWidthPx,
       railResizeInteractionRef
     });
-
   const endConversationRailResize = useCallback(
     (event?: PointerEvent<HTMLDivElement>): void => {
       const resizeState = railResizeInteractionRef.current;
@@ -315,7 +314,6 @@ export function AgentGUINodeView({
     },
     [onConversationRailWidthChanged]
   );
-
   useEffect(() => {
     if (isRailResizing || railResizeWidthPx === null) {
       return;
@@ -616,6 +614,7 @@ export function AgentGUINodeView({
                   providerLabel={railConfigTarget?.label}
                   providerAuthAccountLabel={effectiveProviderAuthAccountLabel}
                   accountContent={agentConfigAccountContent}
+                  systemActionsContent={agentConfigSystemActionsContent}
                   onAgentConfigMenuClose={onAgentConfigMenuClose}
                   onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                   onAgentUsageRefresh={onAgentUsageRefresh}
@@ -692,7 +691,8 @@ export function AgentGUINodeView({
                 homeTargetProjection={homeTargetProjection}
                 referenceProvenanceFilters={referenceProvenanceFilters}
                 sessionInputHistoryEnabled={sessionInputHistoryEnabled}
-                sessionForkEnabled={sessionForkEnabled}
+                sideConversationEnabled={sideConversationEnabled}
+                sideConversationPresentation={sideConversationPresentation}
                 sessionWorktreeEnabled={sessionWorktreeEnabled}
                 sessionLaunchModesByProjectSectionKey={
                   sessionLaunchModesByProjectSectionKey
@@ -732,6 +732,7 @@ export function AgentGUINodeView({
                 resolvePastedPath={resolvePastedPath}
                 promptAssetLimit={promptAssetLimit}
                 selectProjectDirectory={effectiveSelectProjectDirectory}
+                projectSelectOptions={projectSelectOptions}
                 onRequestGitBranches={onRequestGitBranches}
                 onRequestComposerFocus={requestComposerFocus}
                 workspaceAppIcons={effectiveWorkspaceAppIcons}
@@ -756,6 +757,7 @@ export function AgentGUINodeView({
           renderDirectoryHeaderActions={
             renderProjectDirectoryPickerHeaderActions
           }
+          renderSidebarActions={renderReferencePickerSidebarActions}
           resolveContentErrorAction={resolveReferenceContentErrorAction}
           resolveEntryIconUrl={resolveWorkspaceReferenceEntryIconUrl}
           workspaceId={viewModel.shell.workspaceId}

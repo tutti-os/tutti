@@ -29,6 +29,49 @@ func TestClaudeCodeSDKAdapterCanResumeRequiresProviderSessionID(t *testing.T) {
 	}
 }
 
+func TestClaudeCodeSDKAdapterMarksProviderReadinessDeadline(t *testing.T) {
+	t.Parallel()
+
+	conn := &recordingClaudeSDKConnection{}
+	adapter := NewClaudeCodeSDKAdapter(&recordingClaudeSDKTransport{conn: conn})
+	session := standardTestSession(ProviderClaudeCode)
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	_, err := adapter.Start(ctx, session)
+	if !errors.Is(err, ErrProviderStartTimeout) || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start() error = %v, want provider-start marker and deadline cause", err)
+	}
+	if adapter.getSession(session.AgentSessionID) != nil {
+		t.Fatal("timed-out provider readiness retained adapter session")
+	}
+	requests := conn.sentRequests()
+	if len(requests) != 1 || requests[0].Type != "start" {
+		t.Fatalf("sent requests = %#v, want one provider start before timeout", requests)
+	}
+}
+
+func TestClaudeCodeSDKAdapterLeavesPreparationDeadlineUnclassified(t *testing.T) {
+	t.Parallel()
+
+	transport := &recordingClaudeSDKTransport{conn: &recordingClaudeSDKConnection{}}
+	adapter := NewClaudeCodeSDKAdapter(transport)
+	adapter.SetProviderLaunchPreparer(func(context.Context, ProviderLaunchPrepareInput) (ProviderLaunchPrepareResult, error) {
+		return ProviderLaunchPrepareResult{}, context.DeadlineExceeded
+	})
+
+	_, err := adapter.Start(context.Background(), standardTestSession(ProviderClaudeCode))
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Start() error = %v, want preparation deadline", err)
+	}
+	if errors.Is(err, ErrProviderStartTimeout) {
+		t.Fatalf("Start() error = %v, preparation deadline gained provider-start verdict", err)
+	}
+	if len(transport.spec.Command) != 0 {
+		t.Fatalf("process spec = %#v, preparation failure must not start provider", transport.spec)
+	}
+}
+
 func TestClaudeCodeSDKAdapterCloseHonorsCallerDeadlineAndForcesTeardown(t *testing.T) {
 	t.Parallel()
 

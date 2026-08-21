@@ -1,7 +1,8 @@
 import { createRichTextMentionAttrs } from "./mention.ts";
 import {
   createRichTextMentionMarkdown,
-  createRichTextLinkMarkdown
+  createRichTextLinkMarkdown,
+  isRichTextFolderHref
 } from "../core/richTextDocument.ts";
 import type {
   RichTextTriggerProvider,
@@ -61,7 +62,7 @@ export function renderRichTextTriggerInsertResult(
       return createRichTextLinkMarkdown({
         name: result.label,
         path: result.href,
-        kind: result.href.endsWith("/") ? "folder" : "file"
+        kind: isRichTextFolderHref(result.href) ? "folder" : "file"
       });
     case "text":
       return result.text;

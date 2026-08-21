@@ -24,6 +24,19 @@ import type {
 
 const NO_COMMANDS: readonly EngineCommand[] = [];
 
+export function createActivationRecoveryIntent(
+  record: PendingActivationIntentRecord
+): EngineIntent | null {
+  if (record.mode !== "new") return null;
+  return {
+    agentSessionId: record.agentSessionId,
+    needsMessages: false,
+    needsState: true,
+    type: "session/reconcileRequested",
+    workspaceId: record.workspaceId
+  };
+}
+
 export function settleActivationCommand(
   state: PendingIntentsState,
   intent: EngineCommandResultIntent
@@ -72,8 +85,10 @@ export function settleActivationCommand(
       };
     }
     if (settlement.kind === "invalid") {
+      const recoveryIntent = createActivationRecoveryIntent(record);
       return {
         commands: NO_COMMANDS,
+        ...(recoveryIntent ? { followUpIntents: [recoveryIntent] } : {}),
         state: replaceActivation(state, {
           ...settledRecord,
           status: "uncertain"
@@ -106,8 +121,13 @@ export function settleActivationCommand(
       })
     };
   }
+  const recoveryIntent =
+    intent.outcome === "timedOut"
+      ? createActivationRecoveryIntent(record)
+      : null;
   return {
     commands: NO_COMMANDS,
+    ...(recoveryIntent ? { followUpIntents: [recoveryIntent] } : {}),
     state: replaceActivation(state, {
       ...record,
       commandOutcome: intent.outcome === "timedOut" ? "timed_out" : "failed",

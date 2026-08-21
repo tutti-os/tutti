@@ -12,6 +12,7 @@ import {
   type EngineEffectOptions,
   type EngineExternalCommand,
   type EngineIntent,
+  type EngineScheduler,
   type PlanSubmitDecisionResult,
   type SessionAcknowledgeForkObservedCommand,
   type SessionReconcileCommand,
@@ -20,9 +21,11 @@ import {
 import type { AgentActivityRuntimeActivateSessionInput } from "@tutti-os/agent-gui";
 import type { TuttidClient } from "@tutti-os/client-tuttid-ts";
 import type { DesktopRuntimeApi } from "@preload/types";
+import type { DesktopWorkspaceUiMode } from "@shared/preferences";
 import type { AgentHostAgentSessionComposerSettings } from "@shared/contracts/dto";
 import {
   createDesktopAgentActivityAdapter,
+  type CreateDesktopAgentActivityAdapterInput,
   type DesktopAgentActivityCommandAdapter
 } from "../desktopAgentActivityAdapter.ts";
 import {
@@ -36,6 +39,7 @@ export interface WorkspaceAgentSessionEngineHost {
   adapter: AgentActivityAdapter;
   commandAdapter: DesktopAgentActivityCommandAdapter;
   engine: AgentSessionEngine;
+  scheduler: EngineScheduler;
   dispose(): void;
 }
 
@@ -46,6 +50,7 @@ export interface WorkspaceAgentSessionEngineActivityObserver {
 
 interface CreateWorkspaceAgentSessionEngineHostInput {
   activityEventObserver?: WorkspaceAgentSessionEngineActivityObserver;
+  claimBrowserAutomationTurn?: CreateDesktopAgentActivityAdapterInput["claimBrowserAutomationTurn"];
   executeEngineActivateSession(
     input: AgentActivityRuntimeActivateSessionInput,
     options: EngineEffectOptions
@@ -68,6 +73,7 @@ interface CreateWorkspaceAgentSessionEngineHostInput {
     signal?: AbortSignal
   ): Promise<unknown>;
   runtimeApi: Pick<DesktopRuntimeApi, "logTerminalDiagnostic">;
+  uiMode?: DesktopWorkspaceUiMode;
   takePendingSessionRecording?(workspaceId: string): string | null;
   restorePendingSessionRecording?(
     workspaceId: string,
@@ -160,11 +166,19 @@ export function createWorkspaceAgentSessionEngineHost(
   input: CreateWorkspaceAgentSessionEngineHostInput
 ): WorkspaceAgentSessionEngineHost {
   const adapter = createDesktopAgentActivityAdapter({
+    claimBrowserAutomationTurn: input.claimBrowserAutomationTurn,
     tuttidClient: input.tuttidClient,
     runtimeApi: input.runtimeApi,
+    uiMode: input.uiMode,
     takePendingSessionRecording: input.takePendingSessionRecording,
     restorePendingSessionRecording: input.restorePendingSessionRecording
   });
+  const scheduler: EngineScheduler = {
+    schedule(delayMs, task) {
+      const timer = setTimeout(task, delayMs);
+      return { cancel: () => clearTimeout(timer) };
+    }
+  };
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => Date.now() },
     commandPort: {
@@ -283,9 +297,18 @@ export function createWorkspaceAgentSessionEngineHost(
             ]);
           case "composerOptions/load":
             return adapter.loadComposerOptions({
+              ...(command.agentSessionId !== undefined
+                ? { agentSessionId: command.agentSessionId }
+                : {}),
               agentTargetId: command.targetKey,
               ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
               provider: command.provider,
+              ...(command.waitForFreshModelCatalog
+                ? { waitForFreshModelCatalog: true }
+                : {}),
+              ...(command.section !== undefined
+                ? { section: command.section }
+                : {}),
               ...(command.settings !== undefined
                 ? { settings: command.settings }
                 : {}),
@@ -376,12 +399,7 @@ export function createWorkspaceAgentSessionEngineHost(
           )
         }
       : {}),
-    scheduler: {
-      schedule(delayMs, task) {
-        const timer = setTimeout(task, delayMs);
-        return { cancel: () => clearTimeout(timer) };
-      }
-    }
+    scheduler
   });
   const unsubscribeSessionEvents = input.subscribeSessionEvents(
     input.workspaceId,
@@ -409,6 +427,7 @@ export function createWorkspaceAgentSessionEngineHost(
     adapter,
     commandAdapter: adapter,
     engine,
+    scheduler,
     dispose() {
       unsubscribeSessionEvents();
       engine.dispose();

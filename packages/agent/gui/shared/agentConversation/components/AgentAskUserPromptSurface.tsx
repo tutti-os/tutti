@@ -1,10 +1,12 @@
 import { useState, type JSX } from "react";
+import { canonicalInteractionKey } from "@tutti-os/agent-activity-core";
 import { Button } from "@tutti-os/ui-system";
 import { MessageSquareMoreIcon } from "../../../app/renderer/components/icons/MessageSquareMoreIcon";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
 import type { AgentConversationPromptVM } from "../contracts/agentConversationVM";
 import { buildAskUserAnswerPayload } from "../interactiveAnswerPayload";
 import type {
+  AgentInteractivePromptConversationReturn,
   AgentInteractivePromptSurfaceProps,
   AgentInteractivePromptVariant
 } from "./AgentInteractivePromptSurface";
@@ -29,9 +31,11 @@ type SharedAskUserSurfaceProps = Pick<
 export function AgentAskUserPromptSurface({
   prompt,
   variant,
+  conversationReturn,
   ...props
 }: SharedAskUserSurfaceProps & {
   variant: AgentInteractivePromptVariant;
+  conversationReturn?: AgentInteractivePromptConversationReturn;
 }): JSX.Element {
   "use memo";
   const question = prompt.questions[0] ?? null;
@@ -54,10 +58,14 @@ export function AgentAskUserPromptSurface({
 
   return (
     <AskUserAnswerFlowSurface
-      key={prompt.requestId}
+      key={canonicalInteractionKey(
+        prompt.agentSessionId ?? "",
+        prompt.turnId ?? "",
+        prompt.requestId
+      )}
       {...props}
       prompt={prompt}
-      allowReturnToConversation={variant === "full"}
+      conversationReturn={variant === "full" ? conversationReturn : undefined}
     />
   );
 }
@@ -139,7 +147,7 @@ function CompactQuickAnswerSurface({
 
 function AskUserAnswerFlowSurface({
   prompt,
-  allowReturnToConversation,
+  conversationReturn,
   embedded = false,
   edgeGlow = false,
   isSubmitting,
@@ -147,7 +155,7 @@ function AskUserAnswerFlowSurface({
   onSubmit,
   labels
 }: SharedAskUserSurfaceProps & {
-  allowReturnToConversation: boolean;
+  conversationReturn?: AgentInteractivePromptConversationReturn;
 }): JSX.Element {
   "use memo";
   const [collapsed, setCollapsed] = useState(false);
@@ -177,7 +185,7 @@ function AskUserAnswerFlowSurface({
     );
   }
 
-  if (collapsed) {
+  if (collapsed && conversationReturn) {
     return (
       <section
         className={interactivePromptClassName(embedded)}
@@ -198,7 +206,7 @@ function AskUserAnswerFlowSurface({
             disabled={isSubmitting}
             onClick={() => setCollapsed(false)}
           >
-            {labels.continueAnswering}
+            {conversationReturn.continueAnswering}
           </Button>
         </div>
       </section>
@@ -265,7 +273,7 @@ function AskUserAnswerFlowSurface({
           </div>
         ) : null}
         {question.allowFreeText !== false &&
-        (!allowReturnToConversation || question.options.length === 0) ? (
+        (!conversationReturn || question.options.length === 0) ? (
           <textarea
             value={flow.freeText}
             placeholder={labels.answerPlaceholder}
@@ -276,7 +284,7 @@ function AskUserAnswerFlowSurface({
           />
         ) : null}
         <div className={styles.interactivePromptActions}>
-          {allowReturnToConversation ? (
+          {conversationReturn ? (
             <Button
               type="button"
               variant="secondary"
@@ -284,7 +292,7 @@ function AskUserAnswerFlowSurface({
               disabled={isSubmitting}
               onClick={() => setCollapsed(true)}
             >
-              {labels.returnToConversation}
+              {conversationReturn.returnToConversation}
             </Button>
           ) : null}
           {prompt.questions.length > 1 ? (

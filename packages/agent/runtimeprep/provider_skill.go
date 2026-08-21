@@ -73,12 +73,13 @@ func computerUseSkill(input PrepareInput) (string, error) {
 
 type runtimeTemplateData struct {
 	PrepareInput
-	HostFacts             HostFacts
-	CommandFamilies       []string
-	OutputModes           []string
-	ProfileIntro          string
-	ProfileTitle          string
-	ConnectorRoutingIndex string
+	HostFacts              HostFacts
+	CommandFamilies        []string
+	OutputModes            []string
+	ProfileIntro           string
+	ProfileTitle           string
+	ConnectorRoutingIndex  string
+	EnabledConnectorsIndex string
 }
 
 func renderProviderSkillTemplate(path string, input PrepareInput, replacements map[string]string) (string, error) {
@@ -116,12 +117,14 @@ func renderRuntimeTemplate(name string, content string, input PrepareInput, repl
 	}
 	resolver := input.commandCapabilities
 	data := runtimeTemplateData{
-		PrepareInput:          input,
-		HostFacts:             resolvedHostFacts(input),
-		ProfileIntro:          resolvedProfileIntro(input),
-		ProfileTitle:          resolvedProfileTitle(input),
-		ConnectorRoutingIndex: connectorRoutingIndex(input.ConnectorRoutingHints),
+		PrepareInput:           input,
+		HostFacts:              resolvedHostFacts(input),
+		ProfileIntro:           resolvedProfileIntro(input),
+		ProfileTitle:           resolvedProfileTitle(input),
+		ConnectorRoutingIndex:  connectorRoutingIndex(input.ConnectorRoutingHints),
+		EnabledConnectorsIndex: enabledConnectorsIndex(input.EnabledConnectors),
 	}
+	data.CLICommand = normalizeCLICommandName(input.CLICommand)
 	if resolver != nil {
 		data.CommandFamilies = resolver.Families()
 		data.OutputModes = resolver.OutputModes()
@@ -131,6 +134,37 @@ func renderRuntimeTemplate(name string, content string, input PrepareInput, repl
 		return "", fmt.Errorf("render runtime template %s: %w", name, err)
 	}
 	return rendered.String(), nil
+}
+
+// ConnectorRoutingIndex renders the bounded connector alias index. Session
+// preparation templates and turn-level routing updates share this projection
+// so both surfaces stay byte-identical for the same routing hints.
+func ConnectorRoutingIndex(hints []ConnectorRoutingHint) string {
+	return connectorRoutingIndex(hints)
+}
+
+func enabledConnectorsIndex(keys []string) string {
+	if len(keys) == 0 {
+		return "none"
+	}
+	unique := make([]string, 0, len(keys))
+	seen := make(map[string]struct{}, len(keys))
+	for _, key := range keys {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			continue
+		}
+		if _, duplicate := seen[key]; duplicate {
+			continue
+		}
+		seen[key] = struct{}{}
+		unique = append(unique, key)
+	}
+	if len(unique) == 0 {
+		return "none"
+	}
+	sort.Strings(unique)
+	return strings.Join(unique, ", ")
 }
 
 func connectorRoutingIndex(hints []ConnectorRoutingHint) string {
@@ -255,6 +289,9 @@ func templateInputValues(input PrepareInput) func(string, string) []string {
 }
 
 func providerSkills(input PrepareInput) ([]providerSkillSpec, error) {
+	if input.SkipSkills {
+		return nil, nil
+	}
 	if input.resolved == nil {
 		return nil, errors.New("provider skills require resolved runtime capabilities")
 	}
@@ -293,11 +330,22 @@ func installProviderNativeSkillsStable(root string, input PrepareInput) ([]strin
 }
 
 func installProviderNativeSkillsSessionScoped(root string, input PrepareInput) ([]string, error) {
+	return installProviderNativeSkillsSessionScopedWithReservedRoots(root, nil, input)
+}
+
+func installProviderNativeSkillsSessionScopedWithReservedRoots(
+	root string,
+	reservedRoots []string,
+	input PrepareInput,
+) ([]string, error) {
+	if input.SkipSkills {
+		return nil, nil
+	}
 	skills, err := providerSkills(input)
 	if err != nil {
 		return nil, err
 	}
-	skillPaths, err := installProviderNativeSkillSpecsStable(root, skills)
+	skillPaths, err := installProviderNativeSkillSpecsStableWithReservedRoots(root, reservedRoots, skills)
 	if err != nil {
 		return nil, err
 	}
@@ -422,6 +470,14 @@ func installProviderNativeSkillSpecs(root string, skills []providerSkillSpec) ([
 }
 
 func installProviderNativeSkillSpecsStable(root string, skills []providerSkillSpec) ([]string, error) {
+	return installProviderNativeSkillSpecsStableWithReservedRoots(root, nil, skills)
+}
+
+func installProviderNativeSkillSpecsStableWithReservedRoots(
+	root string,
+	reservedRoots []string,
+	skills []providerSkillSpec,
+) ([]string, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		return nil, fmt.Errorf("provider skill root is required")
@@ -431,7 +487,7 @@ func installProviderNativeSkillSpecsStable(root string, skills []providerSkillSp
 	}
 	skillPaths := make([]string, 0, len(skills))
 	for _, spec := range skills {
-		skillName, err := stableManagedSkillName(root, spec.baseName)
+		skillName, err := stableManagedSkillName(root, reservedRoots, spec.baseName)
 		if err != nil {
 			return nil, err
 		}
@@ -471,7 +527,7 @@ func removeStaleManagedProviderSkills(root string, currentPaths []string) error 
 	return nil
 }
 
-func stableManagedSkillName(root string, baseName string) (string, error) {
+func stableManagedSkillName(root string, reservedRoots []string, baseName string) (string, error) {
 	baseName = strings.TrimSpace(baseName)
 	if baseName == "" {
 		return "", fmt.Errorf("provider skill name is required")
@@ -481,6 +537,18 @@ func stableManagedSkillName(root string, baseName string) (string, error) {
 		candidates = append(candidates, fmt.Sprintf("%s-tutti-%d", baseName, index))
 	}
 	for _, candidate := range candidates {
+		reserved := false
+		for _, reservedRoot := range reservedRoots {
+			if _, err := os.Stat(filepath.Join(reservedRoot, candidate)); err == nil {
+				reserved = true
+				break
+			} else if !os.IsNotExist(err) {
+				return "", fmt.Errorf("inspect reserved provider skill directory: %w", err)
+			}
+		}
+		if reserved {
+			continue
+		}
 		path := filepath.Join(root, candidate)
 		info, err := os.Stat(path)
 		if err == nil {

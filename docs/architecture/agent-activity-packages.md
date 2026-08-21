@@ -108,6 +108,11 @@ implementation. `daemon/hostadapter` is the official daemon-runtime-to-Host
 adapter, `host.SQLiteWorkspaceStore` is the workspace-routed canonical store,
 and `daemon/modelcatalog` owns provider model/reasoning/speed normalization;
 product daemons compose these modules instead of copying their mappings.
+Tool adapters preserve provider-owned terminal state together with raw output
+and exit code. Generic ACP normalization prefers an explicit provider status;
+only when it is absent does it apply the process convention of zero success and
+nonzero failure. The generic layer and GUI never reinterpret status by parsing
+specific command strings.
 
 Canonical delete is a lossless tombstone transition. The transaction preserves
 each selected root/child Session component, its Turns, Messages, Interactions,
@@ -599,8 +604,8 @@ for a remote pasted-text asset carries only its safe preview mention; short-
 lived URLs and object-store locators remain in structured prompt content and
 must not enter caller-visible transcript projections.
 Device-global quick prompts are also an optional host capability rather than
-activity data. The desktop adapter combines the developer-gated preference,
-the generated `tuttid` client, and global invalidation events behind
+activity data. The desktop adapter combines the generated `tuttid` client and
+global invalidation events behind
 `AgentHostApi.quickPrompts`. AgentGUI may subscribe to that capability to render
 the composer picker and management dialogs, but quick-prompt entities must not
 be copied into `AgentGUIRuntime`, a workspace engine, a Session, or a Turn.
@@ -613,8 +618,8 @@ project the resulting order optimistically, but it must replace that projection
 with the daemon's authoritative list. AgentGUI only renders and requests moves;
 hosts that omit the optional move capability keep the library read/write-only.
 The v2 prompt-order schema is a forward-only daemon migration. After it is
-applied, rollback means disabling the quick-prompt feature flag or reverting
-the renderer surface; do not run an older daemon writer against that database.
+applied, rollback means reverting the renderer surface; do not run an older
+daemon writer against that database.
 Older writers do not maintain `sort_order`, so binary daemon downgrade followed
 by create/delete is not a supported recovery path.
 Conversation rail sections are also an `AgentGUIRuntime` contract:
@@ -877,34 +882,71 @@ publish duplicate deletion events.
 
 Before a session exists, composer options carry the same typed capability
 descriptor. The active session descriptor takes precedence once available.
+For an existing active Turn, a null Session capability snapshot is unresolved
+admission input rather than a negative capability result. Activity Core keeps
+an accepted send-now prompt in its queue and resolves the pending delivery
+decision when the complete Session snapshot arrives. Guidance and interruption
+remain exact capability-driven paths; a complete snapshot supporting neither
+degrades only the delivery mode to ordinary queued send and never drops the
+accepted prompt. Deferred decisions are keyed by prompt and bound to the active
+Turn observed at admission; they never steer or cancel a successor Turn.
 Model composer options keep the selected value and provider-resolved value as
 separate facts. An inherited `default` remains the selected value used for
 future mutations; `effectiveModel` is presentation-only runtime evidence for
 describing what Default currently resolves to. Activity adapters and AgentGUI
 must not replace the selection with that resolved value or infer it from the
 catalog's Default entry.
+Optional model `consumptionMultiplier` metadata is likewise typed before it
+reaches activity-core. AgentGUI may render that field but must not reconstruct
+quota or cost semantics from provider-owned model descriptions.
 An omitted pre-session descriptor means the connected daemon predates the
 typed composer capability contract and must remain an unknown/loading state.
 Core capability booleans must not be reconstructed from private
 `runtimeContext` fields or represented as plugin/tool entries in the composer
 capability catalog.
 The activity snapshot also exposes the composer-options request lifecycle per
-opaque target key. Consumers use `loading` only for the initial request when no
-cached options exist; background refreshes keep rendering the last successful
-catalog, and failures transition to `error` instead of leaving indefinite
-loading UI. Desktop and Mobile request options through the semantic
+opaque target key and per independent section. `core` contains model,
+reasoning, speed, permission, and effective-settings data; `capabilities`
+contains skills, commands, and capability-catalog data. The provider's typed
+slash-command policy belongs to `core`; a `capabilities` response that omits it
+or projects it as null must not erase the last successful core value. Every
+section merge updates only the fields owned by that section and preserves
+fields owned by the other sections. Desktop requests
+`core` for the model/reasoning/speed consumer and requests `capabilities` only
+when a capability surface is opened or used; neither capability discovery nor
+its eight-second provider timeout blocks the model controls. `full` remains the
+compatibility request for callers that need the combined response. Consumers use
+`loading` only for the initial
+request when no cached options exist; background refreshes keep rendering the
+last successful catalog, and failures transition to `error` instead of leaving
+indefinite loading UI. Desktop and Mobile request options through the semantic
 `AgentSessionEngine.loadComposerOptions` method. It owns request identity,
-signature-aware cache reuse, identical in-flight joining, supersession, exact
-settlement, caller abort, and engine disposal. The host extension adapter owns
-only the transport call and DTO mapping; hosts must not reconstruct this
-protocol with raw `composerOptions/loadRequested` dispatch plus snapshot
-subscriptions.
+section-scoped signature-aware cache reuse, identical in-flight joining,
+supersession, exact settlement, caller abort, and engine disposal. The host
+extension adapter owns only the transport call and DTO mapping; hosts must not
+reconstruct this protocol with raw `composerOptions/loadRequested` dispatch
+plus snapshot subscriptions.
+The daemon also persists the last successful credential-bound model catalog.
+After restart it may serve that catalog as stale and refresh in the background;
+the explicit model-picker-open request sets `waitForFreshModelCatalog` and waits
+for the provider refresh before returning.
 Provider context-window and quota updates enter the daemon at the runtime
 adapter boundary, are split into typed durable session metadata, and reach
 Agent GUI through the protocol-v2 `usage` field. GUI projections must not read
-provider-private runtime context to render usage. Existing
-session control state is read from the daemon; pre-session edits remain in the
-engine-owned activation/draft record until the daemon confirms the session.
+provider-private runtime context to render usage. Legacy Desktop-owned account
+probes may enrich current account limits before or without a Session and keep
+their provider adapters in Electron main. Agent Extension account probes have a
+different ownership boundary: the signed Extension declares a provider-owned
+helper, `tuttid` executes its independently installed companion, and Electron
+main only validates and maps the provider-neutral result. Both paths project
+only provider-neutral billing mode, quota windows, and stable error codes.
+Credentials and raw provider responses must never enter AgentGUI, renderer IPC,
+or logs. A
+provider-owned access-token snapshot is not runtime authentication authority:
+an account probe may retry a newer credential, but an unchanged expiry or
+authorization rejection degrades only account limits. Existing session control
+state is read from the daemon; pre-session edits remain in the engine-owned
+activation/draft record until the daemon confirms the session.
 `AgentHostWorkspaceAgent*` types may only appear in compatibility or projection
 layers while the legacy Agent GUI internals are being migrated. Production read
 paths must not call `workspaceAgents.list`,
@@ -1147,6 +1189,23 @@ JavaScript's maximum safe integer. Durable message `sequence` has the same
 transport bound. Store and service layers retain `uint64`; the daemon API owns
 checked conversion and must fail response projection instead of emitting an
 inexact JSON number.
+
+### Ephemeral conversation projection
+
+`agent-activity-core` also exports
+`createAgentActivityEphemeralConversationProjector` for provider-neutral,
+surface-owned lanes such as live Side. It is a small React-free projector, not
+a workspace `AgentSessionEngine`: callers seed one exact ephemeral identity,
+normalize raw provider events at their adapter boundary, and receive the
+standard snapshot, Turn, and Interaction vocabulary needed by shared
+conversation projections.
+
+The projector enforces monotonic sequence and exact
+`(workspaceId, agentSessionId, sourceAgentSessionId)` identity. Identity
+mismatch, a forward sequence gap, or a terminal Session patch expires the
+projection. It has no adapter, timers, pagination, persistence, authoritative
+reconcile, or fallback to a durable Session. Its caller owns transport
+subscription and cleanup.
 
 The adapter exposes the HTTP operations used by that command port and by the
 desktop reconcile bridge:
@@ -1509,6 +1568,12 @@ second reconcile while the first is pending. Explicit refresh remains a
 separate command. Message paging adapters do not call back into selection or
 Rail orchestration, and hosts do not maintain a second messages-only reconcile
 entrypoint.
+
+The focused conversation controller also owns the optional host synchronization
+lease for its exact active Session. It acquires the lease when focus changes,
+keeps repeated selection idempotent, and releases the previous lease on switch,
+clear, or disposal. A host may use that lease to retain a per-Session event
+stream; React surfaces must not retain that transport independently.
 
 Event-stream continuity and command reachability are separate host facts.
 `eventStreamConnectionChanged` belongs to the coordinator and triggers

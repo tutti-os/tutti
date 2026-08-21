@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workflowbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceworkflow"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 )
@@ -18,14 +19,47 @@ import (
 const defaultWaitInterval = 100 * time.Millisecond
 
 var (
-	ErrInvalidInput       = errors.New("invalid Tutti Mode Plan input")
-	ErrInvalidTransition  = errors.New("invalid Tutti Mode Plan transition")
-	ErrInvalidDecision    = errors.New("invalid Tutti Mode Plan decision")
-	ErrDecisionConflict   = errors.New("tutti mode plan checkpoint decision conflicts with durable state")
-	ErrMutationConflict   = errors.New("tutti mode plan request id conflicts with a prior mutation")
-	ErrCheckpointMissing  = errors.New("tutti mode plan checkpoint was not found")
-	ErrServiceUnavailable = errors.New("tutti mode plan service is unavailable")
+	ErrInvalidInput            = errors.New("invalid Tutti Mode Plan input")
+	ErrInvalidTransition       = errors.New("invalid Tutti Mode Plan transition")
+	ErrInvalidDecision         = errors.New("invalid Tutti Mode Plan decision")
+	ErrDecisionConflict        = errors.New("tutti mode plan checkpoint decision conflicts with durable state")
+	ErrMutationConflict        = errors.New("tutti mode plan request id conflicts with a prior mutation")
+	ErrCheckpointMissing       = errors.New("tutti mode plan checkpoint was not found")
+	ErrServiceUnavailable      = errors.New("tutti mode plan service is unavailable")
+	ErrTurnSnapshotUnavailable = fmt.Errorf(
+		"%w: the exact source turn preference snapshot is unavailable",
+		ErrInvalidInput,
+	)
+	ErrPreferenceSnapshotMismatch = fmt.Errorf(
+		"%w: plan preferences do not match the exact source turn snapshot",
+		ErrInvalidInput,
+	)
 )
+
+// PreferenceSnapshotMismatchError keeps the exact, non-sensitive values the
+// planning Agent needs to repair its document while preserving a typed error
+// for the CLI boundary.
+type PreferenceSnapshotMismatchError struct {
+	ExpectedEffect int
+	ExpectedSpeed  int
+	ActualEffect   *int
+	ActualSpeed    *int
+}
+
+func (e *PreferenceSnapshotMismatchError) Error() string {
+	return fmt.Sprintf(
+		"%v: expected effect %d and speed %d, got effect %s and speed %s",
+		ErrPreferenceSnapshotMismatch,
+		e.ExpectedEffect,
+		e.ExpectedSpeed,
+		optionalPreferenceString(e.ActualEffect),
+		optionalPreferenceString(e.ActualSpeed),
+	)
+}
+
+func (*PreferenceSnapshotMismatchError) Unwrap() error {
+	return ErrPreferenceSnapshotMismatch
+}
 
 // Store is the durable workflow surface owned by the workspace data layer.
 type Store interface {
@@ -42,6 +76,13 @@ type Store interface {
 	CompleteWorkspaceWorkflowOperation(context.Context, workspacedata.CompleteWorkspaceWorkflowOperationInput) (workflowbiz.WorkflowOperation, bool, error)
 	ListRecoverableCreateIssueOperations(context.Context) ([]workspacedata.RecoverableCreateIssueOperation, error)
 	ListPendingConfigurationReviewCheckpoints(context.Context) ([]workspacedata.PendingConfigurationReviewCheckpoint, error)
+}
+
+// TurnSnapshotReader is the narrow activation-service capability required to
+// bind a plan revision to the immutable preferences of its producing Turn.
+// The plan service must not infer those values from mutable session state.
+type TurnSnapshotReader interface {
+	ExistingTurnSnapshot(context.Context, string, string, string) (activationbiz.TurnSnapshot, error)
 }
 
 type Publisher interface {
@@ -95,6 +136,7 @@ type PlanRevisionFeedbackInput struct {
 
 type Service struct {
 	Store              Store
+	TurnSnapshots      TurnSnapshotReader
 	Revisions          RevisionContentStore
 	Publisher          Publisher
 	IssueMaterializer  IssueMaterializer
@@ -250,6 +292,15 @@ func (s *Service) Propose(ctx context.Context, input ProposeInput) (ProposalResu
 	if err := ValidatePlanExecutionIsolation(document); err != nil {
 		return ProposalResult{}, err
 	}
+	if err := s.validateTurnPreferenceSnapshot(
+		ctx,
+		input.WorkspaceID,
+		input.SourceSessionID,
+		input.SourceTurnID,
+		document,
+	); err != nil {
+		return ProposalResult{}, err
+	}
 
 	now := s.now()
 	workflowID := s.newID()
@@ -392,6 +443,15 @@ func (s *Service) revise(ctx context.Context, input ReviseInput, expectedSourceS
 	if err := validateRevisionPhase(current, document.Phase); err != nil {
 		return RevisionResult{}, err
 	}
+	if err := s.validateTurnPreferenceSnapshot(
+		ctx,
+		input.WorkspaceID,
+		snapshot.Workflow.SourceSessionID,
+		input.ProducedByTurnID,
+		document,
+	); err != nil {
+		return RevisionResult{}, err
+	}
 	completion, err := s.revisionOperationCompletion(ctx, input.WorkspaceID, snapshot, current)
 	if err != nil {
 		return RevisionResult{}, err
@@ -482,6 +542,67 @@ func (s *Service) revise(ctx context.Context, input ReviseInput, expectedSourceS
 		ChangeKind:      workflowbiz.ChangeKindRevisionCreated,
 	})
 	return s.revisionResultFromMutation(ctx, committedMutation, false)
+}
+
+func (s *Service) validateTurnPreferenceSnapshot(
+	ctx context.Context,
+	workspaceID string,
+	sourceSessionID string,
+	turnID string,
+	document PlanDocument,
+) error {
+	turnID = strings.TrimSpace(turnID)
+	if turnID == "" {
+		// Historical and daemon-internal callers may lack Turn provenance. The
+		// Agent CLI boundary requires it for all new proposals and revisions;
+		// stored legacy documents remain readable.
+		return nil
+	}
+	if s.TurnSnapshots == nil {
+		return fmt.Errorf("%w: turn %q", ErrTurnSnapshotUnavailable, turnID)
+	}
+	snapshot, err := s.TurnSnapshots.ExistingTurnSnapshot(
+		ctx,
+		workspaceID,
+		sourceSessionID,
+		turnID,
+	)
+	if err != nil {
+		return fmt.Errorf("%w: read turn %q: %v", ErrTurnSnapshotUnavailable, turnID, err)
+	}
+	normalized, err := activationbiz.NormalizeTurnSnapshot(snapshot)
+	if err != nil {
+		return fmt.Errorf("%w: turn %q is invalid: %v", ErrTurnSnapshotUnavailable, turnID, err)
+	}
+	if normalized.State != activationbiz.StateActive {
+		return fmt.Errorf("%w: turn %q is not active", ErrTurnSnapshotUnavailable, turnID)
+	}
+	if document.Execution.Effect == nil || document.Execution.Speed == nil ||
+		*document.Execution.Effect != normalized.Effect ||
+		*document.Execution.Speed != normalized.Speed {
+		return &PreferenceSnapshotMismatchError{
+			ExpectedEffect: normalized.Effect,
+			ExpectedSpeed:  normalized.Speed,
+			ActualEffect:   cloneOptionalPreference(document.Execution.Effect),
+			ActualSpeed:    cloneOptionalPreference(document.Execution.Speed),
+		}
+	}
+	return nil
+}
+
+func cloneOptionalPreference(value *int) *int {
+	if value == nil {
+		return nil
+	}
+	cloned := *value
+	return &cloned
+}
+
+func optionalPreferenceString(value *int) string {
+	if value == nil {
+		return "missing"
+	}
+	return fmt.Sprint(*value)
 }
 
 func (s *Service) Decide(ctx context.Context, input DecideInput) (DecisionResult, error) {

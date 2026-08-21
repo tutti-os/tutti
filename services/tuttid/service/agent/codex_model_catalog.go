@@ -20,6 +20,7 @@ import (
 const (
 	codexAppServerModelListTimeout  = 8 * time.Second
 	codexAppServerShutdownWaitDelay = 100 * time.Millisecond
+	codexAppServerIdleTTL           = 2 * time.Minute
 	codexModelListMaxLineBytes      = 16 * 1024 * 1024
 	codexModelListMaxStderrBytes    = 1024 * 1024
 )
@@ -36,6 +37,7 @@ type CodexCLIModelLister struct {
 	HomeDir          func() (string, error)
 	IsExecutableFile func(string) bool
 	LookPath         func(string) (string, error)
+	Session          *codexAppServerSession
 }
 
 type ProviderCommandResolver interface {
@@ -65,48 +67,22 @@ func (b *truncatingBuffer) String() string {
 }
 
 func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResult, error) {
+	if l.Session != nil {
+		return l.Session.ListModels(ctx, l)
+	}
+	return l.listModelsOnce(ctx)
+}
+
+func (l CodexCLIModelLister) listModelsOnce(ctx context.Context) (AgentModelListResult, error) {
 	timeout := l.Timeout
 	if timeout <= 0 {
 		timeout = codexAppServerModelListTimeout
 	}
 	processCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
-
-	command := strings.TrimSpace(l.Command)
-	if command == "" {
-		command = "codex"
-	}
-	args := append([]string{}, l.Args...)
-	resolver := runtimecmd.Resolver{
-		Environ:          l.Environ,
-		HomeDir:          l.HomeDir,
-		IsExecutableFile: l.IsExecutableFile,
-		LookPath:         l.LookPath,
-	}
-	var envOverrides []string
-	if l.ProviderCommands != nil && strings.TrimSpace(l.Provider) != "" {
-		resolution, err := l.ProviderCommands.ResolveProviderCommand(processCtx, l.Provider)
-		if err != nil {
-			return AgentModelListResult{}, fmt.Errorf("resolve %s model-list command: %w", l.Provider, err)
-		}
-		if len(resolution.Command) == 0 || strings.TrimSpace(resolution.Command[0]) == "" {
-			return AgentModelListResult{}, fmt.Errorf("resolve %s model-list command: command is empty", l.Provider)
-		}
-		command = resolution.Command[0]
-		args = append([]string{}, resolution.Command[1:]...)
-		envOverrides = resolution.Env
-	}
-	env := resolver.Env(envOverrides)
-	if l.PrepareEnv != nil {
-		var err error
-		env, err = l.PrepareEnv(processCtx, env)
-		if err != nil {
-			return AgentModelListResult{}, err
-		}
-	}
-	command = resolver.Resolve(command, env)
-	if len(args) == 0 {
-		args = []string{"app-server"}
+	command, args, env, err := l.resolveLaunch(processCtx)
+	if err != nil {
+		return AgentModelListResult{}, err
 	}
 	slog.Info("agent model catalog process launch",
 		"event", "agent.model_catalog.process_start",
@@ -119,7 +95,32 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	if err != nil {
 		return AgentModelListResult{}, err
 	}
-	models, err := requestCodexModelList(process.stdin, process.stdout, l.clientName())
+	requestStartedAt := time.Now()
+	models, err := requestCodexModelListWithStages(
+		process.stdin,
+		process.stdout,
+		l.clientName(),
+		func(stage string, stageStartedAt time.Time, stageErr error) {
+			slog.Info("agent model catalog request stage settled",
+				"event", "agent.model_catalog.stage_settled",
+				"provider", l.Provider,
+				"operation", "model_list",
+				"stage", stage,
+				"durationMs", time.Since(stageStartedAt).Milliseconds(),
+				"persistent", false,
+				"error", stageErr,
+			)
+		},
+	)
+	slog.Info("agent model catalog request stage settled",
+		"event", "agent.model_catalog.stage_settled",
+		"provider", l.Provider,
+		"operation", "model_list",
+		"stage", "request_total",
+		"durationMs", time.Since(requestStartedAt).Milliseconds(),
+		"persistent", false,
+		"error", err,
+	)
 	processErr := processCtx.Err()
 	_ = process.stop(cancel)
 	if err == nil {
@@ -134,6 +135,46 @@ func (l CodexCLIModelLister) ListModels(ctx context.Context) (AgentModelListResu
 	return AgentModelListResult{}, err
 }
 
+func (l CodexCLIModelLister) resolveLaunch(ctx context.Context) (string, []string, []string, error) {
+	command := strings.TrimSpace(l.Command)
+	if command == "" {
+		command = "codex"
+	}
+	args := append([]string{}, l.Args...)
+	resolver := runtimecmd.Resolver{
+		Environ:          l.Environ,
+		HomeDir:          l.HomeDir,
+		IsExecutableFile: l.IsExecutableFile,
+		LookPath:         l.LookPath,
+	}
+	var envOverrides []string
+	if l.ProviderCommands != nil && strings.TrimSpace(l.Provider) != "" {
+		resolution, err := l.ProviderCommands.ResolveProviderCommand(ctx, l.Provider)
+		if err != nil {
+			return "", nil, nil, fmt.Errorf("resolve %s model-list command: %w", l.Provider, err)
+		}
+		if len(resolution.Command) == 0 || strings.TrimSpace(resolution.Command[0]) == "" {
+			return "", nil, nil, fmt.Errorf("resolve %s model-list command: command is empty", l.Provider)
+		}
+		command = resolution.Command[0]
+		args = append([]string{}, resolution.Command[1:]...)
+		envOverrides = resolution.Env
+	}
+	env := resolver.Env(envOverrides)
+	if l.PrepareEnv != nil {
+		var err error
+		env, err = l.PrepareEnv(ctx, env)
+		if err != nil {
+			return "", nil, nil, err
+		}
+	}
+	command = resolver.Resolve(command, env)
+	if len(args) == 0 {
+		args = []string{"app-server"}
+	}
+	return command, args, env, nil
+}
+
 func (l CodexCLIModelLister) clientName() string {
 	if name := strings.TrimSpace(l.ClientName); name != "" {
 		return name
@@ -142,11 +183,72 @@ func (l CodexCLIModelLister) clientName() string {
 }
 
 func requestCodexModelList(stdin io.Writer, stdout io.Reader, clientName string) ([]AgentModelOption, error) {
-	encoder := json.NewEncoder(stdin)
 	scanner := bufio.NewScanner(stdout)
 	scanner.Buffer(make([]byte, 0, 64*1024), codexModelListMaxLineBytes)
+	return requestCodexModelListWithScanner(stdin, scanner, clientName, "1", "2")
+}
+
+func requestCodexModelListWithStages(
+	stdin io.Writer,
+	stdout io.Reader,
+	clientName string,
+	stageSettled func(stage string, startedAt time.Time, err error),
+) ([]AgentModelOption, error) {
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 0, 64*1024), codexModelListMaxLineBytes)
+	encoder := json.NewEncoder(stdin)
+
+	initializeStartedAt := time.Now()
+	if err := writeCodexInitializeRequest(encoder, "1", clientName); err != nil {
+		stageSettled("initialize", initializeStartedAt, err)
+		return nil, err
+	}
+	if err := readCodexInitializeResponseForID(scanner, "1"); err != nil {
+		stageSettled("initialize", initializeStartedAt, err)
+		return nil, err
+	}
+	stageSettled("initialize", initializeStartedAt, nil)
+
+	modelListStartedAt := time.Now()
+	if err := writeCodexInitializedNotification(encoder); err != nil {
+		stageSettled("model_list", modelListStartedAt, err)
+		return nil, err
+	}
+	if err := writeCodexModelListRequest(encoder, "2"); err != nil {
+		stageSettled("model_list", modelListStartedAt, err)
+		return nil, err
+	}
+	models, err := readCodexModelListResponseForID(scanner, "2")
+	stageSettled("model_list", modelListStartedAt, err)
+	return models, err
+}
+
+func requestCodexModelListWithScanner(
+	stdin io.Writer,
+	scanner *bufio.Scanner,
+	clientName string,
+	initializeID string,
+	modelListID string,
+) ([]AgentModelOption, error) {
+	encoder := json.NewEncoder(stdin)
+	if err := writeCodexInitializeRequest(encoder, initializeID, clientName); err != nil {
+		return nil, err
+	}
+	if err := readCodexInitializeResponseForID(scanner, initializeID); err != nil {
+		return nil, err
+	}
+	if err := writeCodexInitializedNotification(encoder); err != nil {
+		return nil, err
+	}
+	if err := writeCodexModelListRequest(encoder, modelListID); err != nil {
+		return nil, err
+	}
+	return readCodexModelListResponseForID(scanner, modelListID)
+}
+
+func writeCodexInitializeRequest(encoder *json.Encoder, initializeID string, clientName string) error {
 	if err := encoder.Encode(map[string]any{
-		"id":     "1",
+		"id":     initializeID,
 		"method": "initialize",
 		"params": map[string]any{
 			"clientInfo": map[string]string{
@@ -155,30 +257,35 @@ func requestCodexModelList(stdin io.Writer, stdout io.Reader, clientName string)
 			},
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("write codex app-server initialize: %w", err)
+		return fmt.Errorf("write codex app-server initialize: %w", err)
 	}
-	if err := readCodexInitializeResponse(scanner); err != nil {
-		return nil, err
-	}
+	return nil
+}
+
+func writeCodexInitializedNotification(encoder *json.Encoder) error {
 	if err := encoder.Encode(map[string]any{
 		"method": "initialized",
 		"params": map[string]any{},
 	}); err != nil {
-		return nil, fmt.Errorf("write codex app-server initialized: %w", err)
+		return fmt.Errorf("write codex app-server initialized: %w", err)
 	}
+	return nil
+}
+
+func writeCodexModelListRequest(encoder *json.Encoder, modelListID string) error {
 	if err := encoder.Encode(map[string]any{
-		"id":     "2",
+		"id":     modelListID,
 		"method": "model/list",
 		"params": map[string]any{
 			"limit": 200,
 		},
 	}); err != nil {
-		return nil, fmt.Errorf("write codex app-server model/list: %w", err)
+		return fmt.Errorf("write codex app-server model/list: %w", err)
 	}
-	return readCodexModelListResponse(scanner)
+	return nil
 }
 
-func readCodexInitializeResponse(scanner *bufio.Scanner) error {
+func readCodexInitializeResponseForID(scanner *bufio.Scanner, initializeID string) error {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
@@ -188,7 +295,7 @@ func readCodexInitializeResponse(scanner *bufio.Scanner) error {
 		if err := json.Unmarshal([]byte(line), &payload); err != nil {
 			continue
 		}
-		if !codexRPCIDMatches(payload["id"], "1") {
+		if !codexRPCIDMatches(payload["id"], initializeID) {
 			continue
 		}
 		if rawError, ok := payload["error"]; ok && string(rawError) != "null" {
@@ -205,13 +312,13 @@ func readCodexInitializeResponse(scanner *bufio.Scanner) error {
 	return errors.New("codex app-server exited before initialize response")
 }
 
-func readCodexModelListResponse(scanner *bufio.Scanner) ([]AgentModelOption, error) {
+func readCodexModelListResponseForID(scanner *bufio.Scanner, modelListID string) ([]AgentModelOption, error) {
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
 		if line == "" {
 			continue
 		}
-		models, handled, err := parseCodexModelListLine([]byte(line))
+		models, handled, err := parseCodexModelListLineForID([]byte(line), modelListID)
 		if !handled {
 			continue
 		}
@@ -223,8 +330,8 @@ func readCodexModelListResponse(scanner *bufio.Scanner) ([]AgentModelOption, err
 	return nil, errors.New("codex app-server exited before model/list response")
 }
 
-func parseCodexModelListLine(line []byte) ([]AgentModelOption, bool, error) {
-	return modelcatalog.ParseCodexModelListLine(line, "2")
+func parseCodexModelListLineForID(line []byte, modelListID string) ([]AgentModelOption, bool, error) {
+	return modelcatalog.ParseCodexModelListLine(line, modelListID)
 }
 
 func codexRPCIDMatches(raw json.RawMessage, want string) bool {

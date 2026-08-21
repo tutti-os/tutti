@@ -10,7 +10,7 @@ func TestEffectiveHistoryMigrationRunsAfterImportedTurnsAndBackfills(t *testing.
 	t.Parallel()
 	store := openTestStore(t, testOptions(&staticProjectPaths{}))
 	ctx := context.Background()
-	var importedRowID, historyRowID int64
+	var importedRowID, historyRowID, metadataRowID int64
 	if err := store.db.QueryRowContext(ctx, `
 SELECT rowid FROM agent_store_schema_migrations WHERE id = ?
 `, schemaMigrationWorkspaceAgentImportedTurnsV1).Scan(&importedRowID); err != nil {
@@ -23,6 +23,14 @@ SELECT rowid FROM agent_store_schema_migrations WHERE id = ?
 	}
 	if historyRowID <= importedRowID {
 		t.Fatalf("effective history migration row=%d, want after imported turns row=%d", historyRowID, importedRowID)
+	}
+	if err := store.db.QueryRowContext(ctx, `
+SELECT rowid FROM agent_store_schema_migrations WHERE id = ?
+`, schemaMigrationWorkspaceAgentEffectiveHistoryV2).Scan(&metadataRowID); err != nil {
+		t.Fatal(err)
+	}
+	if metadataRowID <= historyRowID {
+		t.Fatalf("effective history metadata migration row=%d, want after history row=%d", metadataRowID, historyRowID)
 	}
 
 	seedTurnTestSession(t, store, "ws-1", "session-new")
@@ -51,19 +59,24 @@ func TestEffectiveHistorySubmissionIsLosslessIdempotentAndConflictFenced(t *test
 		WorkspaceID: "ws-1", AgentSessionID: "session-1", TurnID: "turn-1",
 		ContentJSON:   `[{"type":"text","text":"hello"},{"type":"image","attachmentId":"attachment-1"}]`,
 		DisplayPrompt: "hello", CapabilityRefsJSON: `[{"Capability":"browser"}]`,
-		TuttiModeSnapshotJSON: `{"Revision":2}`, ClientSubmitID: "submit-1",
+		TuttiModeSnapshotJSON: `{"Revision":2}`, MetadataJSON: `{"uiMode":"agent"}`, ClientSubmitID: "submit-1",
 		CreatedAtUnixMS: 21, UpdatedAtUnixMS: 21,
 	}
 	if _, created, err := store.RecordTurnSubmission(ctx, input); err != nil || !created {
 		t.Fatalf("first submission created=%v error=%v", created, err)
 	}
-	if stored, created, err := store.RecordTurnSubmission(ctx, input); err != nil || created || stored.ContentJSON != input.ContentJSON {
+	if stored, created, err := store.RecordTurnSubmission(ctx, input); err != nil || created || stored.ContentJSON != input.ContentJSON || stored.MetadataJSON != input.MetadataJSON {
 		t.Fatalf("replayed submission created=%v stored=%#v error=%v", created, stored, err)
 	}
 	conflict := input
 	conflict.ContentJSON = `[{"type":"text","text":"changed"}]`
 	if _, _, err := store.RecordTurnSubmission(ctx, conflict); !errors.Is(err, ErrTurnSubmissionConflict) {
 		t.Fatalf("conflicting submission error=%v", err)
+	}
+	conflict = input
+	conflict.MetadataJSON = `{"uiMode":"os"}`
+	if _, _, err := store.RecordTurnSubmission(ctx, conflict); !errors.Is(err, ErrTurnSubmissionConflict) {
+		t.Fatalf("conflicting submission metadata error=%v", err)
 	}
 }
 

@@ -116,6 +116,10 @@ func (api DaemonAPI) GetWorkspaceAppFactoryAgentTargetComposerOptions(ctx contex
 		}, nil
 	}
 	settings := agentservice.ComposerSettings{}
+	section := agentservice.ComposerOptionsSectionFull
+	if request.Body != nil && request.Body.Section != nil {
+		section = agentservice.ComposerOptionsSection(*request.Body.Section)
+	}
 	if request.Body != nil && request.Body.Settings != nil {
 		settings = composerSettingsFromGenerated(*request.Body.Settings)
 	}
@@ -126,6 +130,7 @@ func (api DaemonAPI) GetWorkspaceAppFactoryAgentTargetComposerOptions(ctx contex
 	options, err := api.AppFactoryService.GetAgentTargetComposerOptions(ctx, workspaceID, workspaceservice.AppFactoryAgentTargetComposerOptionsInput{
 		AgentTargetID: agentTargetID,
 		Locale:        locale,
+		Section:       section,
 		Settings:      settings,
 	})
 	if err != nil {

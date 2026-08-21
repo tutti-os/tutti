@@ -369,7 +369,7 @@ func TestMigratedProviderSidecarPoliciesAreDescriptorOwned(t *testing.T) {
 
 func TestMigratedProviderDesktopIntegrationIsDescriptorOwned(t *testing.T) {
 	want := map[string]DesktopIntegrationDescriptor{
-		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
+		CodexProviderID:      {Managed: true, ManagedOrder: 2, StatusProbePriority: 1, UsageProbeKind: DesktopUsageProbeCodex, AuthProbeAfterCredentialSync: true, CommandNetworkAccess: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 2},
 		ClaudeCodeProviderID: {Managed: true, ManagedOrder: 1, StatusProbePriority: 2, UsageProbeKind: DesktopUsageProbeClaudeCode, AuthProbeAfterCredentialSync: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 3},
 		CursorProviderID:     {Managed: true, ManagedOrder: 3, StatusProbePriority: 3, RuntimeProbeFallback: DesktopRuntimeProbeFallbackDirect, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 4},
 		TuttiAgentProviderID: {Managed: true, ManagedOrder: 4, StatusProbePriority: 4, VisibilityGate: DesktopVisibilityGateTuttiAgent, CommandNetworkAccess: true, InstallBootstrap: true, RefreshOnAccountChange: true, DeveloperLogs: true, DefaultProviderEligible: true, DefaultProviderPriority: 1},
@@ -423,9 +423,14 @@ func TestMigratedOpenCodeDescriptorIsComplete(t *testing.T) {
 		descriptor.ComposerProfile.ConfigOptionIDs.Reasoning != "effort" {
 		t.Fatalf("ComposerProfile = %#v", descriptor.ComposerProfile)
 	}
-	if !slices.Equal(descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands, []string{"compact", "goal", "review"}) ||
-		len(descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects) != 4 {
+	if !slices.Equal(descriptor.ComposerProfile.SlashCommandPolicy.FallbackCommands, []string{"compact", "review"}) ||
+		len(descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects) != 3 {
 		t.Fatalf("SlashCommandPolicy = %#v", descriptor.ComposerProfile.SlashCommandPolicy)
+	}
+	for _, effect := range descriptor.ComposerProfile.SlashCommandPolicy.CommandEffects {
+		if effect.Command == "goal" || effect.Effect == SlashCommandEffectActivateGoalMode {
+			t.Fatalf("OpenCode must not advertise unsupported goal control: %#v", effect)
+		}
 	}
 	if descriptor.Target.ID != OpenCodeTargetID || descriptor.Events.TurnLifecycleProjection != TurnLifecycleProjectionExplicit {
 		t.Fatalf("target/events = %#v %#v", descriptor.Target, descriptor.Events)

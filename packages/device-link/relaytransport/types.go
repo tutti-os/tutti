@@ -18,6 +18,18 @@ type DialRequest struct {
 	Query       url.Values
 	Header      http.Header
 	Subprotocol string
+	Liveness    DialLivenessConfig
+}
+
+// DialLivenessConfig controls WebSocket keepalive for one Relay caller stream.
+// A non-positive PingInterval uses the transport default. A PongTimeout not
+// greater than the effective ping interval uses three ping intervals.
+//
+// The returned net.Conn fails when its peer does not answer WebSocket pings
+// before PongTimeout. Callers can then apply their existing reconnect policy.
+type DialLivenessConfig struct {
+	PingInterval time.Duration
+	PongTimeout  time.Duration
 }
 
 // StreamHandler consumes one stream opened over an owner tunnel.

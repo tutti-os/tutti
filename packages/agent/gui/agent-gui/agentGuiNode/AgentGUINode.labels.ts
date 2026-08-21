@@ -20,6 +20,7 @@ import { agentQuickPromptLabels } from "./composer/quickPrompts/agentQuickPrompt
 import { agentSlashPaletteLabels } from "./composer/agentSlashPaletteLabels";
 import { agentGUIProjectLaunchLabels } from "./composer/agentGUIProjectLaunchLabels";
 import { agentGUITuttiModeLabels } from "./view/agentGUITuttiModeLabels";
+import { agentGUIConnectorLabels } from "./composer/agentGUIConnectorLabels";
 
 export { buildAgentHomeSuggestions };
 
@@ -120,19 +121,20 @@ export function useAgentGUIViewLabels(input: {
     workspaceAppIcons,
     workspaceId
   } = input;
-  return useMemo<AgentGUIViewLabels>(
-    () => ({
-      initialPlaceholder: t("agentHost.agentGui.initialPlaceholder", {
-        provider: displayProviderLabel
-      }),
-      followupPlaceholder: t("agentHost.agentGui.followupPlaceholder", {
-        provider: displayProviderLabel
-      }),
+  return useMemo<AgentGUIViewLabels>(() => {
+    const providerInterpolation = { provider: displayProviderLabel };
+    return {
+      initialPlaceholder: t(
+        "agentHost.agentGui.initialPlaceholder",
+        providerInterpolation
+      ),
+      followupPlaceholder: t(
+        "agentHost.agentGui.followupPlaceholder",
+        providerInterpolation
+      ),
       installRequiredPlaceholder: t(
         "agentHost.agentGui.installRequiredPlaceholder",
-        {
-          provider: displayProviderLabel
-        }
+        providerInterpolation
       ),
       installRequiredAction: t("agentHost.agentGui.installRequiredAction"),
       providerGateCheckingTitle: t(
@@ -140,57 +142,58 @@ export function useAgentGUIViewLabels(input: {
       ),
       providerGateCheckingDescription: t(
         "agentHost.agentGui.providerGateCheckingDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateCheckingAgentsDescription: t(
         "agentHost.agentGui.providerGateCheckingAgentsDescription"
       ),
       providerGateInstallTitle: t(
         "agentHost.agentGui.providerGateInstallTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateInstallDescription: t(
         "agentHost.agentGui.providerGateInstallDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateInstallAction: t(
         "agentHost.agentGui.providerGateInstallAction"
       ),
-      providerGateLoginTitle: t("agentHost.agentGui.providerGateLoginTitle", {
-        provider: displayProviderLabel
-      }),
+      providerGateLoginTitle: t(
+        "agentHost.agentGui.providerGateLoginTitle",
+        providerInterpolation
+      ),
       providerGateLoginDescription: t(
         "agentHost.agentGui.providerGateLoginDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateLoginAction: t("agentHost.agentGui.providerGateLoginAction"),
       providerGateComingSoonTitle: t(
         "agentHost.agentGui.providerGateComingSoonTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateComingSoonDescription: t(
         "agentHost.agentGui.providerGateComingSoonDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateComingSoonAction: t(
         "agentHost.agentGui.providerGateComingSoonAction"
       ),
       providerGateUnavailableTitle: t(
         "agentHost.agentGui.providerGateUnavailableTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateUnavailableDescription: t(
         "agentHost.agentGui.providerGateUnavailableDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateRetryAction: t("agentHost.agentGui.providerGateRetryAction"),
       providerGateRuntimeSelectionTitle: t(
         "agentHost.agentGui.providerGateRuntimeSelectionTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateRuntimeSelectionDescription: t(
         "agentHost.agentGui.providerGateRuntimeSelectionDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateRuntimeSelectionAction: t(
         "agentHost.agentGui.providerGateRuntimeSelectionAction"
@@ -363,7 +366,7 @@ export function useAgentGUIViewLabels(input: {
       planImplementationSend: t("agentHost.agentGui.planImplementationSend"),
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
-      empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
+      empty: t("agentHost.agentGui.empty", providerInterpolation),
       homeSuggestions: buildAgentHomeSuggestions(
         t,
         workspaceId,
@@ -399,6 +402,10 @@ export function useAgentGUIViewLabels(input: {
       ),
       loadingConversation: t("agentHost.agentGui.loadingConversation"),
       continuedFromTask: t("agentHost.agentGui.continuedFromTask"),
+      selectionAddToConversation: t(
+        "agentHost.agentGui.selectionAddToConversation"
+      ),
+      selectionAskInSide: t("agentHost.agentGui.selectionAskInSide"),
       scrollToBottom: t("agentHost.agentGui.scrollToBottom"),
       fallbackAgentTitle,
       untitledConversationTitle: t(
@@ -462,12 +469,13 @@ export function useAgentGUIViewLabels(input: {
       batchDeleteConversationsConfirm: t(
         "agentHost.agentGui.batchDeleteConversationsConfirm"
       ),
-      approvalRequired: t("agentHost.agentGui.approvalRequired", {
-        provider: displayProviderLabel
-      }),
+      approvalRequired: t(
+        "agentHost.agentGui.approvalRequired",
+        providerInterpolation
+      ),
       fileChangeApprovalRequired: t(
         "agentHost.agentGui.fileChangeApprovalRequired",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       approvalUnavailable: t("agentHost.agentGui.approvalUnavailable"),
       authRequired: t("agentHost.agentGui.authRequired"),
@@ -748,20 +756,7 @@ export function useAgentGUIViewLabels(input: {
       addReference: t("agentHost.agentGui.addReference"),
       addContent: t("agentHost.agentGui.addContent"),
       addContentResourcePanel: t("agentHost.agentGui.addContentResourcePanel"),
-      addContentConnectors: t("agentHost.agentGui.addContentConnectors"),
-      addContentConnectorConnected: t(
-        "agentHost.agentGui.addContentConnectorConnected"
-      ),
-      addContentConnectorConnect: t(
-        "agentHost.agentGui.addContentConnectorConnect"
-      ),
-      addContentConnectorAuthorize: t(
-        "agentHost.agentGui.addContentConnectorAuthorize"
-      ),
-      addContentConnectorEmpty: t(
-        "agentHost.agentGui.addContentConnectorEmpty"
-      ),
-      addContentConnectorMore: t("agentHost.agentGui.addContentConnectorMore"),
+      ...agentGUIConnectorLabels(t),
       referenceWorkspaceFiles: t("agentHost.issue.referenceWorkspaceFiles"),
       handoffConversation: t("agentHost.agentGui.handoffConversation"),
       handoffConversationTooltip: t(
@@ -774,16 +769,15 @@ export function useAgentGUIViewLabels(input: {
         }),
       handoffTargetSelf: t("agentHost.agentGui.handoffTargetSelf"),
       handoffTargetShared: t("agentHost.agentGui.handoffTargetShared")
-    }),
-    [
-      displayProviderLabel,
-      disabledHomeSuggestions,
-      fallbackAgentTitle,
-      t,
-      workspaceId,
-      workspaceAppIcons
-    ]
-  );
+    };
+  }, [
+    displayProviderLabel,
+    disabledHomeSuggestions,
+    fallbackAgentTitle,
+    t,
+    workspaceId,
+    workspaceAppIcons
+  ]);
 }
 export function useAgentGUIWorkspaceFileReferenceCopy(
   t: TranslateFn

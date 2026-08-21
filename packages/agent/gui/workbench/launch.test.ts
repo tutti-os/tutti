@@ -6,7 +6,7 @@ import {
   createAgentGuiWorkbenchDraftLaunchRequest,
   createAgentGuiWorkbenchInstanceId,
   createAgentGuiWorkbenchLaunchDescriptor,
-  createAgentGuiWorkbenchSessionLaunchRequest,
+  createAgentGuiWorkbenchSessionLaunchRequest
 } from "./launch.ts";
 
 describe("agent gui workbench launch contract", () => {

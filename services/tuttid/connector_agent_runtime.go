@@ -3,7 +3,7 @@ package main
 import (
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	connectorimplementation "github.com/tutti-os/tutti/packages/connector/runtime/implementationhost"
-	connectormcpservice "github.com/tutti-os/tutti/services/tuttid/service/connectormcp"
+	connectormcpservice "github.com/tutti-os/tutti/services/tuttid/service/connector/mcp"
 )
 
 // connectorAgentRuntime is the stable composition port shared by the Agent

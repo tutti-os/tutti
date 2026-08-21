@@ -24,6 +24,7 @@ const terminalCloseGuardDescriptionI18nKey: TerminalNodeI18nKey =
 export function StandaloneAgentTerminalPanel({
   contributions,
   instanceId,
+  initialSessionId,
   loadingLabel,
   open,
   setToolHost,
@@ -31,6 +32,7 @@ export function StandaloneAgentTerminalPanel({
 }: {
   contributions: readonly WorkbenchContribution[] | undefined;
   instanceId: string;
+  initialSessionId?: string | null;
   loadingLabel: string;
   open: boolean;
   setToolHost: (instanceId: string, host: WorkbenchHostHandle | null) => void;
@@ -62,7 +64,9 @@ export function StandaloneAgentTerminalPanel({
     };
   }, [runtime]);
   const [nodeId] = useState(createStandaloneAgentTerminalNodeId);
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(
+    initialSessionId?.trim() || null
+  );
   const [launchError, setLaunchError] = useState(false);
   const launchPromiseRef = useRef<Promise<void> | null>(null);
   const directHost = useMemo(createStandaloneAgentDirectToolHost, []);

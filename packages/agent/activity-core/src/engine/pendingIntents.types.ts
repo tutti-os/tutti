@@ -70,8 +70,10 @@ interface PendingActivationIntentRecordBase {
   lastObservedStage: PendingActivationLastObservedStage;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   railSectionKey?: string;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   pendingSettingsPatch?: Readonly<Record<string, unknown>>;
   settingsUpdateStatus?: "failed" | "inFlight" | "unknown";
@@ -151,8 +153,10 @@ interface SessionActivationRequestedIntentBase {
   initialTurnExpected?: boolean;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   railSectionKey?: string;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   initialDisplayPrompt?: string;
   runtimeContent?: readonly AgentPromptContentBlock[];
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
@@ -224,8 +228,10 @@ interface SessionActivateCommandBase {
   initialDisplayPrompt?: string;
   initialGoalControl?: Readonly<AgentActivityInitialGoalControl>;
   isolation?: "worktree";
+  modelExplicit?: boolean;
   initialTuttiModeActivation?: AgentActivityInitialTuttiModeActivation;
   railPlacement?: AgentActivityRailPlacement;
+  reasoningEffortExplicit?: boolean;
   submitDiagnostics?: Readonly<AgentActivitySubmitDiagnostics>;
   settings?: AgentActivitySessionSettings;
   timeoutMs?: number;

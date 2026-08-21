@@ -83,6 +83,11 @@ func (c *Controller) Start(ctx context.Context, input StartInput) (StartResult, 
 		if AppErrorCode(err) == "" {
 			detail := cleanVisibleErrorText(err.Error())
 			code := visibleFailureCode(detail)
+			if errors.Is(err, ErrProviderStartTimeout) {
+				// Provider-start ownership is carried separately in the error
+				// chain. Keep the established presentation/API vocabulary here.
+				code = "request_timed_out"
+			}
 			startError = &AppError{
 				Code:         code,
 				Message:      visibleFailureContent(provider, "start", code),
@@ -433,6 +438,11 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 		return CloseResult{}, err
 	}
 	key := sessionKey(session.RoomID, session.AgentSessionID)
+	if quiescer, ok := adapter.(CloseQuiesceAdapter); ok {
+		if err := quiescer.QuiesceForClose(ctx, session); err != nil {
+			return CloseResult{}, err
+		}
+	}
 	c.cancelActiveTurn(session.RoomID, session.AgentSessionID)
 	closeErr := adapter.Close(ctx, session)
 	if closeErr != nil && !input.PreserveCanonicalState {
@@ -450,8 +460,12 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 		delete(c.pendingCommandSnapshots, session.AgentSessionID)
 		delete(c.pendingConfigOptionsUpdates, key)
 		delete(c.goalGenerationFences, key)
+		delete(c.pendingSideEvents, key)
 	}
 	c.mu.Unlock()
+	if publicationPending || input.PreserveCanonicalState {
+		c.forgetSideStreamEvents(session)
+	}
 	if closeErr != nil {
 		return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, closeErr
 	}
@@ -476,7 +490,9 @@ func (c *Controller) Close(ctx context.Context, input CloseInput) (CloseResult, 
 	delete(c.provisionalSessions, key)
 	delete(c.sessionInitializations, key)
 	delete(c.goalGenerationFences, key)
+	delete(c.pendingSideEvents, key)
 	c.mu.Unlock()
+	c.forgetSideStreamEvents(session)
 	return CloseResult{AgentSessionID: session.AgentSessionID, Disconnected: true}, nil
 }
 

@@ -2262,21 +2262,25 @@ test("allow for session survives the fresh Claude query used by a follow-up turn
       ({ prompt, options }) => {
         queryCount += 1;
         const currentQuery = queryCount;
-        return fakePermissionCheckQuery(prompt, options, async (queryOptions) => {
-          permissionResults.push(
-            await queryOptions.canUseTool?.(
-              "WebFetch",
-              { url: `https://example.com/${currentQuery}` },
-              {
-                ...testCanUseToolOptions({
-                  requestId: `request-web-fetch-${currentQuery}`,
-                  toolUseID: `tool-web-fetch-${currentQuery}`
-                }),
-                suggestions
-              }
-            )
-          );
-        });
+        return fakePermissionCheckQuery(
+          prompt,
+          options,
+          async (queryOptions) => {
+            permissionResults.push(
+              await queryOptions.canUseTool?.(
+                "WebFetch",
+                { url: `https://example.com/${currentQuery}` },
+                {
+                  ...testCanUseToolOptions({
+                    requestId: `request-web-fetch-${currentQuery}`,
+                    toolUseID: `tool-web-fetch-${currentQuery}`
+                  }),
+                  suggestions
+                }
+              )
+            );
+          }
+        );
       }
     );
 
@@ -2295,7 +2299,8 @@ test("allow for session survives the fresh Claude query used by a follow-up turn
       () =>
         events.some(
           (event) =>
-            event.type === "turn_completed" && event.payload?.turnId === "turn-1"
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-1"
         ),
       "first permission turn completion"
     );
@@ -2305,7 +2310,8 @@ test("allow for session survives the fresh Claude query used by a follow-up turn
       () =>
         events.some(
           (event) =>
-            event.type === "turn_completed" && event.payload?.turnId === "turn-2"
+            event.type === "turn_completed" &&
+            event.payload?.turnId === "turn-2"
         ),
       "follow-up permission turn completion"
     );

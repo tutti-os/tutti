@@ -9,7 +9,7 @@ test("session permission ledger matches exact canonical session updates", () => 
     type: "addRules",
     behavior: "allow",
     destination: "session",
-    rules: [{ toolName: "WebFetch", ruleContent: "domain:example.com" }],
+    rules: [{ toolName: "WebFetch", ruleContent: "domain:example.com" }]
   } satisfies PermissionUpdate;
 
   ledger.remember([suggestion]);
@@ -20,19 +20,19 @@ test("session permission ledger matches exact canonical session updates", () => 
         destination: "session",
         rules: [{ ruleContent: "domain:example.com", toolName: "WebFetch" }],
         behavior: "allow",
-        type: "addRules",
-      },
+        type: "addRules"
+      }
     ]),
-    [suggestion],
+    [suggestion]
   );
   assert.equal(
     ledger.rehydrate([
       {
         ...suggestion,
-        rules: [{ toolName: "WebFetch", ruleContent: "domain:other.com" }],
-      },
+        rules: [{ toolName: "WebFetch", ruleContent: "domain:other.com" }]
+      }
     ]),
-    undefined,
+    undefined
   );
 });
 
@@ -41,12 +41,12 @@ test("session permission ledger rejects persistent and mixed destinations", () =
   const persistent = {
     type: "addDirectories",
     directories: ["/repo"],
-    destination: "projectSettings",
+    destination: "projectSettings"
   } satisfies PermissionUpdate;
   const session = {
     type: "addDirectories",
     directories: ["/repo"],
-    destination: "session",
+    destination: "session"
   } satisfies PermissionUpdate;
 
   ledger.remember([persistent]);
@@ -82,7 +82,7 @@ test("session permission ledger refreshes recently reused updates", () => {
     ({
       type: "addDirectories",
       directories: [directory],
-      destination: "session",
+      destination: "session"
     }) satisfies PermissionUpdate;
   const first = update("/repo/first");
   const second = update("/repo/second");
@@ -100,7 +100,7 @@ test("session permission ledger fails closed for cyclic SDK data", () => {
   const cyclic = {
     type: "addDirectories",
     directories: ["C:\\repo"],
-    destination: "session",
+    destination: "session"
   } as PermissionUpdate & { cycle?: unknown };
   cyclic.cycle = cyclic;
   const ledger = new SessionPermissionLedger();
@@ -114,12 +114,12 @@ test("session permission ledger matches Windows directory suggestions", () => {
   const suggestion = {
     type: "addDirectories",
     directories: ["C:\\repo\\src"],
-    destination: "session",
+    destination: "session"
   } satisfies PermissionUpdate;
 
   ledger.remember([suggestion]);
 
   assert.deepEqual(ledger.rehydrate([structuredClone(suggestion)]), [
-    suggestion,
+    suggestion
   ]);
 });

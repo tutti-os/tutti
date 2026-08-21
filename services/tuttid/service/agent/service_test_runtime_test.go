@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -29,6 +30,7 @@ type fakeRuntime struct {
 	canResumeCalls          []RuntimeResumeInput
 	canResumeHook           func(RuntimeResumeInput) bool
 	cancelCalls             []RuntimeCancelInput
+	cancelErr               error
 	cancelResult            RuntimeCancelResult
 	cancelResultSet         bool
 	closeErr                error
@@ -296,9 +298,57 @@ type fakeSessionReader struct {
 	runtime            RuntimeController
 }
 
+func (f *fakeSessionReader) CompareAndSwapSessionRuntimeContext(
+	_ context.Context,
+	workspaceID string,
+	sessionID string,
+	expected map[string]any,
+	replacement map[string]any,
+) (PersistedSession, bool, error) {
+	if f == nil {
+		return PersistedSession{}, false, nil
+	}
+	key := strings.TrimSpace(workspaceID) + ":" + strings.TrimSpace(sessionID)
+	session, found := f.sessions[key]
+	if !found || !reflect.DeepEqual(session.InternalRuntimeContext, expected) {
+		return session, false, nil
+	}
+	session.InternalRuntimeContext = clonePayload(replacement)
+	f.sessions[key] = session
+	return session, true, nil
+}
+
 type fakeSessionInitializer struct {
 	err    error
 	reader *fakeSessionReader
+}
+
+func (f fakeSessionInitializer) ResolveRuntimeSessionRailPlacement(
+	_ context.Context,
+	input agenthost.ResolveRuntimeSessionRailPlacementInput,
+) (*agenthost.RailPlacement, error) {
+	if input.RailPlacement != nil {
+		placement := *input.RailPlacement
+		return &placement, nil
+	}
+	if f.reader != nil {
+		if existing, found := f.reader.sessions[strings.TrimSpace(input.WorkspaceID)+":"+strings.TrimSpace(input.AgentSessionID)]; found &&
+			strings.TrimSpace(existing.RailSectionKey) != "" {
+			kind := agenthost.RailPlacementKind(strings.TrimSpace(existing.RailSectionKind))
+			if kind == "" && strings.TrimSpace(existing.RailSectionKey) == agentactivitybiz.RailSectionKeyConversations {
+				kind = agenthost.RailPlacementKindConversations
+			}
+			return &agenthost.RailPlacement{
+				Version: agenthost.RailPlacementVersion, Kind: kind,
+				ProjectPath: existing.RailProjectPath, SectionKey: existing.RailSectionKey,
+			}, nil
+		}
+	}
+	section := agentactivitybiz.ClassifyRailSection(input.Cwd, input.RuntimeContext, nil)
+	return &agenthost.RailPlacement{
+		Version: agenthost.RailPlacementVersion, Kind: agenthost.RailPlacementKind(section.Kind),
+		ProjectPath: section.ProjectPath, SectionKey: section.Key,
+	}, nil
 }
 
 func (f fakeSessionInitializer) InitializeRuntimeSession(
@@ -475,6 +525,9 @@ func (f *fakeRuntime) Cancel(_ context.Context, input RuntimeCancelInput) (Runti
 	targetAgentSessionID := input.RootAgentSessionID
 	if len(input.Targets) > 0 {
 		targetAgentSessionID = input.Targets[len(input.Targets)-1].AgentSessionID
+	}
+	if f.cancelErr != nil {
+		return RuntimeCancelResult{AgentSessionID: targetAgentSessionID}, f.cancelErr
 	}
 	if f.cancelResultSet {
 		if f.cancelResult.AgentSessionID == "" {

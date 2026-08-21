@@ -69,9 +69,13 @@ function createAgentGeneratedFolderItem(
   const normalizedPath = normalizeAgentGeneratedDirectoryPath(directoryPath);
   const name =
     normalizedPath.split("/").filter(Boolean).at(-1) ?? normalizedPath;
+  const href =
+    normalizedPath === "/" || normalizedPath.endsWith("/")
+      ? normalizedPath
+      : `${normalizedPath}/`;
   return {
     kind: "file",
-    href: `${normalizedPath}/`,
+    href,
     path: normalizedPath,
     name,
     entryKind: "directory",
@@ -107,15 +111,32 @@ function resolveAgentGeneratedFileDirectoryPath(
 
 function parentAgentGeneratedDirectoryPath(path: string): string {
   const normalized = normalizeAgentGeneratedDirectoryPath(path);
+  if (normalized === "/" || /^[A-Za-z]:\/$/.test(normalized)) {
+    return "/";
+  }
   const index = normalized.lastIndexOf("/");
   if (index <= 0) {
     return "/";
   }
-  return normalized.slice(0, index);
+  const parent = normalized.slice(0, index);
+  return /^[A-Za-z]:$/.test(parent) ? `${parent}/` : parent;
 }
 
 function normalizeAgentGeneratedDirectoryPath(path: string): string {
-  return path.trim().replace(/\\/g, "/").replace(/\/+$/, "");
+  const normalized = path.trim().replace(/\\/g, "/");
+  const withoutTrailingSeparators = normalized.replace(/\/+$/, "");
+  // Keep POSIX root as `/`. Removing its only separator turns the synthetic
+  // folder label into an empty string.
+  if (!withoutTrailingSeparators) {
+    return normalized.startsWith("/") ? "/" : "";
+  }
+  if (
+    /^[A-Za-z]:$/.test(withoutTrailingSeparators) &&
+    /^[A-Za-z]:\/+/.test(normalized)
+  ) {
+    return `${withoutTrailingSeparators}/`;
+  }
+  return withoutTrailingSeparators;
 }
 
 function sortAgentGeneratedMentionItems(

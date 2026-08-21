@@ -350,6 +350,12 @@ describe("workspaceAgentConsumerSelectors", () => {
       agentSessionId: "session-1",
       needsAttentionKind: "question",
       needsAttentionSummary: "Choose an option",
+      pendingPrompt: {
+        agentSessionId: "session-1",
+        kind: "ask-user",
+        requestId: "request-1",
+        turnId: "turn-1"
+      },
       status: "waiting"
     });
 
@@ -746,11 +752,9 @@ function session(
   overrides: Partial<AgentActivitySession> = {}
 ): AgentActivitySession {
   return normalizeAgentActivitySession({
-    ...{
-      activeTurnId: null,
-      latestTurnInteractions: [],
-      pendingInteractions: []
-    },
+    activeTurnId: null,
+    latestTurnInteractions: [],
+    pendingInteractions: [],
     workspaceId: "workspace-1",
     agentSessionId: "session-1",
     provider: "codex",

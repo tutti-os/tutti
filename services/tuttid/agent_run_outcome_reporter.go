@@ -28,7 +28,7 @@ func (r agentRunOutcomeReporter) Report(
 	input agentsessionstore.ReportActivityInput,
 ) error {
 	provider := strings.TrimSpace(input.Source.Provider)
-	if provider != "" && r.store != nil {
+	if provider != "" && input.Source.ProviderGlobalAuthEligible && r.store != nil {
 		switch reportRunOutcome(input) {
 		case runOutcomeAuthFailed:
 			r.store.RecordAuthFailure(provider)
@@ -65,54 +65,19 @@ const (
 
 func reportRunOutcome(input agentsessionstore.ReportActivityInput) runOutcome {
 	outcome := runOutcomeNone
-	consider := func(status string, payload map[string]any) {
+	for _, patch := range input.StatePatches {
+		root := patch.RootProviderTurn
+		if root == nil || root.Phase != agentsessionstore.RootProviderTurnPhaseCompleted {
+			continue
+		}
 		switch {
-		case messageLooksLikeAuthFailure(status, payload):
-			// An auth failure anywhere in the batch wins over a stray completion.
+		case strings.EqualFold(root.Outcome, "failed") && strings.EqualFold(root.ErrorCode, "auth_required"):
+			// A typed root-provider authentication failure wins over every other
+			// projection in the report batch.
 			outcome = runOutcomeAuthFailed
-		case outcome == runOutcomeNone && status == "completed":
+		case outcome == runOutcomeNone && strings.EqualFold(root.Outcome, "completed"):
 			outcome = runOutcomeSuccess
 		}
 	}
-	for _, message := range input.MessageUpdates {
-		consider(message.Status, message.Payload)
-	}
-	for _, item := range input.TimelineItems {
-		consider(item.Status, item.Payload)
-	}
 	return outcome
-}
-
-func messageLooksLikeAuthFailure(status string, payload map[string]any) bool {
-	if status != "failed" {
-		return false
-	}
-	if code, ok := payload["code"].(string); ok &&
-		strings.EqualFold(code, "auth_required") {
-		return true
-	}
-	var text strings.Builder
-	for _, key := range []string{"content", "text", "detail"} {
-		if value, ok := payload[key].(string); ok {
-			text.WriteString(" ")
-			text.WriteString(value)
-		}
-	}
-	lower := strings.ToLower(text.String())
-	for _, marker := range []string{
-		"authentication_failed",
-		"invalid authentication credentials",
-		"401 invalid authentication",
-		"unauthorized",
-		"not logged in",
-		"please run /login",
-		"invalid api key",
-		"could not load the default credentials",
-		"api key is missing or not configured",
-	} {
-		if strings.Contains(lower, marker) {
-			return true
-		}
-	}
-	return false
 }

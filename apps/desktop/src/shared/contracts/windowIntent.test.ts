@@ -42,6 +42,20 @@ test("encodeDesktopWindowIntent disables predefine pageview for secondary window
   assert.equal(new URLSearchParams(search).get("reportPredefinePageview"), "0");
 });
 
+test("encodeDesktopWindowIntent keeps an Agent view separate from the OS preference bootstrap", () => {
+  const search = encodeDesktopWindowIntent(
+    createAgentWindowIntent({
+      provider: "codex",
+      workspaceID: "workspace-1"
+    }),
+    { workspaceUiMode: "os" }
+  );
+
+  const params = new URLSearchParams(search);
+  assert.equal(params.get("view"), "agent");
+  assert.equal(params.get("workspaceUiMode"), "os");
+});
+
 test("applyDesktopWindowIntent preserves theme bootstrap parameters in development URLs", () => {
   const url = applyDesktopWindowIntent(
     "http://localhost:5173/",

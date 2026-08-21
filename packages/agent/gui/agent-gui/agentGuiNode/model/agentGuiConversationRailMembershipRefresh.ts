@@ -3,8 +3,9 @@ import type { ConversationRailSectionMembership } from "../controller/agentConve
 export interface ConversationRailMembershipRecord {
   agentTargetId?: string | null;
   id: string;
+  pendingCreation?: boolean;
   pinnedAtUnixMs?: number | null;
-  projectionSource?: "pending_activation";
+  projectionSource?: "pending_activation" | "runtime_overlay";
   railSectionKey?: string | null;
   title: string;
 }
@@ -32,8 +33,7 @@ export function planRuntimeRailMembershipRefresh(input: {
   const previousPendingIds = new Set(
     input.previous
       .filter(
-        (record) =>
-          record.projectionSource === "pending_activation" && visible(record)
+        (record) => record.pendingCreation === true && visible(record)
       )
       .map((record) => record.id)
   );
@@ -42,7 +42,9 @@ export function planRuntimeRailMembershipRefresh(input: {
       records
         .filter(
           (record) =>
-            record.projectionSource !== "pending_activation" && visible(record)
+            record.pendingCreation !== true &&
+            record.projectionSource === undefined &&
+            visible(record)
         )
         .map((record) => [record.id, record] as const)
     );

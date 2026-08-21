@@ -2,6 +2,7 @@ package tuttimodeplan
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	workspaceissues "github.com/tutti-os/tutti/packages/workspace/issues"
@@ -12,6 +13,25 @@ import (
 )
 
 func agentPlanError(err error) error {
+	var preferenceMismatch *tuttimodeplanservice.PreferenceSnapshotMismatchError
+	if errors.As(err, &preferenceMismatch) {
+		return cliservice.InvalidInputReasonError(
+			"tutti_mode_preference_snapshot_mismatch",
+			fmt.Sprintf(
+				"Plan preferences do not match this Turn. Set execution.effect to %d and execution.speed to %d exactly, then retry the plan command.",
+				preferenceMismatch.ExpectedEffect,
+				preferenceMismatch.ExpectedSpeed,
+			),
+			nil,
+		)
+	}
+	if errors.Is(err, tuttimodeplanservice.ErrTurnSnapshotUnavailable) {
+		return cliservice.InvalidInputReasonError(
+			"tutti_mode_source_turn_unavailable",
+			"The exact Tutti Mode source Turn snapshot is unavailable. Stop and retry from a new active Tutti Mode Turn.",
+			nil,
+		)
+	}
 	if errors.Is(err, workflowdata.ErrWorkspaceWorkflowNotFound) {
 		return cliservice.InvalidInputReasonError(
 			string(executionbiz.RejectionExecutionNotFound),

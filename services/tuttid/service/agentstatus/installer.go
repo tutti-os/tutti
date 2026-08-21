@@ -163,6 +163,31 @@ func (s Service) installMissingProviderRuntime(
 		)
 		stillMissing := (installTarget == "cli" && strings.TrimSpace(current.CLIPath) == "") ||
 			(installTarget == "adapter" && strings.TrimSpace(current.AdapterPath) == "")
+		if !stillMissing && installTarget == "cli" && strings.TrimSpace(spec.MinVersion) != "" {
+			version := s.providerCLIVersion(ctx, spec, current.CLIPath, current.Env)
+			stillMissing = !providerCLIVersionMeetsMinimum(spec, version)
+			if stillMissing {
+				slog.Warn(
+					"agent provider install recheck found CLI version unavailable",
+					"provider", spec.Provider,
+					"target", installTarget,
+					"cliPath", current.CLIPath,
+					"cliVersion", version,
+				)
+			}
+		}
+		if !stillMissing && installTarget == "adapter" {
+			stillMissing = !adapterPackageRequirementSatisfied(spec.AdapterPackage, current.AdapterVersion)
+			if stillMissing {
+				slog.Warn(
+					"agent provider install recheck found adapter package unavailable",
+					"provider", spec.Provider,
+					"target", installTarget,
+					"adapterPath", current.AdapterPath,
+					"adapterVersion", current.AdapterVersion,
+				)
+			}
+		}
 		if stillMissing {
 			err := fmt.Errorf("provider %s is still unavailable after installer exited successfully", spec.Provider)
 			s.reportProviderSetupNodeResult(ctx, providerSetupNodeResultInput{

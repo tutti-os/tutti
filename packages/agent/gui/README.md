@@ -17,6 +17,16 @@ and are rendered only behind an explicit disclosure, never in the product error
 headline. Environment, authentication,
 network, and runtime errors are not overridable and remain AgentGUI policy.
 
+Hosts that render an Agent owned by somebody else must pass
+`hostCapabilities.visibleErrorPresentationScope: "shared_caller"`. AgentGUI
+then preserves structured failure reasons and diagnostic disclosure, replaces
+Owner-remediable guidance with caller-safe contact guidance, and suppresses
+current-device and current-account recovery actions. Omission defaults to
+`"local_owner"` for backward compatibility. The scope is presentation-only;
+it never changes a Turn, activity event, persistence, or provider error.
+Hosts that inject an application i18n runtime must also provide
+`agentHost.agentGui.visibleErrorSharedCallerHint` in every supported locale.
+
 This is an intentional public API break. The former `accountMenuState`,
 `commercePresentation`, `AgentGUIAccountMenu*`, and
 `AgentGUIAccountRewardToast` surfaces were removed instead of being retained as
@@ -142,6 +152,22 @@ row; they must not infer isolation from `cwd`.
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
 
+## Side Presentation
+
+Side remains a surface-owned, transient conversation. By default AgentGUI
+renders it through the inline `AgentGUISideConversationPane`. A host that owns
+an external panel system may create an
+`AgentGUISideConversationPresentation`, pass it through
+`hostCapabilities.sideConversationPresentation`, and render the published
+`AgentGUISideConversationSurface` itself.
+
+The presentation store carries only the exact source/Side identities, surface
+props, and close intent. It does not own provider commands, runtime state, or
+persistence. External hosts must key tabs by the exact identities, propagate
+panel visibility through `isVisible` so focus is released while hidden, and
+invoke `close` only for the currently matching projection. Omitting the bridge
+preserves the inline behavior for existing hosts.
+
 ## Headless Conversation Message Controller
 
 `@tutti-os/agent-gui/conversation-message-controller` is the renderer-neutral
@@ -214,6 +240,17 @@ session settings, then retain only their menu, sheet, and disclosure UI.
 The daemon DTO mapper belongs to
 `@tutti-os/agent-activity-tuttid-adapter`, so Desktop and Mobile do not keep
 separate parser implementations for Composer capabilities or option catalogs.
+
+## Performance Failure Events
+
+`AgentGUIPerformanceEvent` failure settlements carry a bounded `errorCode` and
+`failureStage` when the operation fails. `errorCode` comes from a stable
+machine-readable error field and falls back to `unknown`; raw error messages
+are never included. Composer option failures use `options_load`, Session
+activation uses `session_activation`, Prompt admission uses `prompt_admission`,
+and Turn failures use `turn_settlement`. Each settlement keeps its existing
+`operationId`, so hosts can deduplicate repeated observations without using
+provider names, timestamps, or error text.
 
 ## Quick Composer
 
@@ -347,6 +384,12 @@ is not a runtime or host capability and has no published package entrypoint.
 In-flight first-page results are fenced to the attached controller generation
 so stale mounts cannot mutate the Engine or cache.
 
+The `@tutti-os/agent-gui/abortable-single-flight` subpath exposes the generic
+`AbortableSingleFlight` lifecycle primitive for host adapters that need to
+coalesce keyed abortable reads while keeping caller cancellation independent.
+The primitive owns only request sharing and cancellation; cache, snapshot, and
+event ownership remain with the host adapter.
+
 Run this boundary check after changing AgentGUI data flow:
 
 ```sh
@@ -407,7 +450,7 @@ both properties keeps the filter off. An explicitly supplied catalog (including
 
 ## Home Suggestions
 
-The five starter entries below the empty new-session composer are enabled by
+The six starter entries below the empty new-session composer are enabled by
 default. External hosts can hide individual entries with the public
 `AgentGUI.disabled` array:
 
@@ -415,9 +458,9 @@ default. External hosts can hide individual entries with the public
 <AgentGUI disabled={["meet-tutti", "import-session"]} {...props} />
 ```
 
-The supported stable IDs are `meet-tutti`, `task-breakdown`, `quality-review`,
-`agent-interaction`, and `import-session`. Omitting `disabled` (or passing an
-empty array) renders all five entries.
+The supported stable IDs are `meet-tutti`, `clone-github-repository`,
+`task-breakdown`, `quality-review`, `agent-interaction`, and `import-session`.
+Omitting `disabled` (or passing an empty array) renders all six entries.
 
 ## Tutti Mode capability
 
@@ -562,4 +605,7 @@ Account and Commerce remain Host chrome. A Host may use
 account/quota block and `hostActions.onAgentConfigMenuOpen` to refresh its
 Host-owned account state. Both receive the same exact target context. Returning
 `null` preserves the default provider account and quota presentation; the slot
-must not start requests or own menu lifecycle.
+must not start requests or own menu lifecycle. The context declares
+`presentation: "menu"`; interactive slot content must therefore use ui-system
+`DropdownMenuItem` / `DropdownMenuSub` primitives instead of plain buttons or
+links. The same rule applies to `renderSlots.agentConfigSystemActions`.

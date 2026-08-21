@@ -79,6 +79,28 @@ The old `agent cancel --session-id <id>` path remains an integration-only
 compatibility alias. It resolves the currently active Turn, emits a
 `deprecated_agent_cancel` warning, and must not be used by new integrations.
 
+## Agent Session References
+
+Each item returned by `agent sessions` carries the raw `agentSessionId` plus
+`workspaceId` and a canonical `mentionUri`. Singleton `agent get`, `agent
+start`, `agent send`, `agent open`, and `agent wait` JSON results expose the
+same three fields at the top level so consumers do not need command-specific
+nested lookup:
+
+```json
+{
+  "agentSessionId": "session-1",
+  "workspaceId": "workspace-1",
+  "mentionUri": "mention://agent-session/session-1?workspaceId=workspace-1"
+}
+```
+
+Agents should use `mentionUri` as the destination of a descriptive Markdown
+link when returning a session reference. Consumers must treat it as internal
+data for Tutti mention routing, not as a web URL, filesystem path, or command.
+Nested session objects retain the same reference fields for compatibility, and
+raw ids remain available for CLI continuation and automation.
+
 ## Boundaries
 
 The daemon has two CLI command surfaces:

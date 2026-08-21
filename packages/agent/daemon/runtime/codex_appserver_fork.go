@@ -138,7 +138,7 @@ func (a *CodexAppServerAdapter) Fork(
 	// auto-subscribes its caller to the child; closing this connection avoids a
 	// stale child listener on the source session after canonical commit attaches
 	// the child through its own thread/resume connection.
-	trace := newCodexAppServerStartupTrace(source)
+	trace := newCodexAppServerStartupTrace(source, a.startupSpanObserver, nil)
 	defer func() {
 		trace.Finish(err)
 	}()

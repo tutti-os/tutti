@@ -37,7 +37,7 @@ export class SessionPermissionLedger {
   }
 
   rehydrate(
-    suggestions: readonly PermissionUpdate[] | undefined,
+    suggestions: readonly PermissionUpdate[] | undefined
   ): PermissionUpdate[] | undefined {
     if (!isSessionOnlyBatch(suggestions)) {
       return undefined;
@@ -56,7 +56,7 @@ export class SessionPermissionLedger {
 }
 
 function isSessionOnlyBatch(
-  suggestions: readonly PermissionUpdate[] | undefined,
+  suggestions: readonly PermissionUpdate[] | undefined
 ): suggestions is readonly PermissionUpdate[] {
   return (
     suggestions !== undefined &&
@@ -70,7 +70,7 @@ function clonePermissionUpdate(update: PermissionUpdate): PermissionUpdate {
 }
 
 function canonicalPermissionUpdate(
-  update: PermissionUpdate,
+  update: PermissionUpdate
 ): string | undefined {
   try {
     const canonical = stableStringify(update, new WeakSet(), 0);
@@ -85,7 +85,7 @@ function canonicalPermissionUpdate(
 function stableStringify(
   value: unknown,
   ancestors: WeakSet<object>,
-  depth: number,
+  depth: number
 ): string {
   if (depth > MAX_CANONICAL_PERMISSION_DEPTH) {
     throw new Error("permission update exceeds canonical depth");
@@ -117,8 +117,8 @@ function stableStringify(
             `${JSON.stringify(key)}:${stableStringify(
               record[key],
               ancestors,
-              depth + 1,
-            )}`,
+              depth + 1
+            )}`
         )
         .join(",")}}`;
     } finally {

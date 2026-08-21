@@ -5,6 +5,8 @@ export const enAgentGuiRuntimeNotices = {
     "{{provider}} needs authentication or configuration",
   visibleErrorAuthRequiredLocalAgentHint:
     "Please sign in to local {{provider}}, then retry.",
+  visibleErrorSharedCallerHint:
+    "Contact the person who shared this Agent, then try again.",
   visibleErrorRequestTimedOut: "{{provider}} request timed out",
   visibleErrorRuntimeUnavailable:
     "{{provider}} could not start because the runtime is unavailable",
