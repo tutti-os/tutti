@@ -333,6 +333,8 @@ jobs:
       - name: Setup Microsoft Store Developer CLI
         if: ${{ inputs.submit }}
         uses: microsoft/microsoft-store-apppublisher@v1.1
+        with:
+          version: v0.4.1
 
       - name: Authenticate Partner Center
         if: ${{ inputs.submit }}
