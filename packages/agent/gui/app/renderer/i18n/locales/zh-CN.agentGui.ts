@@ -369,6 +369,8 @@ export const zhCNAgentGui = {
   pastedTextAttachmentFailed: "无法保存粘贴的文本",
   pastedTextRestoreToComposer: "在文本框中显示",
   copyMessage: "复制消息",
+  selectedTextFragment: "1 个已选文本片段",
+  selectedTextFragments: "{{count}} 个已选文本片段",
   forkThroughTurn: "从此轮进行会话 Fork",
   forkThroughTurnPending: "正在进行会话 Fork",
   continuedFromTask: "接续自任务",

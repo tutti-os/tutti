@@ -332,6 +332,8 @@ export const enAgentGui = {
   pastedTextAttachmentFailed: "Pasted text couldn't be saved",
   pastedTextRestoreToComposer: "Show in text field",
   copyMessage: "Copy message",
+  selectedTextFragment: "1 selected text fragment",
+  selectedTextFragments: "{{count}} selected text fragments",
   forkThroughTurn: "Fork through this turn",
   forkThroughTurnPending: "Forking through this turn",
   continuedFromTask: "Continued from task",

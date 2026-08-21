@@ -421,7 +421,9 @@ blocks are UI-local draft state and materialize as Markdown blockquote text at
 the existing submit boundary, so the Side transport remains text-only. When a
 typed question accompanies those quotes, Side keeps the blockquotes in provider
 content but projects only the typed question as the visible user message; a
-quote-only submission keeps the existing blockquote display fallback. Focus
+legacy quote-only submission keeps the existing blockquote display fallback;
+only a future explicit selected-text content kind can make that ambiguous shape
+safe to render as a chip. Focus
 ownership follows the currently visible Side pane: an unmounted or
 source-mismatched Side cannot keep the main composer inactive, and pane cleanup
 must release its focus scope.
@@ -1946,7 +1948,16 @@ packaged with AgentGUI and performs no runtime network fetch.
 Attachment-only fallback labels such as `[Image]` may provide title or summary
 text, but they are not an additional transcript text block when the canonical
 structured content already renders the same image. Explicit display prompts
-remain transcript content and continue to replace expanded rich prompt text.
+remain transcript content and continue to replace expanded rich prompt text,
+except when the structured content carries the composer’s selected-text
+reference blocks. In that case the conversation projection preserves ordinary
+structured text and images, groups selected-text blocks into one leading typed
+compact reference part, and uses `displayPrompt` only as a compatibility
+fallback; the renderer owns the chip presentation. The selected reference is
+presentation-only, so copy/edit actions remain attached to the ordinary typed
+prompt part. This keeps the durable prompt and editing source unchanged while
+preventing a display-only flattened prompt from discarding the reference
+boundary.
 
 Structured user-prompt transcript images keep resource acquisition and browser
 image decoding as separate presentation states. A URL or hydrated data source

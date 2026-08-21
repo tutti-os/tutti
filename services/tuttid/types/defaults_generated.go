@@ -81,7 +81,7 @@ var generatedDefaults = generatedDefaultsSpec{
 			},
 			{
 				Key:                      "hermes",
-				PinnedVersion:            "1.0.8",
+				PinnedVersion:            "1.0.9",
 				ReleaseIndexURL:          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
 				FallbackReleaseIndexURLs: []string{},
 				SigningKeyID:             "tutti-hermes-release-v1",
