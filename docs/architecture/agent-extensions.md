@@ -70,6 +70,12 @@ registered. Removing the override requires the signed remote source again.
 Production ignores this override and continues to require the signed HTTPS
 release path.
 
+Development clients may use synthetic or zero application versions while the
+desktop is running from source. Remote extension selection still requires the
+configured active pin, signed release, and declared host capabilities; the
+release's `minTuttiVersion` gate is enforced only for packaged production
+clients, whose version is a release compatibility claim.
+
 ## Installation And Runtime Ownership
 
 Verified installations are immutable and stored under:

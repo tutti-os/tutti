@@ -190,7 +190,7 @@ func TestSelectVersionUsesClientPinnedRelease(t *testing.T) {
 		},
 	}
 
-	record, err := selectVersion(document, "gemini", "0.3.0", "1.0.0")
+	record, err := selectVersion(document, "gemini", "0.3.0", "1.0.0", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,10 +221,30 @@ func TestSelectVersionRejectsUnavailableClientPin(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			_, err := selectVersion(test.document, "gemini", test.appVersion, test.pin)
+			_, err := selectVersion(test.document, "gemini", test.appVersion, test.pin, false)
 			if err == nil || !strings.Contains(err.Error(), test.want) {
 				t.Fatalf("selectVersion() error = %v, want %q", err, test.want)
 			}
 		})
+	}
+}
+
+func TestSelectVersionAllowsPinnedReleaseForDevelopmentClient(t *testing.T) {
+	document := Versions{
+		SchemaVersion: versionsSchema,
+		AgentKey:      "hermes",
+		Versions: []VersionRecord{{
+			Version:         "1.0.8",
+			MinTuttiVersion: "0.2.23",
+			Status:          "active",
+			Release:         Release{Version: "1.0.8"},
+		}},
+	}
+
+	if _, err := selectVersion(document, "hermes", "0.0.0", "1.0.8", true); err != nil {
+		t.Fatalf("development client should select the pinned release: %v", err)
+	}
+	if _, err := selectVersion(document, "hermes", "0.0.0", "1.0.8", false); err == nil {
+		t.Fatal("production client unexpectedly bypassed the minimum Tutti version")
 	}
 }

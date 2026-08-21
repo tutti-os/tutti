@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -66,6 +67,76 @@ func TestStandardACPAdvertisesAndRecordsWriteTextFile(t *testing.T) {
 	if len(files) != 1 || files[0]["change"] != "modified" ||
 		files[0]["oldString"] != "before\n" || files[0]["newString"] != "after\nmore\n" {
 		t.Fatalf("file changes = %#v, want exact before and after content", files)
+	}
+}
+
+func TestStandardACPWriteSnapshotSurvivesPartialToolCompletion(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "report.md")
+	before := "alpha\nbravo\ncharlie\ndelta\n"
+	after := "first\nsecond\n" + before
+	if err := os.WriteFile(path, []byte(before), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	client := &acpClient{conn: acpClientTestConnection{send: func([]byte) error { return nil }}}
+	session := standardTestSession(ProviderOpenCode)
+	normalizer := newACPTurnNormalizer()
+	params, err := json.Marshal(acpWriteTextFileParams{
+		SessionID: session.ProviderSessionID,
+		Path:      path,
+		Content:   after,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&standardACPAdapter{}).handleACPMessage(
+		context.Background(),
+		client,
+		session,
+		"turn-1",
+		acpMessage{ID: json.RawMessage(`1`), Method: acpMethodWriteTextFile, Params: params},
+		normalizer,
+		nil,
+		nil,
+	); err != nil {
+		t.Fatalf("write text file: %v", err)
+	}
+
+	completed := standardACPUpdateEvents(
+		standardACPConfig{provider: ProviderOpenCode},
+		session,
+		"turn-1",
+		json.RawMessage(fmt.Sprintf(`{
+			"update": {
+				"sessionUpdate": "tool_call_update",
+				"toolCallId": "edit-1",
+				"title": "Edit report.md",
+				"status": "completed",
+				"kind": "edit",
+				"content": [{
+					"type": "diff",
+					"path": %q,
+					"oldText": %q,
+					"newText": %q
+				}]
+			}
+		}`, path, before, "first\nsecond\nalpha\nbravo\n")),
+		normalizer,
+	)
+	if len(completed) != 2 || completed[1].Type != activityshared.EventTurnUpdated {
+		t.Fatalf("completed events = %#v, want call.completed followed by turn.updated", completed)
+	}
+	files := payloadArray(payloadMap(completed[1].Payload.Metadata, "fileChanges")["files"])
+	if len(files) != 1 || files[0]["oldString"] != before || files[0]["newString"] != after {
+		t.Fatalf("file changes = %#v, want host-observed complete before and after snapshots", files)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != after {
+		t.Fatalf("file content = %q, want %q", content, after)
 	}
 }
 

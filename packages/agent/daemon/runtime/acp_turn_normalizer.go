@@ -31,6 +31,7 @@ type acpTurnNormalizer struct {
 	earlyToolOutput           map[string]earlyToolOutputSnapshot
 	earlyToolOutputBytes      int
 	fileChanges               map[string]any
+	authoritativeFileChanges  map[string]struct{}
 	compactionMu              sync.Mutex
 	compactionMessageID       string
 	compactionTerminalStatus  string
@@ -125,12 +126,13 @@ func (n *acpTurnNormalizer) SuppressAssistantOutput() {
 
 func newACPTurnNormalizer() *acpTurnNormalizer {
 	return &acpTurnNormalizer{
-		toolItemIDs:         make(map[string]string),
-		toolCallsSeen:       make(map[string]bool),
-		pendingToolCalls:    make(map[string]pendingToolCallSnapshot),
-		toolOutputText:      make(map[string]string),
-		toolOutputTruncated: make(map[string]bool),
-		earlyToolOutput:     make(map[string]earlyToolOutputSnapshot),
+		toolItemIDs:              make(map[string]string),
+		toolCallsSeen:            make(map[string]bool),
+		pendingToolCalls:         make(map[string]pendingToolCallSnapshot),
+		toolOutputText:           make(map[string]string),
+		toolOutputTruncated:      make(map[string]bool),
+		earlyToolOutput:          make(map[string]earlyToolOutputSnapshot),
+		authoritativeFileChanges: make(map[string]struct{}),
 	}
 }
 
@@ -543,6 +545,10 @@ func appendTurnFileChangesEvent(
 		return events
 	}
 	if normalizer != nil {
+		fileChanges = withoutAuthoritativeFileChangeDetails(
+			fileChanges,
+			normalizer.authoritativeFileChanges,
+		)
 		normalizer.fileChanges = mergeCanonicalFileChanges(normalizer.fileChanges, fileChanges)
 		fileChanges = clonePayload(normalizer.fileChanges)
 	}
@@ -586,6 +592,16 @@ func (n *acpTurnNormalizer) recordFileChangesEvents(
 	n.fileChanges = mergeCanonicalFileChanges(n.fileChanges, map[string]any{
 		"files": canonical,
 	})
+	if n.authoritativeFileChanges == nil {
+		n.authoritativeFileChanges = make(map[string]struct{})
+	}
+	for _, file := range canonical {
+		fileMap, _ := file.(map[string]any)
+		path := strings.TrimSpace(asString(fileMap["path"]))
+		if path != "" {
+			n.authoritativeFileChanges[path] = struct{}{}
+		}
+	}
 	ctx, ok := activityEventContext(session, newID(), turnID)
 	if !ok {
 		return nil
@@ -594,6 +610,33 @@ func (n *acpTurnNormalizer) recordFileChangesEvents(
 	updated := activityshared.NewTurnUpdated(ctx, turnID, activityshared.TurnPhaseWorking)
 	updated.Payload.Metadata = map[string]any{"fileChanges": clonePayload(n.fileChanges)}
 	return []activityshared.Event{updated}
+}
+
+func withoutAuthoritativeFileChangeDetails(
+	fileChanges map[string]any,
+	authoritativePaths map[string]struct{},
+) map[string]any {
+	if len(authoritativePaths) == 0 {
+		return fileChanges
+	}
+	files := payloadArray(fileChanges["files"])
+	if len(files) == 0 {
+		return fileChanges
+	}
+	sanitized := make([]any, 0, len(files))
+	for _, file := range files {
+		copy := clonePayload(file)
+		path := strings.TrimSpace(asString(copy["path"]))
+		if _, authoritative := authoritativePaths[path]; authoritative {
+			delete(copy, "oldString")
+			delete(copy, "newString")
+			delete(copy, "content")
+			delete(copy, "diff")
+			delete(copy, "unifiedDiff")
+		}
+		sanitized = append(sanitized, copy)
+	}
+	return map[string]any{"files": sanitized}
 }
 
 func (n *acpTurnNormalizer) toolItemID(update map[string]any) string {
