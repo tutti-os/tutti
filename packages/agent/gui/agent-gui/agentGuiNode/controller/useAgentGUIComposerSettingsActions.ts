@@ -522,6 +522,7 @@ export function useAgentGUIComposerSettingsActions(
   // user double-clicks the retry control instead of superseding it.
   const retryComposerOptions = useStableControllerEventCallback(
     (options?: {
+      force?: boolean;
       section?: "core" | "capabilities" | "connectors";
       waitForFreshModelCatalog?: boolean;
     }) => {

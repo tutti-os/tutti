@@ -5,6 +5,8 @@ import (
 	"errors"
 	"log/slog"
 	"time"
+
+	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 )
 
 const (
@@ -59,6 +61,9 @@ func (host *Host) scheduleRecoverableOperations(ctx context.Context) error {
 	var scheduleErr error
 	now := time.Now().UTC()
 	for _, operation := range operations {
+		if !market.OperationEffectIsDurable(operation.Kind) {
+			continue
+		}
 		if delay := operationRetryDelay(int(operation.Attempt)); delay > 0 &&
 			!operation.UpdatedAt.IsZero() && now.Sub(operation.UpdatedAt) < delay {
 			continue

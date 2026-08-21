@@ -66,6 +66,7 @@ export function areComposerOptionsEqual(
  * imperative cache coordinator.
  */
 export function composerOptionsRequestSignature(input: {
+  agentSessionId?: string | null;
   provider?: string;
   cwd?: string | null;
   settings?: AgentActivityComposerSettings | null;
@@ -74,6 +75,7 @@ export function composerOptionsRequestSignature(input: {
   const normalizedText = (value: string | null | undefined): string | null =>
     value?.trim() || null;
   return JSON.stringify({
+    agentSessionId: normalizedText(input.agentSessionId),
     provider: input.provider?.trim() ?? "",
     cwd: input.cwd?.trim() ?? "",
     settings: {

@@ -13,6 +13,7 @@ export function createConnectorMarketStoreState(): ConnectorMarketStoreState {
   return {
     loadState: "idle",
     catalogState: "stale",
+    pendingExplicitCatalogRefresh: false,
     catalogOperation: null,
     catalogSections: [],
     connectorsByKey: {},
@@ -36,6 +37,7 @@ export function clearConnectorMarketStoreState(
   const initial = createConnectorMarketStoreState();
   state.loadState = initial.loadState;
   state.catalogState = initial.catalogState;
+  state.pendingExplicitCatalogRefresh = initial.pendingExplicitCatalogRefresh;
   state.catalogOperation = initial.catalogOperation;
   state.catalogSections = initial.catalogSections;
   state.connectorsByKey = initial.connectorsByKey;

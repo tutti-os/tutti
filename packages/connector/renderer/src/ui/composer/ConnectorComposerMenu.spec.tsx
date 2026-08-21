@@ -120,6 +120,31 @@ describe("ConnectorComposerMenu", () => {
     ).toHaveTextContent("+2");
   });
 
+  it("previews selected connectors on the trigger even when they are not authorized", () => {
+    render(
+      <ConnectorComposerMenu
+        items={[
+          connector("google-forms", "setup_required", true),
+          connector("github", "connected")
+        ]}
+        disabled={false}
+        labels={labels}
+        onOpenConnector={vi.fn()}
+        onOpenMarket={vi.fn()}
+      />
+    );
+
+    expect(
+      screen.getByTestId("connector-market-composer-preview-google-forms")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("connector-market-composer-preview-github")
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connectors" })
+    ).not.toHaveTextContent("Connectors");
+  });
+
   it("shows runtime state versus setup actions and opens the catalog footer", async () => {
     const onOpenConnector = vi.fn();
     const onOpenMarket = vi.fn();
@@ -471,12 +496,12 @@ describe("ConnectorComposerMenu", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows four recently installed connectors and fills the remaining quick slots from discovery", async () => {
+  it("fills the quick menu with installed authorized connectors before discovery", async () => {
     const connectedConnectors = Array.from({ length: 10 }, (_, index) =>
       connector(`connected-${index}`, "connected", false, index + 1)
     );
     const discoveryConnectors = Array.from({ length: 6 }, (_, index) =>
-      connector(`setup-${index}`, "setup_required")
+      connector(`setup-${index}`, "setup_required", false, 1_000 + index)
     );
     render(
       <ConnectorComposerMenu
@@ -499,14 +524,27 @@ describe("ConnectorComposerMenu", () => {
     });
 
     expect(
-      await screen.findByTestId("connector-market-composer-item-setup-0")
-    ).toBeInTheDocument();
+      (await screen.findAllByTestId(/^connector-market-composer-item-/)).map(
+        (item) => item.dataset.testid
+      )
+    ).toEqual([
+      "connector-market-composer-item-stopped",
+      "connector-market-composer-item-connected-9",
+      "connector-market-composer-item-connected-8",
+      "connector-market-composer-item-connected-7",
+      "connector-market-composer-item-connected-6",
+      "connector-market-composer-item-connected-5",
+      "connector-market-composer-item-connected-4",
+      "connector-market-composer-item-connected-3",
+      "connector-market-composer-item-connected-2",
+      "connector-market-composer-item-connected-1"
+    ]);
     expect(
       screen.getByTestId("connector-market-composer-status-stopped")
     ).not.toBeChecked();
     expect(
-      screen.getAllByTestId(/^connector-market-composer-item-/)
-    ).toHaveLength(10);
+      screen.queryByTestId("connector-market-composer-item-setup-0")
+    ).not.toBeInTheDocument();
   });
 
   it("keeps an installed connector in place when its runtime is stopped", async () => {

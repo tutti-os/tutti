@@ -100,6 +100,10 @@ func readInstallation(path string) (agentextensionbiz.Installation, error) {
 	if err := decoder.Decode(&installation); err != nil {
 		return agentextensionbiz.Installation{}, err
 	}
+	// Older client-pinned Runtime builds persisted a derived preference. Keep
+	// accepting that exact legacy field under strict decoding, but clear it so
+	// any subsequent write converges to the source-pin-derived contract.
+	installation.LegacyPreferManagedRuntime = false
 	return installation, nil
 }
 

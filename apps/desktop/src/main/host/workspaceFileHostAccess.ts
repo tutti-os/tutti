@@ -1,10 +1,14 @@
 import type { Stats } from "node:fs";
-import { mkdir, readFile, stat } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import path, { basename } from "node:path";
 import { pathToFileURL } from "node:url";
 import { workspaceFilePreviewMaxBytes } from "@tutti-os/workspace-file-preview";
 import { formatWorkspaceFilePathForDisplay } from "@tutti-os/workspace-file-manager/services";
+import {
+  isValidWorkspaceUserProjectName,
+  workspaceUserProjectNameIdentityKey
+} from "@tutti-os/workspace-user-project/core";
 import { desktopErrorCodes } from "../../shared/errors/desktopErrors.ts";
 import type {
   DesktopCreateUserDocumentsProjectDirectoryInput,
@@ -68,6 +72,7 @@ export interface WorkspaceFileHostAccessDependencies {
   openFileWithDefaultBrowser?: (path: string) => Promise<void>;
   openPath?: (path: string) => Promise<string>;
   readFile?: typeof readFile;
+  readdir?: typeof readdir;
   showItemInFolder?: (path: string) => void;
   stat?: typeof stat;
   workspaceFileIconCache?: WorkspaceFileIconCacheStore;
@@ -83,6 +88,7 @@ export function createWorkspaceFileHostAccess(
   const getDocumentsPath = deps.getDocumentsPath ?? defaultGetDocumentsPath;
   const mkdirImpl = deps.mkdir ?? mkdir;
   const readFileImpl = deps.readFile ?? readFile;
+  const readdirImpl = deps.readdir ?? readdir;
   const showItemInFolder = deps.showItemInFolder ?? defaultShowItemInFolder;
   const statImpl = deps.stat ?? stat;
 
@@ -95,6 +101,20 @@ export function createWorkspaceFileHostAccess(
       await ensureProjectDirectoryRoot(path.dirname(targetPath), targetPath, {
         mkdir: mkdirImpl
       });
+      if (payload.allowExisting !== true) {
+        const projectNameKey = workspaceUserProjectNameIdentityKey(
+          path.basename(targetPath)
+        );
+        const siblingNames = await readdirImpl(path.dirname(targetPath));
+        if (
+          siblingNames.some(
+            (name) =>
+              workspaceUserProjectNameIdentityKey(name) === projectNameKey
+          )
+        ) {
+          throw createProjectDirectoryAlreadyExistsError(targetPath);
+        }
+      }
       try {
         await mkdirImpl(targetPath);
       } catch (error) {
@@ -266,15 +286,8 @@ function resolveUserDocumentsProjectPath(input: {
 }
 
 function normalizeProjectDirectoryName(name: string): string {
-  const normalized = String(name).trim();
-  if (
-    !normalized ||
-    normalized === "." ||
-    normalized === ".." ||
-    normalized.includes("/") ||
-    normalized.includes("\\") ||
-    normalized.includes("\0")
-  ) {
+  const normalized = String(name).normalize("NFC");
+  if (!isValidWorkspaceUserProjectName(normalized)) {
     throw createProjectNameInvalidError();
   }
   return normalized;

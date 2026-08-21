@@ -16,7 +16,6 @@ import {
 import { cn } from "@tutti-os/ui-system/utils";
 
 const QUICK_CONNECTOR_LIMIT = 10;
-const INSTALLED_CONNECTOR_PREVIEW_LIMIT = 4;
 const CONNECTOR_PREVIEW_LIMIT = 3;
 
 export type ConnectorComposerItemStatus =
@@ -93,23 +92,17 @@ export function ConnectorComposerMenu({
     ReadonlySet<string>
   >(new Set());
   const normalizedItems = normalizeConnectorItems(items);
-  const installedItems = normalizedItems.filter(isInstalledConnectorItem);
-  const discoveryItems = normalizedItems.filter(
-    (item) => !isInstalledConnectorItem(item)
-  );
-  const quickItems = [
-    ...installedItems.slice(0, INSTALLED_CONNECTOR_PREVIEW_LIMIT),
-    ...discoveryItems.slice(
-      0,
-      QUICK_CONNECTOR_LIMIT -
-        Math.min(installedItems.length, INSTALLED_CONNECTOR_PREVIEW_LIMIT)
-    )
-  ];
+  const quickItems = normalizedItems.slice(0, QUICK_CONNECTOR_LIMIT);
   const connectedItems = normalizedItems.filter(
     (item) => item.status === "connected"
   );
-  const previewItems = connectedItems.slice(0, CONNECTOR_PREVIEW_LIMIT);
-  const additionalConnectorCount = connectedItems.length - previewItems.length;
+  const selectedItems = normalizedItems.filter(
+    (item) => item.selected === true
+  );
+  const previewSource =
+    selectedItems.length > 0 ? selectedItems : connectedItems;
+  const previewItems = previewSource.slice(0, CONNECTOR_PREVIEW_LIMIT);
+  const additionalConnectorCount = previewSource.length - previewItems.length;
   const closeAndRun = (action: () => void): void => {
     setOpen(false);
     onOpenChange?.(false);
@@ -424,8 +417,7 @@ export function ConnectorComposerMenu({
 export function normalizeConnectorItems(
   items: readonly ConnectorComposerItem[]
 ): ConnectorComposerItem[] {
-  const installedItems: ConnectorComposerItem[] = [];
-  const remainingItems: ConnectorComposerItem[] = [];
+  const uniqueItems: ConnectorComposerItem[] = [];
   const seenConnectorKeys = new Set<string>();
   for (const item of items) {
     const connectorKey = item.connectorKey.trim();
@@ -433,18 +425,24 @@ export function normalizeConnectorItems(
       continue;
     }
     seenConnectorKeys.add(connectorKey);
-    const normalizedItem = { ...item, connectorKey };
-    if (isInstalledConnectorItem(normalizedItem)) {
-      installedItems.push(normalizedItem);
-    } else {
-      remainingItems.push(normalizedItem);
-    }
+    uniqueItems.push({ ...item, connectorKey });
   }
-  installedItems.sort(compareInstalledConnectorItems);
-  return [...installedItems, ...remainingItems];
+  return uniqueItems.sort(compareConnectorComposerItems);
 }
 
-function compareInstalledConnectorItems(
+function compareConnectorComposerItems(
+  left: ConnectorComposerItem,
+  right: ConnectorComposerItem
+): number {
+  const leftInstalled = isInstalledConnectorItem(left);
+  const rightInstalled = isInstalledConnectorItem(right);
+  if (leftInstalled !== rightInstalled) {
+    return leftInstalled ? -1 : 1;
+  }
+  return compareInstallationEvent(left, right);
+}
+
+function compareInstallationEvent(
   left: ConnectorComposerItem,
   right: ConnectorComposerItem
 ): number {

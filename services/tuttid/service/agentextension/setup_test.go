@@ -218,8 +218,18 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	if retryRunner.callCount() != 1 {
 		t.Fatalf("account usage restart retry calls = %d, want 1", retryRunner.callCount())
 	}
-	if persisted, err := restarted.AccountUsageFailures.Read(context.Background(), failureScope); err != nil || persisted != nil {
-		t.Fatalf("recovered account usage failure = %#v, error = %v", persisted, err)
+	for {
+		persisted, readErr := restarted.AccountUsageFailures.Read(context.Background(), failureScope)
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		if persisted == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("recovered account usage failure = %#v", persisted)
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 	usage, err := (AccountUsageService{Manager: service.Plans.Manager, Targets: store}).Probe(context.Background(), targetID)
 	if err != nil {
@@ -661,6 +671,185 @@ func TestAgentTargetSetupPrefersCompatibleLocalCodeBuddy(t *testing.T) {
 	}
 	if runner.callCount() != 1 {
 		t.Fatalf("local runtime account usage install calls = %d, want 1", runner.callCount())
+	}
+}
+
+func TestManagedRuntimeReconcilerAutomaticallyInstallsClientPinnedRuntime(t *testing.T) {
+	binDir := t.TempDir()
+	writeVersionExecutable(t, filepath.Join(binDir, "codebuddy"), "2.121.2")
+	t.Setenv("PATH", binDir)
+	runner := &fixtureInstallRunner{
+		binary:      "codebuddy",
+		packageName: "@tencent-ai/codebuddy-code",
+		version:     "2.121.2",
+	}
+	service, targetID := setupFixture(
+		t,
+		"codebuddy",
+		"CodeBuddy Code",
+		"@tencent-ai/codebuddy-code",
+		"2.121.2",
+		"codebuddy",
+		">=2.121.2 <3.0.0",
+		runner,
+		&probeTransport{},
+	)
+	service.Plans.Manager.Sources[0].PinnedVersion = "1.0.0"
+
+	before, err := service.GetSetup(context.Background(), InstallPlanInput{
+		WorkspaceID: "workspace-1", AgentTargetID: targetID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if before.RuntimeSource != "local" {
+		t.Fatalf("runtime before automatic reconcile = %#v, want compatible local fallback", before)
+	}
+	if err := service.StartManagedRuntimeReconciler(); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(5 * time.Second)
+	var after SetupSnapshot
+	for {
+		after, err = service.GetSetup(context.Background(), InstallPlanInput{
+			WorkspaceID: "workspace-1", AgentTargetID: targetID,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if after.Status == SetupReady && after.RuntimeSource == "managed" {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("automatic managed runtime reconcile did not converge: %#v", after)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if after.Status != SetupReady || after.RuntimeSource != "managed" || after.RuntimeVersion != "2.121.2" {
+		t.Fatalf("runtime after automatic reconcile = %#v", after)
+	}
+	if runner.callCount() != 1 {
+		t.Fatalf("automatic install calls = %d, want 1", runner.callCount())
+	}
+	if errs := service.ReconcileManagedRuntimes(context.Background()); len(errs) != 0 {
+		t.Fatalf("second ReconcileManagedRuntimes() errors = %v", errs)
+	}
+	if runner.callCount() != 1 {
+		t.Fatalf("automatic install calls after convergence = %d, want 1", runner.callCount())
+	}
+}
+
+func TestManagedRuntimeReconcilerIgnoresInstallationOutsideCurrentClientPin(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	runner := &fixtureInstallRunner{
+		binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3",
+	}
+	service, _ := setupFixture(
+		t,
+		"generic",
+		"Generic Agent",
+		"@example/generic-agent",
+		"1.2.3",
+		"generic-agent",
+		">=1.2.3 <2.0.0",
+		runner,
+		&probeTransport{},
+	)
+	service.Plans.Manager.Sources[0].PinnedVersion = "2.0.0"
+
+	if errs := service.ReconcileManagedRuntimes(context.Background()); len(errs) != 0 {
+		t.Fatalf("ReconcileManagedRuntimes() errors = %v", errs)
+	}
+	if runner.callCount() != 0 {
+		t.Fatalf("out-of-pin automatic install calls = %d, want 0", runner.callCount())
+	}
+}
+
+func TestManagedRuntimeReconcilerTreatsUserCommandConflictAsPermanent(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	runner := &fixtureInstallRunner{
+		binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3",
+	}
+	service, _ := setupFixture(
+		t,
+		"generic",
+		"Generic Agent",
+		"@example/generic-agent",
+		"1.2.3",
+		"generic-agent",
+		">=1.2.3 <2.0.0",
+		runner,
+		&probeTransport{},
+	)
+	service.Plans.Manager.Sources[0].PinnedVersion = "1.0.0"
+	if err := os.MkdirAll(service.Plans.Manager.RuntimeBinDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	commandName := "generic-agent"
+	if runtime.GOOS == "windows" {
+		commandName += ".cmd"
+	}
+	if err := os.WriteFile(
+		filepath.Join(service.Plans.Manager.RuntimeBinDir, commandName),
+		[]byte("user-owned command"),
+		0o700,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome := service.reconcileManagedRuntimes(context.Background(), nil)
+	if len(outcome.results) != 1 || outcome.results[0].err == nil || outcome.results[0].retryable {
+		t.Fatalf("permanent publication outcome = %#v", outcome.results)
+	}
+	if runner.callCount() != 0 {
+		t.Fatalf("installer ran before permanent publication conflict: %d", runner.callCount())
+	}
+	retryStates := map[string]managedRuntimeRetryState{}
+	if delay := applyManagedRuntimeReconcileOutcome(retryStates, outcome, time.Unix(1_700_000_000, 0)); delay >= 0 {
+		t.Fatalf("permanent publication conflict retry delay = %v, want wake-only", delay)
+	}
+	if shouldAttemptManagedRuntime(retryStates, outcome.results[0].key, time.Unix(1_700_000_100, 0)) {
+		t.Fatal("permanent publication conflict became timer-eligible")
+	}
+}
+
+func TestManagedRuntimeRetryStateIsPerTarget(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0)
+	outcome := managedRuntimeReconcileOutcome{
+		seen: map[string]struct{}{"healthy": {}, "retrying": {}},
+		results: []managedRuntimeReconcileResult{
+			{key: "healthy"},
+			{key: "retrying", err: errors.New("temporary install failure"), retryable: true},
+		},
+	}
+	retryStates := map[string]managedRuntimeRetryState{}
+	if delay := applyManagedRuntimeReconcileOutcome(retryStates, outcome, now); delay != managedRuntimeReconcileMinBackoff {
+		t.Fatalf("first retry delay = %v, want %v", delay, managedRuntimeReconcileMinBackoff)
+	}
+	if shouldAttemptManagedRuntime(retryStates, "healthy", now.Add(time.Hour)) {
+		t.Fatal("healthy target became eligible during another target's retry")
+	}
+	if !shouldAttemptManagedRuntime(retryStates, "retrying", now.Add(managedRuntimeReconcileMinBackoff)) {
+		t.Fatal("retryable target did not become eligible after its backoff")
+	}
+}
+
+func TestManagedRuntimeInstallFailureRetryability(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		err       error
+		retryable bool
+	}{
+		{name: "installer transport", err: fmt.Errorf("%w: temporary registry failure", ErrRuntimeInstallFailed), retryable: true},
+		{name: "ACP probe", err: fmt.Errorf("%w: temporary provider failure", ErrRuntimeProbeFailed), retryable: true},
+		{name: "verification", err: fmt.Errorf("%w: incompatible signed runtime", ErrRuntimeVerifyFailed)},
+		{name: "activation", err: fmt.Errorf("%w: command ownership changed", ErrRuntimeActivateFailed)},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := managedRuntimeInstallFailureRetryable(test.err); got != test.retryable {
+				t.Fatalf("managedRuntimeInstallFailureRetryable() = %v, want %v", got, test.retryable)
+			}
+		})
 	}
 }
 

@@ -44,9 +44,11 @@ import {
   areWorkspaceUserProjectPathsEqual,
   basenameWorkspaceUserProjectPath,
   getWorkspaceUserProjectErrorCode,
+  isValidWorkspaceUserProjectName,
   prepareWorkspaceUserProjectSelection,
   resolveWorkspaceUserProjectDisplayLabel,
-  upsertWorkspaceUserProject
+  upsertWorkspaceUserProject,
+  workspaceUserProjectNameIdentityKey
 } from "../../../core/index.ts";
 import {
   createDefaultWorkspaceUserProjectI18nRuntime,
@@ -469,14 +471,30 @@ export function WorkspaceUserProjectSelect({
 
   const createProject = useCallback(async (): Promise<void> => {
     if (disabled) return;
-    const name = draftProjectName.trim();
+    const name = draftProjectName.normalize("NFC");
     if (!effectiveApi?.create) {
       setProjectCreationError(resolvedLabels.createProjectFailed);
       setApiUnavailableUnlessService(setIsApiUnavailable, service);
       return;
     }
-    if (!name) {
+    if (!name.trim()) {
       setProjectCreationError(resolvedLabels.createProjectNameRequired);
+      return;
+    }
+    if (!isValidWorkspaceUserProjectName(name)) {
+      setProjectCreationError(resolvedLabels.createProjectNameInvalid);
+      return;
+    }
+    const nameKey = workspaceUserProjectNameIdentityKey(name);
+    if (
+      projects.some(
+        (project) =>
+          workspaceUserProjectNameIdentityKey(
+            basenameWorkspaceUserProjectPath(project.path)
+          ) === nameKey
+      )
+    ) {
+      setProjectCreationError(resolvedLabels.createProjectNameConflict);
       return;
     }
     setIsCreatingProject(true);
@@ -500,6 +518,7 @@ export function WorkspaceUserProjectSelect({
     effectiveApi,
     draftProjectName,
     onProjectPathChange,
+    projects,
     resolvedLabels,
     service
   ]);

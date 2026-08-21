@@ -59,6 +59,7 @@ import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagemen
 import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
 import type { OpenAgentEnvPanelInput } from "../../shared/agentEnv";
 import type { AgentGUISessionLaunchMode } from "./model/agentSessionLaunchMode";
+import type { AgentGUISideConversationPresentation } from "../../agentSideConversationPresentation";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -133,6 +134,8 @@ export interface AgentGUINodeHostCapabilities {
   sessionInputHistoryEnabled?: boolean;
   /** Host-owned experimental opt-in for Side and transcript selection actions. */
   sideConversationEnabled?: boolean;
+  /** Optional presentation-only bridge for rendering Side outside AgentGUI. */
+  sideConversationPresentation?: AgentGUISideConversationPresentation | null;
   /** Host-owned opt-in for launching self-owned local Sessions in git worktrees. */
   sessionWorktreeEnabled?: boolean;
   /** Host-owned durable launch preference projection for this workspace. */
@@ -438,6 +441,7 @@ export function areAgentGUINodePropsEqual(
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
     pc.sideConversationEnabled === nc.sideConversationEnabled &&
+    pc.sideConversationPresentation === nc.sideConversationPresentation &&
     pc.sessionWorktreeEnabled === nc.sessionWorktreeEnabled &&
     pc.sessionLaunchModesByProjectSectionKey ===
       nc.sessionLaunchModesByProjectSectionKey &&

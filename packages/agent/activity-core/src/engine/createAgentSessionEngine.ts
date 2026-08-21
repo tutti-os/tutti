@@ -303,6 +303,7 @@ export function createAgentSessionEngine({
 
     const commandId = nextComposerOptionsCommandId();
     const signature = composerOptionsRequestSignature({
+      agentSessionId: input.agentSessionId,
       cwd: input.cwd,
       provider,
       settings: input.settings
@@ -379,6 +380,7 @@ export function createAgentSessionEngine({
       input.signal?.addEventListener("abort", onAbort, { once: true });
       pendingComposerOptionsDisposals.add(onDispose);
       engine.dispatch({
+        agentSessionId: input.agentSessionId,
         commandId,
         cwd: input.cwd,
         force: input.force,

@@ -27,7 +27,7 @@ func configureAgentRuntimeEventObservers(
 	controller *agentruntime.Controller,
 	events *eventstreamservice.Service,
 ) {
-	controller.SetStreamEventObserver(agentRuntimeActivityEventBridge{
+	controller.SetStreamEventObserver(&agentRuntimeActivityEventBridge{
 		publisher: eventstreamservice.AgentActivityPublisher{Service: events},
 	})
 	controller.SetSideStreamEventObserver(&agentRuntimeSideEventBridge{

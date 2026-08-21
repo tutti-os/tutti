@@ -134,13 +134,12 @@ func TestOpenCodeSlashCommandPolicyComesFromProviderDescriptor(t *testing.T) {
 		t.Fatal("slash command policy missing")
 		return
 	}
-	if !reflect.DeepEqual(policy.FallbackCommands, []string{"compact", "goal", "review"}) {
+	if !reflect.DeepEqual(policy.FallbackCommands, []string{"compact", "review"}) {
 		t.Fatalf("fallbackCommands = %#v", policy.FallbackCommands)
 	}
 	want := []providerregistry.SlashCommandEffectDescriptor{
 		{Command: "compact", Effect: providerregistry.SlashCommandEffectSubmitImmediate},
 		{Command: "review", Effect: providerregistry.SlashCommandEffectShowReviewPicker},
-		{Command: "goal", Effect: providerregistry.SlashCommandEffectActivateGoalMode},
 		{Command: "plan", Effect: providerregistry.SlashCommandEffectTogglePlanMode},
 	}
 	if !reflect.DeepEqual(policy.CommandEffects, want) {

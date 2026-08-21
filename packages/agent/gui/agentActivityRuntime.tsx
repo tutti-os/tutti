@@ -126,6 +126,7 @@ export interface AgentActivityRuntimeTrackSettingsProjectChangeInput {
 }
 
 export interface AgentActivityRuntimeGetComposerOptionsInput {
+  agentSessionId?: string | null;
   agentTargetId: string;
   cwd?: string | null;
   force?: boolean;

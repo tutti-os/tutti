@@ -72,6 +72,7 @@ const externalizeRuntimeDeps = externalizeDepsPlugin({
     "@tutti-os/workspace-file-manager",
     "@tutti-os/workspace-external-core",
     "@tutti-os/workspace-file-preview",
+    "@tutti-os/workspace-user-project",
     "ws"
   ]
 });

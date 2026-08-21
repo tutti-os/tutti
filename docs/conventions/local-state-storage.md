@@ -416,14 +416,19 @@ branch with an expected-object-id compare so a concurrent commit is preserved.
 
 `agent/extensions` is daemon-owned verified Agent Extension state. Version
 directories are immutable after installation; `active.json` selects the
-currently registered version and is replaced atomically. Extension ZIPs do not
-contain runtimes or executables. Cached assets and profiles remain under each
-fixed installation for integrity checks and future session-pinned resume.
+currently registered client-pinned version and is replaced atomically. A remote
+active record from another client pin is not a valid offline fallback.
+Extension ZIPs do not contain runtimes or executables. Cached assets and
+profiles remain under each fixed installation for integrity checks and future
+session-pinned resume.
 Development-only local package overrides are copied into the same state as
 content-addressed `+local.<digest>` versions; the daemon never launches against
 the mutable source directory. Only the `data/agentextension` installation
 adapter derives these paths or persists `installation.json` and `active.json`;
-the service layer retains verification and activation workflow ownership.
+the service layer retains verification and activation workflow ownership. The
+managed-first decision is derived from the running client's exact source pin,
+not persisted as a separate mutable installation fact. Readers discard the
+legacy `preferManagedRuntime` field after decoding older records.
 Agent Extension executables are user-local programs rather than daemon state:
 
 ```text
@@ -443,13 +448,19 @@ Agent Extension executables are user-local programs rather than daemon state:
         claude
 ```
 
-A compatible user-local executable remains preferred; otherwise one explicitly
-confirmed, pinned runtime is installed per extension version and reused across
-development, production, and all workspaces. Runtime installation never writes
-under a user project. Setup action records, extension packages, discovery CWDs,
-and session state remain under the selected `~/.tutti[-dev]` state root. The
-Claude SDK sidecar's `current.json` pointer is state metadata, while its pinned
-native executable uses the shared user-local runtime root.
+For client-pinned remote Extensions, one matching managed Runtime is installed
+automatically and reused across production state and all workspaces; a
+compatible user-local executable is only a fallback until that convergence
+succeeds. Development package snapshots remain local-first. Automatic
+installation never modifies a user-owned executable or writes under a user
+project. Retry state is process-local and keyed by Target installation:
+transient failures back off independently to a 30-minute ceiling, while
+permanent contract or command-ownership conflicts wait for a source or
+preference wake, or an explicit setup action.
+Setup action records, extension packages, discovery CWDs, and session state
+remain under the selected `~/.tutti[-dev]` state root. The Claude SDK sidecar's
+`current.json` pointer is state metadata, while its pinned native executable
+uses the shared user-local runtime root.
 
 Agent Extension activation publishes its command through the stable two-link
 chain above. Development and production share that command and underlying

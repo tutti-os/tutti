@@ -1192,7 +1192,12 @@ func (application *Application) executeOperation(ctx context.Context, operationI
 	case OperationKindDisconnectAuthorization:
 		executeErr = application.executeDisconnectAuthorization(executionContext, operation)
 	case OperationKindStartAuthorization:
-		_, executeErr = application.beginAuthorizationSession(executionContext, operation, nil, "")
+		executeErr = NewDomainError(
+			ErrorCodeAuthorizationFailed,
+			"connector authorization cannot be recovered without the original command",
+			false,
+			nil,
+		)
 	default:
 		executeErr = invalidRequest(fmt.Sprintf("operation kind %q is not executable", operation.Kind))
 	}
@@ -1254,6 +1259,12 @@ func (application *Application) Recover(ctx context.Context) error {
 		return err
 	}
 	for _, operation := range operations {
+		if !OperationEffectIsDurable(operation.Kind) {
+			if err := application.failOperation(ctx, operation.OperationID, ErrorCodeAuthorizationFailed); err != nil {
+				return err
+			}
+			continue
+		}
 		if operationTouchesImplementationHost(operation.Kind) && operation.HostGeneration.BootEpoch != application.config.BootEpoch {
 			operation, err = application.adoptRuntimeOperation(ctx, operation.OperationID)
 			if err != nil {
@@ -1290,6 +1301,15 @@ func operationTouchesImplementationHost(kind OperationKind) bool {
 	default:
 		return false
 	}
+}
+
+// OperationEffectIsDurable reports whether recovery may execute an accepted or
+// running operation from persisted state alone. Start authorization keeps the
+// user secret only in the BeginAuthorization command, so replaying it would
+// complete a native-secret session with an empty secret and fail the live
+// command.
+func OperationEffectIsDurable(kind OperationKind) bool {
+	return kind != OperationKindStartAuthorization
 }
 
 func (application *Application) adoptRuntimeOperation(ctx context.Context, operationID string) (Operation, error) {
@@ -1410,7 +1430,7 @@ func (application *Application) acceptConnectorOperation(
 	if err != nil {
 		return MutationResult{}, err
 	}
-	if kind != OperationKindStartAuthorization &&
+	if OperationEffectIsDurable(kind) &&
 		(result.Operation.State == OperationStateAccepted || result.Operation.State == OperationStateRunning) {
 		if err := application.config.Scheduler.Schedule(ctx, result.Operation.OperationID); err != nil {
 			return MutationResult{}, NewDomainError(ErrorCodeUnavailable, "connector operation could not be scheduled", true, err)

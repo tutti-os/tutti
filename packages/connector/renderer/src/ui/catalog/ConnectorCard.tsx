@@ -31,7 +31,8 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
   }
 
   const actionLabel = resolveActionLabel(card, i18n.t);
-  const status = resolveStatus(card.status, i18n.t);
+  const showStatus = card.status !== "not_installed";
+  const status = showStatus ? resolveStatus(card.status, i18n.t) : null;
   const handleAction = () => {
     if (card.action === "disconnect") {
       if (disconnecting) {
@@ -116,29 +117,33 @@ export function ConnectorCard({ connectorKey }: { connectorKey: string }) {
           </DropdownMenu>
         ) : null}
       </div>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]">
-          <StatusDot
-            pulse={["installing", "updating"].includes(card.status)}
-            size="xs"
-            tone={status.tone}
-          />
-          <span className="truncate">
-            {card.operationStage && card.operationStage !== "completed"
-              ? operationStageLabel(card.operationStage, i18n.t)
-              : status.label}
-          </span>
-        </div>
+      <div
+        className={
+          showStatus
+            ? "flex items-center justify-between gap-3"
+            : "flex items-center justify-end gap-3"
+        }
+      >
+        {status ? (
+          <div className="flex min-w-0 items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+            <StatusDot
+              pulse={["installing", "updating"].includes(card.status)}
+              size="xs"
+              tone={status.tone}
+            />
+            <span className="truncate">
+              {card.operationStage && card.operationStage !== "completed"
+                ? operationStageLabel(card.operationStage, i18n.t)
+                : status.label}
+            </span>
+          </div>
+        ) : null}
         <Button
           disabled={card.action === "busy" || disconnecting}
           size="sm"
           type="button"
           variant={
-            card.action === "disconnect"
-              ? "destructive-secondary"
-              : card.action === "install" || card.action === "update"
-                ? "outline"
-                : "secondary"
+            card.action === "disconnect" ? "destructive-secondary" : "secondary"
           }
           onClick={handleAction}
         >

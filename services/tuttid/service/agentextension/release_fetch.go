@@ -13,7 +13,6 @@ import (
 	"io"
 	"net/http"
 	"reflect"
-	"sort"
 	"strings"
 	"time"
 
@@ -149,7 +148,12 @@ func (m *Manager) resolveReleaseRecord(
 		if err := decodeJSON(data, &versions); err != nil {
 			return VersionRecord{}, fmt.Errorf("decode release index %s: %w", indexURL, err)
 		}
-		record, err := selectVersion(versions, source.Key, tuttitypes.ResolveAppVersion())
+		record, err := selectVersion(
+			versions,
+			source.Key,
+			tuttitypes.ResolveAppVersion(),
+			source.PinnedVersion,
+		)
 		if err != nil {
 			return VersionRecord{}, fmt.Errorf("select release from index %s: %w", indexURL, err)
 		}
@@ -237,24 +241,31 @@ func httpsOnlyRedirectClient(client *http.Client, downgradeError error) *http.Cl
 	return &clone
 }
 
-func selectVersion(document Versions, key string, appVersion string) (VersionRecord, error) {
+func selectVersion(document Versions, key string, appVersion string, pinnedVersion string) (VersionRecord, error) {
 	if document.SchemaVersion != versionsSchema || document.AgentKey != key {
 		return VersionRecord{}, errors.New("invalid extension versions identity")
 	}
-	candidates := append([]VersionRecord(nil), document.Versions...)
-	sort.SliceStable(candidates, func(i, j int) bool { return semver.Compare("v"+candidates[i].Version, "v"+candidates[j].Version) > 0 })
-	for _, record := range candidates {
-		if record.Status != "active" || !validSemver(record.Version) || !validSemver(record.MinTuttiVersion) {
-			continue
-		}
-		if semver.Compare("v"+appVersion, "v"+record.MinTuttiVersion) < 0 {
-			continue
-		}
-		if len(record.RequiredHostCapabilities) == 0 {
-			return record, nil
-		}
+	pinnedVersion = strings.TrimSpace(pinnedVersion)
+	if !validSemver(pinnedVersion) {
+		return VersionRecord{}, errors.New("configured extension version pin is invalid")
 	}
-	return VersionRecord{}, errors.New("no compatible active extension version")
+	if !validSemver(appVersion) {
+		return VersionRecord{}, errors.New("current Tutti version is invalid")
+	}
+	for _, record := range document.Versions {
+		if record.Version != pinnedVersion {
+			continue
+		}
+		if record.Status != "active" || !validSemver(record.Version) || !validSemver(record.MinTuttiVersion) ||
+			semver.Compare("v"+appVersion, "v"+record.MinTuttiVersion) < 0 || len(record.RequiredHostCapabilities) != 0 {
+			return VersionRecord{}, errors.New("pinned extension version is not active or compatible with this client")
+		}
+		if record.Release.Version != record.Version {
+			return VersionRecord{}, errors.New("pinned extension release identity does not match its index record")
+		}
+		return record, nil
+	}
+	return VersionRecord{}, errors.New("pinned extension version is missing from the release index")
 }
 
 func verifyRelease(release Release, source tuttitypes.AgentExtensionSource) error {

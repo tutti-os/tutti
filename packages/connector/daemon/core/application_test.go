@@ -1706,6 +1706,50 @@ func TestApplicationRecoveryAdoptsInstallAndUninstallIntoCurrentBootEpoch(t *tes
 	}
 }
 
+func TestApplicationRecoveryFailsStartAuthorizationInsteadOfReplayingIt(t *testing.T) {
+	github := testConnector("github")
+	cloudflare := testConnector("cloudflare")
+	cloudflare.Authorization = Authorization{State: AuthorizationStatePending}
+	repository := newMemoryRepository(github, cloudflare)
+	scheduler := &memoryScheduler{}
+	application := newTestApplication(t, repository, scheduler, &memoryInstallRuntime{}, CatalogSnapshot{})
+	accepted, err := application.Install(context.Background(), ConnectorMutation{
+		Mutation: Mutation{ClientRequestID: "request-install", ExpectedRevision: 0}, ConnectorKey: github.Key,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	authorization := Operation{
+		OperationID: "recover-authorization", ClientRequestID: "request-authorization", ConnectorKey: cloudflare.Key,
+		Kind: OperationKindStartAuthorization, State: OperationStateRunning, Stage: OperationStageAuthorizing,
+		CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(2, 0).UTC(),
+	}
+	repository.operations[authorization.OperationID] = authorization
+
+	if err := application.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	failed := repository.operations[authorization.OperationID]
+	if failed.State != OperationStateFailed || failed.FailureCode != string(ErrorCodeAuthorizationFailed) {
+		t.Fatalf("start_authorization after recovery = %#v", failed)
+	}
+	if connector := repository.connectors[cloudflare.Key]; connector.Authorization.State != AuthorizationStateFailed ||
+		connector.Authorization.FailureCode != string(ErrorCodeAuthorizationFailed) {
+		t.Fatalf("authorization projection after recovery = %#v", connector.Authorization)
+	}
+	if len(scheduler.operationIDs) != 2 { // Install acceptance plus durable install recovery.
+		t.Fatalf("scheduled operations = %#v", scheduler.operationIDs)
+	}
+	for _, operationID := range scheduler.operationIDs {
+		if operationID == authorization.OperationID {
+			t.Fatalf("start_authorization was scheduled: %#v", scheduler.operationIDs)
+		}
+		if operationID != accepted.Operation.OperationID {
+			t.Fatalf("unexpected scheduled operation %s: %#v", operationID, scheduler.operationIDs)
+		}
+	}
+}
+
 func TestApplicationWritesChangedEventsInsideRepositoryTransactions(t *testing.T) {
 	repository := newMemoryRepository(testConnector("github"))
 	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})

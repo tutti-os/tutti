@@ -23,7 +23,6 @@ import {
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
   agentComposerDraftPrompt,
-  buildAgentComposerDraft,
   MAX_AGENT_COMPOSER_DRAFT_IMAGES,
   updateAgentComposerDraft
 } from "../model/agentComposerDraft";
@@ -276,14 +275,8 @@ export function useComposerDraftAttachments({
       const nextDraftImages = [...currentDraftImages, ...nextImages];
       draftImagesRef.current = nextDraftImages;
       reportContentEntered("image");
-      publishScopedDraft(
-        draftScopeKey,
-        buildAgentComposerDraft({
-          prompt: draftPromptRef.current,
-          images: nextDraftImages,
-          files: draftFilesRef.current,
-          largeTexts: draftLargeTextsRef.current
-        })
+      updateScopedDraft(draftScopeKey, (currentDraft) =>
+        updateAgentComposerDraft(currentDraft, { images: nextDraftImages })
       );
       if (!uploadPromptContent) {
         return;
@@ -390,7 +383,6 @@ export function useComposerDraftAttachments({
       agentActivityRuntime,
       draftScopeKey,
       onPromptImagesUnsupported,
-      publishScopedDraft,
       promptImagesSupported,
       promptAssetLimit,
       reportContentEntered,
@@ -405,17 +397,11 @@ export function useComposerDraftAttachments({
         (image) => image.id !== id
       );
       draftImagesRef.current = nextDraftImages;
-      publishScopedDraft(
-        draftScopeKey,
-        buildAgentComposerDraft({
-          prompt: draftPromptRef.current,
-          images: nextDraftImages,
-          files: draftFilesRef.current,
-          largeTexts: draftLargeTextsRef.current
-        })
+      updateScopedDraft(draftScopeKey, (currentDraft) =>
+        updateAgentComposerDraft(currentDraft, { images: nextDraftImages })
       );
     },
-    [draftScopeKey, publishScopedDraft]
+    [draftScopeKey, updateScopedDraft]
   );
 
   const addDraftFiles = useCallback(
@@ -456,14 +442,8 @@ export function useComposerDraftAttachments({
         ...preparation.pendingFiles
       ];
       draftFilesRef.current = nextDraftFiles;
-      publishScopedDraft(
-        draftScopeKey,
-        buildAgentComposerDraft({
-          prompt: draftPromptRef.current,
-          images: draftImagesRef.current,
-          files: nextDraftFiles,
-          largeTexts: draftLargeTextsRef.current
-        })
+      updateScopedDraft(draftScopeKey, (currentDraft) =>
+        updateAgentComposerDraft(currentDraft, { files: nextDraftFiles })
       );
       editorHandleRef.current.insertComposerFiles(
         preparation.pendingFiles.map((file) => ({
@@ -554,7 +534,6 @@ export function useComposerDraftAttachments({
       prepareExternalPromptFiles,
       promptAssetLimit,
       promptFilesSupported,
-      publishScopedDraft,
       showErrorToast,
       updateScopedDraft,
       workspaceId
@@ -567,17 +546,13 @@ export function useComposerDraftAttachments({
         (item) => item.id !== id
       );
       draftLargeTextsRef.current = nextDraftLargeTexts;
-      publishScopedDraft(
-        draftScopeKey,
-        buildAgentComposerDraft({
-          prompt: draftPromptRef.current,
-          images: draftImagesRef.current,
-          files: draftFilesRef.current,
+      updateScopedDraft(draftScopeKey, (currentDraft) =>
+        updateAgentComposerDraft(currentDraft, {
           largeTexts: nextDraftLargeTexts
         })
       );
     },
-    [draftScopeKey, publishScopedDraft]
+    [draftScopeKey, updateScopedDraft]
   );
 
   // "Show in text field": dissolve a pasted-text chip back into the composer as
@@ -600,12 +575,9 @@ export function useComposerDraftAttachments({
       draftPromptRef.current = nextPrompt;
       draftLargeTextsRef.current = nextDraftLargeTexts;
       setPaletteDraftPrompt(nextPrompt);
-      publishScopedDraft(
-        draftScopeKey,
-        buildAgentComposerDraft({
+      updateScopedDraft(draftScopeKey, (currentDraft) =>
+        updateAgentComposerDraft(currentDraft, {
           prompt: nextPrompt,
-          images: draftImagesRef.current,
-          files: draftFilesRef.current,
           largeTexts: nextDraftLargeTexts
         })
       );
@@ -613,7 +585,7 @@ export function useComposerDraftAttachments({
         editorHandleRef.current?.focusAtEnd();
       });
     },
-    [draftScopeKey, publishScopedDraft]
+    [draftScopeKey, updateScopedDraft]
   );
 
   const handlePastedLargeText = useCallback(
@@ -656,12 +628,8 @@ export function useComposerDraftAttachments({
         }
       ];
       draftLargeTextsRef.current = nextDraftLargeTexts;
-      publishScopedDraft(
-        draftScopeKey,
-        buildAgentComposerDraft({
-          prompt: draftPromptRef.current,
-          images: draftImagesRef.current,
-          files: draftFilesRef.current,
+      updateScopedDraft(draftScopeKey, (currentDraft) =>
+        updateAgentComposerDraft(currentDraft, {
           largeTexts: nextDraftLargeTexts
         })
       );
@@ -705,7 +673,6 @@ export function useComposerDraftAttachments({
       draftScopeKey,
       pastedTextStagingSupported,
       promptAssetLimit,
-      publishScopedDraft,
       reportContentEntered,
       updateScopedDraft,
       workspaceId

@@ -22,6 +22,12 @@ export interface ConnectorMarketSectionState extends ConnectorMarketCategory {
 export interface ConnectorMarketStoreState {
   loadState: ConnectorMarketLoadState;
   catalogState: ConnectorCatalogState;
+  /**
+   * Renderer-local: an explicit `refreshCatalog()` command is in flight.
+   * Daemon scheduled refresh may set `catalogState` to `refreshing` without
+   * this flag; the toolbar must not spin for that background sync.
+   */
+  pendingExplicitCatalogRefresh: boolean;
   catalogOperation: ConnectorOperation | null;
   catalogSections: ConnectorMarketSectionState[];
   connectorsByKey: Record<string, Connector>;

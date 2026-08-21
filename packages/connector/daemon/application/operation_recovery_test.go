@@ -43,6 +43,46 @@ func TestOperationRecoveryReschedulesDurableRunningWorkAfterWakeLoss(t *testing.
 	}
 }
 
+func TestOperationRecoverySkipsStartAuthorizationBecauseTheSecretIsNotDurable(t *testing.T) {
+	ctx := context.Background()
+	store, err := marketdata.Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	install := market.Operation{
+		OperationID: "install-1", ClientRequestID: "request-install", ConnectorKey: "github",
+		Kind: market.OperationKindInstall, State: market.OperationStateRunning, Stage: market.OperationStageInstalling,
+		CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(2, 0).UTC(),
+	}
+	authorization := market.Operation{
+		OperationID: "authorization-1", ClientRequestID: "request-authorization", ConnectorKey: "cloudflare",
+		Kind: market.OperationKindStartAuthorization, State: market.OperationStateRunning, Stage: market.OperationStageAuthorizing,
+		CreatedAt: time.Unix(1, 0).UTC(), UpdatedAt: time.Unix(2, 0).UTC(),
+	}
+	if err := store.Transaction(ctx, func(tx market.Transaction) error {
+		if err := tx.SaveOperation(install); err != nil {
+			return err
+		}
+		return tx.SaveOperation(authorization)
+	}); err != nil {
+		t.Fatal(err)
+	}
+	executor := &recordingOperationExecutor{}
+	scheduler := NewOperationScheduler(ctx)
+	if err := scheduler.Bind(executor); err != nil {
+		t.Fatal(err)
+	}
+	host := &Host{repository: store, scheduler: scheduler}
+	if err := host.scheduleRecoverableOperations(ctx); err != nil {
+		t.Fatal(err)
+	}
+	scheduler.Wait()
+	if calls := executor.operationIDs(); len(calls) != 1 || calls[0] != install.OperationID {
+		t.Fatalf("recovered operations = %#v", calls)
+	}
+}
+
 func TestOperationRecoveryDelaysRecentHighAttemptWork(t *testing.T) {
 	ctx := context.Background()
 	store, err := marketdata.Open(ctx, filepath.Join(t.TempDir(), "tuttid.db"))

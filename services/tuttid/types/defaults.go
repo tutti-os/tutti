@@ -55,6 +55,7 @@ type generatedAgentExtensionDefaults struct {
 
 type generatedAgentExtensionSourceDefaults struct {
 	Key                      string
+	PinnedVersion            string
 	ReleaseIndexURL          string
 	FallbackReleaseIndexURLs []string
 	SigningKeyID             string
@@ -64,6 +65,7 @@ type generatedAgentExtensionSourceDefaults struct {
 
 type AgentExtensionSource struct {
 	Key                         string
+	PinnedVersion               string
 	ReleaseIndexURL             string
 	FallbackReleaseIndexURLs    []string
 	SigningKeyID                string
@@ -211,6 +213,7 @@ func ResolveAgentExtensionSources() []AgentExtensionSource {
 		}
 		result = append(result, AgentExtensionSource{
 			Key:                         source.Key,
+			PinnedVersion:               source.PinnedVersion,
 			ReleaseIndexURL:             source.ReleaseIndexURL,
 			FallbackReleaseIndexURLs:    append([]string(nil), source.FallbackReleaseIndexURLs...),
 			SigningKeyID:                source.SigningKeyID,

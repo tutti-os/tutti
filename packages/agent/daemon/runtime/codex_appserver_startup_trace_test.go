@@ -18,7 +18,7 @@ func TestCodexAppServerStartupTraceRecordsStructuredSpanClose(t *testing.T) {
 		spanObserver: func(observation CodexAppServerSpanObservation) {
 			observations = append(observations, observation)
 		},
-		spanStartedAt: make(map[string][]time.Time),
+		openSpans: make(map[string][]codexAppServerOpenSpan),
 	}
 	firstChunk := []byte(`{"timestamp":"2026-08-20T02:00:00.000Z","level":"INFO","target":"codex_core","fields":{"message":"new"},"span":{"name":"session_init"}`)
 	secondChunk := []byte(`}
@@ -68,18 +68,83 @@ func TestCodexAppServerStartupTraceRecordsStructuredSpanClose(t *testing.T) {
 	if closeRecord["span_busy"] != "120ms" || closeRecord["span_idle"] != "5ms" {
 		t.Fatalf("span timing = %#v, want busy/idle values", closeRecord)
 	}
+	if len(observations) != 2 {
+		t.Fatalf("span observations = %d, want new and close", len(observations))
+	}
+	newObservation := observations[0]
+	closeObservation := observations[1]
+	if newObservation.Provider != ProviderCodex || newObservation.RoomID != "room-1" || newObservation.AgentSessionID != "session-1" {
+		t.Fatalf("new observation scope = %#v, want Codex room/session scope", newObservation)
+	}
+	if newObservation.SpanName != "session_init" || newObservation.SpanPhase != "new" || newObservation.DurationMS != 0 {
+		t.Fatalf("new observation span = %#v, want session_init new at 0ms", newObservation)
+	}
+	if newObservation.SpanInstanceID == "" || newObservation.SpanInstanceID != closeObservation.SpanInstanceID {
+		t.Fatalf("span instance IDs = %q and %q, want the same non-empty ID", newObservation.SpanInstanceID, closeObservation.SpanInstanceID)
+	}
+	if closeObservation.SpanName != "session_init" || closeObservation.SpanPhase != "close" || closeObservation.DurationMS != 125 {
+		t.Fatalf("close observation span = %#v, want session_init close at 125ms", closeObservation)
+	}
+	if closeObservation.SpanBusy != "120ms" || closeObservation.SpanIdle != "5ms" {
+		t.Fatalf("close observation timing = %#v, want busy/idle values", closeObservation)
+	}
+}
+
+func TestCodexAppServerStartupTraceReportsOpenSpanBeforeClose(t *testing.T) {
+	var observations []CodexAppServerSpanObservation
+	trace := &codexAppServerStartupTrace{
+		startedAt: time.Now(),
+		session:   Session{Provider: ProviderCodex, RoomID: "room-1", AgentSessionID: "session-1"},
+		path:      filepath.Join(t.TempDir(), "trace.jsonl"),
+		spanObserver: func(observation CodexAppServerSpanObservation) {
+			observations = append(observations, observation)
+		},
+		openSpans: make(map[string][]codexAppServerOpenSpan),
+	}
+
+	trace.LogStderr([]byte(`{"timestamp":"2026-08-20T02:00:00.000Z","target":"codex_core","fields":{"message":"new"},"span":{"name":"app_server.thread_start.send_response"}}
+`))
+
 	if len(observations) != 1 {
-		t.Fatalf("span observations = %d, want one completed span", len(observations))
+		t.Fatalf("span observations = %d, want one open span", len(observations))
 	}
-	observation := observations[0]
-	if observation.Provider != ProviderCodex || observation.RoomID != "room-1" || observation.AgentSessionID != "session-1" {
-		t.Fatalf("observation scope = %#v, want Codex room/session scope", observation)
+	if observations[0].SpanPhase != "new" || observations[0].SpanName != "app_server.thread_start.send_response" {
+		t.Fatalf("open observation = %#v, want send_response new", observations[0])
 	}
-	if observation.SpanName != "session_init" || observation.SpanPhase != "close" || observation.DurationMS != 125 {
-		t.Fatalf("observation span = %#v, want session_init close at 125ms", observation)
+	if observations[0].SpanInstanceID == "" {
+		t.Fatal("open observation has empty span instance ID")
 	}
-	if observation.SpanBusy != "120ms" || observation.SpanIdle != "5ms" {
-		t.Fatalf("observation timing = %#v, want busy/idle values", observation)
+}
+
+func TestCodexAppServerStartupTraceAssociatesNestedSameNameSpans(t *testing.T) {
+	var observations []CodexAppServerSpanObservation
+	trace := &codexAppServerStartupTrace{
+		startedAt: time.Now(),
+		session:   Session{Provider: ProviderCodex, RoomID: "room-1", AgentSessionID: "session-1"},
+		path:      filepath.Join(t.TempDir(), "trace.jsonl"),
+		spanObserver: func(observation CodexAppServerSpanObservation) {
+			observations = append(observations, observation)
+		},
+		openSpans: make(map[string][]codexAppServerOpenSpan),
+	}
+
+	trace.LogStderr([]byte(`{"timestamp":"2026-08-20T02:00:00.000Z","fields":{"message":"new"},"span":{"name":"session_init"}}
+{"timestamp":"2026-08-20T02:00:00.001Z","fields":{"message":"new"},"span":{"name":"session_init"}}
+{"timestamp":"2026-08-20T02:00:00.003Z","fields":{"message":"close"},"span":{"name":"session_init"}}
+{"timestamp":"2026-08-20T02:00:00.005Z","fields":{"message":"close"},"span":{"name":"session_init"}}
+`))
+
+	if len(observations) != 4 {
+		t.Fatalf("span observations = %d, want two new and two close", len(observations))
+	}
+	if observations[0].SpanInstanceID == observations[1].SpanInstanceID {
+		t.Fatal("nested spans have the same instance ID")
+	}
+	if observations[2].SpanInstanceID != observations[1].SpanInstanceID || observations[3].SpanInstanceID != observations[0].SpanInstanceID {
+		t.Fatalf("close instance IDs = %q, %q; want LIFO association", observations[2].SpanInstanceID, observations[3].SpanInstanceID)
+	}
+	if observations[2].DurationMS != 2 || observations[3].DurationMS != 5 {
+		t.Fatalf("close durations = %d, %d; want 2ms and 5ms", observations[2].DurationMS, observations[3].DurationMS)
 	}
 }
 
@@ -100,7 +165,7 @@ func TestCodexAppServerStartupTraceReportsBoundedSummary(t *testing.T) {
 		startupObserver: func(observation CodexAppServerStartupObservation) {
 			observations = append(observations, observation)
 		},
-		spanStartedAt: make(map[string][]time.Time),
+		openSpans: make(map[string][]codexAppServerOpenSpan),
 	}
 
 	trace.LogStderr([]byte(`{"timestamp":"2026-08-20T02:00:00.000Z","fields":{"message":"new"},"span":{"name":"session_init"}}
@@ -134,7 +199,7 @@ func TestCodexAppServerStartupTraceStartupObserverPanicDoesNotEscape(t *testing.
 		startupObserver: func(CodexAppServerStartupObservation) {
 			panic("analytics observer failure")
 		},
-		spanStartedAt: make(map[string][]time.Time),
+		openSpans: make(map[string][]codexAppServerOpenSpan),
 	}
 
 	trace.Finish(nil)
@@ -148,7 +213,7 @@ func TestCodexAppServerStartupTraceObserverPanicDoesNotEscape(t *testing.T) {
 		spanObserver: func(CodexAppServerSpanObservation) {
 			panic("analytics observer failure")
 		},
-		spanStartedAt: make(map[string][]time.Time),
+		openSpans: make(map[string][]codexAppServerOpenSpan),
 	}
 
 	trace.LogStderr([]byte(`{"timestamp":"2026-08-20T02:00:00.000Z","fields":{"message":"new"},"span":{"name":"session_init"}}

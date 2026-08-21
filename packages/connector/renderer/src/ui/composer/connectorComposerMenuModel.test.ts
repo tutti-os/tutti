@@ -6,20 +6,22 @@ import {
   type ConnectorComposerItem
 } from "./ConnectorComposerMenu.tsx";
 
-test("orders installed connectors by installation time and preserves catalog order for legacy entries", () => {
+test("orders installed authorized connectors first, then by installation event", () => {
   const items: ConnectorComposerItem[] = [
     item(" github "),
+    item("cloudflare", "authorization_required", false, 900),
     item("figma", "connected", false, 200),
     item("notion", "connected", true, 300),
     item("legacy", "disabled"),
     item("github"),
+    item("hubspot", "authorization_required", false, 400),
     item("lark"),
     item("   ")
   ];
 
   assert.deepEqual(
     normalizeConnectorItems(items).map((entry) => entry.connectorKey),
-    ["notion", "figma", "legacy", "github", "lark"]
+    ["notion", "figma", "legacy", "cloudflare", "hubspot", "github", "lark"]
   );
 });
 

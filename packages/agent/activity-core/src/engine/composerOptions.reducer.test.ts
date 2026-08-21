@@ -38,6 +38,44 @@ function loadRequest(force = false) {
   };
 }
 
+test("a different Session identity does not reuse a settled capabilities catalog", () => {
+  let state = composerOptionsReducer(createInitialComposerOptionsState(), {
+    ...loadRequest(),
+    agentSessionId: "session-a",
+    section: "capabilities"
+  }).state;
+  state = composerOptionsReducer(state, {
+    type: "engine/commandResult",
+    commandId: "cmd-1",
+    commandType: "composerOptions/load",
+    correlationId: "target-1::capabilities",
+    outcome: "succeeded",
+    value: options({
+      skills: [
+        {
+          kind: "skill",
+          name: "session-a-skill",
+          sourceKind: "personal",
+          trigger: "$session-a-skill"
+        }
+      ]
+    })
+  }).state;
+
+  const result = composerOptionsReducer(state, {
+    ...loadRequest(),
+    agentSessionId: "session-b",
+    commandId: "cmd-2",
+    section: "capabilities"
+  });
+
+  assert.equal(result.commands.length, 1);
+  assert.equal(
+    (result.commands[0] as ComposerOptionsLoadCommand).agentSessionId,
+    "session-b"
+  );
+});
+
 test("loadRequested emits a load command and marks the target loading", () => {
   const result = composerOptionsReducer(
     createInitialComposerOptionsState(),
@@ -188,6 +226,7 @@ test("validated settings success refreshes provider-declared target options", ()
 
   assert.deepEqual(refreshed.commands, [
     {
+      agentSessionId: "session-1",
       commandId: "composer-options:after-settings:settings-1",
       correlationId: "target-1::core",
       cwd: "/workspace",

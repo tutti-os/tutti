@@ -101,6 +101,11 @@ export interface AgentSideConversationRuntime {
   }): Promise<void>;
   getSnapshot(workspaceId: string): AgentSideConversationSnapshot;
   subscribe(workspaceId: string, listener: () => void): () => void;
+  subscribeConnectionState(
+    listener: (
+      state: "connected" | "connecting" | "disconnected" | "disposed"
+    ) => void
+  ): () => void;
   dispose?(): void;
 }
 
@@ -148,7 +153,12 @@ const EMPTY_CAPABILITY_STORE: EngineStateStore<AgentSideCapabilitySnapshot> = {
 };
 const RUNTIME_CAPABILITY_STORES = new WeakMap<
   AgentSideConversationRuntime,
-  Map<string, EngineStateStore<AgentSideCapabilitySnapshot>>
+  Map<
+    string,
+    EngineStateStore<AgentSideCapabilitySnapshot> & {
+      revision: string;
+    }
+  >
 >();
 
 function emptySnapshot(workspaceId: string): AgentSideConversationSnapshot {
@@ -205,9 +215,11 @@ export function useAgentSideConversationSnapshot(
 
 function sideCapabilityStore(
   runtime: AgentSideConversationRuntime | null,
-  input: AgentSideConversationOpenInput
+  input: AgentSideConversationOpenInput,
+  revision: string
 ): EngineStateStore<AgentSideCapabilitySnapshot> {
   if (!runtime || !input.sourceAgentSessionId) return EMPTY_CAPABILITY_STORE;
+  const capabilityRuntime = runtime;
   let stores = RUNTIME_CAPABILITY_STORES.get(runtime);
   if (!stores) {
     stores = new Map();
@@ -215,41 +227,77 @@ function sideCapabilityStore(
   }
   const key = JSON.stringify(input);
   const existing = stores.get(key);
-  if (existing) return existing;
+  if (existing?.revision === revision) return existing;
   let snapshot: AgentSideCapabilitySnapshot = {
     supported: false,
     settled: false
   };
   const listeners = new Set<() => void>();
-  const store: EngineStateStore<AgentSideCapabilitySnapshot> = {
-    getSnapshot: () => snapshot,
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    }
-  };
-  stores.set(key, store);
-  void runtime
-    .resolveCapabilities(input)
-    .then((capabilities) => {
+  let connectionUnsubscribe: (() => void) | null = null;
+  let pendingReprobe = false;
+  let probing = false;
+  const notify = () => listeners.forEach((listener) => listener());
+  async function probe(): Promise<void> {
+    if (probing) return;
+    probing = true;
+    try {
+      const capabilities = await capabilityRuntime.resolveCapabilities(input);
       snapshot = {
         supported: supportsAgentSideConversation(capabilities),
         settled: true
       };
-      listeners.forEach((listener) => listener());
-    })
-    .catch(() => {
+    } catch {
       snapshot = EMPTY_CAPABILITY_SNAPSHOT;
-      listeners.forEach((listener) => listener());
-    });
+    } finally {
+      probing = false;
+      notify();
+      if (pendingReprobe) {
+        pendingReprobe = false;
+        if (listeners.size > 0 && !snapshot.supported) void probe();
+      }
+    }
+  }
+  const store: EngineStateStore<AgentSideCapabilitySnapshot> & {
+    revision: string;
+  } = {
+    revision,
+    getSnapshot: () => snapshot,
+    subscribe: (listener) => {
+      listeners.add(listener);
+      if (!connectionUnsubscribe) {
+        connectionUnsubscribe = capabilityRuntime.subscribeConnectionState(
+          (state) => {
+            if (state !== "connected") return;
+            if (probing || !snapshot.settled) {
+              pendingReprobe = true;
+              return;
+            }
+            if (!snapshot.supported) void probe();
+          }
+        );
+      }
+      if (snapshot.settled && !snapshot.supported) void probe();
+      return () => {
+        listeners.delete(listener);
+        if (listeners.size === 0) {
+          connectionUnsubscribe?.();
+          connectionUnsubscribe = null;
+        }
+      };
+    }
+  };
+  stores.set(key, store);
+  void probe();
   return store;
 }
 
 export function useAgentSideConversationSupport(
-  input: AgentSideConversationOpenInput
+  input: AgentSideConversationOpenInput,
+  revision = ""
 ): boolean {
   const runtime = useOptionalAgentSideConversationRuntime();
-  return useEngineSelector(sideCapabilityStore(runtime, input), (snapshot) =>
-    snapshot.settled ? snapshot.supported : false
+  return useEngineSelector(
+    sideCapabilityStore(runtime, input, revision),
+    (snapshot) => (snapshot.settled ? snapshot.supported : false)
   );
 }

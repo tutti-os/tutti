@@ -1,5 +1,9 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
+import {
+  AgentGUISideConversationSurface,
+  type AgentGUISideConversationPresentation
+} from "@tutti-os/agent-gui";
 import type { AgentToolTab } from "@tutti-os/agent-gui/workbench/tool-sidebar";
 import type { AgentToolBrowserController } from "@tutti-os/agent-gui/workbench/tool-sidebar";
 import type {
@@ -12,6 +16,7 @@ import type { useTranslation } from "@renderer/i18n";
 import type { StandaloneAgentIssueManagerOpenRequest } from "../services/standaloneAgentIssueManagerLaunch.ts";
 import { StandaloneAgentBrowserToolPanel } from "./StandaloneAgentBrowserToolPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
+import { useExternalStoreValue } from "./useExternalStoreValue.ts";
 
 const LazyWorkspaceFileManagerPane = lazy(() =>
   import("@renderer/features/workspace-file-manager/ui/WorkspaceFileManagerPane.tsx").then(
@@ -62,6 +67,7 @@ export interface StandaloneAgentFileOpenRequest {
 
 export function StandaloneAgentToolSidebarPanel({
   active,
+  agentSideConversationPresentation,
   appI18n,
   activityService,
   browserApi,
@@ -82,6 +88,7 @@ export function StandaloneAgentToolSidebarPanel({
   workspaceId
 }: {
   active: boolean;
+  agentSideConversationPresentation: AgentGUISideConversationPresentation;
   appI18n: I18nRuntime<string>;
   activityService: WorkspaceAgentActivityService;
   browserApi?: DesktopBrowserApi;
@@ -109,6 +116,15 @@ export function StandaloneAgentToolSidebarPanel({
   workspaceId: string;
 }): ReactNode {
   const panel = tab.panel;
+  if (panel === "side") {
+    return (
+      <StandaloneAgentSideToolPanel
+        active={active}
+        presentation={agentSideConversationPresentation}
+        sourceAgentSessionId={tab.resourceId ?? null}
+      />
+    );
+  }
   if (panel === "files") {
     return (
       <Suspense
@@ -246,4 +262,34 @@ export function StandaloneAgentToolSidebarPanel({
     );
   }
   return null;
+}
+
+function StandaloneAgentSideToolPanel({
+  active,
+  presentation,
+  sourceAgentSessionId
+}: {
+  active: boolean;
+  presentation: AgentGUISideConversationPresentation;
+  sourceAgentSessionId: string | null;
+}): ReactNode {
+  const projection = useExternalStoreValue(
+    presentation.subscribe,
+    presentation.getSnapshot
+  );
+  if (!projection || projection.sourceAgentSessionId !== sourceAgentSessionId) {
+    return null;
+  }
+  return (
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
+      <AgentGUISideConversationSurface
+        key={JSON.stringify([
+          projection.sourceAgentSessionId,
+          projection.sideAgentSessionId
+        ])}
+        {...projection.surfaceProps}
+        isVisible={active && projection.surfaceProps.isVisible}
+      />
+    </div>
+  );
 }

@@ -4958,7 +4958,8 @@ aside.workspace-agents-status-panel
   vertical-align: middle;
 }
 
-.agent-gui-node__shell {
+.agent-gui-node__shell,
+.agent-gui-node__side-surface {
   --agent-mention-file-icon-size: 16px;
   --agent-gui-text-primary: var(--text-primary);
   --agent-gui-text-secondary: var(--text-secondary);
@@ -5001,14 +5002,18 @@ aside.workspace-agents-status-panel
     rgb(244 245 247)
   );
   --agent-gui-detail-padding-x: 48px;
+  color: var(--agent-gui-text-primary);
+}
+
+.agent-gui-node__shell {
   width: 100%;
   height: 100%;
   container: agent-gui-node / inline-size;
   background: transparent;
-  color: var(--agent-gui-text-primary);
 }
 
-:root[data-theme="dark"] .agent-gui-node__shell {
+:root[data-theme="dark"]
+  :is(.agent-gui-node__shell, .agent-gui-node__side-surface) {
   --agent-gui-session-flow-background: var(
     --background-session-flow,
     rgb(24 24 24)
@@ -5020,7 +5025,8 @@ aside.workspace-agents-status-panel
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .agent-gui-node__shell {
+  :root:not([data-theme="light"])
+    :is(.agent-gui-node__shell, .agent-gui-node__side-surface) {
     --agent-gui-session-flow-background: var(
       --background-session-flow,
       rgb(24 24 24)
@@ -7510,6 +7516,18 @@ button.agent-gui-node__conversation-section-toggle:hover
   min-height: 0;
   overflow: hidden;
   border-left: 1px solid var(--line-1, var(--tutti-line-1));
+  background: var(--agent-gui-session-sidepanel-background);
+}
+
+.agent-gui-node__side-surface {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--agent-gui-session-sidepanel-background);
 }
 
 .agent-gui-node__side-resize-handle {
@@ -7634,13 +7652,23 @@ button.agent-gui-node__conversation-section-toggle:hover
   background: linear-gradient(
     to bottom,
     transparent,
-    var(--background-fronted, var(--tutti-surface-1)) 18px
+    var(--agent-gui-session-sidepanel-background) 18px
   );
 }
 
 .agent-gui-node__side-composer > .agent-gui-node__composer {
   padding-right: 10px;
   padding-left: 10px;
+}
+
+/* Dock Composer defaults to the main conversation-flow surface. Side is an
+   adapter host for the shared Composer, so keep the dock padding and footer on
+   the tool-sidebar surface without changing the shared input-card surface. */
+.agent-gui-node__side-composer > .agent-gui-node__composer[data-layout="dock"],
+.agent-gui-node__side-composer
+  > .agent-gui-node__composer[data-layout="dock"]
+  .agent-gui-node__composer-footer {
+  background: var(--agent-gui-session-sidepanel-background);
 }
 
 @media (max-width: 860px) {
@@ -8719,12 +8747,17 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"] {
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-attachments="true"] {
   grid-template-rows:
     minmax(0, var(--agent-gui-composer-attachment-height, 0px))
     minmax(40px, 1fr);
   align-items: end;
   padding: 12px;
+}
+
+.agent-gui-node__composer[data-layout="dock"]
+  [data-testid="agent-gui-composer-attachment-drafts"] {
+  margin-bottom: 0;
 }
 
 .agent-gui-node__composer[data-layout="dock"]
@@ -8756,7 +8789,7 @@ button.agent-gui-node__conversation-section-toggle:hover
 }
 
 .agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-attachments="true"]
   .agent-gui-node__composer-prompt-input-line {
   min-height: 40px;
   height: calc(var(--agent-gui-composer-text-height, 56px) - 2px);
@@ -9525,10 +9558,10 @@ html[data-theme="light"] [data-message-center-item-id].agent-gui-edge-glow {
 }
 
 .agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-attachments="true"]
   textarea,
 .agent-gui-node__composer[data-layout="dock"]
-  .agent-gui-node__composer-prompt-input-area[data-has-draft-images="true"]
+  .agent-gui-node__composer-prompt-input-area[data-has-draft-attachments="true"]
   .agent-gui-node__composer-textarea {
   max-height: var(--agent-gui-composer-text-viewport-height);
   padding-top: 0;

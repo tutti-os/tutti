@@ -7,6 +7,10 @@ import {
   type ReactNode
 } from "react";
 import { selectWorkspaceAgentConsumerCounts } from "@tutti-os/agent-activity-core";
+import type {
+  AgentGUISideConversationIdentity,
+  AgentGUISideConversationPresentation
+} from "@tutti-os/agent-gui";
 import {
   AgentToolPanelIcon,
   AgentToolSidebar,
@@ -44,6 +48,12 @@ import { createStandaloneAgentToolHostGroup } from "./standaloneAgentToolWorkben
 import { createStandaloneAgentTerminalLoginPresenter } from "../services/standaloneAgentTerminalLoginPresenter.ts";
 import { registerWorkspaceBrowserLaunchHandler } from "../services/workspaceBrowserLaunchCoordinator.ts";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
+import {
+  closeStandaloneAgentSideWithRecovery,
+  resolveStandaloneAgentSideTabReconciliation,
+  shouldCloseStandaloneAgentSide,
+  type StandaloneAgentSideTabIdentity
+} from "./standaloneAgentSideToolPanel.ts";
 
 export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSidebarPanel.tsx";
 
@@ -51,6 +61,7 @@ const browserControllerReadyTimeoutMs = 8_000;
 
 interface StandaloneAgentToolSidebarProps {
   activityService: WorkspaceAgentActivityService;
+  agentSideConversationPresentation: AgentGUISideConversationPresentation;
   appOpenId?: string | null;
   appI18n: I18nRuntime<string>;
   browserApi?: DesktopBrowserApi;
@@ -79,6 +90,7 @@ interface StandaloneAgentToolSidebarProps {
 
 export function StandaloneAgentToolSidebar({
   activityService,
+  agentSideConversationPresentation,
   appOpenId = null,
   appI18n,
   browserApi,
@@ -109,6 +121,7 @@ export function StandaloneAgentToolSidebar({
   mainContentMinWidthRef.current = mainContentMinWidthPx ?? 0;
   const [activePanel, setActivePanel] = useState<AgentToolPanelId | null>(null);
   const [mountedTabs, setMountedTabs] = useState<readonly AgentToolTab[]>([]);
+  const sideTabRef = useRef<StandaloneAgentSideTabIdentity | null>(null);
   const lastHandledAppOpenIdRef = useRef<string | null>(null);
   const lastHandledFileOpenRequestRef = useRef<string | null>(null);
   const fileOpenRequestTabIdRef = useRef<string | null>(null);
@@ -147,6 +160,11 @@ export function StandaloneAgentToolSidebar({
     () =>
       selectWorkspaceAgentConsumerCounts(sessionEngine.getSnapshot()).working
   );
+  const sideIdentity =
+    useExternalStoreValue<AgentGUISideConversationIdentity | null>(
+      agentSideConversationPresentation.subscribeIdentity,
+      agentSideConversationPresentation.getIdentitySnapshot
+    );
   const automationBrowserCount = mountedTabs.filter(
     (tab) => tab.panel === "browser" && Boolean(tab.resourceId)
   ).length;
@@ -166,9 +184,18 @@ export function StandaloneAgentToolSidebar({
       {
         id: "messages",
         label: i18n.t("workspace.agentGui.toolSidebar.messages")
-      }
+      },
+      ...(sideIdentity
+        ? [
+            {
+              canAdd: false,
+              id: "side" as const,
+              label: i18n.t("workspace.agentGui.toolSidebar.side")
+            }
+          ]
+        : [])
     ],
-    [i18n]
+    [i18n, sideIdentity]
   );
   const copy = useMemo<AgentToolSidebarCopy>(
     () => ({
@@ -455,6 +482,29 @@ export function StandaloneAgentToolSidebar({
       sidebarRef.current?.openPanel("tasks") ?? null;
   }, [issueManagerOpenRequest]);
   useEffect(() => {
+    const reconciliation = resolveStandaloneAgentSideTabReconciliation({
+      current: sideTabRef.current,
+      next: sideIdentity
+    });
+    if (reconciliation.closeTabId) {
+      sidebarRef.current?.closeTab(reconciliation.closeTabId);
+    }
+    if (!reconciliation.open) {
+      if (!sideIdentity) sideTabRef.current = null;
+      return;
+    }
+    const tabId = sidebarRef.current?.addPanel(
+      "side",
+      reconciliation.open.sourceAgentSessionId
+    );
+    sideTabRef.current = tabId
+      ? {
+          ...reconciliation.open,
+          tabId
+        }
+      : null;
+  }, [sideIdentity]);
+  useEffect(() => {
     if (appCenterState.catalogStatus !== "ready") return;
     const availableAppIds = new Set(
       appCenterState.apps.map((app) => app.appId)
@@ -478,6 +528,38 @@ export function StandaloneAgentToolSidebar({
   );
   const handleTabClose = useCallback(
     (tab: AgentToolTab) => {
+      if (tab.panel === "side") {
+        const identity = sideTabRef.current;
+        if (identity?.tabId === tab.id) {
+          const projection = agentSideConversationPresentation.getSnapshot();
+          if (
+            projection &&
+            shouldCloseStandaloneAgentSide({
+              closingTabId: tab.id,
+              current: identity,
+              projection
+            })
+          ) {
+            void closeStandaloneAgentSideWithRecovery({
+              closing: identity,
+              close: projection.close,
+              getProjection:
+                agentSideConversationPresentation.getIdentitySnapshot,
+              restore: (restoredIdentity) => {
+                const tabId = sidebarRef.current?.addPanel(
+                  "side",
+                  restoredIdentity.sourceAgentSessionId
+                );
+                sideTabRef.current = tabId
+                  ? { ...restoredIdentity, tabId }
+                  : null;
+              }
+            });
+          }
+          sideTabRef.current = null;
+        }
+        return;
+      }
       if (tab.panel !== "apps" || !tab.resourceId) return;
       if (lastHandledAppOpenIdRef.current === tab.resourceId) {
         lastHandledAppOpenIdRef.current = null;
@@ -491,7 +573,7 @@ export function StandaloneAgentToolSidebar({
         });
       }
     },
-    [appCenterService, workspaceId]
+    [agentSideConversationPresentation, appCenterService, workspaceId]
   );
   const resolveTabLabel = useCallback(
     (tab: AgentToolTab, defaultLabel: string) => {
@@ -585,6 +667,9 @@ export function StandaloneAgentToolSidebar({
             i18n={i18n}
             locale={locale}
             messageCenterOpen={active && tab.panel === "messages"}
+            agentSideConversationPresentation={
+              agentSideConversationPresentation
+            }
             setToolHost={toolHostGroup.setHost}
             tab={tab}
             workspaceId={workspaceId}

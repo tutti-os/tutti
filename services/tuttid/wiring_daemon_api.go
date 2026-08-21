@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -250,6 +251,7 @@ func buildDaemonAPI(
 			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
 			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
 		}
+		agentTargetSetup.WakeManagedRuntimeReconciler()
 		agentTargetSetup.WakeAccountUsageCompanionReconciler()
 	})
 	agentRuntimeConfig := agentdaemon.Config{
@@ -271,7 +273,14 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
-	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()}})
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve user home for personal Codex Skills: %w", err)
+	}
+	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{
+		AuthProjector:     runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()},
+		PersonalSkillRoot: filepath.Join(userHome, ".codex", "skills"),
+	})
 	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
 	configureAgentRuntimeAvailability(agentRuntimePreparer, browserService, computerService)
 	userProjectService := userprojectservice.Service{
@@ -788,10 +797,10 @@ func buildDaemonAPI(
 	providerAuthWatcher := startAgentModelInvalidationAuthWatcher(
 		replayComposition, agentModelCatalog, agentSessionService, events,
 	)
-
-	if err := agentTargetSetup.StartAccountUsageCompanionReconciler(); err != nil {
+	if err := startAgentExtensionReconcilers(agentTargetSetup); err != nil {
+		providerAuthWatcher.Close()
 		agentRuntime.Close()
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start account usage companion reconciler: %w", err)
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
 	}
 	if refreshAgentExtensionsInBackground {
 		startAgentExtensionBackgroundRefresh(agentExtensionManager, agentTargetSetup)

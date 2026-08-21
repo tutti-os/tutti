@@ -6,6 +6,7 @@ import {
   type AgentToolSidebarHandle
 } from "./AgentToolSidebar.tsx";
 import type { AgentToolSidebarCopy } from "./Toolbar.tsx";
+import type { AgentToolPanelDefinition } from "./model.ts";
 
 const panels = [
   { id: "files", label: "Files" },
@@ -49,6 +50,35 @@ describe("AgentToolSidebar", () => {
 
     fireEvent.click(screen.getByText("Files"));
     expect(sidebarHeader).toHaveClass("border-b");
+  });
+
+  it("keeps contextual panels command-openable but out of creation menus", async () => {
+    const ref = createRef<AgentToolSidebarHandle>();
+    renderSidebar(ref, undefined, [
+      ...panels,
+      { canAdd: false, id: "side", label: "Side" }
+    ]);
+
+    fireEvent.click(screen.getByLabelText("Open right panel"));
+    expect(
+      screen.queryByRole("button", { name: "Side" })
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      ref.current?.openPanel("side", "source-session");
+    });
+    expect(screen.getByText("side content")).toBeVisible();
+
+    fireEvent.pointerDown(screen.getByLabelText("New tab"), {
+      button: 0,
+      ctrlKey: false
+    });
+    expect(
+      await screen.findByRole("menuitem", { name: "Files" })
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("menuitem", { name: "Side" })
+    ).not.toBeInTheDocument();
   });
 
   it("hides the sidebar toggle when the host disables that entry", () => {
@@ -316,7 +346,8 @@ describe("AgentToolSidebar", () => {
 
 function renderSidebar(
   ref = createRef<AgentToolSidebarHandle>(),
-  resizeContainerContentWidth = vi.fn(async (width: number) => ({ width }))
+  resizeContainerContentWidth = vi.fn(async (width: number) => ({ width })),
+  panelDefinitions: readonly AgentToolPanelDefinition[] = panels
 ) {
   vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
     callback(0);
@@ -333,7 +364,7 @@ function renderSidebar(
         owner: "window",
         render: (layout) => <header>{layout.actions}</header>
       }}
-      panels={panels}
+      panels={panelDefinitions}
       renderPanel={({ tab }) => <div>{tab.panel} content</div>}
       resizeContainerContentWidth={resizeContainerContentWidth}
     >

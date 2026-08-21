@@ -43,6 +43,7 @@ export interface ComposerOptionsState {
 export interface ComposerOptionsLoadRequestedIntent {
   type: "composerOptions/loadRequested";
   commandId: string;
+  agentSessionId?: string | null;
   targetKey: string;
   provider: string;
   workspaceId: string;
@@ -67,6 +68,7 @@ export type ComposerOptionsIntent =
 export interface ComposerOptionsLoadCommand {
   type: "composerOptions/load";
   commandId: string;
+  agentSessionId?: string | null;
   correlationId: string;
   targetKey: string;
   provider: string;

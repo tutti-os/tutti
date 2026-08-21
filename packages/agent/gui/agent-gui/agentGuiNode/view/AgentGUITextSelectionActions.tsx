@@ -1,3 +1,4 @@
+import { Button, MenuSurface } from "@tutti-os/ui-system";
 import { createPortal } from "react-dom";
 
 export interface AgentGUITextSelectionSnapshot {
@@ -57,10 +58,10 @@ export function AgentGUITextSelectionActions({
   };
 
   return createPortal(
-    <div
+    <MenuSurface
       role="toolbar"
       aria-label={labels.addToConversation}
-      className="nodrag fixed flex -translate-x-1/2 -translate-y-full overflow-hidden rounded-xl border border-[var(--border-1)] bg-[var(--background-fronted)] text-[14px] font-medium text-[var(--text-primary)] shadow-[var(--tsh-shell-shadow)] [-webkit-app-region:no-drag]"
+      className="nodrag fixed flex-row -translate-x-1/2 -translate-y-full gap-0 overflow-hidden rounded-xl p-0 text-[14px] font-medium shadow-[var(--tsh-shell-shadow)] [-webkit-app-region:no-drag]"
       data-testid="agent-gui-text-selection-actions"
       style={{
         left: snapshot.left,
@@ -69,23 +70,27 @@ export function AgentGUITextSelectionActions({
       }}
       onPointerDown={(event) => event.preventDefault()}
     >
-      <button
+      <Button
         type="button"
-        className="h-10 cursor-pointer px-4 hover:bg-[var(--background-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--tutti-purple)]"
+        variant="ghost"
+        size="lg"
+        className="h-10 rounded-none px-4 text-[14px] font-medium"
         onClick={() => run(onAddToConversation)}
       >
         {labels.addToConversation}
-      </button>
+      </Button>
       {onAskInSide ? (
-        <button
+        <Button
           type="button"
-          className="h-10 cursor-pointer border-l border-[var(--border-1)] px-4 hover:bg-[var(--background-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--tutti-purple)]"
+          variant="ghost"
+          size="lg"
+          className="h-10 rounded-none border-0 border-l border-[var(--border-1)] px-4 text-[14px] font-medium"
           onClick={() => run(onAskInSide)}
         >
           {labels.askInSide}
-        </button>
+        </Button>
       ) : null}
-    </div>,
+    </MenuSurface>,
     portalTarget
   );
 }

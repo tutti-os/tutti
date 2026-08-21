@@ -89,6 +89,7 @@ export function AgentModelReasoningDropdown({
    */
   modelHistoryTargetId?: string | null;
   onRetryComposerOptions?: (options?: {
+    force?: boolean;
     section?: "core" | "capabilities" | "connectors";
     waitForFreshModelCatalog?: boolean;
   }) => void;

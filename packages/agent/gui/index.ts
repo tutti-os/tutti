@@ -30,6 +30,16 @@ export type {
   AgentSideConversationStreamEvent,
   AgentSideConversationTransport
 } from "./agentSideConversationController";
+export {
+  createAgentGUISideConversationPresentation,
+  type AgentGUISideConversationIdentity,
+  type AgentGUISideConversationPresentation,
+  type AgentGUISideConversationProjection
+} from "./agentSideConversationPresentation";
+export {
+  AgentGUISideConversationSurface,
+  type AgentGUISideConversationSurfaceProps
+} from "./agent-gui/agentGuiNode/view/AgentGUISideConversationPane";
 export type {
   AgentGUIProps,
   AgentGUIReferenceProvenanceFilterCatalog

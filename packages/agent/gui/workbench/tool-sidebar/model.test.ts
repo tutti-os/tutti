@@ -3,6 +3,7 @@ import {
   agentToolPanelDefaultWidthById,
   clampAgentToolPanelWidth,
   createAgentToolSidebarState,
+  filterAgentToolAddablePanels,
   filterAgentToolPanels,
   reduceAgentToolSidebarState,
   resolveAgentToolPanelExpansionTransfer,
@@ -22,6 +23,26 @@ describe("agent tool sidebar model", () => {
     expect(agentToolPanelDefaultWidthById.messages).toBe(720);
   });
 
+  it("preserves the established Side width bounds in the shared sidebar", () => {
+    expect(agentToolPanelDefaultWidthById.side).toBe(440);
+    expect(
+      clampAgentToolPanelWidth({
+        mainContentMinWidth: 280,
+        panel: "side",
+        viewportWidth: 1_400,
+        width: 100
+      })
+    ).toBe(360);
+    expect(
+      clampAgentToolPanelWidth({
+        mainContentMinWidth: 280,
+        panel: "side",
+        viewportWidth: 1_400,
+        width: 900
+      })
+    ).toBe(600);
+  });
+
   it("keeps only unique supported panels in host order", () => {
     expect(
       filterAgentToolPanels([
@@ -30,6 +51,14 @@ describe("agent tool sidebar model", () => {
         { id: "unsupported", label: "Unsupported" }
       ])
     ).toEqual(panels);
+  });
+
+  it("preserves host-owned panel creation policy", () => {
+    const contextual = { canAdd: false, id: "side", label: "Side" } as const;
+    expect(filterAgentToolPanels([contextual])).toEqual([contextual]);
+    expect(filterAgentToolAddablePanels([...panels, contextual])).toEqual(
+      panels
+    );
   });
 
   it("reuses the latest panel tab and returns to the previous tab when closing", () => {

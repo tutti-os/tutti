@@ -1536,6 +1536,8 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   `thread/resume` response. Distinguish this from a completely silent provider:
   without an authoritative lifecycle notification, process termination, or
   transport error, the call must still time out rather than manufacture success.
+  The Codex adapter allows 90 seconds for `thread/start`; `thread/resume` and
+  the `turn/start` acknowledgement retain their 30-second budgets.
 - Root cause:
   App-server notifications and the response for their triggering RPC have no
   safe application-order guarantee. Waiting only on the response leaves the

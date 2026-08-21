@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 
 	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
 	tuttigenerated "github.com/tutti-os/tutti/services/tuttid/api/generated"
@@ -304,7 +305,9 @@ func (api DaemonAPI) StartConnectorMarketAuthorization(
 	defer clear(secret)
 	result, err := api.ConnectorMarketService.BeginAuthorization(ctx, mutation, secret)
 	if err != nil {
+		slog.Warn("connector authorization could not be started", "connectorKey", request.ConnectorKey, "error", err)
 		payload, status := connectorMarketError(err)
+		payload.Message = err.Error()
 		switch status {
 		case 400:
 			return tuttigenerated.StartConnectorMarketAuthorization400JSONResponse{ConnectorMarketInvalidRequestErrorJSONResponse: invalidConnectorMarketResponse(payload)}, nil

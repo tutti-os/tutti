@@ -39,6 +39,19 @@ func exposeCodexDirectory(source, target string) error {
 	}
 }
 
+// A writable personal Skill root must remain the same filesystem object across
+// sessions. Unlike read-mostly plugin projections, this path must never fall
+// back to a directory copy because a copy would silently make new Skills
+// session-local again.
+func exposeCodexSharedDirectory(source, target string) error {
+	if err := os.Symlink(source, target); err == nil {
+		return nil
+	} else if junctionErr := createCodexDirectoryJunction(source, target); junctionErr != nil {
+		return fmt.Errorf("symlink failed: %v; junction failed: %w", err, junctionErr)
+	}
+	return nil
+}
+
 func createCodexDirectoryJunction(source, target string) error {
 	// `mklink /J` creates an NTFS directory junction for an ordinary user. Keep
 	// the paths as separate process arguments; Go quotes paths with spaces for

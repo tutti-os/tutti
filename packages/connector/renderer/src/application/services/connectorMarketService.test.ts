@@ -571,6 +571,63 @@ test("coalesces concurrent catalog refreshes", async () => {
   service.dispose();
 });
 
+test("does not treat a daemon scheduled catalog refresh as an explicit toolbar refresh", async () => {
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => ({
+        catalogState: "refreshing",
+        connectors: [connector("github", 1)],
+        operations: [
+          {
+            operationId: "operation-scheduled-refresh",
+            clientRequestId: "daemon-refresh-1",
+            kind: "refresh_catalog",
+            state: "running",
+            stage: "refreshing",
+            attempt: 1,
+            createdAt: "2026-08-03T00:00:00Z",
+            updatedAt: "2026-08-03T00:00:01Z"
+          }
+        ],
+        revision: 1
+      }),
+      listCategories: async () => []
+    })
+  });
+
+  await service.ensureLoaded();
+
+  assert.equal(service.dataStore.catalogState, "refreshing");
+  assert.equal(service.dataStore.pendingExplicitCatalogRefresh, false);
+  service.dispose();
+});
+
+test("clears an explicit catalog refresh when the accepted operation is already terminal", async () => {
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      refreshCatalog: async () => ({
+        operation: {
+          operationId: "operation-refresh-done",
+          clientRequestId: "request-refresh-done",
+          kind: "refresh_catalog",
+          state: "completed",
+          stage: "completed",
+          attempt: 1,
+          createdAt: "2026-08-03T00:00:00Z",
+          updatedAt: "2026-08-03T00:00:01Z"
+        },
+        revision: 2
+      })
+    })
+  });
+
+  await service.refreshCatalog();
+
+  assert.equal(service.dataStore.pendingExplicitCatalogRefresh, false);
+  assert.equal(service.dataStore.catalogOperation?.state, "completed");
+  service.dispose();
+});
+
 test("rejects overlapping mutations for one connector", async () => {
   const install =
     deferred<Awaited<ReturnType<ConnectorMarketBackend["installConnector"]>>>();
@@ -1095,6 +1152,7 @@ test("reconciles refresh completion from the local snapshot without reloading re
   assert.equal(categoryCalls, 0);
   assert.equal(snapshotCalls, 2);
   assert.equal(service.dataStore.catalogOperation?.state, "completed");
+  assert.equal(service.dataStore.pendingExplicitCatalogRefresh, false);
   assert.equal(service.dataStore.revision, 2);
   service.dispose();
 });

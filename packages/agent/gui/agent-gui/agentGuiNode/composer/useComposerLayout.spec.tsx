@@ -307,6 +307,80 @@ describe("useComposerLayout", () => {
     });
     expect(animationFrames).toHaveLength(3);
   });
+
+  it("measures mixed draft attachments as one dock grid row", () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    const observed = new Set<Element>();
+    class ResizeObserverMock implements ResizeObserver {
+      constructor(readonly callback: ResizeObserverCallback) {}
+
+      observe(target: Element): void {
+        observed.add(target);
+      }
+
+      unobserve(target: Element): void {
+        observed.delete(target);
+      }
+
+      disconnect(): void {
+        observed.clear();
+      }
+    }
+    vi.stubGlobal("ResizeObserver", ResizeObserverMock);
+    vi.spyOn(window, "requestAnimationFrame").mockImplementation((callback) => {
+      animationFrames.push(callback);
+      return animationFrames.length;
+    });
+    vi.spyOn(window, "cancelAnimationFrame").mockImplementation(() => {});
+
+    const inputShell = document.createElement("div");
+    const inputArea = document.createElement("div");
+    const attachmentDrafts = document.createElement("div");
+    attachmentDrafts.dataset.testid = "agent-gui-composer-attachment-drafts";
+    const quoteDrafts = document.createElement("div");
+    quoteDrafts.dataset.testid = "agent-gui-composer-quote-drafts";
+    const imageDrafts = document.createElement("div");
+    imageDrafts.dataset.testid = "agent-gui-composer-image-drafts";
+    attachmentDrafts.append(quoteDrafts, imageDrafts);
+    vi.spyOn(attachmentDrafts, "scrollHeight", "get").mockReturnValue(84);
+    const editor = document.createElement("div");
+    editor.className = "agent-gui-node__composer-textarea";
+    const paragraph = document.createElement("p");
+    editor.appendChild(paragraph);
+    vi.spyOn(paragraph, "getBoundingClientRect").mockReturnValue(
+      createRect({ bottom: 24, top: 0 })
+    );
+    inputArea.append(attachmentDrafts, editor);
+    inputShell.appendChild(inputArea);
+    const setDockComposerMetrics = vi.fn();
+
+    renderHook(() =>
+      useComposerLayout(
+        createComposerLayoutInput({
+          draftQuoteCount: 1,
+          promptInputAreaRef: { current: inputArea },
+          setDockComposerMetrics
+        })
+      )
+    );
+
+    expect(inputArea.children).toHaveLength(2);
+    expect(observed).toEqual(new Set([inputShell, attachmentDrafts]));
+    act(() => animationFrames[0]?.(0));
+    expect(
+      applyLastMetricsStateUpdate(setDockComposerMetrics, {
+        attachmentHeight: 0,
+        inputHeight: 56,
+        inputMaxHeight: 110,
+        textHeight: 56
+      })
+    ).toEqual({
+      attachmentHeight: 84,
+      inputHeight: 164,
+      inputMaxHeight: 218,
+      textHeight: 56
+    });
+  });
 });
 
 function applyLastMetricsStateUpdate(

@@ -171,8 +171,18 @@ func (client *AuthorizationClient) Begin(ctx context.Context, request market.Aut
 			return market.AuthorizationSession{}, err
 		}
 		client.notifyChanged()
-		if completed.Session.SessionID != response.Session.SessionID || strings.TrimSpace(completed.Session.ConnectorRevision) != connectorVersion || !authorizationSessionSucceeded(completed.Session.Status) {
-			return market.AuthorizationSession{}, errors.New("connector secret authorization did not complete")
+		if completed.Session.SessionID != response.Session.SessionID {
+			return market.AuthorizationSession{}, errors.New("connector secret authorization returned a different session")
+		}
+		if strings.TrimSpace(completed.Session.ConnectorRevision) != connectorVersion {
+			return market.AuthorizationSession{}, errors.New("connector secret authorization returned a mismatched connector revision")
+		}
+		if !authorizationSessionSucceeded(completed.Session.Status) {
+			status := strings.TrimSpace(completed.Session.Status)
+			if status == "" {
+				return market.AuthorizationSession{}, errors.New("connector secret authorization did not complete")
+			}
+			return market.AuthorizationSession{}, fmt.Errorf("connector secret authorization did not complete: status %s", status)
 		}
 		session.ConnectionID = strings.TrimSpace(completed.Session.ResultConnectionID)
 		if session.ConnectionID == "" {
@@ -323,7 +333,7 @@ func (client *AuthorizationClient) doJSONWithAuthorizer(ctx context.Context, met
 		return errors.New("connector authorization response exceeds limit")
 	}
 	if httpResponse.StatusCode < 200 || httpResponse.StatusCode >= 300 {
-		return fmt.Errorf("connector authorization request failed: status %d", httpResponse.StatusCode)
+		return connectorAuthorizationHTTPError(httpResponse.StatusCode, payload)
 	}
 	if output != nil {
 		if len(payload) == 0 || json.Unmarshal(payload, output) != nil {
@@ -344,6 +354,38 @@ type connectorAuthorizationSessionReply struct {
 			URL  string `json:"url"`
 		} `json:"nextAction"`
 	} `json:"session"`
+}
+
+const connectorAuthorizationErrorDetailLimit = 240
+
+func connectorAuthorizationHTTPError(status int, payload []byte) error {
+	detail := connectorAuthorizationErrorDetail(payload)
+	if detail == "" {
+		return fmt.Errorf("connector authorization request failed: status %d", status)
+	}
+	return fmt.Errorf("connector authorization request failed: status %d: %s", status, detail)
+}
+
+func connectorAuthorizationErrorDetail(payload []byte) string {
+	var parsed struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+		Error   string `json:"error"`
+	}
+	if json.Unmarshal(payload, &parsed) != nil {
+		return ""
+	}
+	detail := strings.TrimSpace(parsed.Message)
+	if detail == "" {
+		detail = strings.TrimSpace(parsed.Error)
+	}
+	if detail == "" {
+		detail = strings.TrimSpace(parsed.Code)
+	}
+	if len(detail) > connectorAuthorizationErrorDetailLimit {
+		return detail[:connectorAuthorizationErrorDetailLimit]
+	}
+	return detail
 }
 
 func authorizationSessionSucceeded(status string) bool {

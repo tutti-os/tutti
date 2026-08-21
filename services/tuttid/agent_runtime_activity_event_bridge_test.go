@@ -186,4 +186,22 @@ func TestAgentRuntimeActivityEventBridgeReconcilesMismatchedMessageDelta(t *test
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for session_reconcile_required")
 	}
+	for index := 0; index < 64; index++ {
+		if err := bridge.ObserveRuntimeStreamEvents(
+			context.Background(),
+			"workspace-1",
+			"session-1",
+			[]agentruntime.StreamEvent{{
+				EventType: agentruntime.StreamEventMessageDelta,
+				Data:      delta,
+			}},
+		); err == nil {
+			t.Fatal("ObserveRuntimeStreamEvents() error = nil for repeated mismatched delta")
+		}
+	}
+	select {
+	case extra := <-events.Events(session):
+		t.Fatalf("repeated mismatches published an extra event: %#v", extra)
+	case <-time.After(100 * time.Millisecond):
+	}
 }

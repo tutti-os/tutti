@@ -253,6 +253,7 @@ export const zhCN = {
         openRightPanel: "展开右侧面板",
         resizeSidebar: "调整工具侧栏宽度",
         shrinkPanel: "缩小面板",
+        side: "Side",
         tasks: "任务",
         terminal: "终端",
         tool: "工具",

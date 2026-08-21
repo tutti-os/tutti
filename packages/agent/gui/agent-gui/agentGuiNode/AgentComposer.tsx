@@ -39,13 +39,14 @@ import { useScopedProjectMissingState } from "./composer/useScopedProjectMissing
 import type { AgentComposerProps } from "./composer/AgentComposer.types";
 import { withAgentComposerTuttiModeSnapshot } from "./composer/agentComposerSubmitOptions";
 import {
-  agentComposerDraftAttachmentProjection,
   agentComposerDraftFiles,
   agentComposerDraftImages,
   agentComposerDraftLargeTexts,
+  agentComposerDraftQuotes,
   agentComposerDraftHasContent,
   agentComposerDraftPrompt
 } from "./model/agentComposerDraft";
+import { agentComposerDraftAttachmentProjection } from "./model/agentComposerDraftAttachmentProjection";
 import type { AgentGUIComposerContentType } from "./engagement/agentGUIEngagement.types";
 import { projectAgentGUIComposerGateControls } from "./model/agentGuiComposerGate";
 import {
@@ -53,6 +54,8 @@ import {
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
 import { useComposerInputHistory } from "./composer/useComposerInputHistory";
+import { refreshComposerSlashCapabilities } from "./composer/useComposerSlashCapabilitiesRefresh";
+import { useComposerDraftCapabilitiesRequest } from "./composer/useComposerDraftCapabilitiesRequest";
 
 export { formatSlashStatusTokenCount };
 
@@ -161,33 +164,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onRequestGitBranches = null,
     referenceProvenanceFilters = null
   } = props;
-  const capabilitiesRequestedKeyRef = useRef<string | null>(null);
-  const requestCapabilitiesForDraft = useCallback(
-    (nextDraft: AgentComposerDraft): void => {
-      if (!onRetryComposerOptions) {
-        return;
-      }
-      const nextPrompt = agentComposerDraftPrompt(nextDraft).trimStart();
-      if (!nextPrompt.startsWith("/")) {
-        return;
-      }
-      const requestKey = `${provider}:${agentSessionId ?? "draft"}`;
-      if (capabilitiesRequestedKeyRef.current === requestKey) {
-        return;
-      }
-      capabilitiesRequestedKeyRef.current = requestKey;
-      onRetryComposerOptions({ section: "capabilities" });
-    },
-    [agentSessionId, onRetryComposerOptions, provider]
-  );
-  const handleDraftContentChange: AgentComposerProps["onDraftContentChange"] =
-    useCallback(
-      (nextDraft, sourceScopeKey) => {
-        requestCapabilitiesForDraft(nextDraft);
-        onDraftContentChange(nextDraft, sourceScopeKey);
-      },
-      [onDraftContentChange, requestCapabilitiesForDraft]
-    );
+  const slashCapabilitiesRefreshedSessionRef = useRef<string | null>(null);
+  const handleDraftContentChange = useComposerDraftCapabilitiesRequest({
+    agentSessionId,
+    onDraftContentChange,
+    onRetryComposerOptions,
+    provider
+  });
   const {
     canQueueWhileBusy,
     editorDisabled: disabled,
@@ -198,6 +181,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     presentationSubmitDisabled
   });
   const draftPrompt = agentComposerDraftPrompt(draftContent);
+  const draftQuoteCount = agentComposerDraftQuotes(draftContent).length;
   const goalDraftObjective = canGoalControl
     ? goalDraftObjectiveFromPrompt(draftPrompt)
     : null;
@@ -396,7 +380,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [skillQueryMatch?.prefix, skillQueryMatch?.query, slashQuery]);
+    refreshComposerSlashCapabilities({
+      agentSessionId,
+      isPaletteOpen,
+      onRetryComposerOptions,
+      refreshedSessionRef: slashCapabilitiesRefreshedSessionRef,
+      slashQuery
+    });
+  }, [
+    agentSessionId,
+    isPaletteOpen,
+    onRetryComposerOptions,
+    skillQueryMatch?.prefix,
+    skillQueryMatch?.query,
+    slashQuery
+  ]);
 
   useEffect(() => {
     const preferredKey =
@@ -691,7 +689,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     dockComposerMetrics,
     setDockComposerMetrics,
     draftImages,
-    draftLargeTexts
+    draftLargeTexts,
+    draftQuoteCount
   });
   const { activePromptTip, promptTipStyle, rotatingPromptTips } = layout;
   const presentation = useComposerPresentation({

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
@@ -227,6 +228,73 @@ func TestAuthorizationClientSubmitsNativeSecretWithoutPersistingItInSession(t *t
 		if value != 0 {
 			t.Fatalf("secret[%d] was not cleared", i)
 		}
+	}
+}
+
+func TestAuthorizationClientReportsControlPlaneHTTPErrorDetail(t *testing.T) {
+	const token = "user-provided-token"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/v1/connectors/cloudflare/authorization-sessions" {
+			http.NotFound(response, request)
+			return
+		}
+		response.WriteHeader(http.StatusBadGateway)
+		_, _ = response.Write([]byte(`{"code":"upstream_unavailable","message":"composio session create failed"}`))
+	}))
+	defer server.Close()
+	client, err := NewAuthorizationClient(AuthorizationClientConfig{
+		BaseURL: server.URL, APIPrefix: "/v1", HTTPClient: server.Client(),
+		AuthorizeAccountRequest: func(*http.Request, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Begin(context.Background(), market.AuthorizationStartRequest{
+		OperationID: "operation-secret-1", ClientRequestID: "request-secret-1", Secret: []byte(token),
+		Scope:     market.OperationScope{AccountID: "account-1"},
+		Connector: market.Connector{Key: "cloudflare"},
+		Release:   market.Release{Version: "2.0.0", Manifest: market.Manifest{AuthorizationKind: "api_key"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "status 502") ||
+		!strings.Contains(err.Error(), "composio session create failed") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("error leaked secret: %v", err)
+	}
+}
+
+func TestAuthorizationClientReportsUnsuccessfulSecretCompletionStatus(t *testing.T) {
+	const token = "user-provided-token"
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		switch request.URL.Path {
+		case "/v1/connectors/cloudflare/authorization-sessions":
+			_, _ = response.Write([]byte(`{"session":{"sessionId":"auth-secret-1","connectorRevision":"2.0.0","nextAction":{"type":"submit_secret"}}}`))
+		case "/v1/connector-authorization-sessions/auth-secret-1/complete":
+			_, _ = response.Write([]byte(`{"session":{"sessionId":"auth-secret-1","connectorRevision":"2.0.0","status":"CONNECTOR_AUTHORIZATION_SESSION_STATUS_FAILED"}}`))
+		default:
+			http.NotFound(response, request)
+		}
+	}))
+	defer server.Close()
+	client, err := NewAuthorizationClient(AuthorizationClientConfig{
+		BaseURL: server.URL, APIPrefix: "/v1", HTTPClient: server.Client(),
+		AuthorizeAccountRequest: func(*http.Request, string) error { return nil },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = client.Begin(context.Background(), market.AuthorizationStartRequest{
+		OperationID: "operation-secret-1", ClientRequestID: "request-secret-1", Secret: []byte(token),
+		Scope:     market.OperationScope{AccountID: "account-1"},
+		Connector: market.Connector{Key: "cloudflare"},
+		Release:   market.Release{Version: "2.0.0", Manifest: market.Manifest{AuthorizationKind: "api_key"}},
+	})
+	if err == nil || !strings.Contains(err.Error(), "CONNECTOR_AUTHORIZATION_SESSION_STATUS_FAILED") {
+		t.Fatalf("error = %v", err)
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Fatalf("error leaked secret: %v", err)
 	}
 }
 

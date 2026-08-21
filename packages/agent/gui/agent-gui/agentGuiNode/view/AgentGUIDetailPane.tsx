@@ -10,6 +10,7 @@ import {
 } from "../model/agentComposerDraft";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import {
+  agentGUIDetailBottomDockStoreRevision,
   buildAgentConversationHandoffPrompt,
   handoffProjectPathForConversation,
   resolveAgentGUIComposerInteractionDisabledReason,
@@ -39,6 +40,7 @@ import { useAgentGUIDetailSideConversation } from "./useAgentGUIDetailSideConver
 import { useAgentGUIDetailSideChrome as useSideChrome } from "./useAgentGUIDetailSideChrome";
 import type { TimelineScrollAnchor } from "./agentGUIScrollMemory";
 import { useBottomDockInteractionSubmission } from "./useBottomDockInteractionSubmission";
+import type { AgentGUIPendingPrependScrollAnchor } from "./agentGUIDetailScrollTypes";
 export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   shell,
   rail,
@@ -51,6 +53,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
   sideConversationEnabled = false,
+  sideConversationPresentation = null,
   sessionWorktreeEnabled = false,
   sessionLaunchModesByProjectSectionKey,
   onSessionLaunchModePreferenceChange,
@@ -99,13 +102,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     readiness,
     operations
   };
-  // Keep refs here: React Compiler may cache a custom Hook's returned object.
   const bottomDockRef = useRef<HTMLDivElement | null>(null);
-  const pendingPrependScrollAnchorRef = useRef<{
-    conversationId: string;
-    scrollHeight: number;
-    scrollTop: number;
-  } | null>(null);
+  const pendingPrependScrollAnchorRef =
+    useRef<AgentGUIPendingPrependScrollAnchor | null>(null);
   const submittedPromptScrollConversationRef = useRef<string | null>(null);
   const timelineContentRef = useRef<HTMLDivElement | null>(null);
   const timelineRef = useRef<HTMLDivElement | null>(null);
@@ -303,7 +302,6 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     submitInteractivePrompt,
     dismissBottomDockPrompt
   );
-  const isInteractionPending = activePromptResponsePending;
   const composerActivePromptDisabledReason =
     resolveAgentGUIComposerInteractionDisabledReason(
       composerActivePrompt?.kind,
@@ -370,7 +368,9 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     sourceAgentSessionId: viewModel.rail.activeConversationId,
     provider: composerProvider,
     cwd: viewModel.shell.workspacePath ?? null,
+    capabilityRevision: `${viewModel.detail.conversationDetail?.session.providerSessionId ?? ""}:${sourceActiveTurn?.turnId ?? ""}:${sourceActiveTurn?.phase ?? ""}`,
     availableCommands: viewModel.composer.availableCommands,
+    slashCommandPolicy: viewModel.composer.composerSettings.slashCommandPolicy,
     clearMainDraft,
     submitPrompt: tuttiWorkflowComposer.submitPromptOrDecidePlan
   });
@@ -434,7 +434,10 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       tuttiModeUpdating: viewModel.composer.isTuttiModeUpdating,
       tuttiModeEffect: viewModel.composer.tuttiModeEffect,
       tuttiModeSpeed: viewModel.composer.tuttiModeSpeed,
-      composerSettings: viewModel.composer.composerSettings,
+      composerSettings: {
+        ...viewModel.composer.composerSettings,
+        slashCommandPolicy: sideConversation.slashCommandPolicy
+      },
       queueStatus: viewModel.composer.queueStatus,
       queuedPrompts: viewModel.composer.queuedPrompts,
       drainingQueuedPromptId: viewModel.composer.drainingQueuedPromptId,
@@ -474,7 +477,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
             }
           : null,
       isSendingTurn: isComposerSending,
-      isSubmittingPrompt: isInteractionPending,
+      isSubmittingPrompt: activePromptResponsePending,
       uiLanguage,
       labels: composerLabels,
       workspaceUserProjectI18n,
@@ -574,6 +577,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       setTuttiModeSpeed,
       submitInteractivePrompt,
       sideConversation.submitMain,
+      sideConversation.slashCommandPolicy,
       tuttiWorkflowComposer.planReviewSendActive,
       tuttiWorkflowComposer.tuttiExecutionActive,
       tuttiWorkflowComposer.tuttiExecutionStopping,
@@ -610,7 +614,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       viewModel.composer.isTuttiModeUpdating,
       viewModel.composer.tuttiModeEffect,
       viewModel.composer.tuttiModeSpeed,
-      isInteractionPending,
+      activePromptResponsePending,
       viewModel.composer.promptImagesSupported,
       viewModel.composer.queueStatus,
       viewModel.composer.queuedPrompts,
@@ -629,6 +633,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
     controller: sideConversation,
     conversationFlowLabels,
     isVisible,
+    presentation: sideConversationPresentation,
     textSelectionActionsEnabled: sideConversationEnabled,
     onRequestComposerFocus,
     renderComposerFooterAccessory
@@ -642,18 +647,14 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   );
   const emptyHeroProvider =
     composerSelectedProviderTarget?.provider ?? viewModel.shell.data.provider;
-  const bottomDockStoreRevision = [
-    bottomDockLiftedPrompt?.requestId ?? "",
-    bottomDockReplacementPrompt?.requestId ?? "",
-    inlineNoticeChrome?.recovery?.message ?? "",
-    sessionChrome.auth?.message ?? "",
-    sessionChrome.recovery?.kind ?? "",
-    sessionChrome.recovery?.message ?? "",
-    viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
-    viewModel.composer.queueStatus,
-    viewModel.composer.drainingQueuedPromptId ?? "",
-    isInteractionPending ? "1" : "0"
-  ].join("|");
+  const bottomDockStoreRevision = agentGUIDetailBottomDockStoreRevision({
+    activePromptResponsePending,
+    bottomDockLiftedPrompt,
+    bottomDockReplacementPrompt,
+    inlineNoticeChrome,
+    sessionChrome,
+    viewModel
+  });
   const {
     followEndMode,
     isTimelineScrolledToBottom,
@@ -691,7 +692,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
           : undefined
       }
       noticeChrome={homeNoticeChrome}
-      isRespondingApproval={isInteractionPending}
+      isRespondingApproval={activePromptResponsePending}
       onSubmitApprovalOption={submitApproval}
       onRetryActivation={retryActivation}
       onAuthLogin={authLogin}
@@ -705,8 +706,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSelectSuggestionAction={handleHomeSuggestionAction}
     />
   ) : null;
-  const forkedFrom =
-    viewModel.detail.conversationDetail?.session.forkedFrom ?? null;
+  const forkedFrom = detail.conversationDetail?.session.forkedFrom ?? null;
   return (
     <main
       className={styles.detail}
@@ -770,7 +770,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
                 viewModel.interaction.interactivePromptDisabledReason
               }
               inlineNoticeChrome={inlineNoticeChrome}
-              isRespondingApproval={isInteractionPending}
+              isRespondingApproval={activePromptResponsePending}
               sessionChrome={sessionChrome}
               keyboardShortcutsEnabled={isActive && !sideComposerFocused}
               chromeLabels={chromeLabels}

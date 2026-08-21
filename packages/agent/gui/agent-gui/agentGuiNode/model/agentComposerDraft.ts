@@ -3,14 +3,24 @@ import type { AgentActivityRuntimeStagePastedTextResult } from "../../../agentAc
 import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentComposerDraft,
+  AgentComposerDraftConnector,
   AgentComposerFileBlock,
   AgentComposerDraftFile,
   AgentComposerDraftLargeText,
   AgentComposerDraftImage,
-  AgentComposerDraftConnector,
+  AgentComposerQuoteBlock,
   AgentComposerDraftContent,
   AgentGUIProviderSkillOption
 } from "./agentGuiNodeTypes";
+import {
+  agentComposerDraftQuotes,
+  agentComposerQuotePromptContent
+} from "./agentComposerDraftQuotes";
+
+export {
+  agentComposerDraftQuotes,
+  appendAgentComposerDraftQuote
+} from "./agentComposerDraftQuotes";
 import {
   AGENT_PASTED_TEXT_BLOCK_KIND,
   AGENT_PASTED_TEXT_MENTION_KIND
@@ -217,38 +227,12 @@ export function agentComposerDraftLargeTexts(
     .map(({ type: _type, kind: _kind, ...item }) => item);
 }
 
-interface AgentComposerDraftAttachmentProjection {
-  images: AgentComposerDraftImage[];
-  files: AgentComposerDraftFile[];
-  largeTexts: AgentComposerDraftLargeText[];
-  connectors: AgentComposerDraftConnector[];
-}
-
-const attachmentProjectionByDraft = new WeakMap<
-  AgentComposerDraftContent,
-  AgentComposerDraftAttachmentProjection
->();
-
-export function agentComposerDraftAttachmentProjection(
-  draft: AgentComposerDraftContent
-): AgentComposerDraftAttachmentProjection {
-  const cached = attachmentProjectionByDraft.get(draft);
-  if (cached) return cached;
-  const projection = {
-    images: agentComposerDraftImages(draft),
-    files: agentComposerDraftFiles(draft),
-    largeTexts: agentComposerDraftLargeTexts(draft),
-    connectors: agentComposerDraftConnectors(draft)
-  };
-  attachmentProjectionByDraft.set(draft, projection);
-  return projection;
-}
-
 export function buildAgentComposerDraft(input: {
   prompt: string;
   images?: readonly AgentComposerDraftImage[];
   files?: readonly AgentComposerDraftFile[];
   largeTexts?: readonly AgentComposerDraftLargeText[];
+  quotes?: readonly AgentComposerQuoteBlock[];
   connectors?: readonly AgentComposerDraftConnector[];
 }): AgentComposerDraft {
   return [
@@ -269,6 +253,7 @@ export function buildAgentComposerDraft(input: {
         ...item
       })
     ),
+    ...(input.quotes ?? []).map((quote) => ({ ...quote })),
     ...agentComposerDraftConnectorBlocks(input.connectors ?? [])
   ];
 }
@@ -280,6 +265,7 @@ export function updateAgentComposerDraft(
     images: readonly AgentComposerDraftImage[];
     files: readonly AgentComposerDraftFile[];
     largeTexts: readonly AgentComposerDraftLargeText[];
+    quotes: readonly AgentComposerQuoteBlock[];
     connectors: readonly AgentComposerDraftConnector[];
   }>
 ): AgentComposerDraft {
@@ -288,6 +274,7 @@ export function updateAgentComposerDraft(
     images: update.images ?? agentComposerDraftImages(draft),
     files: update.files ?? agentComposerDraftFiles(draft),
     largeTexts: update.largeTexts ?? agentComposerDraftLargeTexts(draft),
+    quotes: update.quotes ?? agentComposerDraftQuotes(draft),
     connectors: update.connectors ?? agentComposerDraftConnectors(draft)
   });
 }
@@ -310,6 +297,7 @@ export function agentComposerDraftHasContent(
   if (
     textWithoutComposerFiles.trim() ||
     agentComposerDraftConnectors(draft).length > 0 ||
+    agentComposerDraftQuotes(draft).length > 0 ||
     agentComposerDraftFiles(draft).some((file) =>
       referencedFileIds.has(file.id)
     )
@@ -320,6 +308,7 @@ export function agentComposerDraftHasContent(
     if (block.type === "text") return false;
     if (block.type === "image") return true;
     if (block.type === "connector") return true;
+    if (block.type === "quote") return block.text.trim() !== "";
     return block.kind === "file"
       ? false
       : block.text.trim() !== "" || Boolean(block.path || block.url);
@@ -536,6 +525,7 @@ export function agentComposerDraftToPromptContent(input: {
   );
   return normalizeAgentPromptContentBlocks([
     ...textPromptContent(connectorProjection.prompt),
+    ...agentComposerQuotePromptContent(agentComposerDraftQuotes(input.draft)),
     ...promptItemBlocksForProviderSkills({
       prompt: connectorProjection.prompt,
       skills: input.skills
@@ -568,6 +558,7 @@ export function agentComposerDraftSubmittedText(
   return agentPromptContentDisplayText(
     normalizeAgentPromptContentBlocks([
       ...textPromptContent(agentComposerDraftPrompt(draft)),
+      ...agentComposerQuotePromptContent(agentComposerDraftQuotes(draft)),
       ...largeTextPromptContent(agentComposerDraftLargeTexts(draft))
     ])
   );
@@ -587,10 +578,13 @@ export function agentComposerDraftDisplayPrompt(
     (item) =>
       Boolean(item.path || item.url) && !item.uploading && !item.uploadError
   );
-  if (!largeTexts.length) {
+  const quoteText = agentPromptContentDisplayText(
+    agentComposerQuotePromptContent(agentComposerDraftQuotes(draft))
+  );
+  if (!largeTexts.length && !quoteText) {
     return prompt.includes("](mention://") ? prompt : undefined;
   }
-  const parts = [prompt].filter(Boolean);
+  const parts = [prompt, quoteText].filter(Boolean);
   parts.push(
     ...largeTexts
       .map((item, index) => pastedTextMentionMarkdown(item, index))

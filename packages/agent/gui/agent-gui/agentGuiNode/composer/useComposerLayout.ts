@@ -31,7 +31,7 @@ const DOCK_COMPOSER_INPUT_PADDING_BLOCK_HEIGHT = 24;
 const PROMPT_TIP_CYCLE_STEP_MS = 5_200;
 const COMPOSER_PALETTE_Z_INDEX = "var(--z-popover)";
 const COMPOSER_ATTACHMENT_SELECTOR =
-  '[data-testid="agent-gui-composer-image-drafts"], [data-testid="agent-gui-composer-file-drafts"]';
+  '[data-testid="agent-gui-composer-attachment-drafts"]';
 
 export interface DockComposerMetrics {
   attachmentHeight: number;
@@ -70,6 +70,7 @@ interface UseComposerLayoutInput {
   setDockComposerMetrics: Dispatch<SetStateAction<DockComposerMetrics>>;
   draftImages: AgentComposerDraftImage[];
   draftLargeTexts: AgentComposerDraftLargeText[];
+  draftQuoteCount?: number;
 }
 
 export function useComposerLayout({
@@ -90,7 +91,8 @@ export function useComposerLayout({
   dockComposerMetrics,
   setDockComposerMetrics,
   draftImages,
-  draftLargeTexts
+  draftLargeTexts,
+  draftQuoteCount = 0
 }: UseComposerLayoutInput) {
   const composerMeasurementFrameRef = useRef<number | null>(null);
   const labels = { promptTipsPrefix };
@@ -292,6 +294,7 @@ export function useComposerLayout({
   }, [
     draftImages.length,
     draftLargeTexts.length,
+    draftQuoteCount,
     invalidateComposerMeasurement,
     isDockLayout,
     promptInputAreaRef
