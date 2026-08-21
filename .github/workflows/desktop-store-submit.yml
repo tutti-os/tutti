@@ -368,17 +368,7 @@ jobs:
           $msixPath = '${{ steps.submission.outputs.path }}'
           $packageSize = (Get-Item -LiteralPath $msixPath).Length
           "Microsoft Store upload package size: $packageSize bytes"
-          $publishArgs = @('-v', 'publish', $msixPath, '-id', $env:TUTTI_MICROSOFT_STORE_PRODUCT_ID)
-          $publishOutput = & msstore @publishArgs 2>&1
-          $publishExitCode = $LASTEXITCODE
-          $publishOutput | ForEach-Object {
-            $line = [string]$_
-            $line = [regex]::Replace($line, '(?i)https?://[^\s`"<>]+', '<redacted-url>')
-            $line
-          }
-          if ($publishExitCode -ne 0) {
-            throw "msstore publish failed with exit code $publishExitCode"
-          }
+          msstore publish $msixPath -id "$env:TUTTI_MICROSOFT_STORE_PRODUCT_ID" -ut 600
 
       - name: Record submission summary
         shell: pwsh
