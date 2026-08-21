@@ -254,78 +254,97 @@ func seedPermanentlyInconsistentAcceptedFork(t *testing.T, stateDir string) {
 		_ = store.Close()
 		t.Fatal(err)
 	}
-	if result, err := canonical.ReportActivityState(ctx, storesqlite.ActivityStateReport{
-		Session: storesqlite.SessionStateReport{
-			WorkspaceID:       "workspace-fork",
-			AgentSessionID:    "session-source",
-			Kind:              storesqlite.SessionKindRoot,
-			Origin:            "user",
-			Provider:          "codex",
-			ProviderSessionID: "provider-source",
-			Cwd:               "/workspace",
-			OccurredAtUnixMS:  20,
-		},
-		Turn: &storesqlite.TurnTransition{
-			WorkspaceID:      "workspace-fork",
-			AgentSessionID:   "session-source",
-			TurnID:           "turn-boundary",
-			Phase:            storesqlite.TurnPhaseRunning,
-			OccurredAtUnixMS: 20,
-		},
-		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
-			WorkspaceID:             "workspace-fork",
-			RootAgentSessionID:      "session-source",
-			RootTurnID:              "turn-boundary",
-			ProviderTurnID:          "provider-turn",
-			ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
-			Phase:                   storesqlite.RootProviderTurnPhaseRunning,
-			OccurredAtUnixMS:        20,
-		},
-	}); err != nil || !result.TurnAccepted || !result.RootTurnAccepted {
-		_ = store.Close()
-		t.Fatalf("seed running fork boundary result=%#v error=%v", result, err)
+	lastSeededAt := int64(0)
+	for index := 0; index < 29; index++ {
+		turnID := fmt.Sprintf("turn-history-%02d", index+1)
+		providerTurnID := fmt.Sprintf("provider-turn-history-%02d", index+1)
+		messageID := fmt.Sprintf("message-history-%02d", index+1)
+		if index == 28 {
+			turnID = "turn-boundary"
+			providerTurnID = "provider-turn"
+			messageID = "message-boundary"
+		}
+		runningAt := int64(20 + index*3)
+		if result, err := canonical.ReportActivityState(ctx, storesqlite.ActivityStateReport{
+			Session: storesqlite.SessionStateReport{
+				WorkspaceID:       "workspace-fork",
+				AgentSessionID:    "session-source",
+				Kind:              storesqlite.SessionKindRoot,
+				Origin:            "user",
+				Provider:          "codex",
+				ProviderSessionID: "provider-source",
+				Cwd:               "/workspace",
+				OccurredAtUnixMS:  runningAt,
+			},
+			Turn: &storesqlite.TurnTransition{
+				WorkspaceID:      "workspace-fork",
+				AgentSessionID:   "session-source",
+				TurnID:           turnID,
+				Phase:            storesqlite.TurnPhaseRunning,
+				OccurredAtUnixMS: runningAt,
+			},
+			RootProviderTurn: &storesqlite.RootProviderTurnTransition{
+				WorkspaceID:             "workspace-fork",
+				RootAgentSessionID:      "session-source",
+				RootTurnID:              turnID,
+				ProviderTurnID:          providerTurnID,
+				ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+				Phase:                   storesqlite.RootProviderTurnPhaseRunning,
+				OccurredAtUnixMS:        runningAt,
+			},
+		}); err != nil || !result.TurnAccepted || !result.RootTurnAccepted {
+			_ = store.Close()
+			t.Fatalf("seed running fork turn %d result=%#v error=%v", index+1, result, err)
+		}
+		if _, err := canonical.ReportSessionMessages(ctx, storesqlite.SessionMessageReport{
+			WorkspaceID:    "workspace-fork",
+			AgentSessionID: "session-source",
+			Origin:         "runtime",
+			Messages: []storesqlite.MessageUpdate{{
+				MessageID:        messageID,
+				TurnID:           turnID,
+				Role:             "assistant",
+				Kind:             "text",
+				Status:           "completed",
+				Payload:          map[string]any{"text": "complete"},
+				OccurredAtUnixMS: runningAt + 1,
+			}},
+		}); err != nil {
+			_ = store.Close()
+			t.Fatal(err)
+		}
+		lastSeededAt = runningAt + 2
+		if result, err := canonical.ReportActivityState(ctx, storesqlite.ActivityStateReport{
+			Session: storesqlite.SessionStateReport{
+				WorkspaceID:       "workspace-fork",
+				AgentSessionID:    "session-source",
+				Kind:              storesqlite.SessionKindRoot,
+				Origin:            "user",
+				Provider:          "codex",
+				ProviderSessionID: "provider-source",
+				Cwd:               "/workspace",
+				OccurredAtUnixMS:  lastSeededAt,
+			},
+			RootProviderTurn: &storesqlite.RootProviderTurnTransition{
+				WorkspaceID:             "workspace-fork",
+				RootAgentSessionID:      "session-source",
+				RootTurnID:              turnID,
+				ProviderTurnID:          providerTurnID,
+				ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+				Phase:                   storesqlite.RootProviderTurnPhaseCompleted,
+				Outcome:                 storesqlite.TurnOutcomeCompleted,
+				OccurredAtUnixMS:        lastSeededAt,
+			},
+		}); err != nil || !result.RootTurnAccepted {
+			_ = store.Close()
+			t.Fatalf("seed settled fork turn %d result=%#v error=%v", index+1, result, err)
+		}
 	}
-	if _, err := canonical.ReportSessionMessages(ctx, storesqlite.SessionMessageReport{
-		WorkspaceID:    "workspace-fork",
-		AgentSessionID: "session-source",
-		Origin:         "runtime",
-		Messages: []storesqlite.MessageUpdate{{
-			MessageID:        "message-boundary",
-			TurnID:           "turn-boundary",
-			Role:             "assistant",
-			Kind:             "text",
-			Status:           "completed",
-			Payload:          map[string]any{"text": "complete"},
-			OccurredAtUnixMS: 21,
-		}},
-	}); err != nil {
+	operationAt := lastSeededAt + 10
+	turns, err := canonical.ListSessionTurns(ctx, "workspace-fork", "session-source")
+	if err != nil || len(turns) != 29 {
 		_ = store.Close()
-		t.Fatal(err)
-	}
-	if result, err := canonical.ReportActivityState(ctx, storesqlite.ActivityStateReport{
-		Session: storesqlite.SessionStateReport{
-			WorkspaceID:       "workspace-fork",
-			AgentSessionID:    "session-source",
-			Kind:              storesqlite.SessionKindRoot,
-			Origin:            "user",
-			Provider:          "codex",
-			ProviderSessionID: "provider-source",
-			Cwd:               "/workspace",
-			OccurredAtUnixMS:  22,
-		},
-		RootProviderTurn: &storesqlite.RootProviderTurnTransition{
-			WorkspaceID:             "workspace-fork",
-			RootAgentSessionID:      "session-source",
-			RootTurnID:              "turn-boundary",
-			ProviderTurnID:          "provider-turn",
-			ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
-			Phase:                   storesqlite.RootProviderTurnPhaseCompleted,
-			Outcome:                 storesqlite.TurnOutcomeCompleted,
-			OccurredAtUnixMS:        22,
-		},
-	}); err != nil || !result.RootTurnAccepted {
-		_ = store.Close()
-		t.Fatalf("seed settled fork boundary result=%#v error=%v", result, err)
+		t.Fatalf("seeded source turns=%d error=%v, want 29", len(turns), err)
 	}
 	operation, _, err := canonical.PrepareSessionFork(ctx, storesqlite.SessionForkPrepare{
 		OperationID:          "operation-fork",
@@ -338,32 +357,49 @@ func seedPermanentlyInconsistentAcceptedFork(t *testing.T, stateDir string) {
 		PointKind:            storesqlite.SessionForkPointThroughTurn,
 		DriverKind:           "codex-app-server",
 		DriverVersion:        "1",
-		OccurredAtUnixMS:     30,
+		OccurredAtUnixMS:     operationAt,
 	})
 	if err != nil {
 		_ = store.Close()
 		t.Fatal(err)
 	}
 	if _, _, err := canonical.MarkSessionForkDispatching(
-		ctx, operation.WorkspaceID, operation.OperationID, 31,
+		ctx, operation.WorkspaceID, operation.OperationID, operationAt+1,
 	); err != nil {
 		_ = store.Close()
 		t.Fatal(err)
 	}
-	if _, _, err := canonical.RecordSessionForkProviderResult(
+	accepted, changed, err := canonical.RecordSessionForkProviderResult(
 		ctx,
 		storesqlite.SessionForkProviderResult{
 			WorkspaceID:             operation.WorkspaceID,
 			OperationID:             operation.OperationID,
 			Status:                  storesqlite.SessionForkStatusProviderAccepted,
 			TargetProviderSessionID: "provider-target",
-			StateBindingMode:         string(agenthost.SessionForkStateBindingProviderOwned),
-			StateBindingReceipt:      "blackbox-provider-owned-receipt",
-			OccurredAtUnixMS:         32,
+			TargetProviderTurnBindings: []storesqlite.SessionForkProviderTurnBinding{
+				{
+					ProviderTurnID:          "forked-provider-turn-1",
+					ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+				},
+				{
+					ProviderTurnID:          "forked-provider-turn-2",
+					ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+				},
+				{
+					ProviderTurnID:          "forked-provider-turn-3",
+					ProviderTurnBindingJSON: json.RawMessage(`{"schemaVersion":1}`),
+				},
+			},
+			StateBindingMode:    string(agenthost.SessionForkStateBindingProviderOwned),
+			StateBindingReceipt: "blackbox-provider-owned-receipt",
+			OccurredAtUnixMS:    operationAt + 2,
 		},
-	); err != nil {
+	)
+	if err != nil || !changed ||
+		accepted.Status != storesqlite.SessionForkStatusProviderAccepted ||
+		len(accepted.TargetProviderTurnBindings) != 3 {
 		_ = store.Close()
-		t.Fatal(err)
+		t.Fatalf("seed accepted fork operation=%#v changed=%v error=%v", accepted, changed, err)
 	}
 	if err := store.Close(); err != nil {
 		t.Fatal(err)
