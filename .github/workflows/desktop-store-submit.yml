@@ -368,7 +368,7 @@ jobs:
           $msixPath = '${{ steps.submission.outputs.path }}'
           $packageSize = (Get-Item -LiteralPath $msixPath).Length
           "Microsoft Store upload package size: $packageSize bytes"
-          $publishArgs = @($msixPath, '-id', $env:TUTTI_MICROSOFT_STORE_PRODUCT_ID, '-v')
+          $publishArgs = @('-v', 'publish', $msixPath, '-id', $env:TUTTI_MICROSOFT_STORE_PRODUCT_ID)
           $publishOutput = & msstore @publishArgs 2>&1
           $publishExitCode = $LASTEXITCODE
           $publishOutput | ForEach-Object {
