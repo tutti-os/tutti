@@ -1239,6 +1239,17 @@ func (s *pagedSessionForkRecoveryStore) FailPreparedSessionFork(
 	}, true, nil
 }
 
+func (s *pagedSessionForkRecoveryStore) FailAcceptedSessionFork(
+	_ context.Context,
+	_, operationID, _ string,
+	_ int64,
+) (storesqlite.SessionForkOperation, bool, error) {
+	s.failed[operationID] = true
+	return storesqlite.SessionForkOperation{
+		OperationID: operationID, Status: storesqlite.SessionForkStatusFailed,
+	}, true, nil
+}
+
 func newFakeSessionForkStore() *fakeSessionForkStore {
 	return &fakeSessionForkStore{}
 }
@@ -1395,6 +1406,14 @@ func (f *fakeSessionForkStore) RetryUnknownSessionFork(
 }
 
 func (f *fakeSessionForkStore) FailPreparedSessionFork(
+	_ context.Context, _, _ string, lastError string, _ int64,
+) (storesqlite.SessionForkOperation, bool, error) {
+	f.operation.Status = storesqlite.SessionForkStatusFailed
+	f.operation.LastError = lastError
+	return f.operation, true, nil
+}
+
+func (f *fakeSessionForkStore) FailAcceptedSessionFork(
 	_ context.Context, _, _ string, lastError string, _ int64,
 ) (storesqlite.SessionForkOperation, bool, error) {
 	f.operation.Status = storesqlite.SessionForkStatusFailed

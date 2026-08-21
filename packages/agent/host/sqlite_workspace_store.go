@@ -233,6 +233,24 @@ func (s *SQLiteWorkspaceStore) FailPreparedSessionFork(
 	return operation, changed, err
 }
 
+func (s *SQLiteWorkspaceStore) FailAcceptedSessionFork(
+	ctx context.Context,
+	workspaceID, operationID, lastError string,
+	now int64,
+) (storesqlite.SessionForkOperation, bool, error) {
+	store, err := s.store(workspaceID)
+	if err != nil {
+		return storesqlite.SessionForkOperation{}, false, err
+	}
+	operation, changed, err := store.FailAcceptedSessionFork(
+		ctx, workspaceID, operationID, lastError, now,
+	)
+	if err == nil && changed {
+		NotifyCommitted(ctx, s.Observer, CanonicalDelta(operation.CommitDelta))
+	}
+	return operation, changed, err
+}
+
 func (s *SQLiteWorkspaceStore) RecordSessionForkProviderResult(
 	ctx context.Context,
 	input storesqlite.SessionForkProviderResult,

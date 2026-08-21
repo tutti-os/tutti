@@ -3051,6 +3051,41 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [claude_sdk_fork.go](../../../packages/agent/daemon/runtime/claude_sdk_fork.go)
   [session_fork.go](../../../packages/agent/host/session_fork.go)
 
+### A provider-accepted Session Fork prevents Tutti from starting
+
+- Symptom:
+  Tutti exits during cold startup with `materialize accepted session fork` and
+  a provider-owned binding count that is smaller than the frozen canonical
+  provider-bound Turn count. The source Session and its history still exist,
+  while the operation remains `provider_accepted`.
+- Root cause:
+  The provider accepted the Fork, so recovery correctly refused to dispatch it
+  again. Canonical materialization also correctly refused to invent the
+  missing provider Turn bindings, but the deterministic mismatch was returned
+  as an ordinary recovery error. One unrecoverable operation therefore
+  poisoned Host recovery and daemon construction on every restart.
+- Fix:
+  Classify only deterministic provider-owned materialization evidence
+  mismatches as permanent. Atomically fail that accepted operation, retain its
+  provider acceptance evidence and the complete source history, remove any
+  incomplete target, and release its reservation and boundary barrier. Do not
+  re-dispatch the provider. Keep transient SQLite errors and failures to persist
+  the quarantine startup-fatal.
+- Validation:
+  Seed a real temporary SQLite database with 29 provider-bound canonical Turns,
+  three returned bindings, and a `provider_accepted` operation. Recover through
+  `Host.Recover`, verify the source still has 29 Turns, the target is absent,
+  provider evidence remains, isolation rows are gone, no provider Fork call was
+  made, and a later valid operation commits. Inject quarantine persistence
+  failure as the negative control. Start the real `tuttidd` binary from a
+  poisoned state directory and require listener publication plus healthy
+  `/v1/health`.
+- References:
+  [session_fork.go](../../../packages/agent/host/session_fork.go)
+  [session_fork_operations.go](../../../packages/agent/store-sqlite/session_fork_operations.go)
+  [session_fork_conformance_test.go](../../../packages/agent/host/session_fork_conformance_test.go)
+  [blackbox_test.go](../../../services/tuttid/integration/blackbox_test.go)
+
 ### Fork reports only `agent_session_fork_conflict`
 
 - Symptom:
