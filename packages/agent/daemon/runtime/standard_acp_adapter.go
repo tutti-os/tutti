@@ -97,6 +97,7 @@ type standardACPConfig struct {
 	startupDiagnostics             bool
 	toolAliases                    map[string]string
 	modelConfigOptionID            string
+	modelDescriptionFormat         string
 	permissionConfigOptionID       string
 	reasoningConfigOptionID        string
 	restrictConfigOptions          bool

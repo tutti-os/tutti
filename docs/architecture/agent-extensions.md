@@ -284,6 +284,18 @@ retaining the original runtime id for ACP writes. Unknown provider-native
 options remain intact in the opaque runtime context; this does not imply a
 generic AgentGUI control for every unknown option.
 
+Model consumption metadata follows the same adapter-first rule without making
+provider prose globally meaningful. A verified Extension may opt its model
+config reference into the closed
+`descriptionMetadataFormat: "credit-consumption-multiplier-v1"` declaration.
+Only then does the standard ACP adapter remove a standalone `xN credits`
+description segment and project its numeric token as the typed
+`consumptionMultiplier` model field. Unknown formats fail package validation
+and adapter construction; profiles without the declaration preserve the full
+description. The daemon API and activity adapter preserve the typed field, and
+AgentGUI renders it without parsing provider prose or branching on a provider
+name.
+
 Signed composer profiles may narrow the provider-advertised slash-command
 catalog and attach shared command effects such as submit-immediate, show-status,
 activate-goal-mode, and toggle-plan-mode. `tuttid` applies that declarative

@@ -5505,9 +5505,11 @@ type AgentProviderComposerConfig struct {
 
 // AgentProviderComposerConfigOptionValue defines model for AgentProviderComposerConfigOptionValue.
 type AgentProviderComposerConfigOptionValue struct {
-	Description *string `json:"description,omitempty"`
-	Id          string  `json:"id"`
-	Label       string  `json:"label"`
+	// ConsumptionMultiplier Provider-reported credit consumption multiplier without the display suffix. Runtime adapters normalize provider wire data into this typed field; clients must not infer it from description.
+	ConsumptionMultiplier *string `json:"consumptionMultiplier,omitempty"`
+	Description           *string `json:"description,omitempty"`
+	Id                    string  `json:"id"`
+	Label                 string  `json:"label"`
 
 	// Requested True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.
 	Requested          *bool  `json:"requested,omitempty"`

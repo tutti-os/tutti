@@ -115,6 +115,8 @@ func applyACPUpdateToLiveState(
 	state *acpLiveState,
 	agentSessionID string,
 	raw json.RawMessage,
+	modelConfigOptionID string,
+	modelDescriptionFormat string,
 ) *AgentSessionCommandSnapshot {
 	if state == nil {
 		return nil
@@ -141,6 +143,7 @@ func applyACPUpdateToLiveState(
 		}
 	case "config_option_update":
 		if descriptors := acpConfigOptionDescriptorsFromUpdate(params.Update); len(descriptors) > 0 {
+			normalizeACPModelConfigOptionDescriptions(descriptors, modelConfigOptionID, modelDescriptionFormat)
 			applyACPConfigOptionDescriptors(state, descriptors)
 		}
 		for key, value := range acpConfigValues(params.Update) {
@@ -345,7 +348,12 @@ func acpConfigOptionsUpdateKey(raw json.RawMessage) (string, bool) {
 	return strings.TrimSpace(asString(params.Update["key"])), true
 }
 
-func applyACPConfigOptionsResult(state *acpLiveState, raw json.RawMessage) {
+func applyACPConfigOptionsResult(
+	state *acpLiveState,
+	raw json.RawMessage,
+	modelConfigOptionID string,
+	modelDescriptionFormat string,
+) {
 	if state == nil || len(raw) == 0 {
 		return
 	}
@@ -355,6 +363,7 @@ func applyACPConfigOptionsResult(state *acpLiveState, raw json.RawMessage) {
 	if err := json.Unmarshal(raw, &payload); err != nil || len(payload.ConfigOptions) == 0 {
 		return
 	}
+	normalizeACPModelConfigOptionDescriptions(payload.ConfigOptions, modelConfigOptionID, modelDescriptionFormat)
 	applyACPConfigOptionDescriptors(state, payload.ConfigOptions)
 }
 

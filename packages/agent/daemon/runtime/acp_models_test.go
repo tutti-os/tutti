@@ -10,25 +10,117 @@ func TestApplyACPModelsResultProjectsModelConfigOption(t *testing.T) {
 	applyACPModelsResult(&state, json.RawMessage(`{
 		"models": {
 			"availableModels": [
-				{"modelId":"auto-gemini-3","name":"Auto (Gemini 3)","description":"Routes automatically"},
-				{"modelId":"gemini-3-pro-preview","name":"Gemini 3 Pro"}
+				{"modelId":"auto-gemini-3","name":"Auto (Gemini 3)","description":"Routes automatically\nwithout rewriting"},
+				{"modelId":"gemini-3-pro-preview","name":"Gemini 3 Pro","description":"Frontier model · x0.71 credits"},
+				{"modelId":"hy3","name":"Hy3","description":"0.00x Credits"}
 			],
 			"currentModelId":"auto-gemini-3"
 		}
-	}`))
+	}`), StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1)
 
 	if !state.modelsAPI {
 		t.Fatal("modelsAPI = false, want true")
 	}
 	options := extractModelOptionsFromRuntimeDescriptorsForTest(state.configOptionDescriptors)
-	if len(options) != 2 {
-		t.Fatalf("model options = %#v, want two", options)
+	if len(options) != 3 {
+		t.Fatalf("model options = %#v, want three", options)
 	}
 	if options[0]["value"] != "auto-gemini-3" || options[0]["label"] != "Auto (Gemini 3)" {
 		t.Fatalf("first model option = %#v", options[0])
 	}
+	if options[0]["description"] != "Routes automatically\nwithout rewriting" {
+		t.Fatalf("ordinary model description = %#v, want verbatim text", options[0]["description"])
+	}
+	if options[1]["description"] != "Frontier model" || options[1]["consumptionMultiplier"] != "0.71" {
+		t.Fatalf("model consumption metadata = %#v", options[1])
+	}
+	if _, present := options[2]["description"]; present || options[2]["consumptionMultiplier"] != "0.00" {
+		t.Fatalf("credit-only model metadata = %#v", options[2])
+	}
 	if state.configOptions["model"] != "auto-gemini-3" {
 		t.Fatalf("current model = %#v, want auto-gemini-3", state.configOptions["model"])
+	}
+}
+
+func TestApplyACPModelsResultPreservesDescriptionWithoutDeclaredMetadataFormat(t *testing.T) {
+	state := newACPLiveState()
+	applyACPModelsResult(&state, json.RawMessage(`{
+		"models": {
+			"availableModels": [
+				{"modelId":"ordinary-provider","name":"Ordinary Provider","description":"Frontier model · x0.71 credits"}
+			],
+			"currentModelId":"ordinary-provider"
+		}
+	}`), "")
+
+	options := extractModelOptionsFromRuntimeDescriptorsForTest(state.configOptionDescriptors)
+	if len(options) != 1 || options[0]["description"] != "Frontier model · x0.71 credits" {
+		t.Fatalf("model options = %#v, want provider description preserved", options)
+	}
+	if _, present := options[0]["consumptionMultiplier"]; present {
+		t.Fatalf("undeclared consumption metadata should not be inferred: %#v", options[0])
+	}
+}
+
+func TestApplyACPConfigOptionsResultProjectsDeclaredModelConsumptionMetadata(t *testing.T) {
+	state := newACPLiveState()
+	applyACPConfigOptionsResult(&state, json.RawMessage(`{
+		"configOptions": [
+			{
+				"type":"select",
+				"id":"model",
+				"currentValue":"hy3",
+				"options":[
+					{"value":"hy3","name":"Hy3","description":"x0.00 credits"},
+					{"value":"glm-5.3","name":"GLM-5.3","description":"Frontier model · x0.79 credits"}
+				]
+			}
+		]
+	}`), "model", StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1)
+
+	options := extractModelOptionsFromRuntimeDescriptorsForTest(state.configOptionDescriptors)
+	if len(options) != 2 {
+		t.Fatalf("model options = %#v, want two", options)
+	}
+	if _, present := options[0]["description"]; present || options[0]["consumptionMultiplier"] != "0.00" {
+		t.Fatalf("credit-only config option metadata = %#v", options[0])
+	}
+	if options[1]["description"] != "Frontier model" || options[1]["consumptionMultiplier"] != "0.79" {
+		t.Fatalf("mixed config option metadata = %#v", options[1])
+	}
+}
+
+func TestApplyACPConfigOptionsResultPreservesDescriptionWithoutDeclaredMetadataFormat(t *testing.T) {
+	state := newACPLiveState()
+	applyACPConfigOptionsResult(&state, json.RawMessage(`{
+		"configOptions": [{
+			"id":"model",
+			"currentValue":"ordinary-provider",
+			"options":[{
+				"value":"ordinary-provider",
+				"name":"Ordinary Provider",
+				"description":"Frontier model · x0.71 credits"
+			}]
+		}]
+	}`), "model", "")
+
+	options := extractModelOptionsFromRuntimeDescriptorsForTest(state.configOptionDescriptors)
+	if len(options) != 1 || options[0]["description"] != "Frontier model · x0.71 credits" {
+		t.Fatalf("model options = %#v, want provider description preserved", options)
+	}
+	if _, present := options[0]["consumptionMultiplier"]; present {
+		t.Fatalf("undeclared config option consumption metadata should not be inferred: %#v", options[0])
+	}
+}
+
+func TestNewStandardACPAdapterRejectsUnknownModelDescriptionMetadataFormat(t *testing.T) {
+	_, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:               "acp:example",
+		Command:                []string{"example", "--acp"},
+		ModelDescriptionFormat: "extension-supplied-parser",
+	}, nil, LegacyHostMetadata())
+	if err == nil {
+		t.Fatal("NewStandardACPAdapter() error = nil, want unsupported metadata format rejection")
 	}
 }
 
@@ -60,7 +152,7 @@ func TestApplyACPModelsResultPreservesDynamicModelMetadata(t *testing.T) {
 			],
 			"currentModelId":"reasoning-model"
 		}
-	}`))
+	}`), "")
 
 	options := extractModelOptionsFromRuntimeDescriptorsForTest(state.configOptionDescriptors)
 	if len(options) != 2 {
@@ -112,7 +204,7 @@ func TestApplyACPModelsResultToleratesAlternateMetadataShapes(t *testing.T) {
 			],
 			"currentModelId":"string-efforts"
 		}
-	}`))
+	}`), "")
 
 	if !state.modelsAPI {
 		t.Fatal("modelsAPI = false, want true")

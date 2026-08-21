@@ -1983,6 +1983,10 @@ export type AgentProviderComposerConfigOptionValue = {
   value: string;
   label: string;
   description?: string;
+  /**
+   * Provider-reported credit consumption multiplier without the display suffix. Runtime adapters normalize provider wire data into this typed field; clients must not infer it from description.
+   */
+  consumptionMultiplier?: string;
   supportsImageInput?: boolean;
   /**
    * True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.

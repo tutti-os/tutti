@@ -464,6 +464,28 @@ func TestMergeLiveModelsIntoComposerOptionsKeepsModelDescriptionInRuntimeContext
 	}
 }
 
+func TestMergeLiveModelsIntoComposerOptionsKeepsConsumptionMultiplierInRuntimeContext(t *testing.T) {
+	merged := mergeLiveModelsIntoComposerOptions(ComposerOptions{
+		Provider:          "acp:codebuddy",
+		EffectiveSettings: ComposerSettings{Model: "glm-5.2"},
+		RuntimeContext:    map[string]any{},
+	}, []ComposerConfigOptionValue{
+		{ID: "glm-5.2", Label: "GLM-5.2", Value: "glm-5.2", ConsumptionMultiplier: "0.79"},
+	})
+
+	configOptions, ok := merged.RuntimeContext["configOptions"].([]map[string]any)
+	if !ok || len(configOptions) == 0 || configOptions[0]["id"] != "model" {
+		t.Fatalf("configOptions = %#v, want model option", merged.RuntimeContext["configOptions"])
+	}
+	options, ok := configOptions[0]["options"].([]map[string]any)
+	if !ok || len(options) != 1 {
+		t.Fatalf("model options = %#v, want 1 entry", configOptions[0]["options"])
+	}
+	if got := options[0]["consumptionMultiplier"]; got != "0.79" {
+		t.Fatalf("consumptionMultiplier = %#v, want 0.79", got)
+	}
+}
+
 func TestMergeLiveModelsIntoComposerOptionsKeepsSupportsImageInput(t *testing.T) {
 	imageSupported := true
 	imageUnsupported := false
