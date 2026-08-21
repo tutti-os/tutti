@@ -92,7 +92,7 @@ func TestResolveAgentExtensionSourcesUsesGeneratedActivationDefaults(t *testing.
 	}
 	wantPinnedVersions := map[string]string{
 		"gemini": "2.0.3", "codebuddy": "2.0.3", "copilot": "2.0.3", "kilo": "2.0.3",
-		"qwen": "2.0.3", "hermes": "1.0.8", "kimi-code": "1.0.11", "grok": "0.1.2",
+		"qwen": "2.0.3", "hermes": "1.0.9", "kimi-code": "1.0.11", "grok": "0.1.2",
 	}
 	for key, wantVersion := range wantPinnedVersions {
 		if got := agentExtensionSourceByKey(t, sources, key).PinnedVersion; got != wantVersion {
