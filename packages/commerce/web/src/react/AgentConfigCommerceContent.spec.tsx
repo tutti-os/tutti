@@ -7,6 +7,12 @@ import {
   waitFor
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger
+} from "@tutti-os/ui-system";
 import type { CommerceMenuState } from "../index";
 import {
   AgentConfigCommerceContent,
@@ -45,7 +51,45 @@ function state(overrides: Partial<CommerceMenuState> = {}): CommerceMenuState {
   };
 }
 
+function CommerceMenuHarness({
+  menuState,
+  onRefresh
+}: {
+  menuState: CommerceMenuState;
+  onRefresh: () => void;
+}): React.JSX.Element {
+  const [open, setOpen] = useState(true);
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger>More</DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <AgentConfigCommerceContent
+          accountName="Mia"
+          labels={labels}
+          onRefresh={onRefresh}
+          presentation="menu"
+          state={menuState}
+        />
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 describe("AgentConfigCommerceContent", () => {
+  it("registers account actions and keeps the menu open while refreshing", () => {
+    const menuState = state();
+    const onRefresh = vi.fn();
+    render(<CommerceMenuHarness menuState={menuState} onRefresh={onRefresh} />);
+
+    expect(screen.getAllByRole("menuitem")).toHaveLength(4);
+    fireEvent.click(screen.getByRole("menuitem", { name: "Refresh" }));
+    expect(onRefresh).toHaveBeenCalledOnce();
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("menuitem", { name: "Membership Pro" }));
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
   it("renders account, clickable credits, membership, and account center", () => {
     const menuState = state();
     const onRefresh = vi.fn();

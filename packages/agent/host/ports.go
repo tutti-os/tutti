@@ -16,6 +16,13 @@ type CanonicalSessionStore interface {
 	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
+// CanonicalRuntimeContextCASStore is the narrow durable commit required by a
+// runtime configuration rebind. It remains optional so external read/custom
+// stores are not source-broken; rebind fails closed when it is unavailable.
+type CanonicalRuntimeContextCASStore interface {
+	CompareAndSwapSessionRuntimeContext(context.Context, string, string, map[string]any, map[string]any) (storesqlite.Session, bool, error)
+}
+
 // RuntimeSessionRailPlacementResolver is the optional create-time capability
 // that resolves a prepared runtime's final canonical rail placement before a
 // provider process starts. Keeping it separate preserves source compatibility

@@ -11,8 +11,8 @@ func TestCodexRemoteAuthEvidenceClassifiesProviderResult(t *testing.T) {
 		wantReason string
 	}{
 		{name: "accepted", success: true, wantKind: AuthEvidenceRemoteSuccess},
-		{name: "revoked", failure: "401 Unauthorized: refresh token was revoked", wantKind: AuthEvidenceRemoteAuthFailure, wantReason: AuthReasonSessionExpired},
-		{name: "signed out", failure: "authentication required", wantKind: AuthEvidenceRemoteAuthFailure, wantReason: AuthReasonAuthRequired},
+		{name: "revoked prose is not evidence", failure: "401 Unauthorized: refresh token was revoked", wantKind: AuthEvidenceProbeFailure, wantReason: AuthReasonProbeFailed},
+		{name: "signed out prose is not evidence", failure: "authentication required", wantKind: AuthEvidenceProbeFailure, wantReason: AuthReasonProbeFailed},
 		{name: "transient", failure: "connection reset", wantKind: AuthEvidenceProbeFailure, wantReason: AuthReasonProbeFailed},
 	}
 	for _, test := range tests {

@@ -186,6 +186,31 @@ describe("buildComposerModelMenuModel", () => {
     });
   });
 
+  it("presents the typed model consumption multiplier", () => {
+    const menu = buildComposerModelMenuModel(
+      vm({
+        availableModels: [
+          {
+            value: "hy3",
+            label: "Hy3",
+            consumptionMultiplier: "0.71"
+          }
+        ],
+        selectedModelValue: "hy3"
+      }),
+      labels
+    );
+
+    expect(menu.model.options[0]).toMatchObject({
+      label: "Hy3",
+      tooltip: {
+        consumptionMultiplier: "0.71x",
+        title: "Hy3"
+      }
+    });
+    expect(menu.model.options[0]?.tooltip?.description).toBeUndefined();
+  });
+
   it("marks the trigger as fast and localizes model descriptions", () => {
     const menu = buildComposerModelMenuModel(
       vm({

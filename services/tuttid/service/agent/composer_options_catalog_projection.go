@@ -21,12 +21,13 @@ func composerModelConfig(provider string, selected string, options []ComposerCon
 			label = value
 		}
 		values = append(values, ComposerConfigOptionValue{
-			ID:                 value,
-			Label:              label,
-			Value:              value,
-			Description:        strings.TrimSpace(option.Description),
-			SupportsImageInput: option.SupportsImageInput,
-			Requested:          option.Requested,
+			ID:                    value,
+			Label:                 label,
+			Value:                 value,
+			Description:           strings.TrimSpace(option.Description),
+			ConsumptionMultiplier: strings.TrimSpace(option.ConsumptionMultiplier),
+			SupportsImageInput:    option.SupportsImageInput,
+			Requested:             option.Requested,
 		})
 	}
 	selected = strings.TrimSpace(selected)

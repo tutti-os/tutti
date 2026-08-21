@@ -32,6 +32,9 @@ func composerConfigOptionValuesToRuntimeModelOptions(options []ComposerConfigOpt
 		if description := strings.TrimSpace(option.Description); description != "" {
 			entry["description"] = description
 		}
+		if consumptionMultiplier := strings.TrimSpace(option.ConsumptionMultiplier); consumptionMultiplier != "" {
+			entry["consumptionMultiplier"] = consumptionMultiplier
+		}
 		if option.SupportsImageInput != nil {
 			entry["supportsImageInput"] = *option.SupportsImageInput
 		}

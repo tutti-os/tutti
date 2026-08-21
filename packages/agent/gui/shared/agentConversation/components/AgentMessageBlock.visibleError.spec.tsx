@@ -226,6 +226,41 @@ describe("AgentVisibleErrorMessage", () => {
     ).toBeTruthy();
   });
 
+  it("shows a sanitized provider error directly without rewriting it", () => {
+    const { getByText, queryByRole } = renderBlock(
+      buildRow({
+        code: "provider_unavailable",
+        phase: "turn",
+        provider: "claude-code",
+        origin: "provider",
+        detail: "relay returned HTTP 503: upstream overloaded",
+        detailAvailable: true,
+        retryable: true
+      })
+    );
+
+    expect(
+      getByText("relay returned HTTP 503: upstream overloaded")
+    ).toBeTruthy();
+    expect(queryByRole("button", { name: "Raw error" })).toBeNull();
+  });
+
+  it("does not offer provider login for a relay-scoped 401", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "provider_error",
+        phase: "turn",
+        provider: "claude-code",
+        origin: "provider",
+        detail: "relay rejected request: HTTP 401",
+        retryable: false
+      })
+    );
+
+    expect(getByText("relay rejected request: HTTP 401")).toBeTruthy();
+    expect(queryByText("Sign in")).toBeNull();
+  });
+
   it("shows accurate copy but NO wizard CTA for transient/server-side failures", () => {
     const { getByText, queryByText } = renderBlock(
       buildRow({

@@ -458,7 +458,13 @@ func (a *standardACPAdapter) applyACPUpdate(agentSessionID string, raw json.RawM
 	if session == nil {
 		return nil
 	}
-	return applyACPUpdateToLiveState(&session.acpLiveState, agentSessionID, raw)
+	return applyACPUpdateToLiveState(
+		&session.acpLiveState,
+		agentSessionID,
+		raw,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
 }
 
 func (a *standardACPAdapter) storePendingApproval(pending *pendingACPApproval) {

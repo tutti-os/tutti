@@ -402,7 +402,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     ? (renderAgentConfigAccount?.(agentConfigMenuContext) ?? null)
     : null;
   const agentConfigSystemActionsContent =
-    renderAgentConfigSystemActions?.() ?? null;
+    renderAgentConfigSystemActions?.({ presentation: "menu" }) ?? null;
 
   return (
     <AgentGUIMentionServiceBoundary
@@ -641,6 +641,7 @@ function resolveAgentConfigMenuContext(
     agentTargetId,
     provider,
     label: target.label,
+    presentation: "menu",
     ...(target.ownership ? { ownership: target.ownership } : {})
   };
 }

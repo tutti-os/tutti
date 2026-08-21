@@ -6,6 +6,7 @@ import {
   buildAgentParticipantTurnProjection,
   buildAgentTranscriptTurnGroups,
   findTurnDividerRowIndexes,
+  summarizeUserMessageRow,
   transcriptRowKey
 } from "./agentTranscriptModel";
 
@@ -79,6 +80,40 @@ describe("findTurnDividerRowIndexes", () => {
         row("turn-2")
       ])
     ]).toEqual([2]);
+  });
+});
+
+describe("summarizeUserMessageRow", () => {
+  it("keeps a quote-only selected-text row addressable by the transcript locator", () => {
+    const selectedOnlyRow: AgentTranscriptRowVM = {
+      kind: "message",
+      id: "row:user:selection-only",
+      turnId: "turn-selection-only",
+      speaker: "user",
+      messages: [
+        {
+          kind: "message-content",
+          id: "message:user:selection-only",
+          turnId: "turn-selection-only",
+          body: "",
+          presentationKind: "content",
+          contentKind: "selected-text",
+          selectedText: {
+            count: 1,
+            texts: ["Selected source text"]
+          },
+          occurredAtUnixMs: 1
+        }
+      ],
+      thinking: [],
+      occurredAtUnixMs: 1
+    };
+
+    expect(
+      summarizeUserMessageRow(
+        selectedOnlyRow as Extract<AgentTranscriptRowVM, { kind: "message" }>
+      )
+    ).toBe("Selected source text");
   });
 });
 

@@ -2138,6 +2138,198 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("projects selected prompt text as a reference part instead of flattening it into the bubble", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "这里说了什么\n> 对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt:
+                        "这里说了什么\n> 对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。",
+                      content: [
+                        { type: "text", text: "这里说了什么" },
+                        {
+                          type: "text",
+                          text: "> 对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "selected-text",
+      "text"
+    ]);
+    expect(userRow?.messages[0]).toMatchObject({
+      body: "",
+      selectedText: {
+        count: 1,
+        texts: [
+          "对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。"
+        ]
+      }
+    });
+    expect(userRow?.messages[1]?.body).toBe("这里说了什么");
+  });
+
+  it("projects every legacy quote after a typed prompt into one reference part", () => {
+    const conversation = projectUserPromptForTest({
+      body: "Ask about both excerpts\n> first excerpt\n> second excerpt",
+      displayPrompt:
+        "Ask about both excerpts\n> first excerpt\n> second excerpt",
+      content: [
+        { type: "text", text: "Ask about both excerpts" },
+        { type: "text", text: "> first excerpt" },
+        { type: "text", text: "> second excerpt" }
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "selected-text",
+      "text"
+    ]);
+    expect(userRow?.messages[0]?.selectedText).toEqual({
+      count: 2,
+      texts: ["first excerpt", "second excerpt"]
+    });
+    expect(userRow?.messages[1]?.body).toBe("Ask about both excerpts");
+  });
+
+  it("keeps ambiguous quote-only legacy content as ordinary Markdown", () => {
+    const conversation = projectUserPromptForTest({
+      body: "> first authored line\n> second authored line",
+      displayPrompt: "> first authored line\n> second authored line",
+      content: [
+        { type: "text", text: "> first authored line" },
+        { type: "text", text: "> second authored line" }
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "text"
+    ]);
+    expect(userRow?.messages[0]?.body).toBe(
+      "> first authored line\n> second authored line"
+    );
+  });
+
+  it("preserves an explicit selected-text kind already present in persisted content", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "Ask about the selection",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt: "Ask about the selection",
+                      content: [
+                        { type: "text", text: "Ask about the selection" },
+                        {
+                          type: "text",
+                          kind: "selected-text",
+                          text: "Selected source text"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages[0]?.selectedText).toEqual({
+      count: 1,
+      texts: ["Selected source text"]
+    });
+    expect(userRow?.messages[1]?.body).toBe("Ask about the selection");
+  });
+
   it("prefers materialized content text over legacy composer-file displayPrompt", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
@@ -2537,6 +2729,52 @@ function detailViewModel(
     showProcessingIndicator: true,
     ...overrides
   };
+}
+
+function projectUserPromptForTest(input: {
+  body: string;
+  displayPrompt: string;
+  content: readonly unknown[];
+}): ReturnType<typeof projectAgentConversationVM> {
+  const baseTurn = detailViewModel().turns[0]!;
+  return projectAgentConversationVM(
+    detailViewModel({
+      turns: [
+        {
+          ...baseTurn,
+          id: "turn-user-prompt",
+          userMessage: null,
+          userMessages: [
+            {
+              id: "user-prompt",
+              body: input.body,
+              sourceTimelineItems: [
+                {
+                  id: 1,
+                  agentSessionId: "session-1",
+                  eventId: "event-1",
+                  actorType: "user",
+                  actorId: "user",
+                  itemType: "message",
+                  role: "user",
+                  payload: {
+                    displayPrompt: input.displayPrompt,
+                    content: input.content
+                  }
+                }
+              ]
+            }
+          ],
+          agentMessages: [],
+          toolCalls: [],
+          toolCallCount: 0,
+          hasFailedToolCall: false,
+          agentItems: []
+        }
+      ],
+      showProcessingIndicator: false
+    })
+  );
 }
 
 function compactNoticeMessage(

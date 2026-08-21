@@ -818,6 +818,11 @@ export class WorkspaceSettingsService implements IWorkspaceSettingsService {
     }
 
     this.store.developerLogs.exporting = true;
+    this.notifications.info({
+      title: createActiveTranslator().t(
+        "workspace.settings.developer.exportingLogs"
+      )
+    });
 
     try {
       const result = await this.dependencies.client.exportLogs(input);

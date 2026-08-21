@@ -47,7 +47,7 @@ export const generatedDefaults = {
       },
       {
         key: "codebuddy",
-        pinnedVersion: "2.0.3",
+        pinnedVersion: "2.0.5",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/codebuddy/versions.json",
         signingKeyId: "tutti-codebuddy-release-v1",
@@ -87,7 +87,7 @@ export const generatedDefaults = {
       },
       {
         key: "hermes",
-        pinnedVersion: "1.0.8",
+        pinnedVersion: "1.0.9",
         releaseIndexUrl:
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
         signingKeyId: "tutti-hermes-release-v1",

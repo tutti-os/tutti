@@ -136,8 +136,13 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	})
 	session.ProviderSessionID = providerSessionID
 	acpSession.providerSessionID = providerSessionID
-	applyACPConfigOptionsResult(&acpSession.acpLiveState, newSessionResult)
-	applyACPModelsResult(&acpSession.acpLiveState, newSessionResult)
+	applyACPConfigOptionsResult(
+		&acpSession.acpLiveState,
+		newSessionResult,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
+	applyACPModelsResult(&acpSession.acpLiveState, newSessionResult, a.config.modelDescriptionFormat)
 	applyACPModesResult(&acpSession.acpLiveState, newSessionResult)
 	if a.config.validateNewSessionResult != nil {
 		if err := a.config.validateNewSessionResult(newSessionResult); err != nil {
@@ -299,8 +304,13 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 	if err != nil {
 		return classifyACPResumeError(session, method, err)
 	}
-	applyACPConfigOptionsResult(&acpSession.acpLiveState, loadSessionResult)
-	applyACPModelsResult(&acpSession.acpLiveState, loadSessionResult)
+	applyACPConfigOptionsResult(
+		&acpSession.acpLiveState,
+		loadSessionResult,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
+	applyACPModelsResult(&acpSession.acpLiveState, loadSessionResult, a.config.modelDescriptionFormat)
 	applyACPModesResult(&acpSession.acpLiveState, loadSessionResult)
 	if err := a.applySessionConfigOptions(ctx, client, session, loadSessionResult); err != nil {
 		return err

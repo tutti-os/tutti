@@ -45,7 +45,7 @@
       },
       {
         "key": "codebuddy",
-        "pinnedVersion": "2.0.3",
+        "pinnedVersion": "2.0.5",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/codebuddy/versions.json",
         "signingKeyId": "tutti-codebuddy-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAfzdtf41+SN0hrZqK0JX2pdDluCwpUbn1HPDoz4D7OxA=\n-----END PUBLIC KEY-----\n",
@@ -77,7 +77,7 @@
       },
       {
         "key": "hermes",
-        "pinnedVersion": "1.0.8",
+        "pinnedVersion": "1.0.9",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
         "signingKeyId": "tutti-hermes-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAIeel8ddNiN3b4qOq0KucF3BRxfi3zourM0BVyGuP8eY=\n-----END PUBLIC KEY-----\n",

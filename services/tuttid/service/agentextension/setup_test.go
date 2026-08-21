@@ -1054,6 +1054,16 @@ func TestProbeRuntimeAppliesSignedTerminalSetupPresentation(t *testing.T) {
 	}
 }
 
+func TestRuntimeAdapterConfigProjectsModelDescriptionMetadataFormat(t *testing.T) {
+	binding := RuntimeBinding{
+		ModelDescriptionFormat: agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1,
+	}
+	config := runtimeAdapterConfig(binding, "")
+	if config.ModelDescriptionFormat != agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
+		t.Fatalf("model description metadata format = %q", config.ModelDescriptionFormat)
+	}
+}
+
 func TestAgentTargetSetupFeedsRuntimeAuthFailureBackIntoDetectionAndAllowsRelogin(t *testing.T) {
 	binDir := t.TempDir()
 	writeVersionExecutable(t, filepath.Join(binDir, "gemini"), "0.50.0")

@@ -73,6 +73,7 @@ import { scheduleDesktopAgentGUIWorkbenchHydration } from "./desktopAgentGUIWork
 import { resolveDesktopAgentGUIWorkbenchBodyVisibility } from "./desktopAgentGUIWorkbenchVisibility.ts";
 import { useDesktopAgentConfigCommerce } from "./useDesktopAgentConfigCommerce.tsx";
 import { DesktopAgentConfigSystemActions } from "./DesktopAgentConfigSystemActions.tsx";
+import { shouldShowDesktopAgentConfigSystemActions } from "./desktopAgentConfigSystemActionsModel.ts";
 import { hasDesktopLocalTuttiAgent } from "./desktopAgentConfigCommerceContext.ts";
 import { useDesktopAgentGUIComposerFooterAccessory } from "./useDesktopAgentGUIComposerFooterAccessory.tsx";
 import { useDesktopAgentGUIOpenSessionComposerRequest } from "./useDesktopAgentGUIOpenSessionComposerRequest.ts";
@@ -93,7 +94,8 @@ import {
   LAB_AGENT_SIDE_CONVERSATION_FLAG,
   LAB_CODEX_SAVER_MODE_FLAG,
   LAB_CONNECTORS_FLAG,
-  LAB_TUTTI_MODE_FLAG
+  LAB_TUTTI_MODE_FLAG,
+  resolveDesktopWorkspaceUiMode
 } from "../../../../../shared/featureFlags/catalog.ts";
 
 const EMPTY_AGENT_SESSION_LAUNCH_MODES_BY_PROJECT_SECTION_KEY: Readonly<
@@ -626,6 +628,10 @@ function DesktopAgentGUISurfaceImpl({
       desktopPreferencesState.featureFlags,
       AGENT_SESSION_RECORDING_FLAG
     ) && agentSessionReplayService !== null;
+  const workspaceUiMode = resolveDesktopWorkspaceUiMode(
+    desktopPreferencesState.changingFeatureFlags ??
+      desktopPreferencesState.featureFlags
+  );
   const renderComposerFooterAccessory =
     useDesktopAgentGUIComposerFooterAccessory({
       agentSessionReplayService,
@@ -715,7 +721,11 @@ function DesktopAgentGUISurfaceImpl({
     },
     renderSlots: {
       agentConfigAccount: renderAgentConfigAccount,
-      agentConfigSystemActions: renderDesktopAgentConfigSystemActions,
+      agentConfigSystemActions: shouldShowDesktopAgentConfigSystemActions(
+        workspaceUiMode
+      )
+        ? renderDesktopAgentConfigSystemActions
+        : undefined,
       composerFooterAccessory: renderComposerFooterAccessory,
       sidebarFooter: renderSidebarFooter
     }

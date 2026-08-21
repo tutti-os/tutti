@@ -91,11 +91,8 @@ func (e *acpCallError) AuthRequired() bool {
 	if e == nil {
 		return false
 	}
-	haystack := strings.ToLower(e.Err.Message + " " + string(e.Err.Data))
-	if structuredProviderFailureCode(haystack) != "" {
-		return false
-	}
-	return strings.Contains(haystack, "auth")
+	failure := failureFromACPCall(e)
+	return failure.AuthImpact == providerFailureAuthRequired
 }
 
 func newACPClientWithStderrMessageMapper(conn ProcessConnection, mapper acpStderrMessageMapper) *acpClient {
@@ -297,13 +294,15 @@ func (c *acpClient) callLocked(
 			return result, nil
 		case message := <-pending.response:
 			if message.Error != nil {
+				sanitizedMessage := sanitizeProviderFailureText(message.Error.Message)
+				sanitizedData := sanitizeProviderFailureText(string(message.Error.Data))
 				slog.Warn("agent session ACP request failed",
 					"event", "agent_session.acp.request.failed",
 					"method", method,
 					"id", id,
 					"error_code", message.Error.Code,
-					"error_message", message.Error.Message,
-					"error_data", truncateACPLogValue(string(message.Error.Data), 1200),
+					"error_message", sanitizedMessage,
+					"error_data", truncateACPLogValue(sanitizedData, 1200),
 				)
 				return nil, &acpCallError{Method: method, Err: *message.Error}
 			}

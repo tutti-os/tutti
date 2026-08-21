@@ -46,7 +46,9 @@ Use the focused runtime index or open one area directly:
   the durable transcript, Claude failures before provider Turn identity that
   leave AgentGUI thinking, and Claude Fork operations that fail because an
   empty query never creates a durable provider child. It also covers a Claude
-  Query that keeps returning connection errors after the machine network recovers.
+  Query that keeps returning connection errors after the machine network
+  recovers, and forked conversations that disappear from the Rail after their
+  active/running overlay settles.
   Also covers inactive Claude Resume timing out the queue send and leaving later
   prompts stuck as 排队中 behind `uncertainDelivery`, and Standard ACP process
   cleanup failures that stop a send before provider dispatch while preserving

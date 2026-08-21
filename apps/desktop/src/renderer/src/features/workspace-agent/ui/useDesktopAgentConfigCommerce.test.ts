@@ -16,6 +16,7 @@ function context(
   input: Partial<AgentGUIAgentConfigMenuContext> = {}
 ): AgentGUIAgentConfigMenuContext {
   return {
+    presentation: "menu",
     agentTargetId: "local:tutti-agent",
     label: "Tutti Agent",
     ownership: "self",
@@ -94,6 +95,7 @@ test("daemon Tutti Agent mapping supplies the self-owned Commerce context", () =
   assert.equal(
     shouldRenderDesktopAgentConfigCommerce({
       context: {
+        presentation: "menu",
         agentTargetId: agent.agentTargetId,
         label: agent.name,
         ownership: agent.ownership ?? undefined,

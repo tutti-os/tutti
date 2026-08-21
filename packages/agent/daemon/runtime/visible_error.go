@@ -28,7 +28,10 @@ func IsAuthenticationRequired(err error) bool {
 		return false
 	}
 	var callErr *acpCallError
-	return (errors.As(err, &callErr) && callErr.AuthRequired()) || authFailurePattern.MatchString(err.Error())
+	if errors.As(err, &callErr) {
+		return callErr.AuthRequired()
+	}
+	return AppErrorCode(err) == "auth_required"
 }
 
 const (
@@ -86,9 +89,21 @@ func projectVisibleFailure(source canonical.EventSource, event activityshared.Ev
 		phase = "start"
 	}
 	detail := visibleFailureDetail(event)
-	code := visibleFailureCode(detail)
+	code := firstNonEmptyString(
+		payloadString(event.Payload.Metadata, "code"),
+		visibleFailureCode(detail),
+	)
+	// A Model Plan or Agent Extension can reject its own credential without
+	// proving that the provider-native account needs login. Keep the upstream
+	// detail, but do not emit the provider-login action code for that scope.
+	if code == "auth_required" && !source.ProviderGlobalAuthEligible {
+		code = "provider_error"
+	}
 	provider := firstNonEmptyString(string(event.Provider), source.Provider)
 	content := visibleFailureContent(provider, phase, code)
+	if payloadString(event.Payload.Metadata, "origin") == providerFailureOriginProvider && detail != "" {
+		content = detail
+	}
 	payload := map[string]any{
 		"kind":          visibleErrorKind,
 		"severity":      visibleErrorSeverity,
@@ -102,6 +117,17 @@ func projectVisibleFailure(source canonical.EventSource, event activityshared.Ev
 	}
 	if detail != "" {
 		payload["detail"] = detail
+	}
+	for _, key := range []string{"providerCode", "origin", "authImpact", "authReason", "additionalDetails"} {
+		if value := payloadString(event.Payload.Metadata, key); value != "" {
+			payload[key] = value
+		}
+	}
+	if status, ok := event.Payload.Metadata["httpStatus"]; ok {
+		payload["httpStatus"] = status
+	}
+	if retryable, ok := event.Payload.Metadata["retryable"].(bool); ok {
+		payload["retryable"] = retryable
 	}
 	return visibleFailureProjection{eventID: eventID, content: content, payload: payload}, true
 }
@@ -184,7 +210,11 @@ func shouldAppendVisibleFailure(events []activityshared.Event, event activitysha
 }
 
 func visibleFailureDetail(event activityshared.Event) string {
-	detail := activityshared.BestEffortErrorMessage(event.Payload)
+	detail := firstNonEmptyString(
+		payloadString(event.Payload.Metadata, "errorMessage"),
+		payloadString(event.Payload.Metadata, "error"),
+		activityshared.BestEffortErrorMessage(event.Payload),
+	)
 	if detail == "" {
 		detail = firstNonEmptyString(
 			payloadString(event.Payload.Metadata, "stopReason"),
@@ -192,7 +222,7 @@ func visibleFailureDetail(event activityshared.Event) string {
 			strings.TrimSpace(event.Payload.Status),
 		)
 	}
-	return limitVisibleErrorDetail(cleanVisibleErrorText(detail))
+	return sanitizeProviderFailureText(detail)
 }
 
 func cleanVisibleErrorText(value string) string {

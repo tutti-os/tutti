@@ -3,6 +3,7 @@ package agenthost
 import (
 	"context"
 	"errors"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -57,6 +58,18 @@ func (h *Host) reprepareRuntimeSession(
 		strings.TrimSpace(canonicalSession.ProviderSessionID) == "" {
 		return ProviderRuntimeSession{}, ErrSessionNotFound
 	}
+	hasExpected := input.ExpectedRuntimeContext != nil
+	hasReplacement := input.ReplacementRuntimeContext != nil
+	if hasExpected != hasReplacement {
+		return ProviderRuntimeSession{}, ErrInvalidArgument
+	}
+	durableRuntimeContext := cloneMap(canonicalSession.InternalRuntimeContext)
+	if hasExpected {
+		if !reflect.DeepEqual(canonicalSession.InternalRuntimeContext, input.ExpectedRuntimeContext) {
+			return ProviderRuntimeSession{}, ErrRuntimeContextConflict
+		}
+		durableRuntimeContext = cloneMap(input.ReplacementRuntimeContext)
+	}
 	if strings.TrimSpace(canonicalSession.ActiveTurnID) != "" {
 		return ProviderRuntimeSession{}, ErrRuntimeSessionActive
 	}
@@ -83,7 +96,7 @@ func (h *Host) reprepareRuntimeSession(
 	settings := composerSettingsFromMap(canonicalSession.Settings)
 	preparationInput := resumePreparationInput(canonicalSession, settings)
 	preparationInput.RuntimeContext = overlayRuntimeContext(
-		canonicalSession.InternalRuntimeContext,
+		durableRuntimeContext,
 		input.RuntimeContextOverlay,
 	)
 	prepared, err := h.preparation.Prepare(ctx, preparationInput)
@@ -113,10 +126,10 @@ func (h *Host) reprepareRuntimeSession(
 		Env: append([]string(nil), prepared.Env...), MCPServers: cloneHostMCPServerBindings(prepared.MCPServers), Title: strings.TrimSpace(canonicalSession.Title),
 		Status: persistedRuntimeStatus(""), Settings: settings,
 		CreatedAtUnixMS: canonicalSession.CreatedAtUnixMS, UpdatedAtUnixMS: canonicalSession.UpdatedAtUnixMS,
-		Visible: boolPointer(canonicalSession.Metadata.Visible), RuntimeContext: cloneMap(canonicalSession.InternalRuntimeContext),
+		Visible: boolPointer(canonicalSession.Metadata.Visible), RuntimeContext: cloneMap(durableRuntimeContext),
 		ProviderLaunchRuntimeContext: cloneMap(firstMap(prepared.RuntimeContext, preparationInput.RuntimeContext)),
 		ProviderTargetRef:            cloneMap(prepared.ProviderTargetRef), Metadata: canonicalSession.Metadata,
-		InternalRuntimeContext: cloneMap(canonicalSession.InternalRuntimeContext),
+		InternalRuntimeContext: cloneMap(durableRuntimeContext),
 		GoalGenerationFences:   append([]RuntimeGoalGenerationFenceInput(nil), goalGenerationFences...),
 		RecreateIfMissing:      ResolveResumePolicy(canonicalSession).Mode == ResumeModeRecreate,
 	}
@@ -128,6 +141,24 @@ func (h *Host) reprepareRuntimeSession(
 	}
 	if err != nil {
 		return ProviderRuntimeSession{}, h.cleanupFailedReprepare(ctx, ref, canonicalSession.Provider, err)
+	}
+	if hasReplacement {
+		casStore, ok := h.store.(CanonicalRuntimeContextCASStore)
+		if !ok {
+			closeErr := h.runtime.Close(ctx, RuntimeCloseInput{WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, PreserveCanonicalState: true})
+			return ProviderRuntimeSession{}, h.cleanupFailedReprepare(ctx, ref, canonicalSession.Provider, errors.Join(ErrRuntimeSessionReprepareUnavailable, closeErr))
+		}
+		_, updated, casErr := casStore.CompareAndSwapSessionRuntimeContext(
+			ctx, ref.WorkspaceID, ref.AgentSessionID,
+			input.ExpectedRuntimeContext, input.ReplacementRuntimeContext,
+		)
+		if casErr != nil || !updated {
+			closeErr := h.runtime.Close(ctx, RuntimeCloseInput{WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID, PreserveCanonicalState: true})
+			if casErr == nil {
+				casErr = ErrRuntimeContextConflict
+			}
+			return ProviderRuntimeSession{}, h.cleanupFailedReprepare(ctx, ref, canonicalSession.Provider, errors.Join(casErr, closeErr))
+		}
 	}
 	return result, nil
 }

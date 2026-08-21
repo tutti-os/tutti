@@ -60,13 +60,16 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 	}
 	var preparedTurnID string
 	var preparedSnapshot tuttimodeactivationbiz.TurnSnapshot
-	if _, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, input.Guidance); !typedGoal {
+	existingSubmit := false
+	_, typedGoal := agenthost.ParseTypedGoalControl(normalizedContent, input.Guidance)
+	if !typedGoal {
 		runtimeSession, _ := s.controller().Session(workspaceID, agentSessionID)
 		existingCanonicalTurnID, claimErr := s.existingSubmitCanonicalTurnID(ctx, workspaceID, agentSessionID, input.ClientSubmitID, input.Metadata)
 		if claimErr != nil {
 			return SendInputResult{}, claimErr
 		}
 		if existingCanonicalTurnID != "" {
+			existingSubmit = true
 			// A durable claim already owns this submit: reuse its canonical
 			// turn so a retry reconciles instead of redispatching.
 			if input.Guidance && strings.TrimSpace(input.TurnID) != existingCanonicalTurnID {
@@ -83,10 +86,25 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 			hostInput.TuttiModeSnapshot = runtimeTuttiModeTurnSnapshot(preparedSnapshot)
 		}
 	}
-	hostResult, err := s.ApplicationHost().SendInput(ctx,
-		agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID},
-		hostInput,
-	)
+	ref := agenthost.SessionRef{WorkspaceID: workspaceID, AgentSessionID: agentSessionID}
+	var hostResult agenthost.SendInputResult
+	if !input.Guidance && !typedGoal && !existingSubmit {
+		current, getErr := s.ApplicationHost().GetSession(ctx, ref)
+		if getErr != nil {
+			err = getErr
+		} else if rebind, needed, rebindErr := s.modelPlanRebindInput(ctx, workspaceID, current.Canonical); rebindErr != nil {
+			err = rebindErr
+		} else if needed {
+			hostResult, err = s.ApplicationHost().ReprepareRuntimeSessionAndSendInput(ctx, agenthost.ReprepareRuntimeSessionAndSendInputInput{
+				Reprepare: rebind,
+				Send:      hostInput,
+			})
+		} else {
+			hostResult, err = s.ApplicationHost().SendInput(ctx, ref, hostInput)
+		}
+	} else {
+		hostResult, err = s.ApplicationHost().SendInput(ctx, ref, hostInput)
+	}
 	if err != nil {
 		if preparedTurnID != "" {
 			abandonErr := s.abandonPreparedTuttiModeExec(context.WithoutCancel(ctx), workspaceID, agentSessionID, preparedTurnID, preparedSnapshot, input.Guidance)

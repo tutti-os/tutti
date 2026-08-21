@@ -1,5 +1,6 @@
 import type { ServiceRegistry } from "@tutti-os/infra/di";
 import type { DesktopApi } from "@preload/types";
+import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { IReporterService } from "../../analytics/services/reporterService.interface.ts";
 import { IAppUpdateService } from "./appUpdateService.interface.ts";
 import { createDesktopAppUpdateClient } from "./internal/adapters/desktopAppUpdateClient.ts";
@@ -9,6 +10,7 @@ export function registerAppUpdateServices(
   registry: ServiceRegistry,
   desktopApi: DesktopApi,
   input: {
+    notifications?: Pick<NotificationService, "error" | "info" | "success">;
     reporterService?: Pick<IReporterService, "trackEvents">;
   } = {}
 ): void {
@@ -30,6 +32,7 @@ export function registerAppUpdateServices(
     desktopApi.runtime,
     {
       hostFilesApi: desktopApi.host?.files,
+      notifications: input.notifications,
       supportsReleaseChannels: desktopApi.platform?.distribution !== "store"
     }
   );

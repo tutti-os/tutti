@@ -399,6 +399,20 @@ WHERE workspace_id = 'ws-1' AND agent_session_id = 'session-1'
 	if err != nil || !ok || sessionAfterBlankTitle.Title != "" {
 		t.Fatalf("GetSession() after blank title = %#v ok=%v error=%v", sessionAfterBlankTitle, ok, err)
 	}
+	expectedRuntimeContext := cloneJSONMap(sessionAfterBlankTitle.InternalRuntimeContext)
+	replacementRuntimeContext := cloneJSONMap(expectedRuntimeContext)
+	replacementRuntimeContext["sessionRuntimeSnapshot"] = map[string]any{"revision": float64(2)}
+	rebound, updated, err := store.CompareAndSwapSessionRuntimeContext(
+		ctx, "ws-1", "session-1", expectedRuntimeContext, replacementRuntimeContext,
+	)
+	if err != nil || !updated || rebound.InternalRuntimeContext["sessionRuntimeSnapshot"] == nil {
+		t.Fatalf("CompareAndSwapSessionRuntimeContext() = %#v updated=%v error=%v", rebound, updated, err)
+	}
+	if _, updated, err := store.CompareAndSwapSessionRuntimeContext(
+		ctx, "ws-1", "session-1", expectedRuntimeContext, map[string]any{"stale": true},
+	); err != nil || updated {
+		t.Fatalf("stale CompareAndSwapSessionRuntimeContext() updated=%v error=%v", updated, err)
+	}
 
 	removed, err := store.DeleteSession(ctx, "ws-1", "session-1")
 	if err != nil || !removed {

@@ -195,7 +195,8 @@ describe("AgentGUINode status controller integration", () => {
       agentTargetId: "local:tutti-agent",
       provider: "tutti-agent",
       label: target.label,
-      ownership: "self"
+      ownership: "self",
+      presentation: "menu"
     });
     expect(latestViewProps().agentConfigAccountContent).toBeTruthy();
 
@@ -206,7 +207,8 @@ describe("AgentGUINode status controller integration", () => {
       agentTargetId: "local:tutti-agent",
       provider: "tutti-agent",
       label: target.label,
-      ownership: "self"
+      ownership: "self",
+      presentation: "menu"
     });
   });
 
@@ -228,6 +230,9 @@ describe("AgentGUINode status controller integration", () => {
     );
 
     expect(renderAgentConfigSystemActions).toHaveBeenCalledOnce();
+    expect(renderAgentConfigSystemActions).toHaveBeenCalledWith({
+      presentation: "menu"
+    });
     expect(latestViewProps().agentConfigSystemActionsContent).toBeTruthy();
   });
 

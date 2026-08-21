@@ -3623,6 +3623,42 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
   [workspaceAgentActivityService.test.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityService.test.ts)
 
+### Forked conversation disappears from the Rail after completion
+
+- Symptom:
+  A newly forked conversation is visible and selected while its first Turn is
+  running, but disappears from the Rail as soon as that Turn settles. Opening
+  the exact Session still works, and a later full Rail reload may restore it.
+- Quick checks:
+  Correlate `session/forkThroughTurnRequested`, the canonical child
+  `session/upserted`, and the bounded `listSessionSectionPage` request. If the
+  child becomes canonical while selected but no exact request is made for its
+  inherited `railSectionKey`, inspect pending-creation membership rather than
+  the fork persistence path. Also verify that the child was initially visible
+  only through the active or running overlay.
+- Root cause:
+  Fork selected the child immediately, while membership reconciliation skipped
+  every newly observed active Session to avoid refreshing for historical detail
+  hydration. The fork child therefore never entered its bounded authoritative
+  section page. Its active/running overlay temporarily hid that omission and
+  settlement exposed it by removing the overlay row.
+- Fix:
+  Project in-flight fork targets and pending activations as pending-creation
+  reconciliation evidence. Keep that semantic marker separate from render
+  provenance. When the same identity becomes canonical, refresh its exact
+  persisted Rail section even when selected; continue skipping ordinary
+  selected historical hydration when no pending-creation evidence exists.
+- Validation:
+  Drive a real `AgentSessionEngine` and
+  `AgentGUIConversationRailQueryController` through a held fork command,
+  select the target before canonical upsert, then verify the controller requests
+  the inherited section and publishes the child in authoritative membership.
+  Retain the existing selected historical-Session no-refresh coverage.
+- References:
+  [agentGuiConversationRailMembershipRecords.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRailMembershipRecords.ts)
+  [agentGuiConversationRailMembershipRefresh.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentGuiConversationRailMembershipRefresh.ts)
+  [AgentGUIConversationRailQueryController.spec.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/controller/AgentGUIConversationRailQueryController.spec.ts)
+
 ### Shared Agent composer stays disabled after the target connects
 
 - Symptom:

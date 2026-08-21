@@ -89,12 +89,21 @@ func (s Service) resolveProviderUsageRemoteAuthEvidence(
 		Host: agentruntime.HostMetadata{ClientInfo: agentruntime.ClientInfo{
 			Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0",
 		}},
+		ReadAccount:      true,
 		ReadRateLimits:   true,
 		StartupTimeout:   timeout,
 		HandshakeTimeout: timeout,
 		ShutdownTimeout:  s.probeReadyAfter(),
 	})
-	evidence := providerstatus.CodexRemoteAuthEvidence(result.RateLimitsRead, result.Message)
+	var evidence providerstatus.AuthEvidence
+	switch result.AccountState {
+	case agentruntime.CodexAppServerAccountRequired:
+		evidence = providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteAuthFailure, Reason: providerstatus.AuthReasonAuthRequired}
+	case agentruntime.CodexAppServerAccountAuthenticated:
+		evidence = providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteSuccess}
+	default:
+		evidence = providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceProbeFailure, Reason: providerstatus.AuthReasonProbeFailed}
+	}
 	level := slog.LevelDebug
 	if evidence.Kind == providerstatus.AuthEvidenceRemoteAuthFailure {
 		level = slog.LevelWarn

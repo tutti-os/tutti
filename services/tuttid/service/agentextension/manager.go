@@ -344,6 +344,7 @@ func (m *Manager) runtimeBinding(installation Installation, command []string, ve
 	return RuntimeBinding{
 		Installation: installation, Command: command, Version: version, Source: source,
 		ToolAliases: aliases, AuthenticationMethods: authenticationMethods, ModelConfigOptionID: modelConfigOptionID,
+		ModelDescriptionFormat:   composerProfile.ModelDescriptionMetadataFormat(),
 		PermissionConfigOptionID: permissionConfigOptionID, ReasoningConfigOptionID: reasoningConfigOptionID,
 		PermissionModes: permissionModes, AutomaticPermissionDecisions: composerProfile.AutomaticPermissionDecisions(),
 		PlanModeRuntimeID:            planModeRuntimeID,

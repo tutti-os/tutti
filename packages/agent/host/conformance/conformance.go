@@ -28,6 +28,7 @@ type SessionSeed struct {
 	ExternalResumeSupported *bool
 	Settings                agenthost.ComposerSettings
 	Pinned                  bool
+	RuntimeContext          map[string]any
 }
 
 type TurnSeed struct {

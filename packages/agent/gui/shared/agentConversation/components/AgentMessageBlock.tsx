@@ -39,6 +39,7 @@ import { RawTimelineJsonDisclosure } from "./RawTimelineJsonDisclosure";
 import { useElapsedSeconds } from "./useElapsedSeconds";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
 import { AgentUserImageGrid } from "./AgentMessageImages";
+import { AgentSelectedTextChip } from "./AgentSelectedTextChip";
 import {
   AgentUserMessageEditor,
   type AgentUserMessageEditRetryControl
@@ -237,7 +238,11 @@ export function AgentMessageBlock({
         ? recoverVisibleErrorFromMessage(message, provider)
         : null;
     const renderedContent =
-      isUser && message.contentKind === "image-grid" ? (
+      isUser &&
+      message.contentKind === "selected-text" &&
+      message.selectedText ? (
+        <AgentSelectedTextChip selectedText={message.selectedText} />
+      ) : isUser && message.contentKind === "image-grid" ? (
         <AgentUserImageGrid message={message} />
       ) : isUser &&
         message.contentKind === "tutti-checkpoint-wake" &&

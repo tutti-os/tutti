@@ -576,6 +576,32 @@ func TestEventSourceCarriesStableSessionIncarnation(t *testing.T) {
 	}
 }
 
+func TestProviderGlobalAuthEligibilityRequiresProviderNativeConfiguration(t *testing.T) {
+	tests := []struct {
+		name     string
+		provider string
+		source   string
+		want     bool
+	}{
+		{name: "codex native", provider: "codex", source: "provider-native", want: true},
+		{name: "claude model plan", provider: "claude-code", source: "model-plan"},
+		{name: "cursor extension", provider: "cursor", source: "agent-extension"},
+		{name: "unknown provider", provider: "third-party", source: "provider-native"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			session := Session{Provider: test.provider, RuntimeContext: map[string]any{
+				"sessionRuntimeSnapshot": map[string]any{
+					"modelConfiguration": map[string]any{"source": test.source},
+				},
+			}}
+			if got := providerGlobalAuthEligible(session); got != test.want {
+				t.Fatalf("providerGlobalAuthEligible() = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestSessionAuditProjectsSeparatelyFromTurnMessages(t *testing.T) {
 	t.Parallel()
 	session := reportTestSession()

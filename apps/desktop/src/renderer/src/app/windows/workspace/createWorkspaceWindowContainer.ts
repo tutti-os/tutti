@@ -174,6 +174,7 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
   });
   let disposeAgentOutcomeNotificationController: (() => void) | null = null;
   registerAppUpdateServices(registry, desktopApi, {
+    notifications: notificationService,
     reporterService
   });
   registerWorkspaceCatalogServices(registry, {

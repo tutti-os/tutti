@@ -374,6 +374,12 @@ type ReprepareRuntimeSessionInput struct {
 	WorkspaceID           string
 	AgentSessionID        string
 	RuntimeContextOverlay map[string]any
+	// ExpectedRuntimeContext and ReplacementRuntimeContext are supplied
+	// together for a durable configuration rebind. Host prepares and launches
+	// from ReplacementRuntimeContext, then compare-and-swaps it into canonical
+	// state before admitting a Turn.
+	ExpectedRuntimeContext    map[string]any
+	ReplacementRuntimeContext map[string]any
 }
 
 // ReprepareRuntimeSessionAndSendInputInput atomically replaces an idle

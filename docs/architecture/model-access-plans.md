@@ -166,8 +166,11 @@ Rules:
 - Responses-gateway routes are in-memory runtime resources keyed by
   workspace/session.
   Create failure, deletion, legacy cleanup paths, and resume replacement revoke
-  the previous token. Resume resolves the immutable Model Plan revision from
-  the session runtime snapshot before registering the replacement route.
+  the previous token. Before each new ordinary Turn, a plan-bound Session
+  compares its snapshotted revision with the current revision of that exact
+  Plan. A change prepares a replacement runtime from the new immutable
+  revision, atomically swaps the durable snapshot, and only then admits the
+  Turn. Guidance and an already-running Turn keep their existing binding.
 - The Responses-to-Chat gateway is bound to `127.0.0.1:0` on its own listener
   and serves only authenticated `POST /v1/responses`. It is not mounted on the
   public tuttid HTTP router, so no daemon OpenAPI change is involved.

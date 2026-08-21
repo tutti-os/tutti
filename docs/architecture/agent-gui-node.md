@@ -421,7 +421,9 @@ blocks are UI-local draft state and materialize as Markdown blockquote text at
 the existing submit boundary, so the Side transport remains text-only. When a
 typed question accompanies those quotes, Side keeps the blockquotes in provider
 content but projects only the typed question as the visible user message; a
-quote-only submission keeps the existing blockquote display fallback. Focus
+legacy quote-only submission keeps the existing blockquote display fallback;
+only a future explicit selected-text content kind can make that ambiguous shape
+safe to render as a chip. Focus
 ownership follows the currently visible Side pane: an unmounted or
 source-mismatched Side cannot keep the main composer inactive, and pane cleanup
 must release its focus scope.
@@ -614,6 +616,12 @@ command, marker, token, or API key proves only `configured`. A provider-backed
 account probe or successful agent request proves `authenticated`. An explicit
 remote authentication failure proves `required` and outranks stale local
 credentials until credentials change or a later provider request succeeds.
+Conversation failures may update this provider-global state only for a
+provider-native runtime and only from the typed completed root-provider Turn:
+`auth_required` records required, while a completed outcome records success.
+Model Plan and Agent Extension failures are connection-scoped and never mutate
+the provider-global login state. Shared layers do not infer authentication from
+provider prose, HTTP 403, gateway timeouts, billing, quota, or model errors.
 `packages/agent/daemon/providerstatus` owns evidence reduction; `tuttid` owns
 the live outcome store, cache invalidation, and public status projection. Tutti
 Desktop management surfaces and AgentGUI consume that same status. They may
@@ -628,6 +636,11 @@ Desktop windows reconcile stale providers on focus/visibility activation and
 on the 15-minute poll. API-key configuration skips subscription OAuth checks.
 Explicit authentication rejection is authoritative; rate limits, server
 errors, and network failures leave the weaker `configured` state intact.
+Conversation error adapters preserve typed provider code, HTTP status,
+retryability, origin, and sanitized upstream detail. AgentGUI shows sanitized
+provider-origin detail directly; Tutti-owned transport and lifecycle failures
+continue to use localized product copy. Secrets are redacted before logging,
+persistence, or presentation.
 These checks validate current access but do not rotate refresh tokens; refresh
 ownership requires a separate serialized credential lifecycle that can gate on
 live provider processes.
@@ -1766,6 +1779,16 @@ do not alter cursors, `hasMore`, or server totals. Unchanged summaries preserve
 structural sharing so unrelated engine updates do not rebuild the whole Rail
 snapshot.
 
+A locally initiated Session creation projects its exact target identity as
+pending-creation reconciliation evidence until the canonical Session arrives.
+This covers both new-conversation activation and Session fork, and the marker
+is independent from any optimistic or runtime-overlay render source. When that
+identity becomes canonical, the Rail controller refreshes the exact persisted
+`railSectionKey` even if the new Session is currently selected. The selected
+historical-Session fast path remains valid only when no pending-creation
+evidence exists. An active or running overlay must never mask a missing
+authoritative section membership that would disappear after the Turn settles.
+
 Scroll, section collapse, visible limits, and search query belong to mounted view scope. Non-search state is isolated by `workspaceId + agentTargetId/all`; search creates a temporary navigation scope. `activeConversationId` expresses selection only. Scrolling requires an explicit reveal intent.
 
 On the Home composer, a single-Agent Rail filter follows the effective composer
@@ -1925,7 +1948,16 @@ packaged with AgentGUI and performs no runtime network fetch.
 Attachment-only fallback labels such as `[Image]` may provide title or summary
 text, but they are not an additional transcript text block when the canonical
 structured content already renders the same image. Explicit display prompts
-remain transcript content and continue to replace expanded rich prompt text.
+remain transcript content and continue to replace expanded rich prompt text,
+except when the structured content carries the composer’s selected-text
+reference blocks. In that case the conversation projection preserves ordinary
+structured text and images, groups selected-text blocks into one leading typed
+compact reference part, and uses `displayPrompt` only as a compatibility
+fallback; the renderer owns the chip presentation. The selected reference is
+presentation-only, so copy/edit actions remain attached to the ordinary typed
+prompt part. This keeps the durable prompt and editing source unchanged while
+preventing a display-only flattened prompt from discarding the reference
+boundary.
 
 Structured user-prompt transcript images keep resource acquisition and browser
 image decoding as separate presentation states. A URL or hydrated data source
