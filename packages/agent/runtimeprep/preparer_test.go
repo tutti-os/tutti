@@ -16,6 +16,9 @@ func TestDesktopCodexPersonalSkillCreatedInOneSessionIsVisibleInAnother(t *testi
 	home := t.TempDir()
 	setTestHome(t, home)
 	personalRoot := filepath.Join(home, ".codex", "skills")
+	if err := os.MkdirAll(personalRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	preparer := newTestPreparer(t.TempDir())
 	preparer.RegisterProvider(CodexPreparer{PersonalSkillRoot: personalRoot})
 
@@ -60,6 +63,46 @@ func TestDesktopCodexPersonalSkillCreatedInOneSessionIsVisibleInAnother(t *testi
 	}
 	if len(extraRoots) != 1 || filepath.Base(extraRoots[0]) != "codex-session-skills" {
 		t.Fatalf("extra Skill roots = %#v, want isolated session root", extraRoots)
+	}
+}
+
+func TestConfiguredPersonalSkillRootMustAlreadyExist(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		provider string
+		register func(*DefaultPreparer, string)
+	}{
+		{
+			name: "codex", provider: "codex",
+			register: func(preparer *DefaultPreparer, root string) {
+				preparer.RegisterProvider(CodexPreparer{PersonalSkillRoot: root})
+			},
+		},
+		{
+			name: "claude", provider: "claude-code",
+			register: func(preparer *DefaultPreparer, root string) {
+				preparer.RegisterProvider(ClaudeCodePreparer{PersonalSkillRoot: root})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			personalRoot := filepath.Join(t.TempDir(), "missing-personal-skills")
+			preparer := newTestPreparer(t.TempDir())
+			tc.register(preparer, personalRoot)
+			_, err := preparer.Prepare(t.Context(), PrepareInput{
+				WorkspaceID:    "workspace-1",
+				AgentSessionID: "session-1",
+				AgentTargetID:  "local:" + tc.provider,
+				Provider:       tc.provider,
+				Cwd:            t.TempDir(),
+			})
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), "personal skill root") {
+				t.Fatalf("Prepare() error = %v, want missing personal skill root error", err)
+			}
+			if _, statErr := os.Lstat(personalRoot); !os.IsNotExist(statErr) {
+				t.Fatalf("runtimeprep created Host-owned personal skill root: %v", statErr)
+			}
+		})
 	}
 }
 

@@ -277,10 +277,9 @@ func buildDaemonAPI(
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve user home for personal Codex Skills: %w", err)
 	}
-	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{
-		AuthProjector:     runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()},
-		PersonalSkillRoot: filepath.Join(userHome, ".codex", "skills"),
-	})
+	if err := registerDaemonCodexPreparer(agentRuntimePreparer, tuttitypes.DefaultStateDir(), userHome); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
+	}
 	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
 	configureAgentRuntimeAvailability(agentRuntimePreparer, browserService, computerService)
 	userProjectService := userprojectservice.Service{
@@ -861,4 +860,20 @@ func buildDaemonAPI(
 			}
 		},
 	}, appCenterService, agentRuntime, providerAuthWatcher, nil
+}
+
+func registerDaemonCodexPreparer(
+	preparer *runtimeprep.DefaultPreparer,
+	stateDir string,
+	userHome string,
+) error {
+	personalSkillRoot := filepath.Join(userHome, ".codex", "skills")
+	if err := os.MkdirAll(personalSkillRoot, 0o700); err != nil {
+		return fmt.Errorf("create personal Codex Skills root: %w", err)
+	}
+	preparer.RegisterProvider(runtimeprep.CodexPreparer{
+		AuthProjector:     runtimeprep.MutagenAuthFileProjector{StateDir: stateDir},
+		PersonalSkillRoot: personalSkillRoot,
+	})
+	return nil
 }
