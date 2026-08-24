@@ -1895,7 +1895,7 @@ test("keeps QR authorization in app state without opening its payload", async ()
   service.dispose();
 });
 
-test("opens a device-code verification page once while keeping the code visible", async () => {
+test("keeps device-code authorization in the existing dialog until the user activates it", async () => {
   const continueAuthorization = deferred<void>();
   const openedUrls: string[] = [];
   let step = 0;
@@ -1947,7 +1947,7 @@ test("opens a device-code verification page once while keeping the code visible"
       service.dataStore.authorizationViewsByConnectorKey["github-cli"]?.view
         .type === "device_code"
   );
-  assert.deepEqual(openedUrls, ["https://github.com/login/device"]);
+  assert.deepEqual(openedUrls, []);
   assert.equal(
     service.dataStore.authorizationViewsByConnectorKey["github-cli"]?.view
       .type === "device_code"
@@ -1959,7 +1959,7 @@ test("opens a device-code verification page once while keeping the code visible"
 
   continueAuthorization.resolve();
   await authorization;
-  assert.deepEqual(openedUrls, ["https://github.com/login/device"]);
+  assert.deepEqual(openedUrls, []);
   service.dispose();
 });
 

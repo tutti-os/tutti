@@ -1,5 +1,28 @@
 # Connector Market Troubleshooting
 
+### Device code is missed when authorization moves focus to the browser
+
+**Symptoms**
+
+- the Connector authorization dialog enters a pending state, but the user does
+  not see the device code before the browser gains focus
+- reopening the desktop makes the code visible in the existing dialog
+- the authorization operation and broker session are healthy
+
+**Check**
+
+Confirm the broker result contains a `device_code` Authorization View and the
+renderer stores that View under the current Connector dialog. Then distinguish
+the View transition from its explicit `activate` event: receiving the View must
+not invoke the host's external-navigation callback.
+
+**Rule**
+
+Keep device-code authorization in the existing dialog. Receiving the View only
+renders its code; the user-owned `activate` action opens the verification URL.
+Continue to auto-open ordinary `external_link` Views, whose URL is itself the
+next authorization step.
+
 ### A second authorize click starts another OAuth session
 
 **Symptoms**
@@ -19,8 +42,8 @@ Trace the renderer Promise separately from the Host Start. While
 `beginAuthorization` must return that Promise and must not increment Host
 starts. The dialog Authorize control stays disabled on
 `actionWaitingAuthorization`; browser OAuth must not swap that control for
-Continue when Start returns a synthesized `external_link` view. Only Cancel
-ends the round. After Cancel, the
+Continue when Start returns a synthesized `external_link` view. Cancel and the
+authorization dialog's close button both end the round. After either action, the
 next Authorize may send `replacementPolicy=replace_active` with a new
 `clientRequestId`. Continuation polling inside the same action still reuses one
 identity. Do not re-relay a provider `code` after Complete.

@@ -172,11 +172,11 @@ export function ConnectorMarketDialogs() {
         <Dialog
           open
           onOpenChange={(open) => {
-            if (
-              open ||
-              (dialog.kind === "installation" && dialog.installing) ||
-              (dialog.kind === "authorization" && dialog.authorizing)
-            ) {
+            if (open || (dialog.kind === "installation" && dialog.installing)) {
+              return;
+            }
+            if (dialog.kind === "authorization") {
+              cancelAuthorizationDialog();
               return;
             }
             uiState.closeDialog();
@@ -233,7 +233,7 @@ export function ConnectorMarketDialogs() {
               onAuthorize={(secret) =>
                 authorizeConnector(dialog.connectorKey, secret)
               }
-              onClose={() => uiState.closeDialog()}
+              onClose={cancelAuthorizationDialog}
               onOpenAuthorizationUrl={(url) => market.openAuthorizationUrl(url)}
             />
           ) : dialog.kind === "management" ? (

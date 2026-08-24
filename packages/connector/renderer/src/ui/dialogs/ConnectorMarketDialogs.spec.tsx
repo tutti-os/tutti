@@ -116,7 +116,56 @@ describe("ConnectorMarketDialogs", () => {
     expect(onTryConnector).toHaveBeenCalledWith("gmail");
   });
 
-  it("keeps one authorization action until the user finishes or cancels", async () => {
+  it("shows a device code while authorization remains pending", () => {
+    const viewState = proxy(
+      emptyView({
+        ...authorizationDialog,
+        authorizing: true,
+        pending: true,
+        authorizationView: {
+          protocol: "tutti.connector.authorization.view.v1",
+          viewId: "github-device-code-1",
+          view: {
+            type: "device_code",
+            verificationUrl: "https://github.com/login/device",
+            userCode: "ABCD-EFGH"
+          }
+        }
+      })
+    );
+    const root = {
+      market: {
+        dataStore: proxy({
+          pendingUninstallNotificationsByOperationId: {}
+        })
+      },
+      uiState: {
+        dataStore: proxy({
+          dialog: { connectorKey: "github-cli", kind: "connector" },
+          query: "",
+          scope: {},
+          started: true
+        })
+      },
+      view: { dataStore: viewState }
+    } as unknown as IConnectorMarketRoot;
+
+    render(
+      <ConnectorMarketRootProvider i18n={i18n} root={root}>
+        <ConnectorMarketDialogs />
+      </ConnectorMarketRootProvider>
+    );
+
+    expect(screen.getByText("ABCD-EFGH")).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "actionContinueAuthorization" })
+    ).toBeEnabled();
+    expect(
+      screen.queryByRole("button", { name: "actionWaitingAuthorization" })
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps one authorization action until the user finishes or closes it", async () => {
     const viewState = proxy(
       emptyView({
         ...authorizationDialog,
@@ -172,8 +221,11 @@ describe("ConnectorMarketDialogs", () => {
     fireEvent.click(waiting);
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(beginAuthorization).not.toHaveBeenCalled();
-    expect(closeDialog).not.toHaveBeenCalled();
+    expect(cancelAuthorization).toHaveBeenCalledWith("gmail");
+    await waitFor(() => expect(closeDialog).toHaveBeenCalledTimes(1));
 
+    cancelAuthorization.mockClear();
+    closeDialog.mockClear();
     fireEvent.click(screen.getByRole("button", { name: "cancel" }));
     expect(cancelAuthorization).toHaveBeenCalledWith("gmail");
     await waitFor(() => expect(closeDialog).toHaveBeenCalledTimes(1));
