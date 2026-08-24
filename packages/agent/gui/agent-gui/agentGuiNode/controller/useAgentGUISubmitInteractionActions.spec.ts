@@ -14,11 +14,9 @@ import {
   clearSubmittedAgentGUIHomeDraft,
   restoreFailedAgentGUIHomeDraft
 } from "./agentGuiController.homeDraftHelpers";
-import {
-  agentGUISubmitSettlementError,
-  typedGoalControlFromComposer,
-  useAgentGUISubmitInteractionActions
-} from "./useAgentGUISubmitInteractionActions";
+import { useAgentGUISubmitInteractionActions } from "./useAgentGUISubmitInteractionActions";
+import { typedGoalControlFromComposer } from "./agentGuiController.composerHelpers";
+import { agentGUISubmitSettlementError } from "./agentGuiController.errors";
 
 const draftKey = "node-default:codex:local:codex";
 
@@ -477,7 +475,9 @@ describe("existing-session prompt submission", () => {
       result.current.submitGuidancePrompt(
         [{ type: "text", text: "steer this turn" }],
         undefined,
-        { capabilityRefs: [{ capability: "tutti", source: "slash_command" }] }
+        {
+          capabilityRefs: [{ capability: "tutti", source: "slash_command" }]
+        }
       )
     );
 
@@ -488,6 +488,313 @@ describe("existing-session prompt submission", () => {
         routing: "send_now",
         targetTurnId: "turn-target"
       })
+    );
+  });
+
+  it("answers the exact pending question from the ordinary composer without sending a prompt", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        input: {
+          questions: [
+            {
+              allowFreeText: true,
+              header: "Execution",
+              id: "execution-mode",
+              options: [{ label: "Safe", description: "Check first" }],
+              question: "How should the task continue?"
+            }
+          ]
+        },
+        kind: "question",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("Continue with a different direction")
+    };
+    const submitInteractionResponse = vi
+      .spyOn(sessionEngine, "submitInteractionResponse")
+      .mockReturnValue(true);
+    const submitPrompt = vi.spyOn(sessionEngine, "submitPrompt");
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "Continue with a different direction" }
+      ])
+    );
+
+    expect(submitInteractionResponse).toHaveBeenCalledWith({
+      action: "submit",
+      agentSessionId: "session-1",
+      payload: {
+        answers: ["Continue with a different direction"],
+        answersByQuestionId: {
+          "execution-mode": "Continue with a different direction"
+        }
+      },
+      requestId: "request-1",
+      turnId: "turn-target"
+    });
+    expect(submitPrompt).not.toHaveBeenCalled();
+    expect(setDraftByScopeKey).toHaveBeenCalledTimes(1);
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("");
+  });
+
+  it("clears the exact pending-question draft when the controller ref is stale", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        input: {
+          questions: [
+            {
+              allowFreeText: true,
+              header: "Execution",
+              id: "execution-mode",
+              options: [],
+              question: "How should the task continue?"
+            }
+          ]
+        },
+        kind: "question",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    const submittedDraft = draft("Continue with the exact draft");
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("stale projection")
+    };
+    vi.spyOn(sessionEngine, "submitInteractionResponse").mockReturnValue(true);
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    setDraftByScopeKey.mockImplementationOnce((update) => {
+      const current = { "session:session-1": submittedDraft };
+      const next = typeof update === "function" ? update(current) : update;
+      draftByScopeKeyRef.current = next;
+    });
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "Continue with the exact draft" }],
+        undefined,
+        { submittedDraft }
+      )
+    );
+
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("");
+  });
+
+  it("keeps the composer draft when the pending question response is not admitted", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, draftByScopeKeyRef, sessionEngine, setDraftByScopeKey } =
+      createGoalControlInput(goalControl as never);
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        input: {
+          questions: [
+            {
+              allowFreeText: true,
+              header: "Execution",
+              id: "execution-mode",
+              options: [],
+              question: "How should the task continue?"
+            }
+          ]
+        },
+        kind: "question",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    draftByScopeKeyRef.current = {
+      "session:session-1": draft("Continue with a different direction")
+    };
+    vi.spyOn(sessionEngine, "submitInteractionResponse").mockReturnValue(false);
+    const submitPrompt = vi.spyOn(sessionEngine, "submitPrompt");
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([
+        { type: "text", text: "Continue with a different direction" }
+      ])
+    );
+
+    expect(submitPrompt).not.toHaveBeenCalled();
+    expect(setDraftByScopeKey).not.toHaveBeenCalled();
+    expect(
+      agentComposerDraftPrompt(draftByScopeKeyRef.current["session:session-1"]!)
+    ).toBe("Continue with a different direction");
+  });
+
+  it("keeps fixed-choice questions on the ordinary queue path", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        input: {
+          questions: [
+            {
+              allowFreeText: false,
+              header: "Execution",
+              id: "execution-mode",
+              options: [{ label: "Safe", description: "Check first" }],
+              question: "How should the task continue?"
+            }
+          ]
+        },
+        kind: "question",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    const submitInteractionResponse = vi.spyOn(
+      sessionEngine,
+      "submitInteractionResponse"
+    );
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([{ type: "text", text: "You decide" }])
+    );
+
+    expect(submitInteractionResponse).not.toHaveBeenCalled();
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.not.objectContaining({ routing: "send_now" })
+    );
+  });
+
+  it("keeps capability-bearing text on the ordinary queue path", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        input: {
+          questions: [
+            {
+              allowFreeText: true,
+              header: "Execution",
+              id: "execution-mode",
+              options: [],
+              question: "How should the task continue?"
+            }
+          ]
+        },
+        kind: "question",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    const submitInteractionResponse = vi.spyOn(
+      sessionEngine,
+      "submitInteractionResponse"
+    );
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt(
+        [{ type: "text", text: "Continue with Tutti" }],
+        undefined,
+        {
+          capabilityRefs: [{ capability: "tutti", source: "slash_command" }],
+          tuttiMode: { active: true, effect: 50, speed: 50 }
+        }
+      )
+    );
+
+    expect(submitInteractionResponse).not.toHaveBeenCalled();
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        capabilityRefs: [{ capability: "tutti", source: "slash_command" }]
+      })
+    );
+  });
+
+  it("keeps ordinary queue routing when the pending interaction is not a question", () => {
+    const goalControl = vi.fn(async () => undefined);
+    const { input, sessionEngine } = createGoalControlInput(
+      goalControl as never
+    );
+    input.activeEngineActiveTurn = { turnId: "turn-target" } as never;
+    input.activeEnginePendingInteractions = [
+      {
+        agentSessionId: "session-1",
+        createdAtUnixMs: 1,
+        kind: "approval",
+        requestId: "request-1",
+        status: "pending",
+        turnId: "turn-target",
+        updatedAtUnixMs: 1
+      }
+    ];
+    const submitPrompt = vi
+      .spyOn(sessionEngine, "submitPrompt")
+      .mockReturnValue({ accepted: true, queued: true });
+    const { result } = renderHook(() =>
+      useAgentGUISubmitInteractionActions(input)
+    );
+
+    act(() =>
+      result.current.submitPrompt([{ type: "text", text: "Queue this" }])
+    );
+
+    expect(submitPrompt).toHaveBeenCalledWith(
+      expect.not.objectContaining({ routing: "send_now" })
     );
   });
 
@@ -559,7 +866,9 @@ describe("existing-session prompt submission", () => {
       result.current.submitPrompt(
         [{ type: "text", text: "continue" }],
         undefined,
-        { submittedDraft }
+        {
+          submittedDraft
+        }
       )
     );
 
@@ -898,5 +1207,4 @@ describe("typedGoalControlFromComposer", () => {
       )
     ).toBeNull();
   });
-
 });

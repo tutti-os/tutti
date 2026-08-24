@@ -358,6 +358,7 @@ describe("AgentVisibleErrorMessage", () => {
     expect(
       getByText("Codex needs authentication or configuration")
     ).toBeTruthy();
+    expect(getByText("auth_required")).toBeTruthy();
     expect(
       getByText("Contact the person who shared this Agent, then try again.")
     ).toBeTruthy();
@@ -404,6 +405,28 @@ describe("AgentVisibleErrorMessage", () => {
     expect(queryByText("Recharge credits to continue")).toBeNull();
     expect(queryByText("Recharge credits")).toBeNull();
     expect(onLinkAction).not.toHaveBeenCalled();
+  });
+
+  it("shows the stable shared-caller code when provider detail is absent or unknown", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "future_owner_failure",
+        phase: "provider_start",
+        provider: "codex",
+        detail: null,
+        detailAvailable: false,
+        retryable: null
+      }),
+      "codex",
+      undefined,
+      undefined,
+      "shared_caller"
+    );
+
+    expect(getByText("future_owner_failure")).toBeTruthy();
+    expect(queryByText("invocation-1")).toBeNull();
+    expect(queryByText("correlation-1")).toBeNull();
+    expect(queryByText("owner-device-1")).toBeNull();
   });
 
   it("preserves neutral transient copy while suppressing local setup actions", () => {

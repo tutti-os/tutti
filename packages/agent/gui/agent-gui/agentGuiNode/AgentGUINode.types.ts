@@ -175,6 +175,8 @@ export interface AgentGUINodeHostCapabilities {
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
+  /** Tutti-only presentation opt-in for placing usage refresh in the limits header. */
+  accountUsageRefreshInline?: boolean;
   /** Target-level connection for new-conversation and ordinary Composer admission. */
   targetConnectionSource?: AgentGUITargetConnectionSource | null;
   /**
@@ -493,6 +495,7 @@ export function areAgentGUINodePropsEqual(
     pc.providerRailMode === nc.providerRailMode &&
     pc.comingSoonProviders === nc.comingSoonProviders &&
     pc.providerReadinessGates === nc.providerReadinessGates &&
+    pc.accountUsageRefreshInline === nc.accountUsageRefreshInline &&
     pc.targetConnectionSource === nc.targetConnectionSource &&
     pc.interactionReadinessSource === nc.interactionReadinessSource &&
     pc.observationGapSource === nc.observationGapSource &&

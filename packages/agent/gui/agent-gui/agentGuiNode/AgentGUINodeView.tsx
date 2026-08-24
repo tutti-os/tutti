@@ -117,6 +117,7 @@ export function AgentGUINodeView({
   onAgentConfigMenuClose,
   onAgentConfigMenuOpen,
   onAgentUsageRefresh,
+  accountUsageRefreshInline = false,
   onSlashStatusOpen,
   onSlashStatusClose,
   onSlashStatusRefresh,
@@ -377,8 +378,6 @@ export function AgentGUINodeView({
     viewModel.shell.data.provider
   );
   const railConfigTarget = resolveAgentGUIRailStatusTarget(viewModel.rail);
-  const effectiveRailSlashStatusLimits =
-    railSlashStatusLimits ?? slashStatusLimits;
   const shouldShowProviderRailConfigButton =
     viewModel.rail.conversationFilter.kind === "all" ||
     viewModel.rail.selectedAgentTarget?.disabled !== true;
@@ -595,7 +594,7 @@ export function AgentGUINodeView({
                   providerScopedActionsVisible={
                     viewModel.rail.conversationFilter.kind !== "all"
                   }
-                  slashStatusLimits={effectiveRailSlashStatusLimits}
+                  slashStatusLimits={railSlashStatusLimits ?? slashStatusLimits}
                   slashStatusLimitsLoading={slashStatusLimitsLoading}
                   slashStatusLimitsResolvedEmpty={
                     slashStatusLimitsResolvedEmpty
@@ -618,6 +617,7 @@ export function AgentGUINodeView({
                   onAgentConfigMenuClose={onAgentConfigMenuClose}
                   onAgentConfigMenuOpen={onAgentConfigMenuOpen}
                   onAgentUsageRefresh={onAgentUsageRefresh}
+                  usageRefreshInline={accountUsageRefreshInline}
                   onOpenAgentEnvSetup={openAgentEnvSetup}
                   onOpenAgentSettings={openAgentSettings}
                 />

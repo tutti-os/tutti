@@ -48,7 +48,7 @@ func newInstallShellCommand(ctx context.Context, command string) *exec.Cmd {
 // complete Windows process tree. npm/opencode and PowerShell launchers are
 // wrappers; killing only the wrapper leaves the real child alive, which then
 // makes the next ACP probe hang or contend for the provider's database.
-func configureInstallProcessCommand(command *exec.Cmd, ctx context.Context) {
+func configureInstallProcessCommand(command *exec.Cmd, _ context.Context) {
 	command.SysProcAttr = &syscall.SysProcAttr{CreationFlags: windows.CREATE_NEW_PROCESS_GROUP}
 	command.WaitDelay = 500 * time.Millisecond
 	command.Cancel = func() error {

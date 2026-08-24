@@ -8,12 +8,21 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
 )
 
+func skipUnixShellFixture(t *testing.T) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("shell fixture is Unix-only; Windows process-boundary coverage uses the native provider launcher path")
+	}
+}
+
 func TestCodexCLIModelListerCompletesInitializeHandshakeBeforeModelList(t *testing.T) {
+	skipUnixShellFixture(t)
 	scriptPath := filepath.Join(t.TempDir(), "codex")
 	script := `#!/bin/sh
 initialized=false
@@ -180,6 +189,7 @@ func (t *strictCodexHandshakeTransport) Read(p []byte) (int, error) {
 }
 
 func TestCodexCLIModelListerResolvesCodexFromKnownUserBin(t *testing.T) {
+	skipUnixShellFixture(t)
 	home := t.TempDir()
 	binDir := filepath.Join(home, ".local", "bin")
 	if err := os.MkdirAll(binDir, 0o755); err != nil {
@@ -224,6 +234,7 @@ done
 }
 
 func TestCodexCLIModelListerReusesPersistentAppServerSession(t *testing.T) {
+	skipUnixShellFixture(t)
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "codex")
 	countPath := filepath.Join(tempDir, "starts")

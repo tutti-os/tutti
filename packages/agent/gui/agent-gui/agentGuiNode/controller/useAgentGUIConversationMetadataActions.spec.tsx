@@ -102,6 +102,249 @@ describe("useAgentGUIConversationMetadataActions project removal", () => {
   });
 });
 
+describe("useAgentGUIConversationMetadataActions rename", () => {
+  it("waits for an optimistic new Session before using the Engine mutation", async () => {
+    let snapshot = {
+      pendingIntents: {
+        activationsByRequestId: {
+          "activation-1": {
+            agentSessionId: "new-session",
+            requestedAtUnixMs: 1,
+            status: "requested"
+          }
+        }
+      },
+      sessionLifecycle: { sessionsById: {} }
+    };
+    const listeners = new Set<() => void>();
+    const renameSession = vi.fn().mockResolvedValue({});
+    const sessionEngine = {
+      getSnapshot: () => snapshot,
+      renameSession,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }
+    };
+    const { result } = renderHook(() =>
+      useAgentGUIConversationMetadataActions({
+        agentActivityRuntime: {} as never,
+        agentHostApi: { toast: { error: vi.fn() } } as never,
+        currentUserId: "user-1",
+        dataRef: { current: { provider: "codex" } } as never,
+        sessionEngine: sessionEngine as never,
+        setDetailError: vi.fn(),
+        setListError: vi.fn(),
+        setUserProjectsSnapshot: vi.fn(),
+        userProjectsRef: { current: [] },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    let renamePromise!: Promise<void>;
+    act(() => {
+      renamePromise = result.current.renameConversation(
+        "new-session",
+        "Renamed session"
+      );
+    });
+    expect(renameSession).not.toHaveBeenCalled();
+
+    snapshot = {
+      ...snapshot,
+      sessionLifecycle: {
+        sessionsById: { "new-session": { agentSessionId: "new-session" } }
+      }
+    };
+    act(() => {
+      for (const listener of listeners) listener();
+    });
+    await renamePromise;
+
+    expect(renameSession).toHaveBeenCalledWith({
+      agentSessionId: "new-session",
+      title: "Renamed session"
+    });
+  });
+
+  it("delegates an existing Session rename to the Engine", async () => {
+    const renameSession = vi.fn().mockResolvedValue({});
+    const sessionEngine = {
+      getSnapshot: () => ({
+        pendingIntents: { activationsByRequestId: {} },
+        sessionLifecycle: {
+          sessionsById: {
+            "existing-session": { agentSessionId: "existing-session" }
+          }
+        }
+      }),
+      renameSession,
+      subscribe: vi.fn(() => vi.fn())
+    };
+    const { result } = renderHook(() =>
+      useAgentGUIConversationMetadataActions({
+        agentActivityRuntime: {} as never,
+        agentHostApi: { toast: { error: vi.fn() } } as never,
+        currentUserId: "user-1",
+        dataRef: { current: { provider: "codex" } } as never,
+        sessionEngine: sessionEngine as never,
+        setDetailError: vi.fn(),
+        setListError: vi.fn(),
+        setUserProjectsSnapshot: vi.fn(),
+        userProjectsRef: { current: [] },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    await act(async () => {
+      await result.current.renameConversation(
+        "existing-session",
+        "Renamed session"
+      );
+    });
+
+    expect(renameSession).toHaveBeenCalledWith({
+      agentSessionId: "existing-session",
+      title: "Renamed session"
+    });
+  });
+
+  it("reports when activation fails before the canonical Session appears", async () => {
+    let snapshot = {
+      pendingIntents: {
+        activationsByRequestId: {
+          "activation-1": {
+            agentSessionId: "failed-session",
+            requestedAtUnixMs: 1,
+            status: "requested"
+          }
+        }
+      },
+      sessionLifecycle: { sessionsById: {} }
+    };
+    const listeners = new Set<() => void>();
+    const renameSession = vi.fn().mockResolvedValue({});
+    const toastError = vi.fn();
+    const sessionEngine = {
+      getSnapshot: () => snapshot,
+      renameSession,
+      subscribe: (listener: () => void) => {
+        listeners.add(listener);
+        return () => listeners.delete(listener);
+      }
+    };
+    const { result } = renderHook(() =>
+      useAgentGUIConversationMetadataActions({
+        agentActivityRuntime: {} as never,
+        agentHostApi: { toast: { error: toastError } } as never,
+        currentUserId: "user-1",
+        dataRef: { current: { provider: "codex" } } as never,
+        sessionEngine: sessionEngine as never,
+        setDetailError: vi.fn(),
+        setListError: vi.fn(),
+        setUserProjectsSnapshot: vi.fn(),
+        userProjectsRef: { current: [] },
+        workspaceId: "workspace-1"
+      })
+    );
+
+    let renamePromise!: Promise<void>;
+    act(() => {
+      renamePromise = result.current.renameConversation(
+        "failed-session",
+        "Renamed session"
+      );
+    });
+
+    snapshot = {
+      ...snapshot,
+      pendingIntents: {
+        activationsByRequestId: {
+          "activation-1": {
+            agentSessionId: "failed-session",
+            requestedAtUnixMs: 1,
+            status: "failed"
+          }
+        }
+      }
+    };
+    act(() => {
+      for (const listener of listeners) listener();
+    });
+
+    await expect(renamePromise).rejects.toThrow(
+      translate("agentHost.agentGui.sessionActionUnavailable")
+    );
+    expect(renameSession).not.toHaveBeenCalled();
+    expect(toastError).toHaveBeenCalledWith(
+      translate("agentHost.agentGui.sessionActionUnavailable")
+    );
+  });
+
+  it("times out while activation remains pending instead of holding rename forever", async () => {
+    const timeoutController = new AbortController();
+    const timeoutSpy = vi
+      .spyOn(AbortSignal, "timeout")
+      .mockReturnValue(timeoutController.signal);
+    try {
+      const renameSession = vi.fn().mockResolvedValue({});
+      const sessionEngine = {
+        getSnapshot: () => ({
+          pendingIntents: {
+            activationsByRequestId: {
+              "activation-1": {
+                agentSessionId: "stalled-session",
+                requestedAtUnixMs: 1,
+                status: "requested"
+              }
+            }
+          },
+          sessionLifecycle: { sessionsById: {} }
+        }),
+        renameSession,
+        subscribe: vi.fn(() => vi.fn())
+      };
+      const toastError = vi.fn();
+      const { result } = renderHook(() =>
+        useAgentGUIConversationMetadataActions({
+          agentActivityRuntime: {} as never,
+          agentHostApi: { toast: { error: toastError } } as never,
+          currentUserId: "user-1",
+          dataRef: { current: { provider: "codex" } } as never,
+          sessionEngine: sessionEngine as never,
+          setDetailError: vi.fn(),
+          setListError: vi.fn(),
+          setUserProjectsSnapshot: vi.fn(),
+          userProjectsRef: { current: [] },
+          workspaceId: "workspace-1"
+        })
+      );
+
+      let renamePromise!: Promise<void>;
+      act(() => {
+        renamePromise = result.current.renameConversation(
+          "stalled-session",
+          "Renamed session"
+        );
+      });
+      const renameRejection = expect(renamePromise).rejects.toThrow(
+        translate("agentHost.agentGui.sessionActionUnavailable")
+      );
+      act(() => {
+        timeoutController.abort();
+      });
+
+      await renameRejection;
+      expect(renameSession).not.toHaveBeenCalled();
+      expect(toastError).toHaveBeenCalledWith(
+        translate("agentHost.agentGui.sessionActionUnavailable")
+      );
+    } finally {
+      timeoutSpy.mockRestore();
+    }
+  });
+});
+
 describe("useAgentGUIConversationMetadataActions fork identity", () => {
   it("leaves identity reuse to the Engine facade and selects its authoritative target", async () => {
     const unsupported = Object.assign(new Error("unsupported"), {

@@ -62,6 +62,11 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       this.entries.values()
     );
   private readonly eventStreamDisposables: Array<() => void> = [];
+  private readonly pendingActivityUpdates = new Map<
+    string,
+    WorkspaceAgentActivityBridgeEvent[]
+  >();
+  private readonly activityUpdateFlushScheduled = new Set<string>();
   private disposed = false;
   private eventStreamStarted = false;
   private eventStreamConnectionState: "connected" | "disconnected" | null =
@@ -250,6 +255,8 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     }
     this.eventCoordinators.clear();
     this.sessionReconcileExecutors.clear();
+    this.pendingActivityUpdates.clear();
+    this.activityUpdateFlushScheduled.clear();
   }
 
   protected async fetchActivitySessionDetail(
@@ -651,9 +658,25 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   private scheduleAgentActivityUpdate(
     input: WorkspaceAgentActivityBridgeEvent
   ): void {
+    if (this.disposed) return;
     const agentSessionId = input.agentSessionId.trim();
     if (!agentSessionId) return;
-    void this.reconcileAgentActivityUpdate(input);
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const pending = this.pendingActivityUpdates.get(workspaceId) ?? [];
+    pending.push(input);
+    this.pendingActivityUpdates.set(workspaceId, pending);
+    if (this.activityUpdateFlushScheduled.has(workspaceId)) return;
+    this.activityUpdateFlushScheduled.add(workspaceId);
+    queueMicrotask(() => {
+      this.activityUpdateFlushScheduled.delete(workspaceId);
+      const updates = this.pendingActivityUpdates.get(workspaceId) ?? [];
+      this.pendingActivityUpdates.delete(workspaceId);
+      if (this.disposed) return;
+      for (const update of updates) {
+        if (this.disposed) return;
+        void this.reconcileAgentActivityUpdate(update);
+      }
+    });
   }
 
   private eventCoordinator(
@@ -670,9 +693,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         this.canonicalActivitySnapshot(normalizedWorkspaceId),
       workspaceId: normalizedWorkspaceId
     });
-    // The coordinator already batches optimistic overlay notifications on its
-    // host-injected scheduler. Flush the matching host events from that same
-    // boundary instead of maintaining a second renderer timer.
+    // The coordinator batches optimistic overlay notifications on the
+    // host-injected scheduler. Flush matching host events from that same
+    // boundary so the UI observes one coherent snapshot without a second
+    // renderer timer.
     coordinator.subscribe(() =>
       this.flushPendingOptimisticSessionEvents(normalizedWorkspaceId)
     );

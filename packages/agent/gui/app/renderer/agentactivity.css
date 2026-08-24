@@ -4007,6 +4007,14 @@ aside.workspace-agents-status-panel
   gap: 8px;
 }
 
+.agent-gui-conversation__interactive-prompt-card.agent-gui-conversation__interactive-prompt-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 10px;
+}
+
 .agent-gui-conversation__user-message-flow,
 .agent-gui-conversation__assistant-message-flow {
   display: grid;

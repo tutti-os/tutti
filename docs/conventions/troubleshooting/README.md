@@ -22,6 +22,9 @@ Use the focused runtime index or open one area directly:
   incompatible system Python.
   Also covers Kimi Code ACP sessions that advertise no model or hide provider
   failures behind an empty `end_turn`.
+  Also covers Cursor ACP session-service startup races and tool results that
+  hide aborted/TLS failures in provider-specific output fields, plus Cursor CLI
+  questions that are absent from the ACP tool catalog.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
   probes, Windows managed-runtime adoption sharing violations, optional Provider
   absence misclassified as an environment failure, extension release refresh

@@ -109,6 +109,11 @@ export function AgentVisibleErrorMessage({
           <div className="font-medium text-[var(--text-primary)]">
             {headline}
           </div>
+          {scope === "shared_caller" && error?.code ? (
+            <code className="mt-1 block break-all font-mono text-[10px] leading-4 text-[var(--text-secondary)]">
+              {error.code}
+            </code>
+          ) : null}
           {hint ? (
             <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
               {hint}

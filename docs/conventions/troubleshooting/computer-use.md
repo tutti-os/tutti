@@ -90,3 +90,32 @@ different application target; never automate the authorization UI.
 - Every state-changing action is followed by a fresh screenshot.
 - An inconsistent success-code error and a protected authorization target have
   explicit diagnostic messages.
+
+## A Windows CUA doctor check is slow or reports UIA fallback
+
+### Symptom
+
+Windows computer-use status takes several seconds, or the driver doctor
+reports that optional UI Automation support is unhealthy and is falling back to
+Win32-only window tools. A status response may still be authorized because
+the installed driver can perform the core Win32 actions.
+
+### Root cause and fix
+
+The Windows doctor probes both the optional UIA adapter and the native Win32
+path. A broken accessibility provider can make the optional probe slow or
+degraded even when native input remains usable. The desktop and daemon bound
+the doctor process at 10 seconds and classify the explicit UIA-to-Win32
+fallback as a degraded-but-usable result. The desktop preserves its diagnostic
+message with reason `driver-doctor-failed`, while the daemon keeps host-managed
+computer tools available. A real timeout, malformed response, or missing driver
+remains an unknown/not-ready result; do not silently treat those as healthy.
+
+### Validation
+
+- Run the exact installed `cua-driver doctor --json` executable and record
+  whether the response is healthy, degraded, timed out, or unparseable.
+- Confirm degraded output keeps Win32 computer actions available while the
+  diagnostic warns that UIA-specific window operations may not work.
+- Confirm a real doctor timeout returns within 10 seconds and does not leave a
+  child process running.

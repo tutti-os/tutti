@@ -1435,8 +1435,12 @@ test("WorkspaceAgentActivityService starts session-event streams and forwards ca
     }
   });
 
+  let turnEventDelivered = false;
   const receivedTurnEvent = new Promise<unknown>((resolve) => {
-    service.onSessionEvent(" ws-1 ", resolve);
+    service.onSessionEvent(" ws-1 ", (event) => {
+      turnEventDelivered = true;
+      resolve(event);
+    });
   });
 
   assert.deepEqual(subscriptions, [
@@ -1491,7 +1495,13 @@ test("WorkspaceAgentActivityService starts session-event streams and forwards ca
     }
   });
 
+  assert.equal(
+    turnEventDelivered,
+    false,
+    "realtime activity must cross a microtask boundary before notifying listeners"
+  );
   assert.deepEqual(await receivedTurnEvent, turnEvent);
+  service.dispose();
 });
 
 test("WorkspaceAgentActivityService reconciles a realtime message version gap after its streaming debounce", async () => {
@@ -1893,6 +1903,7 @@ test("WorkspaceAgentActivityService projects WebSocket message deltas and yields
       })
     );
   }
+  await new Promise((resolve) => setImmediate(resolve));
   let message =
     service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0];
   assert.equal(message?.payload.text, `Hel${"x".repeat(99)}`);

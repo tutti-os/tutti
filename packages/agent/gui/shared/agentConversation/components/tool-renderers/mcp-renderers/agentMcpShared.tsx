@@ -5,6 +5,7 @@ import {
   objectValue,
   stringValue
 } from "../agentToolContentShared";
+import { structuredToolText } from "../render-data/structuredToolText";
 
 export interface AgentMcpNormalizedPayload {
   server: string | null;
@@ -12,6 +13,7 @@ export interface AgentMcpNormalizedPayload {
   inputSummary: string | null;
   structured: unknown;
   text: string | null;
+  errorText: string | null;
 }
 
 export function normalizeMcpPayload(
@@ -41,6 +43,9 @@ export function normalizeMcpPayload(
     parseJsonString(call.output?.text),
     parseJsonString(call.output?.stdout)
   );
+  const status = (call.status ?? "").trim().toLowerCase();
+  const failed =
+    call.statusKind === "failed" || status === "failed" || status === "error";
 
   return {
     server,
@@ -56,7 +61,10 @@ export function normalizeMcpPayload(
     text: firstString(
       stringValue(call.output?.text),
       stringValue(call.output?.stdout)
-    )
+    ),
+    errorText:
+      structuredToolText(call.error) ??
+      (failed ? structuredToolText(call.output) : null)
   };
 }
 

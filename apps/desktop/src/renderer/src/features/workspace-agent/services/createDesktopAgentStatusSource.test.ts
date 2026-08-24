@@ -95,6 +95,60 @@ test("desktop status combines an exact canonical session with one host probe rea
   assert.deepEqual(observed.errors, []);
 });
 
+for (const [sourceKind, createSource] of [
+  ["surface", createDesktopAgentStatusSource],
+  ["workspace", createDesktopWorkspaceAgentStatusSource]
+] as const) {
+  test(`${sourceKind} desktop status treats provider account usage as inapplicable for a Model Plan Agent`, async () => {
+    let listCalls = 0;
+    const observed = createObserver();
+    const source = createSource({
+      agentActivityRuntime: runtimeWithSessions([]),
+      agents: [
+        {
+          ...agent,
+          agentTargetId: "workspace-agent:kimi-code",
+          name: "Kimi Code - Codex",
+          providerAccountUsageApplicable: false
+        }
+      ] as never,
+      workspaceAgentProbes: {
+        list: async () => {
+          listCalls += 1;
+          return probeSnapshot(500);
+        }
+      } as never,
+      workspaceId: "workspace-1"
+    });
+
+    source.open(
+      {
+        scopeKey: "workspace-agent:kimi-code",
+        reason: "agent-config"
+      },
+      observed.observer
+    );
+    await observed.completed;
+
+    assert.equal(listCalls, 0);
+    assert.deepEqual(observed.frames, [
+      {
+        kind: "refreshed",
+        value: {
+          agentSessionId: null,
+          contextState: "unavailable",
+          contextWindow: null,
+          quotas: [],
+          limitsState: "unavailable",
+          limitsCapturedAtUnixMs: null,
+          limitsStale: false
+        }
+      }
+    ]);
+    assert.deepEqual(observed.errors, []);
+  });
+}
+
 test("desktop status treats an unsupported extension usage probe as unavailable", async () => {
   const extensionAgent = {
     agentTargetId: "extension:example",

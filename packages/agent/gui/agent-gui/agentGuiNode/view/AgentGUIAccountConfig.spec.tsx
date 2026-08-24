@@ -202,45 +202,58 @@ describe("AgentGUIConfigMenu", () => {
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
-  it("preserves the provider account and quota fallback without Host content", () => {
-    render(
-      <AgentGUIConfigMenu
-        environmentSetupVisible={false}
-        labels={labels}
-        providerScopedActionsVisible
-        provider="codex"
-        providerAuthAccountLabel="provider@example.test"
-        slashStatusLimits={[
-          {
-            id: "weekly",
-            label: "Weekly",
-            percentRemaining: 50,
-            value: "50%",
-            reset: null
-          }
-        ]}
-        slashStatusLimitsLoading={false}
-        slashStatusLimitsResolvedEmpty={false}
-        slashStatusUsageCapturedAtUnixMs={null}
-        slashStatusUsageDidFail={false}
-        slashStatusUsageAttempted
-        onAgentConfigMenuOpen={vi.fn()}
-        onAgentUsageRefresh={vi.fn()}
-        onOpenAgentEnvSetup={vi.fn()}
-        onOpenAgentSettings={vi.fn()}
-      />
-    );
+  it.each([
+    {
+      expectedRole: "menuitem",
+      usageRefreshInline: undefined
+    },
+    {
+      expectedRole: "button",
+      usageRefreshInline: true
+    }
+  ] as const)(
+    "preserves provider account fallback with the refresh exposed as a $expectedRole",
+    ({ expectedRole, usageRefreshInline }) => {
+      render(
+        <AgentGUIConfigMenu
+          environmentSetupVisible={false}
+          labels={labels}
+          providerScopedActionsVisible
+          provider="codex"
+          providerAuthAccountLabel="provider@example.test"
+          slashStatusLimits={[
+            {
+              id: "weekly",
+              label: "Weekly",
+              percentRemaining: 50,
+              value: "50%",
+              reset: null
+            }
+          ]}
+          slashStatusLimitsLoading={false}
+          slashStatusLimitsResolvedEmpty={false}
+          slashStatusUsageCapturedAtUnixMs={null}
+          slashStatusUsageDidFail={false}
+          slashStatusUsageAttempted
+          usageRefreshInline={usageRefreshInline}
+          onAgentConfigMenuOpen={vi.fn()}
+          onAgentUsageRefresh={vi.fn()}
+          onOpenAgentEnvSetup={vi.fn()}
+          onOpenAgentSettings={vi.fn()}
+        />
+      );
 
-    openConfigMenu();
+      openConfigMenu();
 
-    expect(screen.getByText("provider@example.test")).toBeInTheDocument();
-    expect(screen.getByText("Limits")).toBeInTheDocument();
-    expect(screen.getByText("Weekly")).toBeInTheDocument();
-    const usageRefresh = screen.getByRole("menuitem", {
-      name: "Refresh usage"
-    });
-    expect(usageRefresh).toHaveAttribute("aria-describedby");
-  });
+      expect(screen.getByText("provider@example.test")).toBeInTheDocument();
+      expect(screen.getByText("Limits")).toBeInTheDocument();
+      expect(screen.getByText("Weekly")).toBeInTheDocument();
+      const usageRefresh = screen.getByRole(expectedRole, {
+        name: "Refresh usage"
+      });
+      expect(usageRefresh).toHaveAttribute("aria-describedby");
+    }
+  );
 
   it("uses the Agent Target label and original icon for Kimi billing", () => {
     render(

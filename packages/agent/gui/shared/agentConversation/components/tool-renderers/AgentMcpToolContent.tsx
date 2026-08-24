@@ -21,6 +21,7 @@ export function AgentMcpToolContent({
     payload.text,
     payload.inputSummary
   );
+  const errorText = dedupeToolSectionContent(payload.errorText);
 
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
@@ -57,6 +58,15 @@ export function AgentMcpToolContent({
         <ToolSection title={translate("agentHost.agentTool.details.output")}>
           <ToolMarkdownBlock
             content={visibleText}
+            onLinkClick={onLinkClick}
+            collapsible
+          />
+        </ToolSection>
+      ) : null}
+      {errorText ? (
+        <ToolSection title={translate("agentHost.agentTool.details.error")}>
+          <ToolMarkdownBlock
+            content={errorText}
             onLinkClick={onLinkClick}
             collapsible
           />

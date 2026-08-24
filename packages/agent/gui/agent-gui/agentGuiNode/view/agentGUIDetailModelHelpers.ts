@@ -20,6 +20,21 @@ import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { conversationPlainTitle, stringValue } from "./agentGUIViewUtils";
 export { isDifferentKnownConversationOwner } from "../model/agentGuiComposerGate";
 
+export function resolveAgentGUIConversationReturn(
+  labels: Pick<
+    AgentGUIViewLabels,
+    "continueAnswering" | "returnToConversation"
+  >,
+  enabled = true
+): { continueAnswering: string; returnToConversation: string } | undefined {
+  return enabled && labels.continueAnswering && labels.returnToConversation
+    ? {
+        continueAnswering: labels.continueAnswering,
+        returnToConversation: labels.returnToConversation
+      }
+    : undefined;
+}
+
 export function commandAppSource(
   command: unknown
 ): Record<string, unknown> | null {

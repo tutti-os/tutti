@@ -145,6 +145,18 @@ describe("projectAgentGUIAgentsToTargets", () => {
     });
     expect(target?.availability?.status).not.toBe("coming_soon");
   });
+
+  it("preserves an explicit provider-account usage opt-out", () => {
+    const [target] = projectAgentGUIAgentsToTargets(
+      normalizeAgentGUIAgents([
+        createAgent("workspace-agent:kimi-code", {
+          providerAccountUsageApplicable: false
+        })
+      ])
+    );
+
+    expect(target?.providerAccountUsageApplicable).toBe(false);
+  });
 });
 
 describe("resolveAgentGUISelectedDirectoryAgent", () => {

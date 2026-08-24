@@ -7,7 +7,11 @@ import type {
 import { projectDesktopAgentProviderReadinessGates } from "./desktopAgentProviderReadinessGate.ts";
 
 test("projectDesktopAgentProviderReadinessGates maps provider availability to AgentGUI gates", () => {
+  let modelPlanSetupProvider: string | null = null;
   const gates = projectDesktopAgentProviderReadinessGates({
+    onModelPlanSetup: (provider) => {
+      modelPlanSetupProvider = provider;
+    },
     snapshot: {
       capturedAt: "2026-07-03T00:00:00.000Z",
       defaultProvider: "codex",
@@ -26,10 +30,16 @@ test("projectDesktopAgentProviderReadinessGates maps provider availability to Ag
 
   assert.equal(gates.codex?.status, "not_installed");
   assert.equal(gates.codex?.pendingAction, "install");
+  assert.equal(typeof gates.codex?.onModelPlanSetup, "function");
   assert.equal(gates["claude-code"]?.status, "auth_required");
+  assert.equal(typeof gates["claude-code"]?.onModelPlanSetup, "function");
   assert.equal(gates["tutti-agent"]?.status, "auth_required");
   assert.equal(gates.opencode, null);
   assert.equal(gates.openclaw?.status, "unavailable");
+  assert.equal(gates.openclaw?.onModelPlanSetup, undefined);
+
+  gates.codex?.onModelPlanSetup?.();
+  assert.equal(modelPlanSetupProvider, "codex");
 });
 
 test("projectDesktopAgentProviderReadinessGates gates missing provider statuses while loading", () => {

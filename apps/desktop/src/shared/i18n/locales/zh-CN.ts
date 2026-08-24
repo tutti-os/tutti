@@ -999,7 +999,7 @@ export const zhCN = {
           ready: "可用",
           harnessLabel: "Agent Runtime",
           harnessUnavailable: "Agent Runtime 不可用",
-          behaviorDetailsTitle: "完整指令与调用条件",
+          advancedOptionsTitle: "进阶选项",
           callConditionsLabel: "调用条件",
           callConditionsPlaceholder: "发布决策前调用\n架构风险较高时调用",
           instructionsLabel: "指令",

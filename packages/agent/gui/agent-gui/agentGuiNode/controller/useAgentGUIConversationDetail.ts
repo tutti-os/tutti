@@ -47,6 +47,7 @@ import {
 import { minFiniteMessageVersion } from "./useAgentConversationMessagePaging";
 import { resolveAgentComposerDraftScopeKey } from "../model/agentComposerDraftScope";
 import { agentComposerDraftPrompt } from "../model/agentComposerDraft";
+import { resolvePendingQuestionComposerTarget } from "./pendingQuestionComposerResponse";
 
 interface UseAgentGUIConversationDetailInput {
   activeCancelStatus: string | null;
@@ -281,6 +282,19 @@ export function useAgentGUIConversationDetail(
           .find((candidate) => candidate.kind !== "approval") ?? null;
       return interactivePromptFromInteraction(interaction);
     }, [input.activePendingInteractions]);
+  const pendingQuestionComposerTarget = useMemo(
+    () =>
+      resolvePendingQuestionComposerTarget({
+        activeTurnId: input.activeTurn?.turnId ?? "",
+        agentSessionId: input.activeConversationId ?? "",
+        pendingInteractions: input.activePendingInteractions
+      }),
+    [
+      input.activeConversationId,
+      input.activePendingInteractions,
+      input.activeTurn?.turnId
+    ]
+  );
   const queuedPrompts = useMemo<AgentGUIQueuedPromptVM[]>(
     () =>
       input.activeConversationId
@@ -324,6 +338,9 @@ export function useAgentGUIConversationDetail(
       : rawPendingApproval,
     queueStatus: input.activeQueueStatus,
     queuedPrompts,
+    pendingQuestionComposerTarget: hasProviderSessionNotFoundError
+      ? null
+      : pendingQuestionComposerTarget,
     serverInteractivePrompt: hasProviderSessionNotFoundError
       ? null
       : rawPendingInteractivePrompt

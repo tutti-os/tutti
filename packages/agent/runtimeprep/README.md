@@ -47,21 +47,33 @@ closed on invalid or incompatible config instead of maintaining provider-specifi
 line parsers.
 
 Codex preparation keeps session state isolated under the run-scoped
-`CODEX_HOME`, while linking its writable `models_cache.json` to the provider
-user's process-default `~/.codex/models_cache.json`. The link may initially be
-dangling: the first Codex refresh creates the shared VM- or host-local cache,
-and later sessions reuse it. Hosts must therefore run preparation with `HOME`
-set to the provider user's stable local Home, never a session runtime directory
-or a remote filesystem projection.
+`CODEX_HOME`. Hosts whose provider state does not live under the operating
+system user Home pass its absolute provider-native root through
+`PrepareInput.ProviderStateHome`; runtimeprep uses that root for auth, config,
+models cache, plugins, Skills, and imported rollout validation. An empty value
+preserves the native `~/.codex` default for existing embedders, including its
+existing symlink behavior and the legacy tolerance for an unavailable user
+Home. Strict path and filesystem-shape validation applies only to an explicit
+value. VM-backed hosts must pass the explicit stable root and must not create a
+compatibility facade under the Linux login Home.
 
 Desktop composition also supplies the provider user's stable personal Skill
-root. Runtime preparation exposes that directory directly as
+root and materializes it with the provider user's ownership before preparation.
+Runtime preparation requires that root to exist and exposes it directly as
 `$CODEX_HOME/skills` (a symlink on POSIX and a directory junction on Windows),
 so Codex's native skill-creator keeps its ordinary personal-by-default behavior
 without copying or promoting content from historical Session homes. Tutti-owned
 Session Skills remain under the run root and are registered through
 `skills/extraRoots/set`; they are never written into the personal root. Hosts
 that do not explicitly supply a personal root keep the isolated layout.
+
+When an embedder supplies both `ProviderStateHome` and a distinct Codex
+`PersonalSkillRoot`, the provider-native `skills/` directory remains an
+explicit app-server Skill root while the personal root is the writable
+`CODEX_HOME/skills` projection. Claude Code can likewise receive a distinct
+`PersonalSkillRoot`; runtimeprep exposes it through a session-scoped SDK
+additional directory whose `.claude/skills` entry points at the stable root.
+Empty personal roots preserve the native Host behavior for both providers.
 
 `TuttiAgentPreparer.ResolveAuthSource` lets a host expose one explicit absolute
 credential authority into the session-scoped `TUTTI_AGENT_HOME`. When omitted,

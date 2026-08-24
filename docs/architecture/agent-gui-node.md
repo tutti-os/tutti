@@ -577,6 +577,21 @@ quotas and `limitsState: unavailable`; it must not become a refresh failure.
 Only real authentication, transport, parsing, timeout, or execution failures
 project `limitsState: error`.
 
+A Custom Agent bound to a Model Plan does not use the Agent Runtime provider's
+native account for model access, so provider-native account usage is not
+applicable to that exact target. Desktop projects
+`providerAccountUsageApplicable: false` from the Workspace Agent binding;
+AgentGUI preserves the optional capability through its target projection. The
+Desktop status source then completes the bounded read with unavailable limits
+without calling the provider usage probe, and AgentGUI disables manual usage
+refresh for that target. An absent capability keeps the existing provider
+account behavior for other hosts and ordinary Runtime targets.
+
+Account-config refresh placement is also host-scoped presentation. Tutti
+Desktop opts into `accountUsageRefreshInline` so the refresh control shares the
+limits header row. The capability defaults to false; TSH/VN and other hosts that
+omit it retain the established standalone menu row.
+
 Closing `/status`, Agent Info, or Agent Config cancels only the request owned
 by that surface. Replaced requests remain fenced. A stream that completes
 without a frame is a failed refresh: a retained value may remain visible, but
@@ -818,6 +833,9 @@ overwritten by a late provider title or by a stale turn-completion snapshot,
 and neither the stream projection nor the durable report may carry a stale
 provider title over an established user title. On resume the runtime fails
 closed and treats a persisted title as user-established.
+Metadata commands issued while a new Session is still activating wait for the
+canonical Session; an activation failure or bounded wait timeout is an
+explicit user-visible error and never a silent no-op.
 
 A Session does not copy Turn phase/outcome, own pending Interactions, or persist lifecycle inferred from transcript.
 
@@ -1232,6 +1250,11 @@ only before that canonical Session projection exists.
   aggregate reads, but do not belong in high-frequency AgentGUI render paths.
   Event callbacks that need current canonical data read the engine snapshot at
   event time instead of retaining a whole-workspace render snapshot
+- optimistic `message_delta` invalidations are coalesced on the host-injected
+  scheduler; the Desktop bridge queues matching session-message events and
+  flushes them at the same boundary so the rendered snapshot and event fan-out
+  cannot observe different prefixes. The external-store `subscribe` and
+  `getSnapshot` callbacks must remain referentially stable across renders
 - lifecycle writes use semantic Engine operations or typed intents/commands
 - composer-option reads use `engine.loadComposerOptions`; the Engine owns
   request identity, signature-aware cache reuse, identical in-flight joining,
@@ -2202,6 +2225,18 @@ pinned to the verified active installation.
 
 Target-managed setup uses exact `agentTargetId`; daemon persists its state and actions. Setup gates only the empty new-conversation surface. Active/history conversations follow host-projected Session runtime availability for exact-target capability and transport reachability. A blocked Session runtime disables both composer editing and submit until the host reports the Session available again.
 
+For a built-in Runtime that is not installed or still requires authentication,
+the Desktop readiness projection may additionally declare the host-owned
+`onModelPlanSetup` action. AgentGUI then keeps the ordinary install/login
+action and offers a secondary route to the host's Model Plan settings. Desktop
+derives the capability from the provider descriptor's Model Plan protocol and
+injects its managed-model settings route; shared AgentGUI does not name or open
+that product destination. Unknown or unsupported providers omit it and keep the
+single setup action. The capability is fail-closed: non-Tutti hosts, including
+TSH/VN, omit it and never render the Model Plan route when they consume the
+shared AgentGUI package. This route is navigation only: it does not rewrite
+readiness, create a Session, or bypass activation-time Model Plan validation.
+
 Provider-declared terminal authentication remains a Host capability, not React
 or Session lifecycle. AgentGUI's target-setup controller owns the local
 `idle`/`waiting`/`error` projection and terminal handle, while the Desktop host
@@ -3156,6 +3191,24 @@ canonical Interaction(pending)
 
 Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
+Collapsing an ask-user surface back into the conversation is presentation-only:
+the canonical Interaction remains `pending`, no response or cancellation is
+dispatched, and the mounted answer flow retains its in-memory draft for that
+surface. The collapsed surface keeps a visible resume affordance. Hosts expose
+this action only when their ordinary Composer can answer the exact pending
+Interaction; Side and other prompt-only composers do not infer support from a
+full-size layout. In the supported full conversation surface, a question with
+structured options does not add a second
+free-text answer field; users give a new direction through the ordinary
+composer instead. When the active root Turn is waiting on exactly one pending
+question whose normalized fields all accept free text, a text-only ordinary
+composer submit is converted to the canonical answer payload and sent through
+the existing Engine Interaction response operation for that exact Turn and
+request. This resolves the provider's pending request so the same Turn can
+continue; it does not cancel the Turn, enqueue a second prompt, or branch on
+provider names. The composer draft clears only after Engine admits the response
+and is restored if the response later fails. Fixed-choice questions and
+non-text composer content remain on their existing paths.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
 An optional Host interaction-readiness capability may block an owner-dependent
@@ -3352,6 +3405,14 @@ Runtime destination also bumps `agentFocus` to scroll and briefly highlight the 
 a link to a hidden preview agent surfaces an "enable Preview Agents" hint rather
 than failing silently. This is a settings surface, not a second Agent Target
 state store.
+
+New Custom Agent drafts derive an untouched display name from the selected
+Model Plan and Agent Runtime, joined as `Model Plan - Runtime` when both are
+present. Runtime or plan changes may refresh that suggestion only until the
+user edits the name; after the first edit, the draft preserves the user's value
+across later selection changes. Description, instructions, and call conditions
+remain draft fields but are grouped under a collapsed-by-default Advanced
+options disclosure.
 
 ### 8.2 Deleted-conversation settings surface
 

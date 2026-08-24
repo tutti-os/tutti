@@ -35,6 +35,11 @@ type PrepareInput struct {
 	AgentTargetID  string
 	Provider       string
 	Cwd            string
+	// ProviderStateHome is the provider-native stable state root used as the
+	// source for session preparation. For Codex this is the process-default
+	// CODEX_HOME. Empty preserves the host user's legacy native-Home behavior;
+	// VM-backed hosts should always pass an explicit absolute path.
+	ProviderStateHome string
 	// SkipSkills keeps provider preparation limited to the runtime data needed
 	// by a model-only probe. It must not be used when launching a live Agent
 	// Session or when the caller needs the provider's Skill catalog.
@@ -110,8 +115,8 @@ type PrepareInput struct {
 	commandCapabilities *CommandResolver
 	// ExternalRolloutSourcePath is the absolute path to the original provider
 	// CLI rollout/transcript file this session was imported from (Codex CLI's
-	// own on-disk conversation transcript under the user's real
-	// `~/.codex/sessions/...`), when known. It lets a provider preparer expose
+	// own on-disk conversation transcript under the provider's stable
+	// `sessions/...` tree), when known. It lets a provider preparer expose
 	// that one specific file into the sandboxed provider home so a native
 	// `thread/resume` can find it, without exposing any other unrelated
 	// conversation. Empty for non-imported sessions or when the source path

@@ -91,13 +91,18 @@ test("sidecarClaudeOptionsFromPayload resolves prepared metadata in the sidecar 
   t.after(() => rmSync(runtimeRoot, { recursive: true, force: true }));
   const systemPromptPath = join(runtimeRoot, "claude-system-prompt.md");
   const pluginDir = join(runtimeRoot, "claude-plugin", "tutti-cli");
+  const additionalDirectory = join(runtimeRoot, "claude-personal-skills");
   writeFileSync(systemPromptPath, "Use Tutti CLI for issue context.\n", "utf8");
   mkdirSync(pluginDir, { recursive: true });
+  mkdirSync(additionalDirectory, { recursive: true });
 
   const options = sidecarClaudeOptionsFromPayload({
     env: {
       TUTTI_CLAUDE_SYSTEM_PROMPT_FILE: systemPromptPath,
-      TUTTI_CLAUDE_PLUGIN_DIR: pluginDir
+      TUTTI_CLAUDE_PLUGIN_DIR: pluginDir,
+      TUTTI_CLAUDE_ADDITIONAL_DIRECTORIES_JSON: JSON.stringify([
+        additionalDirectory
+      ])
     },
     extraArgs: { model: "MiniMax-M2.7" }
   });
@@ -109,10 +114,30 @@ test("sidecarClaudeOptionsFromPayload resolves prepared metadata in the sidecar 
     append: "Use Tutti CLI for issue context."
   });
   assert.deepEqual(overrides.plugins, [{ type: "local", path: pluginDir }]);
+  assert.deepEqual(overrides.additionalDirectories, [additionalDirectory]);
   assert.deepEqual(overrides.extraArgs, {
     model: "MiniMax-M2.7",
     "plugin-dir": pluginDir
   });
+});
+
+test("sidecarClaudeOptionsFromPayload rejects invalid additional directories", () => {
+  assert.throws(
+    () =>
+      sidecarClaudeOptionsFromPayload({
+        env: { TUTTI_CLAUDE_ADDITIONAL_DIRECTORIES_JSON: "not-json" }
+      }),
+    /decode claude additional directories/u
+  );
+  assert.throws(
+    () =>
+      sidecarClaudeOptionsFromPayload({
+        env: {
+          TUTTI_CLAUDE_ADDITIONAL_DIRECTORIES_JSON: JSON.stringify(["relative"])
+        }
+      }),
+    /must be absolute/u
+  );
 });
 
 test("sidecarClaudeOptionsFromPayload reports missing prepared metadata", () => {

@@ -36,6 +36,7 @@ export const zhCNAgentGui = {
   providerGateLoginTitle: "登录 {{provider}}",
   providerGateLoginDescription: "使用账号登录后即可开始使用 {{provider}} 对话",
   providerGateLoginAction: "登录",
+  providerGateModelPlanAction: "使用自己的模型",
   providerGateComingSoonTitle: "{{provider}} 即将上线",
   providerGateComingSoonDescription:
     "{{provider}} 暂未开放。准备好后即可在这里使用这个 Agent。",

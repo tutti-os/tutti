@@ -21,6 +21,16 @@ import (
 
 type localProcessTransport struct{}
 
+// managedProcessGroup owns the operating-system process group for one local
+// provider launch. Windows providers can outlive their command shim, so the
+// group must remain attached until the transport has reaped the complete
+// stdout/stderr tree.
+type managedProcessGroup interface {
+	terminate() error
+	kill() error
+	close() error
+}
+
 // RunVerifiedExecutable starts a short-lived managed-runtime command from the
 // same verified descriptor or immutable snapshot used by the ACP transport.
 // Keeping preparation and process start in this package prevents callers from
@@ -243,6 +253,7 @@ func (output *boundedProcessOutput) Write(value []byte) (int, error) {
 type localProcessConnection struct {
 	cancel             context.CancelFunc
 	cmd                *exec.Cmd
+	processGroup       managedProcessGroup
 	preparedExecutable *preparedProcessExecutable
 	done               chan struct{}
 	closing            chan struct{}
@@ -321,6 +332,22 @@ func (localProcessTransport) Start(ctx context.Context, spec ProcessSpec) (Proce
 		cancel()
 		return nil, err
 	}
+	processGroup, processGroupErr := attachManagedProcessGroup(cmd)
+	if processGroupErr != nil {
+		// Process-group attachment is a best-effort hardening layer. Some hosts
+		// already place the daemon in a Windows job that does not allow nested
+		// assignment; retain the taskkill fallback rather than rejecting an
+		// otherwise valid provider launch.
+		slog.Warn("agent session process group attach failed",
+			"event", "agent_session.process_start.group_attach_failed",
+			"provider", spec.Provider,
+			"room_id", spec.RoomID,
+			"agent_session_id", spec.AgentSessionID,
+			"command", commandNameForLog(spec.Command),
+			"error", processGroupErr,
+		)
+	}
+	conn.processGroup = processGroup
 	conn.preparedExecutable = &preparedExecutable
 	started = true
 
@@ -551,7 +578,7 @@ func (c *localProcessConnection) Terminate() error {
 	if c == nil || c.cmd == nil || c.cmd.Process == nil {
 		return nil
 	}
-	return terminateManagedProcess(c.cmd)
+	return terminateManagedProcess(c.cmd, c.processGroup)
 }
 
 func (c *localProcessConnection) Kill() error {
@@ -562,7 +589,7 @@ func (c *localProcessConnection) Kill() error {
 		c.cancel()
 		return nil
 	}
-	err := killManagedProcessTree(c.cmd)
+	err := killManagedProcessTree(c.cmd, c.processGroup)
 	c.cancel()
 	return err
 }
@@ -602,6 +629,11 @@ func (w processFrameWriter) Write(data []byte) (int, error) {
 }
 
 func (c *localProcessConnection) wait() {
+	defer func() {
+		if c.processGroup != nil {
+			_ = c.processGroup.close()
+		}
+	}()
 	err := c.cmd.Wait()
 	if c.preparedExecutable != nil {
 		_ = c.preparedExecutable.Close()

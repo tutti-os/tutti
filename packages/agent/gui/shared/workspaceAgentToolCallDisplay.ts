@@ -35,6 +35,7 @@ import {
   summarizeToolInput,
   summarizeWebDomain
 } from "./workspaceAgentToolCallSummary";
+import { structuredToolText } from "./utils/structuredToolText";
 export type { ToolActivityKind } from "./workspaceAgentToolCallLabels";
 export type ToolCallStatusKind =
   | "working"
@@ -379,10 +380,16 @@ function toolCallStatus(item: WorkspaceAgentActivityTimelineItem): {
   status: string | null;
   statusKind: ToolCallStatusKind | null;
 } {
+  const payload = item.payload;
+  const metadata = recordValue(payload, "metadata");
+  const hasStructuredError = Boolean(
+    structuredToolText(recordValue(payload, "error")) ||
+    structuredToolText(recordValue(metadata, "error"))
+  );
   const payloadStatus = firstPresentString(
     item.status,
-    stringRecordValue(item.payload, "status"),
-    stringRecordValue(item.payload, "activityStatus"),
+    stringRecordValue(payload, "status"),
+    stringRecordValue(payload, "activityStatus"),
     statusFromActivityEventType(activityEventType(item))
   );
   switch (normalizeToolToken(payloadStatus)) {
@@ -403,11 +410,13 @@ function toolCallStatus(item: WorkspaceAgentActivityTimelineItem): {
       };
     case "failed":
     case "error":
+    case "rejected":
       return {
         status: translate("agentHost.agentTool.statusFailed"),
         statusKind: "failed"
       };
     case "canceled":
+    case "cancelled":
       return {
         status: translate("agentHost.agentTool.statusCanceled"),
         statusKind: "canceled"
@@ -422,7 +431,12 @@ function toolCallStatus(item: WorkspaceAgentActivityTimelineItem): {
         statusKind: "waiting"
       };
     default:
-      return { status: null, statusKind: null };
+      return hasStructuredError
+        ? {
+            status: translate("agentHost.agentTool.statusFailed"),
+            statusKind: "failed"
+          }
+        : { status: null, statusKind: null };
   }
 }
 
@@ -436,6 +450,8 @@ function toolCallDetail(
   const payloadInput = recordValue(item.payload, "input");
   const payloadOutput = recordValue(item.payload, "output");
   const payloadError = recordValue(item.payload, "error");
+  const structuredError =
+    structuredToolText(payloadError) ?? structuredToolText(metadataError);
   const paths = collectToolPaths(metadata, metadataInput, payloadInput);
   const rawToolName = firstPresentString(
     stringRecordValue(metadata, "tool"),
@@ -466,6 +482,7 @@ function toolCallDetail(
       payloadInput,
       payloadError
     ),
+    structuredError,
     item.content,
     stringRecordValue(item.payload, "summary"),
     stringRecordValue(item.payload, "text"),

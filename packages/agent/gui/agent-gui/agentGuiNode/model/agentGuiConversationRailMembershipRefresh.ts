@@ -32,9 +32,7 @@ export function planRuntimeRailMembershipRefresh(input: {
     !targetId || record.agentTargetId?.trim() === targetId;
   const previousPendingIds = new Set(
     input.previous
-      .filter(
-        (record) => record.pendingCreation === true && visible(record)
-      )
+      .filter((record) => record.pendingCreation === true && visible(record))
       .map((record) => record.id)
   );
   const canonical = (records: readonly ConversationRailMembershipRecord[]) =>

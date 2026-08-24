@@ -251,6 +251,7 @@ export function AgentComposerView(
         >
           <AgentInteractivePromptSurface
             prompt={visibleActivePrompt}
+            conversationReturn={labels.conversationReturn}
             embedded={true}
             edgeGlow={true}
             keyboardShortcuts={activePromptKeyboardShortcutsEnabled}

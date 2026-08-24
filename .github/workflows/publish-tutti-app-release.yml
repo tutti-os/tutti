@@ -75,6 +75,31 @@ on:
         required: false
         type: boolean
         default: false
+      prepare_only:
+        description: Build and upload an Actions release candidate without mutating cloud release state.
+        required: false
+        type: boolean
+        default: false
+      candidate_run_id:
+        description: Actions run containing an approved production release candidate.
+        required: false
+        type: string
+        default: ""
+      expected_version:
+        description: Approved candidate version.
+        required: false
+        type: string
+        default: ""
+      expected_artifact_sha256:
+        description: Approved candidate artifact SHA-256.
+        required: false
+        type: string
+        default: ""
+      expected_git_sha:
+        description: Approved candidate source commit.
+        required: false
+        type: string
+        default: ""
       catalog_cloudfront_distribution_id:
         required: false
         type: string
@@ -88,12 +113,54 @@ jobs:
     if: ${{ inputs.catalog_only || !contains(github.event.head_commit.message || '', '[skip release]') }}
     runs-on: ${{ inputs.runner }}
     concurrency:
-      group: ${{ (inputs.publish_catalog || inputs.catalog_only) && format('tutti-app-catalog-{0}-{1}', inputs.s3_bucket, inputs.s3_prefix) || format('tutti-app-release-{0}-{1}', inputs.app_id, github.ref_name) }}
+      group: ${{ (!inputs.prepare_only && (inputs.publish_catalog || inputs.catalog_only)) && format('tutti-app-catalog-{0}-{1}', inputs.s3_bucket, inputs.s3_prefix) || format('tutti-app-release-{0}-{1}', inputs.app_id, github.ref_name) }}
       cancel-in-progress: false
 
     steps:
       - name: Checkout app repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: ${{ !inputs.prepare_only }}
+
+      - name: Validate release mode
+        shell: bash
+        env:
+          CATALOG_ONLY: ${{ inputs.catalog_only }}
+          PREPARE_ONLY: ${{ inputs.prepare_only }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          EXPECTED_ARTIFACT_SHA256: ${{ inputs.expected_artifact_sha256 }}
+          EXPECTED_GIT_SHA: ${{ inputs.expected_git_sha }}
+        run: |
+          if [ "${CATALOG_ONLY}" = "true" ] && [ "${PREPARE_ONLY}" = "true" ]; then
+            echo "catalog_only and prepare_only are mutually exclusive." >&2
+            exit 1
+          fi
+          candidate_values=(
+            "${CANDIDATE_RUN_ID}"
+            "${EXPECTED_VERSION}"
+            "${EXPECTED_ARTIFACT_SHA256}"
+            "${EXPECTED_GIT_SHA}"
+          )
+          candidate_value_count=0
+          for value in "${candidate_values[@]}"; do
+            if [ -n "${value}" ]; then
+              candidate_value_count=$((candidate_value_count + 1))
+            fi
+          done
+          if [ "${candidate_value_count}" -ne 0 ] && [ "${candidate_value_count}" -ne 4 ]; then
+            echo "candidate_run_id, expected_version, expected_artifact_sha256, and expected_git_sha must be supplied together." >&2
+            exit 1
+          fi
+          if [ "${PREPARE_ONLY}" = "true" ] && [ "${candidate_value_count}" -ne 0 ]; then
+            echo "prepare_only cannot promote an existing candidate." >&2
+            exit 1
+          fi
+          if [ "${CATALOG_ONLY}" = "true" ] && [ "${candidate_value_count}" -ne 0 ]; then
+            echo "catalog_only cannot promote a release candidate." >&2
+            exit 1
+          fi
 
       - name: Validate release inputs
         if: ${{ !inputs.catalog_only }}
@@ -104,6 +171,7 @@ jobs:
           RELEASE_ASSETS_BASE_URL: ${{ inputs.release_assets_base_url }}
           RELEASE_BUMP: ${{ inputs.release_bump }}
           CREATE_RELEASE_TAG: ${{ inputs.create_release_tag }}
+          PREPARE_ONLY: ${{ inputs.prepare_only }}
           MIN_TUTTI_VERSION: ${{ inputs.min_tutti_version }}
         run: |
           if [ -z "${PACKAGE_COMMAND}" ]; then
@@ -126,7 +194,7 @@ jobs:
             echo "release_bump must be one of major, minor, or patch when provided." >&2
             exit 1
           fi
-          if [ -n "${RELEASE_BUMP}" ] && [ "${CREATE_RELEASE_TAG}" != "true" ]; then
+          if [ -n "${RELEASE_BUMP}" ] && [ "${CREATE_RELEASE_TAG}" != "true" ] && [ "${PREPARE_ONLY}" != "true" ]; then
             echo "release_bump requires create_release_tag." >&2
             exit 1
           fi
@@ -144,12 +212,21 @@ jobs:
           node-version: ${{ inputs.node_version }}
           cache: pnpm
 
+      - name: Download approved production release candidate
+        if: ${{ inputs.candidate_run_id != '' }}
+        uses: actions/download-artifact@v5
+        with:
+          name: ${{ format('{0}-{1}-production-candidate', inputs.app_id, inputs.expected_version) }}
+          path: tutti-app-release
+          github-token: ${{ github.token }}
+          run-id: ${{ inputs.candidate_run_id }}
+
       - name: Install app dependencies
-        if: ${{ !inputs.catalog_only }}
+        if: ${{ !inputs.catalog_only && inputs.candidate_run_id == '' }}
         run: pnpm install --frozen-lockfile
 
       - name: Build app package
-        if: ${{ !inputs.catalog_only }}
+        if: ${{ !inputs.catalog_only && inputs.candidate_run_id == '' }}
         run: ${{ inputs.package_command }}
 
       - name: Resolve release version
@@ -162,6 +239,10 @@ jobs:
           CREATE_RELEASE_TAG: ${{ inputs.create_release_tag }}
           APP_ID: ${{ inputs.app_id }}
           PACKAGE_DIR: ${{ inputs.package_dir }}
+          CANDIDATE_RUN_ID: ${{ inputs.candidate_run_id }}
+          EXPECTED_VERSION: ${{ inputs.expected_version }}
+          EXPECTED_ARTIFACT_SHA256: ${{ inputs.expected_artifact_sha256 }}
+          EXPECTED_GIT_SHA: ${{ inputs.expected_git_sha }}
         run: |
           node <<'NODE'
           const fs = require("fs");
@@ -252,34 +333,53 @@ jobs:
             fail(`release_bump must be one of major, minor, or patch when provided, got ${bump}.`);
           }
 
-          const gitSha = execFileSync("git", ["rev-parse", "HEAD"], {
+          let gitSha = execFileSync("git", ["rev-parse", "HEAD"], {
             encoding: "utf8"
           }).trim();
           const releaseBump = process.env.RELEASE_BUMP;
           const shouldCreateTag = process.env.CREATE_RELEASE_TAG === "true";
-          const manifest = JSON.parse(
-            fs.readFileSync(`${process.env.PACKAGE_DIR}/tutti.app.json`, "utf8")
-          );
           let releaseVersion = "";
           let tagName = "";
 
-          if (releaseBump) {
-            const tagPrefix = defaultTagPrefix();
-            releaseVersion = nextVersionFromSources(
-              tagPrefix,
-              releaseBump,
-              manifest.version
-            );
-            tagName = `${tagPrefix}${releaseVersion}`;
-          } else {
-            if (shouldCreateTag) {
-              fail("create_release_tag requires release_bump.");
+          if (process.env.CANDIDATE_RUN_ID) {
+            const expectedVersion = process.env.EXPECTED_VERSION;
+            const expectedArtifactSha256 = process.env.EXPECTED_ARTIFACT_SHA256;
+            const expectedGitSha = process.env.EXPECTED_GIT_SHA;
+            const releasePath = `tutti-app-release/apps/${process.env.APP_ID}/${expectedVersion}/release.json`;
+            const candidate = JSON.parse(fs.readFileSync(releasePath, "utf8"));
+            const mismatches = [];
+            if (candidate.appId !== process.env.APP_ID) mismatches.push("appId");
+            if (candidate.version !== expectedVersion) mismatches.push("version");
+            if (candidate.artifactSha256 !== expectedArtifactSha256) mismatches.push("artifactSha256");
+            if (candidate.gitSha !== expectedGitSha) mismatches.push("gitSha");
+            if (mismatches.length > 0) {
+              fail(`Approved release candidate mismatch: ${mismatches.join(", ")}`);
             }
-            // Staging publishes do not bump. Seed from max(manifest, release tags)
-            // so staging stays on the same product line as production tags.
-            const tagPrefix = defaultTagPrefix();
-            const seed = latestVersionSeed(tagPrefix, manifest.version, false);
-            releaseVersion = `${seed.version}+${gitSha.slice(0, 12)}`;
+            releaseVersion = expectedVersion;
+            gitSha = expectedGitSha;
+            tagName = `${defaultTagPrefix()}${releaseVersion}`;
+          } else {
+            const manifest = JSON.parse(
+              fs.readFileSync(`${process.env.PACKAGE_DIR}/tutti.app.json`, "utf8")
+            );
+            if (releaseBump) {
+              const tagPrefix = defaultTagPrefix();
+              releaseVersion = nextVersionFromSources(
+                tagPrefix,
+                releaseBump,
+                manifest.version
+              );
+              tagName = `${tagPrefix}${releaseVersion}`;
+            } else {
+              if (shouldCreateTag) {
+                fail("create_release_tag requires release_bump.");
+              }
+              // Staging publishes do not bump. Seed from max(manifest, release tags)
+              // so staging stays on the same product line as production tags.
+              const tagPrefix = defaultTagPrefix();
+              const seed = latestVersionSeed(tagPrefix, manifest.version, false);
+              releaseVersion = `${seed.version}+${gitSha.slice(0, 12)}`;
+            }
           }
 
           if (!semverPattern.test(releaseVersion)) {
@@ -292,7 +392,7 @@ jobs:
           NODE
 
       - name: Build release metadata
-        if: ${{ !inputs.catalog_only }}
+        if: ${{ !inputs.catalog_only && inputs.candidate_run_id == '' }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -315,14 +415,82 @@ jobs:
           fi
           pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx build-tutti-app-release "${args[@]}"
 
+      - name: Verify local app release candidate
+        if: ${{ !inputs.catalog_only }}
+        shell: bash
+        env:
+          APP_ID: ${{ inputs.app_id }}
+          RELEASE_VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          const path = require("path");
+          const { createHash } = require("crypto");
+
+          const root = path.resolve("tutti-app-release");
+          const releaseDir = path.join(root, "apps", process.env.APP_ID, process.env.RELEASE_VERSION);
+          const versionedPath = path.join(releaseDir, "release.json");
+          const latestPath = path.join(root, "apps", process.env.APP_ID, "latest.json");
+          const release = JSON.parse(fs.readFileSync(versionedPath, "utf8"));
+          const latest = JSON.parse(fs.readFileSync(latestPath, "utf8"));
+          if (JSON.stringify(release) !== JSON.stringify(latest)) {
+            throw new Error("versioned release.json and latest.json must match exactly");
+          }
+          if (release.appId !== process.env.APP_ID || release.version !== process.env.RELEASE_VERSION) {
+            throw new Error("local release identity does not match the resolved app and version");
+          }
+          const artifactName = decodeURIComponent(path.basename(new URL(release.artifactUrl).pathname));
+          const expectedArtifactName = `${release.appId}-${release.version}.zip`;
+          if (artifactName !== expectedArtifactName) {
+            throw new Error(`local release artifact name mismatch: want ${expectedArtifactName} got ${artifactName}`);
+          }
+          const artifactPath = path.join(releaseDir, artifactName);
+          const data = fs.readFileSync(artifactPath);
+          const sha256 = createHash("sha256").update(data).digest("hex");
+          if (sha256 !== release.artifactSha256.toLowerCase()) {
+            throw new Error(`local release artifact sha256 mismatch: want ${release.artifactSha256} got ${sha256}`);
+          }
+          if (data.length !== release.artifactSizeBytes) {
+            throw new Error(`local release artifact size mismatch: want ${release.artifactSizeBytes} got ${data.length}`);
+          }
+          console.log(`Verified local release candidate ${release.appId}@${release.version} ${sha256}`);
+          NODE
+
+      - name: Preflight release tag
+        if: ${{ !inputs.catalog_only && !inputs.prepare_only && inputs.create_release_tag }}
+        shell: bash
+        env:
+          RELEASE_TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          RELEASE_GIT_SHA: ${{ steps.release.outputs.git_sha }}
+        run: |
+          git rev-parse --verify "${RELEASE_GIT_SHA}^{commit}" >/dev/null
+          git fetch --tags --force
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG_NAME}" >/dev/null; then
+            existing_sha="$(git rev-list -n 1 "${RELEASE_TAG_NAME}")"
+            if [ "${existing_sha}" != "${RELEASE_GIT_SHA}" ]; then
+              echo "Release tag ${RELEASE_TAG_NAME} already points to ${existing_sha}, expected ${RELEASE_GIT_SHA}." >&2
+              exit 1
+            fi
+          fi
+
+      - name: Upload production release candidate
+        if: ${{ inputs.prepare_only }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ format('{0}-{1}-production-candidate', inputs.app_id, steps.release.outputs.version) }}
+          path: tutti-app-release
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Configure AWS credentials
+        if: ${{ !inputs.prepare_only }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ inputs.aws_region }}
           role-to-assume: ${{ inputs.aws_role_arn }}
 
       - name: Upload app release to S3
-        if: ${{ !inputs.catalog_only }}
+        if: ${{ !inputs.catalog_only && !inputs.prepare_only }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -378,7 +546,7 @@ jobs:
           fi
 
       - name: Verify published app release artifact
-        if: ${{ !inputs.catalog_only }}
+        if: ${{ !inputs.catalog_only && !inputs.prepare_only }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -388,6 +556,7 @@ jobs:
             --release-file "tutti-app-release/apps/${APP_ID}/latest.json"
 
       - name: Publish app release metadata
+        if: ${{ !inputs.prepare_only }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -419,6 +588,7 @@ jobs:
           pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx publish-tutti-app-metadata "${args[@]}"
 
       - name: Verify published app metadata
+        if: ${{ !inputs.prepare_only }}
         shell: bash
         env:
           CATALOG_ONLY: ${{ inputs.catalog_only }}
@@ -435,7 +605,7 @@ jobs:
           pnpm --package "${RELEASE_TOOLS_PACKAGE}" dlx verify-tutti-app-release-artifacts "${args[@]}"
 
       - name: Create release tag
-        if: ${{ !inputs.catalog_only && inputs.create_release_tag }}
+        if: ${{ !inputs.catalog_only && !inputs.prepare_only && inputs.create_release_tag }}
         shell: bash
         env:
           APP_ID: ${{ inputs.app_id }}
@@ -469,7 +639,7 @@ jobs:
           git push origin "refs/tags/${RELEASE_TAG_NAME}"
 
       - name: Invalidate app catalog
-        if: ${{ (inputs.publish_catalog || inputs.catalog_only) && inputs.catalog_cloudfront_distribution_id != '' }}
+        if: ${{ !inputs.prepare_only && (inputs.publish_catalog || inputs.catalog_only) && inputs.catalog_cloudfront_distribution_id != '' }}
         shell: bash
         env:
           CATALOG_CLOUDFRONT_DISTRIBUTION_ID: ${{ inputs.catalog_cloudfront_distribution_id }}

@@ -182,10 +182,11 @@ func (s FileService) ResolveWorkspaceRootForPath(
 	if isUnsupportedSpecialWorkspaceFilePath(trimmedPath) {
 		return workspacefiles.WorkspaceRoot{}, fmt.Errorf("%w: unsupported special path %q", workspacefiles.ErrInvalidPath, path)
 	}
-	if trimmedPath == "" || !filepath.IsAbs(trimmedPath) {
+	physicalPathCandidate := workspaceFilePhysicalPathCandidate(trimmedPath)
+	if physicalPathCandidate == "" || !filepath.IsAbs(physicalPathCandidate) {
 		return root, nil
 	}
-	absolutePath, err := filepath.Abs(trimmedPath)
+	absolutePath, err := filepath.Abs(physicalPathCandidate)
 	if err != nil {
 		return workspacefiles.WorkspaceRoot{}, err
 	}

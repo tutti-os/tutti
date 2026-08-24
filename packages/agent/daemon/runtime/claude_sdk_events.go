@@ -377,7 +377,10 @@ func (a *ClaudeCodeSDKAdapter) sidecarTurnEvents(adapterSession *claudeSDKAdapte
 		return claudeSDKPlanEvents(session, rootTurnID, event.Payload), false, nil
 	case "usage_updated":
 		if adapterSession.applyUsageUpdated(event.Payload) {
-			if event, ok := normalizedUsageUpdatedEvent(session); ok {
+			if event, ok := normalizedUsageUpdatedEvent(
+				session,
+				claudeSDKRuntimeContext(session, adapterSession),
+			); ok {
 				return []activityshared.Event{event}, false, nil
 			}
 		}

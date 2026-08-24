@@ -3,7 +3,9 @@ package agentruntime
 import (
 	"context"
 	"errors"
+	"os"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -11,6 +13,26 @@ import (
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
+
+func TestStandardACPProtocolCWDPreservesProvidedPath(t *testing.T) {
+	const cwd = `C:\workspace\project`
+	if got := standardACPProtocolCWD(cwd); got != cwd {
+		t.Fatalf("standardACPProtocolCWD(%q) = %q, want unchanged path", cwd, got)
+	}
+}
+
+func TestStandardACPProtocolCWDFallsBackToNativeProcessCWDOnWindows(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows host-path fallback")
+	}
+	want, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd() error = %v", err)
+	}
+	if got := standardACPProtocolCWD(""); got != want {
+		t.Fatalf("standardACPProtocolCWD(\"\") = %q, want native process cwd %q", got, want)
+	}
+}
 
 func TestStandardACPAdapterProviderLaunchPrepareMutatesSpecAndCleansUpOnClose(t *testing.T) {
 	t.Parallel()
@@ -638,8 +660,15 @@ func TestStandardACPAdapterRetainsStartAndResumeFailuresWhenTransportCloseFails(
 		}
 		adapter := newKimiCodeExtensionTestAdapter(t, transport)
 		session := standardTestSession("acp:kimi-code")
-		if _, err := adapter.Start(context.Background(), session); err == nil {
+		_, err := adapter.Start(context.Background(), session)
+		if err == nil {
 			t.Fatal("Start error = nil, want session/new failure")
+		}
+		if got := AppErrorCode(err); got != AppErrorProviderSessionCreateFailed {
+			t.Fatalf("AppErrorCode = %q, want %q", got, AppErrorProviderSessionCreateFailed)
+		}
+		if debug := AppErrorDebugMessage(err); !strings.Contains(debug, "session/new") {
+			t.Fatalf("AppErrorDebugMessage = %q, want session/new phase", debug)
 		}
 		if !adapter.hasTrackedLiveSession(session) {
 			t.Fatal("session/new failed client was not retained")

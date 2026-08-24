@@ -39,6 +39,7 @@ interface AgentGUIConfigMenuProps {
   onAgentConfigMenuOpen?: () => void;
   onAgentConfigMenuClose?: () => void;
   onAgentUsageRefresh?: () => void;
+  usageRefreshInline?: boolean;
   onOpenAgentEnvSetup: () => void;
   onOpenAgentSettings: () => void;
 }
@@ -68,6 +69,7 @@ export function AgentGUIConfigMenu({
   onAgentConfigMenuOpen,
   onAgentConfigMenuClose,
   onAgentUsageRefresh,
+  usageRefreshInline = false,
   onOpenAgentEnvSetup,
   onOpenAgentSettings
 }: AgentGUIConfigMenuProps): React.JSX.Element {
@@ -96,6 +98,26 @@ export function AgentGUIConfigMenu({
     typeof accountContent !== "boolean";
   const providerAccountFallbackVisible =
     !accountFallbackSuppressed && !hasAccountContent;
+  const usageFreshness = (
+    <AgentProbeUsageFreshness
+      ariaDescribedBy={usageDescriptionId}
+      capturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
+      didFail={slashStatusUsageDidFail}
+      disabled={!onAgentUsageRefresh}
+      isLoading={slashStatusLimitsLoading}
+      labels={{
+        justUpdated: labels.slashStatusUsageJustUpdated,
+        minutesAgo: labels.slashStatusUsageMinutesAgo,
+        hoursAgo: labels.slashStatusUsageHoursAgo,
+        updating: labels.slashStatusUsageUpdating,
+        refreshFailed: labels.slashStatusUsageRefreshFailed,
+        refreshAria: labels.slashStatusUsageRefreshAria
+      }}
+      onRefresh={() => onAgentUsageRefresh?.()}
+      presentation={usageRefreshInline ? "button" : "menu-item"}
+      testId="agent-gui-config-usage-refresh"
+    />
+  );
   return (
     <DropdownMenu
       open={open}
@@ -181,10 +203,13 @@ export function AgentGUIConfigMenu({
             <>
               <DropdownMenuLabel
                 className="flex min-w-0 flex-col gap-2 p-2 text-[var(--text-primary)]"
-                id={usageDescriptionId}
+                id={usageRefreshInline ? undefined : usageDescriptionId}
               >
                 <div className="flex min-w-0 items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
+                  <div
+                    className="flex min-w-0 items-center gap-2"
+                    id={usageRefreshInline ? usageDescriptionId : undefined}
+                  >
                     <Gauge
                       aria-hidden="true"
                       className="shrink-0"
@@ -207,6 +232,7 @@ export function AgentGUIConfigMenu({
                       </span>
                     ) : null}
                   </div>
+                  {usageRefreshInline ? usageFreshness : null}
                 </div>
                 {slashStatusLimits.length > 0
                   ? slashStatusLimits.map((limit) => (
@@ -233,24 +259,7 @@ export function AgentGUIConfigMenu({
                   </div>
                 ) : null}
               </DropdownMenuLabel>
-              <AgentProbeUsageFreshness
-                ariaDescribedBy={usageDescriptionId}
-                capturedAtUnixMs={slashStatusUsageCapturedAtUnixMs}
-                didFail={slashStatusUsageDidFail}
-                disabled={!onAgentUsageRefresh}
-                isLoading={slashStatusLimitsLoading}
-                labels={{
-                  justUpdated: labels.slashStatusUsageJustUpdated,
-                  minutesAgo: labels.slashStatusUsageMinutesAgo,
-                  hoursAgo: labels.slashStatusUsageHoursAgo,
-                  updating: labels.slashStatusUsageUpdating,
-                  refreshFailed: labels.slashStatusUsageRefreshFailed,
-                  refreshAria: labels.slashStatusUsageRefreshAria
-                }}
-                onRefresh={() => onAgentUsageRefresh?.()}
-                presentation="menu-item"
-                testId="agent-gui-config-usage-refresh"
-              />
+              {usageRefreshInline ? null : usageFreshness}
               <DropdownMenuSeparator />
             </>
           ) : null}

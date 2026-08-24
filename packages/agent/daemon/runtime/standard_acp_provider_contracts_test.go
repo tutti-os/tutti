@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,6 +23,9 @@ func TestCursorAdapterInjectsPreparedContextIntoFirstProviderPromptOnly(t *testi
 	}
 	transport := newStandardACPTransport("Cursor Agent", "cursor-session-context")
 	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	if got := adapter.startupCallTimeout(); got != cursorACPStartupTimeout {
+		t.Fatalf("Cursor startup timeout = %s, want %s", got, cursorACPStartupTimeout)
+	}
 	session := standardTestSession(ProviderCursor)
 	session.Env = []string{cursorPromptContextFileEnv + "=" + contextPath}
 	if _, err := adapter.Start(context.Background(), session); err != nil {
@@ -73,6 +77,112 @@ func TestCursorAdapterStartUsesInjectedProviderCommand(t *testing.T) {
 	}
 	if got := strings.Join(transport.specs[0].Command, " "); got != "/home/user/.local/bin/agent acp" {
 		t.Fatalf("command = %q, want resolved cursor binary", got)
+	}
+}
+
+func TestCursorAdapterInjectsAskUserQuestionMCPBinding(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-question-mcp")
+	transport.conn.supportsHTTPMCP = true
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() { _ = adapter.Close(context.Background(), session) }()
+
+	transport.conn.mu.Lock()
+	params := maps.Clone(transport.conn.lastNewSessionParams)
+	transport.conn.mu.Unlock()
+	servers, _ := params["mcpServers"].([]any)
+	if len(servers) != 1 {
+		t.Fatalf("session/new MCP servers = %#v, want one Cursor interaction binding", servers)
+	}
+	binding, _ := servers[0].(map[string]any)
+	if binding["name"] != "tutti-interaction" || binding["type"] != "http" {
+		t.Fatalf("Cursor interaction MCP binding = %#v", binding)
+	}
+	if url := asString(binding["url"]); !strings.HasPrefix(url, "http://127.0.0.1:") {
+		t.Fatalf("Cursor interaction MCP URL = %q, want loopback", url)
+	}
+	headers, _ := binding["headers"].([]any)
+	if len(headers) != 1 {
+		t.Fatalf("Cursor interaction MCP headers = %#v, want one bearer", headers)
+	}
+}
+
+func TestCursorAdapterRetriesTransientSessionNewInitializationFailure(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-retry")
+	transport.conn.newSessionErrors = []*acpError{{
+		Code:    -32603,
+		Message: "Internal error",
+		Data:    json.RawMessage(`{"message":"Failed to initialize session services"}`),
+	}}
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+
+	if _, err := adapter.Start(context.Background(), standardTestSession(ProviderCursor)); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+
+	transport.conn.mu.Lock()
+	newSessionCalls := transport.conn.newSessionCallCount
+	transport.conn.mu.Unlock()
+	if newSessionCalls != 2 {
+		t.Fatalf("session/new calls = %d, want one bounded retry", newSessionCalls)
+	}
+	if len(transport.specs) != 1 {
+		t.Fatalf("process starts = %d, want one initialized process", len(transport.specs))
+	}
+}
+
+func TestCursorACPShouldRetrySessionNewOnlyForTransientInitializationFailure(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "matching internal initialization failure",
+			err: &acpCallError{Method: acpMethodNewSession, Err: acpError{
+				Code:    -32603,
+				Message: "Internal error",
+				Data:    json.RawMessage(`{"message":"Failed to initialize session services"}`),
+			}},
+			want: true,
+		},
+		{
+			name: "different method",
+			err: &acpCallError{Method: acpMethodLoadSession, Err: acpError{
+				Code: -32603, Message: "Failed to initialize session services",
+			}},
+			want: false,
+		},
+		{
+			name: "different internal error",
+			err: &acpCallError{Method: acpMethodNewSession, Err: acpError{
+				Code: -32603, Message: "Invalid session settings",
+			}},
+			want: false,
+		},
+		{
+			name: "authentication error",
+			err: &acpCallError{Method: acpMethodNewSession, Err: acpError{
+				Code: -32000, Message: "authentication required",
+			}},
+			want: false,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := cursorACPShouldRetrySessionNew(test.err); got != test.want {
+				t.Fatalf("cursorACPShouldRetrySessionNew() = %v, want %v", got, test.want)
+			}
+		})
 	}
 }
 

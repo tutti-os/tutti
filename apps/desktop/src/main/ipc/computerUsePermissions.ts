@@ -6,6 +6,10 @@ import type {
 
 export interface CuaDriverDoctorStatus {
   ok: boolean;
+  // The native Win32 fallback remains usable even when the optional UI
+  // Automation probe is unhealthy. Keep this internal distinction so the
+  // desktop does not send a usable Windows installation to Settings.
+  degraded?: boolean;
   diagnosticMessage?: string;
 }
 
@@ -115,15 +119,13 @@ export function parseCuaDriverDoctorStatus(
   }
 
   if (typeof payload.ok === "boolean") {
+    const diagnosticMessage =
+      stringOrUndefined(payload.message) ?? stringOrUndefined(payload.reason);
     return {
       ok: payload.ok,
-      ...(stringOrUndefined(payload.message) ||
-      stringOrUndefined(payload.reason)
-        ? {
-            diagnosticMessage:
-              stringOrUndefined(payload.message) ??
-              stringOrUndefined(payload.reason)
-          }
+      ...(diagnosticMessage ? { diagnosticMessage } : {}),
+      ...(isCuaDriverDegradedDiagnostic(diagnosticMessage)
+        ? { degraded: true }
         : {})
     };
   }
@@ -155,12 +157,23 @@ export function parseCuaDriverDoctorStatus(
       diagnostics.push([label, message].filter(Boolean).join(": "));
     }
   }
+  const diagnosticMessage =
+    diagnostics.length > 0 ? diagnostics.join("; ") : undefined;
   return {
     ok: !failed,
-    ...(diagnostics.length > 0
-      ? { diagnosticMessage: diagnostics.join("; ") }
+    ...(diagnosticMessage ? { diagnosticMessage } : {}),
+    ...(isCuaDriverDegradedDiagnostic(diagnosticMessage)
+      ? { degraded: true }
       : {})
   };
+}
+
+function isCuaDriverDegradedDiagnostic(message: string | undefined): boolean {
+  return (
+    message
+      ?.toLowerCase()
+      .includes("falling back to win32-only window tools") === true
+  );
 }
 
 function parseJsonObject(output: string): Record<string, unknown> | null {

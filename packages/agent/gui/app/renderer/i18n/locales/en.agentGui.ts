@@ -36,6 +36,7 @@ export const enAgentGui = {
   providerGateLoginDescription:
     "Log in with your account to start chatting with {{provider}}.",
   providerGateLoginAction: "Log in",
+  providerGateModelPlanAction: "Use your own model",
   providerGateComingSoonTitle: "{{provider}} is coming soon",
   providerGateComingSoonDescription:
     "{{provider}} is not available yet. We will enable this agent when it is ready.",

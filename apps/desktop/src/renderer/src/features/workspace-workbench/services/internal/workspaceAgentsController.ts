@@ -105,7 +105,8 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
     const harness = this.state.harnessTargets.find((target) => target.enabled);
     this.state.draft = {
       agentId: null,
-      name: "",
+      name: this.resolveGeneratedDraftName(harness?.id ?? "", ""),
+      nameEdited: false,
       description: "",
       harnessAgentTargetId: harness?.id ?? "",
       modelPlanId: "",
@@ -158,7 +159,11 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
       modelPlanProtocolForAgentProvider(harness.provider) === plan.protocol;
     this.state.draft = {
       agentId: null,
-      name: "",
+      name: this.resolveGeneratedDraftName(
+        harness?.id ?? "",
+        planCompatible ? plan.id : ""
+      ),
+      nameEdited: false,
       description: "",
       harnessAgentTargetId: harness?.id ?? "",
       modelPlanId: planCompatible ? plan.id : "",
@@ -184,11 +189,38 @@ export class WorkspaceAgentsController implements IWorkspaceAgentsController {
   }
 
   updateDraft(patch: Partial<WorkspaceAgentDraft>): void {
-    if (!this.state.draft) {
+    const draft = this.state.draft;
+    if (!draft) {
       return;
     }
-    this.state.draft = { ...this.state.draft, ...patch };
+    const nameEdited =
+      draft.nameEdited || Object.prototype.hasOwnProperty.call(patch, "name");
+    const nextDraft = { ...draft, ...patch, nameEdited };
+    this.state.draft = nameEdited
+      ? nextDraft
+      : {
+          ...nextDraft,
+          name: this.resolveGeneratedDraftName(
+            nextDraft.harnessAgentTargetId,
+            nextDraft.modelPlanId
+          )
+        };
     this.state.feedback = null;
+  }
+
+  private resolveGeneratedDraftName(
+    harnessAgentTargetID: string,
+    modelPlanID: string
+  ): string {
+    const planName =
+      this.store.modelPlans.plans
+        .find((plan) => plan.id === modelPlanID)
+        ?.name.trim() ?? "";
+    const harnessName =
+      this.state.harnessTargets
+        .find((target) => target.id === harnessAgentTargetID)
+        ?.name.trim() ?? "";
+    return [planName, harnessName].filter(Boolean).join(" - ");
   }
 
   cancelDraft(): void {
@@ -353,6 +385,7 @@ function workspaceAgentToDraft(
   return {
     agentId: agent.id,
     name: agent.name,
+    nameEdited: true,
     description: agent.description ?? "",
     harnessAgentTargetId: agent.harness.agentTargetId,
     modelPlanId: agent.modelPlanId ?? "",

@@ -498,9 +498,11 @@ function promptFromInteraction(
   if (interaction.kind === "question") {
     const questions = normalizeAskUserQuestions(input.questions);
     return {
+      agentSessionId: interaction.agentSessionId,
       kind: "ask-user",
       requestId: interaction.requestId,
       title: interactionSummary(interaction),
+      turnId: interaction.turnId,
       questions:
         questions.length > 0
           ? questions

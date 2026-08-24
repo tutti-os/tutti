@@ -87,33 +87,78 @@ export function buildAgentTurnSequenceItems(
   return sortTurnSequenceItems(sequence);
 }
 
+type PositionedTurnSequenceEntry = {
+  item: AgentTurnSequenceItemVM;
+  sourceIndex: number;
+  position: {
+    seq: number;
+    occurredAtUnixMs: number;
+  };
+};
+
 function sortTurnSequenceItems(
   sequence: readonly AgentTurnSequenceItemVM[]
 ): AgentTurnSequenceItemVM[] {
-  const positioned = sequence.map((item, sourceIndex) => ({
-    item,
-    sourceIndex,
-    position: turnSequencePosition(item)
-  }));
-  if (positioned.every((entry) => entry.position.seq > 0)) {
-    return positioned
-      .sort(
-        (left, right) =>
-          left.position.seq - right.position.seq ||
-          left.sourceIndex - right.sourceIndex
-      )
-      .map((entry) => entry.item);
+  const positioned: PositionedTurnSequenceEntry[] = sequence.map(
+    (item, sourceIndex) => ({
+      item,
+      sourceIndex,
+      position: turnSequencePosition(item)
+    })
+  );
+  const sorted: typeof positioned = [];
+  let comparableSegment: typeof positioned = [];
+  const flushComparableSegment = () => {
+    sorted.push(...comparableSegment.sort(compareTurnSequenceEntries));
+    comparableSegment = [];
+  };
+
+  for (const entry of positioned) {
+    if (turnSequencePositionRank(entry.position) === 2) {
+      // An unpositioned row is a hard boundary. Its relation to either side
+      // is unknown, so moving known rows across it would change adjacency.
+      flushComparableSegment();
+      sorted.push(entry);
+      continue;
+    }
+    comparableSegment.push(entry);
   }
-  if (positioned.every((entry) => entry.position.occurredAtUnixMs > 0)) {
-    return positioned
-      .sort(
-        (left, right) =>
-          left.position.occurredAtUnixMs - right.position.occurredAtUnixMs ||
-          left.sourceIndex - right.sourceIndex
-      )
-      .map((entry) => entry.item);
+  flushComparableSegment();
+  return sorted.map((entry) => entry.item);
+}
+
+function compareTurnSequenceEntries(
+  left: PositionedTurnSequenceEntry,
+  right: PositionedTurnSequenceEntry
+): number {
+  const leftRank = turnSequencePositionRank(left.position);
+  const rightRank = turnSequencePositionRank(right.position);
+  if (leftRank !== rightRank) {
+    return leftRank - rightRank;
   }
-  return [...sequence];
+  if (leftRank === 0 && left.position.seq !== right.position.seq) {
+    return left.position.seq - right.position.seq;
+  }
+  if (
+    leftRank === 1 &&
+    left.position.occurredAtUnixMs !== right.position.occurredAtUnixMs
+  ) {
+    return left.position.occurredAtUnixMs - right.position.occurredAtUnixMs;
+  }
+  return left.sourceIndex - right.sourceIndex;
+}
+
+function turnSequencePositionRank(position: {
+  seq: number;
+  occurredAtUnixMs: number;
+}): 0 | 1 | 2 {
+  if (position.seq > 0) {
+    return 0;
+  }
+  if (position.occurredAtUnixMs > 0) {
+    return 1;
+  }
+  return 2;
 }
 
 function turnSequencePosition(item: AgentTurnSequenceItemVM): {

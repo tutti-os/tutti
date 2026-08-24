@@ -15,7 +15,11 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
-const codexAppServerCapabilityListTimeout = 8 * time.Second
+// Codex and Tutti Agent capability catalogs use the same app-server startup
+// path as model/list, including the provider's first model metadata refresh.
+// Keep this bounded independently from the composer request so a cold Windows
+// npm shim does not turn a valid capability catalog into a false failure.
+const codexAppServerCapabilityListTimeout = 30 * time.Second
 
 type appServerCatalogRequestSet string
 

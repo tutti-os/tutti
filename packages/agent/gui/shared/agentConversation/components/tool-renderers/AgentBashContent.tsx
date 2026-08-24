@@ -1,21 +1,21 @@
 import type { JSX } from "react";
 import { AgentTerminalBlock } from "./terminal/AgentTerminalBlock";
+import type { AgentToolRendererProps } from "./agentToolContentShared";
 import {
-  stringValue,
-  type AgentToolRendererProps
-} from "./agentToolContentShared";
-import { getCommandRenderData } from "./render-data/agentToolRenderData";
+  getCommandRenderData,
+  getToolCallFailureText
+} from "./render-data/agentToolRenderData";
 
 export function AgentBashContent({
   call
 }: AgentToolRendererProps): JSX.Element {
   "use memo";
   const commandData = getCommandRenderData(call);
-  const fallbackErrorText =
+  const structuredFailureText =
     commandData.status === "failed" &&
     !commandData.stdout &&
     !commandData.stderr
-      ? stringValue(call.error?.message)
+      ? getToolCallFailureText(call)
       : null;
 
   return (
@@ -23,7 +23,7 @@ export function AgentBashContent({
       <AgentTerminalBlock
         command={commandData.command}
         stdout={commandData.stdout}
-        stderr={commandData.stderr || fallbackErrorText || ""}
+        stderr={commandData.stderr || structuredFailureText || ""}
         exitCode={commandData.exitCode}
         durationMs={commandData.durationMs}
         status={commandData.status}

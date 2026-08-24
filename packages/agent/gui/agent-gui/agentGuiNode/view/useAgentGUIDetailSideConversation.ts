@@ -62,7 +62,7 @@ function projectAgentSideSlashCommandPolicy({
 }): AgentActivitySlashCommandPolicy | null | undefined {
   if (!enabled) return policy;
   return {
-    ...(policy ?? {}),
+    ...policy,
     fallbackCommands:
       policy?.fallbackCommands ?? commands.map((command) => command.name),
     commandEffects: [
@@ -413,10 +413,12 @@ export function useAgentGUIDetailSideConversation({
         ? interaction.input.questions
         : [];
       return {
+        agentSessionId: active.sideAgentSessionId,
         kind: "ask-user",
         requestId: interaction.requestId,
         title:
           interaction.toolName ?? t("agentHost.agentGui.sideInteractionTitle"),
+        turnId: interaction.turnId,
         questions: rawQuestions.flatMap((rawQuestion, index) => {
           if (!rawQuestion || typeof rawQuestion !== "object") return [];
           const question = rawQuestion as Record<string, unknown>;

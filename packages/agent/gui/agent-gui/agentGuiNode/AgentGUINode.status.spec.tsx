@@ -321,6 +321,37 @@ describe("AgentGUINode status controller integration", () => {
     );
   });
 
+  it("disables provider-account usage refresh for a Model Plan target", () => {
+    const target = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      agentTargetId: "workspace-agent:kimi-code",
+      targetId: "workspace-agent:kimi-code",
+      providerAccountUsageApplicable: false
+    };
+    mockViewModel = createViewModel({
+      selectedAgentTarget: target,
+      agentTargets: [target],
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "workspace-agent:kimi-code"
+      }
+    });
+    render(
+      <AgentGUINode
+        {...createProps({
+          runtimeRequests: {
+            agentStatusController: createAgentStatusController({
+              source: { open: vi.fn(() => vi.fn()) }
+            })
+          }
+        })}
+      />
+    );
+
+    expect(latestViewProps().onAgentUsageRefresh).toBeUndefined();
+    expect(latestViewProps().onSlashStatusRefresh).toBeUndefined();
+  });
+
   it("projects the host billing label into the rail config menu", () => {
     mockViewModel = createViewModel({
       conversationFilter: {
@@ -485,9 +516,11 @@ interface CapturedViewProps {
   agentConfigSystemActionsContent?: React.ReactNode;
   onAgentConfigMenuOpen?: () => void;
   onAgentConfigMenuClose?: () => void;
+  onAgentUsageRefresh?: () => void;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
   onSlashStatusOpen?: () => void;
   onSlashStatusClose?: () => void;
+  onSlashStatusRefresh?: () => void;
   slashStatusUsageErrorMessage?: string | null;
   slashStatusOverride?: {
     contextWindow?: { usedTokens?: number | null } | null;

@@ -161,6 +161,7 @@ export const AgentGUIBottomDockPane = memo(function AgentGUIBottomDockPane({
           >
             <AgentInteractivePromptSurface
               prompt={bottomDockLiftedPrompt}
+              conversationReturn={promptLabels.conversationReturn}
               embedded={true}
               edgeGlow={true}
               keyboardShortcuts={keyboardShortcutsEnabled}

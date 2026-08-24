@@ -1,5 +1,5 @@
 import { Fragment, useCallback, type JSX, type ReactNode } from "react";
-import { Avatar, toast } from "@tutti-os/ui-system";
+import { toast } from "@tutti-os/ui-system";
 import { AgentPlanCard } from "./AgentPlanCard";
 import { AgentCollaborationRow } from "./AgentCollaborationRow";
 import { useOptionalAgentHostApi } from "../../../agentActivityHost";
@@ -20,10 +20,8 @@ import type {
   AgentMessageContentVM,
   AgentMessageRowVM
 } from "../contracts/agentMessageRowVM";
-import type {
-  AgentConversationParticipantIdentity,
-  AgentConversationParticipantPresentation
-} from "../contracts/agentConversationParticipantPresentation";
+import type { AgentConversationParticipantPresentation } from "../contracts/agentConversationParticipantPresentation";
+import { AgentConversationParticipantHeader } from "./AgentConversationParticipant";
 import { AgentToolGroupRow } from "./AgentToolGroupRow";
 import {
   AgentVisibleErrorMessage,
@@ -55,8 +53,7 @@ interface AgentMessageBlockProps {
   thinkingLabel: string;
   toolCallsLabel?: (count: number) => string;
   onAuthLogin?: (provider?: string | null) => void;
-  // The conversation's provider, so a failed message recovered as an env error
-  // routes its wizard CTA to the right provider.
+  // Routes a recovered environment-error CTA to the conversation provider.
   provider?: string | null;
   availableSkills?: readonly AgentGUIProviderSkillOption[];
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
@@ -114,8 +111,7 @@ export function AgentMessageBlock({
         onLinkAction?.(action);
         return;
       }
-      // Sent transcript can still carry draft-only composer-file hrefs when
-      // displayPrompt was not materialized. Never fail silently.
+      // Sent transcripts can retain draft-only file hrefs; never fail silently.
       const mention = parseMentionItemFromHref({ name: "", href });
       if (
         mention?.kind === "file" &&
@@ -225,9 +221,7 @@ export function AgentMessageBlock({
           label={rawTimelineJsonLabel}
         />
       ) : null;
-    // Recover a structured error card from a terminal message that the
-    // provider reported as plain text, including Claude SDK's completed
-    // standalone login notice.
+    // Recover structured errors, including Claude SDK's standalone login notice.
     const recoveredError =
       !isUser && !message.visibleError
         ? recoverVisibleErrorFromMessage(message, provider)
@@ -440,88 +434,6 @@ export function AgentMessageBlock({
         messageContent
       )}
     </div>
-  );
-}
-
-function AgentConversationParticipantHeader({
-  presentation,
-  speaker
-}: {
-  presentation: Extract<
-    AgentConversationParticipantPresentation,
-    { enabled: true }
-  >;
-  speaker: AgentMessageRowVM["speaker"];
-}): JSX.Element {
-  const participant: AgentConversationParticipantIdentity | null =
-    presentation.status === "loading"
-      ? null
-      : speaker === "user"
-        ? presentation.user
-        : presentation.agent;
-  const nameContent = participant ? (
-    <span className={styles.participantName}>{participant.name}</span>
-  ) : null;
-  const avatarContent = (
-    <AgentConversationParticipantAvatar
-      presentation={presentation}
-      speaker={speaker}
-    />
-  );
-  return (
-    <div
-      className={styles.participantMessageHeader}
-      data-agent-conversation-participant-header={speaker}
-    >
-      {speaker === "user" ? (
-        <>
-          {nameContent}
-          {avatarContent}
-        </>
-      ) : (
-        <>
-          {avatarContent}
-          {nameContent}
-        </>
-      )}
-    </div>
-  );
-}
-
-function AgentConversationParticipantAvatar({
-  presentation,
-  speaker
-}: {
-  presentation: Extract<
-    AgentConversationParticipantPresentation,
-    { enabled: true }
-  >;
-  speaker: AgentMessageRowVM["speaker"];
-}): JSX.Element {
-  if (presentation.status === "loading") {
-    return (
-      <Avatar
-        aria-hidden="true"
-        className={styles.participantAvatar}
-        data-agent-conversation-participant-avatar={speaker}
-        label=""
-        loading
-        size={28}
-      />
-    );
-  }
-
-  const participant: AgentConversationParticipantIdentity =
-    speaker === "user" ? presentation.user : presentation.agent;
-  return (
-    <Avatar
-      aria-label={participant.name}
-      className={styles.participantAvatar}
-      data-agent-conversation-participant-avatar={speaker}
-      label={participant.name}
-      size={28}
-      src={participant.avatarUrl}
-    />
   );
 }
 

@@ -37,7 +37,7 @@
     "sources": [
       {
         "key": "gemini",
-        "pinnedVersion": "2.0.3",
+        "pinnedVersion": "2.0.4",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/gemini/versions.json",
         "signingKeyId": "tutti-gemini-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAXKvHPk/lWXqeK3Q1cg6vaOFfhqmXm3jcNgECsZ9XT/g=\n-----END PUBLIC KEY-----\n",
@@ -45,7 +45,7 @@
       },
       {
         "key": "codebuddy",
-        "pinnedVersion": "2.0.5",
+        "pinnedVersion": "2.0.6",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/codebuddy/versions.json",
         "signingKeyId": "tutti-codebuddy-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAfzdtf41+SN0hrZqK0JX2pdDluCwpUbn1HPDoz4D7OxA=\n-----END PUBLIC KEY-----\n",
@@ -53,7 +53,7 @@
       },
       {
         "key": "copilot",
-        "pinnedVersion": "2.0.3",
+        "pinnedVersion": "2.0.4",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/copilot/versions.json",
         "signingKeyId": "tutti-copilot-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEA1U8JW/V2ZwXbflqpktbpC68cuI3xq0OU2yV4H5vsz+c=\n-----END PUBLIC KEY-----\n",
@@ -61,7 +61,7 @@
       },
       {
         "key": "kilo",
-        "pinnedVersion": "2.0.3",
+        "pinnedVersion": "2.0.4",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kilo/versions.json",
         "signingKeyId": "tutti-kilo-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAc0h7Dl9Vw1FnNGBm612Pj/yVsQW+UKXfDskBEVHeMGI=\n-----END PUBLIC KEY-----\n",
@@ -69,7 +69,7 @@
       },
       {
         "key": "qwen",
-        "pinnedVersion": "2.0.3",
+        "pinnedVersion": "2.0.4",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/qwen/versions.json",
         "signingKeyId": "tutti-qwen-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEANqN38E9u53Ohnyzy8IC9lPXOmOCrZwxTb7Do2hM22t0=\n-----END PUBLIC KEY-----\n",
@@ -77,7 +77,7 @@
       },
       {
         "key": "hermes",
-        "pinnedVersion": "1.0.9",
+        "pinnedVersion": "1.0.10",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
         "signingKeyId": "tutti-hermes-release-v1",
         "signingPublicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAIeel8ddNiN3b4qOq0KucF3BRxfi3zourM0BVyGuP8eY=\n-----END PUBLIC KEY-----\n",
@@ -85,7 +85,7 @@
       },
       {
         "key": "kimi-code",
-        "pinnedVersion": "1.0.11",
+        "pinnedVersion": "1.0.12",
         "releaseIndexUrl": "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/account-usage-v1/versions.json",
         "fallbackReleaseIndexUrls": [
           "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/kimi-code/authentication-v1/versions.json",

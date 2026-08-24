@@ -569,6 +569,8 @@ export interface AgentGUIComposerViewModel {
 
 export interface AgentGUIInteractionViewModel {
   approvalDisabledReason: string | null;
+  /** The visible prompt is the one exact pending question Composer can answer. */
+  canAnswerPendingInteractivePromptFromComposer?: boolean;
   interactivePromptDisabledReason: string | null;
   isRespondingApproval: boolean;
   isRespondingInteractivePrompt: boolean;

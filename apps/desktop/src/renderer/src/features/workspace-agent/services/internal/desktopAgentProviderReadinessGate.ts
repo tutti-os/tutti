@@ -5,6 +5,7 @@ import type {
   AgentGUIProviderReadinessGateAction
 } from "@tutti-os/agent-gui";
 import type { WorkspaceAgentProvider } from "@tutti-os/client-tuttid-ts";
+import { resolveAgentGUIProviderCatalogIdentity } from "@tutti-os/agent-gui/provider-catalog";
 import type { AgentProviderStatusSnapshot } from "../agentProviderStatusService.interface";
 import {
   desktopManagedAgentProviders,
@@ -14,6 +15,10 @@ import {
 export type DesktopAgentProviderReadinessGateActionHandler = (
   provider: AgentGUIProvider,
   action: AgentGUIProviderReadinessGateAction
+) => void;
+
+export type DesktopAgentProviderModelPlanSetupHandler = (
+  provider: AgentGUIProvider
 ) => void;
 
 // Availability stays "unknown" while the daemon waits for the user to pick
@@ -26,6 +31,7 @@ const runtimeSelectionReasonCodes = new Set<string>([
 
 export function projectDesktopAgentProviderReadinessGates(input: {
   onAction?: DesktopAgentProviderReadinessGateActionHandler;
+  onModelPlanSetup?: DesktopAgentProviderModelPlanSetupHandler;
   snapshot: AgentProviderStatusSnapshot;
 }): Partial<Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>> {
   const statusByProvider = new Map(
@@ -49,6 +55,13 @@ export function projectDesktopAgentProviderReadinessGates(input: {
     gates[agentGuiProvider] = gate
       ? {
           ...gate,
+          ...(resolveAgentGUIProviderCatalogIdentity(provider)
+            ?.modelPlanProtocol && input.onModelPlanSetup
+            ? {
+                onModelPlanSetup: () =>
+                  input.onModelPlanSetup?.(agentGuiProvider)
+              }
+            : {}),
           ...(input.onAction
             ? {
                 onAction: (_provider, action) =>

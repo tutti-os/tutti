@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   chmod,
@@ -759,6 +760,11 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /create_release_tag:/);
   assert.match(workflow, /publish_catalog:/);
   assert.match(workflow, /catalog_only:/);
+  assert.match(workflow, /prepare_only:/);
+  assert.match(workflow, /candidate_run_id:/);
+  assert.match(workflow, /expected_version:/);
+  assert.match(workflow, /expected_artifact_sha256:/);
+  assert.match(workflow, /expected_git_sha:/);
   assert.match(workflow, /catalog_cloudfront_distribution_id:/);
   assert.match(workflow, /Validate release inputs/);
   assert.match(
@@ -803,6 +809,10 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
     /Resolved release version seed \$\{latest\.version\} from \$\{latest\.source\}/
   );
   assert.match(workflow, /release_bump requires create_release_tag/);
+  assert.match(
+    workflow,
+    /\[ "\$\{PREPARE_ONLY\}" != "true" \]/
+  );
   assert.match(workflow, /create_release_tag requires release_bump/);
   assert.match(
     workflow,
@@ -844,6 +854,78 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   );
   assert.match(workflow, /Publish app release metadata/);
   assert.match(workflow, /publish-tutti-app-metadata/);
+  assert.match(workflow, /name: Upload production release candidate/);
+  assert.match(workflow, /uses: actions\/upload-artifact@v4/);
+  assert.match(workflow, /uses: actions\/download-artifact@v5/);
+  assert.match(workflow, /run-id: \$\{\{ inputs\.candidate_run_id \}\}/);
+  assert.match(workflow, /Approved release candidate mismatch/);
+  assert.match(workflow, /candidate\.artifactSha256 !== expectedArtifactSha256/);
+  assert.match(workflow, /candidate\.gitSha !== expectedGitSha/);
+  assert.match(workflow, /catalog_only and prepare_only are mutually exclusive/);
+  assert.match(
+    workflow,
+    /if: \$\{\{ inputs\.prepare_only \}\}[\s\S]*path: tutti-app-release/
+  );
+  assert.match(
+    workflow,
+    /name: Configure AWS credentials\n\s+if: \$\{\{ !inputs\.prepare_only \}\}/
+  );
+  assert.match(
+    workflow,
+    /name: Upload app release to S3\n\s+if: \$\{\{ !inputs\.catalog_only && !inputs\.prepare_only \}\}/
+  );
+  assert.match(
+    workflow,
+    /name: Publish app release metadata\n\s+if: \$\{\{ !inputs\.prepare_only \}\}/
+  );
+  assert.match(
+    workflow,
+    /name: Verify published app metadata\n\s+if: \$\{\{ !inputs\.prepare_only \}\}/
+  );
+  assert.match(
+    workflow,
+    /name: Create release tag\n\s+if: \$\{\{ !inputs\.catalog_only && !inputs\.prepare_only && inputs\.create_release_tag \}\}/
+  );
+  assert.match(
+    workflow,
+    /name: Invalidate app catalog\n\s+if: \$\{\{ !inputs\.prepare_only && \(inputs\.publish_catalog \|\| inputs\.catalog_only\)/
+  );
+  const verifyCandidateIndex = workflow.indexOf(
+    "name: Verify local app release candidate"
+  );
+  const uploadCandidateIndex = workflow.indexOf(
+    "name: Upload production release candidate"
+  );
+  const configureAwsIndex = workflow.indexOf("name: Configure AWS credentials");
+  const identityCheckIndex = workflow.indexOf(
+    "Approved release candidate mismatch"
+  );
+  assert.notEqual(verifyCandidateIndex, -1);
+  assert.notEqual(uploadCandidateIndex, -1);
+  assert.notEqual(configureAwsIndex, -1);
+  assert.notEqual(identityCheckIndex, -1);
+  assert.ok(
+    verifyCandidateIndex < uploadCandidateIndex,
+    "candidate verification must precede candidate artifact upload"
+  );
+  assert.ok(
+    verifyCandidateIndex < configureAwsIndex,
+    "candidate verification must precede AWS credentials and cloud mutation"
+  );
+  assert.ok(
+    identityCheckIndex < configureAwsIndex,
+    "approved candidate identity checks must precede AWS credentials"
+  );
+  const uploadToS3Index = workflow.indexOf("name: Upload app release to S3");
+  const verifyPublishedIndex = workflow.indexOf(
+    "name: Verify published app release artifact"
+  );
+  assert.notEqual(uploadToS3Index, -1);
+  assert.notEqual(verifyPublishedIndex, -1);
+  assert.ok(
+    uploadToS3Index < verifyPublishedIndex,
+    "remote artifact verification must run after the immutable upload"
+  );
   assert.match(workflow, /CATALOG_ONLY:/);
   assert.match(workflow, /--min-tutti-version "\$\{MIN_TUTTI_VERSION\}"/);
   assert.doesNotMatch(workflow, /required_tutti_capabilities:/);
@@ -852,6 +934,76 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /Invalidate app catalog/);
   assert.match(workflow, /cloudfront create-invalidation/);
 });
+
+test("production candidate verification hashes the local archive before cloud access", async () => {
+  const workflow = await readFile(reusableWorkflowPath, "utf8");
+  const script = extractWorkflowNodeScript(
+    workflow,
+    "Verify local app release candidate"
+  );
+  const root = await mkdtemp(path.join(tmpdir(), "tutti-local-candidate-"));
+  const appId = "candidate-test";
+  const version = "1.2.3";
+  const releaseDir = path.join(root, "tutti-app-release", "apps", appId, version);
+  const latestDir = path.dirname(releaseDir);
+  const artifactName = `${appId}-${version}.zip`;
+  const artifact = Buffer.from("approved candidate archive", "utf8");
+  const release = {
+    appId,
+    version,
+    artifactUrl: `https://example.invalid/tutti-app-releases/apps/${appId}/${version}/${artifactName}`,
+    artifactSha256: createHash("sha256").update(artifact).digest("hex"),
+    artifactSizeBytes: artifact.length
+  };
+  await mkdir(releaseDir, { recursive: true });
+  await writeFile(path.join(releaseDir, artifactName), artifact);
+  await writeFile(
+    path.join(releaseDir, "release.json"),
+    `${JSON.stringify(release)}\n`
+  );
+  await writeFile(
+    path.join(latestDir, "latest.json"),
+    `${JSON.stringify(release)}\n`
+  );
+
+  const verified = runWorkflowNodeScript(script, root, { appId, version });
+  assert.equal(verified.status, 0, verified.stderr);
+  assert.match(verified.stdout, /Verified local release candidate/);
+
+  await writeFile(path.join(releaseDir, artifactName), "tampered archive");
+  const rejected = runWorkflowNodeScript(script, root, { appId, version });
+  assert.notEqual(rejected.status, 0);
+  assert.match(rejected.stderr, /local release artifact sha256 mismatch/);
+});
+
+function extractWorkflowNodeScript(workflow, stepName) {
+  const normalized = workflow.replaceAll("\r\n", "\n");
+  const stepIndex = normalized.indexOf(`name: ${stepName}`);
+  assert.notEqual(stepIndex, -1, `missing workflow step ${stepName}`);
+  const heredocIndex = normalized.indexOf("node <<'NODE'\n", stepIndex);
+  assert.notEqual(heredocIndex, -1, `missing Node heredoc for ${stepName}`);
+  const scriptStart = heredocIndex + "node <<'NODE'\n".length;
+  const scriptEnd = normalized.indexOf("\n          NODE", scriptStart);
+  assert.notEqual(scriptEnd, -1, `unterminated Node heredoc for ${stepName}`);
+  return normalized
+    .slice(scriptStart, scriptEnd)
+    .split("\n")
+    .map((line) => line.replace(/^          /u, ""))
+    .join("\n");
+}
+
+function runWorkflowNodeScript(script, cwd, { appId, version }) {
+  return spawnSync(process.execPath, ["-"], {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      APP_ID: appId,
+      RELEASE_VERSION: version
+    },
+    input: script
+  });
+}
 
 test("Tutti app catalog workflow aggregates version indexes", async () => {
   const workflow = await readFile(catalogWorkflowPath, "utf8");

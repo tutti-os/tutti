@@ -691,6 +691,7 @@ function DesktopAgentGUISurfaceImpl({
       visibleErrorPresentationOverrides,
       comingSoonProviders: comingSoonAgentProviders,
       providerReadinessGates,
+      accountUsageRefreshInline: true,
       defaultAgentTargetId,
       providerAuthAccountLabels,
       mentionService,

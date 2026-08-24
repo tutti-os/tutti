@@ -96,3 +96,41 @@ func TestClaudeCodeExecutableEnvFallsBackToPathClaude(t *testing.T) {
 		t.Fatalf("env = %v, want PATH fallback %s", env, claudePath)
 	}
 }
+
+func TestClaudePrepareExposesPersonalSkillsAsAdditionalDirectory(t *testing.T) {
+	personalSkillRoot := filepath.Join(t.TempDir(), "shared", "skills")
+	skillPath := filepath.Join(personalSkillRoot, "shared-skill", "SKILL.md")
+	writeSidecarTestFile(t, skillPath, "---\nname: shared-skill\n---\nshared\n")
+
+	preparer := newTestPreparer(t.TempDir())
+	preparer.RegisterProvider(ClaudeCodePreparer{PersonalSkillRoot: personalSkillRoot})
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:claude-code",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var directories []string
+	if err := json.Unmarshal([]byte(envValue(prepared.Env, claudeAdditionalDirectoriesEnv)), &directories); err != nil {
+		t.Fatalf("decode Claude additional directories: %v", err)
+	}
+	if len(directories) != 1 {
+		t.Fatalf("Claude additional directories = %#v, want one projection", directories)
+	}
+	projectedSkill := filepath.Join(directories[0], ".claude", "skills", "shared-skill", "SKILL.md")
+	projectedInfo, err := os.Stat(projectedSkill)
+	if err != nil {
+		t.Fatalf("projected Claude personal Skill missing: %v", err)
+	}
+	sourceInfo, err := os.Stat(skillPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !os.SameFile(projectedInfo, sourceInfo) {
+		t.Fatal("Claude personal Skill projection is not backed by the stable source")
+	}
+}

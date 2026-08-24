@@ -32,6 +32,7 @@ export type DesktopAgentGUIHostProps = {
     | "visibleErrorPresentationOverrides"
     | "comingSoonProviders"
     | "providerReadinessGates"
+    | "accountUsageRefreshInline"
     | "defaultAgentTargetId"
     | "providerAuthAccountLabels"
     | "mentionService"
@@ -125,6 +126,7 @@ export function useStableDesktopAgentGUIHostProps({
         nextHostCapabilities.visibleErrorPresentationOverrides,
       comingSoonProviders: nextHostCapabilities.comingSoonProviders,
       providerReadinessGates: nextHostCapabilities.providerReadinessGates,
+      accountUsageRefreshInline: nextHostCapabilities.accountUsageRefreshInline,
       defaultAgentTargetId: nextHostCapabilities.defaultAgentTargetId,
       providerAuthAccountLabels: nextHostCapabilities.providerAuthAccountLabels,
       mentionService: nextHostCapabilities.mentionService,

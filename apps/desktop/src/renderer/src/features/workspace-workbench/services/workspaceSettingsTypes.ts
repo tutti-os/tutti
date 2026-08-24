@@ -223,6 +223,8 @@ export type WorkspaceAgentDefinition =
 export interface WorkspaceAgentDraft {
   agentId: string | null;
   name: string;
+  /** Once true, runtime/plan changes must never replace the user's name. */
+  nameEdited: boolean;
   description: string;
   harnessAgentTargetId: string;
   modelPlanId: string;

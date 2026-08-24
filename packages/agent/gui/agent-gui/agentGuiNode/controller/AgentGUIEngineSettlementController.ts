@@ -1,4 +1,6 @@
 import {
+  selectEngineInteraction,
+  selectEngineInteractionResponse,
   selectEngineHasVisibleQueuedSubmit,
   selectPendingActivations,
   selectPendingSubmitsForSession,
@@ -24,6 +26,25 @@ export interface AgentGUIGoalControlPendingSettlement {
   submittedDraftSnapshot: SubmittedDraftSnapshot | null;
 }
 
+export interface AgentGUIInteractionDraftPendingSettlement {
+  agentSessionId: string;
+  requestId: string;
+  submittedDraftSnapshot: SubmittedDraftSnapshot;
+  turnId: string;
+}
+
+export function agentGUIInteractionDraftSettlementKey(input: {
+  agentSessionId: string;
+  requestId: string;
+  turnId: string;
+}): string {
+  return JSON.stringify([
+    input.agentSessionId.trim(),
+    input.turnId.trim(),
+    input.requestId.trim()
+  ]);
+}
+
 interface AgentGUIEngineSettlementControllerInput {
   applyDraftUpdate(
     update: (
@@ -32,6 +53,10 @@ interface AgentGUIEngineSettlementControllerInput {
   ): void;
   engine: AgentSessionEngine;
   goalControlSettlements?: Record<string, AgentGUIGoalControlPendingSettlement>;
+  interactionDraftSettlements?: Record<
+    string,
+    AgentGUIInteractionDraftPendingSettlement
+  >;
   isCurrentConversation?(agentSessionId: string): boolean;
   onGoalControlCleared?(): void;
   onGoalControlFailed?(settlement: SessionGoalControlSettlement): void;
@@ -49,6 +74,10 @@ export class AgentGUIEngineSettlementController {
   private readonly isCurrentConversation: NonNullable<
     AgentGUIEngineSettlementControllerInput["isCurrentConversation"]
   >;
+  private readonly interactionDraftSettlements: Record<
+    string,
+    AgentGUIInteractionDraftPendingSettlement
+  >;
   private readonly onGoalControlCleared: NonNullable<
     AgentGUIEngineSettlementControllerInput["onGoalControlCleared"]
   >;
@@ -65,6 +94,7 @@ export class AgentGUIEngineSettlementController {
     this.applyDraftUpdate = input.applyDraftUpdate;
     this.engine = input.engine;
     this.goalControlSettlements = input.goalControlSettlements ?? {};
+    this.interactionDraftSettlements = input.interactionDraftSettlements ?? {};
     this.isCurrentConversation = input.isCurrentConversation ?? (() => false);
     this.onGoalControlCleared = input.onGoalControlCleared ?? (() => undefined);
     this.onGoalControlFailed = input.onGoalControlFailed ?? (() => undefined);
@@ -160,7 +190,42 @@ export class AgentGUIEngineSettlementController {
       );
       delete this.snapshots[clientSubmitId];
     }
+    this.settleInteractionDrafts(state);
     this.settleGoalControls(state);
+  }
+
+  private settleInteractionDrafts(state: AgentSessionEngineState): void {
+    for (const [key, pending] of Object.entries(
+      this.interactionDraftSettlements
+    )) {
+      const interaction = selectEngineInteraction(
+        state,
+        pending.agentSessionId,
+        pending.turnId,
+        pending.requestId
+      );
+      const response = selectEngineInteractionResponse(
+        state,
+        pending.agentSessionId,
+        pending.turnId,
+        pending.requestId
+      );
+      if (interaction?.status === "pending" && response?.status !== "failed") {
+        continue;
+      }
+      delete this.interactionDraftSettlements[key];
+      if (interaction?.status === "answered") {
+        continue;
+      }
+      const snapshot = pending.submittedDraftSnapshot;
+      this.applyDraftUpdate((drafts) =>
+        restoreFailedAgentGUIHomeDraft({
+          draftKey: snapshot.sourceScopeKey,
+          drafts,
+          submittedDraft: snapshot.content
+        })
+      );
+    }
   }
 
   private settleGoalControls(state: AgentSessionEngineState): void {

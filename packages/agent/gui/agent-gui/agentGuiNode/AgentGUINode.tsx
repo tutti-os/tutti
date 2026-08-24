@@ -109,6 +109,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerRailMode = "catalog",
     comingSoonProviders,
     providerReadinessGates = null,
+    accountUsageRefreshInline = false,
     targetConnectionSource = null,
     interactionReadinessSource = null,
     observationGapSource = null,
@@ -521,6 +522,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onAgentConfigMenuClose={handleAgentConfigMenuClose}
               onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
               onAgentUsageRefresh={handleAgentUsageRefresh}
+              accountUsageRefreshInline={accountUsageRefreshInline}
               onSlashStatusOpen={handleSlashStatusOpen}
               onSlashStatusClose={handleSlashStatusClose}
               onSlashStatusRefresh={handleSlashStatusRefresh}

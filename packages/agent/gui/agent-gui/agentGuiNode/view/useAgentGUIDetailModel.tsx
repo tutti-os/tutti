@@ -13,6 +13,7 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import {
   isContextCanceledMessage,
   isAgentGUIHomeStatusNoticeVisible,
+  resolveAgentGUIConversationReturn,
   resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   resolveSlashStatus,
@@ -287,8 +288,7 @@ export function useAgentGUIDetailModel(input: Input) {
       approvalRequired: labels.approvalRequired,
       authRequired: labels.authRequired,
       authLogin: labels.authLogin,
-      // While connecting, if the user already requested a cancel that is waiting
-      // for the session to come up, show "cancelling" instead of "connecting".
+      // A pending cancel takes precedence over the connecting label.
       activatingSession: viewModel.composer.isCancelPending
         ? labels.cancellingSession
         : labels.activatingSession,
@@ -349,6 +349,10 @@ export function useAgentGUIDetailModel(input: Input) {
       submitAnswers: labels.submitAnswers,
       answerPlaceholder: labels.answerPlaceholder,
       waitingForAnswer: labels.waitingForAnswer,
+      conversationReturn: resolveAgentGUIConversationReturn(
+        labels,
+        viewModel.interaction.canAnswerPendingInteractivePromptFromComposer
+      ),
       planImplementationLead: labels.planImplementationLead,
       planImplementationConfirm: labels.planImplementationConfirm,
       planImplementationFeedbackPlaceholder:
@@ -359,16 +363,19 @@ export function useAgentGUIDetailModel(input: Input) {
     [
       labels.answerPlaceholder,
       labels.approvalRequired,
+      labels.continueAnswering,
       labels.fileChangeApprovalRequired,
       labels.feedbackPlaceholder,
       labels.nextQuestion,
       labels.planLead,
       labels.planModes,
       labels.previousQuestion,
+      labels.returnToConversation,
       labels.sendFeedback,
       labels.stayInPlan,
       labels.submitAnswers,
       labels.waitingForAnswer,
+      viewModel.interaction.canAnswerPendingInteractivePromptFromComposer,
       labels.planImplementationLead,
       labels.planImplementationConfirm,
       labels.planImplementationFeedbackPlaceholder,
