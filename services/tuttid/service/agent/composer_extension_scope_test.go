@@ -62,6 +62,12 @@ func TestComposerLiveModelScopeUsesExactTargetProjectInstallationAndSettings(t *
 			}
 		})
 	}
+
+	selectedModelSettings := settings
+	selectedModelSettings.Model = "provider:model-a"
+	if got := newComposerLiveModelScopeForInput(input, selectedModelSettings).key(); got != scope.key() {
+		t.Fatalf("model selection changed discovery scope key = %q, want %q", got, scope.key())
+	}
 }
 
 func TestComposerRuntimeContextSelectsNewestExactLiveSession(t *testing.T) {

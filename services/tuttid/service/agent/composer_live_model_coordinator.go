@@ -71,6 +71,9 @@ func (s *Service) discoverLiveComposerModels(
 			return nil, errLiveModelDiscoverySuperseded
 		}
 		s.setLiveComposerModelOptionsForScope(scope, time.Now().UTC(), discovered)
+		if s.LiveModelCatalogUpdated != nil {
+			s.LiveModelCatalogUpdated(scope.provider)
+		}
 		return discovered, nil
 	})
 	waitTimeout := liveModelDiscoveryTimeout

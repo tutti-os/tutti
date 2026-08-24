@@ -82,6 +82,7 @@ type Service struct {
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
+	LiveModelCatalogUpdated        func(string)
 	liveModelDiscoveryWaitTimeout  time.Duration
 	GeneratedFilesClock            func() time.Time
 	LiveModelDiscoveryDeleteDelay  time.Duration
