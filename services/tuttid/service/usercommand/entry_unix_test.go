@@ -87,12 +87,17 @@ func TestUnixEntrySkipsForeignSymlinkUserCommand(t *testing.T) {
 	if err := entry.Verify(); err != nil {
 		t.Fatalf("Verify() rejected a runtime with a skipped user command: %v", err)
 	}
-	// The internal stable hop must still be refreshed.
+	// The internal stable hop must still be refreshed. The platform entry
+	// stores a directory-relative symlink target, so resolve it first.
 	stableTarget, err := os.Readlink(entry.StablePath)
 	if err != nil {
 		t.Fatalf("stable entry missing after Publish: %v", err)
 	}
-	if stableTarget != finalExecutable {
+	resolvedStableTarget, err := resolvedSymlinkTarget(entry.StablePath)
+	if err != nil {
+		t.Fatalf("resolve stable entry target: %v", err)
+	}
+	if resolvedStableTarget != finalExecutable {
 		t.Fatalf("stable entry target = %q, want %q", stableTarget, finalExecutable)
 	}
 }

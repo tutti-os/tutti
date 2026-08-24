@@ -170,7 +170,7 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	if err := service.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if failure == nil || failure.ErrorCode != "install_failed" || failure.RuntimeIdentity == "" ||
+	if failure.ErrorCode != "install_failed" || failure.RuntimeIdentity == "" ||
 		failure.ConsecutiveFailures < 1 || failure.NextAttemptAtUnixMS <= failure.LastAttemptAtUnixMS {
 		t.Fatalf("persisted account usage failure = %#v", failure)
 	}
@@ -455,11 +455,9 @@ func TestAgentTargetSetupDoesNotOverwriteUserExecutable(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	failed := waitForSetupStatus(t, service, targetID, SetupFailed)
-	if failed.Action == nil || failed.Action.ErrorCode != "activation_failed" ||
-		!strings.Contains(failed.Action.ErrorMessage, "already occupied") {
-		t.Fatalf("user executable conflict = %#v", failed)
-	}
+	// A user-owned command is tolerated: activation succeeds and the user
+	// executable is preserved instead of failing the managed runtime.
+	waitForSetupStatus(t, service, targetID, SetupReady)
 	content, err := os.ReadFile(userEntry)
 	if err != nil {
 		t.Fatal(err)
@@ -467,8 +465,8 @@ func TestAgentTargetSetupDoesNotOverwriteUserExecutable(t *testing.T) {
 	if string(content) != "user-owned\n" {
 		t.Fatalf("user executable was overwritten: %q", content)
 	}
-	if _, err := os.Stat(initial.Plan.InstallRoot); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("failed activation left managed runtime behind: %v", err)
+	if _, err := os.Stat(initial.Plan.InstallRoot); err != nil {
+		t.Fatalf("managed runtime missing after tolerated user command: %v", err)
 	}
 }
 
@@ -765,7 +763,7 @@ func TestManagedRuntimeReconcilerIgnoresInstallationOutsideCurrentClientPin(t *t
 	}
 }
 
-func TestManagedRuntimeReconcilerTreatsUserCommandConflictAsPermanent(t *testing.T) {
+func TestManagedRuntimeReconcilerToleratesUserCommandConflict(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	runner := &fixtureInstallRunner{
 		binary: "generic-agent", packageName: "@example/generic-agent", version: "1.2.3",
@@ -798,18 +796,19 @@ func TestManagedRuntimeReconcilerTreatsUserCommandConflictAsPermanent(t *testing
 	}
 
 	outcome := service.reconcileManagedRuntimes(context.Background(), nil)
-	if len(outcome.results) != 1 || outcome.results[0].err == nil || outcome.results[0].retryable {
-		t.Fatalf("permanent publication outcome = %#v", outcome.results)
+	if len(outcome.results) != 1 || outcome.results[0].err != nil || outcome.results[0].retryable {
+		t.Fatalf("tolerated user command conflict outcome = %#v", outcome.results)
 	}
-	if runner.callCount() != 0 {
-		t.Fatalf("installer ran before permanent publication conflict: %d", runner.callCount())
+	// The runtime installer still runs; only the user-command hop is skipped.
+	if runner.callCount() == 0 {
+		t.Fatalf("installer did not run after tolerated user command conflict: %d", runner.callCount())
 	}
 	retryStates := map[string]managedRuntimeRetryState{}
 	if delay := applyManagedRuntimeReconcileOutcome(retryStates, outcome, time.Unix(1_700_000_000, 0)); delay >= 0 {
-		t.Fatalf("permanent publication conflict retry delay = %v, want wake-only", delay)
+		t.Fatalf("tolerated user command conflict retry delay = %v, want no retry", delay)
 	}
 	if shouldAttemptManagedRuntime(retryStates, outcome.results[0].key, time.Unix(1_700_000_100, 0)) {
-		t.Fatal("permanent publication conflict became timer-eligible")
+		t.Fatal("tolerated user command conflict target became timer-eligible")
 	}
 }
 
@@ -1170,7 +1169,7 @@ func TestAgentTargetSetupRejectsManagedRuntimeBinaryReplacement(t *testing.T) {
 	}
 }
 
-func TestAgentTargetSetupRequiresPublishedUserExecutable(t *testing.T) {
+func TestAgentTargetSetupToleratesRemovedUserExecutable(t *testing.T) {
 	t.Setenv("PATH", t.TempDir())
 	service, targetID := setupFixture(
 		t, "gemini", "Gemini CLI", "@google/gemini-cli", "0.50.0", "gemini", ">=0.50.0 <1.0.0",
@@ -1195,8 +1194,11 @@ func TestAgentTargetSetupRequiresPublishedUserExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snapshot.Status != SetupNotInstalled || snapshot.Reason != "runtime_integrity_failed" || snapshot.Plan == nil {
-		t.Fatalf("missing user executable snapshot = %#v", snapshot)
+	// A user-owned command published to PATH may be removed or shadowed without
+	// failing the managed runtime: only the runtime's own files count towards
+	// integrity. The agent stays ready through the internal stable hop.
+	if snapshot.Status != SetupReady {
+		t.Fatalf("removed user executable snapshot = %#v", snapshot)
 	}
 }
 
@@ -1499,8 +1501,8 @@ func (r *fixtureInstallRunner) callCount() int {
 
 func environmentPathWithin(environment []string, prefix, root string) bool {
 	for _, value := range environment {
-		if strings.HasPrefix(value, prefix) {
-			return pathWithin(strings.TrimPrefix(value, prefix), root)
+		if rest, ok := strings.CutPrefix(value, prefix); ok {
+			return pathWithin(rest, root)
 		}
 	}
 	return false
