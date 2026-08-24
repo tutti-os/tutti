@@ -6,12 +6,13 @@ import "encoding/json"
 
 const (
 	BusinessEventProtocolVersion = 1
-	BusinessEventCatalogRevision = "sha256:d2f4d0e3e3737a60"
+	BusinessEventCatalogRevision = "sha256:fb045f27aa5df783"
 )
 
 type Topic string
 
 const (
+	TopicAccountUserpresenceUpdated                      Topic = "account.userpresence.updated"
 	TopicAgentActivityUpdated                            Topic = "agent.activity.updated"
 	TopicAgentAutomationRulesChanged                     Topic = "agent.automation.rules.changed"
 	TopicAgentCollaborationUpdated                       Topic = "agent.collaboration.updated"
@@ -243,6 +244,16 @@ type WorkspaceWorkspaceApp struct {
 	} `json:"installProgress,omitempty"`
 }
 
+type AccountUserpresenceUpdatedPayload struct {
+	UserId              string  `json:"userId"`
+	Status              string  `json:"status"`
+	Availability        string  `json:"availability"`
+	Authoritative       bool    `json:"authoritative"`
+	AuthorityGeneration string  `json:"authorityGeneration"`
+	PresenceRevision    string  `json:"presenceRevision"`
+	ObservedAt          *string `json:"observedAt,omitempty"`
+}
+
 type AgentActivityUpdatedPayload struct {
 	WorkspaceId    string  `json:"workspaceId"`
 	AgentSessionId string  `json:"agentSessionId"`
@@ -388,6 +399,15 @@ type WorkspaceWorkflowUpdatedPayload struct {
 	SourceSessionId string `json:"sourceSessionId"`
 	CheckpointId    string `json:"checkpointId"`
 	ChangeKind      string `json:"changeKind"`
+}
+
+type AccountUserpresenceUpdatedEvent struct {
+	ID        string                            `json:"id"`
+	Topic     Topic                             `json:"topic"`
+	Version   int                               `json:"version"`
+	EmittedAt string                            `json:"emittedAt"`
+	Scope     *EventScope                       `json:"scope,omitempty"`
+	Payload   AccountUserpresenceUpdatedPayload `json:"payload"`
 }
 
 type AgentActivityUpdatedEvent struct {
@@ -639,6 +659,13 @@ type ServerPongFrame struct {
 
 var BusinessEventDefinitions = []EventDefinition{
 	{
+		Topic:     TopicAccountUserpresenceUpdated,
+		Version:   1,
+		Direction: DirectionServerToClient,
+		Owner:     "core",
+		Scope:     ScopeNameGlobal,
+	},
+	{
 		Topic:     TopicAgentActivityUpdated,
 		Version:   2,
 		Direction: DirectionServerToClient,
@@ -788,27 +815,28 @@ var BusinessEventDefinitions = []EventDefinition{
 }
 
 var businessEventDefinitionByTopic = map[Topic]EventDefinition{
-	TopicAgentActivityUpdated:                            BusinessEventDefinitions[0],
-	TopicAgentAutomationRulesChanged:                     BusinessEventDefinitions[1],
-	TopicAgentCollaborationUpdated:                       BusinessEventDefinitions[2],
-	TopicAgentModelCatalogInvalidated:                    BusinessEventDefinitions[3],
-	TopicAgentModelConfigurationChanged:                  BusinessEventDefinitions[4],
-	TopicAgentQuickpromptUpdated:                         BusinessEventDefinitions[5],
-	TopicAgentSideUpdated:                                BusinessEventDefinitions[6],
-	TopicAnalyticsDebugReported:                          BusinessEventDefinitions[7],
-	TopicConnectorMarketChanged:                          BusinessEventDefinitions[8],
-	TopicPreferencesAgentComposerDefaultsChanged:         BusinessEventDefinitions[9],
-	TopicPreferencesAgentComposerDefaultsPatchRequested:  BusinessEventDefinitions[10],
-	TopicPreferencesAgentSessionLaunchModePatchRequested: BusinessEventDefinitions[11],
-	TopicPreferencesDesktopUpdateRequested:               BusinessEventDefinitions[12],
-	TopicPreferencesDesktopUpdated:                       BusinessEventDefinitions[13],
-	TopicUserProjectUpdated:                              BusinessEventDefinitions[14],
-	TopicWorkspaceAppUpdated:                             BusinessEventDefinitions[15],
-	TopicWorkspaceAppfactoryJobUpdated:                   BusinessEventDefinitions[16],
-	TopicWorkspaceIssueUpdated:                           BusinessEventDefinitions[17],
-	TopicWorkspaceTuttimodeUpdated:                       BusinessEventDefinitions[18],
-	TopicWorkspaceWorkbenchNodeLaunchRequested:           BusinessEventDefinitions[19],
-	TopicWorkspaceWorkflowUpdated:                        BusinessEventDefinitions[20],
+	TopicAccountUserpresenceUpdated:                      BusinessEventDefinitions[0],
+	TopicAgentActivityUpdated:                            BusinessEventDefinitions[1],
+	TopicAgentAutomationRulesChanged:                     BusinessEventDefinitions[2],
+	TopicAgentCollaborationUpdated:                       BusinessEventDefinitions[3],
+	TopicAgentModelCatalogInvalidated:                    BusinessEventDefinitions[4],
+	TopicAgentModelConfigurationChanged:                  BusinessEventDefinitions[5],
+	TopicAgentQuickpromptUpdated:                         BusinessEventDefinitions[6],
+	TopicAgentSideUpdated:                                BusinessEventDefinitions[7],
+	TopicAnalyticsDebugReported:                          BusinessEventDefinitions[8],
+	TopicConnectorMarketChanged:                          BusinessEventDefinitions[9],
+	TopicPreferencesAgentComposerDefaultsChanged:         BusinessEventDefinitions[10],
+	TopicPreferencesAgentComposerDefaultsPatchRequested:  BusinessEventDefinitions[11],
+	TopicPreferencesAgentSessionLaunchModePatchRequested: BusinessEventDefinitions[12],
+	TopicPreferencesDesktopUpdateRequested:               BusinessEventDefinitions[13],
+	TopicPreferencesDesktopUpdated:                       BusinessEventDefinitions[14],
+	TopicUserProjectUpdated:                              BusinessEventDefinitions[15],
+	TopicWorkspaceAppUpdated:                             BusinessEventDefinitions[16],
+	TopicWorkspaceAppfactoryJobUpdated:                   BusinessEventDefinitions[17],
+	TopicWorkspaceIssueUpdated:                           BusinessEventDefinitions[18],
+	TopicWorkspaceTuttimodeUpdated:                       BusinessEventDefinitions[19],
+	TopicWorkspaceWorkbenchNodeLaunchRequested:           BusinessEventDefinitions[20],
+	TopicWorkspaceWorkflowUpdated:                        BusinessEventDefinitions[21],
 }
 
 var ClientToServerTopics = []Topic{
@@ -818,6 +846,7 @@ var ClientToServerTopics = []Topic{
 }
 
 var ServerToClientTopics = []Topic{
+	TopicAccountUserpresenceUpdated,
 	TopicAgentActivityUpdated,
 	TopicAgentAutomationRulesChanged,
 	TopicAgentCollaborationUpdated,
@@ -863,6 +892,8 @@ func IsClientToServerTopic(topic Topic) bool {
 
 func IsServerToClientTopic(topic Topic) bool {
 	switch topic {
+	case TopicAccountUserpresenceUpdated:
+		return true
 	case TopicAgentActivityUpdated:
 		return true
 	case TopicAgentAutomationRulesChanged:
@@ -906,6 +937,8 @@ func IsServerToClientTopic(topic Topic) bool {
 
 func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
+	case TopicAccountUserpresenceUpdated:
+		return &AccountUserpresenceUpdatedPayload{}, true
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedPayload{}, true
 	case TopicAgentAutomationRulesChanged:
@@ -955,6 +988,8 @@ func PayloadPrototypeForTopic(topic Topic) (any, bool) {
 
 func EventPrototypeForTopic(topic Topic) (any, bool) {
 	switch topic {
+	case TopicAccountUserpresenceUpdated:
+		return &AccountUserpresenceUpdatedEvent{}, true
 	case TopicAgentActivityUpdated:
 		return &AgentActivityUpdatedEvent{}, true
 	case TopicAgentAutomationRulesChanged:

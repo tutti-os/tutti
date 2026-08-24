@@ -16,6 +16,8 @@ tags:
     description: Workspace-scoped selectable Agent directory
   - name: runtime
   - name: account
+  - name: user-presence
+    description: Process-local room interest and account user presence projection
   - name: analytics
   - name: cli
     description: Public local capability protocol for the bundled CLI and future approved local integrations. Command metadata is machine-readable protocol data; command execution remains authorized by the daemon bearer token and filtered by daemon-owned context.
@@ -191,6 +193,87 @@ paths:
       responses:
         "204":
           description: Account signed out
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/user-presence/current-room:
+    put:
+      operationId: putAccountUserPresenceCurrentRoom
+      tags:
+        - user-presence
+      summary: Visit or refresh the currently displayed room presence projection
+      description: >-
+        Moves the room to the head of the daemon process-local ten-room LRU,
+        atomically replaces its eligible member source, waits for the exact
+        WebSocket subscription ACK, and then obtains an authoritative presence
+        snapshot. The LRU and presence cache are never persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUserPresenceCurrentRoomRequest"
+      responses:
+        "200":
+          description: Current room presence projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserPresenceRoomResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/user-presence/rooms/{roomID}:
+    get:
+      operationId: getAccountUserPresenceRoom
+      tags:
+        - user-presence
+      summary: Read the cached presence projection for one recently visited room
+      parameters:
+        - name: roomID
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Cached room presence projection, or an empty projection when the room is not in the LRU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserPresenceRoomResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/user-presence/foreground:
+    put:
+      operationId: putAccountUserPresenceForeground
+      tags:
+        - user-presence
+      summary: Update whether foreground snapshot reconciliation is active
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUserPresenceForegroundRequest"
+      responses:
+        "204":
+          description: Foreground state accepted
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "405":
@@ -7445,6 +7528,94 @@ components:
                   code: tutti_mode_archive_conflict
                   reason: tutti_archive_request_conflict
   schemas:
+    AccountUserPresenceCurrentRoomRequest:
+      type: object
+      required:
+        - roomId
+        - members
+      properties:
+        roomId:
+          type: string
+          minLength: 1
+        members:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AccountUserPresenceRoomMember"
+    AccountUserPresenceRoomMember:
+      type: object
+      required:
+        - userId
+        - membershipActive
+        - accountPresenceCapable
+      properties:
+        userId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        membershipActive:
+          type: boolean
+          description: True only for a currently joined, non-deleted membership.
+        accountPresenceCapable:
+          type: boolean
+          description: False for system identities without Account Device Presence semantics.
+    AccountUserPresenceForegroundRequest:
+      type: object
+      required:
+        - foreground
+      properties:
+        foreground:
+          type: boolean
+    AccountUserPresenceRoomResponse:
+      type: object
+      required:
+        - roomId
+        - members
+      properties:
+        roomId:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountUserPresenceUser"
+    AccountUserPresenceUser:
+      type: object
+      required:
+        - userId
+        - status
+        - availability
+        - authoritative
+        - authorityGeneration
+        - presenceRevision
+      properties:
+        userId:
+          type: string
+        status:
+          type: string
+          enum:
+            - ONLINE
+            - OFFLINE
+        availability:
+          type: string
+          enum:
+            - NOT_WATCHED
+            - SUBSCRIBING
+            - SYNCING
+            - READY
+            - STALE
+            - UNKNOWN
+            - DEGRADED
+        authoritative:
+          type: boolean
+        authorityGeneration:
+          type: string
+        presenceRevision:
+          type: string
+          pattern: "^[0-9]*$"
+        observedAt:
+          type: string
+          format: date-time
+          nullable: true
     SwitchTuttiModeGoalReviewToSelfRequest:
       type: object
       additionalProperties: false

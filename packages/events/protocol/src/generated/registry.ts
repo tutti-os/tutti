@@ -8,6 +8,8 @@ import type {
   ServerToClientEventTopic
 } from "./contracts.ts";
 
+export const businessEventTopicAccountUserpresenceUpdated =
+  "account.userpresence.updated" as const;
 export const businessEventTopicAgentActivityUpdated =
   "agent.activity.updated" as const;
 export const businessEventTopicAgentAutomationRulesChanged =
@@ -58,9 +60,16 @@ export interface BusinessEventDefinition {
   scope: BusinessEventScopeName;
 }
 
-export const businessEventCatalogRevision = "sha256:d2f4d0e3e3737a60" as const;
+export const businessEventCatalogRevision = "sha256:fb045f27aa5df783" as const;
 
 export const businessEventDefinitions = [
+  {
+    topic: "account.userpresence.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
+  },
   {
     topic: "agent.activity.updated",
     version: 2,
@@ -211,6 +220,13 @@ export const businessEventDefinitions = [
 ] as const satisfies readonly BusinessEventDefinition[];
 
 export const businessEventDefinitionByTopic = {
+  "account.userpresence.updated": {
+    topic: "account.userpresence.updated",
+    version: 1,
+    direction: "server->client",
+    owner: "core",
+    scope: "global"
+  },
   "agent.activity.updated": {
     topic: "agent.activity.updated",
     version: 2,

@@ -7,6 +7,7 @@ export type BusinessEventDirection = "client->server" | "server->client";
 export type BusinessEventScopeName = "global" | "desktop" | "workspace";
 
 export type BusinessEventTopic =
+  | "account.userpresence.updated"
   | "agent.activity.updated"
   | "agent.automation.rules.changed"
   | "agent.collaboration.updated"
@@ -242,6 +243,23 @@ export interface WorkspaceWorkspaceAppV1 {
     searchSupported: boolean;
   };
   installProgress?: Record<string, unknown> | null;
+}
+
+export interface AccountUserpresenceUpdatedPayloadV1 {
+  userId: string;
+  status: "ONLINE" | "OFFLINE";
+  availability:
+    | "NOT_WATCHED"
+    | "SUBSCRIBING"
+    | "SYNCING"
+    | "READY"
+    | "STALE"
+    | "UNKNOWN"
+    | "DEGRADED";
+  authoritative: boolean;
+  authorityGeneration: string;
+  presenceRevision: string;
+  observedAt?: string;
 }
 
 export type AgentActivityUpdatedPayloadV1 =
@@ -712,6 +730,12 @@ export interface WorkspaceWorkflowUpdatedPayloadV1 {
     | "operation_updated";
 }
 
+export type AccountUserpresenceUpdatedEventV1 = BusinessEventEnvelopeV1<
+  "account.userpresence.updated",
+  AccountUserpresenceUpdatedPayloadV1,
+  1
+>;
+
 export type AgentActivityUpdatedEventV1 = BusinessEventEnvelopeV1<
   "agent.activity.updated",
   AgentActivityUpdatedPayloadV1,
@@ -848,6 +872,7 @@ export type ClientToServerEventTopic =
   | "preferences.desktop.update.requested";
 
 export type ServerToClientEventTopic =
+  | "account.userpresence.updated"
   | "agent.activity.updated"
   | "agent.automation.rules.changed"
   | "agent.collaboration.updated"
@@ -873,6 +898,7 @@ export type ClientToServerEventV1 =
   | PreferencesDesktopUpdateRequestedEventV1;
 
 export type ServerToClientEventV1 =
+  | AccountUserpresenceUpdatedEventV1
   | AgentActivityUpdatedEventV1
   | AgentAutomationRulesChangedEventV1
   | AgentCollaborationUpdatedEventV1

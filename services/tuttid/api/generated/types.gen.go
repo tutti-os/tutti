@@ -88,6 +88,57 @@ func (e AccountProductSummaryPartialErrorScope) Valid() bool {
 	}
 }
 
+// Defines values for AccountUserPresenceUserAvailability.
+const (
+	DEGRADED    AccountUserPresenceUserAvailability = "DEGRADED"
+	NOTWATCHED  AccountUserPresenceUserAvailability = "NOT_WATCHED"
+	READY       AccountUserPresenceUserAvailability = "READY"
+	STALE       AccountUserPresenceUserAvailability = "STALE"
+	SUBSCRIBING AccountUserPresenceUserAvailability = "SUBSCRIBING"
+	SYNCING     AccountUserPresenceUserAvailability = "SYNCING"
+	UNKNOWN     AccountUserPresenceUserAvailability = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the AccountUserPresenceUserAvailability enum.
+func (e AccountUserPresenceUserAvailability) Valid() bool {
+	switch e {
+	case DEGRADED:
+		return true
+	case NOTWATCHED:
+		return true
+	case READY:
+		return true
+	case STALE:
+		return true
+	case SUBSCRIBING:
+		return true
+	case SYNCING:
+		return true
+	case UNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountUserPresenceUserStatus.
+const (
+	OFFLINE AccountUserPresenceUserStatus = "OFFLINE"
+	ONLINE  AccountUserPresenceUserStatus = "ONLINE"
+)
+
+// Valid indicates whether the value is a known member of the AccountUserPresenceUserStatus enum.
+func (e AccountUserPresenceUserStatus) Valid() bool {
+	switch e {
+	case OFFLINE:
+		return true
+	case ONLINE:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentPromptContentBlockMimeType.
 const (
 	AgentPromptContentBlockMimeTypeImagejpeg AgentPromptContentBlockMimeType = "image/jpeg"
@@ -5286,6 +5337,50 @@ type AccountUserInfo struct {
 type AccountUserInfoResponse struct {
 	User *AccountUserInfo `json:"user"`
 }
+
+// AccountUserPresenceCurrentRoomRequest defines model for AccountUserPresenceCurrentRoomRequest.
+type AccountUserPresenceCurrentRoomRequest struct {
+	Members []AccountUserPresenceRoomMember `json:"members"`
+	RoomId  string                          `json:"roomId"`
+}
+
+// AccountUserPresenceForegroundRequest defines model for AccountUserPresenceForegroundRequest.
+type AccountUserPresenceForegroundRequest struct {
+	Foreground bool `json:"foreground"`
+}
+
+// AccountUserPresenceRoomMember defines model for AccountUserPresenceRoomMember.
+type AccountUserPresenceRoomMember struct {
+	// AccountPresenceCapable False for system identities without Account Device Presence semantics.
+	AccountPresenceCapable bool `json:"accountPresenceCapable"`
+
+	// MembershipActive True only for a currently joined, non-deleted membership.
+	MembershipActive bool   `json:"membershipActive"`
+	UserId           string `json:"userId"`
+}
+
+// AccountUserPresenceRoomResponse defines model for AccountUserPresenceRoomResponse.
+type AccountUserPresenceRoomResponse struct {
+	Members []AccountUserPresenceUser `json:"members"`
+	RoomId  string                    `json:"roomId"`
+}
+
+// AccountUserPresenceUser defines model for AccountUserPresenceUser.
+type AccountUserPresenceUser struct {
+	Authoritative       bool                                `json:"authoritative"`
+	AuthorityGeneration string                              `json:"authorityGeneration"`
+	Availability        AccountUserPresenceUserAvailability `json:"availability"`
+	ObservedAt          *time.Time                          `json:"observedAt,omitempty"`
+	PresenceRevision    string                              `json:"presenceRevision"`
+	Status              AccountUserPresenceUserStatus       `json:"status"`
+	UserId              string                              `json:"userId"`
+}
+
+// AccountUserPresenceUserAvailability defines model for AccountUserPresenceUser.Availability.
+type AccountUserPresenceUserAvailability string
+
+// AccountUserPresenceUserStatus defines model for AccountUserPresenceUser.Status.
+type AccountUserPresenceUserStatus string
 
 // AddIssueManagerContextRefItem defines model for AddIssueManagerContextRefItem.
 type AddIssueManagerContextRefItem struct {
@@ -11143,6 +11238,12 @@ type ListWorkspaceWorkflowsParamsCheckpointStatus string
 
 // DismissAccountRegistrationCreditsRewardJSONRequestBody defines body for DismissAccountRegistrationCreditsReward for application/json ContentType.
 type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegistrationCreditsRewardRequest
+
+// PutAccountUserPresenceCurrentRoomJSONRequestBody defines body for PutAccountUserPresenceCurrentRoom for application/json ContentType.
+type PutAccountUserPresenceCurrentRoomJSONRequestBody = AccountUserPresenceCurrentRoomRequest
+
+// PutAccountUserPresenceForegroundJSONRequestBody defines body for PutAccountUserPresenceForeground for application/json ContentType.
+type PutAccountUserPresenceForegroundJSONRequestBody = AccountUserPresenceForegroundRequest
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest
