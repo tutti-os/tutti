@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -1457,16 +1458,25 @@ func TestApplicationManagedAuthorizationContinuationReplaysBeforeProjectionTrans
 		t.Fatal(err)
 	}
 	if first.AuthorizationURL != "https://open.feishu.cn/page/cli" ||
-		projections.projection.State != AuthorizationStatePending {
+		first.AuthorizationStepRevision != 1 || projections.projection.State != AuthorizationStatePending {
 		t.Fatalf("first result=%#v projection=%#v", first, projections.projection)
 	}
+	mutation.AfterAuthorizationStepRevision = first.AuthorizationStepRevision
 	continued, err := application.BeginAuthorization(context.Background(), mutation, nil)
 	if err != nil {
 		t.Fatalf("continue authorization: %v", err)
 	}
 	if continued.Operation.OperationID != first.Operation.OperationID ||
-		continued.AuthorizationURL != "https://accounts.feishu.cn/device" || provider.begins != 2 {
+		continued.AuthorizationURL != "https://accounts.feishu.cn/device" ||
+		continued.AuthorizationStepRevision != 2 || provider.begins != 2 {
 		t.Fatalf("continued=%#v first=%#v provider begins=%d", continued, first, provider.begins)
+	}
+	if !reflect.DeepEqual(provider.afterStepRevisions, []uint64{0, 1}) {
+		t.Fatalf("provider cursors = %v", provider.afterStepRevisions)
+	}
+	stored := repository.operations[first.Operation.OperationID].Execution.AuthorizationSession
+	if stored == nil || stored.StepRevision != 2 {
+		t.Fatalf("stored authorization session = %#v", stored)
 	}
 	if len(scheduler.operationIDs) != 0 {
 		t.Fatalf("pending authorization scheduled runtime operations: %v", scheduler.operationIDs)
@@ -2885,7 +2895,8 @@ func (connectedAuthorizationProviderStub) Begin(_ context.Context, request Autho
 
 type continuingAuthorizationProviderStub struct {
 	authorizationProviderStub
-	begins int
+	begins             int
+	afterStepRevisions []uint64
 }
 
 func (provider *continuingAuthorizationProviderStub) Begin(
@@ -2893,6 +2904,7 @@ func (provider *continuingAuthorizationProviderStub) Begin(
 	request AuthorizationStartRequest,
 ) (AuthorizationSession, error) {
 	provider.begins++
+	provider.afterStepRevisions = append(provider.afterStepRevisions, request.AfterStepRevision)
 	authorizationURL := "https://open.feishu.cn/page/cli"
 	if provider.begins > 1 {
 		authorizationURL = "https://accounts.feishu.cn/device"
@@ -2903,6 +2915,7 @@ func (provider *continuingAuthorizationProviderStub) Begin(
 		SessionID:        request.OperationID + "/credential-broker",
 		ActionType:       "redirect",
 		AuthorizationURL: authorizationURL,
+		StepRevision:     uint64(provider.begins),
 		State:            AuthorizationStatePending,
 	}, nil
 }

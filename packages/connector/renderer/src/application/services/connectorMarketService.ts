@@ -521,6 +521,7 @@ export class ConnectorMarketService implements IConnectorMarketService {
     };
     let expectedRevision = this.dataStore.revision;
     const seenAuthorizationViewIds = new Set<string>();
+    let afterAuthorizationStepRevision: number | undefined;
     let recoveredRevisionConflict = false;
     try {
       while (this.isCurrentMutation(connectorKey, token, generation)) {
@@ -536,6 +537,9 @@ export class ConnectorMarketService implements IConnectorMarketService {
           result = await this.dependencies.backend.beginAuthorization({
             ...request,
             expectedRevision,
+            ...(afterAuthorizationStepRevision === undefined
+              ? {}
+              : { afterAuthorizationStepRevision }),
             ...this.connectorRevisionFence(connectorKey)
           });
         } catch (error) {
@@ -598,6 +602,19 @@ export class ConnectorMarketService implements IConnectorMarketService {
         }
         const operationTrack = this.trackOperation(result.operation);
         const authorizationView = resolveAuthorizationView(result);
+        const authorizationStepRevision =
+          typeof result.authorizationStepRevision === "number" &&
+          Number.isSafeInteger(result.authorizationStepRevision) &&
+          result.authorizationStepRevision >= 0
+            ? result.authorizationStepRevision
+            : undefined;
+        if (
+          authorizationStepRevision !== undefined &&
+          (afterAuthorizationStepRevision === undefined ||
+            authorizationStepRevision > afterAuthorizationStepRevision)
+        ) {
+          afterAuthorizationStepRevision = authorizationStepRevision;
+        }
         const discoveredNextStep =
           authorizationView !== null &&
           !seenAuthorizationViewIds.has(authorizationView.viewId);
@@ -619,14 +636,16 @@ export class ConnectorMarketService implements IConnectorMarketService {
             result.connector.authorization.failureCode
           );
         }
-        if (!discoveredNextStep) {
-          await this.waitForAuthorizationTerminal(
+        if (Date.now() >= attempt.expiresAtMs) {
+          attempt.canceled = true;
+          await this.dependencies.backend.cancelAuthorization({ connectorKey });
+          throw new ConnectorAuthorizationTerminalError(
             connectorKey,
-            token,
-            generation,
-            attempt
+            "connector_authorization_timeout"
           );
-          return;
+        }
+        if (!discoveredNextStep) {
+          await this.waitForAuthorizationContinuation();
         }
       }
       if (attempt.canceled) {
@@ -1287,35 +1306,6 @@ export class ConnectorMarketService implements IConnectorMarketService {
       this.dependencies.waitForAuthorizationContinuation?.() ??
       waitForAuthorizationContinuation()
     );
-  }
-
-  private async waitForAuthorizationTerminal(
-    connectorKey: string,
-    token: symbol,
-    generation: number,
-    attempt: AuthorizationAttemptControl
-  ): Promise<void> {
-    while (this.isCurrentMutation(connectorKey, token, generation)) {
-      if (attempt.canceled) {
-        throw new ConnectorAuthorizationCanceledError(connectorKey);
-      }
-      if (this.authorizationState(connectorKey) === "connected") {
-        await this.waitForAuthorizationOperation(connectorKey);
-        return;
-      }
-      if (Date.now() >= attempt.expiresAtMs) {
-        attempt.canceled = true;
-        await this.dependencies.backend.cancelAuthorization({ connectorKey });
-        throw new ConnectorAuthorizationTerminalError(
-          connectorKey,
-          "connector_authorization_timeout"
-        );
-      }
-      await this.waitForAuthorizationContinuation();
-    }
-    if (attempt.canceled) {
-      throw new ConnectorAuthorizationCanceledError(connectorKey);
-    }
   }
 
   private acquireConnectorMutation(connectorKey: string): symbol {

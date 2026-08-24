@@ -5136,6 +5136,10 @@ export type ConnectorMarketAuthorizationRequest = {
   clientRequestId: string;
   expectedRevision: number;
   expectedConnectorRevision?: number;
+  /**
+   * Cursor for a previously delivered authorization step. When provided, the Host resumes the same authorization attempt and waits briefly for a later step. A bounded poll may replay the current step. The cursor contains no authorization URL, user code, or credential material.
+   */
+  afterAuthorizationStepRevision?: number;
   replacementPolicy?: ConnectorMarketAuthorizationReplacementPolicy;
 };
 
@@ -5161,6 +5165,10 @@ export type ConnectorMarketAuthorizationResponse = {
     [key: string]: unknown;
   };
   authorizationExpiresAt: string;
+  /**
+   * Monotonic, non-secret revision of the provider authorization event returned by this response. Clients pass it back as afterAuthorizationStepRevision when waiting for a later step.
+   */
+  authorizationStepRevision: number;
   revision: number;
 };
 
@@ -5303,6 +5311,10 @@ export type ConnectorMarketAuthorizationRequestWritable = {
   clientRequestId: string;
   expectedRevision: number;
   expectedConnectorRevision?: number;
+  /**
+   * Cursor for a previously delivered authorization step. When provided, the Host resumes the same authorization attempt and waits briefly for a later step. A bounded poll may replay the current step. The cursor contains no authorization URL, user code, or credential material.
+   */
+  afterAuthorizationStepRevision?: number;
   replacementPolicy?: ConnectorMarketAuthorizationReplacementPolicy;
   secret?: string;
 };

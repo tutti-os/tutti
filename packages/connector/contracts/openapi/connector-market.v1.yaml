@@ -810,6 +810,16 @@ components:
           type: integer
           format: int64
           minimum: 0
+        afterAuthorizationStepRevision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Cursor for a previously delivered authorization step. When
+            provided, the Host resumes the same authorization attempt and
+            waits briefly for a later step. A bounded poll may replay the
+            current step. The cursor contains no authorization URL, user code,
+            or credential material.
         replacementPolicy:
           $ref: "#/components/schemas/ConnectorMarketAuthorizationReplacementPolicy"
         secret:
@@ -840,7 +850,14 @@ components:
     ConnectorMarketAuthorizationResponse:
       type: object
       additionalProperties: false
-      required: [connector, operation, authorizationExpiresAt, revision]
+      required:
+        [
+          connector,
+          operation,
+          authorizationExpiresAt,
+          authorizationStepRevision,
+          revision
+        ]
       properties:
         connector:
           $ref: "#/components/schemas/ConnectorMarketConnector"
@@ -858,6 +875,14 @@ components:
         authorizationExpiresAt:
           type: string
           format: date-time
+        authorizationStepRevision:
+          type: integer
+          format: int64
+          minimum: 0
+          description: >-
+            Monotonic, non-secret revision of the provider authorization event
+            returned by this response. Clients pass it back as
+            afterAuthorizationStepRevision when waiting for a later step.
         revision:
           type: integer
           format: int64

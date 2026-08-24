@@ -158,18 +158,46 @@ func TestManagedCredentialAuthorizationContinuesConnectorOwnedBroker(t *testing.
 	if first.State != market.AuthorizationStatePending || first.AuthorizationURL != "https://open.feishu.cn/page/cli?user_code=opaque" {
 		t.Fatalf("first session = %#v", first)
 	}
+	if first.StepRevision != 1 {
+		t.Fatalf("first step revision = %d, want 1", first.StepRevision)
+	}
 
+	secondResult := make(chan market.AuthorizationSession, 1)
+	secondError := make(chan error, 1)
+	go func() {
+		continuedRequest := request
+		continuedRequest.AfterStepRevision = first.StepRevision
+		session, err := provider.Begin(context.Background(), continuedRequest)
+		secondResult <- session
+		secondError <- err
+	}()
+	select {
+	case result := <-secondResult:
+		t.Fatalf("continuation returned the current step before a later event: %#v", result)
+	case <-time.After(20 * time.Millisecond):
+	}
 	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://accounts.feishu.cn/device?user_code=user"}` + "\n")}
-	second := awaitAuthorizationSession(t, provider, request, "https://accounts.feishu.cn/device?user_code=user")
+	if err := <-secondError; err != nil {
+		t.Fatal(err)
+	}
+	second := <-secondResult
 	if second.State != market.AuthorizationStatePending {
 		t.Fatalf("second session = %#v", second)
+	}
+	if second.AuthorizationURL != "https://accounts.feishu.cn/device?user_code=user" || second.StepRevision != 2 {
+		t.Fatalf("second step = %#v", second)
 	}
 
 	exitCode := 0
 	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"connected"}` + "\n"), ExitCode: &exitCode}
-	connected := awaitAuthorizationSession(t, provider, request, "")
+	terminalRequest := request
+	terminalRequest.AfterStepRevision = second.StepRevision
+	connected := awaitAuthorizationSession(t, provider, terminalRequest, "")
 	if connected.State != market.AuthorizationStateConnected {
 		t.Fatalf("connected session = %#v", connected)
+	}
+	if connected.StepRevision != 3 {
+		t.Fatalf("connected step revision = %d, want 3", connected.StepRevision)
 	}
 	if !reflect.DeepEqual(host.requests, []credentialBrokerRequest{{Protocol: market.CredentialBrokerProtocolV1, Operation: "begin"}}) {
 		t.Fatalf("broker requests = %#v", host.requests)
@@ -194,6 +222,7 @@ func TestManagedCredentialAuthorizationReturnsDeviceCodeFromBroker(t *testing.T)
 	go func() {
 		session, err := provider.Begin(context.Background(), market.AuthorizationStartRequest{
 			OperationID: "authorize-github", Connector: market.Connector{Key: "github-cli"},
+			AfterStepRevision: 4, StepRevisionBase: 4,
 		})
 		result <- session
 		resultErr <- err
@@ -204,7 +233,7 @@ func TestManagedCredentialAuthorizationReturnsDeviceCodeFromBroker(t *testing.T)
 		t.Fatal(err)
 	}
 	session := <-result
-	if session.AuthorizationURL != "https://github.com/login/device" || session.UserCode != "ABCD-EFGH" {
+	if session.AuthorizationURL != "https://github.com/login/device" || session.UserCode != "ABCD-EFGH" || session.StepRevision != 5 {
 		t.Fatalf("authorization session = %#v", session)
 	}
 }
@@ -464,7 +493,7 @@ func awaitCachedAuthorizationFailure(t *testing.T, provider *managedCredentialAu
 		session := provider.sessions[operationID]
 		provider.mu.Unlock()
 		if session != nil {
-			_, _, _, err := session.snapshot()
+			_, _, _, _, err := session.snapshot()
 			if err != nil {
 				return
 			}

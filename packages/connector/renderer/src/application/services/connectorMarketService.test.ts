@@ -1654,16 +1654,17 @@ test("continues one authorization session, opens each URL once, and clears loadi
         requests.push(request);
         step += 1;
         const next = connector("lark-cli", step + 1);
-        next.authorization = { state: step === 3 ? "connected" : "pending" };
+        next.authorization = { state: step === 4 ? "connected" : "pending" };
         return {
           connector: next,
           operation: {
             ...operation("start_authorization", step + 1),
             connectorKey: "lark-cli",
+            operationId: "lark-cli-authorization",
             state: "completed" as const
           },
           authorizationUrl:
-            step === 2
+            step === 3
               ? "https://accounts.feishu.cn/device?user_code=authorization"
               : "https://open.feishu.cn/page/cli?user_code=configuration",
           revision: step + 1
@@ -1673,13 +1674,14 @@ test("continues one authorization session, opens each URL once, and clears loadi
     createRequestId: () => "one-authorization-request",
     openAuthorizationUrl: async (url) => {
       openedUrls.push(url);
-    }
+    },
+    waitForAuthorizationContinuation: async () => undefined
   });
   await service.ensureLoaded();
 
   await service.beginAuthorization("lark-cli");
 
-  assert.equal(step, 3);
+  assert.equal(step, 4);
   assert.deepEqual(requests, [
     {
       connectorKey: "lark-cli",
@@ -1701,6 +1703,13 @@ test("continues one authorization session, opens each URL once, and clears loadi
       replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 3
+    },
+    {
+      connectorKey: "lark-cli",
+      clientRequestId: "one-authorization-request",
+      replacementPolicy: "replace_active",
+      expectedRevision: 1,
+      expectedConnectorRevision: 4
     }
   ]);
   assert.deepEqual(openedUrls, [
@@ -1712,6 +1721,66 @@ test("continues one authorization session, opens each URL once, and clears loadi
     "connected"
   );
   assert.deepEqual(service.dataStore.authorizingConnectorKeys, {});
+  service.dispose();
+});
+
+test("keeps consuming a versioned authorization session when the next step is delayed", async () => {
+  const requests: Array<{ afterAuthorizationStepRevision?: number }> = [];
+  const openedUrls: string[] = [];
+  let call = 0;
+  const initial = connector("generic-oauth", 1);
+  initial.authorization = { state: "disconnected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      beginAuthorization: async (request) => {
+        requests.push(request);
+        call += 1;
+        const connected = call === 4;
+        const next = connector("generic-oauth", call + 1);
+        next.authorization = { state: connected ? "connected" : "pending" };
+        const authorizationStepRevision = call < 3 ? 1 : call === 3 ? 2 : 3;
+        return {
+          connector: next,
+          operation: {
+            ...operation("start_authorization", call + 1),
+            connectorKey: "generic-oauth",
+            operationId: "generic-authorization",
+            state: "completed" as const
+          },
+          ...(connected
+            ? {}
+            : {
+                authorizationUrl:
+                  call < 3
+                    ? "https://accounts.example.com/configure"
+                    : "https://accounts.example.com/device"
+              }),
+          authorizationStepRevision,
+          revision: call + 1
+        };
+      }
+    }),
+    createRequestId: () => "versioned-authorization-request",
+    openAuthorizationUrl: async (url) => {
+      openedUrls.push(url);
+    },
+    waitForAuthorizationContinuation: async () => undefined
+  });
+  await service.ensureLoaded();
+
+  await service.beginAuthorization("generic-oauth");
+
+  assert.deepEqual(
+    requests.map(
+      ({ afterAuthorizationStepRevision }) => afterAuthorizationStepRevision
+    ),
+    [undefined, 1, 1, 2]
+  );
+  assert.deepEqual(openedUrls, [
+    "https://accounts.example.com/configure",
+    "https://accounts.example.com/device"
+  ]);
   service.dispose();
 });
 

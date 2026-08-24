@@ -337,6 +337,7 @@ func (application *Application) beginAuthorizationSession(
 	operation Operation,
 	secret []byte,
 	replacementPolicy AuthorizationReplacementPolicy,
+	afterStepRevision uint64,
 ) (AuthorizationSession, error) {
 	release, err := frozenRelease(operation)
 	if err != nil {
@@ -370,6 +371,10 @@ func (application *Application) beginAuthorizationSession(
 			return AuthorizationSession{}, err
 		}
 	}
+	stepRevisionBase := operationAuthorizationStepRevision(operation)
+	if afterStepRevision > stepRevisionBase {
+		return AuthorizationSession{}, invalidRequest("authorization step cursor is ahead of the durable session")
+	}
 	session, err := application.config.Authorization.Begin(ctx, AuthorizationStartRequest{
 		OperationID:       operation.OperationID,
 		ClientRequestID:   operation.ClientRequestID,
@@ -378,6 +383,8 @@ func (application *Application) beginAuthorizationSession(
 		Connector:         connector,
 		Release:           release,
 		Secret:            secret,
+		AfterStepRevision: afterStepRevision,
+		StepRevisionBase:  stepRevisionBase,
 	})
 	if err != nil {
 		return AuthorizationSession{}, NewDomainError(
@@ -389,6 +396,16 @@ func (application *Application) beginAuthorizationSession(
 	}
 	if session.ExpiresAt.IsZero() {
 		session.ExpiresAt = application.config.Now().UTC().Add(authorizationSessionTTL)
+	}
+	previousStepRevision := stepRevisionBase
+	if session.State == AuthorizationStatePending && session.StepRevision == 0 {
+		// Providers released before the versioned-step contract only expose one
+		// redirect at a time. Give that legacy presentation a stable revision;
+		// renderer view-id fallback still detects a later legacy presentation.
+		session.StepRevision = max(previousStepRevision, 1)
+	}
+	if session.StepRevision < previousStepRevision {
+		return AuthorizationSession{}, invalidOperationReceipt("authorization provider returned a regressed step revision")
 	}
 	if session.OperationID != operation.OperationID || session.ConnectorKey != operation.ConnectorKey ||
 		strings.TrimSpace(session.SessionID) == "" || !validAuthorizationSessionAction(session) {
@@ -411,6 +428,13 @@ func (application *Application) beginAuthorizationSession(
 		}
 	}
 	return session, nil
+}
+
+func operationAuthorizationStepRevision(operation Operation) uint64 {
+	if operation.Execution.AuthorizationSession == nil {
+		return 0
+	}
+	return operation.Execution.AuthorizationSession.StepRevision
 }
 
 func validAuthorizationSessionAction(session AuthorizationSession) bool {
@@ -598,7 +622,9 @@ func (application *Application) completeAuthorizationStart(
 			return err
 		}
 		stateChanged := projectDeviceState && connector.Authorization.State != session.State
-		if operation.State == OperationStateCompleted && !stateChanged {
+		stepChanged := operation.Execution.AuthorizationSession == nil ||
+			operation.Execution.AuthorizationSession.StepRevision != session.StepRevision
+		if operation.State == OperationStateCompleted && !stateChanged && !stepChanged {
 			return nil
 		}
 		if stateChanged && !CanTransitionAuthorization(connector.Authorization.State, session.State) {

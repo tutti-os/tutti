@@ -548,6 +548,7 @@ type AuthorizationSession struct {
 	ActionType       string                         `json:"actionType"`
 	AuthorizationURL string                         `json:"-"`
 	UserCode         string                         `json:"-"`
+	StepRevision     uint64                         `json:"stepRevision,omitempty"`
 	ExpiresAt        time.Time                      `json:"expiresAt"`
 	State            AuthorizationState             `json:"-"`
 	Resolution       AuthorizationSessionResolution `json:"resolution"`
@@ -631,10 +632,11 @@ type Mutation struct {
 
 type ConnectorMutation struct {
 	Mutation
-	ConnectorKey              string                         `json:"connectorKey"`
-	AccountID                 string                         `json:"accountId,omitempty"`
-	ExpectedConnectorRevision *uint64                        `json:"expectedConnectorRevision,omitempty"`
-	ReplacementPolicy         AuthorizationReplacementPolicy `json:"replacementPolicy,omitempty"`
+	ConnectorKey                   string                         `json:"connectorKey"`
+	AccountID                      string                         `json:"accountId,omitempty"`
+	ExpectedConnectorRevision      *uint64                        `json:"expectedConnectorRevision,omitempty"`
+	AfterAuthorizationStepRevision uint64                         `json:"afterAuthorizationStepRevision,omitempty"`
+	ReplacementPolicy              AuthorizationReplacementPolicy `json:"replacementPolicy,omitempty"`
 }
 
 type AuthorizationReplacementPolicy string
@@ -686,10 +688,11 @@ type MutationResult struct {
 }
 
 type AuthorizationResult struct {
-	Connector              Connector                  `json:"connector"`
-	Operation              Operation                  `json:"operation"`
-	AuthorizationURL       string                     `json:"authorizationUrl,omitempty"`
-	AuthorizationView      *AuthorizationViewEnvelope `json:"authorizationView,omitempty"`
-	AuthorizationExpiresAt time.Time                  `json:"authorizationExpiresAt"`
-	Revision               uint64                     `json:"revision"`
+	Connector                 Connector                  `json:"connector"`
+	Operation                 Operation                  `json:"operation"`
+	AuthorizationURL          string                     `json:"authorizationUrl,omitempty"`
+	AuthorizationView         *AuthorizationViewEnvelope `json:"authorizationView,omitempty"`
+	AuthorizationExpiresAt    time.Time                  `json:"authorizationExpiresAt"`
+	AuthorizationStepRevision uint64                     `json:"authorizationStepRevision"`
+	Revision                  uint64                     `json:"revision"`
 }
