@@ -51,7 +51,7 @@ type AccountUsageService struct {
 	Manager *Manager
 	Targets AgentTargetLookup
 	Now     func() time.Time
-	run     func(context.Context, string, string, []string, *agentruntime.ExecutableIdentity, *agentruntime.ExecutableIdentity, int) ([]byte, error)
+	run     func(context.Context, string, string, []string, []string, *agentruntime.ExecutableIdentity, *agentruntime.ExecutableIdentity, int) ([]byte, error)
 }
 
 func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string) (AccountUsageResult, error) {
@@ -116,6 +116,10 @@ func (service AccountUsageService) probe(ctx context.Context, targetID string) (
 		base.ErrorCode = "runtime_unavailable"
 		return base, nil
 	}
+	// Give the provider-owned companion access to the probed agent's managed
+	// runtime install root, so a non-npm runtime can delegate account-usage
+	// resolution to its own installed code.
+	accountUsageBinding.Env = service.accountUsageProbeEnvironment(installation)
 	if err := ctx.Err(); err != nil {
 		return AccountUsageResult{}, err
 	}
@@ -130,6 +134,7 @@ func (service AccountUsageService) probe(ctx context.Context, targetID string) (
 		accountUsageBinding.NodePath,
 		accountUsageBinding.ScriptPath,
 		accountUsageBinding.Args,
+		accountUsageBinding.Env,
 		accountUsageBinding.NodeIdentity,
 		accountUsageBinding.ScriptIdentity,
 		accountUsageOutputLimit,
@@ -182,6 +187,20 @@ func (service AccountUsageService) now() time.Time {
 		return service.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+// accountUsageProbeEnvironment exposes the probed agent's managed runtime
+// install root to a provider-owned companion, so a runtime that is not
+// npm/pnpm can delegate account-usage resolution to its own installed code.
+func (service AccountUsageService) accountUsageProbeEnvironment(installation Installation) []string {
+	if service.Manager == nil {
+		return nil
+	}
+	root, err := service.Manager.installedManagedRuntimeRoot(installation)
+	if err != nil || strings.TrimSpace(root) == "" {
+		return nil
+	}
+	return []string{"TUTTI_AGENT_RUNTIME_INSTALL_ROOT=" + root}
 }
 
 type accountUsagePayload struct {

@@ -72,7 +72,7 @@ func (s *SetupService) installAccountUsageCompanion(ctx context.Context, install
 	}
 	if profile == nil || profile.Runtime.Kind != "node-script" ||
 		profile.Runtime.Package != companion.Package ||
-		installation.Manifest.Runtime.Install.Runner != companion.Runner {
+		accountUsageEffectiveRunner(installation.Manifest.Runtime.Install.Runner, profile) != companion.Runner {
 		return errors.New("account usage companion install contract changed")
 	}
 	base := filepath.Join(s.Plans.Manager.RuntimeInstallDir, ".account-usage")

@@ -142,6 +142,56 @@ func TestBuildInstallPlanPinsAccountUsageCompanionToManagedRuntime(t *testing.T)
 	}
 }
 
+func TestBuildInstallPlanPrefersProfileIndependentInstaller(t *testing.T) {
+	manifest := testManifest()
+	manifest.Profiles.AccountUsage = "profiles/account-usage.json"
+	manager := &Manager{
+		Installations:     agentextensiondata.NewFileInstallationStore(t.TempDir()),
+		RuntimeInstallDir: filepath.Join(testResolvedTempDir(t), "agent-runtimes"),
+	}
+	installation, err := installTestPackage(
+		t,
+		manager,
+		Release{AgentKey: manifest.AgentKey, Version: manifest.Version},
+		testPackageZIPFor(
+			t,
+			manifest,
+			`{"schemaVersion":"tutti.agent.discovery.v1","candidates":[{"binaryNames":["gemini"],"version":{"args":["--version"],"constraint":">=0.50.0 <1.0.0"},"launchArgs":["--acp"],"probe":{"kind":"acp-initialize","timeoutMs":5000}}]}`,
+		),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const companionPackage = "@example/gemini-account-usage@1.0.0"
+	if err := os.WriteFile(
+		filepath.Join(installation.PackageDir, manifest.Profiles.AccountUsage),
+		[]byte(`{"schemaVersion":"tutti.agent.account-usage-probe.v1","runtime":{"package":"`+companionPackage+`","kind":"node-script","script":"${installRoot}/node_modules/@example/gemini-account-usage/dist/cli.cjs","args":["--output","json"],"timeoutMs":10000,"install":{"runner":"npm","args":["install","--prefix","${installRoot}","--no-save","`+companionPackage+`"]}}}`),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate a non-npm host runtime: only the companion install must change.
+	installation.Manifest.Runtime.Install.Runner = "uv"
+	installation.Manifest.Runtime.Install.Args = []string{"tool", "install", "gemini-acp==0.50.0"}
+	installation.Manifest.Runtime.Launch.Executable = "${installRoot}/bin/gemini-acp"
+
+	plan, err := buildInstallPlan("extension:gemini", manager.RuntimeInstallDir, installation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.AccountUsage == nil || plan.AccountUsage.Package != companionPackage {
+		t.Fatalf("account usage install = %#v", plan.AccountUsage)
+	}
+	if plan.AccountUsage.Runner != "npm" ||
+		plan.AccountUsage.InstallCommand[0] != "npm" ||
+		plan.AccountUsage.InstallCommand[len(plan.AccountUsage.InstallCommand)-1] != companionPackage {
+		t.Fatalf("account usage independent install = %#v", plan.AccountUsage.InstallCommand)
+	}
+	if plan.Runner != "uv" || plan.InstallCommand[0] != "uv" {
+		t.Fatalf("main runtime install changed: %#v", plan.InstallCommand)
+	}
+}
+
 func TestBuildInstallPlanKeepsMainRuntimeWhenAccountUsageProfileCannotLoad(t *testing.T) {
 	manifest := testManifest()
 	manifest.Profiles.AccountUsage = "profiles/account-usage.json"

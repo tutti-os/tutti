@@ -192,7 +192,19 @@ type AccountUsageProfile struct {
 		Script    string   `json:"script"`
 		Args      []string `json:"args"`
 		TimeoutMS int      `json:"timeoutMs"`
+		// Install optionally declares an installer for the companion package
+		// that is independent of the agent runtime installer. It lets an
+		// extension whose runtime itself is not npm/pnpm (e.g. a uv-managed
+		// Python CLI) still ship a node-script account-usage companion.
+		Install *AccountUsageInstallProfile `json:"install,omitempty"`
 	} `json:"runtime"`
+}
+
+// AccountUsageInstallProfile declares how the account usage companion package
+// is installed when the agent runtime's own installer cannot install it.
+type AccountUsageInstallProfile struct {
+	Runner string   `json:"runner"`
+	Args   []string `json:"args"`
 }
 
 func (m *Manager) LoadComposerProfile(installationID string) (ComposerProfile, error) {
@@ -670,7 +682,55 @@ func validateAccountUsageProfile(profile AccountUsageProfile) error {
 	if profile.Runtime.TimeoutMS < 100 || profile.Runtime.TimeoutMS > 30_000 {
 		return errors.New("account usage companion timeout must be 100..30000")
 	}
+	if profile.Runtime.Install != nil {
+		if err := validateAccountUsageInstallProfile(profile); err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+func validateAccountUsageInstallProfile(profile AccountUsageProfile) error {
+	install := profile.Runtime.Install
+	runner := strings.TrimSpace(install.Runner)
+	if runner != "npm" && runner != "pnpm" {
+		return errors.New("account usage companion installer runner must be npm or pnpm")
+	}
+	if len(install.Args) == 0 || len(install.Args) > 8 {
+		return errors.New("account usage companion installer must declare 1..8 arguments")
+	}
+	declaredPackage := strings.TrimSpace(profile.Runtime.Package)
+	packageNamed := false
+	for _, argument := range install.Args {
+		if argument != strings.TrimSpace(argument) || utf8.RuneCountInString(argument) > 128 ||
+			strings.ContainsAny(argument, "|;&`\n\r<>") || strings.Contains(argument, "$(") ||
+			strings.ContainsFunc(argument, unicode.IsControl) {
+			return errors.New("account usage companion installer argument is invalid")
+		}
+		if strings.TrimSpace(argument) == declaredPackage {
+			packageNamed = true
+		}
+	}
+	if !packageNamed {
+		return errors.New("account usage companion installer must name the companion package")
+	}
+	for _, argument := range install.Args {
+		placeholderFree := strings.NewReplacer("${installRoot}", "", "${platform}", "").Replace(argument)
+		if strings.Contains(placeholderFree, "$") {
+			return errors.New("account usage companion installer argument contains unsupported placeholders")
+		}
+	}
+	return nil
+}
+
+// accountUsageEffectiveRunner resolves the installer used for the account
+// usage companion: the profile-declared installer when present, otherwise the
+// agent runtime's own installer.
+func accountUsageEffectiveRunner(runtimeRunner string, profile *AccountUsageProfile) string {
+	if profile != nil && profile.Runtime.Install != nil && strings.TrimSpace(profile.Runtime.Install.Runner) != "" {
+		return strings.TrimSpace(profile.Runtime.Install.Runner)
+	}
+	return runtimeRunner
 }
 
 func validAuthenticationPresentation(value string, maxRunes int) bool {
@@ -752,8 +812,9 @@ func validateInstalledProfiles(root string, manifest Manifest) error {
 	if err != nil {
 		return err
 	}
-	if accountUsage != nil && manifest.Runtime.Install.Runner != "npm" && manifest.Runtime.Install.Runner != "pnpm" {
-		return errors.New("account usage companion requires an npm-compatible managed runtime")
+	if accountUsage != nil && accountUsage.Runtime.Install == nil &&
+		manifest.Runtime.Install.Runner != "npm" && manifest.Runtime.Install.Runner != "pnpm" {
+		return errors.New("account usage companion requires an npm-compatible managed runtime unless the profile declares an independent installer")
 	}
 	return nil
 }

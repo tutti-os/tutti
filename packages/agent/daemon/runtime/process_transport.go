@@ -96,7 +96,7 @@ func RunVerifiedNodeScriptBounded(
 	maxBytes int,
 ) ([]byte, error) {
 	return NewVerifiedNodeScriptRunner("").Run(
-		ctx, nodePath, scriptPath, args, nodeIdentity, scriptIdentity, maxBytes,
+		ctx, nodePath, scriptPath, args, nil, nodeIdentity, scriptIdentity, maxBytes,
 	)
 }
 
@@ -132,6 +132,7 @@ func (runner *VerifiedNodeScriptRunner) Run(
 	nodePath string,
 	scriptPath string,
 	args []string,
+	extraEnv []string,
 	nodeIdentity *ExecutableIdentity,
 	scriptIdentity *ExecutableIdentity,
 	maxBytes int,
@@ -155,6 +156,9 @@ func (runner *VerifiedNodeScriptRunner) Run(
 	cmd := newManagedProcessCommand(ctx, preparedNode.path, nodeArgs...)
 	if preparedNode.file != nil {
 		cmd.ExtraFiles = []*os.File{preparedNode.file}
+	}
+	if len(extraEnv) > 0 {
+		cmd.Env = append(os.Environ(), extraEnv...)
 	}
 	cmd.Stdin = bytes.NewReader(script)
 	output := boundedProcessOutput{limit: maxBytes}

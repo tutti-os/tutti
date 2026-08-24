@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -86,6 +87,7 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 	var node string
 	var script string
 	var args []string
+	var envRoot string
 	var runCalls atomic.Int32
 	started := make(chan struct{})
 	release := make(chan struct{})
@@ -93,13 +95,18 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 	service := AccountUsageService{
 		Manager: manager,
 		Targets: store,
-		run: func(_ context.Context, gotNode string, gotScript string, gotArgs []string, nodeIdentity *agentruntime.ExecutableIdentity, scriptIdentity *agentruntime.ExecutableIdentity, _ int) ([]byte, error) {
+		run: func(_ context.Context, gotNode string, gotScript string, gotArgs []string, gotEnv []string, nodeIdentity *agentruntime.ExecutableIdentity, scriptIdentity *agentruntime.ExecutableIdentity, _ int) ([]byte, error) {
 			runCalls.Add(1)
 			startedOnce.Do(func() { close(started) })
 			<-release
 			node = gotNode
 			script = gotScript
 			args = append([]string(nil), gotArgs...)
+			for _, variable := range gotEnv {
+				if strings.HasPrefix(variable, "TUTTI_AGENT_RUNTIME_INSTALL_ROOT=") {
+					envRoot = variable
+				}
+			}
 			if nodeIdentity == nil || scriptIdentity == nil {
 				t.Fatal("local account usage identities = nil")
 			}
@@ -132,6 +139,10 @@ func TestAccountUsageServiceUsesExplicitLocalCompanionForLocalExtension(t *testi
 	}
 	if node != nodePath || script != helperExecutable || !reflect.DeepEqual(args, []string{"--output", "json"}) {
 		t.Fatalf("local account usage command = %q %q %#v", node, script, args)
+	}
+	root := strings.TrimPrefix(envRoot, "TUTTI_AGENT_RUNTIME_INSTALL_ROOT=")
+	if envRoot == root || !filepath.IsAbs(root) {
+		t.Fatalf("account usage runtime root env = %q, want an absolute runtime install root", envRoot)
 	}
 	if runCalls.Load() != 1 {
 		t.Fatalf("concurrent account usage executions = %d, want 1", runCalls.Load())

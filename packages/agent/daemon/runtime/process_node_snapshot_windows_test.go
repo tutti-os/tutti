@@ -27,7 +27,7 @@ func TestVerifiedNodeScriptRunnerExecutesLockedSnapshot(t *testing.T) {
 	runner := NewVerifiedNodeScriptRunner(t.TempDir())
 	defer func() { _ = runner.Close() }()
 	output, err := runner.Run(
-		context.Background(), nodePath, scriptPath, nil, fileIdentity(t, nodePath), fileIdentity(t, scriptPath), 32,
+		context.Background(), nodePath, scriptPath, nil, nil, fileIdentity(t, nodePath), fileIdentity(t, scriptPath), 32,
 	)
 	if err != nil || string(output) != "locked-ok" {
 		t.Fatalf("locked Node snapshot output = %q, error = %v", output, err)

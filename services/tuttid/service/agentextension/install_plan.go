@@ -211,8 +211,9 @@ func buildAccountUsageInstall(
 	if !pathWithin(accountUsageScript, companionRoot) {
 		return nil, errors.New("account usage companion script escapes install root")
 	}
+	runner := installation.Manifest.Runtime.Install.Runner
 	companionArgs, err := accountUsageInstallArgs(
-		installation.Manifest.Runtime.Install.Runner,
+		runner,
 		installation.Manifest.Runtime.Install.Args,
 		profile.Runtime.Package,
 		companionRoot,
@@ -221,12 +222,25 @@ func buildAccountUsageInstall(
 	if err != nil {
 		return nil, err
 	}
+	if profile.Runtime.Install != nil {
+		runner = strings.TrimSpace(profile.Runtime.Install.Runner)
+		companionArgs = resolveAccountUsageInstallArgs(profile.Runtime.Install.Args, companionRoot, platform)
+	}
 	return &AccountUsageInstall{
-		RuntimeIdentity: companionIdentity, Runner: installation.Manifest.Runtime.Install.Runner,
+		RuntimeIdentity: companionIdentity, Runner: runner,
 		Package: profile.Runtime.Package, InstallRoot: companionRoot,
-		InstallCommand: append([]string{installation.Manifest.Runtime.Install.Runner}, companionArgs...), Script: accountUsageScript,
+		InstallCommand: append([]string{runner}, companionArgs...), Script: accountUsageScript,
 		Args: append([]string(nil), profile.Runtime.Args...), TimeoutMS: profile.Runtime.TimeoutMS,
 	}, nil
+}
+
+func resolveAccountUsageInstallArgs(args []string, installRoot, platform string) []string {
+	replacer := strings.NewReplacer("${installRoot}", installRoot, "${platform}", platform)
+	resolved := make([]string, len(args))
+	for index, argument := range args {
+		resolved[index] = replacer.Replace(argument)
+	}
+	return resolved
 }
 
 func managedRuntimeIdentity(

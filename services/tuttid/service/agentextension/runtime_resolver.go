@@ -45,6 +45,7 @@ type AccountUsageRuntimeBinding struct {
 	NodePath       string
 	ScriptPath     string
 	Args           []string
+	Env            []string
 	Timeout        time.Duration
 	NodeIdentity   *agentruntime.ExecutableIdentity
 	ScriptIdentity *agentruntime.ExecutableIdentity
