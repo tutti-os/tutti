@@ -79,6 +79,7 @@ type credentialBrokerEvent struct {
 type credentialBrokerSession struct {
 	operationID string
 	route       *connectorRoute
+	connection  agentruntime.ProcessConnection
 	cancel      context.CancelFunc
 	done        chan struct{}
 
@@ -313,16 +314,18 @@ func (provider *managedCredentialAuthorizationProvider) authorizationSessionOrSt
 		return nil, fmt.Errorf("start connector credential broker: %w", err)
 	}
 	session := &credentialBrokerSession{
-		operationID: operationID, route: route, cancel: cancel, done: make(chan struct{}), changed: make(chan struct{}),
+		operationID: operationID, route: route, connection: connection, cancel: cancel,
+		done: make(chan struct{}), changed: make(chan struct{}),
 	}
 	provider.sessions[operationID] = session
 	provider.activeByRoute[route.id] = operationID
 	provider.mu.Unlock()
-	go consumeAuthorizationEvents(provider.host, route, connection, processID, session)
+	go consumeAuthorizationEvents(processContext, provider.host, route, connection, processID, session)
 	return session, nil
 }
 
 func consumeAuthorizationEvents(
+	ctx context.Context,
 	host managedCredentialAuthorizationHost,
 	route *connectorRoute,
 	connection agentruntime.ProcessConnection,
@@ -334,8 +337,14 @@ func consumeAuthorizationEvents(
 	defer func() { _ = route.releaseProcess(processID, connection) }()
 	var stdout, stderr strings.Builder
 	for {
-		frame, err := receiveCredentialBrokerFrame(connection)
+		frame, err := receiveCredentialBrokerFrameContext(ctx, connection)
 		if err != nil {
+			// Explicit cancellation owns the terminal state transition. Do not race
+			// the caller by projecting a transient broker failure while shutdown is
+			// already in progress.
+			if errors.Is(ctx.Err(), context.Canceled) {
+				return
+			}
 			if !errors.Is(err, io.EOF) {
 				failAuthorizationSession(host, route, session, fmt.Errorf("receive connector credential broker event: %w", err))
 			} else if !session.terminal() {
@@ -790,13 +799,17 @@ func (provider *managedCredentialAuthorizationProvider) cancelAuthorizationSessi
 		return nil
 	}
 	session.cancel()
+	var closeErr error
+	if session.connection != nil {
+		closeErr = session.connection.Close()
+	}
 	select {
 	case <-session.done:
 		provider.clearAuthorizationSession(session.operationID, session)
 		provider.host.releaseAuthorizationRoute(session.route)
-		return nil
+		return closeErr
 	case <-ctx.Done():
-		return fmt.Errorf("wait for connector credential broker termination: %w", ctx.Err())
+		return errors.Join(closeErr, fmt.Errorf("wait for connector credential broker termination: %w", ctx.Err()))
 	}
 }
 
@@ -806,6 +819,9 @@ func (provider *managedCredentialAuthorizationProvider) cancelAuthorizationSessi
 	}
 	if session := provider.takeAuthorizationSessionByRoute(routeID); session != nil {
 		session.cancel()
+		if session.connection != nil {
+			_ = session.connection.Close()
+		}
 	}
 }
 

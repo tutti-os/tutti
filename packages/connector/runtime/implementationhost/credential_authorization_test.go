@@ -86,18 +86,27 @@ func (stub *credentialAuthorizationHostStub) startCredentialBroker(
 }
 
 type credentialBrokerConnection struct {
-	frames chan agentruntime.ProcessFrame
+	frames    chan agentruntime.ProcessFrame
+	closed    chan struct{}
+	closeOnce sync.Once
 }
 
 func newCredentialBrokerConnection() *credentialBrokerConnection {
-	return &credentialBrokerConnection{frames: make(chan agentruntime.ProcessFrame, 8)}
+	return &credentialBrokerConnection{frames: make(chan agentruntime.ProcessFrame, 8), closed: make(chan struct{})}
 }
 
 func (*credentialBrokerConnection) Send([]byte) error { return nil }
-func (*credentialBrokerConnection) Close() error      { return nil }
 func (*credentialBrokerConnection) CloseInput() error { return nil }
 func (*credentialBrokerConnection) Terminate() error  { return nil }
 func (*credentialBrokerConnection) Kill() error       { return nil }
+
+func (connection *credentialBrokerConnection) Close() error {
+	connection.closeOnce.Do(func() {
+		close(connection.closed)
+		close(connection.frames)
+	})
+	return nil
+}
 
 func (connection *credentialBrokerConnection) Recv() (agentruntime.ProcessFrame, error) {
 	frame, ok := <-connection.frames
@@ -105,6 +114,18 @@ func (connection *credentialBrokerConnection) Recv() (agentruntime.ProcessFrame,
 		return agentruntime.ProcessFrame{}, io.EOF
 	}
 	return frame, nil
+}
+
+func (connection *credentialBrokerConnection) RecvContext(ctx context.Context) (agentruntime.ProcessFrame, error) {
+	select {
+	case <-ctx.Done():
+		return agentruntime.ProcessFrame{}, ctx.Err()
+	case frame, ok := <-connection.frames:
+		if !ok {
+			return agentruntime.ProcessFrame{}, io.EOF
+		}
+		return frame, nil
+	}
 }
 
 func TestManagedCredentialAuthorizationContinuesConnectorOwnedBroker(t *testing.T) {
@@ -390,7 +411,7 @@ func TestManagedCredentialAuthorizationRestartsFailedBrokerOnFirstRetry(t *testi
 	}
 }
 
-func TestManagedCredentialAuthorizationCancelWaitsForBrokerExit(t *testing.T) {
+func TestManagedCredentialAuthorizationCancelTerminatesAndWaitsForBrokerExit(t *testing.T) {
 	connection := newCredentialBrokerConnection()
 	route := &connectorRoute{id: "default\x00dingtalk-cli", credentialBrokerLaunch: &managedCredentialBrokerLaunch{
 		timeout: 5 * time.Minute, allowedHosts: map[string]struct{}{"login.dingtalk.com": {}},
@@ -408,33 +429,30 @@ func TestManagedCredentialAuthorizationCancelWaitsForBrokerExit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	provider.mu.Lock()
-	session := provider.sessions[request.OperationID]
-	originalCancel := session.cancel
-	cancelRequested := make(chan struct{})
-	session.cancel = func() {
-		close(cancelRequested)
-		originalCancel()
-	}
-	provider.mu.Unlock()
 	cancelDone := make(chan error, 1)
 	go func() {
 		cancelDone <- provider.Cancel(context.Background(), market.AuthorizationCancelRequest{OperationID: request.OperationID})
 	}()
-	<-cancelRequested
+	select {
+	case <-connection.closed:
+	case <-time.After(time.Second):
+		t.Fatal("cancel did not close the credential broker connection")
+	}
 	select {
 	case err := <-cancelDone:
-		t.Fatalf("cancel returned before broker exit: %v", err)
-	default:
-	}
-	close(connection.frames)
-	if err := <-cancelDone; err != nil {
-		t.Fatal(err)
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("cancel did not wait for credential broker termination")
 	}
 	provider.mu.Lock()
-	defer provider.mu.Unlock()
 	if provider.sessions[request.OperationID] != nil || provider.activeByRoute[route.id] != "" {
 		t.Fatalf("canceled session remained active: sessions=%#v routes=%#v", provider.sessions, provider.activeByRoute)
+	}
+	provider.mu.Unlock()
+	if observed := host.authorizationObservations(); !reflect.DeepEqual(observed, []market.AuthorizationState{market.AuthorizationStatePending}) {
+		t.Fatalf("authorization observations after cancel = %#v", observed)
 	}
 }
 
