@@ -638,6 +638,117 @@ describe("workspaceAgentConsumerSelectors", () => {
     expect(model.waitingCount).toBe(0);
   });
 
+  it("uses the latest user message as the title for a continued historical session", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ title: "Original request" })]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-old",
+              version: 1,
+              turnId: "turn-old",
+              role: "user",
+              kind: "message",
+              payload: { text: "Original request" },
+              occurredAtUnixMs: 10
+            },
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-latest",
+              version: 2,
+              turnId: "turn-latest",
+              role: "user",
+              kind: "message",
+              payload: { text: "Continue with the latest request" },
+              occurredAtUnixMs: 20
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]?.title).toBe("Continue with the latest request");
+  });
+
+  it("keeps a waiting plan prompt while projecting its latest user message", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          title: "Original request",
+          activeTurnId: "turn-plan",
+          activeTurn: {
+            turnId: "turn-plan",
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "waiting",
+            startedAtUnixMs: 10,
+            updatedAtUnixMs: 20
+          },
+          pendingInteractions: [
+            {
+              requestId: "request-exit-plan",
+              agentSessionId: "session-1",
+              turnId: "turn-plan",
+              kind: "approval",
+              status: "pending",
+              toolName: "ExitPlanMode",
+              input: {
+                toolCall: { kind: "switch_mode" },
+                options: [{ optionId: "acceptEdits", label: "Accept edits" }]
+              },
+              createdAtUnixMs: 20,
+              updatedAtUnixMs: 20
+            }
+          ]
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-plan",
+              version: 1,
+              turnId: "turn-plan",
+              role: "user",
+              kind: "message",
+              payload: { text: "Implement the revised plan" },
+              occurredAtUnixMs: 19
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]).toMatchObject({
+      title: "Implement the revised plan",
+      status: "waiting",
+      pendingPrompt: {
+        kind: "exit-plan",
+        requestId: "request-exit-plan"
+      }
+    });
+  });
+
   it("omits hidden sessions from the message center model by default", () => {
     const engine = createEngine();
     engine.dispatch({

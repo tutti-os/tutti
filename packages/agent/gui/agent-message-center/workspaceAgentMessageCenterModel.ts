@@ -149,7 +149,8 @@ export function buildWorkspaceAgentMessageCenterItem({
     messages
   );
   const lastAgentMessage = messageAnalysis.latestAgentMessage;
-  const title = session.title.trim();
+  const title =
+    messageAnalysis.latestUserMessageSummary || session.title.trim();
   const digest = buildWorkspaceAgentMessageCenterDigest({
     fallbackTitle: title,
     latestAgentMessage: messageAnalysis.latestDigestAgentMessage,
@@ -248,6 +249,7 @@ function isImportedMessageCenterSession(
 }
 
 interface MessageCenterSessionMessageAnalysis {
+  latestUserMessageSummary: string;
   latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestTurnOutcome: WorkspaceAgentMessageCenterTurnOutcome | null;
@@ -268,6 +270,8 @@ function analyzeMessageCenterSessionMessages(
   agentSessionId: string,
   messages: readonly AgentActivityMessage[]
 ): MessageCenterSessionMessageAnalysis {
+  let latestUserMessageSummary = "";
+  let latestUserMessageAtUnixMs = Number.NEGATIVE_INFINITY;
   let latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
     null;
   let latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
@@ -276,6 +280,17 @@ function analyzeMessageCenterSessionMessages(
   let latestOutcome: TurnOutcomeCandidate | null = null;
 
   for (const message of messages) {
+    if (isUserMessageRole(message.role)) {
+      const summary = messageSummary(message);
+      if (summary) {
+        const occurredAtUnixMs = messageTimeUnixMs(message);
+        if (occurredAtUnixMs >= latestUserMessageAtUnixMs) {
+          latestUserMessageSummary = summary;
+          latestUserMessageAtUnixMs = occurredAtUnixMs;
+        }
+      }
+    }
+
     if (
       isAgentMessageRole(message.role) &&
       !isReasoningMessageKind(message.kind)
@@ -328,6 +343,7 @@ function analyzeMessageCenterSessionMessages(
   }
 
   return {
+    latestUserMessageSummary,
     latestDigestAgentMessage,
     latestAgentMessage,
     latestTurnOutcome: latestOutcome?.outcome ?? null,
@@ -545,6 +561,10 @@ function outcomeStatusFromMessage(
 function isAgentMessageRole(role: string): boolean {
   const normalized = role.trim().toLowerCase();
   return normalized === "assistant" || normalized === "agent";
+}
+
+function isUserMessageRole(role: string): boolean {
+  return role.trim().toLowerCase() === "user";
 }
 
 /**
