@@ -415,6 +415,7 @@ func (h *Host) processSessionForkOperationWithSource(
 						failErr,
 					)
 				}
+				logQuarantinedSessionFork(ctx, failed, err)
 				return ForkSessionResult{Operation: failed}, errors.Join(
 					ErrSessionForkFailed,
 					fmt.Errorf("materialize accepted session fork: %w", err),
