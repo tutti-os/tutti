@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -498,13 +499,18 @@ func activateManagedRuntimeWithCrashInjection(
 		return err
 	}
 	if entry != nil {
-		if err := publishManagedRuntimeEntry(*entry); err != nil {
+		published, err := publishManagedRuntimeEntry(*entry)
+		if err != nil {
 			_ = staging.Close()
 			_ = workspace.remove(plan.RuntimeIdentity)
 			if hadPrevious {
 				_ = workspace.rename(backupName, plan.RuntimeIdentity)
 			}
 			return err
+		}
+		if !published {
+			slog.Warn("agent extension user command publication skipped; a user-owned command with the same name is preserved",
+				"userPath", entry.UserPath)
 		}
 	}
 	_ = workspace.remove(backupName)

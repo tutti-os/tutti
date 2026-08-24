@@ -43,16 +43,44 @@ func NewEntry(runtimeRoot, userBinDir, commandName, finalExecutable string) (Ent
 	}, nil
 }
 
+// userEntryKind classifies the state of the user-command hop.
+type userEntryKind uint8
+
+const (
+	// userEntryAbsent: no command with this name exists in the user bin dir.
+	userEntryAbsent userEntryKind = iota
+	// userEntryManaged: the entry is Tutti's and points at the stable path.
+	userEntryManaged
+	// userEntryForeign: the user owns a command with the same name (e.g. a
+	// locally installed CLI). It is preserved untouched, and user-command
+	// publication is skipped instead of failing the managed runtime.
+	userEntryForeign
+)
+
+func (e Entry) validateStablePath() error {
+	return validatePlatformEntry(e.StablePath, e.RuntimeRoot, "managed runtime entry")
+}
+
 func (e Entry) Validate() error {
-	if err := validatePlatformEntry(e.StablePath, e.RuntimeRoot, "managed runtime entry"); err != nil {
+	if err := e.validateStablePath(); err != nil {
 		return err
 	}
-	return validateExactPlatformEntry(e.UserPath, e.StablePath, "user executable entry")
+	_, err := e.classifyUserEntry()
+	return err
 }
 
 func (e Entry) Verify() error {
 	if err := e.Validate(); err != nil {
 		return err
+	}
+	kind, err := e.classifyUserEntry()
+	if err != nil {
+		return err
+	}
+	if kind != userEntryManaged {
+		// No Tutti user command is installed (absent or foreign). The managed
+		// runtime is still usable; there is nothing to verify on the user hop.
+		return nil
 	}
 	for label, path := range map[string]string{
 		"managed runtime entry": e.StablePath,
@@ -76,21 +104,39 @@ func (e Entry) Verify() error {
 	return nil
 }
 
-func (e Entry) Publish() error {
-	if err := e.Validate(); err != nil {
-		return err
+// Publish installs the managed command hops. It returns whether the
+// user-command entry is owned by Tutti. A foreign occupant is preserved
+// untouched: publication is then skipped (the internal stable hop is still
+// refreshed) and the caller should treat the runtime as activated.
+func (e Entry) Publish() (bool, error) {
+	if err := e.validateStablePath(); err != nil {
+		return false, err
 	}
-	createdUserEntry, err := ensurePlatformEntry(e.UserPath, e.StablePath)
+	kind, err := e.classifyUserEntry()
 	if err != nil {
-		return err
+		return false, err
+	}
+	if kind == userEntryForeign {
+		if err := replacePlatformEntry(e.StablePath, e.FinalExecutable); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	createdUserEntry := false
+	if kind == userEntryAbsent {
+		created, err := ensurePlatformEntry(e.UserPath, e.StablePath)
+		if err != nil {
+			return false, err
+		}
+		createdUserEntry = created
 	}
 	if err := replacePlatformEntry(e.StablePath, e.FinalExecutable); err != nil {
 		if createdUserEntry {
 			_ = os.Remove(e.UserPath)
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 func IsManagedExecutable(executable, runtimeRoot string) bool {

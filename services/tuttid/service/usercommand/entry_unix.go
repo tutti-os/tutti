@@ -34,25 +34,27 @@ func validatePlatformEntry(path, runtimeRoot, label string) error {
 	return nil
 }
 
-func validateExactPlatformEntry(path, expectedTarget, label string) error {
-	info, err := os.Lstat(path)
+func (e Entry) classifyUserEntry() (userEntryKind, error) {
+	info, err := os.Lstat(e.UserPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return userEntryAbsent, nil
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		return fmt.Errorf("%s is already occupied: %s", label, path)
+		// A regular file or directory occupies the command name: it is a
+		// user-owned command, not Tutti's.
+		return userEntryForeign, nil
 	}
-	target, err := resolvedSymlinkTarget(path)
+	target, err := resolvedSymlinkTarget(e.UserPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if !samePath(target, expectedTarget) {
-		return fmt.Errorf("%s is not owned by Tutti: %s", label, path)
+	if samePath(target, e.StablePath) {
+		return userEntryManaged, nil
 	}
-	return nil
+	return userEntryForeign, nil
 }
 
 func ensurePlatformEntry(path, target string) (bool, error) {

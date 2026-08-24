@@ -36,7 +36,7 @@ func validateManagedRuntimeEntry(entry managedRuntimeEntry) error { return entry
 
 func verifyManagedRuntimeEntry(entry managedRuntimeEntry) error { return entry.Verify() }
 
-func publishManagedRuntimeEntry(entry managedRuntimeEntry) error { return entry.Publish() }
+func publishManagedRuntimeEntry(entry managedRuntimeEntry) (bool, error) { return entry.Publish() }
 
 func (m *Manager) ensureUserCommandPath(ctx context.Context) error {
 	if m.UserPathAdapter == nil {

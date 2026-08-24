@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -270,9 +271,14 @@ func (s *SetupService) executeUVInstallInPlace(
 			rollback()
 			return fmt.Errorf("%w: publish user command directory: %w", ErrRuntimeActivateFailed, err)
 		}
-		if err := publishManagedRuntimeEntry(entry); err != nil {
+		published, err := publishManagedRuntimeEntry(entry)
+		if err != nil {
 			rollback()
 			return fmt.Errorf("%w: %w", ErrRuntimeActivateFailed, err)
+		}
+		if !published {
+			slog.Warn("agent extension user command publication skipped; a user-owned command with the same name is preserved",
+				"userPath", entry.UserPath)
 		}
 	}
 	_ = workspace.remove(backupName)

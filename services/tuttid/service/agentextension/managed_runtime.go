@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -278,9 +279,14 @@ func (m *Manager) adoptCompatibleManagedRuntime(
 				rollback()
 				return err
 			}
-			if err := publishManagedRuntimeEntry(runtimeEntry); err != nil {
+			published, err := publishManagedRuntimeEntry(runtimeEntry)
+			if err != nil {
 				rollback()
 				return err
+			}
+			if !published {
+				slog.Warn("agent extension user command publication skipped; a user-owned command with the same name is preserved",
+					"userPath", runtimeEntry.UserPath)
 			}
 		}
 		promoted.Close()

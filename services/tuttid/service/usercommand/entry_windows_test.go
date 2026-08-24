@@ -31,8 +31,12 @@ func TestWindowsEntryPublishesAndRepointsCommandLauncher(t *testing.T) {
 	if err := first.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := first.Publish(); err != nil {
+	published, err := first.Publish()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !published {
+		t.Fatal("Publish() reported a skipped user entry on an empty user bin dir")
 	}
 	if err := first.Verify(); err != nil {
 		t.Fatal(err)
@@ -46,8 +50,12 @@ func TestWindowsEntryPublishesAndRepointsCommandLauncher(t *testing.T) {
 	if err := second.Validate(); err != nil {
 		t.Fatal(err)
 	}
-	if err := second.Publish(); err != nil {
+	published, err = second.Publish()
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !published {
+		t.Fatal("Publish() reported a skipped user entry on a managed upgrade")
 	}
 	if err := second.Verify(); err != nil {
 		t.Fatal(err)
@@ -66,7 +74,7 @@ func TestWindowsEntryPublishesAndRepointsCommandLauncher(t *testing.T) {
 	}
 }
 
-func TestWindowsEntryRefusesForeignUserCommand(t *testing.T) {
+func TestWindowsEntrySkipsForeignUserCommand(t *testing.T) {
 	root := t.TempDir()
 	userBinDir := t.TempDir()
 	target := writeWindowsTestCommand(t, root, "runtime", 0)
@@ -74,15 +82,30 @@ func TestWindowsEntryRefusesForeignUserCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(entry.UserPath, []byte("@echo foreign\r\n"), 0o600); err != nil {
+	foreignContent := []byte("@echo foreign\r\n")
+	if err := os.WriteFile(entry.UserPath, foreignContent, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := entry.Validate(); err == nil {
-		t.Fatal("Validate() unexpectedly accepted a foreign user command")
+	if err := entry.Validate(); err != nil {
+		t.Fatalf("Validate() rejected a foreign user command: %v", err)
+	}
+	published, err := entry.Publish()
+	if err != nil {
+		t.Fatalf("Publish() failed on a foreign user command: %v", err)
+	}
+	if published {
+		t.Fatal("Publish() reported it published over a foreign user command")
+	}
+	content, err := os.ReadFile(entry.UserPath)
+	if err != nil || string(content) != string(foreignContent) {
+		t.Fatalf("foreign user command was modified: %q err=%v", content, err)
+	}
+	if err := entry.Verify(); err != nil {
+		t.Fatalf("Verify() rejected a runtime with a skipped user command: %v", err)
 	}
 }
 
-func TestWindowsEntryRefusesHigherPriorityCommandSibling(t *testing.T) {
+func TestWindowsEntrySkipsHigherPriorityCommandSibling(t *testing.T) {
 	for _, extension := range []string{"", ".exe", ".ps1"} {
 		t.Run(extension, func(t *testing.T) {
 			root := t.TempDir()
@@ -99,8 +122,12 @@ func TestWindowsEntryRefusesHigherPriorityCommandSibling(t *testing.T) {
 			if err := os.WriteFile(foreignPath, []byte("foreign"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-			if err := entry.Publish(); err == nil {
-				t.Fatal("Publish() unexpectedly accepted a higher-priority foreign command")
+			published, err := entry.Publish()
+			if err != nil {
+				t.Fatalf("Publish() failed on a higher-priority foreign command: %v", err)
+			}
+			if published {
+				t.Fatal("Publish() reported it published next to a higher-priority foreign command")
 			}
 			if _, err := os.Stat(entry.UserPath); !errors.Is(err, os.ErrNotExist) {
 				t.Fatalf("managed launcher exists after collision: %v", err)
@@ -116,7 +143,7 @@ func TestWindowsEntryVerifyRejectsMissingFinalExecutable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := entry.Publish(); err != nil {
+	if _, err := entry.Publish(); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Remove(target); err != nil {

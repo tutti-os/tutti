@@ -36,21 +36,25 @@ func validatePlatformEntry(path, runtimeRoot, label string) error {
 	return nil
 }
 
-func validateExactPlatformEntry(path, expectedTarget, label string) error {
-	if err := validateWindowsCommandNamespace(path); err != nil {
-		return fmt.Errorf("%s is shadowed: %w", label, err)
-	}
-	target, exists, err := readWindowsLauncher(path)
+func (e Entry) classifyUserEntry() (userEntryKind, error) {
+	target, exists, err := readWindowsLauncher(e.UserPath)
 	if err != nil {
-		return fmt.Errorf("%s is already occupied: %s", label, path)
+		// The file exists but is not a Tutti launcher: a user-owned command
+		// with the same name.
+		return userEntryForeign, nil
 	}
-	if !exists {
-		return nil
+	if exists {
+		if samePath(target, e.StablePath) {
+			return userEntryManaged, nil
+		}
+		return userEntryForeign, nil
 	}
-	if !samePath(target, expectedTarget) {
-		return fmt.Errorf("%s is not owned by Tutti: %s", label, path)
+	if err := validateWindowsCommandNamespace(e.UserPath); err != nil {
+		// A same-stem command of higher PATH priority occupies the name:
+		// a published launcher would be shadowed, so treat it as foreign.
+		return userEntryForeign, nil
 	}
-	return nil
+	return userEntryAbsent, nil
 }
 
 func ensurePlatformEntry(path, target string) (bool, error) {

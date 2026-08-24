@@ -41,8 +41,12 @@ func TestPublishManagedRuntimeEntryRepointsStableLink(t *testing.T) {
 	if err := validateManagedRuntimeEntry(first); err != nil {
 		t.Fatal(err)
 	}
-	if err := publishManagedRuntimeEntry(first); err != nil {
+	published, err := publishManagedRuntimeEntry(first)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !published {
+		t.Fatal("first publish reported a skipped user entry")
 	}
 	if err := verifyManagedRuntimeEntry(first); err != nil {
 		t.Fatal(err)
@@ -55,8 +59,12 @@ func TestPublishManagedRuntimeEntryRepointsStableLink(t *testing.T) {
 	if err := validateManagedRuntimeEntry(second); err != nil {
 		t.Fatal(err)
 	}
-	if err := publishManagedRuntimeEntry(second); err != nil {
+	published, err = publishManagedRuntimeEntry(second)
+	if err != nil {
 		t.Fatal(err)
+	}
+	if !published {
+		t.Fatal("upgrade publish reported a skipped user entry")
 	}
 	if err := verifyManagedRuntimeEntry(second); err != nil {
 		t.Fatal(err)
