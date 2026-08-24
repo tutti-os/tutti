@@ -219,8 +219,13 @@ func (s Service) activateClaudeCodeBinary(
 			return fmt.Errorf("publish claude user command directory: %w", err)
 		}
 	}
-	if err := entry.Publish(); err != nil {
+	published, err := entry.Publish()
+	if err != nil {
 		return fmt.Errorf("publish claude user command: %w", err)
+	}
+	if !published {
+		slog.Warn("agent extension user command publication skipped; a user-owned command with the same name is preserved",
+			"userPath", entry.UserPath)
 	}
 	return nil
 }
