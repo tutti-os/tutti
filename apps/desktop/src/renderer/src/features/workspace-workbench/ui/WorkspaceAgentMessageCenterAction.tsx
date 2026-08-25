@@ -18,6 +18,7 @@ import {
   type WorkspaceAgentMessageCenterModel
 } from "@tutti-os/agent-gui/agent-message-center";
 import {
+  selectSessionMessagesById,
   type AgentActivityMessage,
   type CanonicalAgentSession
 } from "@tutti-os/agent-activity-core";
@@ -81,9 +82,6 @@ export function WorkspaceAgentMessageCenterAction({
   const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [highlightedMessageCenterItemId, setHighlightedMessageCenterItemId] =
     useState<string | null>(null);
-  const [sessionMessagesById, setSessionMessagesById] = useState<
-    Record<string, AgentActivityMessage[]>
-  >({});
   const requestedMessageSummarySessionIdsRef = useRef<Set<string>>(new Set());
   const messageCenterModelRef = useRef<WorkspaceAgentMessageCenterModel | null>(
     null
@@ -92,6 +90,10 @@ export function WorkspaceAgentMessageCenterAction({
   const sessionEngine = useMemo(
     () => workspaceAgentActivityService.getSessionEngine(workspace.id),
     [workspace.id, workspaceAgentActivityService]
+  );
+  const sessionMessagesById = useEngineSelector(
+    sessionEngine,
+    selectSessionMessagesById
   );
   const messageCenterPresentation = useEngineSelector(
     sessionEngine,
@@ -172,7 +174,6 @@ export function WorkspaceAgentMessageCenterAction({
 
   useEffect(() => {
     requestedMessageSummarySessionIdsRef.current.clear();
-    setSessionMessagesById({});
     setHighlightedMessageCenterItemId(null);
   }, [workspace.id]);
 
@@ -238,16 +239,12 @@ export function WorkspaceAgentMessageCenterAction({
       requestedMessageSummarySessionIdsRef.current.add(agentSessionId);
       void (async () => {
         try {
-          const page = await workspaceAgentActivityService.listSessionMessages({
+          await workspaceAgentActivityService.listSessionMessages({
             workspaceId: workspace.id,
             agentSessionId: session.agentSessionId,
             limit: MESSAGE_CENTER_SUMMARY_MESSAGE_LIMIT,
             order: "desc"
           });
-          setSessionMessagesById((current) => ({
-            ...current,
-            [session.agentSessionId]: page.messages
-          }));
         } catch (error) {
           requestedMessageSummarySessionIdsRef.current.delete(agentSessionId);
           console.error(
@@ -456,7 +453,9 @@ export function WorkspaceAgentMessageCenterAction({
 }
 
 function hasCachedWorkspaceAgentSessionMessages(
-  sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>,
+  sessionMessagesById: Readonly<
+    Record<string, readonly AgentActivityMessage[]>
+  >,
   session: CanonicalAgentSession
 ): boolean {
   return workspaceAgentSessionMessageAliases(session).some(

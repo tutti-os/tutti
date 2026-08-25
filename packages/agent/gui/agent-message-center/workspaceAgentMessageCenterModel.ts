@@ -149,8 +149,7 @@ export function buildWorkspaceAgentMessageCenterItem({
     messages
   );
   const lastAgentMessage = messageAnalysis.latestAgentMessage;
-  const title =
-    messageAnalysis.latestUserMessageSummary || session.title.trim();
+  const title = session.title.trim();
   const digest = buildWorkspaceAgentMessageCenterDigest({
     fallbackTitle: title,
     latestAgentMessage: messageAnalysis.latestDigestAgentMessage,
@@ -249,7 +248,6 @@ function isImportedMessageCenterSession(
 }
 
 interface MessageCenterSessionMessageAnalysis {
-  latestUserMessageSummary: string;
   latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null;
   latestTurnOutcome: WorkspaceAgentMessageCenterTurnOutcome | null;
@@ -270,25 +268,21 @@ function analyzeMessageCenterSessionMessages(
   agentSessionId: string,
   messages: readonly AgentActivityMessage[]
 ): MessageCenterSessionMessageAnalysis {
-  let latestUserMessageSummary = "";
-  let latestUserMessageAtUnixMs = Number.NEGATIVE_INFINITY;
   let latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
     null;
+  let latestAgentMessageSource: AgentActivityMessage | null = null;
   let latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
     null;
+  let latestDigestAgentMessageSource: AgentActivityMessage | null = null;
   let latestPendingPrompt: PendingPromptCandidate | null = null;
   let latestOutcome: TurnOutcomeCandidate | null = null;
 
   for (const message of messages) {
-    if (isUserMessageRole(message.role)) {
-      const summary = messageSummary(message);
-      if (summary) {
-        const occurredAtUnixMs = messageTimeUnixMs(message);
-        if (occurredAtUnixMs >= latestUserMessageAtUnixMs) {
-          latestUserMessageSummary = summary;
-          latestUserMessageAtUnixMs = occurredAtUnixMs;
-        }
-      }
+    // Realtime deltas are transient engine state (version 0, no durable
+    // sequence). Message Center summaries consume durable history so a
+    // streaming reply cannot remount rich preview content on every token.
+    if (message.version === 0 && message.sequence === undefined) {
+      continue;
     }
 
     if (
@@ -299,10 +293,11 @@ function analyzeMessageCenterSessionMessages(
       if (summary) {
         const occurredAtUnixMs = messageTimeUnixMs(message);
         if (
-          !latestAgentMessage ||
-          occurredAtUnixMs >= latestAgentMessage.occurredAtUnixMs
+          !latestAgentMessageSource ||
+          compareMessagesByRecentTime(message, latestAgentMessageSource) < 0
         ) {
           latestAgentMessage = { summary, occurredAtUnixMs };
+          latestAgentMessageSource = message;
         }
       }
       const digestSummary =
@@ -310,13 +305,15 @@ function analyzeMessageCenterSessionMessages(
       if (digestSummary) {
         const occurredAtUnixMs = messageTimeUnixMs(message);
         if (
-          !latestDigestAgentMessage ||
-          occurredAtUnixMs >= latestDigestAgentMessage.occurredAtUnixMs
+          !latestDigestAgentMessageSource ||
+          compareMessagesByRecentTime(message, latestDigestAgentMessageSource) <
+            0
         ) {
           latestDigestAgentMessage = {
             summary: digestSummary,
             occurredAtUnixMs
           };
+          latestDigestAgentMessageSource = message;
         }
       }
 
@@ -343,7 +340,6 @@ function analyzeMessageCenterSessionMessages(
   }
 
   return {
-    latestUserMessageSummary,
     latestDigestAgentMessage,
     latestAgentMessage,
     latestTurnOutcome: latestOutcome?.outcome ?? null,
@@ -561,10 +557,6 @@ function outcomeStatusFromMessage(
 function isAgentMessageRole(role: string): boolean {
   const normalized = role.trim().toLowerCase();
   return normalized === "assistant" || normalized === "agent";
-}
-
-function isUserMessageRole(role: string): boolean {
-  return role.trim().toLowerCase() === "user";
 }
 
 /**
