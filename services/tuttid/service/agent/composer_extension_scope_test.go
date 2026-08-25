@@ -63,10 +63,25 @@ func TestComposerLiveModelScopeUsesExactTargetProjectInstallationAndSettings(t *
 		})
 	}
 
-	selectedModelSettings := settings
-	selectedModelSettings.Model = "provider:model-a"
-	if got := newComposerLiveModelScopeForInput(input, selectedModelSettings).key(); got != scope.key() {
-		t.Fatalf("model selection changed discovery scope key = %q, want %q", got, scope.key())
+}
+
+func TestComposerLiveModelScopeIgnoresSelectedModel(t *testing.T) {
+	input := ComposerOptionsInput{
+		Provider:      "acp:example",
+		WorkspaceID:   "workspace-1",
+		Cwd:           t.TempDir(),
+		AgentTargetID: "extension:example",
+		providerTargetRef: map[string]any{
+			"kind":                    "agent_extension",
+			"extensionInstallationId": "example@1.0.0",
+		},
+	}
+	settings := ComposerSettings{PermissionModeID: "ask-before-write"}
+	initialKey := newComposerLiveModelScopeForInput(input, settings).key()
+
+	settings.Model = "provider:model-a"
+	if got := newComposerLiveModelScopeForInput(input, settings).key(); got != initialKey {
+		t.Fatalf("model selection changed discovery scope key = %q, want %q", got, initialKey)
 	}
 }
 
