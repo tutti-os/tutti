@@ -1099,8 +1099,20 @@ func TestStartCommandRequiresOneSelectorAndPrompt(t *testing.T) {
 	if !ok {
 		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
 	}
-	if len(required) != 2 || required[0] != "agent-id" || required[1] != "prompt" {
+	if len(required) != 1 || required[0] != "prompt" {
 		t.Fatalf("required = %#v", required)
+	}
+	// agent-id is advertise-required with the hidden legacy --provider as its
+	// alternate, so it renders as an anyOf branch rather than a hard required
+	// entry (issue #2193).
+	branches, ok := command.Capability.InputSchema["anyOf"].([]map[string]any)
+	if !ok || len(branches) != 2 {
+		t.Fatalf("anyOf schema = %#v, want one branch per accepted spelling", command.Capability.InputSchema["anyOf"])
+	}
+	first, _ := branches[0]["required"].([]string)
+	second, _ := branches[1]["required"].([]string)
+	if len(first) != 1 || first[0] != "agent-id" || len(second) != 1 || second[0] != "provider" {
+		t.Fatalf("anyOf branches required = [%#v %#v], want [[agent-id] [provider]]", first, second)
 	}
 
 	for name, input := range map[string]map[string]any{
@@ -1943,8 +1955,20 @@ func TestAgentStartCommandAllowsOmittedModel(t *testing.T) {
 	if !ok {
 		t.Fatalf("required schema = %#v", command.Capability.InputSchema["required"])
 	}
-	if len(required) != 2 || required[0] != "agent-id" || required[1] != "prompt" {
+	if len(required) != 1 || required[0] != "prompt" {
 		t.Fatalf("required = %#v", required)
+	}
+	// agent-id is advertise-required with the hidden legacy --provider as its
+	// alternate, so it renders as an anyOf branch rather than a hard required
+	// entry (issue #2193).
+	branches, ok := command.Capability.InputSchema["anyOf"].([]map[string]any)
+	if !ok || len(branches) != 2 {
+		t.Fatalf("anyOf schema = %#v, want one branch per accepted spelling", command.Capability.InputSchema["anyOf"])
+	}
+	first, _ := branches[0]["required"].([]string)
+	second, _ := branches[1]["required"].([]string)
+	if len(first) != 1 || first[0] != "agent-id" || len(second) != 1 || second[0] != "provider" {
+		t.Fatalf("anyOf branches required = [%#v %#v], want [[agent-id] [provider]]", first, second)
 	}
 	_, err := command.Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"model": "gpt-5"}})
 	if !errors.Is(err, cliservice.ErrInvalidInput) {
@@ -2604,4 +2628,56 @@ func TestActivePeersReturnsServiceProjection(t *testing.T) {
 	if output.Value["selfKnown"] != false || output.Value["mayIncludeSelf"] != true || output.Value["warning"] != "SELF_IDENTITY_UNAVAILABLE" {
 		t.Fatalf("output = %#v", output.Value)
 	}
+}
+
+// End-to-end regression for #2193: the schema the framework generates for the
+// real start command must let the legacy hidden --provider selector through
+// the daemon's invocation validator. This exercises the generator output, not
+// a hand-written schema.
+func TestStartCommandSchemaPassesInvocationValidationForLegacySelector(t *testing.T) {
+	command := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}).newStartCommand()
+
+	registry, err := cliservice.NewRegistryFromProviders(singleCommandProvider{command: command})
+	if err != nil {
+		t.Fatalf("NewRegistryFromProviders: %v", err)
+	}
+
+	// The pre-binding validator must accept both spellings and reject neither.
+	cases := []struct {
+		name    string
+		input   map[string]any
+		wantErr bool
+	}{
+		{"canonical agent-id", map[string]any{"agent-id": agenttargetbiz.IDLocalCodex, "prompt": "hi"}, false},
+		{"legacy provider", map[string]any{"provider": "codex", "prompt": "hi"}, false},
+		{"no selector", map[string]any{"prompt": "hi"}, true},
+	}
+	for _, tc := range cases {
+		_, err := registry.Invoke(context.Background(), cliservice.InvokeRequest{
+			CommandID: command.Capability.ID,
+			Input:     tc.input,
+		})
+		if tc.wantErr && err == nil {
+			t.Fatalf("%s: accepted, want rejection", tc.name)
+		}
+		if !tc.wantErr {
+			// The handler may still fail (fake catalog lookups); what matters
+			// is that the invocation validator did not reject the input.
+			if err != nil && strings.Contains(err.Error(), "does not match any allowed schema") {
+				t.Fatalf("%s: rejected by invocation validator: %v", tc.name, err)
+			}
+		}
+	}
+}
+
+type singleCommandProvider struct {
+	command cliservice.Command
+}
+
+func (p singleCommandProvider) AppID() string {
+	return "agentcontext-test"
+}
+
+func (p singleCommandProvider) Commands() []cliservice.Command {
+	return []cliservice.Command{p.command}
 }
