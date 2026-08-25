@@ -2,17 +2,22 @@ package runtimeprep
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"path"
 	"path/filepath"
 	"regexp"
 	"slices"
+	"sort"
 	"strings"
+	"sync"
 )
 
 var extensionRuntimeEnvName = regexp.MustCompile(`^[A-Z_][A-Z0-9_]*$`)
+var extensionRuntimeSharedDirsMu sync.Mutex
 
 type ExtensionRuntimePreparer struct{}
 
@@ -77,6 +82,9 @@ func prepareExtensionRuntimeHome(input ProviderPrepareInput, home ExtensionRunti
 	}
 
 	sourceHome := resolveExtensionRuntimeSourceHome(home)
+	if err := exposeExtensionRuntimeSharedDirs(input, sourceHome, sessionHome, home); err != nil {
+		return "", err
+	}
 	userConfig, err := copyExtensionRuntimeHomeFiles(sourceHome, sessionHome, home)
 	if err != nil {
 		return "", err
@@ -92,6 +100,272 @@ func prepareExtensionRuntimeHome(input ProviderPrepareInput, home ExtensionRunti
 		input.Manifest.RecordManagedFile(sessionHome, "provider-extension-home", true)
 	}
 	return strings.TrimSpace(home.EnvVar) + "=" + sessionHome, nil
+}
+
+// exposeExtensionRuntimeSharedDirs keeps explicitly declared mutable runtime
+// directories stable across otherwise isolated session homes. This is useful
+// for provider-owned caches or verified helper binaries that would otherwise
+// be fetched again for every fresh session. The signed profile selects only
+// relative paths beneath its ordinary source home; runtimeprep remains
+// provider-neutral.
+func exposeExtensionRuntimeSharedDirs(input ProviderPrepareInput, sourceHome, sessionHome string, home ExtensionRuntimeHome) error {
+	if len(home.SharedDirs) == 0 {
+		return nil
+	}
+	if strings.TrimSpace(sourceHome) == "" {
+		return nil
+	}
+
+	// Preparation can run concurrently for multiple sessions in one daemon.
+	// Serialize adoption and projection so two first sessions cannot race while
+	// creating the same stable provider-owned directory.
+	extensionRuntimeSharedDirsMu.Lock()
+	defer extensionRuntimeSharedDirsMu.Unlock()
+
+	for _, declared := range home.SharedDirs {
+		rel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(declared)))
+		source := filepath.Join(sourceHome, rel)
+		target := filepath.Join(sessionHome, rel)
+		seedExtensionRuntimeSharedDirFromLegacySessions(input, home, rel, source)
+		if err := exposeExtensionRuntimeSharedDir(source, target); err != nil {
+			return fmt.Errorf("expose extension runtime shared dir %s: %w", declared, err)
+		}
+	}
+	return nil
+}
+
+type extensionRuntimeLegacySharedDir struct {
+	agentSessionID string
+	path           string
+	updatedAt      int64
+}
+
+// seedExtensionRuntimeSharedDirFromLegacySessions is an upgrade bridge for
+// sessions created before sharedDirs existed. Those sessions may already hold
+// an expensive provider-owned helper or cache while the newly created stable
+// source directory is still empty. Only same-provider runtime roots with a
+// manifest-owned extension home are eligible; symlink projections created by
+// the new scheme are ignored.
+func seedExtensionRuntimeSharedDirFromLegacySessions(
+	input ProviderPrepareInput,
+	home ExtensionRuntimeHome,
+	sharedRel string,
+	stableDir string,
+) {
+	if extensionRuntimeSharedDirHasEntries(stableDir) {
+		return
+	}
+	candidates := extensionRuntimeLegacySharedDirCandidates(input, home, sharedRel)
+	for _, candidate := range candidates {
+		if err := mergeExtensionRuntimeSharedDir(candidate.path, stableDir); err != nil {
+			slog.Warn("extension runtime legacy shared directory migration skipped",
+				"event", "agent.runtime_prepare.extension_shared_dir.legacy_migration_skipped",
+				"provider", strings.TrimSpace(input.Provider),
+				"agent_session_id", strings.TrimSpace(input.AgentSessionID),
+				"legacy_agent_session_id", candidate.agentSessionID,
+				"shared_dir", filepath.ToSlash(sharedRel),
+				"error", err,
+			)
+			continue
+		}
+		if !extensionRuntimeSharedDirHasEntries(stableDir) {
+			continue
+		}
+		slog.Info("extension runtime legacy shared directory migrated",
+			"event", "agent.runtime_prepare.extension_shared_dir.legacy_migrated",
+			"provider", strings.TrimSpace(input.Provider),
+			"agent_session_id", strings.TrimSpace(input.AgentSessionID),
+			"legacy_agent_session_id", candidate.agentSessionID,
+			"shared_dir", filepath.ToSlash(sharedRel),
+		)
+		return
+	}
+}
+
+func extensionRuntimeSharedDirHasEntries(dir string) bool {
+	entries, err := os.ReadDir(dir)
+	return err == nil && len(entries) > 0
+}
+
+func extensionRuntimeLegacySharedDirCandidates(
+	input ProviderPrepareInput,
+	home ExtensionRuntimeHome,
+	sharedRel string,
+) []extensionRuntimeLegacySharedDir {
+	currentRoot := filepath.Clean(strings.TrimSpace(input.RuntimeRoot))
+	runsRoot := filepath.Dir(currentRoot)
+	entries, err := os.ReadDir(runsRoot)
+	if err != nil {
+		return nil
+	}
+
+	provider := strings.TrimSpace(input.Provider)
+	homeRel := filepath.Clean(filepath.FromSlash(strings.TrimSpace(home.DirName)))
+	result := make([]extensionRuntimeLegacySharedDir, 0)
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
+			continue
+		}
+		candidateRoot := filepath.Join(runsRoot, entry.Name())
+		if sameSharedRuntimePath(candidateRoot, currentRoot) {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(candidateRoot, SidecarManifestFileName))
+		if err != nil {
+			continue
+		}
+		var manifest Manifest
+		if json.Unmarshal(content, &manifest) != nil || strings.TrimSpace(manifest.Provider) != provider {
+			continue
+		}
+		if !sameSharedRuntimePath(strings.TrimSpace(manifest.RuntimeRoot), candidateRoot) {
+			continue
+		}
+		candidateHome := filepath.Join(candidateRoot, homeRel)
+		if !extensionRuntimeManifestOwnsHome(manifest, candidateHome) {
+			continue
+		}
+		candidatePath := filepath.Join(candidateHome, sharedRel)
+		info, err := os.Lstat(candidatePath)
+		if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			continue
+		}
+		result = append(result, extensionRuntimeLegacySharedDir{
+			agentSessionID: strings.TrimSpace(manifest.AgentSessionID),
+			path:           candidatePath,
+			updatedAt:      manifest.UpdatedAtUnixMS,
+		})
+	}
+	sort.SliceStable(result, func(i, j int) bool {
+		return result[i].updatedAt > result[j].updatedAt
+	})
+	return result
+}
+
+func extensionRuntimeManifestOwnsHome(manifest Manifest, homePath string) bool {
+	for _, managed := range manifest.ManagedFiles {
+		if strings.TrimSpace(managed.Kind) == "provider-extension-home" &&
+			sameSharedRuntimePath(strings.TrimSpace(managed.Path), homePath) {
+			return true
+		}
+	}
+	return false
+}
+
+func exposeExtensionRuntimeSharedDir(source, target string) error {
+	if same, err := sameResolvedPath(source, target); err == nil && same {
+		return nil
+	}
+
+	targetInfo, targetErr := os.Lstat(target)
+	if targetErr != nil && !os.IsNotExist(targetErr) {
+		return fmt.Errorf("inspect session directory: %w", targetErr)
+	}
+	if targetErr == nil && targetInfo.Mode()&os.ModeSymlink != 0 {
+		return errors.New("session directory points at an unexpected location")
+	}
+	if targetErr == nil && !targetInfo.IsDir() {
+		return errors.New("session path is not a directory")
+	}
+
+	sourceInfo, sourceErr := os.Stat(source)
+	if sourceErr != nil && !os.IsNotExist(sourceErr) {
+		return fmt.Errorf("inspect stable directory: %w", sourceErr)
+	}
+	if sourceErr == nil && !sourceInfo.IsDir() {
+		return errors.New("stable path is not a directory")
+	}
+
+	if targetErr == nil && os.IsNotExist(sourceErr) {
+		if err := os.MkdirAll(filepath.Dir(source), 0o700); err != nil {
+			return fmt.Errorf("create stable directory parent: %w", err)
+		}
+		if err := os.Rename(target, source); err == nil {
+			targetErr = os.ErrNotExist
+			sourceErr = nil
+		} else if err := mergeExtensionRuntimeSharedDir(target, source); err != nil {
+			return err
+		}
+	}
+	if os.IsNotExist(sourceErr) {
+		if err := os.MkdirAll(source, 0o700); err != nil {
+			return fmt.Errorf("create stable directory: %w", err)
+		}
+	}
+	if targetErr == nil {
+		if err := mergeExtensionRuntimeSharedDir(target, source); err != nil {
+			return err
+		}
+		if err := os.RemoveAll(target); err != nil {
+			return fmt.Errorf("remove adopted session directory: %w", err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+		return fmt.Errorf("create session directory parent: %w", err)
+	}
+	return exposeSharedRuntimeDirectory(source, target)
+}
+
+func sameResolvedPath(left, right string) (bool, error) {
+	resolvedLeft, err := filepath.EvalSymlinks(left)
+	if err != nil {
+		return false, err
+	}
+	resolvedRight, err := filepath.EvalSymlinks(right)
+	if err != nil {
+		return false, err
+	}
+	return sameSharedRuntimePath(resolvedLeft, resolvedRight), nil
+}
+
+func mergeExtensionRuntimeSharedDir(source, target string) error {
+	info, err := os.Stat(source)
+	if err != nil {
+		return fmt.Errorf("inspect session shared directory: %w", err)
+	}
+	if !info.IsDir() {
+		return errors.New("session shared path is not a directory")
+	}
+	if err := os.MkdirAll(target, 0o700); err != nil {
+		return fmt.Errorf("create stable shared directory: %w", err)
+	}
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		return fmt.Errorf("read session shared directory: %w", err)
+	}
+	for _, entry := range entries {
+		src := filepath.Join(source, entry.Name())
+		dst := filepath.Join(target, entry.Name())
+		entryInfo, err := os.Lstat(src)
+		if err != nil {
+			return fmt.Errorf("inspect session shared entry: %w", err)
+		}
+		if entryInfo.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("session shared directory contains a symlink: %s", src)
+		}
+		if entryInfo.IsDir() {
+			if err := mergeExtensionRuntimeSharedDir(src, dst); err != nil {
+				return err
+			}
+			continue
+		}
+		if !entryInfo.Mode().IsRegular() {
+			return fmt.Errorf("session shared directory contains an unsupported entry: %s", src)
+		}
+		if _, err := os.Stat(dst); err == nil {
+			continue
+		} else if !os.IsNotExist(err) {
+			return fmt.Errorf("inspect stable shared entry: %w", err)
+		}
+		content, err := os.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("read session shared entry: %w", err)
+		}
+		if err := os.WriteFile(dst, content, entryInfo.Mode().Perm()); err != nil {
+			return fmt.Errorf("write stable shared entry: %w", err)
+		}
+	}
+	return nil
 }
 
 func resolveExtensionRuntimeSourceHome(home ExtensionRuntimeHome) string {
@@ -295,6 +569,11 @@ func ValidateExtensionRuntimePrep(prep ExtensionRuntimePrep) error {
 			return err
 		}
 	}
+	for _, dir := range home.SharedDirs {
+		if err := validateExtensionRuntimeRelPath(dir, "extension runtime shared dir"); err != nil {
+			return err
+		}
+	}
 	if configFile := strings.TrimSpace(home.ConfigFile); configFile != "" {
 		if err := validateExtensionRuntimeRelPath(configFile, "extension runtime config file"); err != nil {
 			return err
@@ -308,7 +587,35 @@ func ValidateExtensionRuntimePrep(prep ExtensionRuntimePrep) error {
 			return err
 		}
 	}
+	return validateExtensionRuntimeHomePathConflicts(home)
+}
+
+func validateExtensionRuntimeHomePathConflicts(home ExtensionRuntimeHome) error {
+	files := append([]string(nil), home.CopyFiles...)
+	if configFile := strings.TrimSpace(home.ConfigFile); configFile != "" {
+		files = append(files, configFile)
+	}
+	seen := map[string]bool{}
+	for _, sharedDir := range home.SharedDirs {
+		sharedDir = filepath.Clean(filepath.FromSlash(strings.TrimSpace(sharedDir)))
+		for existing := range seen {
+			if extensionRuntimePathsOverlap(existing, sharedDir) {
+				return fmt.Errorf("extension runtime shared dirs overlap: %s and %s", existing, sharedDir)
+			}
+		}
+		seen[sharedDir] = true
+		for _, file := range files {
+			file = filepath.Clean(filepath.FromSlash(strings.TrimSpace(file)))
+			if extensionRuntimePathsOverlap(sharedDir, file) {
+				return fmt.Errorf("extension runtime shared dir %s conflicts with copied file %s", sharedDir, file)
+			}
+		}
+	}
 	return nil
+}
+
+func extensionRuntimePathsOverlap(left, right string) bool {
+	return left == right || strings.HasPrefix(left, right+string(filepath.Separator)) || strings.HasPrefix(right, left+string(filepath.Separator))
 }
 
 func validateExtensionRuntimeRelPath(value string, label string) error {

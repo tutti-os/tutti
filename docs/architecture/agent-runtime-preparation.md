@@ -117,7 +117,13 @@ session-scoped home, copy declared opaque files from a user home source, expose
 the home through one validated environment variable, materialize Tutti-managed
 skills into session-scoped roots derived from the extension's declared workspace
 skill roots, and merge those session roots into a supported YAML string-list key
-such as `skills.external_dirs`.
+such as `skills.external_dirs`. A signed profile may additionally list safe
+relative `sharedDirs` beneath that same source home. Runtimeprep projects those
+mutable provider-owned directories into each isolated session home instead of
+copying them, so verified helper binaries and equivalent caches survive session
+cleanup. Configuration, authentication, provider state, and undeclared paths
+remain session-local; Tutti core never selects a shared directory by provider
+ID.
 
 Source-home resolution is also descriptor-driven. A declared source environment
 variable has highest priority. On Windows, a `sourceDefaultRel` whose top-level
@@ -133,7 +139,14 @@ For Hermes, the extension profile declares the `HERMES_HOME` overlay instead of
 Tutti core knowing `acp:hermes`. The resulting session keeps per-session state,
 copies only the declared auth/env/config files needed for provider login, and
 references both Tutti's session-scoped extension skill roots and the user's
-native skill directory through the declared config merge. Merge precedence is
+native skill directory through the declared config merge. It declares `bin` as
+a shared mutable directory because Hermes installs its checksum-verified Tirith
+helper there on supported platforms. When the stable directory is still empty,
+preparation searches manifest-owned, same-provider legacy session homes from
+newest to oldest and seeds it from the first usable cache; subsequent sessions
+reuse that helper instead of placing a GitHub Release download on every first
+terminal command. Windows keeps the same declarative projection contract even
+though the current Hermes runtime does not ship Tirith for Windows. Merge precedence is
 explicit: the user's original config content is parsed as YAML, existing user
 list entries remain first, Tutti session roots are appended next, and the user's
 native skill root is appended last. Exact duplicate paths are ignored after

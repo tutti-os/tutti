@@ -164,6 +164,7 @@ type ExtensionRuntimeHome struct {
 	SourceEnvVar       string   `json:"sourceEnvVar,omitempty"`
 	SourceDefaultRel   string   `json:"sourceDefaultRel,omitempty"`
 	CopyFiles          []string `json:"copyFiles,omitempty"`
+	SharedDirs         []string `json:"sharedDirs,omitempty"`
 	ConfigFile         string   `json:"configFile,omitempty"`
 	ConfigFormat       string   `json:"configFormat,omitempty"`
 	ExternalDirsKey    []string `json:"externalDirsKey,omitempty"`

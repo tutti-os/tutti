@@ -41,6 +41,12 @@ provider-neutral: it may write the instructions file, create a per-session home,
 copy declared opaque files from a user-home source, expose that home through one
 validated environment variable, materialize Tutti-managed skills into declared
 extension skill roots, and merge those roots into supported YAML config keys.
+It may also project explicitly declared mutable directories such as verified
+helper-binary caches from the stable provider source home into each isolated
+session home. If a newly introduced stable directory is empty, manifest-owned
+same-provider legacy session homes seed it before projection; existing stable
+entries are never overwritten. Deleting one session removes only its projection,
+not the shared provider-owned directory.
 Runtimeprep must not add provider-ID branches for third-party extensions. YAML
 config projection must use the shared parser-backed merge helpers and fail
 closed on invalid or incompatible config instead of maintaining provider-specific

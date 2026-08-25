@@ -4,6 +4,50 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### A fresh Hermes session waits on its first terminal or browser command
+
+- Symptom:
+  Hermes starts normally, but the first terminal-backed capability in each new
+  macOS session appears stuck for tens of seconds or minutes. A comparable
+  Claude Code command opens the browser immediately, and Windows Hermes does
+  not show the delay.
+- Quick checks:
+  In the daemon's captured ACP stderr, find `tools.tirith_security: tirith not
+found` and compare it with `tirith installed` or `tirith download failed`.
+  Attribute only that interval to the helper download; separately measure the
+  following `tutti browser open` command. Check the session's effective
+  `HERMES_HOME`, because a binary under another session home is not reusable.
+- Root cause:
+  Hermes enables its Tirith pre-execution scanner on supported macOS/Linux
+  targets and downloads the helper into `$HERMES_HOME/bin`. Windows currently
+  has no Tirith build and Hermes skips that download. Tutti intentionally gives
+  each Agent Extension session an isolated home; without an explicit shared
+  directory declaration, every fresh Hermes home repeats the download. This can
+  look like a browser regression when GitHub Release delivery becomes slow even
+  though the actual browser command remains fast. Merely creating an empty
+  stable `$HERMES_HOME/bin` is insufficient: previously downloaded helpers may
+  still exist only in older session homes.
+- Fix:
+  Keep the session home, config, credentials, skills, and state isolated. Let
+  the signed extension declare `runtimePrep.home.sharedDirs: ["bin"]`; the
+  provider-neutral preparer projects that directory from the stable source home
+  into every session. If the stable directory is empty, seed it from the newest
+  same-provider legacy session whose manifest owns the declared extension home;
+  never overwrite an existing stable entry. Do not hardcode Hermes, Tirith, a
+  version, a download URL, or a session ID in Tutti, and do not disable the
+  upstream security scanner merely to hide latency.
+- Validation:
+  Start with an empty stable directory and a manifest-owned legacy session cache;
+  verify the next preparation seeds and projects that cache. Then create two
+  fresh Hermes sessions on macOS and verify both session `bin` paths resolve to
+  the stable source-home `bin`, neither first terminal command logs a Tirith
+  download, and deleting either session does not remove the helper. On Windows,
+  verify directory projection succeeds through a symlink or junction and Hermes
+  continues using its upstream unsupported-platform fallback without a download.
+- References:
+  [agent-runtime-preparation.md](../../architecture/agent-runtime-preparation.md)
+  [extension_runtime.go](../../../packages/agent/runtimeprep/extension_runtime.go)
+
 ### Hermes is ready but a new Windows session reports Agent failed to start
 
 - Symptom:

@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -982,6 +983,7 @@ func TestValidateComposerProfileAcceptsDeclarativeRuntimePrep(t *testing.T) {
 				"sourceEnvVar":"HERMES_HOME",
 				"sourceDefaultRel":".hermes",
 				"copyFiles":["config.yaml","auth.json",".env"],
+				"sharedDirs":["bin"],
 				"configFile":"config.yaml",
 				"configFormat":"yaml",
 				"externalDirsKey":["skills","external_dirs"],
@@ -1001,6 +1003,9 @@ func TestValidateComposerProfileAcceptsDeclarativeRuntimePrep(t *testing.T) {
 		t.Fatal("validateComposerProfile() error = nil, want unsafe env rejection")
 	}
 	profile.RuntimePrep.Home.EnvVar = "HERMES_HOME"
+	if !slices.Equal(profile.RuntimePrep.Home.SharedDirs, []string{"bin"}) {
+		t.Fatalf("runtimePrep shared dirs = %v", profile.RuntimePrep.Home.SharedDirs)
+	}
 	profile.RuntimePrep.Home.CopyFiles[0] = "../config.yaml"
 	if err := validateComposerProfile(profile); err == nil {
 		t.Fatal("validateComposerProfile() error = nil, want unsafe copy file rejection")

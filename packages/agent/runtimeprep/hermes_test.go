@@ -19,6 +19,7 @@ func hermesRuntimePrep() *ExtensionRuntimePrep {
 			SourceEnvVar:       "HERMES_HOME",
 			SourceDefaultRel:   ".hermes",
 			CopyFiles:          []string{"config.yaml", "auth.json", ".env"},
+			SharedDirs:         []string{"bin"},
 			ConfigFile:         "config.yaml",
 			ConfigFormat:       "yaml",
 			ExternalDirsKey:    []string{"skills", "external_dirs"},
@@ -26,6 +27,174 @@ func hermesRuntimePrep() *ExtensionRuntimePrep {
 			IncludeSkillRoots:  true,
 			IncludeUserHomeDir: true,
 		},
+	}
+}
+
+func TestExtensionRuntimePreparerSharesDeclaredRuntimeDirectoryAcrossSessions(t *testing.T) {
+	globalHome := t.TempDir()
+	t.Setenv("HERMES_HOME", globalHome)
+	stateDir := t.TempDir()
+	prep := NewDefaultPreparer(stateDir)
+	prep.CommandCatalog = staticCommandCatalog(nil)
+
+	prepare := func(sessionID string) string {
+		t.Helper()
+		prepared, err := prep.Prepare(t.Context(), PrepareInput{
+			WorkspaceID:          "workspace-1",
+			AgentSessionID:       sessionID,
+			AgentTargetID:        "extension:example",
+			Provider:             "acp:example",
+			Cwd:                  t.TempDir(),
+			ExtensionRuntimePrep: hermesRuntimePrep(),
+		})
+		if err != nil {
+			t.Fatalf("Prepare(%s) error = %v", sessionID, err)
+		}
+		return preparedEnvValue(prepared.Env, "HERMES_HOME")
+	}
+
+	firstHome := prepare("session-a")
+	firstBin := filepath.Join(firstHome, "bin")
+	if err := os.WriteFile(filepath.Join(firstBin, "verified-helper"), []byte("cached"), 0o700); err != nil {
+		t.Fatalf("write shared helper: %v", err)
+	}
+	secondHome := prepare("session-b")
+	secondBin := filepath.Join(secondHome, "bin")
+	content, err := os.ReadFile(filepath.Join(secondBin, "verified-helper"))
+	if err != nil {
+		t.Fatalf("second session did not reuse shared helper: %v", err)
+	}
+	if string(content) != "cached" {
+		t.Fatalf("shared helper content = %q, want cached", content)
+	}
+
+	stableBin := filepath.Join(globalHome, "bin")
+	for name, candidate := range map[string]string{"first": firstBin, "second": secondBin} {
+		same, err := sameResolvedPath(stableBin, candidate)
+		if err != nil || !same {
+			t.Fatalf("%s session bin does not resolve to stable bin: same=%v err=%v", name, same, err)
+		}
+	}
+
+	if err := prep.Cleanup(t.Context(), CleanupInput{WorkspaceID: "workspace-1", AgentSessionID: "session-a"}); err != nil {
+		t.Fatalf("Cleanup(session-a) error = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(secondBin, "verified-helper")); err != nil {
+		t.Fatalf("cleaning one session removed the shared helper: %v", err)
+	}
+}
+
+func TestExtensionRuntimePreparerAdoptsExistingSessionSharedDirectory(t *testing.T) {
+	globalHome := t.TempDir()
+	t.Setenv("HERMES_HOME", globalHome)
+	stateDir := t.TempDir()
+	runtimeRoot, err := LocalStore{StateDir: stateDir}.RuntimeRoot("workspace-1", "session-a")
+	if err != nil {
+		t.Fatalf("RuntimeRoot() error = %v", err)
+	}
+	legacyBin := filepath.Join(runtimeRoot, "hermes", "bin")
+	if err := os.MkdirAll(legacyBin, 0o700); err != nil {
+		t.Fatalf("create legacy bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyBin, "verified-helper"), []byte("legacy"), 0o700); err != nil {
+		t.Fatalf("write legacy helper: %v", err)
+	}
+
+	prep := NewDefaultPreparer(stateDir)
+	prep.CommandCatalog = staticCommandCatalog(nil)
+	if _, err := prep.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:          "workspace-1",
+		AgentSessionID:       "session-a",
+		AgentTargetID:        "extension:example",
+		Provider:             "acp:example",
+		Cwd:                  t.TempDir(),
+		ExtensionRuntimePrep: hermesRuntimePrep(),
+	}); err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(globalHome, "bin", "verified-helper"))
+	if err != nil || string(content) != "legacy" {
+		t.Fatalf("legacy helper was not adopted: content=%q err=%v", content, err)
+	}
+	same, err := sameResolvedPath(filepath.Join(globalHome, "bin"), legacyBin)
+	if err != nil || !same {
+		t.Fatalf("legacy bin was not replaced by stable projection: same=%v err=%v", same, err)
+	}
+}
+
+func TestExtensionRuntimePreparerSeedsEmptyStableDirectoryFromPriorSession(t *testing.T) {
+	globalHome := t.TempDir()
+	t.Setenv("HERMES_HOME", globalHome)
+	stableBin := filepath.Join(globalHome, "bin")
+	if err := os.MkdirAll(stableBin, 0o700); err != nil {
+		t.Fatalf("create empty stable bin: %v", err)
+	}
+
+	stateDir := t.TempDir()
+	store := LocalStore{StateDir: stateDir}
+	legacyRoot, err := store.RuntimeRoot("workspace-1", "legacy-session")
+	if err != nil {
+		t.Fatalf("legacy RuntimeRoot() error = %v", err)
+	}
+	legacyHome := filepath.Join(legacyRoot, "hermes")
+	legacyBin := filepath.Join(legacyHome, "bin")
+	if err := os.MkdirAll(legacyBin, 0o700); err != nil {
+		t.Fatalf("create legacy bin: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(legacyBin, "verified-helper"), []byte("legacy-cache"), 0o700); err != nil {
+		t.Fatalf("write legacy helper: %v", err)
+	}
+	manifest := NewManifest(ManifestInput{
+		AgentSessionID: "legacy-session",
+		Provider:       "acp:example",
+		Cwd:            t.TempDir(),
+		RuntimeRoot:    legacyRoot,
+	})
+	manifest.RecordManagedFile(legacyHome, "provider-extension-home", true)
+	if err := store.SaveManifest(legacyRoot, manifest); err != nil {
+		t.Fatalf("save legacy manifest: %v", err)
+	}
+
+	prep := NewDefaultPreparer(stateDir)
+	prep.CommandCatalog = staticCommandCatalog(nil)
+	prepared, err := prep.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:          "workspace-1",
+		AgentSessionID:       "current-session",
+		AgentTargetID:        "extension:example",
+		Provider:             "acp:example",
+		Cwd:                  t.TempDir(),
+		ExtensionRuntimePrep: hermesRuntimePrep(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	content, err := os.ReadFile(filepath.Join(stableBin, "verified-helper"))
+	if err != nil || string(content) != "legacy-cache" {
+		t.Fatalf("stable helper was not seeded: content=%q err=%v", content, err)
+	}
+	currentBin := filepath.Join(preparedEnvValue(prepared.Env, "HERMES_HOME"), "bin")
+	same, err := sameResolvedPath(stableBin, currentBin)
+	if err != nil || !same {
+		t.Fatalf("current bin does not resolve to seeded stable bin: same=%v err=%v", same, err)
+	}
+}
+
+func TestValidateExtensionRuntimePrepRejectsUnsafeOrConflictingSharedDirs(t *testing.T) {
+	for name, sharedDirs := range map[string][]string{
+		"parent traversal":   {"../bin"},
+		"copied file parent": {"config.yaml/cache"},
+		"copied file":        {"config.yaml"},
+		"duplicate":          {"bin", "bin"},
+		"nested":             {"bin", "bin/cache"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			prep := hermesRuntimePrep()
+			prep.Home.SharedDirs = sharedDirs
+			if err := ValidateExtensionRuntimePrep(*prep); err == nil {
+				t.Fatal("ValidateExtensionRuntimePrep() error = nil")
+			}
+		})
 	}
 }
 

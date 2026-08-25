@@ -44,12 +44,20 @@ func exposeCodexDirectory(source, target string) error {
 // back to a directory copy because a copy would silently make new Skills
 // session-local again.
 func exposeCodexSharedDirectory(source, target string) error {
+	return exposeSharedRuntimeDirectory(source, target)
+}
+
+func exposeSharedRuntimeDirectory(source, target string) error {
 	if err := os.Symlink(source, target); err == nil {
 		return nil
 	} else if junctionErr := createCodexDirectoryJunction(source, target); junctionErr != nil {
 		return fmt.Errorf("symlink failed: %v; junction failed: %w", err, junctionErr)
 	}
 	return nil
+}
+
+func sameSharedRuntimePath(left, right string) bool {
+	return strings.EqualFold(filepath.Clean(left), filepath.Clean(right))
 }
 
 func createCodexDirectoryJunction(source, target string) error {
