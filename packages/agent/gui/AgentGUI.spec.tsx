@@ -12,6 +12,7 @@ interface AgentGUINodeProbeProps {
     agentTargets?: readonly {
       agentTargetId?: string;
       availability: unknown;
+      disabled?: boolean;
       ref: unknown;
     }[];
     disabledHomeSuggestions?: readonly string[];

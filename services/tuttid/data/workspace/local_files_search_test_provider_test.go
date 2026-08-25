@@ -31,7 +31,7 @@ func (emptyLocalFileSearchProvider) Search(
 	return nil, nil
 }
 
-func (f failingLocalFileSearchProvider) Name() string {
+func (failingLocalFileSearchProvider) Name() string {
 	return "failing-index"
 }
 
