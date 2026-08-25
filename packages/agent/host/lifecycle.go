@@ -458,12 +458,12 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 	}
 	release, err := h.acquireStartup(ctx, canonicalSession.Provider)
 	if err != nil {
-		return ProviderRuntimeSession{}, h.cleanupRejectedPreparedRuntime(ctx, ref, canonicalSession.Provider, err)
+		return ProviderRuntimeSession{}, h.cleanupFailedRuntimeResume(ctx, ref, canonicalSession.Provider, err)
 	}
 	defer release()
 	goalGenerationFences, err := h.listRuntimeGoalGenerationFences(ctx, ref)
 	if err != nil {
-		return ProviderRuntimeSession{}, h.cleanupRejectedPreparedRuntime(ctx, ref, canonicalSession.Provider, err)
+		return ProviderRuntimeSession{}, h.cleanupFailedRuntimeResume(ctx, ref, canonicalSession.Provider, err)
 	}
 	result, err := h.runtime.Resume(ctx, RuntimeResumeInput{
 		WorkspaceID: ref.WorkspaceID, AgentSessionID: ref.AgentSessionID,
@@ -479,10 +479,10 @@ func (h *Host) ensureRuntimeSessionLocked(ctx context.Context, ref SessionRef) (
 		RecreateIfMissing:      policy.Mode == ResumeModeRecreate,
 	})
 	if err != nil {
-		return ProviderRuntimeSession{}, h.cleanupRejectedPreparedRuntime(ctx, ref, canonicalSession.Provider, err)
+		return ProviderRuntimeSession{}, h.cleanupFailedRuntimeResume(ctx, ref, canonicalSession.Provider, err)
 	}
 	if err := h.restoreGoalGenerationFences(ctx, ref); err != nil {
-		return ProviderRuntimeSession{}, h.cleanupRejectedPreparedRuntime(ctx, ref, canonicalSession.Provider, err)
+		return ProviderRuntimeSession{}, h.cleanupFailedRuntimeResume(ctx, ref, canonicalSession.Provider, err)
 	}
 	h.goalFencesRestored.Store(ref.WorkspaceID+"\x00"+ref.AgentSessionID, struct{}{})
 	return result, nil
