@@ -1284,6 +1284,11 @@ cannot find the path specified`, while the same repository is searchable
   Confirm whether more than one `tuttid` agent-provider install action or
   desktop install button fired at roughly the same time for commands shaped
   like `npm install -g ...`.
+  A daemon readiness install followed within seconds by
+  `agent_provider_status.pending_action_added` for the same provider identifies
+  the renderer/daemon bootstrap race. An npm exit code of `190` on macOS,
+  package staging cleanup, and a surviving PPID-1 npm process are strong
+  evidence that overlapping installs mutated the same prefix.
   Inspect the daemon run-state lock path under
   `TUTTI_STATE_DIR/run/locks/npm-global-install.lock` while an install is in
   progress to verify later installs are waiting instead of running in parallel.
@@ -1291,18 +1296,28 @@ cannot find the path specified`, while the same repository is searchable
   npm global installs mutate shared package and bin locations. Without a
   daemon-owned cross-process lock, concurrent `npm install -g` commands can
   race while writing the same global state and leave a corrupted runtime.
+  Internal managed-npm installers use semantic command ids such as
+  `managed_npm_package:<package>` rather than a literal npm command, so the lock
+  recognizer must cover those ids too. Renderer bootstrap must also treat the
+  daemon's `activeAction` as authoritative; its local pending-action set cannot
+  see a readiness install that the daemon started first.
 - Fix:
   Serialize agent-provider `npm install -g` commands behind the daemon install
   lock and keep the lock path under daemon-owned state. Start the install
   timeout only after the lock is acquired so queued installs do not consume
   their npm execution budget while waiting. Do not auto-delete the lock on a
   timer. Instead, recover the lock during daemon startup only when the recorded
-  owner pid is no longer running. If recovery is still needed manually, clear
-  `npm-global-install.lock` only after verifying no install is still running.
+  owner pid is no longer running. Make managed npm and Codex-latest semantic
+  installer ids acquire the same global lock, and have renderer auto-bootstrap
+  skip any provider with a daemon-reported active action. If recovery is still
+  needed manually, clear `npm-global-install.lock` only after verifying no
+  install is still running.
 - Validation:
-  Run `pnpm lint:go` plus `cd services/tuttid && go test ./... && go build ./...`.
-  Then trigger two install actions in quick succession and confirm the second
-  waits for the first instead of starting another global npm mutation.
+  Cover managed npm and Codex-latest installer ids in the lock recognizer, plus
+  renderer bootstrap receiving an active daemon install. Run `pnpm lint:go`
+  plus `cd services/tuttid && go test ./... && go build ./...`. Then trigger two
+  install actions in quick succession and confirm the second waits for the
+  first instead of starting another global npm mutation.
 
 ### Agent provider install looks idle while a non-Codex installer is running
 

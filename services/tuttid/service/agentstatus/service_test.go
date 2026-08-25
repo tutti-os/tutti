@@ -2356,6 +2356,33 @@ func TestInstallCommandLockSerializesConcurrentNPMGlobalInstalls(t *testing.T) {
 	}
 }
 
+func TestInstallerLockCommandRecognizesManagedNPMGlobalInstalls(t *testing.T) {
+	specs := []InstallerSpec{
+		{
+			Kind: InstallerKindCodexCLILatest,
+			CodexCLI: &CodexCLILatestInstallerSpec{
+				PackageName: "@openai/codex",
+			},
+		},
+		{
+			Kind: InstallerKindManagedNPMPackage,
+			ManagedNPM: &ManagedNPMPackageInstallerSpec{
+				PackageName: "@tutti-os/tutti-agent",
+			},
+		},
+	}
+
+	for _, spec := range specs {
+		command := installerLockCommand(spec)
+		if !requiresInstallCommandLock(command) {
+			t.Errorf("installerLockCommand(%q) = %q, want a recognized global npm lock command", spec.Kind, command)
+		}
+		if got := filepath.Base(installCommandLockPath(command)); got != "npm-global-install.lock" {
+			t.Errorf("installCommandLockPath(%q) = %q, want npm-global-install.lock", command, got)
+		}
+	}
+}
+
 func TestInstallCommandLockSerializesConcurrentExternalRegistryNPMInstalls(t *testing.T) {
 	lockPath := filepath.Join(t.TempDir(), "run", "locks", "agent-provider-install.lock")
 	lock := installCommandLock{
