@@ -2137,7 +2137,9 @@ enabled, the same footer renders the Tutti Mode activation switch and the slash
 palette exposes `/tutti`, including when Connectors are also enabled. When the
 flag is off, both Tutti Mode entry points are omitted. The same footer serves
 both the home hero and existing-session dock, so the two AgentGUI contexts
-cannot drift.
+cannot drift. The one-time Desktop Preferences migration resets any persisted
+`lab.tuttiMode` value to `false`; its durable migration marker preserves later
+user opt-ins instead of resetting the preference on every launch.
 The menu, selection-chip, and Palette-item implementations plus their neutral
 item contracts belong to `@tutti-os/connector-renderer/ui`. AgentGUI owns only
 the React-free capability projection under `integrations/connector`, Composer
