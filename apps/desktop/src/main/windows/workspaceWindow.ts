@@ -41,8 +41,6 @@ import {
 import { supportsWorkspaceWindowCloseGuard } from "./workspaceWindowCloseGuard.ts";
 import { installWorkspaceWindowWebviewSecurity } from "./workspaceWebviewSecurity.ts";
 
-export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
-
 export interface CreateWorkspaceWindowOptions {
   browserNodeGuestPreloadPath?: string;
   enableDevelopmentReloadShortcut?: boolean;

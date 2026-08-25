@@ -5,8 +5,11 @@ import {
   type BrowserNodeElectronLogger,
   type BrowserWebviewGuestAttachment
 } from "@tutti-os/browser-node/electron-main";
-
-export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
+import {
+  hasWorkspaceAppSessionPartitionPrefix,
+  isWorkspaceAppSessionPartition,
+  workspaceAppSessionPartitionPrefix
+} from "../../shared/contracts/workspaceAppSessionPartition.ts";
 
 interface WorkspaceWindowWebviewSecurityRuntime {
   openExternal(url: string): Promise<void> | void;
@@ -32,7 +35,7 @@ export function installWorkspaceWindowWebviewSecurity(input: {
 }): () => void {
   return installBrowserWebviewSecurity({
     allowedSessionPartitions: {
-      additionalAllowedPrefixes: [workspaceAppBrowserPartitionPrefix]
+      additionalAllowedPrefixes: [workspaceAppSessionPartitionPrefix]
     },
     contents: input.contents,
     logger: input.logger,
@@ -51,24 +54,26 @@ export function installWorkspaceWindowWebviewSecurity(input: {
     },
     resolvePreload({ params }) {
       const partition = params.partition;
-      if (
-        input.workspaceAppPreloadPath &&
-        isWorkspaceAppSessionPartition(partition)
-      ) {
-        input.runtime.registerWorkspaceAppAssetProtocol(partition);
-        input.logger?.info?.("applying workspace app guest preload", {
-          partition,
-          preloadPath: input.workspaceAppPreloadPath,
-          src: params.src ?? null
-        });
-        return input.workspaceAppPreloadPath;
+      if (hasWorkspaceAppSessionPartitionPrefix(partition)) {
+        if (
+          input.workspaceAppPreloadPath &&
+          isWorkspaceAppSessionPartition(partition)
+        ) {
+          input.runtime.registerWorkspaceAppAssetProtocol(partition);
+          input.logger?.info?.("applying workspace app guest preload", {
+            partition,
+            preloadPath: input.workspaceAppPreloadPath,
+            src: params.src ?? null
+          });
+          return input.workspaceAppPreloadPath;
+        }
+        return null;
       }
       if (
         input.browserNodeGuestPreloadPath &&
         isBrowserNodeWebviewAttach(params, {
-          additionalAllowedPrefixes: [workspaceAppBrowserPartitionPrefix]
-        }) &&
-        !isWorkspaceAppSessionPartition(partition)
+          additionalAllowedPrefixes: [workspaceAppSessionPartitionPrefix]
+        })
       ) {
         input.logger?.info?.("applying browser node guest preload", {
           partition: partition ?? null,
@@ -80,10 +85,4 @@ export function installWorkspaceWindowWebviewSecurity(input: {
       return null;
     }
   });
-}
-
-function isWorkspaceAppSessionPartition(
-  partition: string | undefined
-): partition is string {
-  return (partition ?? "").startsWith(workspaceAppBrowserPartitionPrefix);
 }

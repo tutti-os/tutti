@@ -32,7 +32,7 @@ import {
   normalizeWorkspaceAppDiagnosticLogRecord,
   type WorkspaceAppFrontendLogWriter
 } from "./workspaceAppFrontendLogging.ts";
-import { dispatchWorkspaceAppOpenUrl } from "./workspaceAppWindowOpen.ts";
+import { dispatchWorkspaceAppOpenUrl } from "../host/workspaceAppBrowserOpen.ts";
 import { isRecord } from "./workspaceAppPayloadValidation.ts";
 import { requestWorkspaceAppExternalRenderer } from "./workspaceAppRendererBridge.ts";
 import { createWorkspaceAppAtQueryDirectoryRequest } from "./workspaceAppAtQueryDirectoryRequest.ts";

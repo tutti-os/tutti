@@ -15,12 +15,16 @@ import { registerTuttiAssetProtocolForSession } from "../host/tuttiAssetProtocol
 import { registerWorkspaceAppGuestContext } from "./workspaceAppGuestContextRegistry.ts";
 import type { DesktopLogger } from "../logging.ts";
 import { installWorkspaceWindowWebviewSecurity } from "../windows/workspaceWebviewSecurity.ts";
+import { createWorkspaceAppSessionPartition } from "../../shared/contracts/workspaceAppSessionPartition.ts";
 
 const resultPrefix = "WORKSPACE_APP_POPUP_INTEGRATION=";
 const rendererAckChannel = "workspace-app-popup-test:browser-event";
 const rendererObservationChannel = "workspace-app-popup-test:observation";
 const rendererReadyChannel = "workspace-app-popup-test:renderer-ready";
-const workspaceAppPartition = "persist:tutti-app:popup-integration";
+const workspaceAppPartition = createWorkspaceAppSessionPartition({
+  appID: "popup-integration",
+  workspaceID: "popup-integration"
+});
 
 type FixtureMainHandler = (
   event: unknown,

@@ -13,8 +13,8 @@ test("workspace popup notifications explain unsupported authorization popup mode
     | undefined;
   let disposed = 0;
   const dispose = registerWorkspaceAppPopupNotifications({
-    browserApi: {
-      onWorkspaceAppPopupRejected(nextListener) {
+    workspaceAppApi: {
+      onPopupRejected(nextListener) {
         listener = nextListener;
         return () => {
           disposed += 1;

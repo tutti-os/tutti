@@ -1,17 +1,17 @@
-import type { DesktopBrowserApi } from "@preload/types";
+import type { DesktopWorkspaceAppApi } from "@preload/types";
 import type { NotificationService } from "@tutti-os/ui-notifications";
 import type { DesktopI18nKey } from "../../../../../shared/i18n/index.ts";
 
 export function registerWorkspaceAppPopupNotifications(input: {
-  browserApi:
-    | Pick<DesktopBrowserApi, "onWorkspaceAppPopupRejected">
+  workspaceAppApi:
+    | Pick<DesktopWorkspaceAppApi, "onPopupRejected">
     | null
     | undefined;
   notifications: Pick<NotificationService, "error">;
   translate(key: DesktopI18nKey): string;
 }): () => void {
   return (
-    input.browserApi?.onWorkspaceAppPopupRejected?.((event) => {
+    input.workspaceAppApi?.onPopupRejected((event) => {
       const [descriptionKey, titleKey] =
         event.reason === "deferred-navigation-unsupported"
           ? ([

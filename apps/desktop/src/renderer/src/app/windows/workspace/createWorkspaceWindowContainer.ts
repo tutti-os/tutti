@@ -136,9 +136,9 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
   registry.registerInstance(INotificationService, notificationService);
   const disposeWorkspaceAppPopupNotifications =
     registerWorkspaceAppPopupNotifications({
-      browserApi: desktopApi.browser,
       notifications: notificationService,
-      translate
+      translate,
+      workspaceAppApi: desktopApi.workspaceApp
     });
   const analyticsDebugAvailable = isAnalyticsDebugAvailable({
     isDev: import.meta.env.DEV

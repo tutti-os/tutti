@@ -3,10 +3,7 @@ import test from "node:test";
 import type { BrowserNodeOpenUrlEvent } from "@tutti-os/browser-node";
 import type { BrowserWebviewWindowOpenHandler } from "@tutti-os/browser-node/electron-main";
 import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
-import {
-  createWorkspaceAppWindowOpenHandler,
-  dispatchWorkspaceAppOpenUrl
-} from "./workspaceAppWindowOpen.ts";
+import { createWorkspaceAppWindowOpenHandler } from "./workspaceAppWindowOpen.ts";
 
 test("workspace app window-open handler emits one event for an accepted GET popup", () => {
   const events: BrowserNodeOpenUrlEvent[] = [];
@@ -106,7 +103,7 @@ test("workspace app window-open handler rejects POST popup bodies instead of rep
   assert.deepEqual(events, []);
   assert.deepEqual(messages, [
     {
-      channel: desktopIpcChannels.browser.workspaceAppPopupRejected,
+      channel: desktopIpcChannels.workspaceApp.popupRejected,
       payload: { reason: "post-unsupported" }
     }
   ]);
@@ -144,40 +141,10 @@ test("workspace app window-open handler rejects deferred navigation popups expli
   assert.deepEqual(navigatedUrls, []);
   assert.deepEqual(messages, [
     {
-      channel: desktopIpcChannels.browser.workspaceAppPopupRejected,
+      channel: desktopIpcChannels.workspaceApp.popupRejected,
       payload: { reason: "deferred-navigation-unsupported" }
     }
   ]);
-});
-
-test("workspace app open-url dispatch emits no event for invalid URLs or unavailable owners", () => {
-  const events: BrowserNodeOpenUrlEvent[] = [];
-  const contents = { id: 101 };
-
-  assert.equal(
-    dispatchWorkspaceAppOpenUrl({
-      contents,
-      ownerWindow: createOwnerWindow(events),
-      producer: "external-browser-api",
-      url: "javascript:alert(1)"
-    }),
-    false
-  );
-  assert.equal(
-    dispatchWorkspaceAppOpenUrl({
-      contents,
-      ownerWindow: {
-        isDestroyed: () => true,
-        webContents: {
-          send(_channel: string, _event: unknown) {}
-        }
-      },
-      producer: "window-open-handler",
-      url: "https://example.com/"
-    }),
-    false
-  );
-  assert.deepEqual(events, []);
 });
 
 function createOwnerWindow(events: BrowserNodeOpenUrlEvent[]) {

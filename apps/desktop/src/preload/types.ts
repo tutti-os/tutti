@@ -220,6 +220,12 @@ export interface DesktopWorkspaceAppExternalHostApi {
   sendEvent(event: DesktopWorkspaceAppExternalRendererEvent): void;
 }
 
+export interface DesktopWorkspaceAppApi {
+  onPopupRejected(
+    listener: (event: DesktopWorkspaceAppPopupRejectedEvent) => void
+  ): () => void;
+}
+
 export interface DesktopHostFilesApi {
   createUserDocumentsProjectDirectory(input: {
     name: string;
@@ -329,9 +335,6 @@ export type DesktopBrowserApi = Pick<
   onAutomationRequest(
     listener: (request: DesktopBrowserAutomationRequest) => void
   ): () => void;
-  onWorkspaceAppPopupRejected?(
-    listener: (event: DesktopWorkspaceAppPopupRejectedEvent) => void
-  ): () => void;
   respondAutomationRequest(response: DesktopBrowserAutomationResponse): void;
 };
 
@@ -378,5 +381,6 @@ export interface DesktopApi {
   runtime: DesktopRuntimeApi;
   update: DesktopUpdateApi;
   wallpaper: DesktopWallpaperApi;
+  workspaceApp?: DesktopWorkspaceAppApi;
   workspaceAppExternal?: DesktopWorkspaceAppExternalHostApi;
 }

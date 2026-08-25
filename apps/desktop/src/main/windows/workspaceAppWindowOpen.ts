@@ -1,52 +1,26 @@
-import {
-  resolveBrowserNavigationUrl,
-  type BrowserNodeOpenUrlEvent
-} from "@tutti-os/browser-node";
+import { resolveBrowserNavigationUrl } from "@tutti-os/browser-node";
 import type { BrowserWebviewWindowOpenHandler } from "@tutti-os/browser-node/electron-main";
 import {
   desktopIpcChannels,
   type DesktopWorkspaceAppPopupRejectedEvent
 } from "../../shared/contracts/ipc.ts";
+import {
+  dispatchWorkspaceAppOpenUrl,
+  type WorkspaceAppBrowserOpenContents,
+  type WorkspaceAppBrowserOpenLogger,
+  type WorkspaceAppBrowserOpenOwnerWindow
+} from "../host/workspaceAppBrowserOpen.ts";
 
-interface WorkspaceAppOpenUrlContents {
-  id: number;
-}
-
-interface WorkspaceAppWindowOpenContents extends WorkspaceAppOpenUrlContents {
+interface WorkspaceAppWindowOpenContents extends WorkspaceAppBrowserOpenContents {
   getURL(): string;
   isDestroyed?(): boolean;
   loadURL(url: string): Promise<void>;
 }
 
-interface WorkspaceAppWindowOpenOwnerWindow {
-  isDestroyed?(): boolean;
-  webContents: {
-    isDestroyed?(): boolean;
-    send(
-      channel: string,
-      payload: BrowserNodeOpenUrlEvent | DesktopWorkspaceAppPopupRejectedEvent
-    ): void;
-  };
-}
-
-interface WorkspaceAppWindowOpenLogger {
-  debug?(message: string, details?: Record<string, unknown>): void;
-  info?(message: string, details?: Record<string, unknown>): void;
-  warn?(message: string, details?: Record<string, unknown>): void;
-}
-
 interface WorkspaceAppWindowOpenHandlerInput {
   contents: WorkspaceAppWindowOpenContents;
-  logger?: WorkspaceAppWindowOpenLogger;
-  ownerWindow: WorkspaceAppWindowOpenOwnerWindow;
-}
-
-interface WorkspaceAppOpenUrlInput {
-  contents: WorkspaceAppOpenUrlContents;
-  logger?: WorkspaceAppWindowOpenLogger;
-  ownerWindow: WorkspaceAppWindowOpenOwnerWindow;
-  producer: "external-browser-api" | "window-open-handler";
-  url: string;
+  logger?: WorkspaceAppBrowserOpenLogger;
+  ownerWindow: WorkspaceAppBrowserOpenOwnerWindow;
 }
 
 type WorkspaceAppWindowOpenDecision =
@@ -156,7 +130,7 @@ function logWorkspaceAppPopupRejection(input: {
   contents: WorkspaceAppWindowOpenContents;
   decision: Extract<WorkspaceAppWindowOpenDecision, { action: "reject" }>;
   details: Parameters<BrowserWebviewWindowOpenHandler>[0];
-  logger?: WorkspaceAppWindowOpenLogger;
+  logger?: WorkspaceAppBrowserOpenLogger;
 }): void {
   if (input.decision.reason === "post-unsupported") {
     input.logger?.warn?.("workspace app guest rejected POST popup", {
@@ -179,7 +153,7 @@ function logWorkspaceAppPopupRejection(input: {
 }
 
 function notifyWorkspaceAppPopupRejected(
-  ownerWindow: WorkspaceAppWindowOpenOwnerWindow,
+  ownerWindow: WorkspaceAppBrowserOpenOwnerWindow,
   payload: DesktopWorkspaceAppPopupRejectedEvent
 ): void {
   if (
@@ -189,53 +163,7 @@ function notifyWorkspaceAppPopupRejected(
     return;
   }
   ownerWindow.webContents.send(
-    desktopIpcChannels.browser.workspaceAppPopupRejected,
+    desktopIpcChannels.workspaceApp.popupRejected,
     payload
   );
-}
-
-export function dispatchWorkspaceAppOpenUrl({
-  contents,
-  logger,
-  ownerWindow,
-  producer,
-  url
-}: WorkspaceAppOpenUrlInput): boolean {
-  const resolved = resolveBrowserNavigationUrl(url);
-  if (!resolved.url) {
-    logger?.warn?.("workspace app guest ignored unsupported open-url", {
-      url,
-      webContentsId: contents.id
-    });
-    return false;
-  }
-
-  if (
-    ownerWindow.isDestroyed?.() === true ||
-    ownerWindow.webContents.isDestroyed?.() === true
-  ) {
-    logger?.warn?.("workspace app guest open-url owner window unavailable", {
-      ownerWindowDestroyed: ownerWindow.isDestroyed?.() === true,
-      ownerWebContentsDestroyed:
-        ownerWindow.webContents.isDestroyed?.() === true,
-      url: resolved.url,
-      webContentsId: contents.id
-    });
-    return false;
-  }
-
-  const payload: BrowserNodeOpenUrlEvent = {
-    reuseIfOpen: false,
-    sourceNodeId: `workspace-app:${contents.id}`,
-    type: "open-url",
-    url: resolved.url
-  };
-  logger?.info?.("workspace app emitted open-url", {
-    producer,
-    sourceNodeId: payload.sourceNodeId,
-    url: payload.url,
-    webContentsId: contents.id
-  });
-  ownerWindow.webContents.send(desktopIpcChannels.browser.event, payload);
-  return true;
 }

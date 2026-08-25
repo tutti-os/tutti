@@ -3,26 +3,61 @@ import {
   type WorkspaceBrowserLaunchHandler,
   type WorkspaceBrowserLaunchRequest
 } from "./workspaceBrowserLaunchCoordinator.ts";
+import type {
+  WorkspaceBrowserPageOpenInput,
+  WorkspaceBrowserPageOpenResult
+} from "./workspaceWorkbenchHostService.interface.ts";
 import { workspaceBrowserNodeID } from "./workspaceWorkbenchNodeIds.ts";
 
 export function createWorkbenchWorkspaceBrowserPresenter(input: {
+  browserPages: {
+    openPage(
+      request: WorkspaceBrowserPageOpenInput
+    ): WorkspaceBrowserPageOpenResult | null;
+  };
   host: WorkbenchHostHandle;
 }): WorkspaceBrowserLaunchHandler {
-  return (request) => presentWorkspaceBrowser(input.host, request);
+  return (request) => presentWorkspaceBrowser(input, request);
 }
 
 async function presentWorkspaceBrowser(
-  host: WorkbenchHostHandle,
+  input: {
+    browserPages: {
+      openPage(
+        request: WorkspaceBrowserPageOpenInput
+      ): WorkspaceBrowserPageOpenResult | null;
+    };
+    host: WorkbenchHostHandle;
+  },
   request: WorkspaceBrowserLaunchRequest
 ): Promise<string | null> {
+  const { host } = input;
+  const browserNodeIds = resolveWorkspaceBrowserNodeIds(host);
   const preferredNodeId =
     request.kind === "focus"
       ? resolveWorkspaceBrowserNodeId(host, request.preferredNodeId)
       : null;
   const existingNodeId =
-    request.kind === "open" && request.reuseIfOpen === false
-      ? null
-      : (preferredNodeId ?? resolveCurrentWorkspaceBrowserNodeId(host));
+    request.kind === "focus"
+      ? (preferredNodeId ?? browserNodeIds[0] ?? null)
+      : null;
+
+  if (
+    request.kind === "open" &&
+    request.reuseIfOpen !== false &&
+    browserNodeIds.length > 0
+  ) {
+    const openedPage = input.browserPages.openPage({
+      surfaceNodeIds: browserNodeIds,
+      url: request.url,
+      workspaceId: request.workspaceId
+    });
+    if (openedPage) {
+      host.focusNode(openedPage.surfaceNodeId);
+      return openedPage.surfaceNodeId;
+    }
+  }
+
   const nodeId =
     existingNodeId ??
     (await host.launchNode({
@@ -65,20 +100,24 @@ function resolveWorkspaceBrowserNodeId(
   return node?.data.typeId === workspaceBrowserNodeID ? node.id : null;
 }
 
-function resolveCurrentWorkspaceBrowserNodeId(
-  host: WorkbenchHostHandle
-): string | null {
+function resolveWorkspaceBrowserNodeIds(host: WorkbenchHostHandle): string[] {
   const snapshot = host.getSnapshot();
   const nodesById = new Map(snapshot.nodes.map((node) => [node.id, node]));
+  const browserNodeIds: string[] = [];
   for (const nodeId of [...snapshot.nodeStack].reverse()) {
     const node = nodesById.get(nodeId);
     if (node?.data.typeId === workspaceBrowserNodeID) {
-      return node.id;
+      browserNodeIds.push(node.id);
     }
   }
 
-  return (
-    snapshot.nodes.find((node) => node.data.typeId === workspaceBrowserNodeID)
-      ?.id ?? null
-  );
+  for (const node of snapshot.nodes) {
+    if (
+      node.data.typeId === workspaceBrowserNodeID &&
+      !browserNodeIds.includes(node.id)
+    ) {
+      browserNodeIds.push(node.id);
+    }
+  }
+  return browserNodeIds;
 }

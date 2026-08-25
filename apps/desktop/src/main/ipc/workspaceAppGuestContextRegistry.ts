@@ -8,6 +8,7 @@ import {
 import { normalizeTuttiExternalAtInvalidation } from "@tutti-os/workspace-external-core/core";
 import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
 import type { DesktopLocale } from "../../shared/i18n";
+import { parseWorkspaceAppSessionPartition } from "../../shared/contracts/workspaceAppSessionPartition.ts";
 import type { DesktopLogger } from "../logging";
 import {
   resolveDesktopDaemonBaseUrl,
@@ -16,7 +17,7 @@ import {
 import { createWorkspaceAppContextToken } from "./workspaceAppContextToken.ts";
 import type { WorkspaceAppGuestContext } from "./workspaceAppContextTypes.ts";
 import { isRecord, isStringRecord } from "./workspaceAppPayloadValidation.ts";
-import { createWorkspaceAppWindowOpenHandler } from "./workspaceAppWindowOpen.ts";
+import { createWorkspaceAppWindowOpenHandler } from "../windows/workspaceAppWindowOpen.ts";
 
 const { webContents } = electron;
 
@@ -204,29 +205,11 @@ export function isWorkspaceAppExternalRendererEvent(
   return isWorkspaceAppUserProjectSnapshot(value.snapshot);
 }
 
-export function parseWorkspaceAppGuestPartition(
-  partition: string | null | undefined
-): { appID: string; workspaceID: string } | null {
-  const prefix = "persist:tutti-app:";
-  if (!partition?.startsWith(prefix)) {
-    return null;
-  }
-  const value = partition.slice(prefix.length);
-  const separator = value.indexOf(":");
-  if (separator <= 0 || separator >= value.length - 1) {
-    return null;
-  }
-  return {
-    appID: decodeURIComponent(value.slice(separator + 1)),
-    workspaceID: decodeURIComponent(value.slice(0, separator))
-  };
-}
-
 function readWorkspaceAppGuestContext(
   ownerWindow: BrowserWindow,
   partition: string | null | undefined
 ): WorkspaceAppGuestContext | null {
-  const parsed = parseWorkspaceAppGuestPartition(partition);
+  const parsed = parseWorkspaceAppSessionPartition(partition);
   if (!parsed) {
     return null;
   }

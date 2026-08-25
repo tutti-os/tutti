@@ -112,6 +112,49 @@ test("workspace webview security composes ordinary Browser guests without Worksp
   assert.equal(guest.setWindowOpenHandlerCount(), 1);
 });
 
+test("workspace webview security gives malformed Workspace App partitions no preload or host route", () => {
+  const contents = new EventEmitter();
+  const browserGuests: number[] = [];
+  const workspaceAppGuests: number[] = [];
+  const assetPartitions: string[] = [];
+  const guest = createGuestContents(73);
+  const cleanup = installWorkspaceWindowWebviewSecurity({
+    browserNodeGuestPreloadPath: "/browser-preload.cjs",
+    contents: contents as never,
+    ownerWindow: { id: 13 } as never,
+    runtime: {
+      openExternal() {},
+      registerBrowserGuest(_ownerWindow, guestContents) {
+        browserGuests.push(guestContents.id);
+      },
+      registerWorkspaceAppAssetProtocol(partition) {
+        assetPartitions.push(partition);
+      },
+      registerWorkspaceAppGuest(_ownerWindow, guestContents) {
+        workspaceAppGuests.push(guestContents.id);
+        return {};
+      }
+    },
+    workspaceAppPreloadPath: "/workspace-app-preload.cjs"
+  });
+  const params = {
+    partition: "persist:tutti-app:missing-separator",
+    src: "https://workspace-app.example/"
+  };
+  const webPreferences: Record<string, unknown> = {};
+
+  emitWillAttach(contents, webPreferences, params);
+  contents.emit("did-attach-webview", {}, guest.contents);
+
+  cleanup();
+
+  assert.equal(webPreferences.preload, undefined);
+  assert.deepEqual(browserGuests, [73]);
+  assert.deepEqual(workspaceAppGuests, []);
+  assert.deepEqual(assetPartitions, []);
+  assert.equal(guest.setWindowOpenHandlerCount(), 1);
+});
+
 function emitWillAttach(
   contents: EventEmitter,
   webPreferences: Record<string, unknown>,

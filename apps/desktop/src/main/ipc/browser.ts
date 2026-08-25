@@ -60,7 +60,6 @@ type BrowserInvokeChannel = Exclude<
   | typeof desktopIpcChannels.browser.automationResponse
   | typeof desktopIpcChannels.browser.automationTurnClaim
   | typeof desktopIpcChannels.browser.event
-  | typeof desktopIpcChannels.browser.workspaceAppPopupRejected
 >;
 
 const prefersColorSchemeFeatureName = "prefers-color-scheme";

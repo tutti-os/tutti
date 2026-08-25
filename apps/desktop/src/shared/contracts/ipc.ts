@@ -187,6 +187,9 @@ export const desktopIpcChannels = {
     userProjectsUse: "workspace-app-user-projects:use",
     workspaceFeatureOpen: "workspace-app-feature:open"
   },
+  workspaceApp: {
+    popupRejected: "workspace-app-popup:rejected"
+  },
   browser: {
     activate: "browser:activate",
     automationHostReady: "browser:automation-host-ready",
@@ -221,8 +224,7 @@ export const desktopIpcChannels = {
     showDevToolsContextMenu: "browser:showDevToolsContextMenu",
     stopFindInPage: "browser:stopFindInPage",
     unregisterGuest: "browser:unregisterGuest",
-    updateAutomationTarget: "browser:updateAutomationTarget",
-    workspaceAppPopupRejected: "browser:workspaceAppPopupRejected"
+    updateAutomationTarget: "browser:updateAutomationTarget"
   },
   dockPreviewCache: {
     read: "dock-preview-cache:read",

@@ -117,6 +117,11 @@ page. Explicit non-reuse requests continue to launch a new surface.
 Workspace App popups have one main-process policy owner. Preload does not
 intercept blank-link clicks or patch `window.open`; blank links, `window.open`,
 and popup forms all reach the guest's single `setWindowOpenHandler` delegate.
+Desktop keeps the Electron popup decision and same-origin guest navigation in
+`main/windows/workspaceAppWindowOpen.ts`, while
+`main/host/workspaceAppBrowserOpen.ts` owns publication of the accepted
+external URL to the Browser event channel. `main/ipc/*` adapters delegate to
+those owners instead of implementing popup policy or Browser host dispatch.
 The host-provided Workspace App route has priority over the default Browser
 route; later `registerGuest` calls only update the delegate's Browser route and
 never reinstall or override the handler. Main compares an accepted HTTP(S)
@@ -126,10 +131,18 @@ Browser open-url event. Returning `deny` means page code receives no child
 `WindowProxy`; apps must not depend on `focus`, `location`, or `close` on that
 return value. Empty or `about:blank` deferred-navigation popups and POST popup
 forms are rejected with localized feedback because the Browser open-url
-contract cannot preserve their later navigation or request body. Renderer
-behavior does not deduplicate or merge events by source node or URL. Every
-accepted external popup remains an independent `reuseIfOpen: false` launch, and
-the Workbench presenter remains the narrow launch/focus adapter.
+contract cannot preserve their later navigation or request body. Rejection
+events use the Workspace App-specific preload API and IPC namespace rather
+than extending the generic Browser host API. Workspace App session partition
+construction, parsing, and validation share the single contract in
+`shared/contracts/workspaceAppSessionPartition.ts`; renderer and main must not
+redeclare its prefix. Renderer behavior does not deduplicate or merge events by
+source node or URL. Every accepted external popup remains an independent
+`reuseIfOpen: false` launch, and the Workbench presenter remains the narrow
+launch/focus adapter. Default reuse requests still delegate to the workspace
+Browser page service so matching tabs are focused, missing URLs become tabs in
+an initialized Browser surface, and unavailable tab state launches a new
+surface.
 The explicit Workspace App `browser.openUrl` bridge remains an IPC command and
 is logged as `external-browser-api`; it is an application API request, not a
 second DOM-popup transport.

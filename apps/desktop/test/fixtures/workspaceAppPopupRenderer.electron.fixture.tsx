@@ -8,11 +8,12 @@ import {
   type WorkbenchHostHandle,
   type WorkbenchHostNodeDefinition
 } from "@tutti-os/workbench-surface";
-import type { DesktopBrowserApi } from "../../src/preload/types.ts";
-import { desktopIpcChannels } from "../../src/shared/contracts/ipc.ts";
+import { createBrowserDesktopApi } from "../../src/preload/api/browser.ts";
+import { createWorkspaceAppDesktopApi } from "../../src/preload/api/workspaceApp.ts";
 import { createTranslator } from "../../src/shared/i18n/index.ts";
 import { registerWorkspaceAppPopupNotifications } from "../../src/renderer/src/app/windows/workspace/workspaceAppPopupNotifications.ts";
 import { createWorkspaceBrowserService } from "../../src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts";
+import { createWorkspaceAppBrowserFeature } from "../../src/renderer/src/features/workspace-workbench/services/internal/contributions/workspaceAppBrowserFeature.ts";
 import { createWorkbenchWorkspaceBrowserPresenter } from "../../src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceBrowserPresenter.ts";
 import { registerWorkspaceBrowserLaunchHandler } from "../../src/renderer/src/features/workspace-workbench/services/workspaceBrowserLaunchCoordinator.ts";
 
@@ -22,76 +23,42 @@ const rendererObservationChannel = "workspace-app-popup-test:observation";
 const workspaceId = "workspace-app-popup-integration";
 const browserTypeId = "browser";
 
-const browserEventListeners = new Set<(event: BrowserNodeEvent) => void>();
-const popupRejectedListeners = new Set<
-  (event: {
-    reason: "deferred-navigation-unsupported" | "post-unsupported";
-  }) => void
->();
 let browserEvents = 0;
 let rejectionNotifications = 0;
 let workbenchLaunches = 0;
 let workbenchHost: WorkbenchHostHandle | null = null;
 let releaseLaunchHandler: (() => void) | null = null;
 
-const browserApi = {
-  onEvent(listener: (event: BrowserNodeEvent) => void) {
-    browserEventListeners.add(listener);
-    return () => browserEventListeners.delete(listener);
-  },
-  onWorkspaceAppPopupRejected(
-    listener: (event: {
-      reason: "deferred-navigation-unsupported" | "post-unsupported";
-    }) => void
-  ) {
-    popupRejectedListeners.add(listener);
-    return () => popupRejectedListeners.delete(listener);
-  }
-} as unknown as DesktopBrowserApi;
+const browserApi = createBrowserDesktopApi();
+const workspaceAppApi = createWorkspaceAppDesktopApi();
 
-ipcRenderer.on(desktopIpcChannels.browser.event, (_event, payload) => {
-  const browserEvent = payload as BrowserNodeEvent;
+browserApi.onEvent((browserEvent: BrowserNodeEvent) => {
   browserEvents += 1;
   ipcRenderer.send(rendererAckChannel, browserEvent);
   reportObservation();
-  for (const listener of browserEventListeners) {
-    listener(browserEvent);
-  }
   void reportWhenBrowserSurfacesReach(browserEvents);
 });
 
-ipcRenderer.on(
-  desktopIpcChannels.browser.workspaceAppPopupRejected,
-  (_event, payload) => {
-    for (const listener of popupRejectedListeners) {
-      listener(
-        payload as {
-          reason: "deferred-navigation-unsupported" | "post-unsupported";
-        }
-      );
-    }
-    reportObservation();
-  }
-);
-
 const workspaceBrowserService = createWorkspaceBrowserService({ browserApi });
-const featureHostApi = workspaceBrowserService.createFeatureHostApi({
-  acceptsEvent: (event) =>
-    event.type !== "open-url" ||
-    event.sourceNodeId.startsWith("workspace-app:"),
-  source: "workspace_app",
+createWorkspaceAppBrowserFeature({
+  browserApi,
+  browserService: workspaceBrowserService,
+  runtimeApi: {
+    logRendererDiagnostic() {
+      return Promise.resolve();
+    }
+  },
   workspaceId
 });
-featureHostApi.onEvent(() => undefined);
 
 registerWorkspaceAppPopupNotifications({
-  browserApi,
   notifications: {
     error() {
       rejectionNotifications += 1;
     }
   } as never,
-  translate: createTranslator("en").t
+  translate: createTranslator("en").t,
+  workspaceAppApi
 });
 
 const browserNodeDefinition: WorkbenchHostNodeDefinition = {
@@ -139,7 +106,12 @@ createRoot(rootElement).render(
       } as WorkbenchHostHandle;
       releaseLaunchHandler = registerWorkspaceBrowserLaunchHandler(
         workspaceId,
-        createWorkbenchWorkspaceBrowserPresenter({ host: countingHost })
+        createWorkbenchWorkspaceBrowserPresenter({
+          browserPages: {
+            openPage: (request) => workspaceBrowserService.openPage(request)
+          },
+          host: countingHost
+        })
       );
       ipcRenderer.send(rendererReadyChannel);
     }}
