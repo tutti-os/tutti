@@ -203,8 +203,18 @@ type standardACPSession struct {
 	// initialPromptContext remains pending until the provider accepts its first
 	// prompt. A failed transport call leaves it pending for the next attempt.
 	initialPromptContext string
+	// activePrompt fences cancellation against the provider's outstanding
+	// session/prompt request. A session/cancel notification is only delivery;
+	// the provider may still reject or queue another prompt until the original
+	// request has actually returned.
+	activePrompt         *standardACPActivePrompt
 	localToolRelease     func()
 	localToolReleaseOnce sync.Once
+}
+
+type standardACPActivePrompt struct {
+	done            chan struct{}
+	cancelRequested bool
 }
 
 func (session *standardACPSession) releaseLocalTools() {
@@ -263,6 +273,8 @@ type standardACPSessionLock struct {
 type pendingACPApproval = pendingInteractiveRequest
 
 const standardACPRecentTurnTTL = 10 * time.Minute
+
+const standardACPCancelDrainTimeout = time.Second
 
 const acpMethodSetConfigOption = "session/set_config_option"
 const acpMethodSetModel = "session/set_model"

@@ -56,7 +56,9 @@ Use the focused runtime index or open one area directly:
   Also covers inactive Claude Resume timing out the queue send and leaving later
   prompts stuck as 排队中 behind `uncertainDelivery`, and Standard ACP process
   cleanup failures that stop a send before provider dispatch while preserving
-  the composer draft.
+  the composer draft. Standard ACP cancellation that returns before the active
+  provider prompt drains, causing every later prompt to remain provider-queued,
+  is covered here too.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.

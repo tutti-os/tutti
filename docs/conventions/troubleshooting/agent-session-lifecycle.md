@@ -1715,6 +1715,41 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [standard_acp_stream.go](../../../packages/agent/daemon/runtime/standard_acp_stream.go)
   [provider-native subagents](../../specs/2026-07-15-provider-native-subagents.md)
 
+### Standard ACP prompts stay queued after a canceled turn
+
+- Symptom:
+  A Standard ACP Agent finishes or cancels a visible turn, but every later
+  message reports that it was queued for the next turn and is never consumed.
+  The provider process remains alive and may still report its previous prompt
+  as running even though Tutti already presents the Session as idle.
+- Quick checks:
+  Correlate Tutti's `session/cancel` notification, the outstanding
+  `session/prompt` response, and the next `session/prompt` request. If the next
+  request is dispatched before the canceled prompt returns, the provider may
+  queue it behind state that no worker will drain. Distinguish this provider
+  queue from AgentGUI's local queue by confirming that the later request
+  crossed the ACP transport.
+- Root cause:
+  `session/cancel` is only cancellation delivery; it is not proof that the
+  outstanding `session/prompt` call has settled. Releasing Tutti's local turn
+  fence immediately after writing the notification lets another prompt enter
+  the same provider process while its internal running state is still true.
+- Fix:
+  Keep a per-Session active-prompt drain barrier. Mark cancellation before
+  sending `session/cancel`, then wait for the outstanding prompt result before
+  accepting another turn. If the provider does not settle within the bounded
+  drain window, close only the transport and let the next command resume the
+  provider Session in a fresh process. Do not call destructive
+  `session/close` during this recovery.
+- Validation:
+  Use a deterministic ACP transport fixture whose first prompt returns only
+  after `session/cancel`. Assert that `Cancel` cannot return before that prompt
+  drains, that the first turn settles as canceled, and that a second prompt on
+  the Session completes. Run the focused test under Go's race detector.
+- References:
+  [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
+  [standard_acp_turn_test.go](../../../packages/agent/daemon/runtime/standard_acp_turn_test.go)
+
 ### Codex goal stops after a turn while the goal remains active
 
 - Symptom:

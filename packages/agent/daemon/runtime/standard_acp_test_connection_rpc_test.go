@@ -327,7 +327,21 @@ func (c *standardACPConnection) Send(data []byte) error {
 			}
 			c.promptCallCount++
 			promptCall := c.promptCallCount
+			deferUntilCancel := c.deferFirstPromptUntilCancel && promptCall == 1
+			if deferUntilCancel {
+				c.pendingPromptID = append(json.RawMessage(nil), message.ID...)
+			}
+			promptStarted := c.promptStarted
 			c.mu.Unlock()
+			if promptStarted != nil {
+				select {
+				case promptStarted <- struct{}{}:
+				default:
+				}
+			}
+			if deferUntilCancel {
+				continue
+			}
 			if c.promptKind != "" {
 				c.mu.Lock()
 				c.pendingPermissionCallID = append(json.RawMessage(nil), message.ID...)
@@ -471,6 +485,18 @@ func (c *standardACPConnection) Send(data []byte) error {
 				return nil
 			}
 			c.streamPromptResult(message.ID)
+		case acpMethodCancel:
+			c.mu.Lock()
+			pendingPromptID := append(json.RawMessage(nil), c.pendingPromptID...)
+			c.pendingPromptID = nil
+			c.mu.Unlock()
+			if len(pendingPromptID) > 0 {
+				c.sendJSON(map[string]any{
+					"jsonrpc": "2.0",
+					"id":      pendingPromptID,
+					"result":  map[string]any{"stopReason": "canceled"},
+				})
+			}
 		default:
 			if (c.promptPermission || c.promptKind != "") &&
 				(acpRequestID(message.ID) == "cursor-ask-1" || acpRequestID(message.ID) == "cursor-plan-1") {

@@ -132,6 +132,11 @@ type standardACPConnection struct {
 	lastPromptParamsSnapshot      map[string]any
 	promptParamsSnapshots         []map[string]any
 	promptCallCount               int
+	// deferFirstPromptUntilCancel emulates an ACP provider that accepts
+	// session/cancel asynchronously and only then settles session/prompt.
+	deferFirstPromptUntilCancel bool
+	promptStarted               chan struct{}
+	pendingPromptID             json.RawMessage
 	// promptFinalContent attaches final assistant content blocks to the
 	// session/prompt result so tests can exercise final snapshot projection.
 	promptFinalContent []map[string]any

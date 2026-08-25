@@ -318,6 +318,70 @@ func TestStandardACPCancelPropagatesNotifyFailure(t *testing.T) {
 	}
 }
 
+func TestStandardACPCancelDrainsPromptBeforeAcceptingAnotherTurn(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("OpenCode", "opencode-session-cancel-drain")
+	transport.conn.deferFirstPromptUntilCancel = true
+	transport.conn.promptStarted = make(chan struct{}, 1)
+	adapter := newOpenCodeTestAdapter(transport)
+	session := standardTestSession(ProviderOpenCode)
+	if _, err := adapter.Start(t.Context(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "opencode-session-cancel-drain"
+
+	firstDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(
+			context.Background(),
+			session,
+			[]PromptContentBlock{{Type: "text", Text: "first"}},
+			"first",
+			"turn-first",
+			nil,
+			nil,
+		)
+		firstDone <- events
+	}()
+	select {
+	case <-transport.conn.promptStarted:
+	case <-t.Context().Done():
+		t.Fatal("first session/prompt did not start")
+	}
+
+	if _, err := adapter.Cancel(t.Context(), session, "user canceled"); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	var firstEvents []activityshared.Event
+	select {
+	case firstEvents = <-firstDone:
+	default:
+		t.Fatal("Cancel returned before the active session/prompt drained")
+	}
+	completed := eventsOfType(firstEvents, activityshared.EventRootProviderTurnCompleted)
+	if len(completed) != 1 || completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeCanceled) {
+		t.Fatalf("first provider completion = %#v, want canceled", completed)
+	}
+
+	secondEvents, err := adapter.Exec(
+		t.Context(),
+		session,
+		[]PromptContentBlock{{Type: "text", Text: "second"}},
+		"second",
+		"turn-second",
+		nil,
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("second Exec: %v", err)
+	}
+	completed = eventsOfType(secondEvents, activityshared.EventRootProviderTurnCompleted)
+	if len(completed) != 1 || completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeCompleted) {
+		t.Fatalf("second provider completion = %#v, want completed", completed)
+	}
+}
+
 func TestStandardACPAutoApprovePropagatesResponseFailure(t *testing.T) {
 	t.Parallel()
 
