@@ -22,7 +22,7 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 	}
 	settings := ComposerSettings{}
 	for field, value := range patch {
-		if value == nil || field == preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode {
+		if value == nil || field == preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode || field == preferencesbiz.AgentComposerDefaultsFieldRTKSaverMode {
 			continue
 		}
 		selected := agentComposerDefaultsPatchText(value)
@@ -53,6 +53,10 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 		selected := agentComposerDefaultsPatchText(value)
 		switch field {
 		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode:
+			if _, ok := value.(bool); !ok {
+				return fmt.Errorf("%w: codex saver mode must be boolean", ErrInvalidArgument)
+			}
+		case preferencesbiz.AgentComposerDefaultsFieldRTKSaverMode:
 			if _, ok := value.(bool); !ok {
 				return fmt.Errorf("%w: rtk saver mode must be boolean", ErrInvalidArgument)
 			}

@@ -137,7 +137,7 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 
 	result := ProviderPrepareResult{Cwd: cwd}
 	var rtkRuntime sessionRTKRuntime
-	if input.CodexSaverMode {
+	if input.RTKSaverMode {
 		rtkRuntime, err = prepareSessionRTK(runtimeRoot, func() (string, error) {
 			return p.resolveRTKExecutable(ctx)
 		})
@@ -168,11 +168,11 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	if result.Cwd == "" {
 		result.Cwd = cwd
 	}
-	if input.CodexSaverMode {
+	if input.RTKSaverMode {
 		result.Env = append(result.Env, rtkRuntime.Env...)
 	}
 	runtimeEnv := defaultRuntimeEnv(input, p.StateDir)
-	if input.CodexSaverMode {
+	if input.RTKSaverMode {
 		runtimeEnv = prependPathEntry(runtimeEnv, filepath.Dir(rtkRuntime.Executable))
 	}
 	result.Env = append(runtimeEnv, result.Env...)

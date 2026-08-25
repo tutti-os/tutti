@@ -81,8 +81,8 @@ type ComposerOptionsInput struct {
 	// Ordinary composer loads may render the last successful list while the
 	// daemon refreshes it asynchronously.
 	WaitForFreshModelCatalog bool
-	// CodexSaverMode is the legacy API name for provider-neutral RTK saver mode.
-	CodexSaverMode *bool
+	CodexSaverMode           *bool
+	RTKSaverMode             *bool
 	// ResolvedModelPlan is a daemon-only exact plan override supplied by a
 	// WorkspaceAgent resolver. It may contain a credential and must never be
 	// serialized into runtime context or transport responses.
@@ -153,9 +153,8 @@ type ComposerReasoningProfile struct {
 }
 
 type ComposerOptions struct {
-	// CodexSaverModeSupported is retained as a compatibility field; support is
-	// provider-neutral for every resolved Agent target.
 	CodexSaverModeSupported bool
+	RTKSaverModeSupported   bool
 	Provider                string
 	Capabilities            []string
 	Commands                []ComposerCommandOption
@@ -214,12 +213,20 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if input.CodexSaverMode != nil {
 		input.Settings.CodexSaverMode = *input.CodexSaverMode
 	}
-	codexSaverModeSupported := composerProviderSupportsRTKSaverMode(provider)
+	if input.RTKSaverMode != nil {
+		input.Settings.RTKSaverMode = *input.RTKSaverMode
+	}
+	codexSaverModeSupported := composerProviderSupportsSaverSubagentMode(provider)
 	if !codexSaverModeSupported {
 		input.Settings.CodexSaverMode = false
 	}
+	rtkSaverModeSupported := composerProviderSupportsRTKSaverMode(provider)
+	if !rtkSaverModeSupported {
+		input.Settings.RTKSaverMode = false
+	}
 	requestedSettings := ComposerSettings{
 		CodexSaverMode:   input.Settings.CodexSaverMode,
+		RTKSaverMode:     input.Settings.RTKSaverMode,
 		Model:            strings.TrimSpace(input.Settings.Model),
 		PermissionModeID: strings.TrimSpace(input.Settings.PermissionModeID),
 		PlanMode:         input.Settings.PlanMode,
@@ -537,6 +544,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	}
 	options = applyResolvedModelPlanComposerOverlay(options, modelPlanResolution)
 	options.CodexSaverModeSupported = codexSaverModeSupported
+	options.RTKSaverModeSupported = rtkSaverModeSupported
 	return options, nil
 }
 
@@ -546,6 +554,9 @@ func mergeComposerSettingsWithDefaults(
 ) ComposerSettings {
 	if !requested.CodexSaverMode {
 		requested.CodexSaverMode = defaults.CodexSaverMode
+	}
+	if !requested.RTKSaverMode {
+		requested.RTKSaverMode = defaults.RTKSaverMode
 	}
 	if strings.TrimSpace(requested.Model) == "" {
 		requested.Model = defaults.Model
@@ -573,6 +584,7 @@ func resolveComposerEffectiveSettings(
 ) ComposerSettings {
 	effective := ComposerSettings{
 		CodexSaverMode:   requested.CodexSaverMode,
+		RTKSaverMode:     requested.RTKSaverMode,
 		Model:            strings.TrimSpace(defaultModel),
 		PermissionModeID: defaultPermissionModeIDForProvider(provider),
 		ReasoningEffort:  composerDefaultReasoningEffort(provider),

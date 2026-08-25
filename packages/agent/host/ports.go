@@ -461,6 +461,7 @@ type RuntimePreparationInput struct {
 	BrowserUse             bool
 	ComputerUse            bool
 	CodexSaverMode         bool
+	RTKSaverMode           bool
 	ProviderTargetRef      map[string]any
 	Model                  string
 	ReasoningEffort        string

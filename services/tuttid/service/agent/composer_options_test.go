@@ -42,7 +42,7 @@ func TestGetComposerOptionsUsesTargetDefaultsAndSparseRequestOverrides(t *testin
 func TestGetComposerOptionsAdvertisesRTKSaverModeForEveryProvider(t *testing.T) {
 	service := newTestService(newFakeRuntime())
 	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
-		agenttargetbiz.IDLocalCodex: {CodexSaverMode: true},
+		agenttargetbiz.IDLocalCodex: {RTKSaverMode: true},
 	}
 	options, err := service.GetComposerOptions(context.Background(), ComposerOptionsInput{
 		AgentTargetID: agenttargetbiz.IDLocalCodex,
@@ -51,7 +51,7 @@ func TestGetComposerOptionsAdvertisesRTKSaverModeForEveryProvider(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetComposerOptions() error = %v", err)
 	}
-	if !options.CodexSaverModeSupported || !options.EffectiveSettings.CodexSaverMode {
+	if !options.CodexSaverModeSupported || !options.RTKSaverModeSupported || !options.EffectiveSettings.RTKSaverMode {
 		t.Fatalf("options = %#v, want remembered saver mode", options)
 	}
 	options, err = service.GetComposerOptions(context.Background(), ComposerOptionsInput{
@@ -61,8 +61,8 @@ func TestGetComposerOptionsAdvertisesRTKSaverModeForEveryProvider(t *testing.T) 
 	if err != nil {
 		t.Fatalf("GetComposerOptions() for Claude error = %v", err)
 	}
-	if !options.CodexSaverModeSupported || options.EffectiveSettings.CodexSaverMode {
-		t.Fatalf("options = %#v, want saver mode supported with no remembered Claude default", options)
+	if options.CodexSaverModeSupported || !options.RTKSaverModeSupported || options.EffectiveSettings.RTKSaverMode {
+		t.Fatalf("options = %#v, want only RTK saver mode supported with no remembered Claude default", options)
 	}
 }
 

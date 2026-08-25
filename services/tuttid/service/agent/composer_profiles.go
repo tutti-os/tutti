@@ -15,6 +15,9 @@ import (
 // capabilities, no permission modes. A provider absent from
 // composerProfiles behaves like an unknown provider.
 type composerProfile struct {
+	// SubagentSaverMode allows the provider to install and route work through a
+	// session-scoped lower-cost custom role without changing the main model.
+	SubagentSaverMode bool
 	// ModelSelection: the composer exposes a model selector and persists
 	// model overrides for this provider. Without it, stale persisted model
 	// values are cleared before they reach the runtime.
@@ -107,6 +110,7 @@ func composerProfileFromDescriptor(provider providerregistry.ProviderDescriptor)
 		})
 	}
 	return composerProfile{
+		SubagentSaverMode:        descriptor.SubagentSaverMode,
 		ModelSelection:           descriptor.ModelSelection,
 		LiveModelDiscovery:       descriptor.LiveModelDiscovery.Kind != "",
 		LiveModelDiscoveryKind:   descriptor.LiveModelDiscovery.Kind,
@@ -163,6 +167,10 @@ func composerProfileFor(provider string) composerProfile {
 func composerProfileKnown(provider string) bool {
 	_, ok := composerProfiles[agentprovider.Normalize(provider)]
 	return ok
+}
+
+func composerProviderSupportsSaverSubagentMode(provider string) bool {
+	return composerProfileFor(provider).SubagentSaverMode
 }
 
 // composerProviderSupportsRTKSaverMode intentionally does not branch on a

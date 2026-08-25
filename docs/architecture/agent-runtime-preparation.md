@@ -17,6 +17,11 @@ For any Agent Session launched with RTK saver mode enabled, provider-neutral
 runtime preparation keeps the selected model unchanged and resolves the pinned
 Tutti-owned `rtk` executable. Packaged Desktop supplies it from app resources;
 other hosts resolve the SHA-256-verified `rtk-saver` managed-runtime component.
+
+RTK saver mode is independent from the existing Codex saver mode. The latter
+remains Codex-only and installs the session-scoped Luna worker role and Codex
+routing policy; enabling either mode does not implicitly enable or disable the
+other.
 Preparation copies that executable and the canonical `RTK.md`
 into the exact Session runtime and prepends only the private binary directory to
 that Session's `PATH`. The common Tutti Runtime policy carries the same RTK

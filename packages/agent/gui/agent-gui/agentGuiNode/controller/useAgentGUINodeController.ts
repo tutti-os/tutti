@@ -136,6 +136,7 @@ export function useAgentGUINodeController({
   openSessionRequest = null,
   prefillPromptRequest = null,
   codexSaverModeEntryEnabled = false,
+  rtkSaverModeEntryEnabled = false,
   onDataChange,
   onComposerAppendHandled,
   onRememberComposerDefaults,
@@ -676,6 +677,7 @@ export function useAgentGUINodeController({
     composerTargetDataFromProviderTarget,
     composerAppendRequest,
     codexSaverModeEntryEnabled,
+    rtkSaverModeEntryEnabled,
     onComposerAppendHandled,
     composerSupportPermissionModeChangeDeferred:
       composerSupport.permissionModeChangeDeferred,
@@ -747,6 +749,7 @@ export function useAgentGUINodeController({
     codeFor: activation.codeFor,
     composerTargetProvider: composerTargetData.provider,
     codexSaverModeEntryEnabled,
+    rtkSaverModeEntryEnabled,
     data,
     defaultAgentTargetId,
     errorFor: activation.errorFor,

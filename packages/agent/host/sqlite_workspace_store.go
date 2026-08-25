@@ -822,6 +822,7 @@ func composerSettingsPayload(settings *ComposerSettings) map[string]any {
 	}
 	return map[string]any{
 		"codexSaverMode": settings.CodexSaverMode,
+		"rtkSaverMode":   settings.RTKSaverMode,
 		"model":          settings.Model, "permissionModeId": settings.PermissionModeID, "planMode": settings.PlanMode,
 		"browserUse": settings.BrowserUse, "computerUse": settings.ComputerUse,
 		"reasoningEffort": settings.ReasoningEffort, "speed": settings.Speed,

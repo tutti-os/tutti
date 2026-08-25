@@ -234,6 +234,8 @@ export interface AgentComposerProps {
     planModeLabel: string;
     codexSaverModeLabel: string;
     codexSaverModeDescription: string;
+    rtkSaverModeLabel: string;
+    rtkSaverModeDescription: string;
     tuttiModeLabel: string;
     tuttiModeDescription: string;
     tuttiModeRemove: string;
@@ -421,6 +423,7 @@ export interface AgentComposerProps {
   ) => void;
   onSettingsChange: (settings: {
     codexSaverMode?: boolean;
+    rtkSaverMode?: boolean;
     model?: string | null;
     reasoningEffort?: string | null;
     speed?: string | null;

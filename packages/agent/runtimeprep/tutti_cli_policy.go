@@ -70,7 +70,7 @@ func tuttiRuntimePolicy(input PrepareInput) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if input.CodexSaverMode {
+	if input.RTKSaverMode {
 		rendered = joinPromptSections(rendered, rtkInstructionsMarkdown)
 	}
 	return strings.TrimSpace(rendered), nil

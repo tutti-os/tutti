@@ -1338,8 +1338,11 @@ export const en = {
           "Enable /side, transient Side conversations, and the text-selection action toolbar in Agent conversations.",
         agentSideConversationLabel: "Side conversations",
         codexSaverModeDescription:
+          "Show a remembered Codex composer switch that delegates suitable subtasks to Luna Max.",
+        codexSaverModeLabel: "Codex saver mode",
+        rtkSaverModeDescription:
           "Show a remembered RTK switch for every Agent. Tutti includes RTK and copies it only into enabled sessions without a global install.",
-        codexSaverModeLabel: "RTK saver mode",
+        rtkSaverModeLabel: "RTK saver mode",
         removeFileDefaultOpener: "Remove .{{extension}}",
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",

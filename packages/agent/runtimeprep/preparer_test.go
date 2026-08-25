@@ -552,6 +552,42 @@ func TestDefaultPreparerExpandsConnectorAgentContext(t *testing.T) {
 	}
 }
 
+func TestDefaultPreparerCodexSaverModeKeepsLunaWorkerIndependentFromRTK(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	prepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-codex-saver",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+		CodexSaverMode: true,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	role, err := os.ReadFile(filepath.Join(codexHome, "agents", "luna_worker.toml"))
+	if err != nil {
+		t.Fatalf("read Luna worker role: %v", err)
+	}
+	for _, expected := range []string{`model = "gpt-5.6-luna"`, `model_reasoning_effort = "max"`} {
+		if !strings.Contains(string(role), expected) {
+			t.Fatalf("role = %q, want %q", role, expected)
+		}
+	}
+	instructions, err := os.ReadFile(filepath.Join(codexHome, "AGENTS.md"))
+	if err != nil {
+		t.Fatalf("read Codex instructions: %v", err)
+	}
+	if !strings.Contains(string(instructions), "default subagent as the Luna worker") {
+		t.Fatalf("Codex saver instructions = %q", instructions)
+	}
+	if strings.Contains(string(instructions), "Always prefix supported shell commands with `rtk`.") {
+		t.Fatalf("Codex-only saver mode unexpectedly enabled RTK: %q", instructions)
+	}
+}
+
 func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake RTK fixture is a POSIX script")
@@ -575,7 +611,7 @@ func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *tes
 		AgentTargetID:  "local:opencode",
 		Provider:       "opencode",
 		Cwd:            t.TempDir(),
-		CodexSaverMode: true,
+		RTKSaverMode:   true,
 	})
 	if err != nil {
 		t.Fatalf("Prepare() error = %v", err)
@@ -632,7 +668,7 @@ func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *tes
 		AgentTargetID:  "local:opencode",
 		Provider:       "opencode",
 		Cwd:            t.TempDir(),
-		CodexSaverMode: true,
+		RTKSaverMode:   true,
 	}); err != nil {
 		t.Fatalf("resumed Prepare() error = %v", err)
 	}
@@ -647,7 +683,7 @@ func TestDefaultPreparerRTKSaverModeFailsWhenRTKIsUnavailable(t *testing.T) {
 		AgentTargetID:  "local:claude-code",
 		Provider:       "claude-code",
 		Cwd:            t.TempDir(),
-		CodexSaverMode: true,
+		RTKSaverMode:   true,
 	})
 	if err == nil || !strings.Contains(err.Error(), "requires a Tutti-managed rtk executable resolver") {
 		t.Fatalf("Prepare() error = %v", err)
@@ -658,7 +694,7 @@ func TestDefaultPreparerRTKSaverModeFailsWhenRTKIsUnavailable(t *testing.T) {
 		AgentTargetID:  "local:claude-code",
 		Provider:       "claude-code",
 		Cwd:            t.TempDir(),
-		CodexSaverMode: false,
+		RTKSaverMode:   false,
 	}); err != nil {
 		t.Fatalf("disabled Prepare() must not require RTK: %v", err)
 	}

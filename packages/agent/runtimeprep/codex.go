@@ -51,12 +51,27 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 			err = errors.Join(err, cleanup(ctx))
 		}
 	}()
+	if input.CodexSaverMode {
+		rolePath, err := installCodexLunaWorkerRole(codexHome)
+		if err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if err := ensureCodexSaverDefaultRole(filepath.Join(codexHome, "config.toml")); err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if input.Manifest != nil {
+			input.Manifest.RecordManagedFile(rolePath, "codex-agent-role", true)
+		}
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
 	instructionsPath := filepath.Join(codexHome, "AGENTS.md")
 	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_requested", input.PrepareInput, nil)
 	policy, err := tuttiCLIPolicy(input.PrepareInput)
 	if err != nil {
 		return ProviderPrepareResult{}, err
+	}
+	if input.CodexSaverMode {
+		policy = strings.TrimSpace(policy) + "\n\n" + codexSaverModePolicy
 	}
 	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, policy)
 	if err != nil {

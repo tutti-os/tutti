@@ -2456,6 +2456,9 @@ export const preferencesAgentComposerDefaultsPatchRequestedPayloadSchema = {
         codexSaverMode: {
           type: "boolean"
         },
+        rtkSaverMode: {
+          type: "boolean"
+        },
         model: {
           type: ["string", "null"]
         },

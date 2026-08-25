@@ -286,6 +286,8 @@ export function useAgentGUIViewLabels(input: {
       codexSaverModeDescription: t(
         "agentHost.agentGui.codexSaverModeDescription"
       ),
+      rtkSaverModeLabel: t("agentHost.agentGui.rtkSaverModeLabel"),
+      rtkSaverModeDescription: t("agentHost.agentGui.rtkSaverModeDescription"),
       normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
       normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
       ...agentGUITuttiModeLabels(t),

@@ -351,6 +351,7 @@ type UpdateSettingsInput struct {
 
 type SessionSettings struct {
 	CodexSaverMode         bool   `json:"codexSaverMode,omitempty"`
+	RTKSaverMode           bool   `json:"rtkSaverMode,omitempty"`
 	Model                  string `json:"model,omitempty"`
 	ReasoningEffort        string `json:"reasoningEffort,omitempty"`
 	Speed                  string `json:"speed,omitempty"`

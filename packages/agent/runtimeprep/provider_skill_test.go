@@ -191,7 +191,7 @@ func TestTuttiCLIPolicyInjectsRTKInstructionsForEveryProvider(t *testing.T) {
 			policy, err := tuttiCLIPolicy(testInputWithCommands(t, PrepareInput{
 				AgentSessionID: "session-1",
 				Provider:       provider,
-				CodexSaverMode: true,
+				RTKSaverMode:   true,
 			}))
 			if err != nil {
 				t.Fatal(err)

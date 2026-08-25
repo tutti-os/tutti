@@ -5620,7 +5620,7 @@ type AgentProviderComposerOptionsResponse struct {
 	Capabilities      *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
 	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
 
-	// CodexSaverModeSupported Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode; the legacy property name is retained for compatibility and product entry policy is reported separately by the host
+	// CodexSaverModeSupported Whether this resolved provider target supports the Codex-specific saver subagent mode
 	CodexSaverModeSupported *bool `json:"codexSaverModeSupported,omitempty"`
 
 	// Commands Commands advertised by the resolved runtime session.
@@ -5631,6 +5631,9 @@ type AgentProviderComposerOptionsResponse struct {
 	Provider                WorkspaceAgentProvider                       `json:"provider"`
 	ReasoningConfig         AgentProviderComposerConfig                  `json:"reasoningConfig"`
 	ReasoningOptionsByModel AgentProviderComposerReasoningOptionsByModel `json:"reasoningOptionsByModel"`
+
+	// RtkSaverModeSupported Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode
+	RtkSaverModeSupported *bool `json:"rtkSaverModeSupported,omitempty"`
 
 	// RuntimeContext Opaque provider runtime metadata retained for legacy and diagnostic consumers. Typed composer fields are authoritative; new composer capabilities must not be added to this object.
 	RuntimeContext     map[string]interface{}       `json:"runtimeContext"`
@@ -5867,13 +5870,16 @@ type AgentSessionCassetteListResponse struct {
 type AgentSessionComposerSettings struct {
 	BrowserUse *bool `json:"browserUse,omitempty"`
 
-	// CodexSaverMode Legacy compatibility property for the provider-neutral RTK saver mode
+	// CodexSaverMode Enables the Codex-specific saver subagent mode
 	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	PlanMode         *bool   `json:"planMode,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
-	Speed            *string `json:"speed,omitempty"`
+
+	// RtkSaverMode Enables provider-neutral RTK saver mode
+	RtkSaverMode *bool   `json:"rtkSaverMode,omitempty"`
+	Speed        *string `json:"speed,omitempty"`
 }
 
 // AgentSessionModelPolicyOverride defines model for AgentSessionModelPolicyOverride.
@@ -7124,7 +7130,7 @@ type CreateWorkspaceAgentSessionRequest struct {
 	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
 	ClientSubmitId string                               `json:"clientSubmitId"`
 
-	// CodexSaverMode Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model; the property name is retained for compatibility
+	// CodexSaverMode Enables the Codex-specific saver subagent mode for this Agent Session
 	CodexSaverMode *bool                     `json:"codexSaverMode,omitempty"`
 	Cwd            *string                   `json:"cwd,omitempty"`
 	InitialContent []AgentPromptContentBlock `json:"initialContent"`
@@ -7156,7 +7162,10 @@ type CreateWorkspaceAgentSessionRequest struct {
 	ReasoningEffortExplicit *bool `json:"reasoningEffortExplicit,omitempty"`
 
 	// RecordingId Developer create-session scenario waiting for this root Session.
-	RecordingId       *openapi_types.UUID     `json:"recordingId,omitempty"`
+	RecordingId *openapi_types.UUID `json:"recordingId,omitempty"`
+
+	// RtkSaverMode Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model
+	RtkSaverMode      *bool                   `json:"rtkSaverMode,omitempty"`
 	Speed             *string                 `json:"speed,omitempty"`
 	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
 	Title             *string                 `json:"title,omitempty"`
@@ -7324,12 +7333,15 @@ type DeletedAgentConversationRetentionDays int
 
 // DesktopAgentComposerDefaults defines model for DesktopAgentComposerDefaults.
 type DesktopAgentComposerDefaults struct {
-	// CodexSaverMode Legacy compatibility property for the provider-neutral RTK saver mode
+	// CodexSaverMode Enables the Codex-specific saver subagent mode
 	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
-	Speed            *string `json:"speed,omitempty"`
+
+	// RtkSaverMode Enables provider-neutral RTK saver mode
+	RtkSaverMode *bool   `json:"rtkSaverMode,omitempty"`
+	Speed        *string `json:"speed,omitempty"`
 }
 
 // DesktopAgentComposerDefaultsByAgentTarget defines model for DesktopAgentComposerDefaultsByAgentTarget.

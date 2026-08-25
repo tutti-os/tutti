@@ -94,6 +94,7 @@ func codexDescriptor() ProviderDescriptor {
 		},
 
 		ComposerProfile: ComposerProfileDescriptor{
+			SubagentSaverMode:      true,
 			ModelSelection:         true,
 			ModelCatalog:           ModelCatalogKindCodexCLI,
 			ReasoningEffort:        true,

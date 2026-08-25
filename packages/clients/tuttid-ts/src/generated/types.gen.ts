@@ -589,9 +589,13 @@ export type DesktopWorkbenchWindowSnappingShortcutPreset =
 
 export type DesktopAgentComposerDefaults = {
   /**
-   * Legacy compatibility property for the provider-neutral RTK saver mode
+   * Enables the Codex-specific saver subagent mode
    */
   codexSaverMode?: boolean;
+  /**
+   * Enables provider-neutral RTK saver mode
+   */
+  rtkSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
@@ -1995,9 +1999,13 @@ export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
   /**
-   * Legacy compatibility property for the provider-neutral RTK saver mode
+   * Enables the Codex-specific saver subagent mode
    */
   codexSaverMode?: boolean | null;
+  /**
+   * Enables provider-neutral RTK saver mode
+   */
+  rtkSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
@@ -2091,9 +2099,13 @@ export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
 
 export type AgentProviderComposerOptionsResponse = {
   /**
-   * Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode; the legacy property name is retained for compatibility and product entry policy is reported separately by the host
+   * Whether this resolved provider target supports the Codex-specific saver subagent mode
    */
   codexSaverModeSupported?: boolean;
+  /**
+   * Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode
+   */
+  rtkSaverModeSupported?: boolean;
   provider: WorkspaceAgentProvider;
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
@@ -3398,9 +3410,13 @@ export type WorkspaceAgentInitialGoalControl = {
 
 export type CreateWorkspaceAgentSessionRequest = {
   /**
-   * Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model; the property name is retained for compatibility
+   * Enables the Codex-specific saver subagent mode for this Agent Session
    */
   codexSaverMode?: boolean | null;
+  /**
+   * Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model
+   */
+  rtkSaverMode?: boolean | null;
   agentSessionId: string;
   /**
    * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.

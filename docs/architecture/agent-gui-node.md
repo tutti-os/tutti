@@ -288,9 +288,10 @@ the provider's existing instruction channel, and prepend only that private
 binary directory to the Session environment. Tutti never runs an RTK package
 manager or global installer. RTK usage data, tee output, and telemetry policy
 are also Session-scoped, so enabling the mode cannot change another Agent's
-instructions, executable search path, or tracking state. The persisted and
-wire property remains named `codexSaverMode` only for backward compatibility;
-it is not a provider capability boundary. Tutti terminals receive the bundled
+instructions, executable search path, or tracking state. The independent
+`rtkSaverMode` property carries this provider-neutral setting, while the
+existing `codexSaverMode` property remains Codex-only and continues to control
+the Luna subagent workflow. Tutti terminals receive the bundled
 RTK directory in their child PATH for explicit use, while the user-global PATH
 and external Agent processes remain unchanged.
 

@@ -22,7 +22,6 @@ import {
 import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
 import { useBottomDockPromptDismissal } from "./useBottomDockPromptDismissal";
 import styles from "../AgentGUINode.styles";
-
 interface Input {
   labels: AgentGUIViewLabels;
   slashStatusLimits: readonly AgentComposerSlashStatusLimit[];
@@ -30,7 +29,6 @@ interface Input {
   slashStatusLimitsUnavailable: boolean;
   viewModel: AgentGUINodeViewModel;
 }
-
 export function resolveTuttiModeUpdateInlineNotice(input: {
   failedMessage: string;
   status: AgentGUINodeViewModel["composer"]["tuttiModeUpdateStatus"];
@@ -143,7 +141,6 @@ export function useAgentGUIDetailModel(input: Input) {
     if (!inlineNotice || inlineNoticeMessage === "") {
       return null;
     }
-
     if (
       isContextCanceledMessage(inlineNoticeMessage) &&
       viewModel.rail.activeConversation?.status === "completed" &&
@@ -151,7 +148,6 @@ export function useAgentGUIDetailModel(input: Input) {
     ) {
       return null;
     }
-
     const chromeMessages = [
       sessionChrome.auth?.message,
       sessionChrome.recovery?.message
@@ -428,6 +424,8 @@ export function useAgentGUIDetailModel(input: Input) {
       planModeLabel: labels.planModeLabel,
       codexSaverModeLabel: labels.codexSaverModeLabel,
       codexSaverModeDescription: labels.codexSaverModeDescription,
+      rtkSaverModeLabel: labels.rtkSaverModeLabel,
+      rtkSaverModeDescription: labels.rtkSaverModeDescription,
       normalModeLabel: labels.normalModeLabel,
       normalModeDescription: labels.normalModeDescription,
       tuttiModeLabel: labels.tuttiModeLabel,
@@ -632,6 +630,8 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.planModeLabel,
       labels.codexSaverModeLabel,
       labels.codexSaverModeDescription,
+      labels.rtkSaverModeLabel,
+      labels.rtkSaverModeDescription,
       labels.normalModeLabel,
       labels.normalModeDescription,
       labels.tuttiModeLabel,

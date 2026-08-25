@@ -246,6 +246,7 @@ export const defaultDesktopAgentProvider: DesktopDefaultAgentProvider =
 
 export interface DesktopAgentComposerDefaults {
   codexSaverMode?: boolean;
+  rtkSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
@@ -266,6 +267,7 @@ export type DesktopAgentComposerDefaultsByAgentTarget = Record<
 // boolean is stored only when true.
 export interface DesktopAgentComposerDefaultsPatch {
   codexSaverMode?: boolean;
+  rtkSaverMode?: boolean;
   model?: string | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
@@ -274,6 +276,7 @@ export interface DesktopAgentComposerDefaultsPatch {
 
 export const desktopAgentComposerDefaultsFields = [
   "codexSaverMode",
+  "rtkSaverMode",
   "model",
   "permissionModeId",
   "reasoningEffort",
@@ -604,6 +607,9 @@ export function normalizeDesktopAgentComposerDefaults(
   if (value.codexSaverMode === true) {
     defaults.codexSaverMode = true;
   }
+  if (value.rtkSaverMode === true) {
+    defaults.rtkSaverMode = true;
+  }
   const model = normalizeOptionalText(value.model);
   const permissionModeId = normalizeOptionalText(value.permissionModeId);
   const reasoningEffort = normalizeOptionalText(value.reasoningEffort);
@@ -842,11 +848,11 @@ export function mergeDesktopAgentComposerDefaultsByAgentTarget(
     if (value === undefined) {
       continue;
     }
-    if (field === "codexSaverMode") {
+    if (field === "codexSaverMode" || field === "rtkSaverMode") {
       if (value === true) {
-        merged.codexSaverMode = true;
+        merged[field] = true;
       } else {
-        delete merged.codexSaverMode;
+        delete merged[field];
       }
       continue;
     }

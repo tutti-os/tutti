@@ -46,6 +46,7 @@ interface Props {
   inputDisabled: boolean;
   settingsControlsDisabled: boolean;
   codexSaverModeDisabled: boolean;
+  rtkSaverModeDisabled: boolean;
   permissionModeControlsDisabled: boolean;
   isSendingTurn: boolean;
   showComposerAction: boolean;
@@ -105,6 +106,7 @@ export function ComposerFooter({
   inputDisabled,
   settingsControlsDisabled,
   codexSaverModeDisabled,
+  rtkSaverModeDisabled,
   permissionModeControlsDisabled,
   isSendingTurn,
   showComposerAction,
@@ -363,6 +365,38 @@ export function ComposerFooter({
                 </TooltipTrigger>
                 <TooltipContent side="top" className="max-w-72">
                   {labels.codexSaverModeDescription}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          ) : null}
+          {composerSettings.supportsRTKSaverMode ? (
+            <TooltipProvider delayDuration={120}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    className={cn(
+                      styles.composerMenuTrigger,
+                      "flex w-auto cursor-pointer items-center gap-2 px-2",
+                      rtkSaverModeDisabled && "cursor-not-allowed opacity-60"
+                    )}
+                  >
+                    <span className="whitespace-nowrap text-xs">
+                      {labels.rtkSaverModeLabel}
+                    </span>
+                    <Switch
+                      aria-label={labels.rtkSaverModeLabel}
+                      checked={
+                        composerSettings.draftSettings.rtkSaverMode === true
+                      }
+                      disabled={rtkSaverModeDisabled}
+                      onCheckedChange={(enabled) =>
+                        onSettingsChange({ rtkSaverMode: enabled })
+                      }
+                    />
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-72">
+                  {labels.rtkSaverModeDescription}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
