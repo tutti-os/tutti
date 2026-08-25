@@ -1554,6 +1554,7 @@ test("desktop packages and daemon agree on the bundled RTK executable", async ()
   );
   assert.match(buildScript, /vendor-rtk\.mjs/);
   assert.match(buildScript, /darwin-arm64 darwin-amd64/);
+  assert.match(await readFile(rtkVendorScriptPath, "utf8"), /Expand-Archive/);
   assert.match(tuttidManager, /TUTTI_BUNDLED_RTK_PATH/);
   assert.equal(lock.rtk.version, "0.45.0");
   assert.deepEqual(Object.keys(lock.rtk.artifacts).sort(), [

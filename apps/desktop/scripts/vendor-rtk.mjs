@@ -48,7 +48,7 @@ try {
     const archive = await resolveVerifiedDownload(artifact, "archive");
     const extractionRoot = await mkdtemp(join(tmpdir(), "tutti-rtk-extract-"));
     extractionRoots.push(extractionRoot);
-    await execFileAsync("tar", ["-xf", archive, "-C", extractionRoot]);
+    await extractArchive(archive, extractionRoot);
     const executable = await findFile(extractionRoot, artifact.executable);
     if (!executable) {
       throw new Error(
@@ -126,6 +126,21 @@ Agent tool-output compression and the Tutti integrated terminal.
   await Promise.all(
     extractionRoots.map((path) => rm(path, { recursive: true, force: true }))
   );
+}
+
+async function extractArchive(archive, destination) {
+  if (process.platform === "win32") {
+    await execFileAsync("powershell.exe", [
+      "-NoProfile",
+      "-NonInteractive",
+      "-Command",
+      "& { param($archive, $destination) Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force }",
+      archive,
+      destination
+    ]);
+    return;
+  }
+  await execFileAsync("tar", ["-xf", archive, "-C", destination]);
 }
 
 function parsePlatformArguments(args) {
