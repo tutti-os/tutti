@@ -162,11 +162,14 @@ func (s *TerminalService) Create(ctx context.Context, workspaceID string, input 
 	if s.RTKExecutableResolver != nil {
 		rtkExecutable, resolveErr := s.RTKExecutableResolver(ctx)
 		if resolveErr != nil {
-			return TerminalSession{}, fmt.Errorf("resolve Tutti terminal rtk executable: %w", resolveErr)
-		}
-		env, err = prependTerminalExecutablePath(env, rtkExecutable)
-		if err != nil {
-			return TerminalSession{}, err
+			slog.WarnContext(ctx, "Tutti terminal RTK is unavailable; continuing without RTK", "error", resolveErr)
+		} else {
+			rtkEnv, pathErr := prependTerminalExecutablePath(env, rtkExecutable)
+			if pathErr != nil {
+				slog.WarnContext(ctx, "Tutti terminal RTK path is invalid; continuing without RTK", "error", pathErr)
+			} else {
+				env = rtkEnv
+			}
 		}
 	}
 	return s.ensureManager().create(normalizedWorkspaceID, cwd, input, env)

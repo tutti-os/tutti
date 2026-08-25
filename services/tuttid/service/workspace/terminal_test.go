@@ -213,6 +213,38 @@ func TestTerminalServiceExposesTuttiManagedRTKWithoutChangingGlobalPath(t *testi
 	t.Fatal("Tutti terminal did not resolve the bundled rtk command")
 }
 
+func TestTerminalServiceStillStartsWhenOptionalRTKIsUnavailable(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	service := &TerminalService{
+		RTKExecutableResolver: func(context.Context) (string, error) {
+			return "", fmt.Errorf("managed RTK is not published")
+		},
+	}
+	initialInput := terminalTestEchoCommand("terminal-without-rtk")
+	session, err := service.Create(context.Background(), "ws-no-rtk", CreateTerminalInput{InitialInput: &initialInput})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = service.Terminate(context.Background(), "ws-no-rtk", session.ID)
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, snapshotErr := service.Snapshot(context.Background(), "ws-no-rtk", session.ID)
+		if snapshotErr != nil {
+			t.Fatal(snapshotErr)
+		}
+		if strings.Contains(snapshot.Data, "terminal-without-rtk") {
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("Tutti terminal did not start without the optional RTK runtime")
+}
+
 func TestTerminalServiceAddsUTF8LocaleForMacOSShell(t *testing.T) {
 	if runtime.GOOS != "darwin" {
 		t.Skip("macOS GUI processes need the terminal locale fallback")
