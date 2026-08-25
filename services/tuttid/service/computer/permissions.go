@@ -111,7 +111,10 @@ func evaluateWindowsDriverDoctor(output []byte, commandErr, contextErr error) er
 		}
 		return err
 	}
-	if doctor.hasUsableWin32Fallback() {
+	// CuaDriver 0.18 can write the fallback diagnostic to stderr before the
+	// valid JSON document. CombinedOutput preserves that prefix, so accept it
+	// only after the JSON itself has parsed successfully.
+	if doctor.hasUsableWin32Fallback() || hasUsableWin32FallbackDiagnostic(string(output)) {
 		return nil
 	}
 	if commandErr != nil {
@@ -124,18 +127,22 @@ func evaluateWindowsDriverDoctor(output []byte, commandErr, contextErr error) er
 }
 
 func (doctor windowsDriverDoctor) hasUsableWin32Fallback() bool {
-	const fallbackDiagnostic = "falling back to win32-only window tools"
-	if strings.Contains(strings.ToLower(doctor.Message), fallbackDiagnostic) ||
-		strings.Contains(strings.ToLower(doctor.Reason), fallbackDiagnostic) {
+	if hasUsableWin32FallbackDiagnostic(doctor.Message) ||
+		hasUsableWin32FallbackDiagnostic(doctor.Reason) {
 		return true
 	}
 	for _, probe := range doctor.Probes {
-		if strings.Contains(strings.ToLower(probe.Message), fallbackDiagnostic) ||
-			strings.Contains(strings.ToLower(probe.Detail), fallbackDiagnostic) {
+		if hasUsableWin32FallbackDiagnostic(probe.Message) ||
+			hasUsableWin32FallbackDiagnostic(probe.Detail) {
 			return true
 		}
 	}
 	return false
+}
+
+func hasUsableWin32FallbackDiagnostic(text string) bool {
+	const fallbackDiagnostic = "falling back to win32-only window tools"
+	return strings.Contains(strings.ToLower(text), fallbackDiagnostic)
 }
 
 func parseWindowsDriverDoctor(output []byte) (windowsDriverDoctor, error) {
@@ -189,7 +196,7 @@ func computerPermissionIssues(status computerPermissionStatus) []string {
 	}
 	if status.ScreenRecording == nil || !*status.ScreenRecording {
 		issues = append(issues, "missing Screen Recording")
-	} else if status.ScreenRecordingCapturable == nil || !*status.ScreenRecordingCapturable {
+	} else if status.ScreenRecordingCapturable != nil && !*status.ScreenRecordingCapturable {
 		issues = append(issues, "Screen Recording authorized but not capturable; restart CuaDriver and check again")
 	}
 	return issues

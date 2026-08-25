@@ -5,6 +5,76 @@ stable CLI and authorization contracts in
 [Tutti CLI Contract](../tutti-cli-contract.md); keep symptom-driven diagnosis
 and recovery here.
 
+## CuaDriver permissions are granted but every input tool is denied
+
+### Symptom
+
+macOS Accessibility and Screen Recording are both granted. Window listing,
+screenshots, and the AX tree work, but native `click`, `move_cursor`,
+`press_key`, `type_text`, and `scroll` appear with `allowed: false`. Their
+denial reason is `tool has denied or unknown capabilities:
+input.delivery_mode`.
+
+### Root cause and fix
+
+CuaDriver 0.20 adds `input.delivery_mode` to tools that support its explicit
+background/foreground input-delivery ladder. Tutti's native-tool policy is
+fail-closed and previously did not recognize that capability, so it rejected
+the complete tool whenever the otherwise authorized input action advertised
+the new metadata. The same catalog also declares `input.pointer.move` on
+`move_cursor`; that capability must accompany the existing
+`agent_cursor.move` authorization. This is not an observation-only computer
+session and is not a stale macOS TCC grant.
+
+Authorize `input.delivery_mode` and `input.pointer.move` alongside the existing
+keyboard, pointer, and `window.activate` capabilities. Delivery mode does not
+grant a new class of input by itself; it selects delivery posture for an input
+tool already allowed by Tutti. Keep unknown capabilities denied.
+
+### Validation
+
+- With CuaDriver 0.20, `tutti computer tool list --json` marks the input tools
+  allowed while a tool carrying an unrelated future capability remains denied.
+- Background delivery remains the default; foreground delivery is explicit and
+  uses the live native schema.
+- Restart the updated tuttid process so it loads the new policy. Existing Agent
+  conversations do not need to be recreated because native tools are listed and
+  authorized live on every call.
+
+## Screen Recording is enabled but Tutti says it has not taken effect
+
+### Symptom
+
+macOS System Settings shows CuaDriver enabled for both Accessibility and Screen
+Recording, but Tutti reports Screen Recording as authorized but not effective.
+`cua-driver permissions status --json` may report both TCC grants as `true`
+while returning `screen_recording_capturable: null` and
+`direct_capture_status: "not_checked"`.
+
+### Root cause and fix
+
+CuaDriver 0.20 keeps its read-only permission status content-free and does not
+run the prompt-capable direct-capture probe. A nullable
+`screen_recording_capturable` therefore means the probe was not run, not that
+capture failed. Tutti treats the two states separately: an explicit `false`
+remains not ready, while `null` is accepted when Accessibility and Screen
+Recording are both granted. Actual computer actions still cross CuaDriver's
+own permission enforcement boundary.
+
+Do not repeatedly toggle the macOS permission or reinstall CuaDriver solely
+because the nullable probe field is present. Use the exact daemon-attributed
+status payload to distinguish an unprobed result from an explicit capture
+failure.
+
+### Validation
+
+- `cua-driver permissions status --json` attributes the response to
+  `com.trycua.driver` and reports Accessibility and Screen Recording as `true`.
+- A nullable capture probe no longer keeps Tutti in the authorization wizard.
+- An explicit `screen_recording_capturable: false` still shows the recovery
+  path and blocks computer-use readiness.
+- The daemon and desktop apply the same nullable-versus-false interpretation.
+
 ## A computer click reports success but the UI does not change
 
 ### Symptom
@@ -106,10 +176,14 @@ The Windows doctor probes both the optional UIA adapter and the native Win32
 path. A broken accessibility provider can make the optional probe slow or
 degraded even when native input remains usable. The desktop and daemon bound
 the doctor process at 10 seconds and classify the explicit UIA-to-Win32
-fallback as a degraded-but-usable result. The desktop preserves its diagnostic
-message with reason `driver-doctor-failed`, while the daemon keeps host-managed
-computer tools available. A real timeout, malformed response, or missing driver
-remains an unknown/not-ready result; do not silently treat those as healthy.
+fallback as a degraded-but-usable result. CuaDriver 0.18 may emit that fallback
+as an ANSI-colored stderr warning before the JSON document rather than inside a
+JSON diagnostic field. Both adapters therefore inspect the complete output,
+but only after validating that it contains a parseable doctor JSON result. The
+desktop preserves the diagnostic with reason `driver-doctor-failed`, while the
+daemon keeps host-managed computer tools available. A real timeout, malformed
+response, or missing driver remains an unknown/not-ready result; do not silently
+treat those as healthy.
 
 ### Validation
 
@@ -117,5 +191,7 @@ remains an unknown/not-ready result; do not silently treat those as healthy.
   whether the response is healthy, degraded, timed out, or unparseable.
 - Confirm degraded output keeps Win32 computer actions available while the
   diagnostic warns that UIA-specific window operations may not work.
+- Cover both a fallback stored inside the JSON document and an ANSI/stderr
+  fallback prefix followed by an otherwise valid JSON document.
 - Confirm a real doctor timeout returns within 10 seconds and does not leave a
   child process running.

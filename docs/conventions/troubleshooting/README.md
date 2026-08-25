@@ -28,7 +28,8 @@ Use the focused runtime index or open one area directly:
   Also covers focus-driven provider CLI scans, repeated Extension Target version
   probes, Windows managed-runtime adoption sharing violations, optional Provider
   absence misclassified as an environment failure, extension release refresh
-  delaying daemon startup, and CPU spikes.
+  delaying daemon startup, repeated Hermes helper downloads in isolated session
+  homes, and CPU spikes.
 - [Agent Sessions And Lifecycle](./agent-session-lifecycle.md): Turn state, activation, planning-mode classification, capability snapshots, Tutti workflow response contracts, loading, cancel, goal controls, restore, file-change undo, rail projection, realtime completion provenance, event updates, imports, and performance.
   Includes shared-device recovery that looks terminal while the host is still retrying.
   Also covers new or derived conversations that silently fail or lose
@@ -207,3 +208,4 @@ Android app login, native bridge, secure identity, and mobile transport diagnost
 cua-driver discovery, targeting, capture, input delivery, and result verification.
 
 - [A computer click reports success but the UI does not change](./computer-use.md#a-computer-click-reports-success-but-the-ui-does-not-change)
+- [Screen Recording is enabled but Tutti says it has not taken effect](./computer-use.md#screen-recording-is-enabled-but-tutti-says-it-has-not-taken-effect)

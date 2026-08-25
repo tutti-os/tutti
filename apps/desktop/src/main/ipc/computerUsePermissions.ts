@@ -1,4 +1,5 @@
 import type {
+  DesktopComputerUseAuthorizationState,
   DesktopComputerUsePermissionsStatus,
   DesktopComputerUsePermissionStatusSource,
   DesktopComputerUseStatusReason
@@ -17,6 +18,40 @@ export interface CuaDriverPermissionsStatusDetail {
   permissions: DesktopComputerUsePermissionsStatus | null;
   reason?: DesktopComputerUseStatusReason;
   diagnosticMessage?: string;
+}
+
+export function resolveCuaDriverAuthorizationStatus(
+  permissions: DesktopComputerUsePermissionsStatus
+): {
+  authorization: DesktopComputerUseAuthorizationState;
+  reason?: DesktopComputerUseStatusReason;
+} {
+  if (
+    permissions.accessibility === true &&
+    permissions.screenRecording === true &&
+    permissions.screenRecordingCapturable !== false
+  ) {
+    return { authorization: "authorized" };
+  }
+  if (
+    permissions.screenRecording === true &&
+    permissions.screenRecordingCapturable === false
+  ) {
+    return {
+      authorization: "needs-authorization",
+      reason: "screen-recording-not-capturable"
+    };
+  }
+  if (
+    permissions.accessibility === false ||
+    permissions.screenRecording === false
+  ) {
+    return {
+      authorization: "needs-authorization",
+      reason: "permission-missing"
+    };
+  }
+  return { authorization: "unknown", reason: "status-unparseable" };
 }
 
 export function parseCuaDriverPermissionsStatus(
@@ -118,15 +153,23 @@ export function parseCuaDriverDoctorStatus(
     };
   }
 
+  // CuaDriver 0.18 on Windows can emit its UIA fallback warning to stderr
+  // before writing the JSON doctor result to stdout. runSubprocess preserves
+  // both streams, so inspect the validated combined output as well as fields
+  // inside the JSON payload.
+  const outputReportsUsableWin32Fallback =
+    isCuaDriverDegradedDiagnostic(output);
+
   if (typeof payload.ok === "boolean") {
     const diagnosticMessage =
       stringOrUndefined(payload.message) ?? stringOrUndefined(payload.reason);
+    const degraded =
+      outputReportsUsableWin32Fallback ||
+      isCuaDriverDegradedDiagnostic(diagnosticMessage);
     return {
       ok: payload.ok,
       ...(diagnosticMessage ? { diagnosticMessage } : {}),
-      ...(isCuaDriverDegradedDiagnostic(diagnosticMessage)
-        ? { degraded: true }
-        : {})
+      ...(degraded ? { degraded: true } : {})
     };
   }
 
@@ -159,12 +202,13 @@ export function parseCuaDriverDoctorStatus(
   }
   const diagnosticMessage =
     diagnostics.length > 0 ? diagnostics.join("; ") : undefined;
+  const degraded =
+    outputReportsUsableWin32Fallback ||
+    isCuaDriverDegradedDiagnostic(diagnosticMessage);
   return {
     ok: !failed,
     ...(diagnosticMessage ? { diagnosticMessage } : {}),
-    ...(isCuaDriverDegradedDiagnostic(diagnosticMessage)
-      ? { degraded: true }
-      : {})
+    ...(degraded ? { degraded: true } : {})
   };
 }
 

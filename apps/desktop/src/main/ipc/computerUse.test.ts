@@ -3,7 +3,8 @@ import test from "node:test";
 import {
   parseCuaDriverDoctorStatus,
   parseCuaDriverPermissionsStatus,
-  parseCuaDriverPermissionsStatusDetail
+  parseCuaDriverPermissionsStatusDetail,
+  resolveCuaDriverAuthorizationStatus
 } from "./computerUsePermissions.ts";
 import { buildWindowsCuaDriverCommand } from "./computerUseWindows.ts";
 
@@ -80,6 +81,34 @@ test("parseCuaDriverDoctorStatus recognizes usable Win32 fallback", () => {
         "UIA health probe exceeded 2000ms; falling back to Win32-only window tools"
     }
   );
+});
+
+test("parseCuaDriverDoctorStatus recognizes Win32 fallback emitted before JSON", () => {
+  const warning =
+    "\u001b[33mWARN\u001b[0m UIA health probe exceeded 2000ms; falling back to Win32-only window tools";
+  assert.deepEqual(
+    parseCuaDriverDoctorStatus(
+      [
+        warning,
+        JSON.stringify({
+          ok: false,
+          probes: [
+            {
+              label: "binary",
+              message: "cua-driver 0.18.0 (x86_64-windows)",
+              status: "ok"
+            }
+          ]
+        })
+      ].join("\n")
+    ),
+    { ok: false, degraded: true }
+  );
+
+  assert.deepEqual(parseCuaDriverDoctorStatus(`${warning}\nnot json`), {
+    ok: false,
+    diagnosticMessage: `${warning}\nnot json`
+  });
 });
 
 test("parseCuaDriverPermissionsStatus maps driver-daemon permission payload", () => {
@@ -170,6 +199,33 @@ test("parseCuaDriverPermissionsStatusDetail preserves partial permission state",
         screenRecordingCapturable: false,
         source: "driver-daemon"
       }
+    }
+  );
+});
+
+test("CuaDriver 0.20 unprobed capture status remains ready after TCC grants", () => {
+  assert.deepEqual(
+    resolveCuaDriverAuthorizationStatus({
+      accessibility: true,
+      screenRecording: true,
+      screenRecordingCapturable: null,
+      source: "driver-daemon"
+    }),
+    { authorization: "authorized" }
+  );
+});
+
+test("an explicit failed capture probe still requires authorization", () => {
+  assert.deepEqual(
+    resolveCuaDriverAuthorizationStatus({
+      accessibility: true,
+      screenRecording: true,
+      screenRecordingCapturable: false,
+      source: "driver-daemon"
+    }),
+    {
+      authorization: "needs-authorization",
+      reason: "screen-recording-not-capturable"
     }
   );
 });

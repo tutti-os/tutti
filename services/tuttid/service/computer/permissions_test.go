@@ -53,6 +53,16 @@ func TestComputerPermissionIssuesRequiresBothPermissions(t *testing.T) {
 	}
 }
 
+func TestComputerPermissionIssuesAcceptsUnprobedCaptureAfterTCCGrants(t *testing.T) {
+	status := computerPermissionStatus{
+		Accessibility:   boolPtr(true),
+		ScreenRecording: boolPtr(true),
+	}
+	if issues := computerPermissionIssues(status); len(issues) != 0 {
+		t.Fatalf("computerPermissionIssues = %v, want none for an unprobed capture status", issues)
+	}
+}
+
 func TestParseWindowsDriverDoctor(t *testing.T) {
 	doctor, err := parseWindowsDriverDoctor([]byte("driver diagnostic\n{\"ok\":true,\"probes\":[{\"label\":\"UI Automation\",\"status\":\"ok\"}]}"))
 	if err != nil {
@@ -67,9 +77,13 @@ func TestParseWindowsDriverDoctor(t *testing.T) {
 }
 
 func TestEvaluateWindowsDriverDoctorAcceptsUsableWin32Fallback(t *testing.T) {
-	output := []byte("\x1b[33mwarning\x1b[0m\n" + `{
+	output := []byte("\x1b[33mWARN\x1b[0m UIA health probe exceeded 2000ms; falling back to Win32-only window tools\n" + `{
 		"ok": false,
-		"message": "UIA health probe exceeded 2000ms; falling back to Win32-only window tools"
+		"probes": [{
+			"label": "binary",
+			"message": "cua-driver 0.18.0 (x86_64-windows)",
+			"status": "ok"
+		}]
 	}`)
 	if err := evaluateWindowsDriverDoctor(output, errors.New("exit status 1"), nil); err != nil {
 		t.Fatalf("evaluateWindowsDriverDoctor degraded fallback: %v", err)
@@ -101,6 +115,9 @@ func TestEvaluateWindowsDriverDoctorRejectsUnexpectedHealthyNonzeroExit(t *testi
 func TestEvaluateWindowsDriverDoctorRejectsMalformedOutput(t *testing.T) {
 	if err := evaluateWindowsDriverDoctor([]byte("not json"), nil, nil); err == nil {
 		t.Fatal("evaluateWindowsDriverDoctor malformed output returned nil")
+	}
+	if err := evaluateWindowsDriverDoctor([]byte("falling back to Win32-only window tools\nnot json"), errors.New("exit status 1"), nil); err == nil {
+		t.Fatal("evaluateWindowsDriverDoctor malformed fallback output returned nil")
 	}
 	if err := evaluateWindowsDriverDoctor(nil, nil, nil); err == nil {
 		t.Fatal("evaluateWindowsDriverDoctor empty output returned nil")

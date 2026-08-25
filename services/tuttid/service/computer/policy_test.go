@@ -107,3 +107,40 @@ func TestNativeToolPolicyAllowsConfigReads(t *testing.T) {
 		t.Fatalf("tool = %#v, err = %v", got, err)
 	}
 }
+
+func TestNativeToolPolicyAllowsDeclaredInputDeliveryMode(t *testing.T) {
+	tools := []ToolDefinition{
+		{
+			Name: "click",
+			Capabilities: []string{
+				"input.pointer.click",
+				"input.pointer.click.left",
+				"accessibility.element_tokens",
+				"input.delivery_mode",
+			},
+		},
+		{
+			Name:         "move_cursor",
+			Capabilities: []string{"agent_cursor.move", "input.pointer.move"},
+		},
+	}
+	catalog, err := annotateNativeToolCatalog(ToolCatalog{
+		SchemaVersion:     "1",
+		CapabilityVersion: "1",
+		Tools:             tools,
+	})
+	if err != nil {
+		t.Fatalf("annotateNativeToolCatalog(input tools): %v", err)
+	}
+	if len(catalog.Tools) != len(tools) {
+		t.Fatalf("tool = %#v", catalog.Tools)
+	}
+	for _, tool := range catalog.Tools {
+		if !tool.Allowed || tool.DenialReason != "" {
+			t.Fatalf("tool = %#v", tool)
+		}
+		if _, err := requireAllowedNativeTool(catalog, tool.Name); err != nil {
+			t.Fatalf("requireAllowedNativeTool(%s): %v", tool.Name, err)
+		}
+	}
+}

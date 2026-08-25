@@ -19,7 +19,8 @@ import { shell } from "electron";
 import { registerDesktopIpcHandler } from "./handle.ts";
 import {
   parseCuaDriverDoctorStatus,
-  parseCuaDriverPermissionsStatusDetail
+  parseCuaDriverPermissionsStatusDetail,
+  resolveCuaDriverAuthorizationStatus
 } from "./computerUsePermissions.ts";
 import {
   buildWindowsCuaDriverCommand,
@@ -502,7 +503,7 @@ function resolveComputerUseStatus(input: {
     };
   }
 
-  const status = resolveComputerUseAuthorizationStatus(permissions);
+  const status = resolveCuaDriverAuthorizationStatus(permissions);
   return {
     installed: true,
     platform: input.platform ?? computerUsePlatform(),
@@ -520,40 +521,6 @@ function computerUsePlatform(): DesktopComputerUsePlatform {
     return process.platform;
   }
   return "unknown";
-}
-
-function resolveComputerUseAuthorizationStatus(
-  permissions: DesktopComputerUsePermissionsStatus
-): {
-  authorization: DesktopComputerUseStatus["authorization"];
-  reason?: DesktopComputerUseStatusReason;
-} {
-  if (
-    permissions.accessibility === true &&
-    permissions.screenRecording === true &&
-    permissions.screenRecordingCapturable === true
-  ) {
-    return { authorization: "authorized" };
-  }
-  if (
-    permissions.screenRecording === true &&
-    permissions.screenRecordingCapturable !== true
-  ) {
-    return {
-      authorization: "needs-authorization",
-      reason: "screen-recording-not-capturable"
-    };
-  }
-  if (
-    permissions.accessibility === false ||
-    permissions.screenRecording === false
-  ) {
-    return {
-      authorization: "needs-authorization",
-      reason: "permission-missing"
-    };
-  }
-  return { authorization: "unknown", reason: "status-unparseable" };
 }
 
 async function checkWindowsCuaDriverStatus(
