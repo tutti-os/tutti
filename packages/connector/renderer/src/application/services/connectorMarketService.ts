@@ -671,8 +671,14 @@ export class ConnectorMarketService implements IConnectorMarketService {
           seenAuthorizationViewIds.add(authorizationView.viewId);
           this.dataStore.authorizationViewsByConnectorKey[connectorKey] =
             authorizationView;
-          if (authorizationView.view.type === "external_link") {
-            await this.openAuthorizationUrl(authorizationView.view.url);
+          const authorizationUrl =
+            authorizationView.view.type === "external_link"
+              ? authorizationView.view.url
+              : authorizationView.view.type === "device_code"
+                ? authorizationView.view.verificationUrl
+                : null;
+          if (authorizationUrl) {
+            await this.openAuthorizationUrl(authorizationUrl);
           }
         }
         if (this.authorizationState(connectorKey) === "connected") {

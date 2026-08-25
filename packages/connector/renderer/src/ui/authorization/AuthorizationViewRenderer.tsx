@@ -311,6 +311,7 @@ function AuthorizationViewHeading({
 function AuthorizationActionFooter({
   actionLabel,
   actionType,
+  allowCancelWhileBusy = false,
   busy,
   cancelLabel,
   viewId,
@@ -318,6 +319,7 @@ function AuthorizationActionFooter({
 }: {
   actionLabel?: string;
   actionType?: AuthorizationActionEventType;
+  allowCancelWhileBusy?: boolean;
   busy: boolean;
   cancelLabel: string;
   viewId: string;
@@ -326,7 +328,7 @@ function AuthorizationActionFooter({
   return (
     <DialogFooter className="sm:justify-center">
       <Button
-        disabled={busy}
+        disabled={busy && !allowCancelWhileBusy}
         size="dialog"
         type="button"
         variant="secondary"
@@ -438,7 +440,10 @@ export function DefaultAuthorizationViewRenderer(
   const action =
     view.type === "external_link" || view.type === "device_code"
       ? {
-          label: view.actionLabel ?? props.labels.activate,
+          label:
+            view.type === "device_code" && props.busy
+              ? props.labels.activate
+              : (view.actionLabel ?? props.labels.activate),
           type: "activate" as const
         }
       : view.type === "result" &&
@@ -469,6 +474,7 @@ export function DefaultAuthorizationViewRenderer(
       <AuthorizationActionFooter
         actionLabel={action?.label}
         actionType={action?.type}
+        allowCancelWhileBusy={view.type === "device_code"}
         busy={props.busy}
         cancelLabel={props.labels.cancel}
         viewId={props.view.viewId}

@@ -466,8 +466,8 @@ test("keeps an authorized connector busy until the renderer authorization mutati
   assert.equal(view.cardsByKey[connector.key]?.status, "connected");
   assert.equal(view.cardsByKey[connector.key]?.mutationPhase, "authorizing");
   assert.equal(
-    view.dialog?.kind === "management" && view.dialog.canAuthorize,
-    false
+    view.dialog?.kind === "authorization" && view.dialog.authorizing,
+    true
   );
 });
 

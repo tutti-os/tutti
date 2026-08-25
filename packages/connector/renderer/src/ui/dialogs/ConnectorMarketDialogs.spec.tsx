@@ -66,9 +66,11 @@ function emptyView(
 }
 
 describe("ConnectorMarketDialogs", () => {
-  it("keeps the dialog open after authorization so disconnect and try stay available", async () => {
+  it("closes the authorization dialog and shows only the success toast", async () => {
     const viewState = proxy(emptyView(authorizationDialog));
-    const closeDialog = vi.fn();
+    const closeDialog = vi.fn(() => {
+      viewState.dialog = null;
+    });
     const onTryConnector = vi.fn();
     const root = {
       market: {
@@ -104,16 +106,16 @@ describe("ConnectorMarketDialogs", () => {
     fireEvent.click(screen.getByRole("button", { name: "actionAuthorize" }));
 
     expect(
-      await screen.findByRole("button", { name: "actionTry" })
+      await screen.findByText("actionAuthorizeSuccess")
     ).toBeInTheDocument();
-    expect(
-      screen.getByRole("button", { name: "actionDisconnect" })
-    ).toBeInTheDocument();
-    expect(closeDialog).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByRole("button", { name: "actionTry" }));
     expect(closeDialog).toHaveBeenCalledTimes(1);
-    expect(onTryConnector).toHaveBeenCalledWith("gmail");
+    expect(
+      screen.queryByRole("button", { name: "actionTry" })
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "actionDisconnect" })
+    ).not.toBeInTheDocument();
+    expect(onTryConnector).not.toHaveBeenCalled();
   });
 
   it("copies a pending device code and shows the success state", async () => {
@@ -170,11 +172,12 @@ describe("ConnectorMarketDialogs", () => {
       ).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("button", { name: "actionContinueAuthorization" })
-    ).toBeEnabled();
+      screen.getByRole("button", { name: "actionWaitingAuthorization" })
+    ).toBeDisabled();
     expect(
-      screen.queryByRole("button", { name: "actionWaitingAuthorization" })
+      screen.queryByRole("button", { name: "actionContinueAuthorization" })
     ).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "cancel" })).toBeEnabled();
   });
 
   it("keeps the copy affordance when clipboard access fails", async () => {

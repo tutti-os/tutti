@@ -628,10 +628,11 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
 - command admission and presentation share one renderer-local per-Connector
   mutation phase (`installing`, `updating`, `uninstalling`, `authorizing`,
   `disconnecting`, or `updating_runtime`) in the reactive Market store. Cards
-  and dialogs remain busy until that phase is released, even when a newer
-  daemon projection has already reached `connected`. A disconnect submitted
-  through stale UI or another caller while authorization is settling waits for
-  that authorization action, rereads the projected state, and runs at most once
+  remain busy and an open authorization dialog remains on its waiting view
+  until that phase is released, even when a newer daemon projection has already
+  reached `connected`. A disconnect submitted through stale UI or another
+  caller while authorization is settling waits for that authorization action,
+  rereads the projected state, and runs at most once
 - event refreshes are coalesced, daemon reconnect performs a full reload, and
   accepted commands are followed through the operation endpoint or events
 - the settings catalog toolbar Refresh control indicates an explicit
@@ -709,9 +710,9 @@ right-hand pane. An uninstalled connector opens an installation confirmation.
 An unconnected installed connector opens the authorization dialog. The token
 form keeps typed secrets after submit so a failed or in-flight attempt does
 not force the user to re-enter them. Completing authorization in that dialog
-keeps the modal open and advances it to the management dialog, where
-disconnect and try remain available. An already authorized connector opens
-the management dialog directly. Blocked releases
+closes the modal and reports success without exposing the settling management
+projection. Reopening an already authorized connector opens the management
+dialog directly, where disconnect and try remain available. Blocked releases
 open the blocked-state dialog. Only one dialog host is mounted at a time, so
 the catalog keeps the full settings content width and never leaves an empty
 right column.

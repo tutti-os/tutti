@@ -240,7 +240,11 @@ function buildConnectorDialogView(
       updating: installed || mutationPhase === "updating"
     };
   }
-  if (!["connected", "not_required"].includes(connector.authorization.state)) {
+  if (
+    mutationPhase === "authorizing" ||
+    pendingAuthorization ||
+    !["connected", "not_required"].includes(connector.authorization.state)
+  ) {
     return {
       ...base,
       authorizationInteraction:

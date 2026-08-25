@@ -78,6 +78,8 @@ export function ConnectorAuthorizationDialog({
     authorizationView ?? (resolved.kind === "form" ? resolved.view : null);
   const showAuthorizationView =
     currentView !== null && currentView.view.type !== "external_link";
+  const waitingForDeviceCode =
+    currentView?.view.type === "device_code" && (authorizing || pending);
 
   const handleInteractionEvent = (event: AuthorizationEventEnvelopeV1) => {
     if (!currentView) return;
@@ -147,9 +149,16 @@ export function ConnectorAuthorizationDialog({
 
       {showAuthorizationView && currentView ? (
         <AuthorizationRenderer
-          busy={authorizationView ? false : authorizing || pending}
+          busy={
+            waitingForDeviceCode ||
+            (!authorizationView && (authorizing || pending))
+          }
           labels={{
-            activate: i18n.t("actionContinueAuthorization"),
+            activate: i18n.t(
+              waitingForDeviceCode
+                ? "actionWaitingAuthorization"
+                : "actionContinueAuthorization"
+            ),
             cancel: i18n.t("cancel"),
             copyDeviceCode: i18n.t("copyDeviceCode"),
             deviceCodeCopied: i18n.t("deviceCodeCopied"),
