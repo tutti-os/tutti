@@ -1102,7 +1102,7 @@ export interface DesktopBrowserAutomationTurnClaim {
 }
 
 export interface DesktopWorkspaceAppPopupRejectedEvent {
-  reason: "post-unsupported";
+  reason: "deferred-navigation-unsupported" | "post-unsupported";
 }
 
 export type DesktopBrowserAutomationResponse =

@@ -9,6 +9,9 @@ export const en = {
     }
   },
   workspaceAppPopup: {
+    deferredUnsupportedDescription:
+      "Popups that navigate after opening are not supported. Try another sign-in method or contact the app provider.",
+    deferredUnsupportedTitle: "This app cannot open the authorization popup",
     postUnsupportedDescription:
       "POST-based popups are not supported. Try another sign-in method or contact the app provider.",
     postUnsupportedTitle: "This app cannot open the authorization popup"

@@ -2,15 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make Workspace App popup routing fail closed, preserve the published guest-attachment API, expose unsupported POST attempts to users, and prove one real Electron popup maps to one Workbench Browser surface.
+**Goal:** Give Workspace App popup routing one main-process policy owner, keep it fail closed, preserve the published guest-attachment API, expose unsupported popup modes to users, and prove one real external popup maps to one Workbench Browser surface.
 
-**Architecture:** The Browser Node Electron package installs one stable deny-first delegate before host code and gives new hosts a separate attachment resolver while retaining the legacy callback. Desktop owns production webview composition and a private rejection IPC; a real Electron renderer fixture runs the production Browser service, launch coordinator, presenter, and Workbench host to count the complete chain.
+**Architecture:** The Browser Node Electron package installs one stable deny-first delegate before host code and gives new hosts a separate attachment resolver while retaining the legacy callback. Desktop main owns internal-versus-external popup policy and private rejection IPC; preload keeps only explicit bridges. A real Electron renderer fixture runs the production Browser service, launch coordinator, presenter, and Workbench host to count the complete chain.
 
 **Tech Stack:** TypeScript, Electron 43, Node test runner, React 19, Vite, `@tutti-os/browser-node`, `@tutti-os/workbench-surface`, Desktop typed IPC and i18n.
 
 ## Global Constraints
 
-- Cross-origin popup correctness comes from one Electron producer, never renderer dedupe state or operation IDs.
+- Popup correctness comes from one Electron policy owner, never preload interception, renderer dedupe state, or operation IDs.
 - Every real popup request remains independent because `reuseIfOpen: false` is intentional.
 - Native Electron child windows remain denied for Workspace Apps.
 - POST bodies are never transported, persisted, logged, or replayed as GET.
@@ -428,6 +428,54 @@ git commit -s -m "docs(desktop): record workspace popup ownership"
 
 - [ ] **Step 6: Push and verify the ready PR**
 
-Push the existing branch, then read back the PR draft state, English title,
-Chinese description, head commit, mergeability, and CI status. Report the
+Push the existing branch, then read back the PR draft state, Chinese title and
+description, head commit, mergeability, and CI status. Report the
 external approval gate separately from code validation.
+
+### Task 6: Main-owned internal and external popup policy
+
+**Files:**
+- Modify: `apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts`
+- Delete: `apps/desktop/src/preload/entries/workspaceAppLinks.ts`
+- Delete: `apps/desktop/src/preload/entries/workspaceAppLinks.test.ts`
+- Modify: popup unit, notification, and real Electron fixture tests
+- Modify: Desktop popup i18n and durable popup documentation
+
+**Interfaces:**
+- Internal HTTP(S) target with the current guest origin: schedule current-guest
+  navigation after returning `deny`; emit no Browser event.
+- External HTTP(S) target: emit one Browser event and return `deny`.
+- Empty or `about:blank` target: reject with
+  `deferred-navigation-unsupported` and localized feedback.
+- POST target: preserve the existing fail-closed rejection and never replay the
+  body as GET.
+
+- [x] **Step 1: Prove the old owner boundary fails**
+
+Add a main-handler test requiring same-origin navigation and zero Browser
+events. Run it on the old implementation and retain the failing assertion as
+negative-control evidence.
+
+- [x] **Step 2: Move policy ownership to main**
+
+Compare the accepted popup target with `guestContents.getURL()`, schedule
+`loadURL` only after the handler returns, and keep external events independent.
+Remove the preload click listener and both isolated/main-world `window.open`
+patches.
+
+- [x] **Step 3: Make compatibility boundaries explicit**
+
+Reject deferred `about:blank` popups with localized feedback. Document that
+native-child denial makes `window.open()` return `null`; managed deferred OAuth
+is a separate future contract. Preserve explicit Tutti browser APIs.
+
+- [x] **Step 4: Extend real Electron evidence**
+
+Cover internal blank-link and `window.open` navigation with zero Browser
+surfaces, external cardinality, deferred rejection, POST rejection, returned
+`WindowProxy` semantics, and zero native child windows.
+
+- [ ] **Step 5: Run final changed-aware validation and deliver the PR**
+
+Run the selected repository lanes, commit with DCO sign-off, push the existing
+PR branch, update its Chinese title/body, and re-read approval plus CI state.

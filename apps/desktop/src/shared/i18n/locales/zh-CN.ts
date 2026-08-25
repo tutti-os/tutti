@@ -10,6 +10,9 @@ export const zhCN = {
     }
   },
   workspaceAppPopup: {
+    deferredUnsupportedDescription:
+      "暂不支持打开后再跳转的弹窗，请尝试其他登录方式或联系应用提供方",
+    deferredUnsupportedTitle: "这个应用无法打开授权弹窗",
     postUnsupportedDescription:
       "暂不支持通过 POST 打开的弹窗，请尝试其他登录方式或联系应用提供方",
     postUnsupportedTitle: "这个应用无法打开授权弹窗"

@@ -66,73 +66,125 @@ test(
         `missing Electron fixture result:\n${result.stdout}`
       );
       const payload = JSON.parse(resultLine.slice(resultPrefix.length));
+      const guestUrl = `${payload.origins.workspaceApp}/guest`;
 
       assert.deepEqual(payload.cases, [
         {
-          browserSurfaces: 1,
+          browserEvents: 0,
+          browserSurfaces: 0,
+          deferredPopupRejections: 0,
+          guestUrl: `${payload.origins.workspaceApp}/internal?kind=blank-link`,
+          kind: "internal-blank-link",
+          nativeChildWindows: 0,
+          postPopupRejections: 0,
+          producerCallbacks: 1,
+          rejectionNotifications: 0,
+          scriptResult: true,
+          workbenchLaunches: 0
+        },
+        {
+          browserEvents: 0,
+          browserSurfaces: 0,
+          deferredPopupRejections: 0,
+          guestUrl: `${payload.origins.workspaceApp}/internal?kind=window-open`,
+          kind: "internal-window-open",
+          nativeChildWindows: 0,
+          postPopupRejections: 0,
+          producerCallbacks: 1,
+          rejectionNotifications: 0,
+          scriptResult: true,
+          workbenchLaunches: 0
+        },
+        {
           browserEvents: 1,
+          browserSurfaces: 1,
+          deferredPopupRejections: 0,
+          guestUrl,
           kind: "blank-link",
           nativeChildWindows: 0,
           postPopupRejections: 0,
           producerCallbacks: 1,
           rejectionNotifications: 0,
+          scriptResult: true,
           workbenchLaunches: 1
         },
         {
-          browserSurfaces: 1,
           browserEvents: 1,
+          browserSurfaces: 1,
+          deferredPopupRejections: 0,
+          guestUrl,
           kind: "window-open",
           nativeChildWindows: 0,
           postPopupRejections: 0,
           producerCallbacks: 1,
           rejectionNotifications: 0,
+          scriptResult: true,
           workbenchLaunches: 1
         },
         {
-          browserSurfaces: 1,
           browserEvents: 1,
+          browserSurfaces: 1,
+          deferredPopupRejections: 0,
+          guestUrl,
           kind: "get-form",
           nativeChildWindows: 0,
           postPopupRejections: 0,
           producerCallbacks: 1,
           rejectionNotifications: 0,
+          scriptResult: true,
           workbenchLaunches: 1
         },
         {
           browserEvents: 2,
           browserSurfaces: 2,
+          deferredPopupRejections: 0,
+          guestUrl,
           kind: "double-window-open",
           nativeChildWindows: 0,
           postPopupRejections: 0,
           producerCallbacks: 2,
           rejectionNotifications: 0,
+          scriptResult: true,
           workbenchLaunches: 2
         },
         {
           browserEvents: 0,
           browserSurfaces: 0,
+          deferredPopupRejections: 1,
+          guestUrl,
+          kind: "deferred-window-open",
+          nativeChildWindows: 0,
+          postPopupRejections: 0,
+          producerCallbacks: 1,
+          rejectionNotifications: 1,
+          scriptResult: true,
+          workbenchLaunches: 0
+        },
+        {
+          browserEvents: 0,
+          browserSurfaces: 0,
+          deferredPopupRejections: 0,
+          guestUrl,
           kind: "post-form",
           nativeChildWindows: 0,
           postPopupRejections: 1,
           producerCallbacks: 1,
           rejectionNotifications: 1,
+          scriptResult: true,
           workbenchLaunches: 0
         }
       ]);
       assert.deepEqual(payload.counts, {
         browserEvents: 5,
         browserSurfaces: 5,
+        deferredPopupRejections: 1,
         nativeChildWindows: 0,
         postPopupRejections: 1,
-        producerCallbacks: 6,
-        rejectionNotifications: 1,
+        producerCallbacks: 9,
+        rejectionNotifications: 2,
         workbenchLaunches: 5
       });
       assert.notEqual(payload.origins.popup, payload.origins.workspaceApp);
-      assert.deepEqual(payload.preload, {
-        delegatedCrossOriginLinks: 1,
-        installed: true
-      });
       assert.equal(payload.events.length, 5);
       for (const event of payload.events) {
         assert.equal(event.type, "open-url");

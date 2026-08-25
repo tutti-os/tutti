@@ -11,12 +11,20 @@ export function registerWorkspaceAppPopupNotifications(input: {
   translate(key: DesktopI18nKey): string;
 }): () => void {
   return (
-    input.browserApi?.onWorkspaceAppPopupRejected?.(() => {
+    input.browserApi?.onWorkspaceAppPopupRejected?.((event) => {
+      const [descriptionKey, titleKey] =
+        event.reason === "deferred-navigation-unsupported"
+          ? ([
+              "workspaceAppPopup.deferredUnsupportedDescription",
+              "workspaceAppPopup.deferredUnsupportedTitle"
+            ] as const)
+          : ([
+              "workspaceAppPopup.postUnsupportedDescription",
+              "workspaceAppPopup.postUnsupportedTitle"
+            ] as const);
       input.notifications.error({
-        description: input.translate(
-          "workspaceAppPopup.postUnsupportedDescription"
-        ),
-        title: input.translate("workspaceAppPopup.postUnsupportedTitle")
+        description: input.translate(descriptionKey),
+        title: input.translate(titleKey)
       });
     }) ?? (() => undefined)
   );

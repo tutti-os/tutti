@@ -24,7 +24,9 @@ const browserTypeId = "browser";
 
 const browserEventListeners = new Set<(event: BrowserNodeEvent) => void>();
 const popupRejectedListeners = new Set<
-  (event: { reason: "post-unsupported" }) => void
+  (event: {
+    reason: "deferred-navigation-unsupported" | "post-unsupported";
+  }) => void
 >();
 let browserEvents = 0;
 let rejectionNotifications = 0;
@@ -38,7 +40,9 @@ const browserApi = {
     return () => browserEventListeners.delete(listener);
   },
   onWorkspaceAppPopupRejected(
-    listener: (event: { reason: "post-unsupported" }) => void
+    listener: (event: {
+      reason: "deferred-navigation-unsupported" | "post-unsupported";
+    }) => void
   ) {
     popupRejectedListeners.add(listener);
     return () => popupRejectedListeners.delete(listener);
@@ -60,7 +64,11 @@ ipcRenderer.on(
   desktopIpcChannels.browser.workspaceAppPopupRejected,
   (_event, payload) => {
     for (const listener of popupRejectedListeners) {
-      listener(payload as { reason: "post-unsupported" });
+      listener(
+        payload as {
+          reason: "deferred-navigation-unsupported" | "post-unsupported";
+        }
+      );
     }
     reportObservation();
   }

@@ -114,21 +114,22 @@ recent initialized Browser surface. If that surface's tab state is not
 available, it launches a new Browser surface instead of replacing the active
 page. Explicit non-reuse requests continue to launch a new surface.
 
-Workspace App cross-origin popups have one canonical event producer. Preload
-only converts same-origin blank-link and `window.open` calls into in-app
-navigation; it does not prevent cross-origin popup defaults or emit a competing
-open-url IPC. Webview attachment installs one delegate
-`setWindowOpenHandler`. The host-provided Workspace App route has priority over
-the default Browser route; later `registerGuest` calls only update the delegate's
-Browser route and never reinstall or override the handler. Cross-origin blank
-links, `window.open`, and GET popup forms reach the selected host route. Main
-validates the URL, denies the native child window, and emits exactly one Browser
-open-url event for each accepted handler callback. POST popup forms are denied
-without emitting an event because the Browser open-url contract is URL-only and
-cannot preserve a request body. Renderer behavior does not deduplicate or merge
-events by source node or URL. Every accepted popup request remains an
-independent `reuseIfOpen: false` launch, and the Workbench presenter remains the
-narrow launch/focus adapter.
+Workspace App popups have one main-process policy owner. Preload does not
+intercept blank-link clicks or patch `window.open`; blank links, `window.open`,
+and popup forms all reach the guest's single `setWindowOpenHandler` delegate.
+The host-provided Workspace App route has priority over the default Browser
+route; later `registerGuest` calls only update the delegate's Browser route and
+never reinstall or override the handler. Main compares an accepted HTTP(S)
+target with the current guest origin. Internal targets return `deny` and then
+navigate the current guest; external targets return `deny` and emit exactly one
+Browser open-url event. Returning `deny` means page code receives no child
+`WindowProxy`; apps must not depend on `focus`, `location`, or `close` on that
+return value. Empty or `about:blank` deferred-navigation popups and POST popup
+forms are rejected with localized feedback because the Browser open-url
+contract cannot preserve their later navigation or request body. Renderer
+behavior does not deduplicate or merge events by source node or URL. Every
+accepted external popup remains an independent `reuseIfOpen: false` launch, and
+the Workbench presenter remains the narrow launch/focus adapter.
 The explicit Workspace App `browser.openUrl` bridge remains an IPC command and
 is logged as `external-browser-api`; it is an application API request, not a
 second DOM-popup transport.

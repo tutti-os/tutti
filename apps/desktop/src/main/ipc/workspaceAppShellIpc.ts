@@ -158,13 +158,6 @@ export function registerWorkspaceAppShellIpc(input: {
         typeof normalizedPayload?.event === "string"
           ? normalizedPayload.event
           : "";
-      if (diagnosticEvent === "workspace-app-link-interception") {
-        logger?.info("workspace app link interception diagnostic", {
-          payload: normalizedPayload,
-          webContentsId: event.sender.id
-        });
-        return;
-      }
       if (diagnosticEvent.includes("failed")) {
         logger?.warn("workspace app context preload diagnostic", {
           payload: normalizedPayload

@@ -482,18 +482,23 @@ delimited by ---`, and the composer skill picker may show partial or
   produced events represent one user action. Renderer deduplication therefore
   masks the producer boundary and can merge intentional popup requests.
 - Fix:
-  Leave cross-origin blank links, `window.open`, and GET popup forms to
-  Electron's `setWindowOpenHandler`. Install one delegate while attaching the
-  guest and give its host-provided Workspace App route priority. Browser Node
-  `registerGuest` may update only the delegate's ordinary Browser route; it must
-  not install a second handler. Main validates the URL, denies the native child
-  window, and emits the Browser event. Reject POST popup forms without emitting
-  an event instead of silently replaying their URL as GET. Keep preload
-  interception only for same-origin in-app navigation, and keep the renderer as
-  a stateless one-event/one-launch adapter.
+  Leave blank links, `window.open`, and popup forms to Electron's
+  `setWindowOpenHandler`; preload must not globally intercept clicks or patch
+  page APIs. Install one delegate while attaching the guest and give its
+  host-provided Workspace App route priority. Browser Node `registerGuest` may
+  update only the delegate's ordinary Browser route; it must not install a
+  second handler. Main compares accepted HTTP(S) targets with the current guest
+  origin: internal URLs navigate the current guest after the handler returns
+  `deny`, while external URLs emit one Browser event. Reject POST and
+  empty/`about:blank` deferred popups with localized feedback instead of losing
+  the request body or later navigation. Keep the renderer as a stateless
+  one-event/one-launch adapter.
 - Validation:
-  Start from one real cross-origin popup and assert producer callback count one,
-  Browser event count one, Workbench launch count one, and surface count one.
+  Start from one real internal popup and assert one producer callback, current
+  guest navigation, and zero Browser events, launches, surfaces, and native
+  child windows. Then start from one real external popup and assert producer
+  callback count one, Browser event count one, Workbench launch count one, and
+  surface count one.
   Two events indicate duplicate production; one event with two launches
   indicates duplicate routing or subscription; one launch with two surfaces
   indicates a Workbench materialization race. Two real `window.open` requests
@@ -501,7 +506,9 @@ delimited by ---`, and the composer skill picker may show partial or
   The Electron integration fixture covers `did-attach-webview` followed by
   `registerGuest`, installs the real Workspace App preload, and uses different
   loopback origins for the guest and popup target. It then covers blank links,
-  `window.open`, GET forms, and POST rejection. Its owner renderer runs the real
+  internal blank links, `window.open` return semantics, external blank links,
+  external `window.open`, GET forms, deferred-popup rejection, and POST
+  rejection. Its owner renderer runs the real
   workspace Browser event service, launch coordinator, presenter, and public
   Workbench host with the production Browser multi-instance launch handler, so
   one process asserts callback, Browser event, launch, materialized surface,

@@ -2,8 +2,8 @@
 
 ## Context
 
-Workspace App cross-origin popups must enter Desktop through one canonical
-Electron producer. A popup request must not be inferred or deduplicated later
+Workspace App popups must enter Desktop through one canonical Electron policy
+owner. A popup request must not be inferred or deduplicated later
 from workspace, source-node, URL, or locally generated identifiers. Every real
 popup request produces one Browser open-URL event, and two real requests remain
 two launches because `reuseIfOpen: false` is intentional.
@@ -30,6 +30,9 @@ must be visible to the user.
 - Correlate one real popup action through producer, event, launch, and final
   Workbench surface cardinality without using an operation ID for correctness.
 - Surface unsupported POST popup attempts through localized Desktop UI.
+- Route internal popup targets in the current guest and external targets to a
+  Browser Node without preload-owned policy.
+- Make deferred popup and `WindowProxy` compatibility boundaries explicit.
 
 ## Non-goals
 
@@ -64,11 +67,14 @@ installer, so the fixture cannot manually recreate the popup handler wiring.
 The installer owns the additional Workspace App partition prefix, guest
 registration, preload selection, and attachment resolver.
 
-The preload keeps only same-origin `_blank` application navigation. Cross-origin
-links, `window.open()`, and popup forms are delegated to Electron and never send
-a second open-URL transport.
+The preload keeps explicit Tutti API bridges but does not globally intercept
+blank-link clicks or patch `window.open`. Blank links, `window.open()`, and
+popup forms all reach Electron. The handler compares an accepted HTTP(S) target
+with the current guest origin. Internal targets return `deny` and schedule
+navigation in the current guest after the callback; external targets return
+`deny` and emit one Browser open-URL event.
 
-## Unsupported POST Feedback
+## Unsupported Popup Feedback
 
 The main-process handler denies any popup with `postBody` and emits a narrow
 Desktop-private rejection payload containing only a reason code. It does not
@@ -77,13 +83,20 @@ workspace renderer maps the reason to Desktop i18n copy and an error
 notification. This keeps user-visible policy in Desktop and avoids expanding the
 public Browser Node event contract.
 
+Empty and `about:blank` popup targets are also rejected with a distinct reason.
+This explicitly does not support SDKs that open a placeholder and later assign
+`popup.location`; supporting them requires a separately owned managed-popup
+contract. Because every native child is denied, `window.open()` returns `null`,
+and Workspace Apps must not call `focus`, `location`, or `close` on its result.
+
 ## Validation Chain
 
 The regression suite keeps the real Electron/webview producer test and adds one
 connected chain using production modules:
 
 1. A real popup action reaches exactly one `setWindowOpenHandler` callback.
-2. The production Desktop handler emits exactly one Browser open-URL event.
+2. An internal target navigates the current guest with no Browser event, while
+   an external target emits exactly one Browser open-URL event.
 3. The real workspace Browser service and launch coordinator issue exactly one
    Workbench launch.
 4. The Workbench host snapshot gains exactly one Browser surface.
@@ -95,6 +108,12 @@ cover callback failures and the legacy published handler override.
 POST coverage asserts one producer callback, zero Browser events, zero launches,
 zero Browser surfaces, zero native child windows, and one localized rejection
 notification.
+
+Deferred-popup coverage asserts the same fail-closed cardinality and verifies
+that `window.open("")` returns `null`. Local Tutti Canvas, Deck, Doc, and built-in
+Workspace App sources contain no `window.open`, `_blank`, or retained
+`WindowProxy` usage; third-party application compatibility remains governed by
+the explicit unsupported boundary.
 
 ## Documentation Impact
 

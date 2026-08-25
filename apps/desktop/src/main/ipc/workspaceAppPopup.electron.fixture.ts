@@ -20,7 +20,6 @@ const resultPrefix = "WORKSPACE_APP_POPUP_INTEGRATION=";
 const rendererAckChannel = "workspace-app-popup-test:browser-event";
 const rendererObservationChannel = "workspace-app-popup-test:observation";
 const rendererReadyChannel = "workspace-app-popup-test:renderer-ready";
-const workspaceAppDiagnosticChannel = "workspace-app-context:diagnostic";
 const workspaceAppPartition = "persist:tutti-app:popup-integration";
 
 type FixtureMainHandler = (
@@ -61,6 +60,7 @@ async function runWorkspaceAppPopupIntegration() {
   const counts = {
     browserEvents: 0,
     browserSurfaces: 0,
+    deferredPopupRejections: 0,
     nativeChildWindows: 0,
     postPopupRejections: 0,
     producerCallbacks: 0,
@@ -68,10 +68,6 @@ async function runWorkspaceAppPopupIntegration() {
     workbenchLaunches: 0
   };
   const events: unknown[] = [];
-  const preload = {
-    delegatedCrossOriginLinks: 0,
-    installed: false
-  };
   const mainHandlers = new Map<string, FixtureMainHandler>();
   let attachedGuestContents: WebContents | null = null;
   const logger: DesktopLogger = {
@@ -86,6 +82,8 @@ async function runWorkspaceAppPopupIntegration() {
     warn(message) {
       if (message === "workspace app guest rejected POST popup") {
         counts.postPopupRejections += 1;
+      } else if (message === "workspace app guest rejected deferred popup") {
+        counts.deferredPopupRejections += 1;
       }
     }
   };
@@ -116,16 +114,6 @@ async function runWorkspaceAppPopupIntegration() {
     counts.browserSurfaces = Number(payload.browserSurfaces) || 0;
     counts.rejectionNotifications = Number(payload.rejectionNotifications) || 0;
     counts.workbenchLaunches = Number(payload.workbenchLaunches) || 0;
-  });
-  ipcMain.on(workspaceAppDiagnosticChannel, (_event, payload) => {
-    if (payload?.event !== "workspace-app-link-interception") {
-      return;
-    }
-    if (payload.action === "installed") {
-      preload.installed = true;
-    } else if (payload.action === "delegate-window-open") {
-      preload.delegatedCrossOriginLinks += 1;
-    }
   });
   registerBrowserNodeElectronMain({
     channels: desktopIpcChannels.browser,
@@ -203,6 +191,34 @@ async function runWorkspaceAppPopupIntegration() {
     cases.push(
       await triggerPopup({
         counts,
+        expectedBrowserEvents: 0,
+        expectedGuestUrl: `${workspaceAppOrigin}/internal?kind=blank-link`,
+        expectedPostPopupRejections: 0,
+        expectedProducerCallbacks: 1,
+        expectedRejectionNotifications: 0,
+        guestContents,
+        kind: "internal-blank-link",
+        script: "document.querySelector('#internal-blank-link').click(); true"
+      })
+    );
+    await guestContents.loadURL(`${workspaceAppOrigin}/guest`);
+    cases.push(
+      await triggerPopup({
+        counts,
+        expectedBrowserEvents: 0,
+        expectedGuestUrl: `${workspaceAppOrigin}/internal?kind=window-open`,
+        expectedPostPopupRejections: 0,
+        expectedProducerCallbacks: 1,
+        expectedRejectionNotifications: 0,
+        guestContents,
+        kind: "internal-window-open",
+        script: `window.open(${JSON.stringify(`${workspaceAppOrigin}/internal?kind=window-open`)}, '_blank') === null`
+      })
+    );
+    await guestContents.loadURL(`${workspaceAppOrigin}/guest`);
+    cases.push(
+      await triggerPopup({
+        counts,
         expectedBrowserEvents: 1,
         expectedPostPopupRejections: 0,
         expectedProducerCallbacks: 1,
@@ -252,6 +268,19 @@ async function runWorkspaceAppPopupIntegration() {
       await triggerPopup({
         counts,
         expectedBrowserEvents: 0,
+        expectedDeferredPopupRejections: 1,
+        expectedPostPopupRejections: 0,
+        expectedProducerCallbacks: 1,
+        expectedRejectionNotifications: 1,
+        guestContents,
+        kind: "deferred-window-open",
+        script: "window.open('', '_blank') === null"
+      })
+    );
+    cases.push(
+      await triggerPopup({
+        counts,
+        expectedBrowserEvents: 0,
         expectedPostPopupRejections: 1,
         expectedProducerCallbacks: 1,
         expectedRejectionNotifications: 1,
@@ -265,15 +294,13 @@ async function runWorkspaceAppPopupIntegration() {
       cases,
       counts,
       events,
-      origins: { popup: popupOrigin, workspaceApp: workspaceAppOrigin },
-      preload
+      origins: { popup: popupOrigin, workspaceApp: workspaceAppOrigin }
     };
   } finally {
     cleanupWebviewSecurity();
     ipcMain.removeAllListeners(rendererAckChannel);
     ipcMain.removeAllListeners(rendererObservationChannel);
     ipcMain.removeAllListeners(rendererReadyChannel);
-    ipcMain.removeAllListeners(workspaceAppDiagnosticChannel);
     if (!ownerWindow.isDestroyed()) {
       ownerWindow.destroy();
     }
@@ -306,6 +333,7 @@ function createWorkspaceAppTestServer(
     if (request.url === "/guest") {
       response.setHeader("content-type", "text/html; charset=utf-8");
       response.end(`<!doctype html>
+        <a id="internal-blank-link" href="${origin}/internal?kind=blank-link" target="_blank">open internal</a>
         <a id="blank-link" href="${popupOrigin}/popup?kind=blank-link" target="_blank">open</a>
         <form id="get-form" action="${popupOrigin}/popup" method="get" target="_blank">
           <input name="kind" value="get-form" />
@@ -313,6 +341,11 @@ function createWorkspaceAppTestServer(
         <form id="post-form" action="${popupOrigin}/popup" method="post" target="_blank">
           <input name="kind" value="post-form" />
         </form>`);
+      return;
+    }
+    if (request.url?.startsWith("/internal?")) {
+      response.setHeader("content-type", "text/html; charset=utf-8");
+      response.end("<!doctype html><title>internal popup target</title>");
       return;
     }
     response.statusCode = 404;
@@ -368,6 +401,7 @@ async function triggerPopup(input: {
   counts: {
     browserEvents: number;
     browserSurfaces: number;
+    deferredPopupRejections: number;
     nativeChildWindows: number;
     postPopupRejections: number;
     producerCallbacks: number;
@@ -375,6 +409,8 @@ async function triggerPopup(input: {
     workbenchLaunches: number;
   };
   expectedBrowserEvents: number;
+  expectedDeferredPopupRejections?: number;
+  expectedGuestUrl?: string;
   expectedPostPopupRejections: number;
   expectedProducerCallbacks: number;
   expectedRejectionNotifications: number;
@@ -383,13 +419,22 @@ async function triggerPopup(input: {
   script: string;
 }) {
   const before = { ...input.counts };
-  await input.guestContents.executeJavaScript(input.script, true);
+  const beforeGuestUrl = input.guestContents.getURL();
+  const expectedDeferredPopupRejections =
+    input.expectedDeferredPopupRejections ?? 0;
+  const expectedGuestUrl = input.expectedGuestUrl ?? beforeGuestUrl;
+  const scriptResult = await input.guestContents.executeJavaScript(
+    input.script,
+    true
+  );
   await waitForCondition(
     () =>
       input.counts.browserEvents ===
         before.browserEvents + input.expectedBrowserEvents &&
       input.counts.browserSurfaces ===
         before.browserSurfaces + input.expectedBrowserEvents &&
+      input.counts.deferredPopupRejections ===
+        before.deferredPopupRejections + expectedDeferredPopupRejections &&
       input.counts.workbenchLaunches ===
         before.workbenchLaunches + input.expectedBrowserEvents &&
       input.counts.postPopupRejections ===
@@ -397,13 +442,16 @@ async function triggerPopup(input: {
       input.counts.producerCallbacks ===
         before.producerCallbacks + input.expectedProducerCallbacks &&
       input.counts.rejectionNotifications ===
-        before.rejectionNotifications + input.expectedRejectionNotifications,
+        before.rejectionNotifications + input.expectedRejectionNotifications &&
+      input.guestContents.getURL() === expectedGuestUrl,
     () =>
       JSON.stringify({
         actual: input.counts,
         before,
         expected: {
           browserEvents: input.expectedBrowserEvents,
+          deferredPopupRejections: expectedDeferredPopupRejections,
+          guestUrl: expectedGuestUrl,
           postPopupRejections: input.expectedPostPopupRejections,
           producerCallbacks: input.expectedProducerCallbacks,
           rejectionNotifications: input.expectedRejectionNotifications
@@ -414,6 +462,9 @@ async function triggerPopup(input: {
   return {
     browserEvents: input.counts.browserEvents - before.browserEvents,
     browserSurfaces: input.counts.browserSurfaces - before.browserSurfaces,
+    deferredPopupRejections:
+      input.counts.deferredPopupRejections - before.deferredPopupRejections,
+    guestUrl: input.guestContents.getURL(),
     kind: input.kind,
     nativeChildWindows:
       input.counts.nativeChildWindows - before.nativeChildWindows,
@@ -423,6 +474,7 @@ async function triggerPopup(input: {
       input.counts.producerCallbacks - before.producerCallbacks,
     rejectionNotifications:
       input.counts.rejectionNotifications - before.rejectionNotifications,
+    scriptResult,
     workbenchLaunches: input.counts.workbenchLaunches - before.workbenchLaunches
   };
 }

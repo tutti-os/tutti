@@ -11,8 +11,9 @@ import {
 test("workspace app window-open handler emits one event for an accepted GET popup", () => {
   const events: BrowserNodeOpenUrlEvent[] = [];
   const logs: Record<string, unknown>[] = [];
+  const navigatedUrls: string[] = [];
   const handler = createWorkspaceAppWindowOpenHandler({
-    contents: { id: 99 },
+    contents: createWindowOpenContents(99, navigatedUrls),
     logger: {
       info(_message, details) {
         logs.push(details ?? {});
@@ -43,6 +44,32 @@ test("workspace app window-open handler emits one event for an accepted GET popu
       webContentsId: 99
     }
   ]);
+  assert.deepEqual(navigatedUrls, []);
+});
+
+test("workspace app window-open handler navigates internal popups in the current guest", async () => {
+  const events: BrowserNodeOpenUrlEvent[] = [];
+  const navigatedUrls: string[] = [];
+  const contents = {
+    getURL: () => "https://app.local/home",
+    id: 98,
+    async loadURL(url: string) {
+      navigatedUrls.push(url);
+    }
+  };
+  const handler = createWorkspaceAppWindowOpenHandler({
+    contents,
+    ownerWindow: createOwnerWindow(events)
+  });
+
+  assert.deepEqual(
+    handler(createWindowOpenDetails("https://app.local/canvas?id=canvas-1")),
+    { action: "deny" }
+  );
+  await new Promise<void>((resolve) => setImmediate(resolve));
+
+  assert.deepEqual(navigatedUrls, ["https://app.local/canvas?id=canvas-1"]);
+  assert.deepEqual(events, []);
 });
 
 test("workspace app window-open handler rejects POST popup bodies instead of replaying them as GET", () => {
@@ -50,7 +77,7 @@ test("workspace app window-open handler rejects POST popup bodies instead of rep
   const messages: Array<{ channel: string; payload: unknown }> = [];
   const warnings: { details?: Record<string, unknown>; message: string }[] = [];
   const handler = createWorkspaceAppWindowOpenHandler({
-    contents: { id: 100 },
+    contents: createWindowOpenContents(100),
     logger: {
       warn(message, details) {
         warnings.push({ details, message });
@@ -97,6 +124,32 @@ test("workspace app window-open handler rejects POST popup bodies instead of rep
   ]);
 });
 
+test("workspace app window-open handler rejects deferred navigation popups explicitly", () => {
+  const messages: Array<{ channel: string; payload: unknown }> = [];
+  const navigatedUrls: string[] = [];
+  const handler = createWorkspaceAppWindowOpenHandler({
+    contents: createWindowOpenContents(102, navigatedUrls),
+    ownerWindow: {
+      webContents: {
+        send(channel: string, payload: unknown) {
+          messages.push({ channel, payload });
+        }
+      }
+    } as never
+  });
+
+  assert.deepEqual(handler(createWindowOpenDetails("about:blank")), {
+    action: "deny"
+  });
+  assert.deepEqual(navigatedUrls, []);
+  assert.deepEqual(messages, [
+    {
+      channel: desktopIpcChannels.browser.workspaceAppPopupRejected,
+      payload: { reason: "deferred-navigation-unsupported" }
+    }
+  ]);
+});
+
 test("workspace app open-url dispatch emits no event for invalid URLs or unavailable owners", () => {
   const events: BrowserNodeOpenUrlEvent[] = [];
   const contents = { id: 101 };
@@ -133,6 +186,16 @@ function createOwnerWindow(events: BrowserNodeOpenUrlEvent[]) {
       send(_channel: string, event: BrowserNodeOpenUrlEvent) {
         events.push(event);
       }
+    }
+  };
+}
+
+function createWindowOpenContents(id: number, navigatedUrls: string[] = []) {
+  return {
+    getURL: () => "https://app.local/home",
+    id,
+    async loadURL(url: string) {
+      navigatedUrls.push(url);
     }
   };
 }
