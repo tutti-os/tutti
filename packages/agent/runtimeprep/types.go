@@ -43,8 +43,9 @@ type PrepareInput struct {
 	// SkipSkills keeps provider preparation limited to the runtime data needed
 	// by a model-only probe. It must not be used when launching a live Agent
 	// Session or when the caller needs the provider's Skill catalog.
-	SkipSkills             bool
-	CLICommand             string
+	SkipSkills bool
+	CLICommand string
+	// CodexSaverMode is the legacy wire name for provider-neutral RTK saver mode.
 	CodexSaverMode         bool
 	Title                  string
 	PermissionModeID       string

@@ -39,7 +39,7 @@ func TestGetComposerOptionsUsesTargetDefaultsAndSparseRequestOverrides(t *testin
 	}
 }
 
-func TestGetComposerOptionsAdvertisesRememberedCodexSaverModeOnlyForCodex(t *testing.T) {
+func TestGetComposerOptionsAdvertisesRTKSaverModeForEveryProvider(t *testing.T) {
 	service := newTestService(newFakeRuntime())
 	service.AgentComposerDefaultsReader = fakeAgentComposerDefaultsReader{
 		agenttargetbiz.IDLocalCodex: {CodexSaverMode: true},
@@ -61,8 +61,8 @@ func TestGetComposerOptionsAdvertisesRememberedCodexSaverModeOnlyForCodex(t *tes
 	if err != nil {
 		t.Fatalf("GetComposerOptions() for Claude error = %v", err)
 	}
-	if options.CodexSaverModeSupported || options.EffectiveSettings.CodexSaverMode {
-		t.Fatalf("options = %#v, want saver mode unavailable outside Codex", options)
+	if !options.CodexSaverModeSupported || options.EffectiveSettings.CodexSaverMode {
+		t.Fatalf("options = %#v, want saver mode supported with no remembered Claude default", options)
 	}
 }
 

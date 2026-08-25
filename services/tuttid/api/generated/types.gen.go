@@ -5620,7 +5620,7 @@ type AgentProviderComposerOptionsResponse struct {
 	Capabilities      *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
 	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
 
-	// CodexSaverModeSupported Whether this resolved provider target supports session-scoped RTK saver mode; product entry policy is reported separately by the host
+	// CodexSaverModeSupported Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode; the legacy property name is retained for compatibility and product entry policy is reported separately by the host
 	CodexSaverModeSupported *bool `json:"codexSaverModeSupported,omitempty"`
 
 	// Commands Commands advertised by the resolved runtime session.
@@ -5865,7 +5865,9 @@ type AgentSessionCassetteListResponse struct {
 
 // AgentSessionComposerSettings defines model for AgentSessionComposerSettings.
 type AgentSessionComposerSettings struct {
-	BrowserUse       *bool   `json:"browserUse,omitempty"`
+	BrowserUse *bool `json:"browserUse,omitempty"`
+
+	// CodexSaverMode Legacy compatibility property for the provider-neutral RTK saver mode
 	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
@@ -7122,7 +7124,7 @@ type CreateWorkspaceAgentSessionRequest struct {
 	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
 	ClientSubmitId string                               `json:"clientSubmitId"`
 
-	// CodexSaverMode Enables session-scoped RTK executable and RTK.md injection for this Codex session without changing the selected model
+	// CodexSaverMode Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model; the property name is retained for compatibility
 	CodexSaverMode *bool                     `json:"codexSaverMode,omitempty"`
 	Cwd            *string                   `json:"cwd,omitempty"`
 	InitialContent []AgentPromptContentBlock `json:"initialContent"`
@@ -7322,6 +7324,7 @@ type DeletedAgentConversationRetentionDays int
 
 // DesktopAgentComposerDefaults defines model for DesktopAgentComposerDefaults.
 type DesktopAgentComposerDefaults struct {
+	// CodexSaverMode Legacy compatibility property for the provider-neutral RTK saver mode
 	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`

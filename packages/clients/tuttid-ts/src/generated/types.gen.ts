@@ -588,6 +588,9 @@ export type DesktopWorkbenchWindowSnappingShortcutPreset =
   | "commandShiftArrows";
 
 export type DesktopAgentComposerDefaults = {
+  /**
+   * Legacy compatibility property for the provider-neutral RTK saver mode
+   */
   codexSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
@@ -1991,6 +1994,9 @@ export type WorkspaceAgentSource = "user" | "legacy_binding";
 export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
+  /**
+   * Legacy compatibility property for the provider-neutral RTK saver mode
+   */
   codexSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
@@ -2085,7 +2091,7 @@ export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
 
 export type AgentProviderComposerOptionsResponse = {
   /**
-   * Whether this resolved provider target supports session-scoped RTK saver mode; product entry policy is reported separately by the host
+   * Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode; the legacy property name is retained for compatibility and product entry policy is reported separately by the host
    */
   codexSaverModeSupported?: boolean;
   provider: WorkspaceAgentProvider;
@@ -3392,7 +3398,7 @@ export type WorkspaceAgentInitialGoalControl = {
 
 export type CreateWorkspaceAgentSessionRequest = {
   /**
-   * Enables session-scoped RTK executable and RTK.md injection for this Codex session without changing the selected model
+   * Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model; the property name is retained for compatibility
    */
   codexSaverMode?: boolean | null;
   agentSessionId: string;

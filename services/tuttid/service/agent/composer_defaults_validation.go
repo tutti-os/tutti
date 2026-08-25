@@ -54,10 +54,7 @@ func (s *Service) ValidateAgentComposerDefaultsPatch(
 		switch field {
 		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode:
 			if _, ok := value.(bool); !ok {
-				return fmt.Errorf("%w: codex saver mode must be boolean", ErrInvalidArgument)
-			}
-			if !composerProviderSupportsSaverSubagentMode(launch.Provider) {
-				return fmt.Errorf("%w: codex saver mode is only supported by Codex", ErrInvalidArgument)
+				return fmt.Errorf("%w: rtk saver mode must be boolean", ErrInvalidArgument)
 			}
 		case preferencesbiz.AgentComposerDefaultsFieldModel:
 			if providerTargetRefKind(launch.ProviderTargetRef) == "agent_extension" {

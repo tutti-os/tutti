@@ -145,7 +145,7 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	// an already-created Session. A new Session is required for the toggle to
 	// take effect.
 	if settings.CodexSaverMode != nil {
-		return Session{}, fmt.Errorf("%w: Codex saver mode requires a new session", ErrInvalidArgument)
+		return Session{}, fmt.Errorf("%w: rtk saver mode requires a new session", ErrInvalidArgument)
 	}
 	release, err := s.acquireSessionSettingsLock(ctx, workspaceID, agentSessionID)
 	if err != nil {

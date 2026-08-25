@@ -13,14 +13,16 @@ RPC service is only a transport/path/security adapter and must call the same
 `runtimeprep.DefaultPreparer`; it must not maintain separate Claude or Codex
 preparers.
 
-For a Codex Session launched with RTK saver mode enabled, runtime preparation
-keeps the selected model unchanged and resolves an existing host `rtk`
-executable. It copies that executable into the exact Session runtime, prepends
-only the private binary directory to that Session's `PATH`, then runs the copied
-binary's `rtk init --codex` inside the isolated `CODEX_HOME`. This produces the
-version-matched `RTK.md` and its `@RTK.md` instruction reference without
-changing the workspace or user Codex home. RTK's database, tee output, home,
-and telemetry policy are also isolated under the Session runtime.
+For any Agent Session launched with RTK saver mode enabled, provider-neutral
+runtime preparation keeps the selected model unchanged and resolves an existing
+host `rtk` executable. It copies that executable and the canonical `RTK.md`
+into the exact Session runtime and prepends only the private binary directory to
+that Session's `PATH`. The common Tutti Runtime policy carries the same RTK
+instructions through each provider's native instruction channel (for example,
+Codex or OpenCode `AGENTS.md`, Claude's system-prompt file, and Cursor's plugin
+context). New providers and extensions therefore inherit the mode without a
+provider-name branch. RTK's database, tee output, and telemetry policy are also
+isolated under the Session runtime.
 
 Runtime preparation deliberately does not install RTK through Homebrew, Cargo,
 an upstream shell script, or any other global toolchain. If no existing RTK

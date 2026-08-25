@@ -132,6 +132,15 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	})
 
 	result := ProviderPrepareResult{Cwd: cwd}
+	var rtkRuntime sessionRTKRuntime
+	if input.CodexSaverMode {
+		rtkRuntime, err = prepareSessionRTK(runtimeRoot)
+		if err != nil {
+			return PreparedRuntime{}, err
+		}
+		manifest.RecordManagedFile(rtkRuntime.Executable, "rtk-executable", rtkRuntime.ExecutableCreated)
+		manifest.RecordManagedFile(rtkRuntime.Instructions, "rtk-instructions", rtkRuntime.InstructionsCreated)
+	}
 	if provider := p.provider(input); provider != nil {
 		logRuntimePrepareTrace("runtime_prepare.provider_requested", input, map[string]any{
 			"provider": providerID,
@@ -153,7 +162,14 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	if result.Cwd == "" {
 		result.Cwd = cwd
 	}
-	result.Env = append(defaultRuntimeEnv(input, p.StateDir), result.Env...)
+	if input.CodexSaverMode {
+		result.Env = append(result.Env, rtkRuntime.Env...)
+	}
+	runtimeEnv := defaultRuntimeEnv(input, p.StateDir)
+	if input.CodexSaverMode {
+		runtimeEnv = prependPathEntry(runtimeEnv, filepath.Dir(rtkRuntime.Executable))
+	}
+	result.Env = append(runtimeEnv, result.Env...)
 	logRuntimePrepareTrace("runtime_prepare.env_prepared", input, map[string]any{
 		"env_count": len(result.Env),
 	})
@@ -388,6 +404,27 @@ func runtimePathEnv(stateDir string, connectorBinDir string) string {
 		}
 	}
 	return "PATH=" + strings.Join(entries, string(os.PathListSeparator))
+}
+
+func prependPathEntry(env []string, entry string) []string {
+	entry = strings.TrimSpace(entry)
+	if entry == "" {
+		return env
+	}
+	for index, value := range env {
+		if !strings.HasPrefix(value, "PATH=") {
+			continue
+		}
+		entries := filepath.SplitList(strings.TrimPrefix(value, "PATH="))
+		for _, candidate := range entries {
+			if filepath.Clean(candidate) == filepath.Clean(entry) {
+				return env
+			}
+		}
+		env[index] = "PATH=" + strings.Join(append([]string{entry}, entries...), string(os.PathListSeparator))
+		return env
+	}
+	return append(env, "PATH="+entry+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func expandConnectorAgentContext(input PrepareInput) PrepareInput {

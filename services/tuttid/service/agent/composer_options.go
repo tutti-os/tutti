@@ -81,7 +81,8 @@ type ComposerOptionsInput struct {
 	// Ordinary composer loads may render the last successful list while the
 	// daemon refreshes it asynchronously.
 	WaitForFreshModelCatalog bool
-	CodexSaverMode           *bool
+	// CodexSaverMode is the legacy API name for provider-neutral RTK saver mode.
+	CodexSaverMode *bool
 	// ResolvedModelPlan is a daemon-only exact plan override supplied by a
 	// WorkspaceAgent resolver. It may contain a credential and must never be
 	// serialized into runtime context or transport responses.
@@ -152,6 +153,8 @@ type ComposerReasoningProfile struct {
 }
 
 type ComposerOptions struct {
+	// CodexSaverModeSupported is retained as a compatibility field; support is
+	// provider-neutral for every resolved Agent target.
 	CodexSaverModeSupported bool
 	Provider                string
 	Capabilities            []string
@@ -211,7 +214,7 @@ func (s *Service) GetComposerOptions(ctx context.Context, input ComposerOptionsI
 	if input.CodexSaverMode != nil {
 		input.Settings.CodexSaverMode = *input.CodexSaverMode
 	}
-	codexSaverModeSupported := composerProviderSupportsSaverSubagentMode(provider)
+	codexSaverModeSupported := composerProviderSupportsRTKSaverMode(provider)
 	if !codexSaverModeSupported {
 		input.Settings.CodexSaverMode = false
 	}

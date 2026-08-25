@@ -57,10 +57,10 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	if isolationMode == WorktreeIsolationMode && !worktreeProjectRailPlacement(input.RailPlacement) {
 		return createSessionFailureResult(input, fmt.Errorf("%w: worktree isolation requires project rail placement", ErrInvalidArgument))
 	}
-	if valueBool(input.CodexSaverMode) && (!input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider)) {
-		return createSessionFailureResult(input, fmt.Errorf("%w: Codex saver mode is unavailable", ErrInvalidArgument))
+	if valueBool(input.CodexSaverMode) && (!input.CodexSaverModeAllowed || !composerProviderSupportsRTKSaverMode(provider)) {
+		return createSessionFailureResult(input, fmt.Errorf("%w: rtk saver mode is unavailable", ErrInvalidArgument))
 	}
-	if !input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider) {
+	if !input.CodexSaverModeAllowed || !composerProviderSupportsRTKSaverMode(provider) {
 		input.CodexSaverMode = nil
 	}
 	modelExplicit := explicitSettingValue(input.ModelExplicit, input.Model)
@@ -498,7 +498,7 @@ func (s *Service) applyCreateSessionComposerDefaults(ctx context.Context, input 
 	if input.Speed == nil && strings.TrimSpace(defaults.Speed) != "" {
 		input.Speed = stringPointer(defaults.Speed)
 	}
-	if input.CodexSaverMode == nil && input.CodexSaverModeAllowed && composerProviderSupportsSaverSubagentMode(input.Provider) {
+	if input.CodexSaverMode == nil && input.CodexSaverModeAllowed && composerProviderSupportsRTKSaverMode(input.Provider) {
 		input.CodexSaverMode = boolPointer(defaults.CodexSaverMode)
 	}
 	return nil

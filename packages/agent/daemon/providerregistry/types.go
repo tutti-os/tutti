@@ -548,9 +548,6 @@ const (
 )
 
 type ComposerProfileDescriptor struct {
-	// SubagentSaverMode allows a session-scoped lower-cost custom role while
-	// leaving the main composer model unchanged.
-	SubagentSaverMode       bool
 	ModelSelection          bool
 	ModelCatalog            ModelCatalogKind
 	ReasoningEffort         bool

@@ -550,20 +550,15 @@ func TestDefaultPreparerExpandsConnectorAgentContext(t *testing.T) {
 	}
 }
 
-func TestDefaultPreparerCodexSaverModeInstallsSessionScopedRTK(t *testing.T) {
+func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("the fake RTK fixture is a POSIX script")
 	}
 	home := t.TempDir()
 	t.Setenv("HOME", home)
 	binDir := t.TempDir()
-	sourceRTK := filepath.Join(binDir, codexRTKExecutableName())
-	writeSidecarTestFile(t, sourceRTK, "#!/bin/sh\n"+
-		"if [ \"$1\" != \"init\" ] || [ \"$2\" != \"--codex\" ]; then\n"+
-		"  exit 2\n"+
-		"fi\n"+
-		"printf '%s\\n' '# RTK - Rust Token Killer (Codex CLI)' '' 'Always prefix shell commands with `rtk`.' > RTK.md\n"+
-		"printf '%s\\n' '' '@RTK.md' >> AGENTS.md\n")
+	sourceRTK := filepath.Join(binDir, rtkExecutableName())
+	writeSidecarTestFile(t, sourceRTK, "#!/bin/sh\nexit 0\n")
 	if err := os.Chmod(sourceRTK, 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -573,8 +568,8 @@ func TestDefaultPreparerCodexSaverModeInstallsSessionScopedRTK(t *testing.T) {
 	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
-		AgentTargetID:  "local:codex",
-		Provider:       "codex",
+		AgentTargetID:  "local:opencode",
+		Provider:       "opencode",
 		Cwd:            t.TempDir(),
 		CodexSaverMode: true,
 	})
@@ -585,20 +580,14 @@ func TestDefaultPreparerCodexSaverModeInstallsSessionScopedRTK(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sessionRTK := filepath.Join(runtimeRoot, "rtk", "bin", codexRTKExecutableName())
+	sessionRTK := filepath.Join(runtimeRoot, "rtk", "bin", rtkExecutableName())
 	if sessionRTK == sourceRTK {
 		t.Fatal("RTK executable was not isolated")
 	}
 	if info, err := os.Stat(sessionRTK); err != nil || info.Mode()&0o100 == 0 {
 		t.Fatalf("Session RTK executable is unavailable: info=%v err=%v", info, err)
 	}
-	pathValue := ""
-	for index := len(prepared.Env) - 1; index >= 0; index-- {
-		if strings.HasPrefix(prepared.Env[index], "PATH=") {
-			pathValue = strings.TrimPrefix(prepared.Env[index], "PATH=")
-			break
-		}
-	}
+	pathValue := envValue(prepared.Env, "PATH")
 	pathEntries := filepath.SplitList(pathValue)
 	if len(pathEntries) == 0 || filepath.Clean(pathEntries[0]) != filepath.Dir(sessionRTK) {
 		t.Fatalf("PATH = %q, want Session RTK first", pathValue)
@@ -614,20 +603,20 @@ func TestDefaultPreparerCodexSaverModeInstallsSessionScopedRTK(t *testing.T) {
 	if got := envValue(prepared.Env, "RTK_TELEMETRY_DISABLED"); got != "1" {
 		t.Fatalf("RTK_TELEMETRY_DISABLED = %q, want 1", got)
 	}
-	codexHome := envValue(prepared.Env, "CODEX_HOME")
-	instructions, err := os.ReadFile(filepath.Join(codexHome, "RTK.md"))
+	instructions, err := os.ReadFile(filepath.Join(runtimeRoot, "rtk", "RTK.md"))
 	if err != nil {
 		t.Fatalf("read Session RTK.md: %v", err)
 	}
-	if !strings.Contains(string(instructions), "Always prefix shell commands with `rtk`.") {
+	if !strings.Contains(string(instructions), "Always prefix supported shell commands with `rtk`.") {
 		t.Fatalf("RTK.md = %q", instructions)
 	}
-	agentInstructions, err := os.ReadFile(filepath.Join(codexHome, "AGENTS.md"))
+	openCodeHome := envValue(prepared.Env, "OPENCODE_CONFIG_DIR")
+	agentInstructions, err := os.ReadFile(filepath.Join(openCodeHome, "AGENTS.md"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(agentInstructions), "@RTK.md") {
-		t.Fatalf("AGENTS.md = %q, want @RTK.md injection", agentInstructions)
+	if !strings.Contains(string(agentInstructions), "Always prefix supported shell commands with `rtk`.") {
+		t.Fatalf("AGENTS.md = %q, want inline RTK instruction injection", agentInstructions)
 	}
 
 	// Resume reuses the Session copy even when RTK is no longer available from
@@ -636,8 +625,8 @@ func TestDefaultPreparerCodexSaverModeInstallsSessionScopedRTK(t *testing.T) {
 	if _, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
-		AgentTargetID:  "local:codex",
-		Provider:       "codex",
+		AgentTargetID:  "local:opencode",
+		Provider:       "opencode",
 		Cwd:            t.TempDir(),
 		CodexSaverMode: true,
 	}); err != nil {
@@ -645,14 +634,14 @@ func TestDefaultPreparerCodexSaverModeInstallsSessionScopedRTK(t *testing.T) {
 	}
 }
 
-func TestDefaultPreparerCodexSaverModeFailsWhenRTKIsUnavailable(t *testing.T) {
+func TestDefaultPreparerRTKSaverModeFailsWhenRTKIsUnavailable(t *testing.T) {
 	t.Setenv("HOME", t.TempDir())
 	t.Setenv("PATH", t.TempDir())
 	_, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
-		AgentTargetID:  "local:codex",
-		Provider:       "codex",
+		AgentTargetID:  "local:claude-code",
+		Provider:       "claude-code",
 		Cwd:            t.TempDir(),
 		CodexSaverMode: true,
 	})
@@ -662,8 +651,8 @@ func TestDefaultPreparerCodexSaverModeFailsWhenRTKIsUnavailable(t *testing.T) {
 	if _, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-disabled",
-		AgentTargetID:  "local:codex",
-		Provider:       "codex",
+		AgentTargetID:  "local:claude-code",
+		Provider:       "claude-code",
 		Cwd:            t.TempDir(),
 		CodexSaverMode: false,
 	}); err != nil {
