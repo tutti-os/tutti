@@ -2085,7 +2085,7 @@ export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
 
 export type AgentProviderComposerOptionsResponse = {
   /**
-   * Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+   * Whether this resolved provider target supports session-scoped RTK saver mode; product entry policy is reported separately by the host
    */
   codexSaverModeSupported?: boolean;
   provider: WorkspaceAgentProvider;
@@ -3392,7 +3392,7 @@ export type WorkspaceAgentInitialGoalControl = {
 
 export type CreateWorkspaceAgentSessionRequest = {
   /**
-   * Enables the Codex Luna subagent saver mode for this session without changing the main model
+   * Enables session-scoped RTK executable and RTK.md injection for this Codex session without changing the selected model
    */
   codexSaverMode?: boolean | null;
   agentSessionId: string;

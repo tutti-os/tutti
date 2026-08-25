@@ -279,6 +279,16 @@ daemon validates them against current product policy and resolved provider
 capability before runtime preparation; an active Session cannot reinterpret
 them through an in-place settings update.
 
+Codex RTK saver mode follows this launch-only path. The remembered composer
+value is only an opt-in; runtime preparation must still find an existing `rtk`
+executable, copy it into the exact Session runtime, generate the matching
+`RTK.md` and `@RTK.md` reference inside that Session's isolated `CODEX_HOME`,
+and prepend only that private binary directory to the Session environment.
+Tutti never runs an RTK package manager or global installer. RTK usage data,
+tee output, home, and telemetry policy are also Session-scoped, so enabling the
+mode cannot change another Agent's instructions, executable search path, or
+tracking state.
+
 ### 2.4 Ownership map
 
 | Layer                           | Owns                                                                                          | Must not own                                      |

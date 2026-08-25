@@ -51,16 +51,12 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 			err = errors.Join(err, cleanup(ctx))
 		}
 	}()
+	var rtkRuntime codexRTKRuntime
 	if input.CodexSaverMode {
-		rolePath, err := installCodexLunaWorkerRole(codexHome)
+		var err error
+		rtkRuntime, err = installCodexRTKRuntime(input.RuntimeRoot)
 		if err != nil {
 			return ProviderPrepareResult{}, err
-		}
-		if err := ensureCodexSaverDefaultRole(filepath.Join(codexHome, "config.toml")); err != nil {
-			return ProviderPrepareResult{}, err
-		}
-		if input.Manifest != nil {
-			input.Manifest.RecordManagedFile(rolePath, "codex-agent-role", true)
 		}
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_prepared", input.PrepareInput, nil)
@@ -69,9 +65,6 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 	policy, err := tuttiCLIPolicy(input.PrepareInput)
 	if err != nil {
 		return ProviderPrepareResult{}, err
-	}
-	if input.CodexSaverMode {
-		policy = strings.TrimSpace(policy) + "\n\n" + codexSaverModePolicy
 	}
 	writeResult, err := input.Store.WriteManagedBlock(instructionsPath, policy)
 	if err != nil {
@@ -84,6 +77,16 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 		input.Manifest.RecordManagedFile(instructionsPath, "provider-instructions", writeResult.Created)
 		input.Manifest.RecordManagedFile(codexHome, "codex-home", true)
 	}
+	if input.CodexSaverMode {
+		rtkInstructionsPath, err := initializeCodexRTK(ctx, input.RuntimeRoot, codexHome, rtkRuntime)
+		if err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if input.Manifest != nil {
+			input.Manifest.RecordManagedFile(rtkRuntime.Executable, "codex-rtk-executable", rtkRuntime.Created)
+			input.Manifest.RecordManagedFile(rtkInstructionsPath, "codex-rtk-instructions", true)
+		}
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.resolved", input.PrepareInput, nil)
 	env := []string{
 		"CODEX_HOME=" + codexHome,
@@ -94,6 +97,9 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 			return ProviderPrepareResult{}, fmt.Errorf("encode Codex extra skill roots: %w", err)
 		}
 		env = append(env, tuttiAgentExtraSkillRootsEnv+"="+string(encodedRoots))
+	}
+	if input.CodexSaverMode {
+		env = append(env, rtkRuntime.Env...)
 	}
 	if input.ModelEndpoint.supportsCodex() {
 		env = append(env, codexModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey)

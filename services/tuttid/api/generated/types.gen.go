@@ -5620,7 +5620,7 @@ type AgentProviderComposerOptionsResponse struct {
 	Capabilities      *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
 	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
 
-	// CodexSaverModeSupported Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+	// CodexSaverModeSupported Whether this resolved provider target supports session-scoped RTK saver mode; product entry policy is reported separately by the host
 	CodexSaverModeSupported *bool `json:"codexSaverModeSupported,omitempty"`
 
 	// Commands Commands advertised by the resolved runtime session.
@@ -7122,7 +7122,7 @@ type CreateWorkspaceAgentSessionRequest struct {
 	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
 	ClientSubmitId string                               `json:"clientSubmitId"`
 
-	// CodexSaverMode Enables the Codex Luna subagent saver mode for this session without changing the main model
+	// CodexSaverMode Enables session-scoped RTK executable and RTK.md injection for this Codex session without changing the selected model
 	CodexSaverMode *bool                     `json:"codexSaverMode,omitempty"`
 	Cwd            *string                   `json:"cwd,omitempty"`
 	InitialContent []AgentPromptContentBlock `json:"initialContent"`
