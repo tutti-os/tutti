@@ -35,13 +35,14 @@ func FromStruct[T any]() InputSpec {
 			name = kebabCase(field.Name)
 		}
 		fieldSpec := FieldSpec{
-			Name:               name,
-			Type:               schemaType(field.Type),
-			Description:        strings.TrimSpace(field.Tag.Get("description")),
-			Hidden:             field.Tag.Get("hidden") == "true",
-			AdvertisedRequired: field.Tag.Get("advertise-required") == "true",
-			Hint:               strings.TrimSpace(field.Tag.Get("hint")),
-			Default:            typedDefault(field.Type, field.Tag.Get("default")),
+			Name:                name,
+			Type:                schemaType(field.Type),
+			Description:         strings.TrimSpace(field.Tag.Get("description")),
+			Hidden:              field.Tag.Get("hidden") == "true",
+			AdvertisedRequired:  field.Tag.Get("advertise-required") == "true",
+			AdvertiseAlternates: parseCSVTag(field.Tag.Get("advertise-alt")),
+			Hint:                strings.TrimSpace(field.Tag.Get("hint")),
+			Default:             typedDefault(field.Type, field.Tag.Get("default")),
 		}
 		applyValidateTag(&fieldSpec, field.Tag.Get("validate"))
 		fieldSpec.Enum = parseCSVTag(field.Tag.Get("enum"))
@@ -58,6 +59,7 @@ func Schema(input InputSpec) map[string]any {
 	}
 	properties := schema["properties"].(map[string]any)
 	required := []string{}
+	var alternatives []map[string]any
 	for _, field := range input.Fields {
 		if field.Hidden {
 			continue
@@ -86,12 +88,32 @@ func Schema(input InputSpec) map[string]any {
 			property["default"] = field.Default
 		}
 		properties[field.Name] = property
-		if field.Required || field.AdvertisedRequired {
+		switch {
+		case field.Required:
+			required = append(required, field.Name)
+		case field.AdvertisedRequired && len(field.AdvertiseAlternates) > 0:
+			// The advertised contract keeps this field required, but a hidden
+			// compatibility selector can satisfy the handler instead. Emit one
+			// anyOf branch per accepted spelling so the invocation validator
+			// accepts any one of them (issue #2193). A single branch listing
+			// every name would require all of them at once.
+			for _, name := range append([]string{field.Name}, field.AdvertiseAlternates...) {
+				alternatives = append(alternatives, map[string]any{
+					// The invocation validator only applies "required" to
+					// branches that declare an object type.
+					"type":     "object",
+					"required": []string{name},
+				})
+			}
+		case field.AdvertisedRequired:
 			required = append(required, field.Name)
 		}
 	}
 	if len(required) > 0 {
 		schema["required"] = required
+	}
+	if len(alternatives) > 0 {
+		schema["anyOf"] = alternatives
 	}
 	return schema
 }
