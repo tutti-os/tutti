@@ -56,6 +56,9 @@ export class WorkspaceAgentLiveLane {
   constructor(private readonly options: WorkspaceAgentLiveLaneOptions) {
     this.coordinator = createAgentActivityWorkspaceEventCoordinator({
       engine: options.engine,
+      notificationScheduler: {
+        schedule: (delayMs, task) => options.clock.schedule(delayMs, task)
+      },
       readCanonicalSnapshot: options.readCanonicalActivity,
       workspaceId: options.workspaceId
     });

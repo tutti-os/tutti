@@ -256,11 +256,11 @@ describe("planRuntimeRailMembershipRefresh", () => {
     });
   });
 
-  it("ignores pending activation add and removal", () => {
+  it("ignores pending creation add and removal", () => {
     const recent = conversation("recent");
     const pending = {
       ...conversation("pending"),
-      projectionSource: "pending_activation" as const
+      pendingCreation: true
     };
 
     expect(
@@ -292,11 +292,11 @@ describe("planRuntimeRailMembershipRefresh", () => {
     ).toEqual({ kind: "none" });
   });
 
-  it("refreshes and preserves display membership when pending activation becomes canonical", () => {
+  it("refreshes and preserves display membership when pending creation becomes canonical", () => {
     const recent = conversation("recent");
     const pending = {
       ...conversation("new-session"),
-      projectionSource: "pending_activation" as const
+      pendingCreation: true
     };
 
     expect(

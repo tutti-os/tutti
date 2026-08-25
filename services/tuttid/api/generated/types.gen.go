@@ -5505,9 +5505,11 @@ type AgentProviderComposerConfig struct {
 
 // AgentProviderComposerConfigOptionValue defines model for AgentProviderComposerConfigOptionValue.
 type AgentProviderComposerConfigOptionValue struct {
-	Description *string `json:"description,omitempty"`
-	Id          string  `json:"id"`
-	Label       string  `json:"label"`
+	// ConsumptionMultiplier Provider-reported credit consumption multiplier without the display suffix. Runtime adapters normalize provider wire data into this typed field; clients must not infer it from description.
+	ConsumptionMultiplier *string `json:"consumptionMultiplier,omitempty"`
+	Description           *string `json:"description,omitempty"`
+	Id                    string  `json:"id"`
+	Label                 string  `json:"label"`
 
 	// Requested True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.
 	Requested          *bool  `json:"requested,omitempty"`
@@ -6616,9 +6618,11 @@ type ConnectorMarketAuthorizationReplacementPolicy string
 
 // ConnectorMarketAuthorizationRequest defines model for ConnectorMarketAuthorizationRequest.
 type ConnectorMarketAuthorizationRequest struct {
-	ClientRequestId           string `json:"clientRequestId"`
-	ExpectedConnectorRevision *int64 `json:"expectedConnectorRevision,omitempty"`
-	ExpectedRevision          int64  `json:"expectedRevision"`
+	// AfterAuthorizationStepRevision Cursor for a previously delivered authorization step. When provided, the Host resumes the same authorization attempt and waits briefly for a later step. A bounded poll may replay the current step. The cursor contains no authorization URL, user code, or credential material.
+	AfterAuthorizationStepRevision *int64 `json:"afterAuthorizationStepRevision,omitempty"`
+	ClientRequestId                string `json:"clientRequestId"`
+	ExpectedConnectorRevision      *int64 `json:"expectedConnectorRevision,omitempty"`
+	ExpectedRevision               int64  `json:"expectedRevision"`
 
 	// ReplacementPolicy When set to replace_active, the Host fences and terminates a different unresolved authorization attempt before starting this request. Omission preserves the legacy resume-or-conflict behavior.
 	ReplacementPolicy *ConnectorMarketAuthorizationReplacementPolicy `json:"replacementPolicy,omitempty"`
@@ -6628,7 +6632,10 @@ type ConnectorMarketAuthorizationRequest struct {
 // ConnectorMarketAuthorizationResponse defines model for ConnectorMarketAuthorizationResponse.
 type ConnectorMarketAuthorizationResponse struct {
 	AuthorizationExpiresAt time.Time `json:"authorizationExpiresAt"`
-	AuthorizationUrl       *string   `json:"authorizationUrl,omitempty"`
+
+	// AuthorizationStepRevision Monotonic, non-secret revision of the provider authorization event returned by this response. Clients pass it back as afterAuthorizationStepRevision when waiting for a later step.
+	AuthorizationStepRevision int64   `json:"authorizationStepRevision"`
+	AuthorizationUrl          *string `json:"authorizationUrl,omitempty"`
 
 	// AuthorizationView Opaque runtime Authorization View V1 envelope. Clients must validate it with the shared authorization protocol before rendering.
 	AuthorizationView *map[string]interface{}  `json:"authorizationView,omitempty"`

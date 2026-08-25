@@ -117,6 +117,7 @@ export function useDesktopAgentConfigCommerce(enabled: boolean) {
       return (
         <AgentConfigCommerceContent
           accountName={accountName}
+          presentation="menu"
           showAccountIdentity={false}
           state={commerceState}
           labels={{

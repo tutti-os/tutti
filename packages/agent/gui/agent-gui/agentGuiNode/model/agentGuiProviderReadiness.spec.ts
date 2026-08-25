@@ -17,6 +17,7 @@ const labels = {
   providerGateLoginTitle: "login-title",
   providerGateLoginDescription: "login-description",
   providerGateLoginAction: "login-action",
+  providerGateModelPlanAction: "model-plan-action",
   providerGateComingSoonTitle: "coming-soon-title",
   providerGateComingSoonDescription: "coming-soon-description",
   providerGateComingSoonAction: "coming-soon-action",

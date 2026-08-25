@@ -24,6 +24,28 @@ type WorkspaceAgentProbeSnapshot = Awaited<
   ReturnType<NonNullable<AgentHostInputApi["workspaceAgentProbes"]>["list"]>
 >;
 
+type DesktopAgentStatusContext = Pick<
+  AgentStatusValue,
+  "agentSessionId" | "contextState" | "contextWindow"
+>;
+
+type ResolvedDesktopAgentStatusRequest =
+  | {
+      agent: AgentGUIAgent;
+      context: DesktopAgentStatusContext;
+      providerAccountUsageApplicable: false;
+      workspaceId: string;
+    }
+  | {
+      agent: AgentGUIAgent;
+      context: DesktopAgentStatusContext;
+      providerAccountUsageApplicable: true;
+      workspaceAgentProbes: NonNullable<
+        AgentHostInputApi["workspaceAgentProbes"]
+      >;
+      workspaceId: string;
+    };
+
 const desktopStatusRetainedSnapshotMs = 60 * 60_000;
 const desktopStatusForcedRefreshDebounceMs = 5_000;
 
@@ -41,6 +63,16 @@ export function createDesktopAgentStatusSource(
       const request = resolveDesktopAgentStatusRequest(input, query);
       if ("errorCode" in request) {
         observer.onError({ code: request.errorCode });
+        return () => {
+          closed = true;
+        };
+      }
+      if (!request.providerAccountUsageApplicable) {
+        observer.onFrame({
+          kind: "refreshed",
+          value: statusValueWithoutProviderAccountUsage(request.context)
+        });
+        observer.onComplete();
         return () => {
           closed = true;
         };
@@ -104,6 +136,16 @@ export function createDesktopWorkspaceAgentStatusSource(
       const request = resolveDesktopAgentStatusRequest(input, query);
       if ("errorCode" in request) {
         observer.onError({ code: request.errorCode });
+        return () => {
+          closed = true;
+        };
+      }
+      if (!request.providerAccountUsageApplicable) {
+        observer.onFrame({
+          kind: "refreshed",
+          value: statusValueWithoutProviderAccountUsage(request.context)
+        });
+        observer.onComplete();
         return () => {
           closed = true;
         };
@@ -198,18 +240,10 @@ function resolveDesktopAgentStatusRequest(
   input: DesktopAgentStatusSourceInput,
   query: { agentSessionId?: string | null; scopeKey: string }
 ):
+  | ResolvedDesktopAgentStatusRequest
   | {
-      agent: AgentGUIAgent;
-      context: Pick<
-        AgentStatusValue,
-        "agentSessionId" | "contextState" | "contextWindow"
-      >;
-      workspaceAgentProbes: NonNullable<
-        AgentHostInputApi["workspaceAgentProbes"]
-      >;
-      workspaceId: string;
-    }
-  | { errorCode: "invalid_target" | "unavailable" } {
+      errorCode: "invalid_target" | "unavailable";
+    } {
   const workspaceId = input.workspaceId.trim();
   const agents =
     typeof input.agents === "function" ? input.agents() : input.agents;
@@ -218,9 +252,6 @@ function resolveDesktopAgentStatusRequest(
   );
   if (!workspaceId || !agent) {
     return { errorCode: "invalid_target" };
-  }
-  if (!input.workspaceAgentProbes) {
-    return { errorCode: "unavailable" };
   }
   const context = resolveDesktopAgentStatusContext({
     agentActivityRuntime: input.agentActivityRuntime,
@@ -232,11 +263,35 @@ function resolveDesktopAgentStatusRequest(
   if (context === null) {
     return { errorCode: "invalid_target" };
   }
+  if (agent.providerAccountUsageApplicable === false) {
+    return {
+      agent,
+      context,
+      providerAccountUsageApplicable: false,
+      workspaceId
+    };
+  }
+  if (!input.workspaceAgentProbes) {
+    return { errorCode: "unavailable" };
+  }
   return {
     agent,
     context,
+    providerAccountUsageApplicable: true,
     workspaceAgentProbes: input.workspaceAgentProbes,
     workspaceId
+  };
+}
+
+function statusValueWithoutProviderAccountUsage(
+  context: DesktopAgentStatusContext
+): AgentStatusValue {
+  return {
+    ...context,
+    quotas: [],
+    limitsState: "unavailable",
+    limitsCapturedAtUnixMs: null,
+    limitsStale: false
   };
 }
 

@@ -726,7 +726,8 @@ Manifest 声明不能覆盖实际 ACP handshake，也不能开启当前 host 不
   "schemaVersion": "tutti.agent.composer.v1",
   "configOptions": {
     "model": {
-      "acpOptionId": "model"
+      "acpOptionId": "model",
+      "descriptionMetadataFormat": "credit-consumption-multiplier-v1"
     },
     "permission": {
       "acpOptionId": "approval-mode"
@@ -786,6 +787,14 @@ objects. These declarations identify or constrain ACP fields. Model, reasoning,
 and command catalogs still require runtime facts; the signed `permissionModes`
 list is the independent launch-permission contract and does not depend on model
 catalog discovery.
+
+`configOptions.model.descriptionMetadataFormat` is an optional closed
+normalization declaration, not an extension-code hook. The supported
+`credit-consumption-multiplier-v1` format allows the standard ACP adapter to
+extract a standalone `xN credits` description segment into typed
+`consumptionMultiplier` metadata. Without the declaration, the description is
+preserved verbatim. Unknown formats are rejected, and profiles cannot provide
+scripts, regular expressions, or provider-specific executable normalization.
 
 Known permission semantics are `ask-before-write`, `accept-edits`, `auto`,
 `locked-down`, `full-access`, and the plan-only `read-only` mapping. The composer

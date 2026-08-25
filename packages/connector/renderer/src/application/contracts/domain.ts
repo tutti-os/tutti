@@ -258,6 +258,7 @@ export interface ConnectorRuntimeMutationInput extends ConnectorMutationInput {
 }
 
 export interface ConnectorAuthorizationInput extends ConnectorMutationInput {
+  afterAuthorizationStepRevision?: number;
   replacementPolicy?: "replace_active";
   secret?: string;
 }
@@ -273,6 +274,7 @@ export interface ConnectorAuthorizationResult {
   operation: ConnectorOperation;
   authorizationUrl?: string;
   authorizationExpiresAt?: string;
+  authorizationStepRevision?: number;
   authorizationView?: unknown;
   revision: number;
 }

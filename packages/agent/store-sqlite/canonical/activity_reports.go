@@ -260,7 +260,11 @@ type EventSource struct {
 	DeviceID               string `json:"deviceId,omitempty"`
 	CWD                    string `json:"cwd,omitempty"`
 	SessionOrigin          string `json:"sessionOrigin,omitempty"`
-	UserID                 string `json:"-"`
+	// ProviderGlobalAuthEligible is true only when the runtime uses the same
+	// provider-native credential scope as the provider-global status probe.
+	// Model Plan and Agent Extension runs deliberately leave it false.
+	ProviderGlobalAuthEligible bool   `json:"providerGlobalAuthEligible,omitempty"`
+	UserID                     string `json:"-"`
 }
 
 type flexibleUint64 uint64

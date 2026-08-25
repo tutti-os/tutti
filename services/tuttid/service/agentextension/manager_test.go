@@ -21,6 +21,7 @@ import (
 	"testing"
 	"time"
 
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
@@ -1031,17 +1032,23 @@ func TestComposerProfileACPConfigOptionIDs(t *testing.T) {
 	t.Run("canonical", func(t *testing.T) {
 		profile := ComposerProfile{SchemaVersion: "tutti.agent.composer.v1"}
 		profile.ConfigOptions = &struct {
-			Model      ComposerConfigOptionReference `json:"model"`
-			Permission ComposerConfigOptionReference `json:"permission"`
-			Reasoning  ComposerConfigOptionReference `json:"reasoning"`
+			Model      ComposerModelConfigOptionReference `json:"model"`
+			Permission ComposerConfigOptionReference      `json:"permission"`
+			Reasoning  ComposerConfigOptionReference      `json:"reasoning"`
 		}{
-			Model:      ComposerConfigOptionReference{ACPOptionID: "model-choice"},
+			Model: ComposerModelConfigOptionReference{
+				ACPOptionID:               "model-choice",
+				DescriptionMetadataFormat: agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1,
+			},
 			Permission: ComposerConfigOptionReference{ACPOptionID: "approval-mode"},
 			Reasoning:  ComposerConfigOptionReference{ACPOptionID: "thought-level"},
 		}
 		model, permission, reasoning := profile.ACPConfigOptionIDs()
 		if model != "model-choice" || permission != "approval-mode" || reasoning != "thought-level" {
 			t.Fatalf("config option ids = %q, %q, %q", model, permission, reasoning)
+		}
+		if format := profile.ModelDescriptionMetadataFormat(); format != agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
+			t.Fatalf("model description metadata format = %q", format)
 		}
 	})
 
@@ -1153,6 +1160,14 @@ func TestValidateComposerProfileRejectsInvalidSignedCommandDeclarations(t *testi
 		{
 			name: "unsupported effect",
 			raw:  `{"schemaVersion":"tutti.agent.composer.v1","slashCommands":{"commands":[{"name":"status","effect":"runArbitraryCode"}]}}`,
+		},
+		{
+			name: "unsupported model description metadata format",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","configOptions":{"model":{"acpOptionId":"model","descriptionMetadataFormat":"extension-supplied-parser"}}}`,
+		},
+		{
+			name: "model description metadata format without model option",
+			raw:  `{"schemaVersion":"tutti.agent.composer.v1","configOptions":{"model":{"descriptionMetadataFormat":"credit-consumption-multiplier-v1"}}}`,
 		},
 		{
 			name: "unknown launch placeholder",

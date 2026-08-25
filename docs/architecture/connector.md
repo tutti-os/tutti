@@ -69,7 +69,11 @@ filter so installed connectors remain in their server-owned sections.
 Installation is a device fact. Authorization is an account projection. A
 Connector may therefore be installed while inactive for the current account;
 authorization completion or expiry schedules a normal durable runtime
-reconcile without changing installed truth. Remote MCP HTTP 428 and JSON-RPC
+reconcile without changing installed truth. Provider authorization completion
+returns after that runtime Desired is durable; it does not wait for the runtime
+Observed receipt. The background convergence worker owns retries, so a runtime
+revision race cannot turn an already-committed authorization into a failed
+authorization response. Remote MCP HTTP 428 and JSON-RPC
 `-33001`/`-33002` during an enabled reconcile are authorization-required
 observations, not retryable install failures. Core persists an expired account
 projection, replans `RuntimeDesired` as disabled, and lets
@@ -428,7 +432,11 @@ preserves the projection. Runtime reconcile then performs interface readiness
 checks before any route is published.
 
 Authorization creation is serialized per account and Connector. A repeated
-`clientRequestId` resumes the same external session. Accepted or running
+`clientRequestId` resumes the same external session. Every provider presentation
+has a monotonic, non-secret authorization-step revision. A client can return the
+last revision as a cursor; the Host then waits for a later broker event for a
+bounded interval and may replay the current step. This keeps multi-step flows
+ordered without persisting authorization URLs or device codes. Accepted or running
 `start_authorization` is not recovered by replaying the operation: that would
 complete a native-secret control-plane session with an empty secret and fail
 the live command. Completed authorization receipts recover through
@@ -445,6 +453,12 @@ during convergence; restart finishes `canceling` receipts and no longer
 fabricates a permanently pending observation. Disconnect is completed only
 after the disconnected projection and exact disabled Runtime Observed state are
 durable.
+
+Managed credential brokers read process output through the context-aware
+transport when available. Cancellation closes the owned process connection as
+the termination fallback and waits for the broker consumer to finish before the
+session and route are released; an explicit cancel does not publish a transient
+authorization failure while shutdown is in progress.
 
 For account-scoped runtimes, `AccountRuntimeBindingResolver` maps `none`
 authorization to an always-active device connection. OAuth/API-key connectors
@@ -611,6 +625,14 @@ synchronizing -> materializing -> ready`; failure is terminal and disposes
   `replacementPolicy=replace_active`. Continuation polling within one action
   reuses the same identity. A canceled renderer Promise cannot retain the
   Connector mutation token
+- command admission and presentation share one renderer-local per-Connector
+  mutation phase (`installing`, `updating`, `uninstalling`, `authorizing`,
+  `disconnecting`, or `updating_runtime`) in the reactive Market store. Cards
+  remain busy and an open authorization dialog remains on its waiting view
+  until that phase is released, even when a newer daemon projection has already
+  reached `connected`. A disconnect submitted through stale UI or another
+  caller while authorization is settling waits for that authorization action,
+  rereads the projected state, and runs at most once
 - event refreshes are coalesced, daemon reconnect performs a full reload, and
   accepted commands are followed through the operation endpoint or events
 - the settings catalog toolbar Refresh control indicates an explicit
@@ -688,9 +710,9 @@ right-hand pane. An uninstalled connector opens an installation confirmation.
 An unconnected installed connector opens the authorization dialog. The token
 form keeps typed secrets after submit so a failed or in-flight attempt does
 not force the user to re-enter them. Completing authorization in that dialog
-keeps the modal open and advances it to the management dialog, where
-disconnect and try remain available. An already authorized connector opens
-the management dialog directly. Blocked releases
+closes the modal and reports success without exposing the settling management
+projection. Reopening an already authorized connector opens the management
+dialog directly, where disconnect and try remain available. Blocked releases
 open the blocked-state dialog. Only one dialog host is mounted at a time, so
 the catalog keeps the full settings content width and never leaves an empty
 right column.

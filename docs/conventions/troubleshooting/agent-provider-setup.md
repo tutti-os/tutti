@@ -849,6 +849,59 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   [acp_provider_cursor.go](../../../packages/agent/daemon/runtime/acp_provider_cursor.go)
   [skill_options.go](../../../services/tuttid/service/agent/skill_options.go)
 
+### Cursor ACP Glob/Grep fails for absolute Windows search roots
+
+- Symptom:
+  A Cursor ACP session on Windows reports that Glob or Grep failed for an
+  absolute path such as `C:/Users/...`. The underlying provider output may be
+  `rg: : IO error for operation on` with an empty operand and `The system
+cannot find the path specified`, while the same repository is searchable
+  with no explicit path, a relative path, or a native terminal command.
+- Quick checks:
+  Compare the `cwd` in `agent_session.acp.session_new.start` with the
+  `cwd`/`protocol_cwd` in `agent_session.acp.process_start.start`. Tutti must
+  pass the native Windows workspace path through unchanged. Run the Cursor
+  version's bundled `rg.exe` directly against the same absolute path; if it
+  succeeds, the filesystem and Windows `rg` receiver are healthy. Set
+  `TUTTI_ACP_TOOL_DEBUG=1` before starting the daemon when the raw and
+  normalized ACP tool inputs are needed; treat paths in that diagnostic as
+  sensitive.
+- Root cause:
+  Tutti owns the ACP process working directory and the `session/new` payload,
+  but Cursor owns the built-in Glob/Grep implementation and constructs its
+  internal `rg` invocation from the provider tool call. In the incident, the
+  provider's error names an empty `rg` operand even though the requested
+  directory was absolute, so the path was lost inside Cursor after Tutti had
+  already passed the native cwd. The ACP event normalizer only projects the
+  provider's completed call; changing its display fields cannot repair the
+  provider's search request. A separate Tutti defect also used POSIX `/` as
+  the generic ACP protocol cwd when no cwd was supplied; Windows now falls
+  back to the process's native cwd instead.
+- Fix:
+  Cursor's Windows-only prepared prompt context requires workspace-relative
+  roots for its built-in Glob/Grep tools, uses `.` for the workspace root,
+  and routes workspace-external or uncertain absolute paths through native
+  `rg`/PowerShell. If a provider search still fails, the agent must retry via
+  that route and report the retry's actual output; it must not turn the failed
+  call into a successful result.
+- Validation:
+  Run the runtime preparation and standard ACP tests on Windows. With a real
+  Cursor ACP session, search for a known file using (1) a relative workspace
+  root and (2) an absolute path outside the workspace. Verify that the first
+  uses the provider search successfully and the second uses native terminal
+  search with returned file content. Inspect the ACP diagnostic input if the
+  provider still emits an empty `rg` operand.
+- Limitation:
+  The Cursor provider owns the failing internal path conversion. Tutti's
+  prompt policy prevents the known trigger for model-driven searches, but it
+  cannot guarantee behavior when Cursor ignores that policy. Do not call this
+  provider defect fixed based only on an error card becoming visible; update
+  or report the Cursor runtime if the raw tool input still loses the path.
+- References:
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go),
+  [cursor.go](../../../packages/agent/runtimeprep/cursor.go),
+  [acp_tool_normalizer.go](../../../packages/agent/daemon/runtime/acp_tool_normalizer.go)
+
 ### Cursor read-only mode still creates files without approval
 
 - Symptom:
@@ -884,6 +937,48 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   [providers.go](../../../packages/agent/daemon/providerregistry/providers.go)
   [acp_provider_cursor.go](../../../packages/agent/daemon/runtime/acp_provider_cursor.go)
   [standard_acp_adapter_test.go](../../../packages/agent/daemon/runtime/standard_acp_adapter_test.go)
+
+### Cursor CLI can ask questions but Cursor ACP cannot
+
+- Symptom:
+  `cursor-agent` in its interactive CLI can pause and ask the user a structured
+  question, while the same prompt through `cursor-agent acp` either continues
+  without asking or reports that no question tool is available.
+- Quick checks:
+  Probe the raw ACP `initialize` and `session/new` exchange before changing
+  Tutti's interaction projection. Changing ACP `clientInfo`, advertising extra
+  client capabilities, or passing a root `-H x-cursor-client-type: cli` header
+  does not add the tool. If an injected HTTP MCP exposes `AskUserQuestion`,
+  confirm Cursor emits `session/request_permission` with kind `other`, then a
+  Tutti question interaction whose metadata reports
+  `providerMethod=mcp/tools/call`.
+- Root cause:
+  Cursor's ACP transport identifies itself internally as client type `acp` and
+  currently omits the interactive CLI's built-in question tool. The ACP bridge
+  contains a native `cursor/ask_question` request path, but changing initialize
+  metadata does not enable it; the transport middleware also overwrites a
+  caller-supplied client-type header.
+- Fix:
+  Preserve the native `cursor/ask_question` handler for Cursor versions that
+  expose it. For affected versions, bind Tutti's `AskUserQuestion` through the
+  session-scoped HTTP MCP capability advertised by ACP. Keep the bridge on a
+  loopback listener with a per-session bearer token, activate it only for the
+  exact running turn, and route the blocking call through the existing Tutti
+  interactive state machine. Auto-approve only Cursor's exact non-mutating
+  permission titles for this Tutti-owned tool; all other tool permissions must
+  continue through the configured permission tier.
+- Validation:
+  First assert `session/new` contains the HTTP MCP binding and that a real HTTP
+  `tools/call` blocks until `SubmitInteractive` supplies structured answers.
+  Keep native question and normal permission-tier regression coverage. Finally,
+  run a real Cursor ACP turn: require the model to call `AskUserQuestion`,
+  answer the emitted Tutti interaction, and verify the provider turn completes.
+  On Windows, this also verifies the loopback listener and local process
+  transport; retain POSIX coverage for the same platform-neutral socket path.
+- References:
+  [cursor_acp_question_mcp.go](../../../packages/agent/daemon/runtime/cursor_acp_question_mcp.go)
+  [cursor_acp_interactive.go](../../../packages/agent/daemon/runtime/cursor_acp_interactive.go)
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
 
 ### Codex provider appears logged in with an empty auth.json
 
@@ -1829,6 +1924,77 @@ invalid_grant`. Search `tuttid.log` for
   `low` / `medium` / `high` / `max` variants, remembered-setting sanitization,
   and runtime rejection before any ACP call for an unadvertised value.
 
+### Codex or Tutti Agent model/capability catalog times out on cold start
+
+- Symptom:
+  The provider status is ready, but the composer model or capability catalog
+  temporarily falls back, reports `model/list timed out`, or records an
+  app-server capability discovery timeout after the daemon has been idle.
+- Quick checks:
+  Search the daemon log for `agent.model_catalog.fetch_settled` and inspect
+  `provider`, `durationMs`, `stage`, and `error`. A provider-process timeout
+  near 8 seconds points to the old cold-start boundary. Also inspect the
+  provider stderr for `codex_models_manager` refresh failures and distinguish
+  those from Tutti's own `context deadline exceeded`.
+- Root cause:
+  Codex and Tutti Agent both launch a Codex app-server. On Windows the `.cmd`
+  shim, managed Node startup, and the provider's own model metadata refresh
+  can make the first `model/list` or capability request slower than the
+  previous 8-second process bound, even though a later request succeeds and
+  status detection remains ready. `codex_runtime_selection_stale` and a
+  provider-owned child-process refresh timeout are separate runtime-selection
+  failures; increasing Tutti's request bound does not mask them.
+- Fix:
+  Keep the app-server process/request bound at 30 seconds for model and
+  capability catalogs, and give Codex/Tutti Agent's outer model-catalog fetch
+  a 35-second bound. Keep these values provider-specific; do not widen Claude,
+  Cursor, generic ACP, or interactive session timeouts without corresponding
+  boundary evidence.
+- Validation:
+  Confirm a cold catalog fetch either returns a non-empty model/capability
+  list or reports the provider-owned error after the bounded window. Verify
+  subsequent persistent/cache-backed requests succeed, and that status
+  detection and interactive session timeout values remain unchanged. Run
+  `cd services/tuttid && go test ./service/agent` and `pnpm check:changed`.
+- References:
+  [codex_model_catalog.go](../../../services/tuttid/service/agent/codex_model_catalog.go)
+  [codex_capability_catalog.go](../../../services/tuttid/service/agent/codex_capability_catalog.go)
+  [model_catalog.go](../../../services/tuttid/service/agent/model_catalog.go)
+
+### Windows Agent process remains after ACP startup timeout
+
+- Symptom:
+  A Codex, Cursor, Kimi, Claude SDK, or other local process Agent times out,
+  and a later retry reports cleanup pending, `process did not exit after kill`,
+  or an apparently missing provider. The same provider may work again after a
+  daemon restart.
+- Quick checks:
+  Search the daemon log for `agent_session.live_resource_cleanup.failed`,
+  `agent_session.live_release.failed`, and
+  `agent_session.process_start.group_attach_failed`. On Windows, inspect the
+  provider's `.cmd`/`.bat` wrapper and its Node or Python descendants rather
+  than checking only the wrapper PID.
+- Root cause:
+  A Windows command shim can exit while a descendant keeps the ACP stdout or
+  stderr pipe open. A later `taskkill` by the exited root PID cannot reliably
+  reach that descendant, so the transport close remains pending and the
+  adapter retains ownership to prevent an unsafe replacement.
+- Fix:
+  Local process launches attach their process tree to a Windows Job Object with
+  `KILL_ON_JOB_CLOSE`. Graceful `taskkill` remains the first close attempt;
+  the owned Job Object is the fallback when the shim PID has already exited.
+  Hosts that reject nested Job Object assignment retain the existing taskkill
+  fallback and emit `agent_session.process_start.group_attach_failed`.
+- Validation:
+  Reproduce a `.cmd` launch whose child outlives the shim, close the transport,
+  and verify that the child is gone or signaled as exited. Repeat with startup
+  timeout, cancellation, replacement, daemon shutdown, and direct `.exe`
+  providers. No `live_resource_cleanup.failed` should remain after successful
+  cleanup.
+- References:
+  [process_transport.go](../../../packages/agent/daemon/runtime/process_transport.go)
+  [process_command_windows.go](../../../packages/agent/daemon/runtime/process_command_windows.go)
+
 ### OpenCode model picker has fewer models than the terminal
 
 - Symptom:
@@ -1853,17 +2019,21 @@ invalid_grant`. Search `tuttid.log` for
   identity remained the provider-qualified `provider/model` id.
 - Fix:
   Pass the composer workspace cwd through the daemon model-catalog request and
-  set it as the `opencode models --verbose` process directory. Do not cache
-  OpenCode model-list successes or failures. Keep one request-scoped catalog
-  projection so a composer-options request starts the CLI only once. Preserve
-  the auth/config invalidation event so an already-open composer refreshes when
-  global OpenCode credentials or config files change. Append a non-built-in
+  set it as the `opencode models --verbose` process directory. Cache a
+  successful catalog for five minutes and a failed fetch for 30 seconds, with
+  the cwd included in the in-memory key; never reuse one workspace's project
+  catalog in another workspace or persist these cwd-scoped entries. Keep one
+  request-scoped catalog projection so a composer-options request starts the
+  CLI only once. Preserve the auth/config invalidation event so an already-open
+  composer refreshes when global OpenCode credentials or config files change.
+  Append a non-built-in
   provider id to verbose model labels while preserving the exact
   provider-qualified id as the selection value. Keep the built-in `opencode`
   provider suffix hidden so ordinary catalog entries stay concise, and avoid
   renderer-side provider branches.
 - Validation:
-  Cover cwd propagation, repeated uncached OpenCode lookups, all provider/model
+  Cover cwd propagation, repeated same-cwd cached OpenCode lookups, separate
+  fetches for different cwds, failed-fetch throttling, all provider/model
   prefixes from verbose output, one catalog lookup per composer-options request,
   duplicate model names under different provider ids, and unchanged cache
   policies for Codex and Tutti Agent. Run
@@ -2592,3 +2762,49 @@ invalid_grant`. Search `tuttid.log` for
 - References:
   [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
   [desktopTerminalLoginReadinessMonitor.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/desktopTerminalLoginReadinessMonitor.ts)
+
+### Cursor intermittently fails to start or reports a failed file read as completed
+
+- Symptom:
+  Cursor ACP sometimes reports `Cursor failed to start` even though
+  `initialize` succeeded. Newer Cursor releases can instead reach the generic
+  30-second `session/new` deadline while attaching a session-scoped HTTP MCP
+  server. A file-read tool can also appear completed while its result is
+  `Error: Aborted` and the raw diagnostic reports a disconnected TLS socket.
+- Quick checks:
+  Correlate the same `agent_session` in the daemon log. The startup signature is
+  `session/new` returning JSON-RPC `-32603` with
+  `Failed to initialize session services`. For the read signature, inspect the
+  ACP tool update's `result` and `rawErrorMessages`; do not rely only on
+  `isError`/`is_error`. A timeout exactly 30 seconds after `session/new` with no
+  provider response is the slower MCP-client initialization signature.
+- Root cause:
+  Cursor can transiently fail its session services after the ACP initialize
+  handshake. Standard ACP startup previously returned that first failure
+  immediately. Cursor 2026.08 can also take longer than the generic ACP startup
+  budget while it establishes the supplied HTTP MCP transport. Cursor can
+  return a successful-looking tool envelope with the failure text in
+  provider-specific fields, which the status and error projection did not
+  inspect or preserve.
+- Fix:
+  Retry only the matching Cursor `session/new` error once on the same
+  initialized connection, before a provider session id or user Turn exists.
+  Give Cursor a provider-scoped 75-second initialize/session-new window; do not
+  increase the shared ACP timeout for every provider.
+  Normalize known aborted/socket-disconnect markers in output/error envelopes
+  as `call.failed`, and promote both the result and raw transport diagnostics
+  into the failed payload. Do not automatically replay an arbitrary file tool
+  operation.
+- Validation:
+  Cover a transient Cursor session-service error followed by success, assert
+  one process and two `session/new` calls, and reject retries for authentication,
+  unrelated internal errors, and other methods. Assert the Cursor-only startup
+  bound without changing the generic ACP bound. Cover aborted/TLS tool output,
+  preserve its diagnostic text, and keep normal output and input-side error
+  strings from changing the status. Run the native Windows runtime lane for
+  process/ACP behavior.
+- References:
+  [acp_provider_cursor.go](../../../packages/agent/daemon/runtime/acp_provider_cursor.go)
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
+  [acp_tool_error_status.go](../../../packages/agent/daemon/runtime/acp_tool_error_status.go)
+  [acp_tool_normalizer.go](../../../packages/agent/daemon/runtime/acp_tool_normalizer.go)

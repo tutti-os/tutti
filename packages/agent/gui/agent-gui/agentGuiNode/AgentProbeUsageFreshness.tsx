@@ -1,5 +1,6 @@
 import { RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
+import { DropdownMenuItem } from "@tutti-os/ui-system";
 
 import { toLocalShortDateTime } from "../../app/renderer/shell/utils/format";
 
@@ -45,20 +46,24 @@ function freshnessAgeText(
  * is what the button updates.
  */
 export function AgentProbeUsageFreshness({
+  ariaDescribedBy,
   capturedAtUnixMs,
   isLoading,
   didFail,
   onRefresh,
   labels,
   disabled = false,
+  presentation = "button",
   testId
 }: {
+  ariaDescribedBy?: string;
   capturedAtUnixMs: number | null;
   isLoading: boolean;
   didFail: boolean;
   onRefresh: () => void;
   labels: AgentProbeUsageFreshnessLabels;
   disabled?: boolean;
+  presentation?: "button" | "menu-item";
   testId?: string;
 }): React.JSX.Element {
   const [nowMs, setNowMs] = useState(() => Date.now());
@@ -96,18 +101,8 @@ export function AgentProbeUsageFreshness({
     ? "text-[var(--state-danger)] hover:text-[var(--state-danger)]"
     : "text-[var(--text-tertiary)] hover:text-[var(--text-primary)]";
 
-  return (
-    <button
-      type="button"
-      data-testid={testId}
-      data-state={isLoading ? "loading" : didFail ? "failed" : "idle"}
-      className={`nodrag inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1 py-0.5 text-[11px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:cursor-default disabled:opacity-70 [-webkit-app-region:no-drag] ${stateClassName}`}
-      onClick={handleClick}
-      disabled={isLoading || disabled}
-      aria-label={labels.refreshAria}
-      aria-busy={isLoading}
-      title={labels.refreshAria}
-    >
+  const content = (
+    <>
       <RefreshCw
         // Remount on each click (and when loading toggles) so the CSS animation
         // restarts: a continuous spin while a fetch is in flight, otherwise a
@@ -125,6 +120,44 @@ export function AgentProbeUsageFreshness({
         }
       />
       {text ? <span className="whitespace-nowrap">{text}</span> : null}
+    </>
+  );
+
+  if (presentation === "menu-item") {
+    return (
+      <DropdownMenuItem
+        aria-busy={isLoading}
+        aria-describedby={ariaDescribedBy}
+        aria-label={labels.refreshAria}
+        className={`h-6 shrink-0 gap-1 px-1 text-[11px] ${stateClassName}`}
+        data-state={isLoading ? "loading" : didFail ? "failed" : "idle"}
+        data-testid={testId}
+        disabled={isLoading || disabled}
+        onSelect={(event) => {
+          event.preventDefault();
+          handleClick();
+        }}
+        title={labels.refreshAria}
+      >
+        {content}
+      </DropdownMenuItem>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      aria-describedby={ariaDescribedBy}
+      data-testid={testId}
+      data-state={isLoading ? "loading" : didFail ? "failed" : "idle"}
+      className={`nodrag inline-flex shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1 py-0.5 text-[11px] leading-4 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--border-focus)] disabled:cursor-default disabled:opacity-70 [-webkit-app-region:no-drag] ${stateClassName}`}
+      onClick={handleClick}
+      disabled={isLoading || disabled}
+      aria-label={labels.refreshAria}
+      aria-busy={isLoading}
+      title={labels.refreshAria}
+    >
+      {content}
     </button>
   );
 }

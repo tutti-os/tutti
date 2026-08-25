@@ -12,12 +12,15 @@ func exposePersonalCodexSkillRoot(targetRoot string, personalRoot string, sessio
 	if personalRoot == "." || !filepath.IsAbs(personalRoot) {
 		return fmt.Errorf("codex personal skill root must be absolute")
 	}
-	if err := os.MkdirAll(personalRoot, 0o700); err != nil {
-		return fmt.Errorf("create Codex personal skill root: %w", err)
+	personalInfo, err := os.Stat(personalRoot)
+	if err != nil {
+		return fmt.Errorf("inspect Codex personal skill root: %w", err)
+	}
+	if !personalInfo.IsDir() {
+		return fmt.Errorf("codex personal skill root must be a directory: %s", personalRoot)
 	}
 	if targetInfo, err := os.Stat(targetRoot); err == nil {
-		personalInfo, personalErr := os.Stat(personalRoot)
-		if personalErr == nil && os.SameFile(targetInfo, personalInfo) {
+		if os.SameFile(targetInfo, personalInfo) {
 			return nil
 		}
 	} else if !os.IsNotExist(err) {

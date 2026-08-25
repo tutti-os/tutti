@@ -67,6 +67,18 @@ func TestHostWorkspaceRuntimeDisconnectConformance(t *testing.T) {
 	}
 }
 
+func TestHostRuntimeConfigurationRebindConformance(t *testing.T) {
+	for _, scenario := range hostconformance.RuntimeConfigurationRebindScenarios() {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := hostconformance.RunRuntimeConfigurationRebind(context.Background(), driver, scenario); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
+}
+
 func TestHostWorkspaceRuntimeAdmissionConformance(t *testing.T) {
 	for _, scenario := range hostconformance.WorkspaceRuntimeAdmissionScenarios() {
 		scenario := scenario
@@ -568,7 +580,11 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		settings.BrowserUse == nil && settings.ComputerUse == nil && settings.ReasoningEffort == "" && settings.Speed == "" {
 		settings.PlanMode = true
 	}
-	runtimeContext := map[string]any{"tuttiInitialTitleEstablished": seed.InitialTitleEstablished}
+	runtimeContext := clonePayload(seed.RuntimeContext)
+	if runtimeContext == nil {
+		runtimeContext = map[string]any{}
+	}
+	runtimeContext["tuttiInitialTitleEstablished"] = seed.InitialTitleEstablished
 	if seed.ExternalResumeSupported != nil {
 		runtimeContext["externalImportResumeSupported"] = *seed.ExternalResumeSupported
 	}
@@ -649,7 +665,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Provider: seed.Provider,
 			ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd, Status: "ready",
 			Settings: &settings, Title: seed.Title, InitialTitleEstablished: seed.InitialTitleEstablished,
-			Visible: true, PinnedAtUnixMS: boolUnixMS(seed.Pinned), CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
+			Visible: true, RuntimeContext: clonePayload(runtimeContext), PinnedAtUnixMS: boolUnixMS(seed.Pinned), CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
 		}
 	}
 	if fixture.Turn != nil {
@@ -712,6 +728,28 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		}
 	}
 	return nil
+}
+
+func (d *legacyHostConformanceDriver) RebindAndSend(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+	reprepare agenthost.ReprepareRuntimeSessionInput,
+	send agenthost.SendInput,
+) (hostconformance.SendObservation, error) {
+	result, err := d.service.ApplicationHost().ReprepareRuntimeSessionAndSendInput(ctx, agenthost.ReprepareRuntimeSessionAndSendInputInput{Reprepare: reprepare, Send: send})
+	if err != nil {
+		return hostconformance.SendObservation{}, err
+	}
+	d.recordSubmittedTurn(ref.WorkspaceID, ref.AgentSessionID, result.TurnID)
+	return hostconformance.SendObservation{TurnID: result.TurnID, Kind: result.Kind}, nil
+}
+
+func (d *legacyHostConformanceDriver) CanonicalRuntimeContext(ctx context.Context, ref agenthost.SessionRef) (map[string]any, error) {
+	result, err := d.service.ApplicationHost().GetSession(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return clonePayload(result.Canonical.InternalRuntimeContext), nil
 }
 
 func (d *legacyHostConformanceDriver) ResetProviderlessTerminalExec(

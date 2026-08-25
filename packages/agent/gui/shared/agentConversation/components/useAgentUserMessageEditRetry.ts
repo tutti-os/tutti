@@ -22,9 +22,7 @@ export function useAgentUserMessageEditRetry(input: {
       ? (input.row.messages.find(
           (message) =>
             message.contentKind === "text" || message.contentKind === undefined
-        )?.id ??
-        input.row.messages.at(-1)?.id ??
-        null)
+        )?.id ?? null)
       : null;
   const canEdit =
     input.isUser &&

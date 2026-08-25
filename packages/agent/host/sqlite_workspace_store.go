@@ -43,6 +43,7 @@ type RuntimeSessionInitializationObserver interface {
 }
 
 var _ CanonicalStore = (*SQLiteWorkspaceStore)(nil)
+var _ CanonicalRuntimeContextCASStore = (*SQLiteWorkspaceStore)(nil)
 var _ TurnSubmissionStore = (*SQLiteWorkspaceStore)(nil)
 var _ EffectiveHistoryStore = (*SQLiteWorkspaceStore)(nil)
 var _ SessionManagementStore = (*SQLiteWorkspaceStore)(nil)

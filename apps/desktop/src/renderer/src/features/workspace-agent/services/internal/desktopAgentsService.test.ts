@@ -224,7 +224,8 @@ test("desktop agents service lists a custom Agent with its Harness target catalo
                 iconKey: null,
                 name: "Codex",
                 provider: "codex"
-              }
+              },
+              modelPlanId: "plan-1"
             })
           ]
         };
@@ -244,6 +245,7 @@ test("desktop agents service lists a custom Agent with its Harness target catalo
 
   assert.equal(listedWorkspaceId, "workspace-1");
   assert.equal(customAgent?.iconUrl, "catalog://codex-target");
+  assert.equal(customAgent?.providerAccountUsageApplicable, false);
   assert.deepEqual(
     service.getAgentPresentation({
       agentTargetId: "workspace-agent:reviewer"
@@ -261,6 +263,7 @@ test("desktop agents service lists a custom Agent with its Harness target catalo
     label: "Reviewer",
     ownership: "self",
     provider: "codex",
+    providerAccountUsageApplicable: false,
     ref: {
       agentTargetId: "workspace-agent:reviewer",
       kind: "agent-directory",

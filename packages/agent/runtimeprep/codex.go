@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -28,17 +27,22 @@ func (CodexPreparer) Provider() string {
 
 func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) (result ProviderPrepareResult, err error) {
 	codexHome := filepath.Join(input.RuntimeRoot, "codex-home")
+	providerStateHome, err := resolveCodexProviderStateHome(input.PrepareInput)
+	if err != nil {
+		return ProviderPrepareResult{}, err
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.entered", input.PrepareInput, nil)
 	extraSkillRoots, err := prepareCodexHome(
 		codexHome,
 		filepath.Join(input.RuntimeRoot, "codex-session-skills"),
 		p.PersonalSkillRoot,
+		providerStateHome,
 		input.PrepareInput,
 	)
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
-	cleanup, err := projectCodexAuth(ctx, codexHome, p.AuthProjector)
+	cleanup, err := projectCodexAuth(ctx, codexHome, providerStateHome, p.AuthProjector)
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
@@ -101,15 +105,11 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 	}, nil
 }
 
-func projectCodexAuth(ctx context.Context, codexHome string, projector AuthFileProjector) (func(context.Context) error, error) {
-	if projector == nil {
+func projectCodexAuth(ctx context.Context, codexHome, providerStateHome string, projector AuthFileProjector) (func(context.Context) error, error) {
+	if projector == nil || strings.TrimSpace(providerStateHome) == "" {
 		return nil, nil
 	}
-	userHome, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(userHome) == "" {
-		return nil, nil
-	}
-	source := filepath.Join(userHome, ".codex", "auth.json")
+	source := filepath.Join(providerStateHome, "auth.json")
 	if _, err := os.Stat(source); err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -137,6 +137,7 @@ func prepareCodexHome(
 	codexHome string,
 	sessionSkillRoot string,
 	personalSkillRoot string,
+	providerStateHome string,
 	input PrepareInput,
 ) ([]string, error) {
 	var extraSkillRoots []string
@@ -146,12 +147,12 @@ func prepareCodexHome(
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.home_dir_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_requested", input, nil)
-	if err := exposeUserCodexFiles(codexHome); err != nil {
+	if err := exposeUserCodexFiles(codexHome, providerStateHome); err != nil {
 		return nil, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.user_files_resolved", input, nil)
 	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_requested", input, nil)
-	if err := exposeCodexImportedRolloutFile(codexHome, input.ExternalRolloutSourcePath); err != nil {
+	if err := exposeCodexImportedRolloutFile(codexHome, providerStateHome, input.ExternalRolloutSourcePath); err != nil {
 		return nil, err
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.imported_rollout_resolved", input, nil)
@@ -163,15 +164,24 @@ func prepareCodexHome(
 	if !input.SkipSkills {
 		logRuntimePrepareTrace("runtime_prepare.codex.user_skills_requested", input, nil)
 		if strings.TrimSpace(personalSkillRoot) == "" {
-			if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), input); err != nil {
+			if err := exposeUserCodexSkillFolders(filepath.Join(codexHome, "skills"), providerStateHome, input); err != nil {
 				return nil, err
 			}
-		} else if err := exposePersonalCodexSkillRoot(
-			filepath.Join(codexHome, "skills"),
-			personalSkillRoot,
-			sessionSkillRoot,
-		); err != nil {
-			return nil, err
+		} else {
+			if err := exposePersonalCodexSkillRoot(
+				filepath.Join(codexHome, "skills"),
+				personalSkillRoot,
+				sessionSkillRoot,
+			); err != nil {
+				return nil, err
+			}
+			providerSkillRoot, err := distinctCodexProviderSkillRoot(providerStateHome, personalSkillRoot)
+			if err != nil {
+				return nil, err
+			}
+			if providerSkillRoot != "" {
+				extraSkillRoots = append(extraSkillRoots, providerSkillRoot)
+			}
 		}
 		logRuntimePrepareTrace("runtime_prepare.codex.user_skills_resolved", input, nil)
 		logRuntimePrepareTrace("runtime_prepare.codex.native_skills_requested", input, nil)
@@ -193,7 +203,7 @@ func prepareCodexHome(
 			"skill_count": len(skillPaths),
 		})
 		if strings.TrimSpace(personalSkillRoot) != "" && len(skillPaths) > 0 {
-			extraSkillRoots = []string{nativeSkillRoot}
+			extraSkillRoots = append(extraSkillRoots, nativeSkillRoot)
 		}
 	}
 	logRuntimePrepareTrace("runtime_prepare.codex.approval_rules_requested", input, nil)
@@ -252,12 +262,10 @@ func codexApprovalRule(pattern []string) string {
 		"], decision=\"allow\")\n"
 }
 
-func exposeUserCodexFiles(codexHome string) error {
-	userHome, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(userHome) == "" {
+func exposeUserCodexFiles(codexHome, userCodexHome string) error {
+	if strings.TrimSpace(userCodexHome) == "" {
 		return nil
 	}
-	userCodexHome := filepath.Join(userHome, ".codex")
 	for _, name := range []string{"auth.json"} {
 		source := filepath.Join(userCodexHome, name)
 		if _, err := os.Stat(source); err != nil {
@@ -282,6 +290,9 @@ func exposeUserCodexFiles(codexHome string) error {
 	if err := exposeUserCodexConfig(codexHome, userCodexHome); err != nil {
 		return err
 	}
+	if err := exposeUserCodexAgentsFile(codexHome, userCodexHome); err != nil {
+		return err
+	}
 	if err := exposeUserCodexModelCatalog(codexHome, userCodexHome); err != nil {
 		return err
 	}
@@ -290,14 +301,14 @@ func exposeUserCodexFiles(codexHome string) error {
 
 // exposeCodexImportedRolloutFile symlinks the single Codex CLI rollout
 // (conversation transcript) file that an imported session was read from into
-// the sandboxed CODEX_HOME, at the same path it has relative to the real
-// `~/.codex` tree (e.g. `sessions/2026/07/04/rollout-...jsonl` or
+// the sandboxed CODEX_HOME, at the same path it has relative to the stable
+// provider state home (e.g. `sessions/2026/07/04/rollout-...jsonl` or
 // `archived_sessions/...`). Codex CLI resolves rollouts for `thread/resume`
 // relative to CODEX_HOME, so mirroring the real relative layout lets it find
 // the transcript by thread id without needing this code to know or guess
 // Codex's internal sharding/naming scheme, and without exposing any other
-// unrelated conversation under ~/.codex/sessions into a sandbox scoped to
-// this one session/run.
+// unrelated conversation under the provider sessions directory into a
+// sandbox scoped to this one session/run.
 //
 // sourcePath is empty for every non-imported session, so this is a no-op for
 // the overwhelming majority of sessions. When it is set but the file can't be
@@ -306,19 +317,14 @@ func exposeUserCodexFiles(codexHome string) error {
 // time), this intentionally returns nil rather than an error: resume still
 // falls back to the existing documented "recreatable" path (a fresh thread
 // with a visible notice) exactly as it did before this file existed.
-func exposeCodexImportedRolloutFile(codexHome string, sourcePath string) error {
+func exposeCodexImportedRolloutFile(codexHome, userCodexHome, sourcePath string) error {
 	sourcePath = strings.TrimSpace(sourcePath)
-	if sourcePath == "" {
+	if sourcePath == "" || strings.TrimSpace(userCodexHome) == "" {
 		return nil
 	}
-	userHome, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(userHome) == "" {
-		return nil
-	}
-	userCodexHome := filepath.Join(userHome, ".codex")
 	rel, err := filepath.Rel(userCodexHome, sourcePath)
 	if err != nil || rel == ".." || rel == "." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
-		// Not under the real ~/.codex tree we know how to mirror - leave it to
+		// Not under the stable provider state tree we know how to mirror - leave it to
 		// the recreate fallback rather than guessing at a different layout.
 		return nil
 	}
@@ -439,7 +445,7 @@ func ensureCodexSessionConfig(configPath string, input PrepareInput) error {
 // codexConfigWithTuttiWindowsSandbox pins Tutti-owned Codex session homes to
 // the unelevated Windows sandbox implementation. This is intentionally applied
 // only on Windows and only to the copied per-session config, never to the
-// user's global ~/.codex/config.toml.
+// provider's stable global config.toml.
 func codexConfigWithTuttiWindowsSandbox(content string) (string, bool) {
 	if runtime.GOOS != "windows" {
 		return content, false
@@ -769,87 +775,6 @@ func codexConfigStringAssignmentValueAt(lines []string, index int, key string) (
 		builder.WriteString(lineValue)
 	}
 	return "", index, false
-}
-
-func exposeUserCodexSkillFolders(targetRoot string, input PrepareInput) error {
-	userHome, err := os.UserHomeDir()
-	if err != nil || strings.TrimSpace(userHome) == "" {
-		return nil
-	}
-	sourceRoot := filepath.Join(userHome, ".codex", "skills")
-	entries, err := os.ReadDir(sourceRoot)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return fmt.Errorf("read user codex skills: %w", err)
-	}
-	if err := os.MkdirAll(targetRoot, 0o755); err != nil {
-		return fmt.Errorf("create codex skills directory: %w", err)
-	}
-	for _, entry := range entries {
-		name := strings.TrimSpace(entry.Name())
-		if name == "" || strings.HasPrefix(name, ".") {
-			continue
-		}
-		if shouldSkipUserCodexSkillForTuttiBrowserUse(name, input) {
-			continue
-		}
-		source := filepath.Join(sourceRoot, name)
-		sourceInfo, err := os.Stat(source)
-		if err != nil || !sourceInfo.IsDir() {
-			continue
-		}
-		skillPath := filepath.Join(source, "SKILL.md")
-		skillInfo, err := os.Stat(skillPath)
-		if err != nil || skillInfo.IsDir() {
-			continue
-		}
-		if !hasDelimitedSkillFrontmatter(skillPath) {
-			slog.Warn(
-				"user codex skill skipped; invalid frontmatter",
-				"error_code", "skill_frontmatter_invalid",
-				"skillName", name,
-				"skillPath", skillPath,
-				"reason", "missing_delimited_yaml_frontmatter",
-			)
-			continue
-		}
-		target := filepath.Join(targetRoot, name)
-		if _, err := os.Lstat(target); err == nil {
-			continue
-		} else if !os.IsNotExist(err) {
-			return fmt.Errorf("inspect codex skill %s: %w", name, err)
-		}
-		if err := exposeCodexDirectory(source, target); err != nil {
-			return fmt.Errorf("expose codex skill %s: %w", name, err)
-		}
-	}
-	return nil
-}
-
-func hasDelimitedSkillFrontmatter(path string) bool {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	lines := strings.Split(string(content), "\n")
-	if len(lines) == 0 || strings.TrimSpace(strings.TrimPrefix(lines[0], "\ufeff")) != "---" {
-		return false
-	}
-	for _, line := range lines[1:] {
-		if strings.TrimSpace(line) == "---" {
-			return true
-		}
-	}
-	return false
-}
-
-func shouldSkipUserCodexSkillForTuttiBrowserUse(name string, input PrepareInput) bool {
-	if !input.BrowserUse || !BrowserUseDefaultEnabled() {
-		return false
-	}
-	return strings.EqualFold(strings.TrimSpace(name), "browser")
 }
 
 func copyFile(source string, target string, mode os.FileMode) error {

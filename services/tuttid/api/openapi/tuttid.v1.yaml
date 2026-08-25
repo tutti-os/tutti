@@ -11946,6 +11946,12 @@ components:
           minLength: 1
         description:
           type: string
+        consumptionMultiplier:
+          type: string
+          description: >-
+            Provider-reported credit consumption multiplier without the
+            display suffix. Runtime adapters normalize provider wire data into
+            this typed field; clients must not infer it from description.
         supportsImageInput:
           type: boolean
         requested:

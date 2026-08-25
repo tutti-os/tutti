@@ -116,7 +116,14 @@ func (a *standardACPAdapter) handleACPMessage(
 		// Automatic tiers resolve the request from the live permission tier
 		// without prompting; the tool call still streams its own activity via
 		// session/update.
-		if decision := a.automaticPermissionDecision(session.AgentSessionID); decision != "" {
+		decision := ""
+		if a.config.providerPermissionRequestDecision != nil {
+			decision = strings.TrimSpace(a.config.providerPermissionRequestDecision(message.Params))
+		}
+		if decision == "" {
+			decision = a.automaticPermissionDecision(session.AgentSessionID)
+		}
+		if decision != "" {
 			if optionID, ok := acpPermissionRequestDecisionOptionID(
 				message.Params,
 				decision,
@@ -460,7 +467,13 @@ func (a *standardACPAdapter) applyACPUpdate(agentSessionID string, raw json.RawM
 	if session == nil {
 		return nil
 	}
-	return applyACPUpdateToLiveState(&session.acpLiveState, agentSessionID, raw)
+	return applyACPUpdateToLiveState(
+		&session.acpLiveState,
+		agentSessionID,
+		raw,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
 }
 
 func (a *standardACPAdapter) storePendingApproval(pending *pendingACPApproval) {

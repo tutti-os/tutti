@@ -1,6 +1,8 @@
+import { useId, useState } from "react";
 import { useComposedInputValue } from "@tutti-os/ui-react-hooks";
 import {
   Button,
+  ChevronDownIcon,
   CloseIcon,
   Input,
   Select,
@@ -8,7 +10,8 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Textarea
+  Textarea,
+  cn
 } from "@tutti-os/ui-system";
 import { useTranslation } from "@renderer/i18n";
 import { workspaceAgentCompatibleModelPlans } from "../services/workspaceAgentModelPlans";
@@ -90,6 +93,8 @@ export function WorkspaceAgentEditor({
   const selectedPlan =
     compatiblePlans.find((plan) => plan.id === draft.modelPlanId) ?? null;
   const editing = draft.agentId !== null;
+  const advancedOptionsId = useId();
+  const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
 
   return (
     <section className="flex w-full flex-col gap-4 rounded-[6px] border border-[var(--border-1)] bg-[var(--transparency-block)] p-4">
@@ -256,55 +261,77 @@ export function WorkspaceAgentEditor({
         </label>
       </div>
 
-      <label className="flex flex-col gap-1.5">
-        <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-          {t("workspace.settings.apps.agents.descriptionLabel")}
-        </span>
-        <Input
-          placeholder={t(
-            "workspace.settings.apps.agents.descriptionPlaceholder"
-          )}
-          type="text"
-          value={draft.description}
-          onChange={(event) =>
-            onUpdate({ description: event.currentTarget.value })
-          }
-        />
-      </label>
-
-      <div className="grid gap-3">
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.agents.instructionsLabel")}
-          </span>
-          <Textarea
-            placeholder={t(
-              "workspace.settings.apps.agents.instructionsPlaceholder"
+      <div className="flex flex-col gap-3 border-t border-[var(--border-1)] pt-1">
+        <Button
+          aria-controls={advancedOptionsId}
+          aria-expanded={advancedOptionsOpen}
+          className="w-full justify-between px-0 hover:bg-transparent active:bg-transparent aria-expanded:bg-transparent"
+          type="button"
+          variant="ghost"
+          onClick={() => setAdvancedOptionsOpen((open) => !open)}
+        >
+          {t("workspace.settings.apps.agents.advancedOptionsTitle")}
+          <ChevronDownIcon
+            aria-hidden="true"
+            className={cn(
+              "size-3.5 transition-transform duration-150",
+              advancedOptionsOpen && "rotate-180"
             )}
-            value={draft.instructions}
-            onChange={(event) =>
-              onUpdate({ instructions: event.currentTarget.value })
-            }
           />
-        </label>
+        </Button>
 
-        <label className="flex flex-col gap-1.5">
-          <span className="text-[11px] font-medium text-[var(--text-secondary)]">
-            {t("workspace.settings.apps.agents.callConditionsLabel")}
-          </span>
-          <Textarea
-            placeholder={t(
-              "workspace.settings.apps.agents.callConditionsPlaceholder"
-            )}
-            value={draft.callConditions}
-            onChange={(event) =>
-              onUpdate({ callConditions: event.currentTarget.value })
-            }
-          />
-          <span className="text-[10px] leading-[1.3] text-[var(--text-tertiary)]">
-            {t("workspace.settings.apps.agents.onePerLine")}
-          </span>
-        </label>
+        {advancedOptionsOpen ? (
+          <div id={advancedOptionsId} className="grid gap-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+                {t("workspace.settings.apps.agents.descriptionLabel")}
+              </span>
+              <Input
+                placeholder={t(
+                  "workspace.settings.apps.agents.descriptionPlaceholder"
+                )}
+                type="text"
+                value={draft.description}
+                onChange={(event) =>
+                  onUpdate({ description: event.currentTarget.value })
+                }
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+                {t("workspace.settings.apps.agents.instructionsLabel")}
+              </span>
+              <Textarea
+                placeholder={t(
+                  "workspace.settings.apps.agents.instructionsPlaceholder"
+                )}
+                value={draft.instructions}
+                onChange={(event) =>
+                  onUpdate({ instructions: event.currentTarget.value })
+                }
+              />
+            </label>
+
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[11px] font-medium text-[var(--text-secondary)]">
+                {t("workspace.settings.apps.agents.callConditionsLabel")}
+              </span>
+              <Textarea
+                placeholder={t(
+                  "workspace.settings.apps.agents.callConditionsPlaceholder"
+                )}
+                value={draft.callConditions}
+                onChange={(event) =>
+                  onUpdate({ callConditions: event.currentTarget.value })
+                }
+              />
+              <span className="text-[10px] leading-[1.3] text-[var(--text-tertiary)]">
+                {t("workspace.settings.apps.agents.onePerLine")}
+              </span>
+            </label>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex items-center justify-end gap-2">

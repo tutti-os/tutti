@@ -3,6 +3,7 @@ package agenthost
 import (
 	"context"
 	"errors"
+	"reflect"
 	"runtime"
 	"testing"
 	"time"
@@ -14,6 +15,25 @@ type liveResumeCanonicalStore struct {
 	CanonicalStore
 	session  storesqlite.Session
 	evidence storesqlite.ProviderSessionResumeEvidence
+}
+
+type runtimeContextCASStore struct {
+	liveResumeCanonicalStore
+	casCalls int
+}
+
+func (s *runtimeContextCASStore) CompareAndSwapSessionRuntimeContext(
+	_ context.Context,
+	_, _ string,
+	expected map[string]any,
+	replacement map[string]any,
+) (storesqlite.Session, bool, error) {
+	s.casCalls++
+	if !reflect.DeepEqual(s.session.InternalRuntimeContext, expected) {
+		return storesqlite.Session{}, false, nil
+	}
+	s.session.InternalRuntimeContext = cloneMap(replacement)
+	return s.session, true, nil
 }
 
 func (s liveResumeCanonicalStore) GetSession(context.Context, string, string) (storesqlite.Session, bool, error) {
@@ -311,6 +331,40 @@ func TestReprepareRuntimeSessionUsesRequestScopedPreparationContextAndPreservesI
 	}
 	if result.ID != "session-1" || result.ProviderSessionID != "provider-session-1" {
 		t.Fatalf("reprepared identity = %#v", result)
+	}
+}
+
+func TestReprepareRuntimeSessionCommitsReplacementContextBeforeReturning(t *testing.T) {
+	expected := map[string]any{"sessionRuntimeSnapshot": map[string]any{"revision": float64(1)}}
+	replacement := map[string]any{"sessionRuntimeSnapshot": map[string]any{"revision": float64(2)}}
+	store := &runtimeContextCASStore{liveResumeCanonicalStore: liveResumeCanonicalStore{
+		session: storesqlite.Session{
+			ID: "session-1", WorkspaceID: "workspace-1", Kind: storesqlite.SessionKindRoot,
+			Provider: "codex", ProviderSessionID: "provider-session-1", Cwd: "/workspace",
+			InternalRuntimeContext: cloneMap(expected),
+		},
+		evidence: storesqlite.ProviderSessionResumeEvidence{Established: true},
+	}}
+	runtime := &reprepareRuntime{session: ProviderRuntimeSession{
+		ID: "session-1", WorkspaceID: "workspace-1", Provider: "codex",
+		ProviderSessionID: "provider-session-1", Cwd: "/workspace",
+	}}
+	preparation := &trackingResumePreparation{prepared: PreparedRuntime{Cwd: "/workspace"}}
+	host := New(Config{CanonicalStore: store, Runtime: runtime, RuntimePreparation: preparation})
+
+	_, err := host.ReprepareRuntimeSession(t.Context(), ReprepareRuntimeSessionInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		ExpectedRuntimeContext: expected, ReplacementRuntimeContext: replacement,
+	})
+	if err != nil {
+		t.Fatalf("ReprepareRuntimeSession() error = %v", err)
+	}
+	if store.casCalls != 1 || !reflect.DeepEqual(store.session.InternalRuntimeContext, replacement) {
+		t.Fatalf("CAS calls=%d context=%#v", store.casCalls, store.session.InternalRuntimeContext)
+	}
+	if !reflect.DeepEqual(preparation.prepareInput.RuntimeContext, replacement) ||
+		!reflect.DeepEqual(runtime.reprepareInput.RuntimeContext, replacement) {
+		t.Fatalf("prepare=%#v runtime=%#v", preparation.prepareInput.RuntimeContext, runtime.reprepareInput.RuntimeContext)
 	}
 }
 

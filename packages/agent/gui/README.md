@@ -605,4 +605,7 @@ Account and Commerce remain Host chrome. A Host may use
 account/quota block and `hostActions.onAgentConfigMenuOpen` to refresh its
 Host-owned account state. Both receive the same exact target context. Returning
 `null` preserves the default provider account and quota presentation; the slot
-must not start requests or own menu lifecycle.
+must not start requests or own menu lifecycle. The context declares
+`presentation: "menu"`; interactive slot content must therefore use ui-system
+`DropdownMenuItem` / `DropdownMenuSub` primitives instead of plain buttons or
+links. The same rule applies to `renderSlots.agentConfigSystemActions`.

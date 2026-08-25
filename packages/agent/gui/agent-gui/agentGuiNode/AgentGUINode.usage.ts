@@ -166,24 +166,28 @@ export function resolveAgentGUIRailStatusTarget(input: {
   if (filter.kind !== "agentTarget") {
     return null;
   }
+  return resolveAgentGUIStatusTarget({
+    agentTargets: input.agentTargets,
+    scopeKey: filter.agentTargetId
+  });
+}
+
+export function resolveAgentGUIStatusTarget(input: {
+  agentTargets: readonly AgentGUIAgentTarget[];
+  scopeKey: string;
+}): AgentGUIAgentTarget | null {
+  const scopeKey = input.scopeKey.trim();
+  if (!scopeKey) {
+    return null;
+  }
   return (
     input.agentTargets.find(
       (candidate) =>
         candidate.disabled !== true &&
-        ((candidate.agentTargetId?.trim() ?? "") === filter.agentTargetId ||
-          candidate.targetId.trim() === filter.agentTargetId)
+        ((candidate.agentTargetId?.trim() ?? "") === scopeKey ||
+          candidate.targetId.trim() === scopeKey)
     ) ?? null
   );
-}
-
-export function resolveAgentGUIRailStatusProvider(input: {
-  conversationFilter: ReturnType<
-    typeof useAgentGUINodeController
-  >["viewModel"]["rail"]["conversationFilter"];
-  agentTargets: readonly AgentGUIAgentTarget[];
-}): AgentGUIProvider | null {
-  const target = resolveAgentGUIRailStatusTarget(input);
-  return target?.provider ?? null;
 }
 
 export function resolveAgentGUIRailConfigProvider(

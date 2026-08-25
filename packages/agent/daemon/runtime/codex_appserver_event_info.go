@@ -181,15 +181,11 @@ func appServerTurnTerminalEvents(
 			"stopReason": "failed",
 		}
 		if turnError := payloadObject(turn["error"]); len(turnError) > 0 {
-			if message := asStringRaw(turnError["message"]); message != "" {
-				metadata["error"] = message
-				metadata["errorMessage"] = message
+			for key, value := range failureFromCodexTurnError(turnError).metadata() {
+				metadata[key] = value
 			}
 			if codexErrorInfo := turnError["codexErrorInfo"]; codexErrorInfo != nil {
 				metadata["codexErrorInfo"] = clonePayloadValue(codexErrorInfo)
-			}
-			if details := asStringRaw(turnError["additionalDetails"]); details != "" {
-				metadata["additionalDetails"] = details
 			}
 		}
 		terminal := appServerRootProviderTurnCompletedEvent(session, turnID, providerTurnID, activityshared.TurnOutcomeFailed, metadata)

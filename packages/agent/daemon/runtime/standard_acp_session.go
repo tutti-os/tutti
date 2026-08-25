@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -85,9 +87,17 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		initialPromptContext: initialPromptContext,
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
+	if a.config.localToolBridge != nil && standardACPHTTPMCPSupported(initializeResult) {
+		binding, release, bindErr := a.config.localToolBridge.Bind(ctx, session)
+		if bindErr != nil {
+			return nil, fmt.Errorf("bind local ACP tool bridge: %w", bindErr)
+		}
+		acpSession.localToolRelease = release
+		mcpServers = append(mcpServers, acpMCPServers([]MCPServerBinding{binding})...)
+	}
 
 	newSessionParams := map[string]any{
-		"cwd":        firstNonEmpty(session.CWD, "/"),
+		"cwd":        standardACPProtocolCWD(session.CWD),
 		"mcpServers": mcpServers,
 	}
 	if err := a.applyProviderSessionMeta(newSessionParams, session); err != nil {
@@ -97,10 +107,10 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	a.logStandardACPStartupDiagnostics("session_new.start", map[string]any{
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
-		"cwd":              firstNonEmpty(session.CWD, "/"),
+		"cwd":              standardACPProtocolCWD(session.CWD),
 		"timeout_ms":       a.startupCallTimeout().Milliseconds(),
 	})
-	newSessionResult, err := client.CallWithTimeout(ctx, a.startupCallTimeout(), acpMethodNewSession, newSessionParams, func(ctx context.Context, message acpMessage) error {
+	newSessionResult, err := a.callSessionNewWithRetry(ctx, client, session, newSessionParams, func(ctx context.Context, message acpMessage) error {
 		_, err := a.handleACPMessage(ctx, client, session, "", message, nil, nil, nil)
 		return err
 	})
@@ -115,7 +125,12 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		if errors.As(err, &callErr) && callErr.AuthRequired() {
 			return nil, fmt.Errorf("%s: %w", a.config.authRequiredMessage, err)
 		}
-		return nil, err
+		return nil, &AppError{
+			Code:         AppErrorProviderSessionCreateFailed,
+			Message:      err.Error(),
+			DebugMessage: "provider session/new failed: " + err.Error(),
+			Cause:        err,
+		}
 	}
 	providerSessionID, err := acpSessionID(newSessionResult)
 	if err != nil {
@@ -136,8 +151,13 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 	})
 	session.ProviderSessionID = providerSessionID
 	acpSession.providerSessionID = providerSessionID
-	applyACPConfigOptionsResult(&acpSession.acpLiveState, newSessionResult)
-	applyACPModelsResult(&acpSession.acpLiveState, newSessionResult)
+	applyACPConfigOptionsResult(
+		&acpSession.acpLiveState,
+		newSessionResult,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
+	applyACPModelsResult(&acpSession.acpLiveState, newSessionResult, a.config.modelDescriptionFormat)
 	applyACPModesResult(&acpSession.acpLiveState, newSessionResult)
 	if a.config.validateNewSessionResult != nil {
 		if err := a.config.validateNewSessionResult(newSessionResult); err != nil {
@@ -184,6 +204,51 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		"agent":            acpAgentInfo(initializeResult),
 		"permissionModeId": session.PermissionModeID,
 	})}, nil
+}
+
+func (a *standardACPAdapter) callSessionNewWithRetry(
+	ctx context.Context,
+	client *acpClient,
+	session Session,
+	params map[string]any,
+	handler acpMessageHandler,
+) (json.RawMessage, error) {
+	limit := 0
+	if a != nil && a.config.retrySessionNewError != nil && a.config.sessionNewRetryLimit > 0 {
+		limit = a.config.sessionNewRetryLimit
+	}
+	for attempt := 0; ; attempt++ {
+		result, err := client.CallWithTimeout(ctx, a.startupCallTimeout(), acpMethodNewSession, params, handler)
+		if err == nil || attempt >= limit || a.config.retrySessionNewError == nil || !a.config.retrySessionNewError(err) {
+			return result, err
+		}
+		a.logStandardACPStartupDiagnostics("session_new.retry", map[string]any{
+			"room_id":          session.RoomID,
+			"agent_session_id": session.AgentSessionID,
+			"attempt":          attempt + 1,
+			"max_retries":      limit,
+			"error":            err.Error(),
+		})
+	}
+}
+
+// standardACPProtocolCWD keeps the provider protocol's working directory
+// aligned with the process working directory when the caller did not supply
+// one. A POSIX root is not a valid Windows workspace fallback: sending "/"
+// makes a Windows provider resolve searches against a path that cannot exist.
+func standardACPProtocolCWD(cwd string) string {
+	if strings.TrimSpace(cwd) != "" {
+		return cwd
+	}
+	if runtime.GOOS == "windows" {
+		if processCWD, err := os.Getwd(); err == nil && strings.TrimSpace(processCWD) != "" {
+			return processCWD
+		}
+		// Keep the provider anchored to the child process's native cwd even if
+		// the host cannot materialize an absolute spelling for it.
+		return "."
+	}
+	return "/"
 }
 
 func (a *standardACPAdapter) Resume(ctx context.Context, session Session) error {
@@ -279,6 +344,14 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 		acpSession.acpLiveState = cloneACPLiveState(previousSession.acpLiveState)
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
+	if a.config.localToolBridge != nil && standardACPHTTPMCPSupported(initializeResult) {
+		binding, release, bindErr := a.config.localToolBridge.Bind(ctx, session)
+		if bindErr != nil {
+			return fmt.Errorf("bind local ACP tool bridge: %w", bindErr)
+		}
+		acpSession.localToolRelease = release
+		mcpServers = append(mcpServers, acpMCPServers([]MCPServerBinding{binding})...)
+	}
 
 	method := acpSession.resumeMethod
 	if method == "" {
@@ -286,7 +359,7 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 	}
 	resumeParams := map[string]any{
 		"sessionId":  session.ProviderSessionID,
-		"cwd":        firstNonEmpty(session.CWD, "/"),
+		"cwd":        standardACPProtocolCWD(session.CWD),
 		"mcpServers": mcpServers,
 	}
 	if err := a.applyProviderSessionMeta(resumeParams, session); err != nil {
@@ -299,8 +372,13 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 	if err != nil {
 		return classifyACPResumeError(session, method, err)
 	}
-	applyACPConfigOptionsResult(&acpSession.acpLiveState, loadSessionResult)
-	applyACPModelsResult(&acpSession.acpLiveState, loadSessionResult)
+	applyACPConfigOptionsResult(
+		&acpSession.acpLiveState,
+		loadSessionResult,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
+	applyACPModelsResult(&acpSession.acpLiveState, loadSessionResult, a.config.modelDescriptionFormat)
 	applyACPModesResult(&acpSession.acpLiveState, loadSessionResult)
 	if err := a.applySessionConfigOptions(ctx, client, session, loadSessionResult); err != nil {
 		return err
@@ -463,7 +541,7 @@ func (a *standardACPAdapter) startClient(
 		RootAgentSessionID: session.RootAgentSessionID,
 		RoomID:             session.RoomID,
 		CWD:                session.CWD,
-		ProtocolCWD:        firstNonEmpty(session.CWD, "/"),
+		ProtocolCWD:        standardACPProtocolCWD(session.CWD),
 		Command:            command,
 		Env:                env,
 		DirectStart:        false,
@@ -489,6 +567,7 @@ func (a *standardACPAdapter) startClient(
 		"room_id":          session.RoomID,
 		"agent_session_id": session.AgentSessionID,
 		"cwd":              spec.CWD,
+		"protocol_cwd":     spec.ProtocolCWD,
 		"command":          spec.Command,
 		"direct_start":     spec.DirectStart,
 	})

@@ -14,6 +14,7 @@ export interface AgentGUIProviderReadinessLabels {
   providerGateLoginTitle: string;
   providerGateLoginDescription: string;
   providerGateLoginAction: string;
+  providerGateModelPlanAction: string;
   providerGateComingSoonTitle: string;
   providerGateComingSoonDescription: string;
   providerGateComingSoonAction: string;

@@ -421,7 +421,10 @@ export function mapWorkspaceAgentsToAgents(
           }) ?? "",
         name: agent.name,
         ownership: "self" as const,
-        provider: provider as AgentGUIProvider
+        provider: provider as AgentGUIProvider,
+        ...(agent.modelPlanId?.trim()
+          ? { providerAccountUsageApplicable: false }
+          : {})
       }
     ];
   });

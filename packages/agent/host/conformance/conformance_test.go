@@ -52,6 +52,14 @@ func TestPublishedWorkspaceRuntimeDisconnectScenarioCatalogHasUniqueNames(t *tes
 	}
 }
 
+func TestPublishedRuntimeConfigurationRebindScenarioCatalogHasUniqueNames(t *testing.T) {
+	t.Parallel()
+	scenarios := RuntimeConfigurationRebindScenarios()
+	if len(scenarios) != 1 || scenarios[0].Name == "" {
+		t.Fatalf("runtime configuration rebind scenarios=%#v", scenarios)
+	}
+}
+
 func TestPublishedWorkspaceRuntimeAdmissionScenarioCatalogHasUniqueNames(t *testing.T) {
 	scenarios := WorkspaceRuntimeAdmissionScenarios()
 	seen := make(map[string]struct{}, len(scenarios))

@@ -258,6 +258,66 @@ describe("agentToolRenderData", () => {
     expect(text.error).toBe("permission denied");
   });
 
+  it("unwraps nested provider error envelopes", () => {
+    const failure = getToolCallFailureText(
+      makeCall({
+        toolName: "McpTool",
+        status: "Failed",
+        statusKind: "failed",
+        error: {
+          response: {
+            detail: {
+              message: "MCP server rejected the request"
+            }
+          }
+        }
+      })
+    );
+
+    expect(failure).toBe("MCP server rejected the request");
+  });
+
+  it("joins structured error content arrays when no scalar error field exists", () => {
+    const text = getToolFallbackText(
+      makeCall({
+        error: {
+          content: [
+            { type: "text", text: "first failure" },
+            { type: "text", text: "second failure" }
+          ]
+        }
+      })
+    );
+
+    expect(text.error).toBe("first failure\n\nsecond failure");
+  });
+
+  it("keeps nested search errors visible for specialized renderers", () => {
+    const search = getSearchRenderData(
+      makeCall({
+        toolName: "Grep",
+        error: {
+          response: { detail: { message: "search backend unavailable" } }
+        }
+      })
+    );
+
+    expect(search.error).toBe("search backend unavailable");
+  });
+
+  it("keeps nested web-search errors visible for specialized renderers", () => {
+    const search = getWebSearchRenderData(
+      makeCall({
+        toolName: "WebSearch",
+        error: {
+          response: { detail: { message: "search provider rejected request" } }
+        }
+      })
+    );
+
+    expect(search.error).toBe("search provider rejected request");
+  });
+
   it("unwraps tool_use_error tags from failed write payloads", () => {
     const failure = getToolCallFailureText(
       makeCall({

@@ -832,6 +832,30 @@ func TestServiceListReportsCodexReadyWhenAppServerOmitsJSONRPCVersion(t *testing
 		t.Fatalf("Availability.Status = %q, want %q; status=%#v", status.Availability.Status, AvailabilityReady, status)
 	}
 }
+func TestProbeTimeoutForSpecUsesProviderSpecificColdStartBounds(t *testing.T) {
+	service := Service{ProbeTimeout: 3 * time.Second}
+	for _, test := range []struct {
+		name     string
+		provider string
+		want     time.Duration
+	}{
+		{name: "opencode npm shim", provider: "opencode", want: 30 * time.Second},
+		{name: "cursor npm shim", provider: "cursor", want: 35 * time.Second},
+		{name: "other standard ACP", provider: "nexight", want: 15 * time.Second},
+		{name: "unknown provider keeps configured timeout", provider: "unknown", want: 3 * time.Second},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			if got := service.probeTimeoutForSpec(ProviderSpec{Provider: test.provider}); got != test.want {
+				t.Fatalf("probe timeout = %s, want %s", got, test.want)
+			}
+		})
+	}
+
+	configured := Service{ProbeTimeout: 40 * time.Second}
+	if got := configured.probeTimeoutForSpec(ProviderSpec{Provider: "opencode"}); got != 40*time.Second {
+		t.Fatalf("configured probe timeout = %s, want 40s", got)
+	}
+}
 
 // TestServiceListStandardACPHandshakeProbe covers cursor and opencode: both
 // are RuntimeKindStandardACP providers where the CLI binary itself, invoked

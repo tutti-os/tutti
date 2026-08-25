@@ -178,6 +178,11 @@ export interface AgentComposerProps {
   handoffLabel?: string;
   handoffMenuLabel?: string;
   labels: {
+    /** Capability plus copy for returning to a Composer that answers the prompt. */
+    conversationReturn?: {
+      continueAnswering: string;
+      returnToConversation: string;
+    };
     send: string;
     /**
      * Plan-review send copy: with an empty-send override active the send

@@ -1060,7 +1060,7 @@ export const en = {
           ready: "Ready",
           harnessLabel: "Agent Runtime",
           harnessUnavailable: "Agent Runtime unavailable",
-          behaviorDetailsTitle: "Instructions and call conditions",
+          advancedOptionsTitle: "Advanced options",
           callConditionsLabel: "Call conditions",
           callConditionsPlaceholder:
             "Use before a release decision\nUse when architecture risk is high",

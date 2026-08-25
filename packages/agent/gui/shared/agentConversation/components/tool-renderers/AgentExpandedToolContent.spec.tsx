@@ -42,6 +42,33 @@ describe("AgentExpandedToolContent", () => {
     expect(screen.queryByText("Only for this call")).toBeNull();
   });
 
+  it("renders direct approval input details when no nested preview is supplied", async () => {
+    setAgentGuiI18nTestLocale("en");
+
+    render(
+      <AgentExpandedToolContent
+        call={projectAgentToolCall(
+          toolCall({
+            callType: "approval",
+            toolName: "Approval",
+            payload: {
+              input: {
+                command: "node relay.js",
+                path: "/workspace/scripts/relay.js"
+              }
+            }
+          })
+        )}
+      />
+    );
+
+    expect(screen.getByText("Input")).toBeTruthy();
+    expect(screen.getByText(/Command[\s\S]*node relay\.js/)).toBeTruthy();
+    expect(
+      screen.getByText(/Path[\s\S]*\/workspace\/scripts\/relay\.js/)
+    ).toBeTruthy();
+  });
+
   it("renders approval file previews from nested toolCall edit payloads", async () => {
     setAgentGuiI18nTestLocale("en");
 

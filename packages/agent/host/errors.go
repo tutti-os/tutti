@@ -26,6 +26,7 @@ var (
 	ErrRuntimeCancelDeliveryUnconfirmed   = errors.New("agent runtime cancellation delivery is unconfirmed")
 	ErrRuntimeSessionActive               = errors.New("agent runtime session has an active turn")
 	ErrRuntimeSessionReprepareUnavailable = errors.New("agent runtime session reprepare is unavailable")
+	ErrRuntimeContextConflict             = errors.New("agent runtime context changed before rebind commit")
 	ErrRuntimeSessionPublishUnavailable   = errors.New("agent runtime session initialization publication is unavailable")
 	ErrRuntimeRailPlacementUnavailable    = errors.New("agent runtime rail placement resolution is unavailable")
 	ErrWorkspaceDisconnectUnavailable     = errors.New("agent workspace runtime disconnect is unavailable")

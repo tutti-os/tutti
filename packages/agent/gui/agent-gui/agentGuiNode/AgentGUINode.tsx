@@ -109,6 +109,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerRailMode = "catalog",
     comingSoonProviders,
     providerReadinessGates = null,
+    accountUsageRefreshInline = false,
     targetConnectionSource = null,
     interactionReadinessSource = null,
     observationGapSource = null,
@@ -402,7 +403,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     ? (renderAgentConfigAccount?.(agentConfigMenuContext) ?? null)
     : null;
   const agentConfigSystemActionsContent =
-    renderAgentConfigSystemActions?.() ?? null;
+    renderAgentConfigSystemActions?.({ presentation: "menu" }) ?? null;
 
   return (
     <AgentGUIMentionServiceBoundary
@@ -521,6 +522,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onAgentConfigMenuClose={handleAgentConfigMenuClose}
               onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
               onAgentUsageRefresh={handleAgentUsageRefresh}
+              accountUsageRefreshInline={accountUsageRefreshInline}
               onSlashStatusOpen={handleSlashStatusOpen}
               onSlashStatusClose={handleSlashStatusClose}
               onSlashStatusRefresh={handleSlashStatusRefresh}
@@ -641,6 +643,7 @@ function resolveAgentConfigMenuContext(
     agentTargetId,
     provider,
     label: target.label,
+    presentation: "menu",
     ...(target.ownership ? { ownership: target.ownership } : {})
   };
 }

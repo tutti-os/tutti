@@ -727,6 +727,7 @@ func normalizeLiveComposerModelOptions(options []ComposerConfigOptionValue) []Co
 			Label:                      label,
 			Value:                      value,
 			Description:                strings.TrimSpace(option.Description),
+			ConsumptionMultiplier:      strings.TrimSpace(option.ConsumptionMultiplier),
 			SupportsImageInput:         option.SupportsImageInput,
 			SupportsReasoningEffort:    option.SupportsReasoningEffort,
 			ReasoningEffort:            strings.TrimSpace(option.ReasoningEffort),

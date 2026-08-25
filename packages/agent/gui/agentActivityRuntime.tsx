@@ -486,10 +486,18 @@ export function useAgentActivitySnapshot(
 ): AgentActivitySnapshot {
   const runtime = useAgentGUIRuntime();
   const normalizedWorkspaceId = workspaceId.trim();
+  const workspaceStore = useMemo(
+    () => ({
+      getSnapshot: () => runtime.getSnapshot(normalizedWorkspaceId),
+      subscribe: (listener: () => void) =>
+        runtime.subscribe(normalizedWorkspaceId, listener)
+    }),
+    [normalizedWorkspaceId, runtime]
+  );
   return useSyncExternalStore(
-    (listener) => runtime.subscribe(normalizedWorkspaceId, listener),
-    () => runtime.getSnapshot(normalizedWorkspaceId),
-    () => runtime.getSnapshot(normalizedWorkspaceId)
+    workspaceStore.subscribe,
+    workspaceStore.getSnapshot,
+    workspaceStore.getSnapshot
   );
 }
 

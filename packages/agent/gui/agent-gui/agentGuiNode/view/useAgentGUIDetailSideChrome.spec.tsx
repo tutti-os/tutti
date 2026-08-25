@@ -94,7 +94,12 @@ describe("useAgentGUIDetailSideChrome", () => {
       isActive: true,
       isSendingTurn: false,
       isSubmittingPrompt: false,
-      labels: {},
+      labels: {
+        conversationReturn: {
+          continueAnswering: "Continue answering",
+          returnToConversation: "Back to conversation"
+        }
+      },
       onDraftContentChange: vi.fn(),
       onSubmit: vi.fn(),
       selectedAgentTarget: null,
@@ -158,7 +163,10 @@ describe("useAgentGUIDetailSideChrome", () => {
         composerProps: {
           // The editor must be active before its first focus event; focus is
           // an outcome of clicking the editor, not a prerequisite for it.
-          isActive: true
+          isActive: true,
+          labels: {
+            conversationReturn: undefined
+          }
         }
       }
     });

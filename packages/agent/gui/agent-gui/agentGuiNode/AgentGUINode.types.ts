@@ -175,6 +175,8 @@ export interface AgentGUINodeHostCapabilities {
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
+  /** Tutti-only presentation opt-in for placing usage refresh in the limits header. */
+  accountUsageRefreshInline?: boolean;
   /** Target-level connection for new-conversation and ordinary Composer admission. */
   targetConnectionSource?: AgentGUITargetConnectionSource | null;
   /**
@@ -249,6 +251,13 @@ export interface AgentGUIAgentConfigMenuContext {
   provider: AgentGUIProvider;
   label: string;
   ownership?: AgentGUIAgentOwnership;
+  /** The Host must render interactive account controls as ui-system menu items. */
+  presentation: "menu";
+}
+
+export interface AgentGUIConfigMenuPresentationContext {
+  /** Interactive slot content must use ui-system DropdownMenuItem/Sub primitives. */
+  presentation: "menu";
 }
 
 export interface AgentGUINodeRenderSlots {
@@ -262,10 +271,16 @@ export interface AgentGUINodeRenderSlots {
   /**
    * Optional Host chrome for the exact target's account/Commerce presentation.
    * Returning null preserves AgentGUI's provider account and quota content.
+   * Interactive content must honor the supplied menu presentation contract.
    */
   agentConfigAccount?: (context: AgentGUIAgentConfigMenuContext) => ReactNode;
-  /** Optional Host-owned system actions appended to the Agent config menu. */
-  agentConfigSystemActions?: () => ReactNode;
+  /**
+   * Optional Host-owned system actions appended to the Agent config menu.
+   * Actions must be ui-system DropdownMenuItem/Sub primitives.
+   */
+  agentConfigSystemActions?: (
+    context: AgentGUIConfigMenuPresentationContext
+  ) => ReactNode;
   projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   projectSelectOptions?: AgentProjectDropdownOptions;
   referencePickerSidebarActions?: (
@@ -480,6 +495,7 @@ export function areAgentGUINodePropsEqual(
     pc.providerRailMode === nc.providerRailMode &&
     pc.comingSoonProviders === nc.comingSoonProviders &&
     pc.providerReadinessGates === nc.providerReadinessGates &&
+    pc.accountUsageRefreshInline === nc.accountUsageRefreshInline &&
     pc.targetConnectionSource === nc.targetConnectionSource &&
     pc.interactionReadinessSource === nc.interactionReadinessSource &&
     pc.observationGapSource === nc.observationGapSource &&

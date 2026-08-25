@@ -226,6 +226,41 @@ describe("AgentVisibleErrorMessage", () => {
     ).toBeTruthy();
   });
 
+  it("shows a sanitized provider error directly without rewriting it", () => {
+    const { getByText, queryByRole } = renderBlock(
+      buildRow({
+        code: "provider_unavailable",
+        phase: "turn",
+        provider: "claude-code",
+        origin: "provider",
+        detail: "relay returned HTTP 503: upstream overloaded",
+        detailAvailable: true,
+        retryable: true
+      })
+    );
+
+    expect(
+      getByText("relay returned HTTP 503: upstream overloaded")
+    ).toBeTruthy();
+    expect(queryByRole("button", { name: "Raw error" })).toBeNull();
+  });
+
+  it("does not offer provider login for a relay-scoped 401", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "provider_error",
+        phase: "turn",
+        provider: "claude-code",
+        origin: "provider",
+        detail: "relay rejected request: HTTP 401",
+        retryable: false
+      })
+    );
+
+    expect(getByText("relay rejected request: HTTP 401")).toBeTruthy();
+    expect(queryByText("Sign in")).toBeNull();
+  });
+
   it("shows accurate copy but NO wizard CTA for transient/server-side failures", () => {
     const { getByText, queryByText } = renderBlock(
       buildRow({
@@ -323,6 +358,7 @@ describe("AgentVisibleErrorMessage", () => {
     expect(
       getByText("Codex needs authentication or configuration")
     ).toBeTruthy();
+    expect(getByText("auth_required")).toBeTruthy();
     expect(
       getByText("Contact the person who shared this Agent, then try again.")
     ).toBeTruthy();
@@ -369,6 +405,28 @@ describe("AgentVisibleErrorMessage", () => {
     expect(queryByText("Recharge credits to continue")).toBeNull();
     expect(queryByText("Recharge credits")).toBeNull();
     expect(onLinkAction).not.toHaveBeenCalled();
+  });
+
+  it("shows the stable shared-caller code when provider detail is absent or unknown", () => {
+    const { getByText, queryByText } = renderBlock(
+      buildRow({
+        code: "future_owner_failure",
+        phase: "provider_start",
+        provider: "codex",
+        detail: null,
+        detailAvailable: false,
+        retryable: null
+      }),
+      "codex",
+      undefined,
+      undefined,
+      "shared_caller"
+    );
+
+    expect(getByText("future_owner_failure")).toBeTruthy();
+    expect(queryByText("invocation-1")).toBeNull();
+    expect(queryByText("correlation-1")).toBeNull();
+    expect(queryByText("owner-device-1")).toBeNull();
   });
 
   it("preserves neutral transient copy while suppressing local setup actions", () => {

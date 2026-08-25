@@ -324,6 +324,7 @@ test("workspaceAgentDraftToPutInput passes dormant contract fields through verba
     workspaceAgentDraftToPutInput({
       agentId: null,
       name: " Reviewer ",
+      nameEdited: true,
       description: " Reviews changes ",
       harnessAgentTargetId: " local:codex ",
       modelPlanId: "",
@@ -382,6 +383,64 @@ test("workspace agents controller prefills a compatible runtime and plan for the
 
   assert.equal(store.agents.draft?.harnessAgentTargetId, "local:claude-code");
   assert.equal(store.agents.draft?.modelPlanId, "plan-1");
+  assert.equal(store.agents.draft?.name, "plan-1 - Claude Code");
+});
+
+test("workspace agents controller derives a new Agent name from the selected plan and runtime", () => {
+  const store = createWorkspaceSettingsStore();
+  store.workspaceID = "workspace-1";
+  store.agents.harnessTargets = [
+    { enabled: true, id: "local:codex", name: "Codex", provider: "codex" }
+  ];
+  store.modelPlans.plans = [
+    {
+      ...createStoredModelPlan("plan-openai", "openai"),
+      name: "Team Gateway"
+    }
+  ];
+  const controller = new WorkspaceAgentsController({
+    client: createClient(),
+    store
+  });
+
+  controller.beginDraft();
+  assert.equal(store.agents.draft?.name, "Codex");
+
+  controller.updateDraft({ modelPlanId: "plan-openai" });
+  assert.equal(store.agents.draft?.name, "Team Gateway - Codex");
+});
+
+test("workspace agents controller preserves an edited name across plan and runtime changes", () => {
+  const store = createWorkspaceSettingsStore();
+  store.workspaceID = "workspace-1";
+  store.agents.harnessTargets = [
+    { enabled: true, id: "local:codex", name: "Codex", provider: "codex" },
+    {
+      enabled: true,
+      id: "local:claude-code",
+      name: "Claude Code",
+      provider: "claude-code"
+    }
+  ];
+  store.modelPlans.plans = [
+    createStoredModelPlan("plan-openai", "openai"),
+    createStoredModelPlan("plan-anthropic", "anthropic")
+  ];
+  const controller = new WorkspaceAgentsController({
+    client: createClient(),
+    store
+  });
+
+  controller.beginDraft();
+  controller.updateDraft({ modelPlanId: "plan-openai" });
+  controller.updateDraft({ name: "My reviewer" });
+  controller.updateDraft({ modelPlanId: "plan-anthropic" });
+  controller.updateDraft({
+    harnessAgentTargetId: "local:claude-code",
+    modelPlanId: "plan-anthropic"
+  });
+
+  assert.equal(store.agents.draft?.name, "My reviewer");
 });
 
 test("workspace agents controller leaves the plan empty when no runtime is compatible", () => {

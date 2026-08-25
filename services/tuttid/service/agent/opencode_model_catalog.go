@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -16,7 +17,15 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
-const opencodeModelListTimeout = 8 * time.Second
+const (
+	// OpenCode is commonly launched through a Windows npm shim. The first
+	// `models` invocation can spend several seconds bootstrapping the runtime
+	// and provider registry before it writes any output.
+	opencodeModelListTimeout   = 30 * time.Second
+	opencodeModelFetchTimeout  = 35 * time.Second
+	opencodeModelCacheTTL      = 5 * time.Minute
+	opencodeModelErrorCacheTTL = 30 * time.Second
+)
 
 var opencodeModelTokenPattern = regexp.MustCompile(`[A-Za-z0-9][A-Za-z0-9._-]*/[A-Za-z0-9][A-Za-z0-9._:-]*`)
 
@@ -58,6 +67,16 @@ func (l OpenCodeCLIModelLister) ListModels(ctx context.Context) (AgentModelListR
 	}
 	output, err := cmd.Output()
 	if err != nil {
+		if errors.Is(processCtx.Err(), context.DeadlineExceeded) {
+			return AgentModelListResult{}, fmt.Errorf(
+				"opencode models timed out after %s: %w",
+				timeout,
+				context.DeadlineExceeded,
+			)
+		}
+		if ctx.Err() != nil {
+			return AgentModelListResult{}, fmt.Errorf("opencode models canceled: %w", ctx.Err())
+		}
 		if exitErr, ok := err.(*exec.ExitError); ok {
 			output = append(output, exitErr.Stderr...)
 		}

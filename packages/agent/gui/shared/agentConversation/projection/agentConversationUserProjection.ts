@@ -66,11 +66,12 @@ function firstRawUserPromptTextBlock(
       continue;
     }
     for (const raw of content) {
-      const block =
-        raw && typeof raw === "object" && !Array.isArray(raw)
-          ? (raw as Record<string, unknown>)
-          : null;
-      if (block?.type === "text" && typeof block.text === "string") {
+      const block = promptContentRecord(raw);
+      if (
+        block?.type === "text" &&
+        typeof block.text === "string" &&
+        block.kind !== "selected-text"
+      ) {
         return block.text;
       }
     }
@@ -97,6 +98,31 @@ function projectUserMessageContentParts(
     return [textPart(message, turnId)];
   }
   const parts: AgentMessageContentVM[] = [];
+  const selectedTextBlocks = blocks.filter(
+    (block): block is UserPromptTextBlock =>
+      block.type === "text" && block.kind === "selected-text"
+  );
+  if (selectedTextBlocks.length > 0) {
+    // Reference context is a presentation-only part. The ordinary text part
+    // remains the sole editable/copyable user message, matching the composer
+    // question bubble while keeping the selected boundary visible.
+    parts.push({
+      kind: "message-content",
+      id: `${message.id}:selected-text`,
+      turnId,
+      body: "",
+      presentationKind: "content",
+      contentKind: "selected-text",
+      selectedText: {
+        count: selectedTextBlocks.length,
+        texts: selectedTextBlocks.map((block) =>
+          stripSelectedTextPrefix(block.text)
+        )
+      },
+      occurredAtUnixMs: message.occurredAtUnixMs ?? null,
+      sourceTimelineItems: message.sourceTimelineItems
+    });
+  }
   const imageBlocks = blocks.filter(
     (block): block is UserPromptImageBlock => block.type === "image"
   );
@@ -124,7 +150,13 @@ function projectUserMessageContentParts(
     });
   }
   blocks.forEach((block, index) => {
-    if (block.type === "image" || block.text.trim() === "") return;
+    if (
+      block.type === "image" ||
+      block.text.trim() === "" ||
+      block.kind === "selected-text"
+    ) {
+      return;
+    }
     parts.push({
       kind: "message-content",
       id: `${message.id}:text:${index}`,
@@ -160,6 +192,7 @@ type UserPromptContentBlock = UserPromptTextBlock | UserPromptImageBlock;
 interface UserPromptTextBlock {
   type: "text";
   text: string;
+  kind?: string;
 }
 
 interface UserPromptImageBlock {
@@ -192,6 +225,10 @@ function userPromptContentBlocks(
         : ""
     ) ?? []
   );
+  const selectedTextBlockIndexes = selectedTextContentBlockIndexes(
+    content,
+    displayPrompt
+  );
   const visibleDisplayPrompt = isSyntheticImageOnlyDisplayPrompt(
     displayPrompt,
     content
@@ -217,38 +254,115 @@ function userPromptContentBlocks(
     });
   const effectiveDisplayPrompt = preferMaterializedContentText
     ? ""
-    : visibleDisplayPrompt;
-  const blocks = content.flatMap((raw): UserPromptContentBlock[] => {
-    const block =
-      raw && typeof raw === "object" && !Array.isArray(raw)
-        ? (raw as Record<string, unknown>)
-        : null;
-    if (!block) return [];
-    if (block.type === "text" && typeof block.text === "string") {
-      return effectiveDisplayPrompt
-        ? []
-        : [{ type: "text", text: linkifyPastedTextReferences(block.text) }];
-    }
-    if (block.type !== "image") return [];
-    const mimeType =
-      typeof block.mimeType === "string" ? block.mimeType.trim() : "";
-    return [
-      {
-        type: "image",
-        workspaceId: item?.workspaceId ?? fallbackWorkspaceId ?? null,
-        agentSessionId: item?.agentSessionId ?? message.id,
-        attachmentId: optionalString(block.attachmentId),
-        mimeType,
-        name: optionalString(block.name),
-        data: optionalString(block.data),
-        url: optionalString(block.url),
-        path: optionalString(block.path)
+    : selectedTextBlockIndexes.size > 0
+      ? ""
+      : visibleDisplayPrompt;
+  const blocks = content.flatMap(
+    (raw, contentIndex): UserPromptContentBlock[] => {
+      const block = promptContentRecord(raw);
+      if (!block) return [];
+      if (block.type === "text" && typeof block.text === "string") {
+        const kind = selectedTextBlockIndexes.has(contentIndex)
+          ? "selected-text"
+          : typeof block.kind === "string"
+            ? block.kind
+            : undefined;
+        return effectiveDisplayPrompt
+          ? []
+          : [
+              {
+                type: "text",
+                text: linkifyPastedTextReferences(block.text),
+                ...(kind ? { kind } : {})
+              }
+            ];
       }
-    ];
-  });
+      if (block.type !== "image") return [];
+      const mimeType =
+        typeof block.mimeType === "string" ? block.mimeType.trim() : "";
+      return [
+        {
+          type: "image",
+          workspaceId: item?.workspaceId ?? fallbackWorkspaceId ?? null,
+          agentSessionId: item?.agentSessionId ?? message.id,
+          attachmentId: optionalString(block.attachmentId),
+          mimeType,
+          name: optionalString(block.name),
+          data: optionalString(block.data),
+          url: optionalString(block.url),
+          path: optionalString(block.path)
+        }
+      ];
+    }
+  );
   return effectiveDisplayPrompt
     ? [{ type: "text", text: effectiveDisplayPrompt }, ...blocks]
     : blocks;
+}
+
+function selectedTextContentBlockIndexes(
+  content: readonly unknown[],
+  displayPrompt: string
+): ReadonlySet<number> {
+  const result = new Set<number>();
+  const textIndexes: number[] = [];
+  for (const [index, raw] of content.entries()) {
+    const block = promptContentRecord(raw);
+    if (block?.type === "text" && typeof block.text === "string") {
+      textIndexes.push(index);
+    }
+  }
+  const firstNonQuoteTextOrdinal = textIndexes.findIndex((contentIndex) => {
+    const block = promptContentRecord(content[contentIndex]);
+    return (
+      typeof block?.text === "string" &&
+      block.text.trim() !== "" &&
+      !isSelectedTextBlockquote(block.text)
+    );
+  });
+  const normalizedDisplayPrompt = displayPrompt.replace(/\r\n?/gu, "\n");
+  for (const [textOrdinal, contentIndex] of textIndexes.entries()) {
+    const block = promptContentRecord(content[contentIndex]);
+    const text = typeof block?.text === "string" ? block.text : "";
+    if (block?.kind === "selected-text") {
+      result.add(contentIndex);
+      continue;
+    }
+    if (
+      firstNonQuoteTextOrdinal < 0 ||
+      textOrdinal <= firstNonQuoteTextOrdinal ||
+      !isSelectedTextBlockquote(text) ||
+      !normalizedDisplayPrompt.includes(text.replace(/\r\n?/gu, "\n").trim())
+    ) {
+      continue;
+    }
+    // The composer currently puts a non-quote typed prompt first and each
+    // selected transcript quote after it. Ambiguous quote-only legacy payloads
+    // stay ordinary Markdown; only an explicit kind can identify those.
+    result.add(contentIndex);
+  }
+  return result;
+}
+
+function isSelectedTextBlockquote(text: string): boolean {
+  const lines = text.trim().split(/\r?\n/u);
+  return (
+    lines.length > 0 && lines.every((line) => /^>\s?/u.test(line.trimStart()))
+  );
+}
+
+function stripSelectedTextPrefix(text: string): string {
+  return text
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/^\s*>\s?/u, ""))
+    .join("\n")
+    .trim();
+}
+
+function promptContentRecord(raw: unknown): Record<string, unknown> | null {
+  return raw && typeof raw === "object" && !Array.isArray(raw)
+    ? (raw as Record<string, unknown>)
+    : null;
 }
 
 function isSyntheticImageOnlyDisplayPrompt(

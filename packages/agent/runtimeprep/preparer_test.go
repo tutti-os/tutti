@@ -16,6 +16,9 @@ func TestDesktopCodexPersonalSkillCreatedInOneSessionIsVisibleInAnother(t *testi
 	home := t.TempDir()
 	setTestHome(t, home)
 	personalRoot := filepath.Join(home, ".codex", "skills")
+	if err := os.MkdirAll(personalRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	preparer := newTestPreparer(t.TempDir())
 	preparer.RegisterProvider(CodexPreparer{PersonalSkillRoot: personalRoot})
 
@@ -60,6 +63,46 @@ func TestDesktopCodexPersonalSkillCreatedInOneSessionIsVisibleInAnother(t *testi
 	}
 	if len(extraRoots) != 1 || filepath.Base(extraRoots[0]) != "codex-session-skills" {
 		t.Fatalf("extra Skill roots = %#v, want isolated session root", extraRoots)
+	}
+}
+
+func TestConfiguredPersonalSkillRootMustAlreadyExist(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		provider string
+		register func(*DefaultPreparer, string)
+	}{
+		{
+			name: "codex", provider: "codex",
+			register: func(preparer *DefaultPreparer, root string) {
+				preparer.RegisterProvider(CodexPreparer{PersonalSkillRoot: root})
+			},
+		},
+		{
+			name: "claude", provider: "claude-code",
+			register: func(preparer *DefaultPreparer, root string) {
+				preparer.RegisterProvider(ClaudeCodePreparer{PersonalSkillRoot: root})
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			personalRoot := filepath.Join(t.TempDir(), "missing-personal-skills")
+			preparer := newTestPreparer(t.TempDir())
+			tc.register(preparer, personalRoot)
+			_, err := preparer.Prepare(t.Context(), PrepareInput{
+				WorkspaceID:    "workspace-1",
+				AgentSessionID: "session-1",
+				AgentTargetID:  "local:" + tc.provider,
+				Provider:       tc.provider,
+				Cwd:            t.TempDir(),
+			})
+			if err == nil || !strings.Contains(strings.ToLower(err.Error()), "personal skill root") {
+				t.Fatalf("Prepare() error = %v, want missing personal skill root error", err)
+			}
+			if _, statErr := os.Lstat(personalRoot); !os.IsNotExist(statErr) {
+				t.Fatalf("runtimeprep created Host-owned personal skill root: %v", statErr)
+			}
+		})
 	}
 }
 
@@ -1171,6 +1214,7 @@ func TestDefaultPreparerCodexReconcilesNativeSkillsAcrossRepeatedPrepare(t *test
 }
 
 func TestDefaultPreparerCodexSkipsSkillsForModelProbe(t *testing.T) {
+	setTestHome(t, t.TempDir())
 	preparer := newTestPreparer(t.TempDir())
 	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
@@ -1530,6 +1574,7 @@ func TestCodexConfigWithSupportedServiceTierSanitizesLegacyValues(t *testing.T) 
 }
 
 func TestDefaultPreparerUsesStateRootCLIShimName(t *testing.T) {
+	setTestHome(t, t.TempDir())
 	t.Setenv("PATH", "/usr/bin:/bin")
 	stateDir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(stateDir, "bin"), 0o755); err != nil {
@@ -1574,6 +1619,7 @@ func TestDefaultPreparerUsesStateRootCLIShimName(t *testing.T) {
 }
 
 func TestDefaultPreparerCleanupRemovesManagedBlocksAndRuntimeRoot(t *testing.T) {
+	setTestHome(t, t.TempDir())
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
 	agentsPath := filepath.Join(cwd, "AGENTS.md")
@@ -1614,6 +1660,7 @@ func TestDefaultPreparerCleanupRemovesManagedBlocksAndRuntimeRoot(t *testing.T) 
 }
 
 func TestDefaultPreparerCleanupCanPreserveRecoverableRuntimeRoot(t *testing.T) {
+	setTestHome(t, t.TempDir())
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
 	preparer := newTestPreparer(stateDir)
@@ -1658,6 +1705,7 @@ func TestDefaultPreparerCleanupCanPreserveRecoverableRuntimeRoot(t *testing.T) {
 }
 
 func TestDefaultPreparerCodexUsesSessionScopedInstructionFile(t *testing.T) {
+	setTestHome(t, t.TempDir())
 	stateDir := t.TempDir()
 	cwd := t.TempDir()
 	preparer := newTestPreparer(stateDir)
@@ -1689,7 +1737,167 @@ func TestDefaultPreparerCodexUsesSessionScopedInstructionFile(t *testing.T) {
 	}
 }
 
+func TestDefaultPreparerCodexProjectsUserAgentsIntoSessionHome(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	userAgentsPath := filepath.Join(userCodexHome, "AGENTS.md")
+	userAgents := "global Codex guidance\n"
+	if err := os.WriteFile(userAgentsPath, []byte(userAgents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	cwd := t.TempDir()
+	preparer := newTestPreparer(stateDir)
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		Cwd:            cwd,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	codexAgentsPath := filepath.Join(codexHome, "AGENTS.md")
+	codexAgents, err := os.ReadFile(codexAgentsPath)
+	if err != nil {
+		t.Fatalf("read session AGENTS.md: %v", err)
+	}
+	if !strings.Contains(string(codexAgents), userAgents) {
+		t.Fatalf("session AGENTS.md = %q, want user guidance", string(codexAgents))
+	}
+	if !strings.Contains(string(codexAgents), managedBlockBegin) {
+		t.Fatalf("session AGENTS.md = %q, want Tutti managed block", string(codexAgents))
+	}
+	info, err := os.Lstat(codexAgentsPath)
+	if err != nil {
+		t.Fatalf("stat session AGENTS.md: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		t.Fatalf("session AGENTS.md is a symlink, want an isolated copy")
+	}
+	userAgentsAfter, err := os.ReadFile(userAgentsPath)
+	if err != nil {
+		t.Fatalf("read user AGENTS.md after prepare: %v", err)
+	}
+	if string(userAgentsAfter) != userAgents {
+		t.Fatalf("user AGENTS.md changed to %q", string(userAgentsAfter))
+	}
+
+	if err := preparer.Cleanup(t.Context(), CleanupInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+	}); err != nil {
+		t.Fatalf("Cleanup() error = %v", err)
+	}
+}
+
+func TestDefaultPreparerCodexReplacesPreexistingAgentsLinks(t *testing.T) {
+	for _, kind := range []string{"hardlink", "symlink"} {
+		t.Run(kind, func(t *testing.T) {
+			home := t.TempDir()
+			setTestHome(t, home)
+			userCodexHome := filepath.Join(home, ".codex")
+			if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			userAgentsPath := filepath.Join(userCodexHome, "AGENTS.md")
+			userAgents := "global Codex guidance\n"
+			if err := os.WriteFile(userAgentsPath, []byte(userAgents), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			stateDir := t.TempDir()
+			runtimeRoot, err := LocalStore{StateDir: stateDir}.RuntimeRoot("workspace-1", "session-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			codexHome := filepath.Join(runtimeRoot, "codex-home")
+			if err := os.MkdirAll(codexHome, 0o700); err != nil {
+				t.Fatal(err)
+			}
+			target := filepath.Join(codexHome, "AGENTS.md")
+			switch kind {
+			case "hardlink":
+				if err := os.Link(userAgentsPath, target); err != nil {
+					t.Fatal(err)
+				}
+			case "symlink":
+				if err := os.Symlink(userAgentsPath, target); err != nil {
+					t.Skipf("symlinks unavailable: %v", err)
+				}
+			}
+
+			preparer := newTestPreparer(stateDir)
+			prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+				WorkspaceID:    "workspace-1",
+				AgentSessionID: "session-1",
+				Provider:       "codex",
+				Cwd:            t.TempDir(),
+			})
+			if err != nil {
+				t.Fatalf("Prepare() error = %v", err)
+			}
+
+			gotUserAgents, err := os.ReadFile(userAgentsPath)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(gotUserAgents) != userAgents {
+				t.Fatalf("user AGENTS.md changed to %q", gotUserAgents)
+			}
+			gotTargetInfo, err := os.Lstat(envValue(prepared.Env, "CODEX_HOME") + string(os.PathSeparator) + "AGENTS.md")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if gotTargetInfo.Mode()&os.ModeSymlink != 0 {
+				t.Fatal("session AGENTS.md is still a symlink")
+			}
+			gotTarget, err := os.ReadFile(target)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(gotTarget), managedBlockBegin) {
+				t.Fatalf("session AGENTS.md = %q, want managed block", gotTarget)
+			}
+		})
+	}
+}
+
+func TestDefaultPreparerCodexIgnoresNonRegularUserAgents(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	if err := os.MkdirAll(filepath.Join(home, ".codex", "AGENTS.md"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	content, err := os.ReadFile(filepath.Join(envValue(prepared.Env, "CODEX_HOME"), "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), managedBlockBegin) {
+		t.Fatalf("session AGENTS.md = %q, want managed block", content)
+	}
+}
+
 func TestDefaultPreparerRejectsMissingCwd(t *testing.T) {
+	setTestHome(t, t.TempDir())
 	stateDir := t.TempDir()
 	missingCwd := filepath.Join(t.TempDir(), "deleted-project")
 
@@ -2039,6 +2247,7 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 	if err != nil {
 		t.Fatalf("tuttiCLIPolicy() error = %v", err)
 	}
+	expectedPolicy = cursorPromptPolicy(expectedPolicy)
 	if !strings.HasPrefix(string(promptContext), strings.TrimSpace(expectedPolicy)+"\n\n## Available Skills\n") {
 		t.Fatalf("cursor prompt context does not start with resolved policy: %s", string(promptContext))
 	}
@@ -2374,7 +2583,7 @@ func TestExposeCodexImportedRolloutFileSymlinksMatchingRelativePath(t *testing.T
 	writeSidecarTestFile(t, sourcePath, `{"type":"session_meta"}`)
 
 	codexHome := t.TempDir()
-	if err := exposeCodexImportedRolloutFile(codexHome, sourcePath); err != nil {
+	if err := exposeCodexImportedRolloutFile(codexHome, filepath.Join(home, ".codex"), sourcePath); err != nil {
 		t.Fatalf("exposeCodexImportedRolloutFile() error = %v", err)
 	}
 
@@ -2401,7 +2610,7 @@ func TestExposeCodexImportedRolloutFileNoopWhenSourcePathEmpty(t *testing.T) {
 	home := t.TempDir()
 	setTestHome(t, home)
 	codexHome := t.TempDir()
-	if err := exposeCodexImportedRolloutFile(codexHome, ""); err != nil {
+	if err := exposeCodexImportedRolloutFile(codexHome, filepath.Join(home, ".codex"), ""); err != nil {
 		t.Fatalf("exposeCodexImportedRolloutFile() error = %v", err)
 	}
 	entries, err := os.ReadDir(codexHome)
@@ -2419,7 +2628,7 @@ func TestExposeCodexImportedRolloutFileGracefulWhenSourceFileMissing(t *testing.
 	sourcePath := filepath.Join(home, ".codex", "sessions", "2026", "07", "04", "rollout-gone.jsonl")
 
 	codexHome := t.TempDir()
-	if err := exposeCodexImportedRolloutFile(codexHome, sourcePath); err != nil {
+	if err := exposeCodexImportedRolloutFile(codexHome, filepath.Join(home, ".codex"), sourcePath); err != nil {
 		t.Fatalf("exposeCodexImportedRolloutFile() error = %v, want graceful nil when source is gone", err)
 	}
 	if _, err := os.Lstat(filepath.Join(codexHome, "sessions", "2026", "07", "04", "rollout-gone.jsonl")); !os.IsNotExist(err) {
@@ -2434,7 +2643,7 @@ func TestExposeCodexImportedRolloutFileGracefulWhenSourceOutsideRealCodexHome(t 
 	writeSidecarTestFile(t, outsidePath, `{"type":"session_meta"}`)
 
 	codexHome := t.TempDir()
-	if err := exposeCodexImportedRolloutFile(codexHome, outsidePath); err != nil {
+	if err := exposeCodexImportedRolloutFile(codexHome, filepath.Join(home, ".codex"), outsidePath); err != nil {
 		t.Fatalf("exposeCodexImportedRolloutFile() error = %v, want graceful nil for a path outside ~/.codex", err)
 	}
 	entries, err := os.ReadDir(codexHome)

@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { translate } from "../../../../i18n/index";
 import type {
   AgentToolCallVM,
   AgentToolRendererKind
@@ -10,9 +11,11 @@ import {
   arrayValue,
   objectValue,
   stringValue,
+  ToolSection,
   ToolMarkdownBlock,
   type AgentToolRendererProps
 } from "./agentToolContentShared";
+import { formatToolDetails } from "../interactivePromptPresentation";
 
 export function AgentApprovalContent({
   call,
@@ -20,7 +23,8 @@ export function AgentApprovalContent({
 }: AgentToolRendererProps): JSX.Element | null {
   "use memo";
   const previewCall = approvalPreviewCall(call);
-  if (!previewCall && !call.summary.trim()) {
+  const detailText = approvalDetailText(call.input);
+  if (!previewCall && !call.summary.trim() && !detailText) {
     return null;
   }
   if (previewCall) {
@@ -41,9 +45,32 @@ export function AgentApprovalContent({
   }
   return (
     <div className="workspace-agents-status-panel__detail-tool-body">
-      <ToolMarkdownBlock content={call.summary} />
+      {call.summary.trim() ? (
+        <ToolMarkdownBlock content={call.summary} />
+      ) : null}
+      {detailText ? (
+        <ToolSection title={translate("agentHost.agentTool.details.input")}>
+          <ToolMarkdownBlock content={detailText} />
+        </ToolSection>
+      ) : null}
     </div>
   );
+}
+
+function approvalDetailText(
+  input: Record<string, unknown> | null
+): string | null {
+  const details = formatToolDetails(input);
+  if (details.length === 0) {
+    return null;
+  }
+  return details
+    .map((detail) =>
+      [detail.label, detail.value, detail.meta]
+        .filter((value): value is string => Boolean(value?.trim()))
+        .join("\n")
+    )
+    .join("\n\n");
 }
 
 interface ApprovalPreviewKind {

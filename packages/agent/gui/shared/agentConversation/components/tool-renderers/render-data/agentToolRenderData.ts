@@ -2,6 +2,7 @@ import type { AgentToolCallVM } from "../../../contracts/agentToolCallVM";
 import { extractImageGenerationPreview } from "../../../../imageGenerationTool";
 import { workspaceFilePathBasename } from "../../../../../actions/workspaceFilePathCandidate";
 import type { AgentTaskStepVM } from "../../../contracts/agentTaskItemVM";
+import { structuredToolText } from "./structuredToolText";
 import type {
   AgentCommandRenderData,
   AgentCommandStatus,
@@ -110,7 +111,8 @@ export function getSearchRenderData(
         stringValue(call.error?.text),
         stringValue(call.error?.stdout),
         stringValue(call.error?.stderr),
-        stringValue(call.error?.message)
+        stringValue(call.error?.message),
+        structuredText(call.error)
       ) ?? ""
   };
 }
@@ -143,7 +145,8 @@ export function getWebSearchRenderData(
     error:
       firstString(
         stringValue(call.error?.message),
-        stringValue(call.error?.stdout)
+        stringValue(call.error?.stdout),
+        structuredText(call.error)
       ) ?? ""
   };
 }
@@ -555,37 +558,7 @@ function durationToMs(value: unknown): number | null {
 }
 
 function structuredText(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  const record = recordValue(value);
-  if (!record) {
-    return null;
-  }
-  const preferred = firstString(
-    stringValue(record.plan),
-    stringValue(record.text),
-    stringValue(record.summary),
-    stringValue(record.result),
-    stringValue(record.message),
-    stringValue(record.stdout),
-    stringValue(record.stderr),
-    stringValue(record.query),
-    stringValue(record.path),
-    stringValue(record.file),
-    stringValue(record.filePath),
-    stringValue(record.file_path),
-    stringValue(record.url),
-    stringValue(record.cmd),
-    stringValue(record.command)
-  );
-  if (preferred) {
-    return preferred;
-  }
-  return null;
+  return structuredToolText(value);
 }
 
 function firstString(

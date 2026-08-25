@@ -107,6 +107,12 @@ func (c *standardACPConnection) Send(data []byte) error {
 			if request.Params != nil {
 				c.lastNewSessionParams = maps.Clone(request.Params)
 			}
+			c.newSessionCallCount++
+			newSessionError := c.newSessionError
+			if len(c.newSessionErrors) > 0 {
+				newSessionError = c.newSessionErrors[0]
+				c.newSessionErrors = c.newSessionErrors[1:]
+			}
 			c.mu.Unlock()
 			if c.requireAuthentication && c.authenticatedMethodID() == "" {
 				c.sendJSON(map[string]any{
@@ -115,9 +121,9 @@ func (c *standardACPConnection) Send(data []byte) error {
 				})
 				continue
 			}
-			if c.newSessionError != nil {
+			if newSessionError != nil {
 				c.sendJSON(map[string]any{
-					"jsonrpc": "2.0", "id": message.ID, "error": c.newSessionError,
+					"jsonrpc": "2.0", "id": message.ID, "error": newSessionError,
 				})
 				continue
 			}

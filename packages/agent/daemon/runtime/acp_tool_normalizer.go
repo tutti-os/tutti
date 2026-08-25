@@ -1,10 +1,8 @@
 package agentruntime
 
 import (
-	"encoding/json"
 	"log/slog"
 	"os"
-	"strconv"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -438,6 +436,7 @@ func acpNormalizeToolOutput(rawOutput any, content any) map[string]any {
 	}
 	body = acpSanitizeImagePayloadMap(body)
 	acpPromoteToolOutputMetadata(body)
+	acpPromoteToolErrorMetadata(body)
 	if content != nil {
 		sanitizedContent := acpSanitizeImagePayload(content)
 		body["content"] = sanitizedContent
@@ -513,7 +512,7 @@ func acpMirrorFailedToolOutput(body map[string]any) map[string]any {
 		return nil
 	}
 	mirrored := map[string]any{}
-	for _, key := range []string{"text", "stdout", "stderr", "aggregated_output", "formatted_output", "content", "structuredContent", "isError", "success", "changes", "status", "call_id", "turn_id", "cwd", "parsed_cmd", "command", "exit_code", "duration", "duration_ms", "completed_at_ms", "source", "process_id"} {
+	for _, key := range []string{"text", "stdout", "stderr", "aggregated_output", "formatted_output", "content", "structuredContent", "result", "error", "err", "errorMessage", "error_message", "message", "detail", "rawErrorMessages", "raw_error_messages", "isError", "is_error", "success", "changes", "status", "call_id", "turn_id", "cwd", "parsed_cmd", "command", "exit_code", "duration", "duration_ms", "completed_at_ms", "source", "process_id"} {
 		if value, ok := body[key]; ok && value != nil {
 			mirrored[key] = clonePayloadValue(value)
 		}
@@ -717,21 +716,6 @@ func canonicalACPStatusToken(status string) string {
 	}
 }
 
-func acpResolvedToolCallStatus(update map[string]any, fallback string) string {
-	status := normalizedCallStatus(firstNonEmpty(asString(update["status"]), fallback))
-	if status != messageStreamStateStreaming {
-		return status
-	}
-	rawOutput := acpToolCallRawOutput(update)
-	if inferred := acpInferTerminalToolStatus(rawOutput); inferred != "" {
-		return inferred
-	}
-	if inferred := acpInferImageGenerationTerminalStatus(update, rawOutput); inferred != "" {
-		return inferred
-	}
-	return status
-}
-
 func acpInferTerminalToolStatus(rawOutput any) string {
 	body := acpMapFromValue(rawOutput, "output")
 	if len(body) == 0 {
@@ -809,43 +793,4 @@ func acpToolCallLooksLikeImageGeneration(update map[string]any) bool {
 		}
 	}
 	return false
-}
-
-func acpIntFromValue(value any) (int, bool) {
-	switch typed := value.(type) {
-	case int:
-		return typed, true
-	case int32:
-		return int(typed), true
-	case int64:
-		return int(typed), true
-	case float64:
-		return int(typed), true
-	case json.Number:
-		n, err := typed.Int64()
-		if err != nil {
-			return 0, false
-		}
-		return int(n), true
-	case string:
-		n, err := strconv.Atoi(strings.TrimSpace(typed))
-		if err != nil {
-			return 0, false
-		}
-		return n, true
-	default:
-		return 0, false
-	}
-}
-
-func acpExitCodeFromText(value any) (int, bool) {
-	text := strings.TrimSpace(asString(value))
-	if text == "" {
-		return 0, false
-	}
-	lower := strings.ToLower(text)
-	if !strings.HasPrefix(lower, "exit code ") {
-		return 0, false
-	}
-	return acpIntFromValue(strings.TrimSpace(text[len("Exit code "):]))
 }

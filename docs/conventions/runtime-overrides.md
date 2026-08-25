@@ -226,6 +226,17 @@ Claude-native credential and endpoint values pass through unchanged. Logs may
 record only their presence, storage source, expiry metadata, and non-reversible
 fingerprints; they must never record values, account names, or personal paths.
 
+Codex and Tutti Agent use the Codex app-server protocol for their model and
+dynamic capability catalogs. Their model-list operation has a 30-second
+provider-process bound and a 35-second outer catalog-fetch bound; the
+capability-list operation has the same 30-second provider-process bound. These
+provider-specific windows cover a cold Windows npm shim and the provider's
+own model-metadata refresh without widening unrelated status or interactive
+session timeouts. The persistent model catalog cache still uses its existing
+five-minute success and short failed-fetch windows. A timeout from Codex's own
+`codex_models_manager` or a stale runtime-selection error is provider-owned
+and is not converted into success by these Tutti bounds.
+
 OpenCode provider availability checks the `opencode` CLI directly and launches
 sessions through the official `opencode acp` command. Do not add model,
 agent, or auto-mode CLI flags to that ACP command. Session model selection must
@@ -243,17 +254,21 @@ OpenCode config directory. A model access plan, when present, writes its
 OpenCode composer model options and model-specific reasoning variants come from
 `opencode models --verbose`. Run that command from the composer workspace cwd
 because OpenCode resolves project configuration relative to the current
-directory. OpenCode model lists are not stored in the daemon model-catalog
-cache; each composer-options request observes the current CLI catalog. An empty
-`variants` object is authoritative: AgentGUI must not expose or submit an ACP
+directory. The daemon gives this CLI fetch a 35-second outer request bound and
+a 30-second provider-specific process bound to accommodate a cold Windows npm
+shim without making other providers slower. Successful catalogs are cached in
+memory for five minutes and failed fetches for 30 seconds, but the cache key
+includes the workspace cwd and is not persisted across daemon restarts. An
+empty `variants` object is authoritative: AgentGUI must not expose or submit an ACP
 `effort` value for that model. Do not restore a provider-wide static effort list,
 because OpenCode models use different variant vocabularies (for example `max`
 rather than `xhigh`) and some reasoning-capable models expose no selectable
 variant at all. The provider auth/config watcher still publishes the
 `agent.model.catalog.invalidated` event when OpenCode's auth marker
 (`~/.local/share/opencode/auth.json`) or configured OpenCode config files change
-so an open composer refreshes immediately; it does not invalidate an OpenCode
-model-list cache. OpenCode composer skill options are discovered with slash triggers
+so an open composer refreshes immediately; it invalidates existing in-memory
+OpenCode model-list cache entries so the next request refetches for its cwd.
+OpenCode composer skill options are discovered with slash triggers
 from native `.opencode/skills/*/SKILL.md`, Claude-compatible `.claude/skills`,
 agent-compatible `.agents/skills`, global `~/.config/opencode/skills`,
 `~/.claude/skills`, `~/.agents/skills`, and the `OPENCODE_CONFIG_DIR` skills

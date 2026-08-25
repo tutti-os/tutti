@@ -54,6 +54,9 @@ export function normalizeAgentGUIAgents(
           : {})
       },
       provider: agent.provider,
+      ...(agent.providerAccountUsageApplicable === false
+        ? { providerAccountUsageApplicable: false }
+        : {}),
       ...(agent.setupKind === "target_runtime"
         ? { setupKind: "target_runtime" as const }
         : {})
@@ -103,6 +106,9 @@ export function projectAgentGUIAgentsToTargets(
     },
     label: agent.name,
     availability: agent.availability,
+    ...(agent.providerAccountUsageApplicable === false
+      ? { providerAccountUsageApplicable: false }
+      : {}),
     ...(agent.description ? { description: agent.description } : {}),
     iconUrl: agent.iconUrl,
     ...(agent.maskIconUrl ? { maskIconUrl: agent.maskIconUrl } : {}),

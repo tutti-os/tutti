@@ -82,7 +82,7 @@ func TestComposerSelectedModelOptionsAreRequestedOrigin(t *testing.T) {
 func TestComposerModelConfigCarriesRequestedProvenance(t *testing.T) {
 	config := composerModelConfig("codex", "x-ai/grok-4.5", []ComposerConfigOptionValue{
 		{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", Value: "gpt-5.6-sol"},
-		{ID: "x-ai/grok-4.5", Label: "x-ai/grok-4.5", Value: "x-ai/grok-4.5", Requested: true},
+		{ID: "x-ai/grok-4.5", Label: "x-ai/grok-4.5", Value: "x-ai/grok-4.5", ConsumptionMultiplier: "0.79", Requested: true},
 	})
 	if len(config.Options) != 2 {
 		t.Fatalf("expected both options, got %d", len(config.Options))
@@ -92,6 +92,9 @@ func TestComposerModelConfigCarriesRequestedProvenance(t *testing.T) {
 	}
 	if !config.Options[1].Requested {
 		t.Fatal("requested entry must keep its provenance through composerModelConfig")
+	}
+	if config.Options[1].ConsumptionMultiplier != "0.79" {
+		t.Fatalf("consumption multiplier must keep its common projection, got %q", config.Options[1].ConsumptionMultiplier)
 	}
 }
 

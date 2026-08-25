@@ -74,7 +74,11 @@ export function AgentVisibleErrorMessage({
     insufficientCreditsOverride?.providers.includes(error.provider ?? "")
       ? insufficientCreditsOverride
       : undefined;
+  const rawDetail = error?.detail ?? "";
+  const providerHeadline =
+    error?.origin === "provider" && rawDetail.trim() ? rawDetail : null;
   const headline =
+    providerHeadline ||
     presentationOverride?.message ||
     (presentation?.messageKey
       ? translate(presentation.messageKey, { provider: providerLabel })
@@ -83,8 +87,10 @@ export function AgentVisibleErrorMessage({
   const actionKey = presentation?.actionKey ?? null;
   const externalAction = presentationOverride?.action ?? null;
   const hint = visibleErrorHint(message, scope);
-  const rawDetail = error?.detail ?? "";
-  const showRawDetail = error?.detailAvailable === true && rawDetail !== "";
+  const showRawDetail =
+    error?.origin !== "provider" &&
+    error?.detailAvailable === true &&
+    rawDetail !== "";
   // Account limits are status notices, not process crashes. Provider payloads
   // stay in the canonical model and diagnostics; raw upstream text is only
   // rendered through the explicit disclosure below.
@@ -103,6 +109,11 @@ export function AgentVisibleErrorMessage({
           <div className="font-medium text-[var(--text-primary)]">
             {headline}
           </div>
+          {scope === "shared_caller" && error?.code ? (
+            <code className="mt-1 block break-all font-mono text-[10px] leading-4 text-[var(--text-secondary)]">
+              {error.code}
+            </code>
+          ) : null}
           {hint ? (
             <div className="mt-1 text-[11px] text-[var(--text-secondary)]">
               {hint}

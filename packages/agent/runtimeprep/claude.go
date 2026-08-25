@@ -13,6 +13,7 @@ import (
 
 const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE"
 const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR"
+const claudeAdditionalDirectoriesEnv = "TUTTI_CLAUDE_ADDITIONAL_DIRECTORIES_JSON"
 const claudeSkillListingBudgetEnv = "SLASH_COMMAND_TOOL_CHAR_BUDGET"
 const claudeSkillListingBudgetChars = "20000"
 
@@ -34,6 +35,10 @@ type ClaudeCodePreparer struct {
 	// StateDir is the tutti state root that hosts the managed claude binary
 	// pointer; empty disables the managed-binary fallback.
 	StateDir string
+	// PersonalSkillRoot is an optional stable user Skill root outside Claude's
+	// native config home. It is projected as an SDK additional directory so
+	// Claude loads the Skills with their ordinary, un-namespaced slash commands.
+	PersonalSkillRoot string
 }
 
 func (ClaudeCodePreparer) Provider() string {
@@ -74,6 +79,20 @@ func (p ClaudeCodePreparer) Prepare(_ context.Context, input ProviderPrepareInpu
 			claudePluginDirEnv+"="+pluginDir,
 			claudeSkillListingBudgetEnv+"="+claudeSkillListingBudgetChars,
 		)
+		additionalDirectory, err := prepareClaudePersonalSkillDirectory(input.RuntimeRoot, p.PersonalSkillRoot)
+		if err != nil {
+			return ProviderPrepareResult{}, err
+		}
+		if additionalDirectory != "" {
+			encodedDirectories, err := json.Marshal([]string{additionalDirectory})
+			if err != nil {
+				return ProviderPrepareResult{}, fmt.Errorf("encode Claude additional directories: %w", err)
+			}
+			env = append(env, claudeAdditionalDirectoriesEnv+"="+string(encodedDirectories))
+			if input.Manifest != nil {
+				input.Manifest.RecordManagedFile(additionalDirectory, "provider-personal-skills", true)
+			}
+		}
 	}
 	env = append(env, p.claudeCodeExecutableEnv()...)
 	env = append(env, modelEndpointClaudeEnv(input.ModelEndpoint)...)

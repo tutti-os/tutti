@@ -147,12 +147,27 @@ func RunStandardACPSetup(
 			}
 			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
 		}
+		// A caller-selected method is a scoped setup operation. Preserve its
+		// provider error while keeping the setup surface actionable; this does
+		// not classify the error as provider-global authentication evidence.
+		if methodID != "" && !errors.Is(err, ErrACPAuthMethodUnavailable) {
+			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, err
+		}
 		// Some ACP agents advertise both a provider credential method and a
 		// terminal setup method. Before setup is completed, session/new may
 		// synchronously initialize the provider and exceed the probe timeout.
 		// Keep the install successful and expose the terminal setup action;
 		// explicit authenticate/setup attempts still return their real error.
 		if methodID == "" && standardACPSetupSessionNewTimedOut(err) && standardACPSetupHasInteractiveAuth(methods) {
+			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
+		}
+		// This compatibility check is deliberately exact and scoped to the setup
+		// probe. Some ACP agents use the generic -32000 JSON-RPC code with the
+		// literal value below after advertising authentication methods. Do not
+		// teach acpCallError.AuthRequired to infer from prose: ordinary Turns must
+		// keep generic JSON-RPC failures provider-scoped, and unrelated setup
+		// failures (for example overloaded relays) must remain visible.
+		if methodID == "" && standardACPSetupSessionNewAuthRejected(err) && len(methods) > 0 {
 			return StandardACPSetupResult{Status: StandardACPSetupAuthRequired, AuthMethods: methods}, nil
 		}
 		if IsAuthenticationRequired(err) || standardACPSetupNeedsConfiguration(err, methods) {
@@ -169,6 +184,13 @@ func RunStandardACPSetup(
 		return StandardACPSetupResult{}, fmt.Errorf("close ACP setup session: %w", err)
 	}
 	return StandardACPSetupResult{Status: StandardACPSetupReady, AuthMethods: methods, Account: account}, nil
+}
+
+func standardACPSetupSessionNewAuthRejected(err error) bool {
+	var callErr *acpCallError
+	return errors.As(err, &callErr) &&
+		callErr.Method == acpMethodNewSession &&
+		strings.EqualFold(strings.TrimSpace(callErr.Err.Message), "authentication required")
 }
 
 func standardACPSetupHasInteractiveAuth(methods []StandardACPAuthMethod) bool {

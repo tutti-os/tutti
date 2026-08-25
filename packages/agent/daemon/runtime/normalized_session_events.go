@@ -36,13 +36,17 @@ func normalizedConfigOptionsUpdatedEvent(session Session, update map[string]any)
 	return event, true
 }
 
-func normalizedUsageUpdatedEvent(session Session) (activityshared.Event, bool) {
+func normalizedUsageUpdatedEvent(session Session, runtimeContexts ...map[string]any) (activityshared.Event, bool) {
 	ctx, ok := activityEventContext(session, newID(), "")
 	if !ok {
 		return activityshared.Event{}, false
 	}
 	event := activityshared.NewSessionUpdated(ctx, "")
-	event.Payload.Metadata = map[string]any{"sessionUpdateKind": "usage_update"}
+	metadata := map[string]any{"sessionUpdateKind": "usage_update"}
+	if len(runtimeContexts) > 0 && len(runtimeContexts[0]) > 0 {
+		metadata["runtimeContext"] = clonePayload(runtimeContexts[0])
+	}
+	event.Payload.Metadata = metadata
 	return event, true
 }
 

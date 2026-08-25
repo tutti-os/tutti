@@ -95,6 +95,31 @@ func TestFileServiceListDirectoryUsesWindowsDriveAbsolutePathWithLocalAdapter(t 
 	}
 }
 
+func TestFileServiceListDirectoryAcceptsWindowsLogicalDrivePathOutsideHome(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("Windows logical drive paths are only exercised on Windows")
+	}
+
+	homeDir := filepath.Join(t.TempDir(), "home")
+	setTestHome(t, homeDir)
+	targetPath := filepath.Join(t.TempDir(), "workspace", "src")
+	if err := os.MkdirAll(targetPath, 0o755); err != nil {
+		t.Fatalf("MkdirAll(%q) error = %v", targetPath, err)
+	}
+	logicalTargetPath := "/" + filepath.ToSlash(targetPath)
+
+	service := FileService{Adapter: localworkspace.LocalFilesAdapter{}}
+	listing, err := service.ListDirectory(context.Background(), "ws-1", workspacefiles.DirectoryListInput{
+		Path: logicalTargetPath,
+	})
+	if err != nil {
+		t.Fatalf("ListDirectory(%q) error = %v", logicalTargetPath, err)
+	}
+	if listing.DirectoryPath.String() != logicalTargetPath {
+		t.Fatalf("directory path = %q, want %q", listing.DirectoryPath, logicalTargetPath)
+	}
+}
+
 func TestFileServiceListDirectoryAcceptsExternalAbsolutePaths(t *testing.T) {
 	homeDir := t.TempDir()
 	setTestHome(t, homeDir)

@@ -896,6 +896,9 @@ future mutations; `effectiveModel` is presentation-only runtime evidence for
 describing what Default currently resolves to. Activity adapters and AgentGUI
 must not replace the selection with that resolved value or infer it from the
 catalog's Default entry.
+Optional model `consumptionMultiplier` metadata is likewise typed before it
+reaches activity-core. AgentGUI may render that field but must not reconstruct
+quota or cost semantics from provider-owned model descriptions.
 An omitted pre-session descriptor means the connected daemon predates the
 typed composer capability contract and must remain an unknown/loading state.
 Core capability booleans must not be reconstructed from private
