@@ -443,7 +443,8 @@ async function triggerPopup(input: {
         before.producerCallbacks + input.expectedProducerCallbacks &&
       input.counts.rejectionNotifications ===
         before.rejectionNotifications + input.expectedRejectionNotifications &&
-      input.guestContents.getURL() === expectedGuestUrl,
+      input.guestContents.getURL() === expectedGuestUrl &&
+      !input.guestContents.isLoading(),
     () =>
       JSON.stringify({
         actual: input.counts,
