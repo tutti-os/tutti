@@ -61,6 +61,10 @@ node component zip:
   node/bin/npm
   node/bin/npx
   node/bin/corepack
+
+rtk component zip (separate `rtk-saver` profile):
+  rtk/bin/rtk
+  rtk/LICENSE
 ```
 
 Windows runtime artifacts, when added, must use the Windows executable names expected by tuttid:
@@ -70,6 +74,7 @@ python/bin/python.exe
 node/bin/node.exe
 node/bin/npm.cmd
 node/bin/corepack.cmd
+rtk/bin/rtk.exe
 ```
 
 Catalog platform keys must use Go runtime names because tuttid resolves them with `runtime.GOOS` and `runtime.GOARCH`. Use `darwin-amd64` and `linux-amd64`, not Node's `darwin-x64` or `linux-x64` download labels.
@@ -84,7 +89,9 @@ The runtime release source of truth is:
 config/tutti.app-runtime.lock.json
 ```
 
-When Python, Node, uv, supported platforms, or artifact layout changes, update the lock and run the runtime release workflow once. Fixed versions do not require rebuilding on every product release.
+When Python, Node, RTK, uv, supported platforms, or artifact layout changes,
+update the lock and run the runtime release workflow once. Fixed versions do
+not require rebuilding on every product release.
 
 The workflow is:
 
@@ -98,16 +105,19 @@ The workflow:
 2. Uses uv to install the pinned macOS/Linux Python baseline.
 3. Downloads the pinned official CPython embeddable package on Windows, verifies its SHA-256, and requires valid Authenticode signatures on every `.exe`, `.dll`, and `.pyd` file.
 4. Downloads the pinned Node release for each platform and verifies it against Node's `SHASUMS256.txt`.
-5. Assembles separate Python and Node zips per platform.
-6. Writes metadata for each platform's runtime components.
-7. Uploads immutable component zips to S3.
-8. Builds and uploads `catalog.json`.
+5. Downloads the pinned RTK release and Apache-2.0 license, verifies byte size
+   and SHA-256, and checks `rtk --version`.
+6. Assembles separate Python, Node, and RTK zips per platform.
+7. Writes metadata for each platform's runtime components.
+8. Uploads immutable component zips to S3.
+9. Builds and uploads `catalog.json`.
 
 Runtime artifacts should be uploaded under a dedicated S3 prefix, normally:
 
 ```text
 tutti-app-runtimes/<runtimeVersion>/<platform>/python/tutti-app-runtime-python-<platform>-<runtimeVersion>.zip
 tutti-app-runtimes/<runtimeVersion>/<platform>/node/tutti-app-runtime-node-<platform>-<runtimeVersion>.zip
+tutti-app-runtimes/<runtimeVersion>/<platform>/rtk/tutti-app-runtime-rtk-<platform>-<runtimeVersion>.zip
 tutti-app-runtimes/catalog.json
 ```
 
@@ -156,11 +166,18 @@ The runtime catalog consumed by tuttid has this shape:
           "artifactUrl": "https://cdn.example.test/tutti-app-runtimes/2026.06.0/darwin-arm64/node/tutti-app-runtime-node-darwin-arm64-2026.06.0.zip",
           "artifactSha256": "64-char-sha256",
           "artifactSizeBytes": 456
+        },
+        "rtk": {
+          "version": "0.45.0",
+          "artifactUrl": "https://cdn.example.test/tutti-app-runtimes/2026.06.0/darwin-arm64/rtk/tutti-app-runtime-rtk-darwin-arm64-2026.06.0.zip",
+          "artifactSha256": "64-char-sha256",
+          "artifactSizeBytes": 789
         }
       },
       "profiles": {
         "baseline": ["python", "node"],
-        "connector-node-static": ["node"]
+        "connector-node-static": ["node"],
+        "rtk-saver": ["rtk"]
       }
     }
   }
@@ -200,12 +217,16 @@ Supported daemon overrides:
 - `TUTTI_APP_RUNTIME_CATALOG`: HTTP(S) URL or local file path for the runtime catalog. Set it to an empty string to disable the default runtime catalog.
 - `TUTTI_APP_RUNTIME_CACHE_ROOT`: cache root for platform-specific runtime directories.
 - `TUTTI_APP_RUNTIME_ROOT`: exact prepared runtime root, mainly for tests and local debugging.
+- `TUTTI_BUNDLED_RTK_PATH`: exact packaged RTK executable used by Desktop;
+  development and non-Desktop hosts may override it for packaging diagnostics.
 - `TUTTI_MANAGED_POSIX_SHELL`: absolute path to the managed POSIX shell
   executable. Packaged Windows Desktop sets this automatically; the Workspace
   App adapter consumes it, while the override exists for development, tests,
   and packaging diagnostics.
 
-App packages must not set these variables. The runner injects `TUTTI_APP_PYTHON`, `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and `PATH` for app processes.
+App packages must not set these variables. The runner injects `TUTTI_APP_PYTHON`, `TUTTI_APP_NODE`, `TUTTI_APP_NPM`, and `PATH` for app processes. RTK is
+not part of the Workspace App baseline; Agent saver mode and the Tutti terminal
+resolve the dedicated `rtk-saver` profile.
 Agent provider installers may also use the managed `TUTTI_APP_NPM` path to
 install ACP npm adapters into daemon-owned per-agent prefixes instead of npm
 global locations.

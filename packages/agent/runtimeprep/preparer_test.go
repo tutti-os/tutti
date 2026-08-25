@@ -1,6 +1,7 @@
 package runtimeprep
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -153,7 +154,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatal(err)
 	}
 
-	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	preparer := newTestPreparer(stateDir)
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:codex",
@@ -562,10 +564,12 @@ func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *tes
 	if err := os.Chmod(sourceRTK, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", binDir)
-
 	stateDir := t.TempDir()
-	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	preparer := newTestPreparer(stateDir)
+	preparer.RTKExecutableResolver = func(context.Context) (string, error) {
+		return sourceRTK, nil
+	}
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:opencode",
@@ -645,7 +649,7 @@ func TestDefaultPreparerRTKSaverModeFailsWhenRTKIsUnavailable(t *testing.T) {
 		Cwd:            t.TempDir(),
 		CodexSaverMode: true,
 	})
-	if err == nil || !strings.Contains(err.Error(), "requires an existing rtk executable") {
+	if err == nil || !strings.Contains(err.Error(), "requires a Tutti-managed rtk executable resolver") {
 		t.Fatalf("Prepare() error = %v", err)
 	}
 	if _, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
 	"runtime"
 	"strings"
@@ -166,6 +168,49 @@ func TestTerminalServiceCreatesShellWithXtermEnvironment(t *testing.T) {
 		time.Sleep(25 * time.Millisecond)
 	}
 	t.Fatalf("snapshot data = %q, want xterm terminal environment", snapshot.Data)
+}
+
+func TestTerminalServiceExposesTuttiManagedRTKWithoutChangingGlobalPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake RTK fixture is a POSIX script")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("SHELL", "/bin/sh")
+	originalPath := os.Getenv("PATH")
+	rtkExecutable := filepath.Join(t.TempDir(), "rtk")
+	if err := os.WriteFile(rtkExecutable, []byte("#!/bin/sh\nprintf 'rtk bundled-test\\n'\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	service := &TerminalService{
+		RTKExecutableResolver: func(context.Context) (string, error) {
+			return rtkExecutable, nil
+		},
+	}
+	initialInput := "rtk --version\r"
+	session, err := service.Create(context.Background(), "ws-rtk", CreateTerminalInput{InitialInput: &initialInput})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	t.Cleanup(func() {
+		_, _ = service.Terminate(context.Background(), "ws-rtk", session.ID)
+	})
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		snapshot, snapshotErr := service.Snapshot(context.Background(), "ws-rtk", session.ID)
+		if snapshotErr != nil {
+			t.Fatal(snapshotErr)
+		}
+		if strings.Contains(snapshot.Data, "rtk bundled-test") {
+			if got := os.Getenv("PATH"); got != originalPath {
+				t.Fatalf("global PATH changed to %q, want %q", got, originalPath)
+			}
+			return
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	t.Fatal("Tutti terminal did not resolve the bundled rtk command")
 }
 
 func TestTerminalServiceAddsUTF8LocaleForMacOSShell(t *testing.T) {

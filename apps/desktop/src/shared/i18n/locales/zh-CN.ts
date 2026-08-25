@@ -1255,7 +1255,7 @@ export const zhCN = {
           "在 Agent 对话中启用 /side、Side 临时会话和选中文本浮动操作栏",
         agentSideConversationLabel: "Side 临时会话",
         codexSaverModeDescription:
-          "在所有 Agent 输入框显示可记忆的 RTK 开关；仅为开启的会话复制 RTK，不执行全局安装",
+          "在所有 Agent 输入框显示可记忆的 RTK 开关；Tutti 已内置 RTK，仅为开启的会话复制，不执行全局安装",
         codexSaverModeLabel: "RTK 省钱模式",
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",

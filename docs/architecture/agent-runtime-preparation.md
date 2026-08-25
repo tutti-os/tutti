@@ -14,8 +14,10 @@ RPC service is only a transport/path/security adapter and must call the same
 preparers.
 
 For any Agent Session launched with RTK saver mode enabled, provider-neutral
-runtime preparation keeps the selected model unchanged and resolves an existing
-host `rtk` executable. It copies that executable and the canonical `RTK.md`
+runtime preparation keeps the selected model unchanged and resolves the pinned
+Tutti-owned `rtk` executable. Packaged Desktop supplies it from app resources;
+other hosts resolve the SHA-256-verified `rtk-saver` managed-runtime component.
+Preparation copies that executable and the canonical `RTK.md`
 into the exact Session runtime and prepends only the private binary directory to
 that Session's `PATH`. The common Tutti Runtime policy carries the same RTK
 instructions through each provider's native instruction channel (for example,
@@ -24,12 +26,13 @@ context). New providers and extensions therefore inherit the mode without a
 provider-name branch. RTK's database, tee output, and telemetry policy are also
 isolated under the Session runtime.
 
-Runtime preparation deliberately does not install RTK through Homebrew, Cargo,
-an upstream shell script, or any other global toolchain. If no existing RTK
-binary is available, launch fails explicitly instead of presenting a mode whose
-instructions reference a missing command. Disabled Sessions receive no RTK
-files or environment overlay, and cleanup removes only the enabled Session's
-recorded runtime paths.
+Runtime preparation deliberately does not inspect the user PATH or install RTK
+through Homebrew, Cargo, an upstream shell script, or any other global
+toolchain. A missing or invalid bundled/managed artifact fails closed. Disabled
+Sessions receive no RTK files or environment overlay, and cleanup removes only
+the enabled Session's recorded runtime paths. The Tutti integrated terminal
+also prepends the Tutti-owned RTK directory to its child environment, but Tutti
+never mutates the operating-system or user-global PATH.
 
 Deployment differences are expressed with `DeploymentProfile` and
 `CapabilityPack`. A pack resolves policy, skills, and environment together.

@@ -1,11 +1,12 @@
 package runtimeprep
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 )
 
 const rtkInstructionsMarkdown = `# RTK - Rust Token Killer
@@ -40,7 +41,7 @@ type sessionRTKRuntime struct {
 // prepareSessionRTK copies an already available RTK executable and the
 // provider-neutral RTK.md instructions into the exact Session runtime. It
 // deliberately does not run a package manager or upstream installer.
-func prepareSessionRTK(runtimeRoot string) (sessionRTKRuntime, error) {
+func prepareSessionRTK(runtimeRoot string, resolveSource func() (string, error)) (sessionRTKRuntime, error) {
 	rtkRoot := filepath.Join(runtimeRoot, "rtk")
 	binDir := filepath.Join(rtkRoot, "bin")
 	dataDir := filepath.Join(rtkRoot, "data")
@@ -61,9 +62,13 @@ func prepareSessionRTK(runtimeRoot string) (sessionRTKRuntime, error) {
 	} else if !os.IsNotExist(statErr) {
 		return sessionRTKRuntime{}, fmt.Errorf("inspect session RTK executable: %w", statErr)
 	} else {
-		source, err := exec.LookPath(rtkExecutableName())
+		source, err := resolveSource()
 		if err != nil {
-			return sessionRTKRuntime{}, fmt.Errorf("rtk saver mode requires an existing rtk executable: %w", err)
+			return sessionRTKRuntime{}, err
+		}
+		source = filepath.Clean(strings.TrimSpace(source))
+		if source == "." || source == "" {
+			return sessionRTKRuntime{}, errors.New("tutti-managed rtk executable path is empty")
 		}
 		source, err = filepath.EvalSymlinks(source)
 		if err != nil {

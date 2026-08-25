@@ -273,6 +273,10 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
+	rtkExecutableResolver := func(ctx context.Context) (string, error) {
+		return resolveTuttiRTKExecutable(ctx, managedRuntimeResolver)
+	}
+	agentRuntimePreparer.RTKExecutableResolver = rtkExecutableResolver
 	userHome, err := os.UserHomeDir()
 	if err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve user home for personal Codex Skills: %w", err)
@@ -789,6 +793,7 @@ func buildDaemonAPI(
 	agentRuntimePreparer.CommandCatalog = runtimePrepCommandCatalog{Catalog: cliRegistry}
 
 	terminalService := workspaceservice.NewTerminalService(workspaceservice.NewPlatformTerminalProcessFactory())
+	terminalService.RTKExecutableResolver = rtkExecutableResolver
 	tuttiAgentReadiness := configureReplayAwareTuttiAgentReadiness(
 		replayComposition, accountService, &agentStatusService, agentTargets,
 	)

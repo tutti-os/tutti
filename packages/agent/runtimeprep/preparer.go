@@ -21,11 +21,15 @@ type DefaultPreparer struct {
 	// preserves configuration-only behavior for embedders without a browser service.
 	BrowserUseAvailable  func() bool
 	ComputerUseAvailable func() bool
-	Profile              DeploymentProfile
-	SkillSources         []SkillSource
-	providers            map[string]ProviderPreparer
-	cleanupMu            sync.Mutex
-	providerCleanup      map[string]func(context.Context) error
+	// RTKExecutableResolver resolves the Tutti-owned RTK binary for an enabled
+	// Session. Production hosts provide a bundled or managed-runtime resolver;
+	// standalone embedders must provide the same exact-path contract.
+	RTKExecutableResolver func(context.Context) (string, error)
+	Profile               DeploymentProfile
+	SkillSources          []SkillSource
+	providers             map[string]ProviderPreparer
+	cleanupMu             sync.Mutex
+	providerCleanup       map[string]func(context.Context) error
 }
 
 func NewDefaultPreparer(stateDir string) *DefaultPreparer {
@@ -134,7 +138,9 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 	result := ProviderPrepareResult{Cwd: cwd}
 	var rtkRuntime sessionRTKRuntime
 	if input.CodexSaverMode {
-		rtkRuntime, err = prepareSessionRTK(runtimeRoot)
+		rtkRuntime, err = prepareSessionRTK(runtimeRoot, func() (string, error) {
+			return p.resolveRTKExecutable(ctx)
+		})
 		if err != nil {
 			return PreparedRuntime{}, err
 		}
@@ -188,6 +194,20 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		Env:        result.Env,
 		MCPServers: cloneMCPServerBindings(input.MCPServers),
 	}, nil
+}
+
+func (p *DefaultPreparer) resolveRTKExecutable(ctx context.Context) (string, error) {
+	if p.RTKExecutableResolver != nil {
+		path, err := p.RTKExecutableResolver(ctx)
+		if err != nil {
+			return "", fmt.Errorf("resolve Tutti-managed rtk executable: %w", err)
+		}
+		if strings.TrimSpace(path) == "" {
+			return "", errors.New("tutti-managed rtk executable is unavailable")
+		}
+		return path, nil
+	}
+	return "", errors.New("rtk saver mode requires a Tutti-managed rtk executable resolver")
 }
 
 func cloneMCPServerBindings(input []MCPServerBinding) []MCPServerBinding {
