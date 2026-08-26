@@ -5,6 +5,7 @@
   "type": "module",
   "files": [
     "src/assistantStream.ts",
+    "src/accountUsageProbe.ts",
     "src/authDiagnostics.ts",
     "src/backgroundTaskLifecycle.ts",
     "src/cancelDiagnostics.ts",
@@ -59,6 +60,7 @@
     "start": "node --experimental-strip-types ./src/main.ts",
     "build": "node -e \"process.stdout.write('claude-sdk-sidecar ships raw TypeScript; no build step\\n')\"",
     "test": "node --test --experimental-strip-types ./src/**/*.test.ts",
+    "smoke:usage": "node ./scripts/provider-usage-smoke.mjs",
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {

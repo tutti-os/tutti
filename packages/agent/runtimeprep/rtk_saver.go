@@ -96,7 +96,6 @@ func prepareSessionRTK(runtimeRoot string, resolveSource func() (string, error))
 	if err := os.WriteFile(instructionsPath, []byte(rtkInstructionsMarkdown), 0o600); err != nil {
 		return sessionRTKRuntime{}, fmt.Errorf("write session RTK instructions: %w", err)
 	}
-
 	return sessionRTKRuntime{
 		Executable:          target,
 		Instructions:        instructionsPath,
@@ -115,4 +114,40 @@ func rtkExecutableName() string {
 		return "rtk.exe"
 	}
 	return "rtk"
+}
+
+// ensureRTKInstructionsReferenceFirst mirrors RTK's native Codex integration:
+// the provider instruction file starts with an absolute @RTK.md reference.
+// The complete RTK policy remains inline as a compatibility fallback for
+// providers or models that do not resolve instruction-file references.
+func ensureRTKInstructionsReferenceFirst(instructionsPath string, input PrepareInput) error {
+	rtkPath := strings.TrimSpace(input.rtkInstructionsPath)
+	if !input.RTKSaverMode || rtkPath == "" {
+		return nil
+	}
+	content, err := os.ReadFile(instructionsPath)
+	if err != nil {
+		return fmt.Errorf("read provider instructions for RTK reference: %w", err)
+	}
+	reference := "@" + rtkPath
+	newline := "\n"
+	if strings.Contains(string(content), "\r\n") {
+		newline = "\r\n"
+	}
+	lines := strings.Split(strings.ReplaceAll(string(content), "\r\n", "\n"), "\n")
+	kept := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(line) != reference {
+			kept = append(kept, line)
+		}
+	}
+	body := strings.TrimLeft(strings.Join(kept, newline), "\r\n")
+	next := reference + newline
+	if body != "" {
+		next += newline + body
+	}
+	if err := os.WriteFile(instructionsPath, []byte(next), 0o644); err != nil {
+		return fmt.Errorf("write provider RTK instruction reference: %w", err)
+	}
+	return nil
 }

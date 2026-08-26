@@ -92,15 +92,39 @@ func (s *Service) SendInput(ctx context.Context, workspaceID string, agentSessio
 		current, getErr := s.ApplicationHost().GetSession(ctx, ref)
 		if getErr != nil {
 			err = getErr
-		} else if rebind, needed, rebindErr := s.modelPlanRebindInput(ctx, workspaceID, current.Canonical); rebindErr != nil {
-			err = rebindErr
-		} else if needed {
-			hostResult, err = s.ApplicationHost().ReprepareRuntimeSessionAndSendInput(ctx, agenthost.ReprepareRuntimeSessionAndSendInputInput{
-				Reprepare: rebind,
-				Send:      hostInput,
-			})
 		} else {
-			hostResult, err = s.ApplicationHost().SendInput(ctx, ref, hostInput)
+			rebind, modelRebindNeeded, rebindErr := s.modelPlanRebindInput(ctx, workspaceID, current.Canonical)
+			if rebindErr != nil {
+				err = rebindErr
+			} else {
+				authGeneration, authRebindNeeded := s.providerRuntimeCredentialsNeedReprepare(
+					workspaceID,
+					agentSessionID,
+					current.Canonical.Provider,
+				)
+				if modelRebindNeeded || authRebindNeeded {
+					if !modelRebindNeeded {
+						rebind = agenthost.ReprepareRuntimeSessionInput{
+							WorkspaceID:    workspaceID,
+							AgentSessionID: agentSessionID,
+						}
+					}
+					hostResult, err = s.ApplicationHost().ReprepareRuntimeSessionAndSendInput(ctx, agenthost.ReprepareRuntimeSessionAndSendInputInput{
+						Reprepare: rebind,
+						Send:      hostInput,
+					})
+					if err == nil && authRebindNeeded {
+						s.markProviderRuntimeCredentialsApplied(
+							workspaceID,
+							agentSessionID,
+							current.Canonical.Provider,
+							authGeneration,
+						)
+					}
+				} else {
+					hostResult, err = s.ApplicationHost().SendInput(ctx, ref, hostInput)
+				}
+			}
 		}
 	} else {
 		hostResult, err = s.ApplicationHost().SendInput(ctx, ref, hostInput)

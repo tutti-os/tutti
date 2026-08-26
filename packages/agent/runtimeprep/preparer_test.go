@@ -658,6 +658,9 @@ func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *tes
 	if !strings.Contains(string(agentInstructions), "Always prefix supported shell commands with `rtk`.") {
 		t.Fatalf("AGENTS.md = %q, want inline RTK instruction injection", agentInstructions)
 	}
+	if want := "@" + filepath.Join(runtimeRoot, "rtk", "RTK.md") + "\n\n"; !strings.HasPrefix(string(agentInstructions), want) {
+		t.Fatalf("AGENTS.md = %q, want Session RTK reference %q first", agentInstructions, want)
+	}
 
 	// Resume reuses the Session copy even when RTK is no longer available from
 	// the daemon's process PATH, preserving the launch-time tool version.
@@ -671,6 +674,64 @@ func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *tes
 		RTKSaverMode:   true,
 	}); err != nil {
 		t.Fatalf("resumed Prepare() error = %v", err)
+	}
+}
+
+func TestDefaultPreparerRTKSaverModeReferencesSessionInstructionsFirstForAgentHomes(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake RTK fixture is a POSIX script")
+	}
+	setTestHome(t, t.TempDir())
+	sourceRTK := filepath.Join(t.TempDir(), rtkExecutableName())
+	writeSidecarTestFile(t, sourceRTK, "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(sourceRTK, 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	for _, test := range []struct {
+		provider string
+		homeEnv  string
+	}{
+		{provider: "codex", homeEnv: "CODEX_HOME"},
+		{provider: "tutti-agent", homeEnv: "TUTTI_AGENT_HOME"},
+		{provider: "opencode", homeEnv: "OPENCODE_CONFIG_DIR"},
+	} {
+		t.Run(test.provider, func(t *testing.T) {
+			stateDir := t.TempDir()
+			preparer := newTestPreparer(stateDir)
+			if test.provider == "tutti-agent" {
+				preparer.RegisterProvider(TuttiAgentPreparer{})
+			}
+			preparer.RTKExecutableResolver = func(context.Context) (string, error) {
+				return sourceRTK, nil
+			}
+			prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+				WorkspaceID:    "workspace-1",
+				AgentSessionID: "session-1",
+				AgentTargetID:  "local:" + test.provider,
+				Provider:       test.provider,
+				Cwd:            t.TempDir(),
+				RTKSaverMode:   true,
+			})
+			if err != nil {
+				t.Fatalf("Prepare() error = %v", err)
+			}
+			runtimeRoot, err := LocalStore{StateDir: stateDir}.RuntimeRoot("workspace-1", "session-1")
+			if err != nil {
+				t.Fatal(err)
+			}
+			instructions, err := os.ReadFile(filepath.Join(envValue(prepared.Env, test.homeEnv), "AGENTS.md"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantReference := "@" + filepath.Join(runtimeRoot, "rtk", "RTK.md") + "\n\n"
+			if !strings.HasPrefix(string(instructions), wantReference) {
+				t.Fatalf("AGENTS.md = %q, want Session RTK reference %q first", instructions, wantReference)
+			}
+			if !strings.Contains(string(instructions), "Always prefix supported shell commands with `rtk`.") {
+				t.Fatalf("AGENTS.md lost inline RTK fallback: %q", instructions)
+			}
+		})
 	}
 }
 

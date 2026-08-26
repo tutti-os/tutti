@@ -47,6 +47,7 @@ type PrepareInput struct {
 	CLICommand             string
 	CodexSaverMode         bool
 	RTKSaverMode           bool
+	rtkInstructionsPath    string
 	Title                  string
 	PermissionModeID       string
 	PlanMode               bool

@@ -216,6 +216,21 @@ func buildDaemonAPI(
 		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
 		UserPathAdapter:            agentstatusservice.NewUserPathAdapter(),
 	})
+	agentTargetAccountUsage.ProbeLocal = func(ctx context.Context, provider string) agentextensionservice.AccountUsageResult {
+		probed := agentStatusService.ProbeProviderAccountUsage(ctx, provider)
+		result := agentextensionservice.AccountUsageResult{
+			Outcome: probed.Outcome, CapturedAtUnixMS: probed.CapturedAtUnixMS,
+			BillingMode: probed.BillingMode, QuotaState: probed.QuotaState,
+			ErrorCode: probed.ErrorCode,
+		}
+		for _, quota := range probed.Quotas {
+			result.Quotas = append(result.Quotas, agentextensionservice.AccountUsageQuota{
+				QuotaType: quota.QuotaType, PercentRemaining: quota.PercentRemaining,
+				ResetsAtUnixMS: quota.ResetsAtUnixMS, ModelName: quota.ModelName,
+			})
+		}
+		return result
+	}
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
 	runOutcomes := agentStatusService.RunOutcomes

@@ -35,6 +35,13 @@ func cursorDescriptor() ProviderDescriptor {
 		},
 		Status: StatusDescriptor{
 			Kind: StatusKindGenericCLI, AuthOutputParserKind: AuthOutputParserKindCursor, AuthMarkerParserKind: AuthMarkerParserKindFileExists, AuthCommandRunnerKind: AuthCommandRunnerKindCursor, StaticSpecResolverKind: StaticSpecResolverKindCursor, BinaryNames: []string{"cursor-agent", "agent"}, AuthStatusCommand: []string{"status"}, AuthMarkerPaths: []string{"~/.cursor/cli-config.json"}, LoginArgs: []string{"login"},
+			AuthWatch: AuthWatchDescriptor{
+				Sources: []AuthWatchSourceDescriptor{{
+					DefaultRoot: "~/.cursor",
+					Paths:       []string{"cli-config.json"},
+				}},
+				ContentFingerprint: AuthWatchContentFingerprintFullFile,
+			},
 			Install: InstallerDescriptor{
 				Kind:            InstallerKindOfficialScript,
 				DisplayCommand:  "curl https://cursor.com/install -fsS | bash",

@@ -33,8 +33,16 @@ func (OpenCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if err := ensureRTKInstructionsReferenceFirst(instructionsPath, input.PrepareInput); err != nil {
+		return ProviderPrepareResult{}, err
+	}
 	if _, err := installProviderNativeSkillsSessionScoped(filepath.Join(configDir, "skills"), input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("install opencode tutti skills: %w", err)
+	}
+	if input.RTKSaverMode {
+		if err := installOpenCodeRTKPlugin(configDir); err != nil {
+			return ProviderPrepareResult{}, err
+		}
 	}
 	if input.Manifest != nil {
 		input.Manifest.RecordManagedFile(instructionsPath, "provider-instructions", writeResult.Created)
@@ -65,6 +73,43 @@ func (OpenCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (
 			ModelPlanAPIKeyEnv+"="+input.ModelEndpoint.APIKey,
 		),
 	}, nil
+}
+
+const openCodeRTKPlugin = `import type { Plugin } from "@opencode-ai/plugin"
+
+// Session-scoped RTK adapter. Rewrite behavior stays in the bundled RTK
+// executable so this plugin does not duplicate the command registry.
+export const RtkOpenCodePlugin: Plugin = async ({ $ }) => ({
+  "tool.execute.before": async (input, output) => {
+    const tool = String(input?.tool ?? "").toLowerCase()
+    if (tool !== "bash" && tool !== "shell") return
+    const args = output?.args
+    if (!args || typeof args !== "object") return
+    const command = (args as Record<string, unknown>).command
+    if (typeof command !== "string" || !command) return
+
+    try {
+      const result = await $` + "`rtk rewrite ${command}`" + `.quiet().nothrow()
+      const rewritten = String(result.stdout).trim()
+      if (rewritten && rewritten !== command) {
+        ;(args as Record<string, unknown>).command = rewritten
+      }
+    } catch {
+      // RTK is an optimization. Preserve the original command on failure.
+    }
+  },
+})
+`
+
+func installOpenCodeRTKPlugin(configDir string) error {
+	pluginsDir := filepath.Join(configDir, "plugins")
+	if err := os.MkdirAll(pluginsDir, 0o700); err != nil {
+		return fmt.Errorf("create opencode RTK plugin directory: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginsDir, "rtk.ts"), []byte(openCodeRTKPlugin), 0o600); err != nil {
+		return fmt.Errorf("write opencode RTK plugin: %w", err)
+	}
+	return nil
 }
 
 type openCodeConfigDocument struct {

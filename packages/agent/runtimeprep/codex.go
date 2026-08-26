@@ -77,6 +77,9 @@ func (p CodexPreparer) Prepare(ctx context.Context, input ProviderPrepareInput) 
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if err := ensureRTKInstructionsReferenceFirst(instructionsPath, input.PrepareInput); err != nil {
+		return ProviderPrepareResult{}, err
+	}
 	logRuntimePrepareTrace("runtime_prepare.codex.instructions_write_resolved", input.PrepareInput, map[string]any{
 		"created": writeResult.Created,
 	})

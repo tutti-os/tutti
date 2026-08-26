@@ -197,6 +197,12 @@ func TestValidateRejectsUnsafeRemoteAuthProbeDeclarations(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			descriptor := claudeCodeDescriptor()
+			descriptor.Status.RemoteAuthProbe = RemoteAuthProbeDescriptor{
+				Kind:           RemoteAuthProbeKindHTTPBearer,
+				CredentialKind: RemoteAuthCredentialKindClaudeOAuth,
+				Endpoint:       "https://api.anthropic.com/api/oauth/usage",
+				Method:         "GET", Headers: map[string]string{}, TimeoutSeconds: 30,
+			}
 			test.mutate(&descriptor.Status.RemoteAuthProbe)
 			if err := Validate(descriptor); err == nil {
 				t.Fatal("Validate() error = nil")
@@ -457,9 +463,12 @@ func TestMigratedClaudeCodeDescriptorIsComplete(t *testing.T) {
 		descriptor.Status.AuthStatusCommandTimeoutSeconds != 600 {
 		t.Fatalf("target/status = %#v / %#v", descriptor.Target, descriptor.Status)
 	}
-	if descriptor.Status.RemoteAuthProbe.Kind != RemoteAuthProbeKindHTTPBearer ||
-		descriptor.Status.RemoteAuthProbe.CredentialKind != RemoteAuthCredentialKindClaudeOAuth ||
-		descriptor.Status.RemoteAuthProbe.Endpoint != "https://api.anthropic.com/api/oauth/usage" {
+	if descriptor.Status.RemoteAuthProbe.Kind != "" ||
+		descriptor.Status.RemoteAuthProbe.CredentialKind != "" ||
+		descriptor.Status.RemoteAuthProbe.Endpoint != "" ||
+		descriptor.Status.RemoteAuthProbe.Method != "" ||
+		len(descriptor.Status.RemoteAuthProbe.Headers) != 0 ||
+		descriptor.Status.RemoteAuthProbe.TimeoutSeconds != 0 {
 		t.Fatalf("remote auth probe = %#v", descriptor.Status.RemoteAuthProbe)
 	}
 	if !descriptor.ComposerProfile.Behavior.ModelOptionsAuthoritative ||
@@ -479,14 +488,10 @@ func TestMigratedReturnsClones(t *testing.T) {
 	first[0].ComposerProfile.SlashCommandPolicy.FallbackCommands[0] = "mutated"
 	first[0].ComposerProfile.SlashCommandPolicy.CommandEffects[0].Command = "mutated"
 	first[1].Status.AuthWatch.Sources[0].Paths[0] = "mutated"
-	first[1].Status.RemoteAuthProbe.Headers["User-Agent"] = "mutated"
 
 	second := Migrated()
 	if second[0].Runtime.Command[0] != "codex" {
 		t.Fatalf("Runtime.Command leaked mutation: %#v", second[0].Runtime.Command)
-	}
-	if second[1].Status.RemoteAuthProbe.Headers["User-Agent"] != "claude-code/2.1.0" {
-		t.Fatalf("Status.RemoteAuthProbe.Headers leaked mutation: %#v", second[1].Status.RemoteAuthProbe.Headers)
 	}
 	if second[0].Runtime.Endpoint.BaseURLEnvVars[0] != "OPENAI_BASE_URL" {
 		t.Fatalf("Runtime.Endpoint.BaseURLEnvVars leaked mutation: %#v", second[0].Runtime.Endpoint.BaseURLEnvVars)

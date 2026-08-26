@@ -25,9 +25,11 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentSessionID
 			if tuttiErr := s.deleteTuttiModeActivationSessionState(ctx, workspaceID, agentSessionID); tuttiErr != nil {
 				return DeleteSessionResult{}, tuttiErr
 			}
+			s.forgetProviderRuntimeSessionCredentials(workspaceID, agentSessionID)
 		}
 		return DeleteSessionResult{}, err
 	}
+	s.forgetProviderRuntimeSessionCredentials(workspaceID, agentSessionID)
 	return DeleteSessionResult{Removed: result.Deleted, CleanupFailed: result.CleanupFailed}, nil
 }
 
@@ -40,6 +42,7 @@ func (s *Service) Clear(ctx context.Context, workspaceID string) (ClearSessionsR
 	if err != nil {
 		return ClearSessionsResult{}, err
 	}
+	s.forgetProviderRuntimeSessionCredentials(workspaceID, result.RemovedSessionIDs...)
 	return ClearSessionsResult{
 		RemovedMessages:         result.RemovedMessages,
 		RemovedSessions:         result.RemovedSessions,

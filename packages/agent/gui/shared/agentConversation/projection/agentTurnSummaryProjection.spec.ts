@@ -166,6 +166,10 @@ describe("agent turn summary canonical projection", () => {
           {
             path: "/workspace/src/app.ts",
             change: "modified"
+          },
+          {
+            path: "/workspace/not-in-turn.ts",
+            change: "modified"
           }
         ]
       },
@@ -182,10 +186,207 @@ describe("agent turn summary canonical projection", () => {
             changeType: "modified",
             oldString: "old",
             newString: "new"
+          }),
+          expect.objectContaining({
+            path: "/workspace/not-in-turn.ts",
+            changeType: "modified",
+            oldString: "old",
+            newString: "new"
           })
         ]
       }
     ]);
+  });
+
+  it("prefers canonical fileChanges over contradictory raw Kimi changes", () => {
+    const content =
+      "这是一个示例文本文件。\n\n当前时间：2026-08-20\n用途：测试文件创建\n\n你可以随时修改或删除此文件。";
+    const sourceTurn = turn("turn-kimi-create", [
+      {
+        id: "call-kimi-create",
+        name: "Write",
+        toolName: "Write",
+        callType: "tool",
+        status: "Completed",
+        statusKind: "completed",
+        summary: "Create note.txt",
+        occurredAtUnixMs: 20,
+        payload: {
+          cwd: "C:/Users/17940/Documents/tutti/test_git",
+          fileChanges: {
+            files: [
+              {
+                path: "C:/Users/17940/Documents/tutti/test_git/note.txt",
+                change: "added",
+                oldString: "",
+                newString: content
+              }
+            ]
+          },
+          output: {
+            changes: [
+              {
+                path: "C:/Users/17940/Documents/tutti/test_git/note.txt",
+                type: "update",
+                oldString: "",
+                newString: content
+              }
+            ]
+          }
+        }
+      }
+    ]);
+
+    const rows = projectAgentTurnSummaryRowForTurn(
+      sourceTurn,
+      {
+        files: [
+          {
+            path: "C:/Users/17940/Documents/tutti/test_git/note.txt",
+            change: "added",
+            oldString: "",
+            newString: content
+          }
+        ]
+      },
+      {
+        workspaceRoot: "C:/Users/17940/Documents/tutti/test_git",
+        defaultCwd: "C:/Users/17940/Documents/tutti/test_git"
+      }
+    );
+
+    expect(rows[0]?.patchBatches).toEqual([
+      {
+        cwd: "C:/Users/17940/Documents/tutti/test_git",
+        toolCallId: "call-kimi-create",
+        changes: [
+          expect.objectContaining({
+            path: "/C:/Users/17940/Documents/tutti/test_git/note.txt",
+            changeType: "created",
+            oldString: "",
+            newString: content
+          })
+        ]
+      }
+    ]);
+  });
+
+  it("drops historical one-sided modified raw changes without a canonical batch", () => {
+    const sourceTurn = turn("turn-legacy-one-sided", [
+      {
+        id: "call-legacy-one-sided",
+        name: "Write",
+        toolName: "Write",
+        callType: "tool",
+        status: "Completed",
+        statusKind: "completed",
+        summary: "Write note.txt",
+        occurredAtUnixMs: 20,
+        payload: {
+          input: {
+            cwd: "/workspace",
+            changes: [
+              {
+                path: "/workspace/note.txt",
+                type: "update",
+                newString: "after"
+              }
+            ]
+          }
+        }
+      }
+    ]);
+
+    const rows = projectAgentTurnSummaryRowForTurn(
+      sourceTurn,
+      {
+        files: [{ path: "/workspace/note.txt", change: "modified" }]
+      },
+      { workspaceRoot: "/workspace", defaultCwd: "/workspace" }
+    );
+
+    expect(rows[0]?.patchBatches).toBeUndefined();
+  });
+
+  it("fails the whole batch closed when one canonical sibling is incomplete", () => {
+    const sourceTurn = turn("turn-mixed-coverage", [
+      {
+        id: "call-mixed-coverage",
+        name: "Write",
+        toolName: "Write",
+        callType: "tool",
+        status: "Completed",
+        statusKind: "completed",
+        summary: "Write two files",
+        occurredAtUnixMs: 20,
+        payload: {
+          cwd: "/workspace",
+          fileChanges: {
+            files: [
+              {
+                path: "/workspace/created.txt",
+                change: "added",
+                oldString: "",
+                newString: "created"
+              },
+              {
+                path: "/workspace/incomplete.txt",
+                change: "modified",
+                newString: "after"
+              }
+            ]
+          }
+        }
+      }
+    ]);
+
+    const rows = projectAgentTurnSummaryRowForTurn(
+      sourceTurn,
+      {
+        files: [
+          { path: "/workspace/created.txt", change: "added" },
+          { path: "/workspace/incomplete.txt", change: "modified" }
+        ]
+      },
+      { workspaceRoot: "/workspace", defaultCwd: "/workspace" }
+    );
+
+    expect(rows[0]?.patchBatches).toBeUndefined();
+  });
+
+  it("fails closed for historical rename metadata without an executable diff", () => {
+    const sourceTurn = turn("turn-legacy-rename", [
+      {
+        id: "call-legacy-rename",
+        name: "Move",
+        toolName: "Move",
+        callType: "tool",
+        status: "Completed",
+        statusKind: "completed",
+        summary: "Rename note.txt",
+        occurredAtUnixMs: 20,
+        payload: {
+          cwd: "/workspace",
+          changes: [
+            {
+              path: "/workspace/new-name.txt",
+              oldPath: "/workspace/note.txt",
+              type: "move"
+            }
+          ]
+        }
+      }
+    ]);
+
+    const rows = projectAgentTurnSummaryRowForTurn(
+      sourceTurn,
+      {
+        files: [{ path: "/workspace/new-name.txt", change: "modified" }]
+      },
+      { workspaceRoot: "/workspace", defaultCwd: "/workspace" }
+    );
+
+    expect(rows[0]?.patchBatches).toBeUndefined();
   });
 
   it("projects every canonical settled turn and ignores legacy tool inference", () => {

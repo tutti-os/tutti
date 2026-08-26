@@ -146,6 +146,7 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		}
 		manifest.RecordManagedFile(rtkRuntime.Executable, "rtk-executable", rtkRuntime.ExecutableCreated)
 		manifest.RecordManagedFile(rtkRuntime.Instructions, "rtk-instructions", rtkRuntime.InstructionsCreated)
+		input.rtkInstructionsPath = rtkRuntime.Instructions
 	}
 	if provider := p.provider(input); provider != nil {
 		logRuntimePrepareTrace("runtime_prepare.provider_requested", input, map[string]any{
@@ -343,6 +344,9 @@ func (p *DefaultPreparer) provider(input PrepareInput) ProviderPreparer {
 	}
 	if input.ExtensionRuntimePrep != nil {
 		return ExtensionRuntimePreparer{}
+	}
+	if strings.EqualFold(providerID, "acp:kimi-code") {
+		return KimiCodePreparer{}
 	}
 	// Other acp: extensions share a generic instruction+skill preparer; their
 	// skill roots arrive via PrepareInput.ExtensionSkillRoots from the

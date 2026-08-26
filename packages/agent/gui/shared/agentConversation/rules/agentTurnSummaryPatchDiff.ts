@@ -22,6 +22,9 @@ function patchChangeToUnifiedDiff(
   change: AgentTurnSummaryPatchChangeVM,
   cwd: string | null
 ): string {
+  if (patchChangeContainsBinaryContent(change)) {
+    return "";
+  }
   const path = patchPathRelativeToCwd(change.path, cwd);
   const rawDiff = normalizeAgentPatchText(change.unifiedDiff ?? "").trim();
   if (rawDiff && isAgentUnifiedDiffText(rawDiff)) {
@@ -111,6 +114,21 @@ function fileContentPatch(
   changeType: "created" | "deleted",
   content: string
 ): string {
+  if (content === "") {
+    return ensureTrailingNewline(
+      changeType === "created"
+        ? [
+            `diff --git a/${path} b/${path}`,
+            "new file mode 100644",
+            "index 0000000..e69de29"
+          ].join("\n")
+        : [
+            `diff --git a/${path} b/${path}`,
+            "deleted file mode 100644",
+            "index e69de29..0000000"
+          ].join("\n")
+    );
+  }
   const lines = splitPatchContentLines(content);
   const count = Math.max(lines.length, 1);
   const prefix = changeType === "created" ? "+" : "-";
@@ -142,18 +160,31 @@ function modifiedFilePatch(
 ): string {
   const oldLines = splitPatchContentLines(oldContent);
   const newLines = splitPatchContentLines(newContent);
-  const oldCount = Math.max(oldLines.length, 1);
-  const newCount = Math.max(newLines.length, 1);
+  const oldCount = oldLines.length;
+  const newCount = newLines.length;
+  const oldStart = oldCount === 0 ? 0 : 1;
+  const newStart = newCount === 0 ? 0 : 1;
   return ensureTrailingNewline(
     [
       `diff --git a/${path} b/${path}`,
       `--- a/${path}`,
       `+++ b/${path}`,
-      `@@ -1,${oldCount} +1,${newCount} @@`,
+      `@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`,
       ...oldLines.map((line) => `-${line}`),
       ...newLines.map((line) => `+${line}`)
     ].join("\n")
   );
+}
+
+function patchChangeContainsBinaryContent(
+  change: AgentTurnSummaryPatchChangeVM
+): boolean {
+  return [
+    change.unifiedDiff,
+    change.content,
+    change.oldString,
+    change.newString
+  ].some((value) => value?.includes("\0") === true);
 }
 
 function patchPathRelativeToCwd(path: string, cwd: string | null): string {

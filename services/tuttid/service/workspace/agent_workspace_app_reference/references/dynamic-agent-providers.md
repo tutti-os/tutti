@@ -49,6 +49,14 @@ Do not pass `mode` or `required`, and do not check `process.env.TUTTI_CLI` in ap
 - if `TUTTI_CLI` is absent, the kit automatically builds a `source: "standalone"` catalog from `runtime.listProviders()` and `runtime.detect()`;
 - if `TUTTI_CLI` is configured but execution, timeout, cancellation, or schema validation fails, the kit throws `TuttiIntegrationError`; it does not invent a standalone catalog.
 
+The daemon resolves built-in provider availability and Agent Extension setup
+availability as independent concurrent probe families before merging them into
+the ordered catalog. Keep that fan-out bounded: serializing the two families
+makes a broad catalog request consume the sum of their cold-start budgets. An
+app may load the broad catalog for discovery, but once the user has selected an
+exact `agentTargetId`, per-target routes must use exact composer or launch
+commands instead of synchronously reloading the broad catalog first.
+
 The app may project the returned browser-safe DTO into product-specific fields, but it must not copy the Tutti CLI schema. Frontend code may import guards and types without Node dependencies:
 
 ```ts

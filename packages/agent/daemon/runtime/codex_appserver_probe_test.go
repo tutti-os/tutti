@@ -118,6 +118,10 @@ func TestProbeCodexAppServerReadsProviderRateLimits(t *testing.T) {
 	if !result.ProtocolReady || !result.RateLimitsRead || result.Category != "" {
 		t.Fatalf("probe = %#v, want successful rate limits read", result)
 	}
+	rateLimits, ok := result.RateLimits["rateLimits"].(map[string]any)
+	if !ok || rateLimits["primary"] == nil {
+		t.Fatalf("rate limits payload = %#v, want primary window", result.RateLimits)
+	}
 	if got := len(appServerRequestParamsList(t, transport.conn, appServerMethodRateLimitsRead)); got != 1 {
 		t.Fatalf("account/rateLimits/read calls = %d, want 1", got)
 	}

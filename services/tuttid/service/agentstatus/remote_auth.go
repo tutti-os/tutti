@@ -67,19 +67,15 @@ func (s Service) resolveProviderUsageRemoteAuthEvidence(
 ) (providerstatus.AuthEvidence, bool) {
 	if authCommandRunnerKind(spec) != providerregistry.AuthCommandRunnerKindCodexAppServerAccount ||
 		strings.TrimSpace(binaryPath) == "" {
-		return providerstatus.AuthEvidence{
-			Kind: providerstatus.AuthEvidenceProbeFailure, Reason: providerstatus.AuthReasonProbeFailed,
-		}, true
+		return providerstatus.AuthEvidence{}, false
 	}
 	command := append([]string{binaryPath}, spec.AuthStatusCommand...)
 	if s.CodexRemoteAuthProbe != nil {
-		return s.CodexRemoteAuthProbe(ctx, command, append([]string(nil), env...)), true
+		return providerUsageAuthEvidence(s.CodexRemoteAuthProbe(ctx, command, append([]string(nil), env...)))
 	}
 	release, acquired := s.DetectionCommands.acquire(ctx)
 	if !acquired {
-		return providerstatus.AuthEvidence{
-			Kind: providerstatus.AuthEvidenceProbeFailure, Reason: providerstatus.AuthReasonProbeFailed,
-		}, true
+		return providerstatus.AuthEvidence{}, false
 	}
 	defer release()
 	timeout := time.Duration(spec.RemoteAuthProbe.TimeoutSeconds) * time.Second
@@ -114,6 +110,16 @@ func (s Service) resolveProviderUsageRemoteAuthEvidence(
 		"evidence", evidence.Kind,
 		"success", evidence.Kind == providerstatus.AuthEvidenceRemoteSuccess,
 	)
+	return providerUsageAuthEvidence(evidence)
+}
+
+func providerUsageAuthEvidence(evidence providerstatus.AuthEvidence) (providerstatus.AuthEvidence, bool) {
+	// Account usage proves that the provider accepted the account only on
+	// success. Every failure belongs to the optional quota surface and must not
+	// override the dedicated local/runtime authentication evidence.
+	if evidence.Kind != providerstatus.AuthEvidenceRemoteSuccess {
+		return providerstatus.AuthEvidence{}, false
+	}
 	return evidence, true
 }
 

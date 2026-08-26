@@ -412,6 +412,7 @@ type fakeSectionReader struct {
 	lastBatchDeleteInput        agentactivitybiz.DeleteSessionsBatchInput
 	batchDeleteResult           agentactivitybiz.DeleteSessionsBatchResult
 	batchDeleteErr              error
+	clearPlanErr                error
 	batchDeleteCalls            int
 	sectionBatchCalls           int
 	singleSectionCalls          int
@@ -486,7 +487,10 @@ func (*fakeSectionReader) PlanDeleteSessions(_ context.Context, input agentactiv
 	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: input.SessionIDs}, nil
 }
 
-func (*fakeSectionReader) PlanClearSessions(_ context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+func (f *fakeSectionReader) PlanClearSessions(_ context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	if f.clearPlanErr != nil {
+		return agentactivitybiz.DeleteSessionsPlan{}, f.clearPlanErr
+	}
 	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: workspaceID}, nil
 }
 

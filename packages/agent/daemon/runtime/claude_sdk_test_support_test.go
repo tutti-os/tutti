@@ -155,6 +155,8 @@ type ackClaudeSDKConnection struct {
 	cancelProviderTurnID string
 	cancelTurnID         string
 	cancelDispatchPhase  string
+	probeUsagePayload    map[string]any
+	closed               bool
 }
 
 func (c *ackClaudeSDKConnection) Send(data []byte) error {
@@ -163,7 +165,8 @@ func (c *ackClaudeSDKConnection) Send(data []byte) error {
 		return err
 	}
 	payload := map[string]any(nil)
-	if request.Type == "cancel" {
+	switch request.Type {
+	case "cancel":
 		canceled := true
 		if c.cancelResult != nil {
 			canceled = *c.cancelResult
@@ -188,6 +191,8 @@ func (c *ackClaudeSDKConnection) Send(data []byte) error {
 			"providerTurnId": strings.TrimSpace(c.cancelProviderTurnID),
 			"dispatchPhase":  dispatchPhase,
 		}
+	case "probe_usage":
+		payload = clonePayload(c.probeUsagePayload)
 	}
 	response, err := json.Marshal(claudeSDKSidecarEvent{Version: claudeSDKSidecarProtocolVersion, ID: request.ID, Type: "ok", Payload: payload})
 	if err != nil {
@@ -211,7 +216,10 @@ func (c *ackClaudeSDKConnection) Recv() (ProcessFrame, error) {
 	return frame, nil
 }
 
-func (*ackClaudeSDKConnection) Close() error {
+func (c *ackClaudeSDKConnection) Close() error {
+	c.mu.Lock()
+	c.closed = true
+	c.mu.Unlock()
 	return nil
 }
 
