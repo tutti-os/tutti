@@ -11,12 +11,11 @@ Use this skill as the routing and operating contract for the local Tutti CLI. It
 
 Classify the request before invoking any Tutti CLI command:
 
-1. Workspace issue work uses the Host-advertised `issue ...` commands. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
-2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
-   {{if hasFamily "agent"}}3. Agent work uses the Host-advertised `agent ...` commands. Handoff decisions belong to `$tutti-handoff`; use this skill only as its CLI reference.
-   {{end}}{{if hasFamily "browser"}}4. Browser automation uses the Host-advertised `browser ...` commands.
-   {{end}}{{if hasFamily "computer"}}5. Desktop automation uses the Host-advertised `computer ...` commands.
-   {{end}}6. If none match, read `command-guide.md` before guessing.
+1. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
+   {{if hasFamily "agent"}}2. Agent work uses the Host-advertised `agent ...` commands. Handoff decisions belong to `$tutti-handoff`; use this skill only as its CLI reference.
+   {{end}}{{if hasFamily "browser"}}3. Browser automation uses the Host-advertised `browser ...` commands.
+   {{end}}{{if hasFamily "computer"}}4. Desktop automation uses the Host-advertised `computer ...` commands.
+   {{end}}5. If none match, read `command-guide.md` before guessing.
 
 Completion criterion: every Tutti CLI call must be traceable to a routed family, a mention URI, prior command output, current CLI help, or a command-guide entry.
 
@@ -24,7 +23,6 @@ Completion criterion: every Tutti CLI call must be traceable to a routed family,
 
 Tutti mention links are internal handoffs. Parse them as data; do not open them with a browser, WebFetch, or web search.
 
-- `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
 - `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
   {{if has "agent-context.agent.session-summary"}}- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Recover its conversation with `{{command "agent-context.agent.session-summary"}}`.
   {{else if has "agent-context.agent.get"}}- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Recover the context exposed by this Host with `{{command "agent-context.agent.get"}}`.
@@ -123,7 +121,7 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 ## Family Reference
 
-{{if hasFamily "issue"}}`issue ...` covers the issue operations advertised in the current command guide. Workflow sequencing belongs to `$issue-manager`, not this skill.
+{{if hasFamily "issue"}}`issue ...` covers the issue operations advertised in the current command guide.
 {{end}}
 {{if hasFamily "agent"}}`agent ...` covers the Agent operations advertised in the current command guide. Discover exact Agent ids and supported flags from that guide or current help; provider-specific start shortcuts must not be assumed.
 {{end}}
@@ -133,33 +131,6 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 {{end}}
 
 Workspace app scopes are discovered from command-guide entries carrying `App id:` metadata. Use `$workspace-app` for mention interpretation and command selection; `$workspace-app` is a skill and mention kind, not a CLI scope.
-
-## Issue Guardrails
-
-Issue execution sequencing belongs to `$issue-manager`. Do not use this command reference alone to decide whether an issue-level execution should create an issue run or iterate child tasks.
-
-For workspace issue breakdowns: {{if and (has "issue-manager.issue.task.create-batch") (hasInput "issue-manager.issue.task.create-batch" "tasks-json")}}persist multiple tasks with `{{command "issue-manager.issue.task.create-batch" (args "tasks-json" "'[{\"title\":\"<title>\",\"content\":\"<content>\"}]'")}}`.{{else if has "issue-manager.issue.task.create"}}the Host has no usable batch-create command; persist tasks in order with {{if hasInput "issue-manager.issue.task.create" "content"}}`{{command "issue-manager.issue.task.create" (args "title" "<title>" "content" "<content>")}}`{{else}}`{{command "issue-manager.issue.task.create" (args "title" "<title>")}}`{{end}}.{{else}}the current Host advertises no task-create command; return a draft and state that it could not be saved.{{end}}
-
-## Workspace Issue Run Reporting
-
-{{if has "issue-manager.issue.run.create"}}- Issue run creation: `{{if hasInput "issue-manager.issue.run.create" "agent-target-id"}}{{command "issue-manager.issue.run.create" (args "agent-target-id" .AgentTargetID)}}{{else if hasInput "issue-manager.issue.run.create" "agent-provider"}}{{command "issue-manager.issue.run.create" (args "agent-provider" .Provider)}}{{else}}{{command "issue-manager.issue.run.create"}}{{end}}`
-{{end}}{{if has "issue-manager.issue.task.run.create"}}- Task run creation: `{{if hasInput "issue-manager.issue.task.run.create" "agent-target-id"}}{{command "issue-manager.issue.task.run.create" (args "agent-target-id" .AgentTargetID)}}{{else if hasInput "issue-manager.issue.task.run.create" "agent-provider"}}{{command "issue-manager.issue.task.run.create" (args "agent-provider" .Provider)}}{{else}}{{command "issue-manager.issue.task.run.create"}}{{end}}`
-{{end}}{{if not (or (has "issue-manager.issue.run.create") (has "issue-manager.issue.task.run.create"))}}The current Host does not advertise issue-run creation. Do not invent run commands.
-{{end}}
-
-{{if or (hasInput "issue-manager.issue.run.complete" "outputs") (hasInput "issue-manager.issue.task.run.complete" "outputs")}}
-When completing issue runs, include the advertised outputs input whenever execution created or materially updated deliverable files. Each output item must include `path`.
-{{end}}
-
-{{if and (has "issue-manager.issue.run.complete") (hasInput "issue-manager.issue.run.complete" "summary") (hasInput "issue-manager.issue.run.complete" "outputs")}}Example issue-run completion:
-
-```bash
-{{command "issue-manager.issue.run.complete" (args "status" "completed" "summary" "<summary>" "outputs" "'[{\"path\":\"<artifact-path>\",\"displayName\":\"<artifact-name>\"}]'")}}
-```
-
-{{end}}
-
-If execution produced no artifact, complete the run with a clear summary when the command schema accepts one.
 
 ## Execution Environment
 

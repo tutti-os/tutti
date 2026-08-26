@@ -81,6 +81,7 @@ interface TestContextMentionProviderOptions {
   loadUserProfiles?: (input: any) => Promise<any>;
   loadSessionMessages?: (input: any) => Promise<any>;
   contextMentionProviders?: readonly AgentContextMentionProvider[];
+  hiddenFilterIds?: readonly ("session" | "file" | "issue" | "agent" | "app")[];
   debounceMs?: number;
   diagnosticInfoLogger?: (payload: any) => void;
   diagnosticNow?: () => number;
@@ -104,7 +105,8 @@ class AgentMentionSearchController extends BaseAgentMentionSearchController {
       providerTimeoutMs: options.providerTimeoutMs,
       contextMentionProviders:
         options.contextMentionProviders ??
-        createTestContextMentionProviders(options)
+        createTestContextMentionProviders(options),
+      hiddenFilterIds: options.hiddenFilterIds
     });
   }
 }
@@ -535,6 +537,28 @@ describe("AgentMentionSearchController", () => {
     const labelById = new Map(categories.map((c) => [c.id, c.label]));
 
     expect(labelById.get("issue")).toBe("Tasks");
+  });
+
+  it("hides configured categories from browse state and rejects direct selection", () => {
+    const queryIssues = vi.fn().mockResolvedValue({ issues: [] });
+    const controller = new AgentMentionSearchController({
+      hiddenFilterIds: ["issue"],
+      queryIssues
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    expect(states.at(-1)?.categories.map((category) => category.id)).toEqual([
+      "session",
+      "file",
+      "agent",
+      "app"
+    ]);
+
+    controller.setFilter("issue");
+
+    expect(states.at(-1)?.filter).toBe("session");
+    expect(queryIssues).not.toHaveBeenCalled();
   });
 
   it("prefetches the default session tab for blank queries", async () => {

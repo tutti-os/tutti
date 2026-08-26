@@ -6,7 +6,6 @@ import {
 import type { AgentContextMentionItem } from "./agentRichText/agentFileMentionExtension";
 import type { AgentContextMentionProvider } from "./agentContextMentionProvider";
 import {
-  buildBrowseCategories,
   FILE_PROVIDER_ID,
   WORKSPACE_ISSUE_PROVIDER_ID,
   type AgentMentionFilterId,
@@ -130,7 +129,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: [],
         error: null
       });
@@ -145,7 +144,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -166,6 +165,9 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
   }
   setFilter(filter: AgentMentionFilterId): void {
     if (this.disposed) {
+      return;
+    }
+    if (this.hiddenFilterIds.has(filter)) {
       return;
     }
     this.currentFilter = filter;
@@ -190,7 +192,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: [],
         error: null
       });
@@ -201,7 +203,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -234,6 +236,9 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       return;
     }
     const filter = input.filter ?? DEFAULT_AGENT_MENTION_FILTER;
+    if (this.hiddenFilterIds.has(filter)) {
+      return;
+    }
     const currentUserId = input.currentUserId?.trim() ?? "";
     const sectionKey = input.sectionKey?.trim() ?? "";
     const sessionCwd = input.sessionCwd?.trim() ?? "";
@@ -351,7 +356,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: this.currentQuery ? "results" : "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -364,7 +369,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: this.currentQuery ? "results" : "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -396,7 +401,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: this.currentQuery ? "results" : "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -431,7 +436,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: "",
       mode: "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -473,7 +478,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
           query: "",
           mode: "browse",
           filter: "file",
-          categories: buildBrowseCategories(),
+          categories: this.browseCategories(),
           groups: this.groupsFromRawGroups(),
           error: null
         });
@@ -499,7 +504,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
           query: "",
           mode: "browse",
           filter: "file",
-          categories: buildBrowseCategories(),
+          categories: this.browseCategories(),
           groups: this.groupsFromRawGroups(),
           error: error instanceof Error ? error.message : String(error)
         });
@@ -520,7 +525,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -553,7 +558,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -576,7 +581,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -600,7 +605,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: "",
       mode: "browse",
       filter: DEFAULT_AGENT_MENTION_FILTER,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: [],
       error: null
     });
@@ -763,7 +768,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: this.currentQuery ? "results" : "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: this.groupsFromRawGroups(),
       error: null
     });

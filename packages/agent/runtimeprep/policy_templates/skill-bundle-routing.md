@@ -13,7 +13,6 @@ No-mention default:
 Required mention routing:
 
 - Route any `mention://...` URI by type before files, repo search, shell, browser/web tools, MCP, or raw CLI.
-- `mention://workspace-issue/<id>?workspaceId=...` → `$issue-manager`
 - `mention://workspace-app/<appId>?workspaceId=...` → `$workspace-app`
 - `mention://workspace-reference/<id>?source=...&workspaceId=...` → `$reference`
 - `mention://agent-session/<id>?workspaceId=...` → `$tutti-cli`
@@ -36,9 +35,7 @@ Execution:
 
 Fallback only when the matching Skill is unavailable:
 
-{{if has "issue-manager.issue.get"}}- Issue mention: `{{command "issue-manager.issue.get"}}`
-{{else}}- Issue mention: unavailable; do not guess a command.
-{{end}}- App mention: match `App id: <appId>` in `command-guide.md`.
+- App mention: match `App id: <appId>` in `command-guide.md`.
 {{if has "references.task.list"}}- Reference mention: `{{command "references.task.list" (args "source" "task" "id" "<id>")}}`
 {{else if has "references.reference.list"}}- Reference mention: `{{command "references.reference.list" (args "source" "<source>" "id" "<id>")}}`
 {{else}}- Reference mention: unavailable; do not guess a command.

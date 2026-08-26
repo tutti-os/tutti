@@ -29,10 +29,7 @@ import {
   agentMentionFilterLabel,
   agentMentionGroupLabel
 } from "./AgentMentionLabels";
-import {
-  AGENT_MENTION_FILTER_TAB_ORDER,
-  mentionGroupExpandCount
-} from "./agentMentionSearchHelpers";
+import { mentionGroupExpandCount } from "./agentMentionSearchHelpers";
 import {
   type AgentMentionGroup,
   type AgentMentionBrowseCategory,
@@ -232,16 +229,9 @@ export function AgentFileMentionPalette({
     mode: state.mode
   });
 
-  // Browse mode carries its own category list (with labels); results mode tabs
-  // are the fixed agent filter order. The shared shell renders a single tab
-  // source, so resolve the right one here.
-  const categories =
-    state.mode === "browse"
-      ? state.categories
-      : AGENT_MENTION_FILTER_TAB_ORDER.map((id) => ({
-          id,
-          label: agentMentionFilterLabel(id)
-        }));
+  // The controller owns the category list in both browse and results modes so
+  // host-owned hidden categories remain hidden while cycling or searching.
+  const categories = state.categories;
 
   // When the agent wants the single keyboard browse hint we hand the shell an
   // empty group list so it renders its (keyboard-icon) empty state with our

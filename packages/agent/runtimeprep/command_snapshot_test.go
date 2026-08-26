@@ -49,18 +49,8 @@ func TestRenderSkillBundleUsesOneHostCommandSnapshot(t *testing.T) {
 		t.Fatalf("catalog calls = %d, want 1", catalog.calls)
 	}
 
-	issue := bundleSkillContent(t, bundle, "tutti/issue-manager")
-	if !strings.Contains(issue, "Host has no usable batch-create capability") ||
-		!strings.Contains(issue, "tutti-dev issue task create") {
-		t.Fatalf("issue skill did not select the advertised single-create flow: %s", issue)
-	}
-	for _, forbidden := range []string{
-		"issue task create-batch",
-		"--room-id",
-	} {
-		if strings.Contains(issue, forbidden) {
-			t.Fatalf("issue skill leaked unsupported syntax %q: %s", forbidden, issue)
-		}
+	if bundleHasSkill(bundle, "tutti/issue-manager") {
+		t.Fatalf("retired issue-manager skill was materialized: %#v", bundle.Skills)
 	}
 	for _, id := range []string{"tutti/browser-use", "tutti/computer-use"} {
 		if bundleHasSkill(bundle, id) {
@@ -76,6 +66,12 @@ func TestRenderSkillBundleUsesOneHostCommandSnapshot(t *testing.T) {
 	}
 	if !strings.Contains(guide, "tutti-dev issue update --issue-id <issue-id> --json") {
 		t.Fatalf("guide missing advertised command: %s", guide)
+	}
+	if bundle.RecommendedSystemPrompt == nil {
+		t.Fatal("missing recommended system prompt")
+	}
+	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "$issue-manager") {
+		t.Fatalf("recommended system prompt still routes through issue-manager: %s", bundle.RecommendedSystemPrompt.Content)
 	}
 }
 
@@ -138,17 +134,6 @@ func TestRuntimeTemplateFailsOnUnknownCommandOrInput(t *testing.T) {
 			}
 		})
 	}
-}
-
-func bundleSkillContent(t *testing.T, bundle SkillBundle, id string) string {
-	t.Helper()
-	for _, skill := range bundle.Skills {
-		if skill.SkillID == id {
-			return skill.Content
-		}
-	}
-	t.Fatalf("skill %q not found", id)
-	return ""
 }
 
 func bundleSkillFileContent(t *testing.T, bundle SkillBundle, id string, path string) string {

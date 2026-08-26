@@ -70,6 +70,7 @@ export class AgentMentionSearchControllerBase {
     string,
     AgentContextMentionProvider
   >;
+  protected readonly hiddenFilterIds: ReadonlySet<AgentMentionFilterId>;
   protected readonly debounceMs: number;
   protected readonly fileLimit: number;
   protected readonly issueLimit: number;
@@ -111,7 +112,7 @@ export class AgentMentionSearchControllerBase {
     query: "",
     mode: "browse",
     filter: DEFAULT_AGENT_MENTION_FILTER,
-    categories: buildBrowseCategories(),
+    categories: [],
     groups: [],
     error: null
   };
@@ -123,6 +124,7 @@ export class AgentMentionSearchControllerBase {
         provider
       ])
     );
+    this.hiddenFilterIds = new Set(options.hiddenFilterIds ?? []);
     this.debounceMs = options.debounceMs ?? DEFAULT_DEBOUNCE_MS;
     this.fileLimit = options.fileLimit ?? DEFAULT_FILE_LIMIT;
     this.issueLimit = options.issueLimit ?? DEFAULT_ISSUE_LIMIT;
@@ -137,6 +139,14 @@ export class AgentMentionSearchControllerBase {
       options.diagnosticSlowThresholdMs ?? DEFAULT_DIAGNOSTIC_SLOW_THRESHOLD_MS;
     this.currentFileSearchLimit = this.fileLimit;
     this.currentIssueSearchLimit = this.issueLimit;
+    this.state = {
+      ...this.state,
+      categories: this.browseCategories()
+    };
+  }
+
+  protected browseCategories() {
+    return buildBrowseCategories([...this.hiddenFilterIds]);
   }
 
   protected startBrowseModeFetch(filter: AgentMentionFilterId): void {
@@ -176,7 +186,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -248,7 +258,7 @@ export class AgentMentionSearchControllerBase {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups,
         error: null
       });
@@ -279,7 +289,7 @@ export class AgentMentionSearchControllerBase {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -357,7 +367,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups,
         error: null
       });
@@ -383,7 +393,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: this.browseCategories(),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -594,7 +604,7 @@ export class AgentMentionSearchControllerBase {
       query: "",
       mode: "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: this.browseCategories(),
       groups: [],
       error: null
     });

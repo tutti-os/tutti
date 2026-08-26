@@ -187,6 +187,7 @@ export function useAgentGUIDetailSideChrome({
       // active editor with which to establish that focus.
       isActive: baseComposerProps.isActive && isVisible,
       workspaceReferencePickerOpen: false,
+      hiddenMentionFilterIds: baseComposerProps.hiddenMentionFilterIds,
       promptImagesSupported: false,
       canGoalControl: false,
       canUploadAttachment: false,

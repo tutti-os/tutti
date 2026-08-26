@@ -51,6 +51,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   operations,
   homeTargetProjection,
   referenceProvenanceFilters = null,
+  hiddenMentionFilterIds,
   sessionInputHistoryEnabled = false,
   sideConversationEnabled = false,
   sideConversationPresentation = null,
@@ -454,6 +455,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         timelineInteractionLocked ||
         tuttiWorkflowComposer.tuttiExecutionStopping,
       workspaceReferencePickerOpen,
+      hiddenMentionFilterIds,
       referenceProvenanceFilters,
       activePrompt: composerActivePrompt,
       activePromptKeyboardShortcutsEnabled: isActive && !sideComposerFocused,
@@ -553,6 +555,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       onSlashStatusClose,
       onSlashStatusRefresh,
       workspaceReferencePickerOpen,
+      hiddenMentionFilterIds,
       composerActivePrompt,
       composerActivePromptDisabledReason,
       editQueuedPrompt,

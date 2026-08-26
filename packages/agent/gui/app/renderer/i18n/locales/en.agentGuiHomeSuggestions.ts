@@ -10,12 +10,6 @@ export const enAgentGuiHomeSuggestions = {
       prompt:
         "Help me clone the GitHub repository { repository URL }, then tell me its local directory"
     },
-    breakdown: {
-      title: "Task breakdown",
-      taskCenterLabel: "Task management",
-      prompt:
-        "Use {{taskCenterMention}} to help me break down the task, topic { enter here }"
-    },
     review: {
       title: "Quality review",
       prompt: "Have { @agent } review the output quality of { @agent session }"

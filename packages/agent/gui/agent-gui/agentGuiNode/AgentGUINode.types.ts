@@ -132,6 +132,8 @@ export interface AgentGUINodeHostCapabilities {
   referenceProvenanceFilterEnabled?: boolean;
   /** Host-owned experimental opt-in for current-Session composer history. */
   sessionInputHistoryEnabled?: boolean;
+  /** Host-owned presentation switch for hiding @ mention categories. */
+  hiddenMentionFilterIds?: AgentComposerProps["hiddenMentionFilterIds"];
   /** Host-owned experimental opt-in for Side and transcript selection actions. */
   sideConversationEnabled?: boolean;
   /** Optional presentation-only bridge for rendering Side outside AgentGUI. */

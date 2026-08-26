@@ -76,6 +76,7 @@ export function AgentGUINodeView({
   viewModel,
   mentionAgentTargets,
   referenceProvenanceFilters = null,
+  hiddenMentionFilterIds,
   sessionInputHistoryEnabled = false,
   sideConversationEnabled = false,
   sideConversationPresentation = null,
@@ -690,6 +691,7 @@ export function AgentGUINodeView({
                 operations={viewModel.operations}
                 homeTargetProjection={homeTargetProjection}
                 referenceProvenanceFilters={referenceProvenanceFilters}
+                hiddenMentionFilterIds={hiddenMentionFilterIds}
                 sessionInputHistoryEnabled={sessionInputHistoryEnabled}
                 sideConversationEnabled={sideConversationEnabled}
                 sideConversationPresentation={sideConversationPresentation}

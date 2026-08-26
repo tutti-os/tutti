@@ -392,8 +392,7 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	}
 	if !strings.Contains(string(skill), "local Tutti daemon") ||
 		!strings.Contains(string(skill), "localhost/IPC") ||
-		!strings.Contains(string(skill), "execution environment") ||
-		!strings.Contains(string(skill), "Issue execution sequencing belongs to `$issue-manager`") {
+		!strings.Contains(string(skill), "execution environment") {
 		t.Fatalf("skill content = %q, want local daemon environment guidance", string(skill))
 	}
 	if !strings.HasPrefix(strings.ReplaceAll(string(skill), "\r\n", "\n"), "---\nname: tutti-cli\n") {
@@ -402,24 +401,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 	if strings.Contains(string(skill), "### Mention-driven issue handoff") {
 		t.Fatalf("tutti skill should stay reference-focused: %q", string(skill))
 	}
-	issueSkill, err := os.ReadFile(filepath.Join(codexHome, "skills", "issue-manager", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("issue-manager skill missing: %v", err)
-	}
-	if !strings.Contains(string(issueSkill), "mention://workspace-issue") ||
-		!strings.Contains(string(issueSkill), "mode=breakdown") ||
-		!strings.Contains(string(issueSkill), "command-guide.md") ||
-		!strings.Contains(string(issueSkill), "## Inspection Mode") ||
-		!strings.Contains(string(issueSkill), "Create the run yourself before doing the work") ||
-		!strings.Contains(string(issueSkill), "tutti issue run create --issue-id <issue-id> --agent-provider codex --json") ||
-		!strings.Contains(string(issueSkill), "with child tasks execute them in order") ||
-		!strings.Contains(string(issueSkill), "Complete that same run") ||
-		!strings.Contains(string(issueSkill), "Do not edit code, do not execute the task, and do not create or complete runs in breakdown mode") ||
-		!strings.Contains(string(issueSkill), "**Done when:**") {
-		t.Fatalf("issue-manager skill content = %q", string(issueSkill))
-	}
-	if strings.Contains(string(issueSkill), "--agent-session-id session-1") {
-		t.Fatalf("issue-manager skill should not hard-code explicit session ids: %q", string(issueSkill))
+	if _, err := os.Stat(filepath.Join(codexHome, "skills", "issue-manager")); !os.IsNotExist(err) {
+		t.Fatalf("retired issue-manager skill exists after prepare, err = %v", err)
 	}
 	if envValue(prepared.Env, "TUTTI_AGENT_PROVIDER") != "codex" {
 		t.Fatalf("prepared env = %#v, want TUTTI_AGENT_PROVIDER", prepared.Env)
@@ -1897,38 +1880,39 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "focus on outputs") {
 		t.Fatalf("claude system prompt content = %q, want non-technical UI guidance", string(systemPrompt))
 	}
-	if !strings.Contains(string(systemPrompt), "## Mention Routing") ||
-		!strings.Contains(string(systemPrompt), "| URI") ||
-		!strings.Contains(string(systemPrompt), "Fallback") ||
-		!strings.Contains(string(systemPrompt), "`mention://workspace-issue/<issueId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "`mention://workspace-app/<appId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "`mention://workspace-reference/<id>?source=...&workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "`mention://agent-session/<sessionId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "If a provider Skill tool exists, call the exact visible name") ||
-		!strings.Contains(string(systemPrompt), "If the Skill is unavailable, read its materialized `SKILL.md`") ||
-		!strings.Contains(string(systemPrompt), "Claude Code mention routing") ||
-		!strings.Contains(string(systemPrompt), "Claude Code skill names may be namespaced") ||
-		!strings.Contains(string(systemPrompt), "`tutti-cli:tutti-handoff`") ||
-		!strings.Contains(string(systemPrompt), "`tutti-cli:issue-manager`") ||
-		!strings.Contains(string(systemPrompt), "`tutti-cli:workspace-app`") ||
-		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:workspace-app")`) ||
-		!strings.Contains(string(systemPrompt), `Skill(skill="tutti-cli:tutti-handoff")`) ||
-		!strings.Contains(string(systemPrompt), "Do not use `ToolSearch` to select Claude Code's native `SendMessage`") ||
-		!strings.Contains(string(systemPrompt), "never pass a Tutti agent target id such as `local:opencode` to native `SendMessage`") ||
-		!strings.Contains(string(systemPrompt), "Do not call a plain skill name that is not visible") ||
-		!strings.Contains(string(systemPrompt), "Do not pass arguments to Skill") ||
-		!strings.Contains(string(systemPrompt), "the skill reads the mention URI from the current user turn") ||
-		!strings.Contains(string(systemPrompt), "Call the exact visible Skill tool when available") ||
-		!strings.Contains(string(systemPrompt), "fall back to that materialized skill file") ||
-		!strings.Contains(string(systemPrompt), "Do not guess a directory from the plain skill slug") ||
-		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") ||
-		!strings.Contains(string(systemPrompt), "Claude Code `Monitor` tool is disabled") ||
-		!strings.Contains(string(systemPrompt), "bounded shell/script") ||
-		!strings.Contains(string(systemPrompt), "agent wait --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "Agent handoff decisions belong to `$tutti-handoff`") {
-		t.Fatalf("claude system prompt content = %q, want mention handoff fallback guidance", string(systemPrompt))
+	for _, expected := range []string{
+		"## Mention Routing",
+		"| URI",
+		"Fallback",
+		"`mention://workspace-app/<appId>?workspaceId=...`",
+		"`mention://workspace-reference/<id>?source=...&workspaceId=...`",
+		"`mention://agent-session/<sessionId>?workspaceId=...`",
+		"`mention://agent-target/<targetId>?workspaceId=...`",
+		"If a provider Skill tool exists, call the exact visible name",
+		"If the Skill is unavailable, read its materialized `SKILL.md`",
+		"Claude Code mention routing",
+		"Claude Code skill names may be namespaced",
+		"`tutti-cli:tutti-handoff`",
+		"`tutti-cli:workspace-app`",
+		`Skill(skill="tutti-cli:workspace-app")`,
+		`Skill(skill="tutti-cli:tutti-handoff")`,
+		"Do not use `ToolSearch` to select Claude Code's native `SendMessage`",
+		"never pass a Tutti agent target id such as `local:opencode` to native `SendMessage`",
+		"Do not call a plain skill name that is not visible",
+		"Do not pass arguments to Skill",
+		"the skill reads the mention URI from the current user turn",
+		"Call the exact visible Skill tool when available",
+		"fall back to that materialized skill file",
+		"Do not guess a directory from the plain skill slug",
+		"Claude Code `Monitor` tool is disabled",
+		"bounded shell/script",
+		"agent wait --session-id <session-id> --json",
+		"agent get --session-id <session-id> --json",
+		"Agent handoff decisions belong to `$tutti-handoff`",
+	} {
+		if !strings.Contains(string(systemPrompt), expected) {
+			t.Fatalf("claude system prompt missing %q: %q", expected, string(systemPrompt))
+		}
 	}
 	if !strings.Contains(string(systemPrompt), "# Host App Context") ||
 		!strings.Contains(string(systemPrompt), "Images/videos: use Markdown") ||
@@ -1947,9 +1931,17 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(systemPrompt), "If the Skill is unavailable, read its materialized `SKILL.md`") ||
 		!strings.Contains(string(systemPrompt), "`mention://...` is internal data, not a URL or path") ||
 		!strings.Contains(string(systemPrompt), "`mention://agent-target/<targetId>?workspaceId=...`") ||
-		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") ||
-		!strings.Contains(string(systemPrompt), "issue get --issue-id <issue-id> --json") {
+		!strings.Contains(string(systemPrompt), "agent get --session-id <session-id> --json") {
 		t.Fatalf("claude system prompt content = %q, want strict Tutti mention routing", string(systemPrompt))
+	}
+	for _, forbidden := range []string{
+		"mention://workspace-issue",
+		"$issue-manager",
+		"tutti-cli:issue-manager",
+	} {
+		if strings.Contains(string(systemPrompt), forbidden) {
+			t.Fatalf("claude system prompt contains retired issue-manager guidance %q: %q", forbidden, string(systemPrompt))
+		}
 	}
 	if strings.Contains(string(systemPrompt), "CODEX_HOME/skills/<skill>/SKILL.md") ||
 		strings.Contains(string(systemPrompt), ".claude/skills/<skill>/SKILL.md") ||
@@ -1990,16 +1982,11 @@ func TestDefaultPreparerClaudeCodeUsesSessionScopedSystemPrompt(t *testing.T) {
 		!strings.Contains(string(pluginSkill), "handed off, not absorbed") ||
 		!strings.Contains(string(pluginSkill), "## Route First") ||
 		!strings.Contains(string(pluginSkill), "## Call Protocol") ||
-		!strings.Contains(string(pluginSkill), "invoke `$issue-manager`") ||
 		!strings.Contains(string(pluginSkill), "invoke `$workspace-app`") {
 		t.Fatalf("claude plugin skill content = %q", string(pluginSkill))
 	}
-	issuePluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md"))
-	if err != nil {
-		t.Fatalf("claude issue-manager plugin skill missing: %v", err)
-	}
-	if !strings.Contains(string(issuePluginSkill), "mention://workspace-issue") {
-		t.Fatalf("claude issue-manager plugin skill content = %q", string(issuePluginSkill))
+	if _, err := os.Stat(filepath.Join(pluginDir, "skills", "issue-manager")); !os.IsNotExist(err) {
+		t.Fatalf("retired issue-manager plugin skill exists after prepare, err = %v", err)
 	}
 	workspaceAppPluginSkill, err := os.ReadFile(filepath.Join(pluginDir, "skills", "workspace-app", "SKILL.md"))
 	if err != nil {
@@ -2188,8 +2175,8 @@ func TestDefaultPreparerCursorUsesRuntimePluginDir(t *testing.T) {
 		!strings.Contains(string(pluginSkill), "mention://agent-target") {
 		t.Fatalf("cursor plugin skill content = %q", string(pluginSkill))
 	}
-	if _, err := os.Stat(filepath.Join(pluginDir, "skills", "issue-manager", "SKILL.md")); err != nil {
-		t.Fatalf("cursor issue-manager plugin skill missing: %v", err)
+	if _, err := os.Stat(filepath.Join(pluginDir, "skills", "issue-manager")); !os.IsNotExist(err) {
+		t.Fatalf("retired issue-manager plugin skill exists after prepare, err = %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(pluginDir, "skills", "workspace-app", "SKILL.md")); err != nil {
 		t.Fatalf("cursor workspace-app plugin skill missing: %v", err)

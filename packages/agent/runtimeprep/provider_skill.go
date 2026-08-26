@@ -15,7 +15,6 @@ import (
 )
 
 const tuttiSkillName = "tutti-cli"
-const issueManagerSkillName = "issue-manager"
 const workspaceAppSkillName = "workspace-app"
 const referenceSkillName = "reference"
 const browserUseSkillName = "browser-use"
@@ -49,10 +48,6 @@ func tuttiModelAllocationSkill(input PrepareInput) (string, error) {
 
 func tuttiModelAllocationReference(input PrepareInput) (string, error) {
 	return renderProviderSkillTemplate("skill_templates/tutti-model-allocation-model-tiers.md", input, nil)
-}
-
-func issueManagerSkill(input PrepareInput) (string, error) {
-	return renderProviderSkillTemplate("skill_templates/issue-manager.md", input, nil)
 }
 
 func workspaceAppSkill(input PrepareInput) (string, error) {

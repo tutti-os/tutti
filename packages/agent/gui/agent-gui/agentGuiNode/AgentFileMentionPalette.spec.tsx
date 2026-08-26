@@ -63,6 +63,43 @@ vi.mock("../../i18n/index", async () => {
 });
 
 describe("AgentFileMentionPalette", () => {
+  it("keeps hidden categories out of the results tabs", () => {
+    const state: AgentMentionSearchState = {
+      status: "ready",
+      query: "readme",
+      mode: "results",
+      filter: "file",
+      categories: [
+        { id: "session", label: "Sessions" },
+        { id: "file", label: "Files" },
+        { id: "agent", label: "Agents" },
+        { id: "app", label: "Apps" }
+      ],
+      groups: [],
+      error: null
+    };
+
+    render(
+      <AgentFileMentionPalette
+        state={state}
+        highlightedKey={null}
+        label="mention palette"
+        loadingLabel="loading"
+        emptyLabel="empty"
+        errorLabel="error"
+        tabHintLabel="hint"
+        maxHeightPx={320}
+        onHighlightChange={vi.fn()}
+        onSelectItem={vi.fn()}
+        onSelectCategory={vi.fn()}
+        onSelectFilter={vi.fn()}
+        onExpandGroup={vi.fn()}
+      />
+    );
+
+    expect(screen.queryByText("任务")).not.toBeInTheDocument();
+  });
+
   it("shows a file's relative path and workspace after its name", () => {
     const file = {
       kind: "file" as const,
@@ -78,7 +115,12 @@ describe("AgentFileMentionPalette", () => {
       query: "index",
       mode: "results",
       filter: "file",
-      categories: [],
+      categories: [
+        { id: "session", label: "Sessions" },
+        { id: "file", label: "Files" },
+        { id: "agent", label: "Agents" },
+        { id: "app", label: "Apps" }
+      ],
       groups: [
         {
           id: "opened_files",
@@ -1075,7 +1117,12 @@ describe("AgentFileMentionPalette", () => {
       query: "",
       mode: "results",
       filter: "file",
-      categories: [],
+      categories: [
+        { id: "session", label: "Sessions" },
+        { id: "file", label: "Files" },
+        { id: "agent", label: "Agents" },
+        { id: "app", label: "Apps" }
+      ],
       groups: [
         {
           id: "opened_files",
@@ -1129,8 +1176,8 @@ describe("AgentFileMentionPalette", () => {
     fireEvent.click(within(hint).getByRole("button", { name: "↑ 切换选中" }));
     fireEvent.click(within(hint).getByRole("button", { name: "↓ 切换选中" }));
 
-    expect(onSelectCategory).toHaveBeenCalledWith("issue");
-    expect(onSelectFilter).toHaveBeenCalledWith("issue");
+    expect(onSelectCategory).toHaveBeenCalledWith("agent");
+    expect(onSelectFilter).toHaveBeenCalledWith("agent");
     expect(onHighlightChange).toHaveBeenNthCalledWith(
       1,
       "opened_files:file:/workspace/assets/demo.png"

@@ -120,6 +120,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     disabledHomeSuggestions,
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false,
+    hiddenMentionFilterIds,
     sessionInputHistoryEnabled = false,
     sideConversationEnabled = false,
     sideConversationPresentation = null,
@@ -591,6 +592,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               workspaceFileReferenceCopy={workspaceFileReferenceCopy}
               workspaceAppIcons={workspaceAppIcons}
               referenceProvenanceFilters={referenceProvenanceFilters}
+              hiddenMentionFilterIds={hiddenMentionFilterIds}
               sessionInputHistoryEnabled={sessionInputHistoryEnabled}
               sideConversationEnabled={sideConversationEnabled}
               sideConversationPresentation={sideConversationPresentation}

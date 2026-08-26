@@ -130,6 +130,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     uiLanguage = "en",
     isActive = true,
     workspaceReferencePickerOpen = false,
+    hiddenMentionFilterIds,
     promptImagesSupported = true,
     canGoalControl = true,
     canUploadAttachment = true,
@@ -317,7 +318,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   });
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const { mentionControllerRef, mentionSearchState } =
-    useAgentMentionSearchController(referenceProvenanceFilters);
+    useAgentMentionSearchController(
+      referenceProvenanceFilters,
+      hiddenMentionFilterIds
+    );
   const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const wasActiveRef = useRef(isActive);
   const lastComposerFocusRequestRef = useRef<number | null>(null);

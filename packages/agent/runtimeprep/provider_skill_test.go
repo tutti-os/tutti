@@ -335,7 +335,7 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	if bundle.SchemaVersion != 2 || bundle.CLICommand != "tutti-dev" {
 		t.Fatalf("bundle metadata = %#v", bundle)
 	}
-	wantSlugs := "tutti-cli,tutti-handoff,tutti-model-allocation,issue-manager,workspace-app,reference,browser-use,computer-use"
+	wantSlugs := "tutti-cli,tutti-handoff,tutti-model-allocation,workspace-app,reference,browser-use,computer-use"
 	if got := strings.Join(skillBundleSlugs(bundle.Skills), ","); got != wantSlugs {
 		t.Fatalf("skill slugs = %q", got)
 	}
@@ -365,6 +365,12 @@ func TestRenderSkillBundleIncludesGuideAndOptionalSkills(t *testing.T) {
 	}
 	if bundle.RecommendedSystemPrompt == nil {
 		t.Fatal("missing recommended system prompt")
+	}
+	if bundleHasSkill(bundle, "tutti/issue-manager") {
+		t.Fatalf("retired issue-manager skill is still present: %#v", bundle.Skills)
+	}
+	if strings.Contains(bundle.RecommendedSystemPrompt.Content, "$issue-manager") {
+		t.Fatalf("recommended system prompt still routes through issue-manager: %q", bundle.RecommendedSystemPrompt.Content)
 	}
 	for _, expected := range []string{
 		"Generic subagents use provider-native tools; `$tutti-handoff` is for explicit Tutti handoffs or `mention://agent-target/...`.",

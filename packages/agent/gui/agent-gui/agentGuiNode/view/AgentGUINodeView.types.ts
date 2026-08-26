@@ -585,6 +585,7 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   /** Complete presentation-only catalog for exact Agent mention identity. */
   mentionAgentTargets?: readonly AgentGUIAgentTarget[];
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
+  hiddenMentionFilterIds?: AgentComposerProps["hiddenMentionFilterIds"];
   sessionInputHistoryEnabled?: boolean;
   sideConversationEnabled?: boolean;
   sideConversationPresentation?: AgentGUISideConversationPresentation | null;

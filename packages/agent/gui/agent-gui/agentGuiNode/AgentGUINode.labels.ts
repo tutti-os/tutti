@@ -639,11 +639,6 @@ export function useAgentGUIViewLabels(input: {
           prompt: t("agentHost.agentGui.promptTips.setWorkspace.prompt")
         },
         {
-          id: "use-issue",
-          label: t("agentHost.agentGui.promptTips.useIssue.label"),
-          prompt: t("agentHost.agentGui.promptTips.useIssue.prompt")
-        },
-        {
           id: "map-current-state",
           label: t("agentHost.agentGui.promptTips.mapCurrentState.label"),
           prompt: t("agentHost.agentGui.promptTips.mapCurrentState.prompt")

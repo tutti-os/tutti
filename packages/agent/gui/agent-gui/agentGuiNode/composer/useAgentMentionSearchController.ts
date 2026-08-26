@@ -4,6 +4,7 @@ import type { RichTextTriggerProvider } from "@tutti-os/ui-rich-text/types";
 import type { AgentContextMentionProvider } from "../agentContextMentionProvider";
 import {
   AgentMentionSearchController,
+  type AgentMentionFilterId,
   type AgentMentionSearchState
 } from "../AgentMentionSearchController";
 import { DEFAULT_AGENT_MENTION_FILTER } from "../agentMentionSearchHelpers";
@@ -11,9 +12,12 @@ import type { AgentComposerReferenceProvenanceFilters } from "./AgentComposer.ty
 
 const EMPTY_AGENT_CONTEXT_MENTION_PROVIDERS: readonly AgentContextMentionProvider[] =
   [];
+const EMPTY_HIDDEN_MENTION_FILTER_IDS: readonly AgentMentionFilterId[] = [];
 
 export function useAgentMentionSearchController(
-  referenceProvenanceFilters: AgentComposerReferenceProvenanceFilters | null
+  referenceProvenanceFilters: AgentComposerReferenceProvenanceFilters | null,
+  hiddenMentionFilterIds: readonly AgentMentionFilterId[] =
+    EMPTY_HIDDEN_MENTION_FILTER_IDS
 ): {
   mentionControllerRef: React.RefObject<AgentMentionSearchController | null>;
   mentionSearchState: AgentMentionSearchState;
@@ -45,7 +49,8 @@ export function useAgentMentionSearchController(
 
   useEffect(() => {
     const controller = new AgentMentionSearchController({
-      contextMentionProviders
+      contextMentionProviders,
+      hiddenFilterIds: hiddenMentionFilterIds
     });
     controller.setProvenanceCatalog(provenanceCatalog);
     controller.setProvenanceFilters({
@@ -62,7 +67,7 @@ export function useAgentMentionSearchController(
       controller.dispose();
       mentionControllerRef.current = null;
     };
-  }, [contextMentionProviders]);
+  }, [contextMentionProviders, hiddenMentionFilterIds]);
 
   useEffect(() => {
     mentionControllerRef.current?.setProvenanceCatalog(provenanceCatalog);

@@ -21,7 +21,6 @@ import {
   type AgentFileMentionSuggestionState
 } from "../agentRichText/agentFileMentionExtension";
 import { isAgentRichTextImeComposing } from "../agentRichText/agentRichTextIme";
-import { AGENT_MENTION_FILTER_TAB_ORDER } from "../agentMentionSearchHelpers";
 import {
   agentMentionItemKey,
   isAgentMentionItemDisabled
@@ -222,9 +221,7 @@ export function useComposerMentionActions(input: Input) {
         state: mentionSearchState,
         highlightedKey,
         categoryCycleOrder:
-          mentionSearchState.mode === "browse"
-            ? mentionSearchState.categories
-            : AGENT_MENTION_FILTER_TAB_ORDER,
+          mentionSearchState.categories,
         getItemKey: agentMentionItemKey,
         isItemDisabled: isAgentMentionItemDisabled,
         callbacks: {

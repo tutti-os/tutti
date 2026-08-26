@@ -450,7 +450,7 @@ both properties keeps the filter off. An explicitly supplied catalog (including
 
 ## Home Suggestions
 
-The six starter entries below the empty new-session composer are enabled by
+The five starter entries below the empty new-session composer are enabled by
 default. External hosts can hide individual entries with the public
 `AgentGUI.disabled` array:
 
@@ -459,8 +459,8 @@ default. External hosts can hide individual entries with the public
 ```
 
 The supported stable IDs are `meet-tutti`, `clone-github-repository`,
-`task-breakdown`, `quality-review`, `agent-interaction`, and `import-session`.
-Omitting `disabled` (or passing an empty array) renders all six entries.
+`quality-review`, `agent-interaction`, and `import-session`.
+Omitting `disabled` (or passing an empty array) renders all five entries.
 
 ## Tutti Mode capability
 

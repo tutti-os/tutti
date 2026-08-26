@@ -119,6 +119,8 @@ export interface AgentComposerProps {
   queuedPrompts: readonly AgentGUIQueuedPromptVM[];
   drainingQueuedPromptId: string | null;
   workspaceAppIcons?: readonly AgentMessageMarkdownWorkspaceAppIcon[];
+  /** Host-owned presentation switch for hiding @ mention categories. */
+  hiddenMentionFilterIds?: readonly AgentMentionFilterId[];
   selectedAgentTarget?: AgentGUIAgentTarget | null;
   sessionWorktreeEnabled?: boolean;
   sessionLaunchMode?: AgentGUISessionLaunchMode;

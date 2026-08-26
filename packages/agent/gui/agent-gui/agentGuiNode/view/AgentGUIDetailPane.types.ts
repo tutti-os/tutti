@@ -38,6 +38,7 @@ export interface AgentGUIDetailPaneProps extends AgentGUIDetailExternalPromptPro
   operations: AgentGUINodeViewModel["operations"];
   homeTargetProjection: AgentGUIManagedHomeTargetProjection;
   referenceProvenanceFilters?: AgentComposerProps["referenceProvenanceFilters"];
+  hiddenMentionFilterIds?: AgentComposerProps["hiddenMentionFilterIds"];
   sessionInputHistoryEnabled?: boolean;
   sideConversationEnabled?: boolean;
   sideConversationPresentation?: AgentGUISideConversationPresentation | null;

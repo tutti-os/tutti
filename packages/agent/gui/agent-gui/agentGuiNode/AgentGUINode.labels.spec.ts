@@ -13,7 +13,6 @@ describe("buildAgentHomeSuggestions", () => {
     ).toEqual([
       "meet-tutti",
       "clone-github-repository",
-      "task-breakdown",
       "quality-review",
       "agent-interaction",
       "import-session"
@@ -26,7 +25,7 @@ describe("buildAgentHomeSuggestions", () => {
         translate,
         "workspace-1",
         [],
-        ["clone-github-repository", "task-breakdown", "agent-interaction"]
+        ["clone-github-repository", "agent-interaction"]
       ).map((category) => category.id)
     ).toEqual(["meet-tutti", "quality-review", "import-session"]);
   });

@@ -71,6 +71,8 @@ export type AgentMentionSearchState =
 
 export interface AgentMentionSearchControllerOptions {
   contextMentionProviders?: readonly AgentContextMentionProvider[];
+  /** Host-owned presentation switch for hiding mention categories. */
+  hiddenFilterIds?: readonly AgentMentionFilterId[];
   debounceMs?: number;
   fileLimit?: number;
   issueLimit?: number;
@@ -110,8 +112,13 @@ export const AGENT_MENTION_LIFECYCLE_LOG_PREFIX =
 
 // default ("en") runtime, since the agent GUI i18n locale is only synced once the
 // AgentGuiI18nProvider renders.
-export function buildBrowseCategories(): AgentMentionBrowseCategory[] {
-  return AGENT_MENTION_FILTER_TAB_ORDER.map((id) => ({
+export function buildBrowseCategories(
+  hiddenFilterIds: readonly AgentMentionFilterId[] = []
+): AgentMentionBrowseCategory[] {
+  const hiddenFilters = new Set(hiddenFilterIds);
+  return AGENT_MENTION_FILTER_TAB_ORDER.filter(
+    (id) => !hiddenFilters.has(id)
+  ).map((id) => ({
     id,
     label: agentMentionFilterLabel(id)
   }));
