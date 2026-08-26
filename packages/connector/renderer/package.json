@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/connector-renderer",
-  "version": "0.1.0",
+  "version": "0.0.423",
   "private": false,
   "type": "module",
   "exports": {
@@ -23,10 +23,10 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/connector-contracts": "workspace:*",
+    "@tutti-os/connector-contracts": "0.0.423",
     "@tutti-os/infra": "0.1.0",
-    "@tutti-os/ui-i18n-runtime": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*",
+    "@tutti-os/ui-i18n-runtime": "0.0.423",
+    "@tutti-os/ui-system": "0.0.423",
     "qrcode-generator": "2.0.4",
     "valtio": "^2.3.2"
   },
