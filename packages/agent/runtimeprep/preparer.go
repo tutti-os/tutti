@@ -345,6 +345,9 @@ func (p *DefaultPreparer) provider(input PrepareInput) ProviderPreparer {
 	if input.ExtensionRuntimePrep != nil {
 		return ExtensionRuntimePreparer{}
 	}
+	if strings.EqualFold(providerID, "acp:kimi-code") {
+		return KimiCodePreparer{}
+	}
 	// Other acp: extensions share a generic instruction+skill preparer; their
 	// skill roots arrive via PrepareInput.ExtensionSkillRoots from the
 	// extension composer profile, so they need no per-key entry.

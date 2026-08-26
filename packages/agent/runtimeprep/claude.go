@@ -133,6 +133,37 @@ func installClaudeTuttiPlugin(pluginDir string, input PrepareInput) error {
 	if _, err := installProviderNativeSkillsSessionScoped(filepath.Join(pluginDir, "skills"), input); err != nil {
 		return fmt.Errorf("install claude tutti skill plugin: %w", err)
 	}
+	if input.RTKSaverMode {
+		if err := installClaudeRTKHook(pluginDir); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installClaudeRTKHook(pluginDir string) error {
+	hooksDir := filepath.Join(pluginDir, "hooks")
+	if err := os.MkdirAll(hooksDir, 0o700); err != nil {
+		return fmt.Errorf("create claude RTK hooks directory: %w", err)
+	}
+	document := map[string]any{
+		"hooks": map[string]any{
+			"PreToolUse": []any{map[string]any{
+				"matcher": "Bash",
+				"hooks": []any{map[string]any{
+					"type":    "command",
+					"command": "rtk hook claude",
+				}},
+			}},
+		},
+	}
+	content, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode claude RTK hooks: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(hooksDir, "hooks.json"), append(content, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write claude RTK hooks: %w", err)
+	}
 	return nil
 }
 

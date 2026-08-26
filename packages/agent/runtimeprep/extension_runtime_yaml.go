@@ -14,7 +14,8 @@ func mergeYAMLStringList(config string, keyPath []string, values []string) (stri
 	if len(dirs) == 0 {
 		return config, nil
 	}
-	if !slices.Equal(keyPath, []string{"skills", "external_dirs"}) {
+	if !slices.Equal(keyPath, []string{"skills", "external_dirs"}) &&
+		!slices.Equal(keyPath, []string{"plugins", "enabled"}) {
 		return "", errors.New("extension runtime YAML list key is unsupported")
 	}
 
@@ -28,28 +29,30 @@ func mergeYAMLStringList(config string, keyPath []string, values []string) (stri
 	if root.Kind != yaml.MappingNode {
 		return "", errors.New("extension runtime YAML config must be a mapping")
 	}
-	skills := yamlMappingValue(root, "skills")
-	if skills == nil {
-		skills = &yaml.Node{Kind: yaml.MappingNode}
-		yamlSetMappingValue(root, "skills", skills)
+	sectionName := keyPath[0]
+	listName := keyPath[1]
+	section := yamlMappingValue(root, sectionName)
+	if section == nil {
+		section = &yaml.Node{Kind: yaml.MappingNode}
+		yamlSetMappingValue(root, sectionName, section)
 	}
-	if skills.Kind != yaml.MappingNode {
-		return "", errors.New("extension runtime YAML skills must be a mapping")
+	if section.Kind != yaml.MappingNode {
+		return "", fmt.Errorf("extension runtime YAML %s must be a mapping", sectionName)
 	}
-	externalDirs := yamlMappingValue(skills, "external_dirs")
-	if externalDirs == nil {
-		externalDirs = &yaml.Node{Kind: yaml.SequenceNode}
-		yamlSetMappingValue(skills, "external_dirs", externalDirs)
+	list := yamlMappingValue(section, listName)
+	if list == nil {
+		list = &yaml.Node{Kind: yaml.SequenceNode}
+		yamlSetMappingValue(section, listName, list)
 	}
-	if externalDirs.Kind != yaml.SequenceNode {
-		return "", errors.New("extension runtime YAML skills.external_dirs must be a list")
+	if list.Kind != yaml.SequenceNode {
+		return "", fmt.Errorf("extension runtime YAML %s.%s must be a list", sectionName, listName)
 	}
-	existing := yamlStringSequenceValues(externalDirs)
+	existing := yamlStringSequenceValues(list)
 	for _, dir := range dirs {
 		if slices.Contains(existing, dir) {
 			continue
 		}
-		externalDirs.Content = append(externalDirs.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: dir})
+		list.Content = append(list.Content, &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: dir})
 		existing = append(existing, dir)
 	}
 	out, err := yaml.Marshal(&doc)

@@ -23,16 +23,20 @@ remains Codex-only and installs the session-scoped Luna worker role and Codex
 routing policy; enabling either mode does not implicitly enable or disable the
 other.
 Preparation copies that executable and the canonical `RTK.md`
-into the exact Session runtime and prepends only the private binary directory to
-that Session's `PATH`. Session-private Codex, Tutti Agent, and OpenCode
+into the exact Session runtime and prepends its private command-shim and binary
+directories only to that Session's `PATH`. The shims route supported bare
+commands through RTK as a provider-neutral fallback when a model does not obey
+the instruction. Session-private Codex, Tutti Agent, and OpenCode
 `AGENTS.md` files start with an absolute `@<runtime>/rtk/RTK.md` reference,
 matching RTK's native Codex integration. The common Tutti Runtime policy also
 carries the same RTK instructions inline through every provider's native
 instruction channel as a compatibility fallback (for example, Claude's
-system-prompt file and Cursor's plugin context). New providers and extensions
-therefore inherit the mode without a
-provider-name branch. RTK's database, tee output, and telemetry policy are also
-isolated under the Session runtime.
+system-prompt file and Cursor's plugin context). Claude and Cursor install
+native pre-tool hooks, OpenCode installs a command-rewrite plugin, and Hermes
+installs a session-home plugin. Kimi receives a session-home plugin system
+prompt in addition to the common command-shim fallback because its pre-tool
+hooks can block but cannot mutate tool input. RTK's database, tee output, and
+telemetry policy are also isolated under the Session runtime.
 
 Runtime preparation deliberately does not inspect the user PATH or install RTK
 through Homebrew, Cargo, an upstream shell script, or any other global
@@ -89,20 +93,19 @@ the model context, the standard ACP adapter appends that prepared context to the
 first provider prompt only. It is provider-only content and is never projected
 as a user message; a newly connected or resumed provider Session receives it
 again. This makes Tutti capabilities available at session start without writing
-provider instructions or Skills into the workspace. Cursor Agent
-`2026.07.01-41b2de7` does not merge plugin-provided hooks into its ACP hook
-executor: only user, project, and team hook sources are loaded. Runtimeprep
-therefore must not advertise or materialize plugin hooks for ACP. A focused
-background-Task guard implementation remains dormant with unit coverage so it
-can be enabled if Cursor adds that capability; it is not a current runtime
-guarantee. Never write an equivalent hook into user or project Cursor config to
-work around the provider limitation.
+provider instructions or Skills into the workspace. Current Cursor Agent
+runtimes discover a plugin-scoped `hooks/hooks.json`. When RTK saver mode is
+enabled, runtimeprep adds a `preToolUse` Shell hook that runs `rtk hook cursor`;
+it remains inside the Session plugin and never writes user or project Cursor
+configuration. A focused background-Task guard remains dormant and independent
+of this Shell rewrite hook.
 
 OpenCode preparation follows the same session-isolation rule as Codex without
 changing OpenCode's standard ACP transport. It creates a session-scoped
 `OPENCODE_CONFIG_DIR`, writes the canonical Tutti runtime policy to that
-directory's `AGENTS.md`, and materializes the resolved Tutti Skill bundle under
-its native `skills/` root. Re-preparing the Session reconciles that managed root
+directory's `AGENTS.md`, installs an RTK `tool.execute.before` rewrite plugin,
+and materializes the resolved Tutti Skill bundle under its native `skills/`
+root. Re-preparing the Session reconciles that managed root
 to the current resolved bundle while preserving unmanaged entries. This happens
 for every Session, including Sessions
 without a model access plan, so mention-driven handoff, context, issue, and

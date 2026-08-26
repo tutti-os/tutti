@@ -71,7 +71,11 @@ func tuttiRuntimePolicy(input PrepareInput) (string, error) {
 		return "", err
 	}
 	if input.RTKSaverMode {
-		rendered = joinPromptSections(rendered, rtkInstructionsMarkdown)
+		// Keep RTK's command rule ahead of the larger Tutti runtime policy for
+		// providers that consume only inline prompt context and do not resolve
+		// @instruction-file references. Provider-native hooks/plugins still
+		// enforce rewrites where the harness supports them.
+		rendered = joinPromptSections(rtkInstructionsMarkdown, rendered)
 	}
 	return strings.TrimSpace(rendered), nil
 }

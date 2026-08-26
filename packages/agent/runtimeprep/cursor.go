@@ -25,13 +25,9 @@ const (
 	cursorBackgroundTaskGuardDeniedMessage = "Tutti's Cursor ACP integration does not support background Task execution. Retry this Task in the foreground without run_in_background=true."
 )
 
-// The background Task guard is intentionally dormant. Cursor Agent
-// 2026.07.01 loads user, project, and team hooks in ACP mode, but does not
-// merge hooks from --plugin-dir. Keep the implementation and its focused tests
-// so it can be enabled if Cursor ACP gains plugin-hook support, but do not
-// advertise it in plugin.json or materialize it during session preparation.
-// Until then this guard must not be treated as protection against detached
-// background Tasks.
+// The background Task guard remains dormant. RTK uses a separate Shell-only
+// preToolUse hook supported by current Cursor Agent plugin discovery; the Task
+// guard must not be treated as protection against detached background Tasks.
 const cursorBackgroundTaskGuardScript = `#!/usr/bin/env bash
 set -euo pipefail
 
@@ -183,6 +179,34 @@ func installCursorTuttiPlugin(pluginDir string, input PrepareInput) error {
 	context := renderProviderPromptContext(cursorPromptPolicy(policy), skillPaths)
 	if err := os.WriteFile(filepath.Join(pluginDir, "tutti-context.md"), []byte(context+"\n"), 0o600); err != nil {
 		return fmt.Errorf("write cursor prompt context: %w", err)
+	}
+	if input.RTKSaverMode {
+		if err := installCursorRTKHook(filepath.Join(pluginDir, "hooks")); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func installCursorRTKHook(hooksDir string) error {
+	if err := os.MkdirAll(hooksDir, 0o700); err != nil {
+		return fmt.Errorf("create cursor RTK hooks directory: %w", err)
+	}
+	document := map[string]any{
+		"version": 1,
+		"hooks": map[string]any{
+			"preToolUse": []any{map[string]any{
+				"matcher": "Shell",
+				"command": "rtk hook cursor",
+			}},
+		},
+	}
+	content, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return fmt.Errorf("encode cursor RTK hooks: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(hooksDir, "hooks.json"), append(content, '\n'), 0o600); err != nil {
+		return fmt.Errorf("write cursor RTK hooks: %w", err)
 	}
 	return nil
 }

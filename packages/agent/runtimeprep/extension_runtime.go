@@ -88,10 +88,94 @@ func prepareExtensionRuntimeHome(input ProviderPrepareInput, home ExtensionRunti
 	if err := writeExtensionRuntimeConfig(filepath.Join(sessionHome, filepath.FromSlash(home.ConfigFile)), userConfig, externalDirs, home); err != nil {
 		return "", err
 	}
+	if err := prepareExtensionRTKIntegration(input, sessionHome, home); err != nil {
+		return "", err
+	}
 	if input.Manifest != nil {
 		input.Manifest.RecordManagedFile(sessionHome, "provider-extension-home", true)
 	}
 	return strings.TrimSpace(home.EnvVar) + "=" + sessionHome, nil
+}
+
+const hermesRTKPluginPython = `"""Session-scoped RTK command rewriting for Hermes."""
+
+import shutil
+import subprocess
+import sys
+
+
+def register(ctx):
+    if shutil.which("rtk") is None:
+        print("rtk: hermes plugin disabled; executable not found", file=sys.stderr)
+        return
+    ctx.register_hook("pre_tool_call", _pre_tool_call)
+
+
+def _pre_tool_call(tool_name=None, args=None, **_kwargs):
+    if tool_name != "terminal" or not isinstance(args, dict):
+        return
+    command = args.get("command")
+    if not isinstance(command, str) or not command.strip():
+        return
+    try:
+        result = subprocess.run(
+            ["rtk", "rewrite", command],
+            shell=False,
+            timeout=2,
+            capture_output=True,
+            text=True,
+        )
+    except Exception as exc:
+        print(f"rtk: hermes rewrite failed: {exc}", file=sys.stderr)
+        return
+    if result.returncode not in {0, 3}:
+        return
+    rewritten = result.stdout.strip()
+    if rewritten and rewritten != command:
+        args["command"] = rewritten
+`
+
+const hermesRTKPluginManifest = `name: rtk-rewrite
+version: "0.1.0"
+description: Rewrite Hermes terminal commands through session-scoped RTK.
+author: Tutti
+hooks:
+  - pre_tool_call
+provides_hooks:
+  - pre_tool_call
+`
+
+func prepareExtensionRTKIntegration(input ProviderPrepareInput, sessionHome string, home ExtensionRuntimeHome) error {
+	if !input.RTKSaverMode || !strings.EqualFold(strings.TrimSpace(input.Provider), "acp:hermes") {
+		return nil
+	}
+	pluginDir := filepath.Join(sessionHome, "plugins", "rtk-rewrite")
+	if err := os.MkdirAll(pluginDir, 0o700); err != nil {
+		return fmt.Errorf("create Hermes RTK plugin directory: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "__init__.py"), []byte(hermesRTKPluginPython), 0o600); err != nil {
+		return fmt.Errorf("write Hermes RTK plugin: %w", err)
+	}
+	if err := os.WriteFile(filepath.Join(pluginDir, "plugin.yaml"), []byte(hermesRTKPluginManifest), 0o600); err != nil {
+		return fmt.Errorf("write Hermes RTK plugin manifest: %w", err)
+	}
+	configFile := strings.TrimSpace(home.ConfigFile)
+	if configFile == "" {
+		return errors.New("hermes RTK integration requires a session config file")
+	}
+	configPath := filepath.Join(sessionHome, filepath.FromSlash(configFile))
+	config, err := os.ReadFile(configPath)
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("read Hermes session config for RTK plugin: %w", err)
+	}
+	merged, err := mergeYAMLStringList(string(config), []string{"plugins", "enabled"}, []string{"rtk-rewrite"})
+	if err != nil {
+		return fmt.Errorf("enable Hermes RTK plugin: %w", err)
+	}
+	if err := os.WriteFile(configPath, []byte(merged), 0o600); err != nil {
+		return fmt.Errorf("write Hermes session config with RTK plugin: %w", err)
+	}
+	return nil
 }
 
 func resolveExtensionRuntimeSourceHome(home ExtensionRuntimeHome) string {

@@ -30,6 +30,18 @@ Use ` + "`rtk proxy <cmd>`" + ` when raw output is required. Use ` + "`rtk gain`
 ` + "`rtk gain --history`" + ` to inspect Session-local token savings.
 `
 
+var sessionRTKCommandShims = map[string]string{
+	"aws": "aws", "cat": "read", "cargo": "cargo", "curl": "curl",
+	"diff": "diff", "docker": "docker", "dotnet": "dotnet", "find": "find",
+	"gh": "gh", "git": "git", "glab": "glab", "go": "go", "golangci-lint": "golangci-lint",
+	"grep": "grep", "gt": "gt", "jest": "jest", "kubectl": "kubectl",
+	"ls": "ls", "mvn": "mvn", "mypy": "mypy", "npm": "npm", "npx": "npx",
+	"oc": "oc", "pip": "pip", "playwright": "playwright", "pnpm": "pnpm",
+	"prettier": "prettier", "psql": "psql", "pytest": "pytest", "rake": "rake",
+	"rg": "rg", "rspec": "rspec", "rubocop": "rubocop", "ruff": "ruff",
+	"tree": "tree", "tsc": "tsc", "vitest": "vitest", "wc": "wc", "wget": "wget",
+}
+
 type sessionRTKRuntime struct {
 	Executable          string
 	Instructions        string
@@ -46,7 +58,8 @@ func prepareSessionRTK(runtimeRoot string, resolveSource func() (string, error))
 	binDir := filepath.Join(rtkRoot, "bin")
 	dataDir := filepath.Join(rtkRoot, "data")
 	teeDir := filepath.Join(rtkRoot, "tee")
-	for _, dir := range []string{binDir, dataDir, teeDir} {
+	shimDir := filepath.Join(rtkRoot, "shims")
+	for _, dir := range []string{binDir, dataDir, teeDir, shimDir} {
 		if err := os.MkdirAll(dir, 0o700); err != nil {
 			return sessionRTKRuntime{}, fmt.Errorf("create session RTK directory: %w", err)
 		}
@@ -96,6 +109,9 @@ func prepareSessionRTK(runtimeRoot string, resolveSource func() (string, error))
 	if err := os.WriteFile(instructionsPath, []byte(rtkInstructionsMarkdown), 0o600); err != nil {
 		return sessionRTKRuntime{}, fmt.Errorf("write session RTK instructions: %w", err)
 	}
+	if err := writeSessionRTKCommandShims(shimDir, target); err != nil {
+		return sessionRTKRuntime{}, err
+	}
 
 	return sessionRTKRuntime{
 		Executable:          target,
@@ -106,8 +122,27 @@ func prepareSessionRTK(runtimeRoot string, resolveSource func() (string, error))
 			"RTK_DB_PATH=" + filepath.Join(dataDir, "usage.db"),
 			"RTK_TEE_DIR=" + teeDir,
 			"RTK_TELEMETRY_DISABLED=1",
+			"PATH=" + shimDir + string(os.PathListSeparator) + binDir + string(os.PathListSeparator) + os.Getenv("PATH"),
 		},
 	}, nil
+}
+
+func writeSessionRTKCommandShims(shimDir, rtkPath string) error {
+	scriptRTKPath := rtkPath
+	if runtime.GOOS == "windows" {
+		scriptRTKPath = filepath.ToSlash(scriptRTKPath)
+	}
+	for command, rtkCommand := range sessionRTKCommandShims {
+		script := "#!/bin/sh\nPATH=${PATH#*:}\nexport PATH\nexec " + posixSingleQuote(scriptRTKPath) + " " + posixSingleQuote(rtkCommand) + " \"$@\"\n"
+		if err := os.WriteFile(filepath.Join(shimDir, command), []byte(script), 0o700); err != nil {
+			return fmt.Errorf("write session RTK command shim %s: %w", command, err)
+		}
+	}
+	return nil
+}
+
+func posixSingleQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
 
 func rtkExecutableName() string {
