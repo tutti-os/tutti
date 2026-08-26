@@ -1,10 +1,12 @@
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
+import { canonicalInteractionKey } from "@tutti-os/agent-activity-core";
 import { Button } from "@tutti-os/ui-system";
 import { MessageSquareMoreIcon } from "../../../app/renderer/components/icons/MessageSquareMoreIcon";
 import styles from "../../../agent-gui/agentGuiNode/AgentGUIConversation.styles";
 import type { AgentConversationPromptVM } from "../contracts/agentConversationVM";
 import { buildAskUserAnswerPayload } from "../interactiveAnswerPayload";
 import type {
+  AgentInteractivePromptConversationReturn,
   AgentInteractivePromptSurfaceProps,
   AgentInteractivePromptVariant
 } from "./AgentInteractivePromptSurface";
@@ -29,9 +31,11 @@ type SharedAskUserSurfaceProps = Pick<
 export function AgentAskUserPromptSurface({
   prompt,
   variant,
+  conversationReturn,
   ...props
 }: SharedAskUserSurfaceProps & {
   variant: AgentInteractivePromptVariant;
+  conversationReturn?: AgentInteractivePromptConversationReturn;
 }): JSX.Element {
   "use memo";
   const question = prompt.questions[0] ?? null;
@@ -54,9 +58,14 @@ export function AgentAskUserPromptSurface({
 
   return (
     <AskUserAnswerFlowSurface
-      key={prompt.requestId}
+      key={canonicalInteractionKey(
+        prompt.agentSessionId ?? "",
+        prompt.turnId ?? "",
+        prompt.requestId
+      )}
       {...props}
       prompt={prompt}
+      conversationReturn={variant === "full" ? conversationReturn : undefined}
     />
   );
 }
@@ -138,14 +147,18 @@ function CompactQuickAnswerSurface({
 
 function AskUserAnswerFlowSurface({
   prompt,
+  conversationReturn,
   embedded = false,
   edgeGlow = false,
   isSubmitting,
   isInteractionDisabled = false,
   onSubmit,
   labels
-}: SharedAskUserSurfaceProps): JSX.Element {
+}: SharedAskUserSurfaceProps & {
+  conversationReturn?: AgentInteractivePromptConversationReturn;
+}): JSX.Element {
   "use memo";
+  const [collapsed, setCollapsed] = useState(false);
   const flow = useAskUserAnswerFlow({
     isSubmitting: isSubmitting || isInteractionDisabled,
     questions: prompt.questions
@@ -167,6 +180,34 @@ function AskUserAnswerFlowSurface({
             />
             {stripPromptTitlePunctuation(labels.waitingForAnswer)}
           </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (collapsed && conversationReturn) {
+    return (
+      <section
+        className={interactivePromptClassName(embedded)}
+        data-agent-interaction-id={prompt.requestId}
+        data-agent-interaction-kind="ask-user"
+        data-testid={`agent-question-${prompt.requestId}-collapsed`}
+      >
+        <div
+          className={`${interactivePromptCardClassName(edgeGlow)} ${styles.interactivePromptCollapsed}`}
+        >
+          <span className={styles.interactivePromptLead} role="status">
+            {stripPromptTitlePunctuation(labels.waitingForAnswer)}
+          </span>
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={isSubmitting}
+            onClick={() => setCollapsed(false)}
+          >
+            {conversationReturn.continueAnswering}
+          </Button>
         </div>
       </section>
     );
@@ -231,7 +272,8 @@ function AskUserAnswerFlowSurface({
             })}
           </div>
         ) : null}
-        {question.allowFreeText !== false ? (
+        {question.allowFreeText !== false &&
+        (!conversationReturn || question.options.length === 0) ? (
           <textarea
             value={flow.freeText}
             placeholder={labels.answerPlaceholder}
@@ -242,6 +284,17 @@ function AskUserAnswerFlowSurface({
           />
         ) : null}
         <div className={styles.interactivePromptActions}>
+          {conversationReturn ? (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={isSubmitting}
+              onClick={() => setCollapsed(true)}
+            >
+              {conversationReturn.returnToConversation}
+            </Button>
+          ) : null}
           {prompt.questions.length > 1 ? (
             <Button
               type="button"

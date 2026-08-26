@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 	"testing"
-	"time"
 
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 )
@@ -1011,7 +1010,7 @@ func TestLocalFilesAdapterSearchNormalizesPhysicalAbsolutePathWithRelativeRoot(t
 	}
 }
 
-func TestLocalFilesAdapterSearchReturnsDeadlineErrorWhenIndexQueryExpires(t *testing.T) {
+func TestLocalFilesAdapterSearchFallsBackWhenIndexQueryExpires(t *testing.T) {
 	t.Parallel()
 
 	rootDir := t.TempDir()
@@ -1023,14 +1022,75 @@ func TestLocalFilesAdapterSearchReturnsDeadlineErrorWhenIndexQueryExpires(t *tes
 		t.Fatal(err)
 	}
 
-	adapter := testLocalFilesAdapter(0)
-	_, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
-		Deadline: time.Now().Add(-time.Second),
-		Query:    "README",
-		Limit:    5,
+	adapter := LocalFilesAdapter{searchProvider: failingLocalFileSearchProvider{err: context.DeadlineExceeded}}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query: "README",
+		Limit: 5,
 	})
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Fatalf("Search() error = %v, want context deadline exceeded", err)
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) != 1 || result.Entries[0].Path != "/workspace/project/README.md" {
+		t.Fatalf("entries = %#v, want filesystem fallback result", result.Entries)
+	}
+}
+
+func TestLocalFilesAdapterSearchFallsBackWhenIndexQueryIsCanceled(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(rootDir, "report.md"), []byte("report"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	adapter := LocalFilesAdapter{searchProvider: failingLocalFileSearchProvider{err: context.Canceled}}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query:        "report",
+		Limit:        5,
+		IncludeKinds: []workspacefiles.EntryKind{workspacefiles.EntryKindFile},
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) != 1 || result.Entries[0].Path != "/workspace/report.md" {
+		t.Fatalf("entries = %#v, want filesystem fallback result", result.Entries)
+	}
+}
+
+func TestLocalFilesAdapterSearchFallsBackFromEmptyIndexWithinSelectedDirectory(t *testing.T) {
+	t.Parallel()
+
+	rootDir := t.TempDir()
+	selectedDir := filepath.Join(rootDir, "tutti-file-change-repro-clean")
+	for _, relativePath := range []string{"report.md", ".hidden.md", "node_modules/ignored.md"} {
+		filePath := filepath.Join(selectedDir, relativePath)
+		if err := os.MkdirAll(filepath.Dir(filePath), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filePath, []byte("content"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	outsidePath := filepath.Join(rootDir, "outside", "report.md")
+	if err := os.MkdirAll(filepath.Dir(outsidePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outsidePath, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	adapter := LocalFilesAdapter{searchProvider: emptyLocalFileSearchProvider{}}
+	result, err := adapter.Search(context.Background(), localFilesRoot(rootDir), workspacefiles.SearchInput{
+		Query:        "re",
+		Limit:        5,
+		Within:       "tutti-file-change-repro-clean",
+		Filters:      []string{"document"},
+		IncludeKinds: []workspacefiles.EntryKind{workspacefiles.EntryKindFile},
+	})
+	if err != nil {
+		t.Fatalf("Search() error = %v", err)
+	}
+	if len(result.Entries) != 1 || result.Entries[0].Path != "/workspace/tutti-file-change-repro-clean/report.md" {
+		t.Fatalf("entries = %#v, want only scoped visible document", result.Entries)
 	}
 }
 

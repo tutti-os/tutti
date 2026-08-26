@@ -7,7 +7,9 @@ import (
 	"time"
 )
 
-func (h *Host) cleanupRejectedPreparedRuntime(
+// cleanupFailedRuntimeResume releases live resources created by a failed
+// resume attempt without deleting the provider state needed by a later retry.
+func (h *Host) cleanupFailedRuntimeResume(
 	ctx context.Context,
 	ref SessionRef,
 	provider string,
@@ -16,7 +18,14 @@ func (h *Host) cleanupRejectedPreparedRuntime(
 	if h.preparation == nil {
 		return cause
 	}
-	return h.discardRejectedPreparedRuntime(ctx, cause, ref.WorkspaceID, ref.AgentSessionID, provider)
+	return h.cleanupPreparedRuntime(
+		ctx,
+		cause,
+		ref.WorkspaceID,
+		ref.AgentSessionID,
+		provider,
+		true,
+	)
 }
 
 func (h *Host) discardRejectedPreparedRuntime(
@@ -25,6 +34,17 @@ func (h *Host) discardRejectedPreparedRuntime(
 	workspaceID string,
 	agentSessionID string,
 	provider string,
+) error {
+	return h.cleanupPreparedRuntime(ctx, cause, workspaceID, agentSessionID, provider, false)
+}
+
+func (h *Host) cleanupPreparedRuntime(
+	ctx context.Context,
+	cause error,
+	workspaceID string,
+	agentSessionID string,
+	provider string,
+	preserveRecoverableState bool,
 ) error {
 	cleanupBaseCtx := context.WithoutCancel(ctx)
 	cleanupErrs := []error{cause}
@@ -41,6 +61,7 @@ func (h *Host) discardRejectedPreparedRuntime(
 		preparationCtx, cancelPreparation := context.WithTimeout(cleanupBaseCtx, 10*time.Second)
 		cleanupErrs = append(cleanupErrs, h.preparation.Cleanup(preparationCtx, RuntimeCleanupInput{
 			WorkspaceID: workspaceID, AgentSessionID: agentSessionID, Provider: provider,
+			PreserveRecoverableState: preserveRecoverableState,
 		}))
 		cancelPreparation()
 	}

@@ -46,6 +46,7 @@ type PrepareInput struct {
 	SkipSkills             bool
 	CLICommand             string
 	CodexSaverMode         bool
+	RTKSaverMode           bool
 	Title                  string
 	PermissionModeID       string
 	PlanMode               bool

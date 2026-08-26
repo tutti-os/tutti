@@ -270,12 +270,21 @@ function analyzeMessageCenterSessionMessages(
 ): MessageCenterSessionMessageAnalysis {
   let latestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
     null;
+  let latestAgentMessageSource: AgentActivityMessage | null = null;
   let latestDigestAgentMessage: WorkspaceAgentMessageCenterDigestAgentSummary | null =
     null;
+  let latestDigestAgentMessageSource: AgentActivityMessage | null = null;
   let latestPendingPrompt: PendingPromptCandidate | null = null;
   let latestOutcome: TurnOutcomeCandidate | null = null;
 
   for (const message of messages) {
+    // Realtime deltas are transient engine state (version 0, no durable
+    // sequence). Message Center summaries consume durable history so a
+    // streaming reply cannot remount rich preview content on every token.
+    if (message.version === 0 && message.sequence === undefined) {
+      continue;
+    }
+
     if (
       isAgentMessageRole(message.role) &&
       !isReasoningMessageKind(message.kind)
@@ -284,10 +293,11 @@ function analyzeMessageCenterSessionMessages(
       if (summary) {
         const occurredAtUnixMs = messageTimeUnixMs(message);
         if (
-          !latestAgentMessage ||
-          occurredAtUnixMs >= latestAgentMessage.occurredAtUnixMs
+          !latestAgentMessageSource ||
+          compareMessagesByRecentTime(message, latestAgentMessageSource) < 0
         ) {
           latestAgentMessage = { summary, occurredAtUnixMs };
+          latestAgentMessageSource = message;
         }
       }
       const digestSummary =
@@ -295,13 +305,15 @@ function analyzeMessageCenterSessionMessages(
       if (digestSummary) {
         const occurredAtUnixMs = messageTimeUnixMs(message);
         if (
-          !latestDigestAgentMessage ||
-          occurredAtUnixMs >= latestDigestAgentMessage.occurredAtUnixMs
+          !latestDigestAgentMessageSource ||
+          compareMessagesByRecentTime(message, latestDigestAgentMessageSource) <
+            0
         ) {
           latestDigestAgentMessage = {
             summary: digestSummary,
             occurredAtUnixMs
           };
+          latestDigestAgentMessageSource = message;
         }
       }
 

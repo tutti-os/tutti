@@ -9,6 +9,7 @@ import {
 } from "../../../agentSideConversationRuntime";
 import {
   createAgentSideConversationRuntime,
+  type AgentSideConversationStreamEvent,
   type AgentSideConversationTransport
 } from "../../../agentSideConversationController";
 import {
@@ -27,7 +28,10 @@ describe("parseAgentSideInvocation", () => {
   it("extracts a text-only Side prompt", () => {
     expect(
       parseAgentSideInvocation([{ type: "text", text: "/side inspect this" }])
-    ).toEqual({ prompt: "inspect this", contentSupported: true });
+    ).toEqual({
+      prompt: "inspect this",
+      contentSupported: true
+    });
   });
 
   it("rejects the whole invocation when any attachment would be lost", () => {
@@ -69,6 +73,101 @@ describe("appendAgentSidePromptToDraft", () => {
 });
 
 describe("useAgentGUIDetailSideConversation lifecycle", () => {
+  it("projects the exact Side interaction identity into ask-user prompts", async () => {
+    let publish: (event: AgentSideConversationStreamEvent) => void = () => {};
+    const transport: AgentSideConversationTransport = {
+      resolveCapabilities: vi.fn(async () => ({
+        supported: true,
+        activeSourceTurn: true,
+        ephemeral: true,
+        hideInheritedTurns: true,
+        modelBoundaryInjected: true
+      })),
+      open: vi.fn(async () => ({ status: "idle" })),
+      send: vi.fn(async () => {}),
+      cancel: vi.fn(async () => {}),
+      respond: vi.fn(async () => {}),
+      close: vi.fn(async () => {}),
+      subscribe: vi.fn((listener) => {
+        publish = listener;
+        return () => {
+          publish = () => {};
+        };
+      }),
+      subscribeConnectionState: vi.fn(() => () => {}),
+      getConnectionState: vi.fn(() => "connected" as const)
+    };
+    const runtime = createAgentSideConversationRuntime(transport);
+    const wrapper = ({ children }: PropsWithChildren) =>
+      createElement(
+        AgentSideConversationRuntimeProvider,
+        { runtime },
+        children
+      );
+    const rendered = renderHook(
+      () =>
+        useAgentGUIDetailSideConversation({
+          workspaceId: "workspace-exact-question",
+          sourceAgentSessionId: "source-exact-question",
+          provider: "codex",
+          cwd: null,
+          availableCommands: [],
+          clearMainDraft: vi.fn(),
+          submitPrompt: vi.fn()
+        }),
+      { wrapper }
+    );
+
+    await vi.waitFor(() => expect(rendered.result.current.canOpen).toBe(true));
+    await act(async () => {
+      await rendered.result.current.open();
+    });
+    const sideAgentSessionId =
+      rendered.result.current.active?.sideAgentSessionId;
+    expect(sideAgentSessionId).toBeTruthy();
+
+    act(() => {
+      publish({
+        workspaceId: "workspace-exact-question",
+        sideAgentSessionId: sideAgentSessionId!,
+        sourceAgentSessionId: "source-exact-question",
+        sequence: 1,
+        eventType: "state_patch",
+        data: {
+          lifecycleStatus: "working",
+          turnLifecycle: { activeTurnId: "turn-exact-question" },
+          interactionTransition: {
+            requestId: "request-reused",
+            turnId: "turn-exact-question",
+            kind: "question",
+            status: "pending",
+            input: {
+              questions: [
+                {
+                  id: "scope",
+                  header: "Scope",
+                  question: "Which scope?",
+                  options: []
+                }
+              ]
+            },
+            metadata: { actions: [] }
+          }
+        }
+      });
+    });
+
+    expect(rendered.result.current.interactivePrompt).toMatchObject({
+      agentSessionId: sideAgentSessionId,
+      kind: "ask-user",
+      requestId: "request-reused",
+      turnId: "turn-exact-question"
+    });
+
+    rendered.unmount();
+    runtime.dispose();
+  });
+
   it("submits Side on palette selection while preserving provider command effects", async () => {
     const transport: AgentSideConversationTransport = {
       resolveCapabilities: vi.fn(async () => ({

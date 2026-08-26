@@ -748,6 +748,55 @@ export const workspaceWorkspaceAppSchema = {
   }
 } as const;
 
+export const accountUserpresenceUpdatedPayloadSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "userId",
+    "status",
+    "availability",
+    "authoritative",
+    "authorityGeneration",
+    "presenceRevision"
+  ],
+  properties: {
+    userId: {
+      type: "string",
+      minLength: 1
+    },
+    status: {
+      type: "string",
+      enum: ["ONLINE", "OFFLINE"]
+    },
+    availability: {
+      type: "string",
+      enum: [
+        "NOT_WATCHED",
+        "SUBSCRIBING",
+        "SYNCING",
+        "READY",
+        "STALE",
+        "UNKNOWN",
+        "DEGRADED"
+      ]
+    },
+    authoritative: {
+      type: "boolean"
+    },
+    authorityGeneration: {
+      type: "string"
+    },
+    presenceRevision: {
+      type: "string",
+      pattern: "^[0-9]*$"
+    },
+    observedAt: {
+      type: "string",
+      format: "date-time"
+    }
+  }
+} as const;
+
 export const agentActivityUpdatedPayloadSchema = {
   type: "object",
   additionalProperties: false,
@@ -2407,6 +2456,9 @@ export const preferencesAgentComposerDefaultsPatchRequestedPayloadSchema = {
         codexSaverMode: {
           type: "boolean"
         },
+        rtkSaverMode: {
+          type: "boolean"
+        },
         model: {
           type: ["string", "null"]
         },
@@ -4058,6 +4110,7 @@ export const businessEventServerFrameSchema = {
 } as const;
 
 export const businessEventPayloadSchemas = {
+  "account.userpresence.updated": accountUserpresenceUpdatedPayloadSchema,
   "agent.activity.updated": agentActivityUpdatedPayloadSchema,
   "agent.automation.rules.changed": agentAutomationRulesChangedPayloadSchema,
   "agent.collaboration.updated": agentCollaborationUpdatedPayloadSchema,

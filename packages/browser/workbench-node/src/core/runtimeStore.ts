@@ -46,12 +46,19 @@ function normalizePublishedBrowserValue(
 
 function shouldClearLoadError({
   isLoading,
+  navigationStatusCode,
   url
 }: {
   isLoading: boolean;
+  navigationStatusCode?: number;
   url: string | null;
 }): boolean {
-  return isLoading && !isChromiumErrorPageUrl(url);
+  const mainDocumentSucceeded =
+    navigationStatusCode !== undefined &&
+    navigationStatusCode >= 200 &&
+    navigationStatusCode < 400 &&
+    !isChromiumErrorPageUrl(url);
+  return mainDocumentSucceeded || (isLoading && !isChromiumErrorPageUrl(url));
 }
 
 export function createBrowserNodeRuntimeStore(): BrowserNodeRuntimeStore {
@@ -187,6 +194,7 @@ function resolveNextState(
     canGoForward: event.canGoForward,
     error: shouldClearLoadError({
       isLoading: event.isLoading,
+      navigationStatusCode: event.navigationStatusCode,
       url: event.url
     })
       ? null

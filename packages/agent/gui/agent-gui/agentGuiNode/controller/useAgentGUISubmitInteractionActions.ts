@@ -1,11 +1,8 @@
 import {
-  parseAgentActivityGoalControlText,
   type AgentActivityGoalControlAction,
   type AgentActivityInteraction,
   type AgentActivityTurn,
-  type AgentSessionEngine,
-  type PendingSubmitIntentRecord,
-  type SessionGoalControlSettlement
+  type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { useCallback, useEffect, useRef } from "react";
@@ -43,16 +40,21 @@ import {
 } from "./agentGuiController.draftMessageHelpers";
 import { clearSubmittedAgentGUIHomeDraft } from "./agentGuiController.homeDraftHelpers";
 import {
+  agentGUIInteractionDraftSettlementKey,
   AgentGUIEngineSettlementController,
-  type AgentGUIGoalControlPendingSettlement
+  type AgentGUIGoalControlPendingSettlement,
+  type AgentGUIInteractionDraftPendingSettlement
 } from "./AgentGUIEngineSettlementController";
 import {
   AGENT_RESUME_SESSION_NOT_LOCAL_ERROR,
+  agentGUISubmitSettlementError,
   buildProviderSessionNotFoundActivationError,
   buildResumeSessionNotLocalActivationError,
   getAgentGUIErrorMessage,
+  goalControlSettlementError,
   isNonRetryableResumeErrorCode
 } from "./agentGuiController.errors";
+import { typedGoalControlFromComposer } from "./agentGuiController.composerHelpers";
 import {
   agentSubmitTraceDiagnostics,
   createAgentSubmitTraceState,
@@ -70,6 +72,7 @@ import {
 import type { useAgentGUIActivation } from "./useAgentGUIActivation";
 import type { AgentGUINewConversationActivationResult } from "./agentGuiNewConversationActivation.types";
 import { useAgentGUIGoalControlActions } from "./useAgentGUIGoalControlActions";
+import { resolvePendingQuestionComposerResponse } from "./pendingQuestionComposerResponse";
 
 interface UseAgentGUISubmitInteractionActionsInput {
   activation: ReturnType<typeof useAgentGUIActivation>;
@@ -141,22 +144,6 @@ interface UseAgentGUISubmitInteractionActionsInput {
   workspaceId: string;
 }
 
-export function typedGoalControlFromComposer(
-  content: AgentPromptContentBlock[],
-  _displayPrompt: string | undefined,
-  goalControlSupported: boolean
-): { action: AgentActivityGoalControlAction; objective?: string } | null {
-  if (
-    !goalControlSupported ||
-    content.length !== 1 ||
-    content[0]?.type !== "text"
-  ) {
-    return null;
-  }
-  // Structured content owns command semantics. displayPrompt may collapse a
-  // bundle into a chip, but it must neither hide nor manufacture a control.
-  return parseAgentActivityGoalControlText(content[0].text ?? "");
-}
 export function useAgentGUISubmitInteractionActions(
   input: UseAgentGUISubmitInteractionActionsInput
 ) {
@@ -194,6 +181,9 @@ export function useAgentGUISubmitInteractionActions(
   } = input;
   const goalControlSettlementsRef = useRef<
     Record<string, AgentGUIGoalControlPendingSettlement>
+  >({});
+  const interactionDraftSettlementsRef = useRef<
+    Record<string, AgentGUIInteractionDraftPendingSettlement>
   >({});
   const { goalControl } = useAgentGUIGoalControlActions({
     activeConversationIdRef,
@@ -373,6 +363,7 @@ export function useAgentGUISubmitInteractionActions(
       },
       engine: sessionEngine,
       goalControlSettlements: goalControlSettlementsRef.current,
+      interactionDraftSettlements: interactionDraftSettlementsRef.current,
       isCurrentConversation,
       onGoalControlCleared: () =>
         setGoalClearNoticeSequence((current) => current + 1),
@@ -448,6 +439,67 @@ export function useAgentGUISubmitInteractionActions(
       });
     },
     [activation, executePrompt, isSessionMarkedNonResumable, workspaceId]
+  );
+
+  const submitInteractivePrompt = useCallback(
+    (input: AgentInteractionResponseInput): boolean => {
+      // Plan-implementation actions are client-orchestrated; route them to the
+      // plan decision handlers instead of submitInteractive.
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
+        return planActionsRef.current.implement();
+      }
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_FEEDBACK) {
+        return planActionsRef.current.feedback(
+          typeof input.payload?.text === "string" ? input.payload.text : ""
+        );
+      }
+      if (input.action === PLAN_IMPLEMENTATION_ACTION_SKIP) {
+        return planActionsRef.current.skip();
+      }
+      const normalizedOptionId = input.optionId?.trim() ?? "";
+      const target = resolveAgentGUIInteractionReadinessIdentity({
+        agentSessionId: input.agentSessionId,
+        requestId: input.requestId,
+        turnId: input.turnId,
+        workspaceId
+      });
+      const exactPendingInteraction =
+        target !== null &&
+        activeEnginePendingInteractions.some(
+          (interaction) =>
+            interaction.status === "pending" &&
+            interaction.agentSessionId.trim() === target.agentSessionId &&
+            interaction.turnId.trim() === target.turnId &&
+            interaction.requestId.trim() === target.requestId
+        );
+      if (!target || !exactPendingInteraction || isRespondingToInteraction) {
+        return false;
+      }
+      if (
+        readAgentGUIInteractionReadiness({
+          identity: target,
+          source: interactionReadinessSource
+        })?.status === "blocked"
+      ) {
+        return false;
+      }
+      setDetailError(null);
+      return sessionEngine.submitInteractionResponse({
+        ...(input.action?.trim() ? { action: input.action.trim() } : {}),
+        agentSessionId: target.agentSessionId,
+        ...(normalizedOptionId ? { optionId: normalizedOptionId } : {}),
+        ...(input.payload ? { payload: { ...input.payload } } : {}),
+        requestId: target.requestId,
+        turnId: target.turnId
+      });
+    },
+    [
+      activeEnginePendingInteractions,
+      interactionReadinessSource,
+      isRespondingToInteraction,
+      sessionEngine,
+      workspaceId
+    ]
   );
 
   const submitPrompt = useCallback(
@@ -568,6 +620,52 @@ export function useAgentGUISubmitInteractionActions(
         );
         return;
       }
+      const activeTurnId = activeEngineActiveTurn?.turnId.trim() ?? "";
+      const pendingQuestionResponse = resolvePendingQuestionComposerResponse({
+        activeTurnId,
+        agentSessionId,
+        content: normalizedContent,
+        pendingInteractions: activeEnginePendingInteractions,
+        submitOptions: options
+      });
+      if (pendingQuestionResponse) {
+        const sourceScopeKey = resolveAgentComposerDraftScopeKey({
+          agentSessionId
+        });
+        const submittedDraftSnapshot: SubmittedDraftSnapshot = {
+          content: snapshotAgentComposerDraft(
+            options?.submittedDraft ??
+              draftByScopeKeyRef.current[sourceScopeKey] ??
+              emptyAgentComposerDraft()
+          ),
+          sourceScopeKey,
+          targetAgentSessionId: agentSessionId
+        };
+        const settlementKey = agentGUIInteractionDraftSettlementKey({
+          agentSessionId,
+          requestId: pendingQuestionResponse.requestId,
+          turnId: activeTurnId
+        });
+        interactionDraftSettlementsRef.current[settlementKey] = {
+          agentSessionId,
+          requestId: pendingQuestionResponse.requestId,
+          submittedDraftSnapshot,
+          turnId: activeTurnId
+        };
+        if (!submitInteractivePrompt(pendingQuestionResponse)) {
+          delete interactionDraftSettlementsRef.current[settlementKey];
+          return;
+        }
+        setDraftByScopeKey((current) => {
+          const next = clearSubmittedDraftIfUnchanged({
+            drafts: current,
+            snapshot: submittedDraftSnapshot
+          });
+          draftByScopeKeyRef.current = next;
+          return next;
+        });
+        return;
+      }
       submitExistingPrompt(
         agentSessionId,
         normalizedContent,
@@ -581,6 +679,8 @@ export function useAgentGUISubmitInteractionActions(
       );
     },
     [
+      activeEngineActiveTurn,
+      activeEnginePendingInteractions,
       agentActivityRuntime,
       conversationListQuery,
       goalControl,
@@ -589,6 +689,7 @@ export function useAgentGUISubmitInteractionActions(
       promptImagesSupported,
       startConversation,
       submitExistingPrompt,
+      submitInteractivePrompt,
       workspaceId
     ]
   );
@@ -646,67 +747,6 @@ export function useAgentGUISubmitInteractionActions(
     setDetailError(translate("agentHost.agentGui.promptImagesUnsupported"));
   }, []);
 
-  const submitInteractivePrompt = useCallback(
-    (input: AgentInteractionResponseInput): boolean => {
-      // Plan-implementation actions are client-orchestrated; route them to the
-      // plan decision handlers instead of submitInteractive.
-      if (input.action === PLAN_IMPLEMENTATION_ACTION_IMPLEMENT) {
-        return planActionsRef.current.implement();
-      }
-      if (input.action === PLAN_IMPLEMENTATION_ACTION_FEEDBACK) {
-        return planActionsRef.current.feedback(
-          typeof input.payload?.text === "string" ? input.payload.text : ""
-        );
-      }
-      if (input.action === PLAN_IMPLEMENTATION_ACTION_SKIP) {
-        return planActionsRef.current.skip();
-      }
-      const normalizedOptionId = input.optionId?.trim() ?? "";
-      const target = resolveAgentGUIInteractionReadinessIdentity({
-        agentSessionId: input.agentSessionId,
-        requestId: input.requestId,
-        turnId: input.turnId,
-        workspaceId
-      });
-      const exactPendingInteraction =
-        target !== null &&
-        activeEnginePendingInteractions.some(
-          (interaction) =>
-            interaction.status === "pending" &&
-            interaction.agentSessionId.trim() === target.agentSessionId &&
-            interaction.turnId.trim() === target.turnId &&
-            interaction.requestId.trim() === target.requestId
-        );
-      if (!target || !exactPendingInteraction || isRespondingToInteraction) {
-        return false;
-      }
-      if (
-        readAgentGUIInteractionReadiness({
-          identity: target,
-          source: interactionReadinessSource
-        })?.status === "blocked"
-      ) {
-        return false;
-      }
-      setDetailError(null);
-      return sessionEngine.submitInteractionResponse({
-        ...(input.action?.trim() ? { action: input.action.trim() } : {}),
-        agentSessionId: target.agentSessionId,
-        ...(normalizedOptionId ? { optionId: normalizedOptionId } : {}),
-        ...(input.payload ? { payload: { ...input.payload } } : {}),
-        requestId: target.requestId,
-        turnId: target.turnId
-      });
-    },
-    [
-      activeEnginePendingInteractions,
-      interactionReadinessSource,
-      isRespondingToInteraction,
-      sessionEngine,
-      workspaceId
-    ]
-  );
-
   const submitApprovalOption = useCallback(
     (input: AgentInteractionResponseInput): boolean =>
       submitInteractivePrompt(input),
@@ -755,33 +795,4 @@ export function useAgentGUISubmitInteractionActions(
     submitPrompt,
     updateDraftContent
   };
-}
-
-function goalControlSettlementError(
-  settlement: SessionGoalControlSettlement
-): Error {
-  const error = new Error(settlement.errorMessage ?? "") as Error & {
-    code?: string;
-    reason?: string;
-  };
-  if (settlement.errorCode) error.code = settlement.errorCode;
-  if (settlement.errorReason) error.reason = settlement.errorReason;
-  return error;
-}
-
-export function agentGUISubmitSettlementError(
-  submit: Pick<
-    PendingSubmitIntentRecord,
-    "errorCode" | "errorMessage" | "errorReason"
-  >
-): Error {
-  return Object.assign(
-    new Error(
-      submit.errorMessage?.trim() || translate("agentHost.agentGui.sendFailed")
-    ),
-    {
-      ...(submit.errorCode ? { code: submit.errorCode } : {}),
-      ...(submit.errorReason ? { reason: submit.errorReason } : {})
-    }
-  );
 }

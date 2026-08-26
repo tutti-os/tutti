@@ -241,6 +241,14 @@ export function normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput
       "agentActivity.rememberComposerDefaults codexSaverMode must be a boolean."
     );
   }
+  if (
+    defaults.rtkSaverMode !== undefined &&
+    typeof defaults.rtkSaverMode !== "boolean"
+  ) {
+    throw new Error(
+      "agentActivity.rememberComposerDefaults rtkSaverMode must be a boolean."
+    );
+  }
   return {
     agentTargetId: normalizeRequiredString(
       input.agentTargetId,
@@ -249,6 +257,9 @@ export function normalizeTuttiExternalAgentActivityRememberComposerDefaultsInput
     defaults: {
       ...(typeof defaults.codexSaverMode === "boolean"
         ? { codexSaverMode: defaults.codexSaverMode }
+        : {}),
+      ...(typeof defaults.rtkSaverMode === "boolean"
+        ? { rtkSaverMode: defaults.rtkSaverMode }
         : {}),
       ...normalizeComposerDefaultsField(defaults.model, "model"),
       ...normalizeComposerDefaultsField(

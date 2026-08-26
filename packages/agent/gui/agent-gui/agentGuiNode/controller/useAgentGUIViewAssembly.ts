@@ -186,6 +186,17 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
     pendingApproval: detail.pendingApproval,
     serverInteractivePrompt: detail.serverInteractivePrompt
   });
+  const pendingQuestionComposerTarget = detail.pendingQuestionComposerTarget;
+  const pendingInteractivePrompt = session.pendingInteractivePrompt;
+  const canAnswerPendingInteractivePromptFromComposer =
+    pendingInteractivePrompt?.kind === "ask-user" &&
+    pendingQuestionComposerTarget !== null &&
+    pendingInteractivePrompt.agentSessionId?.trim() ===
+      pendingQuestionComposerTarget.agentSessionId &&
+    pendingInteractivePrompt.turnId?.trim() ===
+      pendingQuestionComposerTarget.turnId &&
+    pendingInteractivePrompt.requestId ===
+      pendingQuestionComposerTarget.requestId;
   const railConversations = useMemo(() => {
     const prompt = session.pendingInteractivePrompt;
     if (prompt?.kind !== "plan-implementation" || !input.activeConversationId) {
@@ -301,6 +312,7 @@ export function useAgentGUIViewAssembly(input: UseAgentGUIViewAssemblyInput) {
       interactivePromptDisabledReason: session.interactivePromptDisabledReason,
       isRespondingApproval: session.isRespondingApproval,
       isRespondingInteractivePrompt: session.isRespondingInteractivePrompt,
+      canAnswerPendingInteractivePromptFromComposer,
       pendingApproval: session.pendingApproval,
       pendingInteractivePrompt: session.pendingInteractivePrompt,
       sessionChrome: session.sessionChrome,

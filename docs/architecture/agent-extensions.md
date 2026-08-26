@@ -70,6 +70,12 @@ registered. Removing the override requires the signed remote source again.
 Production ignores this override and continues to require the signed HTTPS
 release path.
 
+Development clients may use synthetic or zero application versions while the
+desktop is running from source. Remote extension selection still requires the
+configured active pin, signed release, and declared host capabilities; the
+release's `minTuttiVersion` gate is enforced only for packaged production
+clients, whose version is a release compatibility claim.
+
 ## Installation And Runtime Ownership
 
 Verified installations are immutable and stored under:
@@ -277,7 +283,13 @@ opaque legacy/diagnostic data and is not an expansion seam for composer
 capabilities. Legacy persisted contexts without the fixed installation and
 profile identity are not eligible for reuse. Hidden extension discovery is
 prompt-free and is closed immediately after success, start/terminal failure,
-cancellation, or timeout. The standard ACP adapter canonicalizes
+cancellation, or timeout. When discovery completes after the caller's bounded
+wait has returned, tuttid publishes the existing model-catalog refresh signal;
+active composer consumers then reload the newly cached catalog instead of
+requiring a new conversation. The selected model is not part of the discovery
+cache identity because the hidden discovery session does not receive a model;
+acknowledging its advertised default must continue to address the same catalog.
+The standard ACP adapter canonicalizes
 provider-native reasoning option ids such as `thought_level` or `effort` to
 Tutti's `reasoning_effort` before they reach service or GUI projections, while
 retaining the original runtime id for ACP writes. Unknown provider-native

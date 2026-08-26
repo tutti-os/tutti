@@ -18,7 +18,6 @@ import type { BrowserNodeFeature } from "../core/feature.ts";
 import type {
   BrowserNodeAutomationTargetMetadata,
   BrowserNodeNavigationPolicy,
-  BrowserNodeRuntimeError,
   BrowserNodeSessionMode
 } from "../core/types.ts";
 import type { BrowserNodeWebviewTag } from "./webviewTag.ts";
@@ -42,6 +41,12 @@ import {
   subscribeBrowserNodeHostOverlay
 } from "./browserNodeHostOverlayStore.ts";
 import { isBrowserNodeHomeUrl } from "./browserNodeHome.ts";
+import {
+  formatBrowserNodeErrorMessage,
+  formatBrowserNodeErrorStatus,
+  resolveBrowserNodeLoadErrorView,
+  type BrowserNodeErrorRenderContext
+} from "./browserNodeError.ts";
 
 // Electron needs the serialized string attribute for dynamically created webviews.
 const browserNodeAllowPopupsAttribute = "true" as unknown as boolean;
@@ -83,6 +88,7 @@ export interface BrowserNodeProps {
   feature: BrowserNodeFeature;
   hidden?: boolean;
   materializeCold?: boolean;
+  renderError?: (context: BrowserNodeErrorRenderContext) => ReactNode;
   renderHome?: (context: BrowserNodeHomeRenderContext) => ReactNode;
   navigationPolicy?: BrowserNodeNavigationPolicy | null;
   navigationActions?: ReactNode;
@@ -103,12 +109,15 @@ export interface BrowserNodeHomeRenderContext {
   nodeId: string;
 }
 
+export type { BrowserNodeErrorRenderContext };
+
 export function BrowserNode({
   automationTarget = null,
   defaultUrl,
   feature,
   hidden = false,
   materializeCold = false,
+  renderError,
   renderHome,
   navigationPolicy = null,
   navigationActions,
@@ -130,6 +139,7 @@ export function BrowserNode({
         defaultUrl={defaultUrl}
         feature={feature}
         hidden={hidden}
+        renderError={renderError}
         renderHome={renderHome}
         navigationPolicy={navigationPolicy}
         navigationActions={navigationActions}
@@ -162,6 +172,7 @@ export function BrowserNode({
       feature={feature}
       hidden={hidden}
       materializeCold={materializeCold}
+      renderError={renderError}
       renderHome={renderHome}
       navigationPolicy={navigationPolicy}
       navigationActions={navigationActions}
@@ -182,6 +193,7 @@ function TabbedBrowserNode({
   defaultUrl,
   feature,
   hidden,
+  renderError,
   renderHome,
   navigationPolicy,
   navigationActions,
@@ -264,6 +276,7 @@ function TabbedBrowserNode({
                   feature={feature}
                   hidden={hidden || !active}
                   materializeCold={tab.materializeCold === true}
+                  renderError={renderError}
                   renderHome={renderHome}
                   navigationPolicy={navigationPolicy}
                   nodeId={tab.nodeId}
@@ -293,6 +306,7 @@ function BrowserNodeContent({
   feature,
   hidden = false,
   materializeCold = false,
+  renderError,
   renderHome,
   navigationPolicy = null,
   navigationActions,
@@ -325,13 +339,40 @@ function BrowserNodeContent({
   const lastNavigatedUrlRef = useRef<string | null>(
     state.runtime.url?.trim() || null
   );
-  const errorMessage = runtime.error
-    ? formatBrowserNodeErrorMessage(feature, runtime.error)
+  const error = runtime.error;
+  const errorMessage = error
+    ? formatBrowserNodeErrorMessage(feature, error)
     : null;
-  const errorStatus = runtime.error
-    ? formatBrowserNodeErrorStatus(feature, runtime.error)
+  const errorStatus = error
+    ? formatBrowserNodeErrorStatus(feature, error)
     : null;
-  const isShowingLoadError = errorMessage !== null;
+  const navigateFromOverlay = async (url: string): Promise<void> => {
+    const resolved = feature.resolveAddressInput(url);
+    if (!resolved.url) {
+      return;
+    }
+    await feature.hostApi.navigate({
+      navigationPolicy,
+      nodeId,
+      url: resolved.url
+    });
+  };
+  const customErrorContent =
+    renderError && error && errorMessage
+      ? renderError({
+          error,
+          message: errorMessage,
+          navigate: navigateFromOverlay,
+          nodeId,
+          reload: () => feature.hostApi.reload({ nodeId }),
+          status: errorStatus
+        })
+      : null;
+  const loadErrorView = resolveBrowserNodeLoadErrorView({
+    customContent: customErrorContent,
+    hasError: errorMessage !== null
+  });
+  const isShowingLoadError = loadErrorView !== "none";
   // Keep home mounted across about:blank loading flickers. Hiding home while the
   // bootstrap webview reports isLoading makes the empty state flash on every
   // guest reload/attach (including Cookie-import session refreshes).
@@ -440,22 +481,17 @@ function BrowserNodeContent({
           {isShowingHome ? (
             <div className="absolute inset-0 z-10 overflow-auto bg-[var(--background-panel)]">
               {renderHome({
-                navigate: async (url) => {
-                  const resolved = feature.resolveAddressInput(url);
-                  if (!resolved.url) {
-                    return;
-                  }
-                  await feature.hostApi.navigate({
-                    navigationPolicy,
-                    nodeId,
-                    url: resolved.url
-                  });
-                },
+                navigate: navigateFromOverlay,
                 nodeId
               })}
             </div>
           ) : null}
-          {errorMessage ? (
+          {loadErrorView === "custom" ? (
+            <div className="absolute inset-0 z-10 overflow-auto bg-[var(--background-panel)]">
+              {customErrorContent}
+            </div>
+          ) : null}
+          {loadErrorView === "default" && errorMessage ? (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--background-panel)] px-8 py-10 text-center">
               <div
                 className="flex w-full max-w-[440px] flex-col items-center"
@@ -539,47 +575,4 @@ function useBrowserNodeHostOverlayOpen(nodeId: string): boolean {
     [nodeId]
   );
   return useSyncExternalStore(subscribe, getSnapshot, () => false);
-}
-
-function formatBrowserNodeErrorMessage(
-  feature: BrowserNodeFeature,
-  error: BrowserNodeRuntimeError
-): string {
-  switch (error.code) {
-    case "invalid-url":
-      return feature.i18n.t("errors.invalidUrl", error.params);
-    case "navigation-failed":
-      if (error.params && error.params.statusCode !== undefined) {
-        return feature.i18n.t(
-          "errors.navigationFailedWithStatus",
-          error.params
-        );
-      }
-      return feature.i18n.t("errors.navigationFailed", error.params);
-    case "unsupported-protocol":
-      return feature.i18n.t("errors.unsupportedProtocol", error.params);
-    case "unsupported-url":
-      return feature.i18n.t("errors.unsupportedUrl", error.params);
-  }
-}
-
-function formatBrowserNodeErrorStatus(
-  feature: BrowserNodeFeature,
-  error: BrowserNodeRuntimeError
-): string | null {
-  if (error.code !== "navigation-failed" || !error.params) {
-    return null;
-  }
-
-  const statusCode = error.params.statusCode;
-  if (typeof statusCode === "number") {
-    return feature.i18n.t("errors.statusCode", { statusCode });
-  }
-
-  const errorCode = error.params.errorCode;
-  if (typeof errorCode === "number") {
-    return feature.i18n.t("errors.errorCode", { errorCode });
-  }
-
-  return null;
 }

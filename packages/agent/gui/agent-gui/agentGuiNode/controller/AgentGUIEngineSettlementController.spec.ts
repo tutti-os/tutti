@@ -1,7 +1,9 @@
 import {
   normalizeAgentActivitySession,
   selectEngineHasVisibleQueuedSubmit,
-  selectPendingSubmitsForSession
+  selectPendingSubmitsForSession,
+  type AgentActivityInteraction,
+  type AgentActivityTurn
 } from "@tutti-os/agent-activity-core";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -17,7 +19,10 @@ import type {
   AgentComposerDraft,
   SubmittedDraftSnapshot
 } from "../model/agentGuiNodeTypes";
-import { AgentGUIEngineSettlementController } from "./AgentGUIEngineSettlementController";
+import {
+  agentGUIInteractionDraftSettlementKey,
+  AgentGUIEngineSettlementController
+} from "./AgentGUIEngineSettlementController";
 
 describe("AgentGUIEngineSettlementController", () => {
   it("clears a matching home draft after activation confirmation", () => {
@@ -366,6 +371,119 @@ describe("AgentGUIEngineSettlementController", () => {
     engine.dispose();
   });
 
+  it("restores a composer answer when the interaction response fails", async () => {
+    let rejectResponse: (error: Error) => void = vi.fn();
+    const engine = createTestAgentSessionEngine("test-workspace", {
+      execute(command) {
+        if (command.type !== "interaction/respond") {
+          return Promise.resolve({ ok: true });
+        }
+        return new Promise((_, reject) => {
+          rejectResponse = reject;
+        });
+      }
+    });
+    const { interaction, session } = waitingQuestionSession();
+    engine.dispatch({ sessions: [session], type: "session/snapshotReceived" });
+    const sourceScopeKey = "session:session-1";
+    const submittedDraft: AgentComposerDraft = [
+      { type: "text", text: "You decide" }
+    ];
+    const settlementKey = agentGUIInteractionDraftSettlementKey(interaction);
+    const interactionDraftSettlements = {
+      [settlementKey]: {
+        agentSessionId: interaction.agentSessionId,
+        requestId: interaction.requestId,
+        submittedDraftSnapshot: {
+          content: submittedDraft,
+          sourceScopeKey,
+          targetAgentSessionId: interaction.agentSessionId
+        },
+        turnId: interaction.turnId
+      }
+    };
+    let drafts: Record<string, AgentComposerDraft> = {
+      [sourceScopeKey]: emptyAgentComposerDraft()
+    };
+    const controller = new AgentGUIEngineSettlementController({
+      applyDraftUpdate: (update) => {
+        drafts = update(drafts);
+      },
+      engine,
+      interactionDraftSettlements,
+      snapshots: {}
+    });
+    const detach = controller.attach();
+
+    expect(
+      engine.submitInteractionResponse({
+        action: "submit",
+        agentSessionId: interaction.agentSessionId,
+        payload: {
+          answers: ["You decide"],
+          answersByQuestionId: { "execution-mode": "You decide" }
+        },
+        requestId: interaction.requestId,
+        turnId: interaction.turnId
+      })
+    ).toBe(true);
+    rejectResponse(new Error("response failed"));
+
+    await vi.waitFor(() => {
+      expect(agentComposerDraftPrompt(drafts[sourceScopeKey]!)).toBe(
+        "You decide"
+      );
+    });
+    expect(interactionDraftSettlements).toEqual({});
+    detach();
+    engine.dispose();
+  });
+
+  it("keeps a composer answer cleared after the interaction is answered", () => {
+    const engine = createTestAgentSessionEngine();
+    const { interaction, session } = waitingQuestionSession();
+    engine.dispatch({ sessions: [session], type: "session/snapshotReceived" });
+    const sourceScopeKey = "session:session-1";
+    const settlementKey = agentGUIInteractionDraftSettlementKey(interaction);
+    const submittedDraft: AgentComposerDraft = [
+      { type: "text", text: "You decide" }
+    ];
+    const interactionDraftSettlements = {
+      [settlementKey]: {
+        agentSessionId: interaction.agentSessionId,
+        requestId: interaction.requestId,
+        submittedDraftSnapshot: {
+          content: submittedDraft,
+          sourceScopeKey,
+          targetAgentSessionId: interaction.agentSessionId
+        },
+        turnId: interaction.turnId
+      }
+    };
+    let drafts: Record<string, AgentComposerDraft> = {
+      [sourceScopeKey]: emptyAgentComposerDraft()
+    };
+    const controller = new AgentGUIEngineSettlementController({
+      applyDraftUpdate: (update) => {
+        drafts = update(drafts);
+      },
+      engine,
+      interactionDraftSettlements,
+      snapshots: {}
+    });
+    const detach = controller.attach();
+
+    engine.dispatch({
+      interaction: { ...interaction, status: "answered", updatedAtUnixMs: 3 },
+      type: "interaction/upserted"
+    });
+
+    expect(drafts[sourceScopeKey]).toEqual(emptyAgentComposerDraft());
+    expect(interactionDraftSettlements).toEqual({});
+    detach();
+    engine.dispose();
+  });
+
   it("settles a Goal draft when Host durably accepts an applying operation", async () => {
     const engine = createTestAgentSessionEngineWithEffects("test-workspace", {
       controlGoal: () =>
@@ -499,6 +617,55 @@ function sessionWithGoal(objective: string) {
     title: "session",
     workspaceId: "test-workspace"
   });
+}
+
+function waitingQuestionSession(): {
+  interaction: AgentActivityInteraction;
+  session: ReturnType<typeof normalizeAgentActivitySession>;
+} {
+  const turn: AgentActivityTurn = {
+    agentSessionId: "session-1",
+    origin: "user_prompt",
+    phase: "waiting",
+    startedAtUnixMs: 1,
+    turnId: "turn-1",
+    updatedAtUnixMs: 2
+  };
+  const interaction: AgentActivityInteraction = {
+    agentSessionId: "session-1",
+    createdAtUnixMs: 2,
+    input: {
+      questions: [
+        {
+          allowFreeText: true,
+          header: "Execution",
+          id: "execution-mode",
+          options: [{ description: "Check first", label: "Safe" }],
+          question: "How should the task continue?"
+        }
+      ]
+    },
+    kind: "question",
+    requestId: "request-1",
+    status: "pending",
+    turnId: turn.turnId,
+    updatedAtUnixMs: 2
+  };
+  return {
+    interaction,
+    session: normalizeAgentActivitySession({
+      activeTurn: turn,
+      activeTurnId: turn.turnId,
+      agentSessionId: "session-1",
+      cwd: "/workspace/app",
+      latestTurn: turn,
+      latestTurnInteractions: [interaction],
+      pendingInteractions: [interaction],
+      provider: "codex",
+      title: "session",
+      workspaceId: "test-workspace"
+    })
+  };
 }
 
 function requestActivation(

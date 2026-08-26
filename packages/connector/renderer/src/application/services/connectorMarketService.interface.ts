@@ -13,6 +13,14 @@ import type {
 
 export type ConnectorMarketLoadState = "idle" | "loading" | "ready" | "error";
 
+export type ConnectorMutationPhase =
+  | "authorizing"
+  | "disconnecting"
+  | "installing"
+  | "uninstalling"
+  | "updating"
+  | "updating_runtime";
+
 export interface ConnectorMarketSectionState extends ConnectorMarketCategory {
   connectorKeys: string[];
   loadState: ConnectorMarketLoadState;
@@ -34,6 +42,7 @@ export interface ConnectorMarketStoreState {
   connectorKeys: string[];
   pendingInstallationsByConnectorKey: Record<string, true>;
   pendingAuthorizationsByConnectorKey: Record<string, true>;
+  mutationPhasesByConnectorKey: Record<string, ConnectorMutationPhase>;
   operationsByConnectorKey: Record<string, ConnectorOperation>;
   pendingUninstallNotificationsByOperationId: Record<
     string,

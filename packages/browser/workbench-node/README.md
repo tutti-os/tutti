@@ -102,6 +102,12 @@ function receives the tab node id and a `navigate(url)` callback, allowing a
 host to render live sandbox ports or other product-owned shortcuts without
 forking the Browser surface.
 
+`BrowserNode` also accepts an optional `renderError` function for load
+failures, including HTTP status errors such as 502. The function receives the
+runtime error, formatted default copy, the tab node id, and `navigate` /
+`reload` callbacks. Hosts that omit it, or return `null`, keep the package
+default overlay.
+
 Hosts that coordinate multiple Browser surfaces can use
 `findBrowserNodePageByUrl(...)` and `activateBrowserNodePageByUrl(...)`. These
 helpers prefer a live runtime URL match, then retain the tab's requested URL as

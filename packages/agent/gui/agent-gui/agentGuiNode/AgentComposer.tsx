@@ -343,6 +343,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     editorHandleRef
   });
   const {
+    computerExecutable,
     filteredSkills,
     resolvedSlashCommands,
     skillQueryMatch,
@@ -484,6 +485,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     availableSkills,
     composerSettings,
+    computerExecutable,
     // Host-gated product capability: omit or enabled:false must hide /tutti.
     // Fail closed like other unsupported host capabilities — do not treat a
     // missing flag as enabled.

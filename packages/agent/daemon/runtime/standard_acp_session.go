@@ -87,6 +87,14 @@ func (a *standardACPAdapter) Start(ctx context.Context, session Session) ([]acti
 		initialPromptContext: initialPromptContext,
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
+	if a.config.localToolBridge != nil && standardACPHTTPMCPSupported(initializeResult) {
+		binding, release, bindErr := a.config.localToolBridge.Bind(ctx, session)
+		if bindErr != nil {
+			return nil, fmt.Errorf("bind local ACP tool bridge: %w", bindErr)
+		}
+		acpSession.localToolRelease = release
+		mcpServers = append(mcpServers, acpMCPServers([]MCPServerBinding{binding})...)
+	}
 
 	newSessionParams := map[string]any{
 		"cwd":        standardACPProtocolCWD(session.CWD),
@@ -336,6 +344,14 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 		acpSession.acpLiveState = cloneACPLiveState(previousSession.acpLiveState)
 	}
 	a.storeSession(session.AgentSessionID, acpSession)
+	if a.config.localToolBridge != nil && standardACPHTTPMCPSupported(initializeResult) {
+		binding, release, bindErr := a.config.localToolBridge.Bind(ctx, session)
+		if bindErr != nil {
+			return fmt.Errorf("bind local ACP tool bridge: %w", bindErr)
+		}
+		acpSession.localToolRelease = release
+		mcpServers = append(mcpServers, acpMCPServers([]MCPServerBinding{binding})...)
+	}
 
 	method := acpSession.resumeMethod
 	if method == "" {

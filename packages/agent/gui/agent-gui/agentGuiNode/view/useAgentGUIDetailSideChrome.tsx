@@ -190,7 +190,10 @@ export function useAgentGUIDetailSideChrome({
       promptImagesSupported: false,
       canGoalControl: false,
       canUploadAttachment: false,
-      labels: baseComposerProps.labels,
+      labels: {
+        ...baseComposerProps.labels,
+        conversationReturn: undefined
+      },
       workspaceUserProjectI18n: baseComposerProps.workspaceUserProjectI18n,
       capabilityMenuState: projectAgentSideCapabilityMenuState(
         baseComposerProps.capabilityMenuState

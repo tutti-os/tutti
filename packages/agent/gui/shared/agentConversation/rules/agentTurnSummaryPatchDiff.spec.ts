@@ -83,4 +83,23 @@ describe("buildAgentTurnSummaryPatchDiff", () => {
       "diff --git a/today.txt b/today.txt\n--- a/today.txt\n+++ b/today.txt\n@@ -1,2 +1,2 @@\n--- old option\n+++ new option\n-old\n+new\n"
     );
   });
+
+  it.each([
+    { oldString: "before\n", newString: undefined },
+    { oldString: undefined, newString: "after\n" }
+  ])("does not invent a modified-file patch from one-sided content", change => {
+    const diff = buildAgentTurnSummaryPatchDiff({
+      cwd: "/workspace/project",
+      toolCallId: "call-1",
+      changes: [
+        {
+          path: "/workspace/project/src/app.ts",
+          changeType: "modified",
+          ...change
+        }
+      ]
+    });
+
+    expect(diff).toBe("");
+  });
 });

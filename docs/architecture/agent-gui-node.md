@@ -279,6 +279,22 @@ daemon validates them against current product policy and resolved provider
 capability before runtime preparation; an active Session cannot reinterpret
 them through an in-place settings update.
 
+RTK saver mode follows this launch-only path for every resolved Agent provider.
+The remembered composer value is only an opt-in; provider-neutral runtime
+preparation resolves the pinned Tutti-bundled or managed-runtime `rtk`
+executable, copies it and the canonical `RTK.md` into the exact Session runtime,
+injects the RTK rule through
+the provider's existing instruction channel, and prepend only that private
+binary directory to the Session environment. Tutti never runs an RTK package
+manager or global installer. RTK usage data, tee output, and telemetry policy
+are also Session-scoped, so enabling the mode cannot change another Agent's
+instructions, executable search path, or tracking state. The independent
+`rtkSaverMode` property carries this provider-neutral setting, while the
+existing `codexSaverMode` property remains Codex-only and continues to control
+the Luna subagent workflow. Tutti terminals receive the bundled
+RTK directory in their child PATH for explicit use, while the user-global PATH
+and external Agent processes remain unchanged.
+
 ### 2.4 Ownership map
 
 | Layer                           | Owns                                                                                          | Must not own                                      |
@@ -2137,7 +2153,9 @@ enabled, the same footer renders the Tutti Mode activation switch and the slash
 palette exposes `/tutti`, including when Connectors are also enabled. When the
 flag is off, both Tutti Mode entry points are omitted. The same footer serves
 both the home hero and existing-session dock, so the two AgentGUI contexts
-cannot drift.
+cannot drift. The one-time Desktop Preferences migration resets any persisted
+`lab.tuttiMode` value to `false`; its durable migration marker preserves later
+user opt-ins instead of resetting the preference on every launch.
 The menu, selection-chip, and Palette-item implementations plus their neutral
 item contracts belong to `@tutti-os/connector-renderer/ui`. AgentGUI owns only
 the React-free capability projection under `integrations/connector`, Composer
@@ -3191,6 +3209,24 @@ canonical Interaction(pending)
 
 Every surface shares the exact interaction identity
 `(workspaceId, agentSessionId, turnId, requestId)` and submitting state.
+Collapsing an ask-user surface back into the conversation is presentation-only:
+the canonical Interaction remains `pending`, no response or cancellation is
+dispatched, and the mounted answer flow retains its in-memory draft for that
+surface. The collapsed surface keeps a visible resume affordance. Hosts expose
+this action only when their ordinary Composer can answer the exact pending
+Interaction; Side and other prompt-only composers do not infer support from a
+full-size layout. In the supported full conversation surface, a question with
+structured options does not add a second
+free-text answer field; users give a new direction through the ordinary
+composer instead. When the active root Turn is waiting on exactly one pending
+question whose normalized fields all accept free text, a text-only ordinary
+composer submit is converted to the canonical answer payload and sent through
+the existing Engine Interaction response operation for that exact Turn and
+request. This resolves the provider's pending request so the same Turn can
+continue; it does not cancel the Turn, enqueue a second prompt, or branch on
+provider names. The composer draft clears only after Engine admits the response
+and is restored if the response later fails. Fixed-choice questions and
+non-text composer content remain on their existing paths.
 Provider request ids remain unchanged and may repeat across Turns; no adapter
 may recover a missing Turn by scanning for a session-wide request-id match.
 An optional Host interaction-readiness capability may block an owner-dependent
