@@ -18,7 +18,11 @@ var (
 		Name: "create with authoritative rail placement outside local project registry",
 		run:  runCreateWithAuthoritativeRailPlacement,
 	}
-	resumePersistedSessionScenario = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	resumePersistedSessionScenario                = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	failedResumePreservesRecoverableStateScenario = Scenario{
+		Name: "failed resume preserves recoverable provider state",
+		run:  runFailedResumePreservesRecoverableState,
+	}
 	sendInputScenario              = Scenario{Name: "send input", run: runSendInput}
 	sendConnectorOnlyInputScenario = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
 	providerAcceptanceScenario     = Scenario{
@@ -81,6 +85,7 @@ func Scenarios() []Scenario {
 		createWithRailPlacementScenario,
 		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
+		failedResumePreservesRecoverableStateScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
@@ -190,6 +195,7 @@ func SessionForkScenarios() []SessionForkScenario {
 		{Name: "settled through-turn binding can fork while source is active", run: runActiveSourceFork},
 		{Name: "through-turn fork replay does not redispatch provider", run: runThroughTurnForkReplay},
 		{Name: "provider-accepted fork recovers local commit", run: runProviderAcceptedForkRecovery},
+		{Name: "permanently inconsistent provider-accepted fork is quarantined", run: runPermanentlyInconsistentForkRecovery},
 	}
 }
 
@@ -245,6 +251,7 @@ func ApplicationCoreScenarios() []Scenario {
 		createWithRailPlacementScenario,
 		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
+		failedResumePreservesRecoverableStateScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,

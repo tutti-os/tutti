@@ -146,6 +146,7 @@ test("Windows packaging inputs select the Windows installer", () => {
   for (const file of [
     "package.json",
     "pnpm-lock.yaml",
+    "config/tutti.app-runtime.lock.json",
     "apps/desktop/package.json",
     "apps/desktop/build/icon.png",
     "apps/desktop/scripts/vendor-managed-posix-shell.mjs",

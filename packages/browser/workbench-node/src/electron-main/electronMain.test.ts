@@ -330,17 +330,203 @@ test("externalizes popup windows before Browser Node guests register", () => {
   assert.equal(params.allowpopups, "true");
 });
 
-test("allows attached guests to override the default window-open handler", () => {
+test("keeps Browser Node webview guests fail closed when host attachment setup throws", () => {
+  const contents = new EventEmitter();
+  const params = {
+    partition: "persist:browser-node-shared",
+    src: "about:blank"
+  };
+  type WindowOpenHandler = (details: {
+    url: string;
+  }) => BrowserGuestWindowOpenHandlerResponse;
+  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  let externallyOpenedUrl: string | null = null;
+  const warnings: string[] = [];
+  const cleanup = installBrowserWebviewSecurity({
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    logger: {
+      warn(message) {
+        warnings.push(message);
+      }
+    },
+    openExternal(url) {
+      externallyOpenedUrl = url;
+    },
+    resolveGuestAttachment() {
+      throw new Error("host attachment failed");
+    }
+  });
+
+  contents.emit(
+    "will-attach-webview",
+    {
+      preventDefault() {
+        throw new Error("webview should not be blocked");
+      }
+    },
+    {},
+    params
+  );
+  contents.emit(
+    "did-attach-webview",
+    {},
+    {
+      id: 43,
+      setWindowOpenHandler(handler: WindowOpenHandler) {
+        captured.windowOpenHandler = handler;
+      }
+    }
+  );
+
+  cleanup();
+
+  if (!captured.windowOpenHandler) {
+    throw new Error("expected a fail-closed window-open handler");
+  }
+  assert.deepEqual(
+    captured.windowOpenHandler({ url: "https://example.com/popup" }),
+    { action: "deny" }
+  );
+  assert.equal(externallyOpenedUrl, null);
+  assert.deepEqual(warnings, ["Browser Node webview guest setup failed"]);
+});
+
+test("allows legacy attached guests to override the default window-open handler", () => {
+  const contents = new EventEmitter();
+  const params = {
+    partition: "persist:browser-node-shared",
+    src: "about:blank"
+  };
+  type WindowOpenHandler = (details: {
+    url: string;
+  }) => BrowserGuestWindowOpenHandlerResponse;
+  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  let externallyOpenedUrl: string | null = null;
+  let legacyOpenedUrl: string | null = null;
+  let setWindowOpenHandlerCount = 0;
+  const guestContents = {
+    id: 44,
+    setWindowOpenHandler(handler: WindowOpenHandler) {
+      setWindowOpenHandlerCount += 1;
+      captured.windowOpenHandler = handler;
+    }
+  };
+  const cleanup = installBrowserWebviewSecurity({
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    onGuestAttached(attachedContents) {
+      attachedContents.setWindowOpenHandler(({ url }) => {
+        legacyOpenedUrl = url;
+        return { action: "deny" };
+      });
+    },
+    openExternal(url) {
+      externallyOpenedUrl = url;
+    }
+  });
+
+  contents.emit(
+    "will-attach-webview",
+    {
+      preventDefault() {
+        throw new Error("webview should not be blocked");
+      }
+    },
+    {},
+    params
+  );
+  contents.emit("did-attach-webview", {}, guestContents);
+
+  cleanup();
+
+  if (!captured.windowOpenHandler) {
+    throw new Error("expected a legacy window-open handler");
+  }
+  assert.deepEqual(
+    captured.windowOpenHandler({ url: "https://example.com/legacy" }),
+    { action: "deny" }
+  );
+  assert.equal(setWindowOpenHandlerCount, 2);
+  assert.equal(legacyOpenedUrl, "https://example.com/legacy");
+  assert.equal(externallyOpenedUrl, null);
+});
+
+test("restores the fail-closed route when a legacy guest callback throws after overriding it", () => {
+  const contents = new EventEmitter();
+  const params = {
+    partition: "persist:browser-node-shared",
+    src: "about:blank"
+  };
+  type WindowOpenHandler = (details: {
+    url: string;
+  }) => BrowserGuestWindowOpenHandlerResponse;
+  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  let externallyOpenedUrl: string | null = null;
+  let setWindowOpenHandlerCount = 0;
+  const warnings: string[] = [];
+  const guestContents = {
+    id: 45,
+    setWindowOpenHandler(handler: WindowOpenHandler) {
+      setWindowOpenHandlerCount += 1;
+      captured.windowOpenHandler = handler;
+    }
+  };
+  const cleanup = installBrowserWebviewSecurity({
+    contents:
+      contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
+    logger: {
+      warn(message) {
+        warnings.push(message);
+      }
+    },
+    onGuestAttached(attachedContents) {
+      attachedContents.setWindowOpenHandler(() => ({ action: "allow" }));
+      throw new Error("legacy attachment failed");
+    },
+    openExternal(url) {
+      externallyOpenedUrl = url;
+    }
+  });
+
+  contents.emit(
+    "will-attach-webview",
+    {
+      preventDefault() {
+        throw new Error("webview should not be blocked");
+      }
+    },
+    {},
+    params
+  );
+  assert.doesNotThrow(() => {
+    contents.emit("did-attach-webview", {}, guestContents);
+  });
+
+  cleanup();
+
+  if (!captured.windowOpenHandler) {
+    throw new Error("expected a restored fail-closed window-open handler");
+  }
+  assert.deepEqual(
+    captured.windowOpenHandler({ url: "https://example.com/blocked" }),
+    { action: "deny" }
+  );
+  assert.equal(setWindowOpenHandlerCount, 3);
+  assert.equal(externallyOpenedUrl, null);
+  assert.deepEqual(warnings, ["Browser Node webview guest setup failed"]);
+});
+
+test("keeps the host window-open route after the guest registers", async () => {
   const contents = new EventEmitter();
   const webPreferences: Record<string, unknown> = {};
   const params = {
     partition: "persist:tutti-app:workspace:hello",
     src: "http://127.0.0.1:4100/"
   };
-  type WindowOpenHandler = (details: {
-    url: string;
-  }) => BrowserGuestWindowOpenHandlerResponse;
-  const captured: { windowOpenHandler?: WindowOpenHandler } = {};
+  const events: BrowserNodeEvent[] = [];
+  const guestContents = new MockBrowserGuestWebContents(42);
+  let attachedPartition: string | null = null;
   let customOpenedUrl: string | null = null;
   let externallyOpenedUrl: string | null = null;
   const cleanup = installBrowserWebviewSecurity({
@@ -349,11 +535,14 @@ test("allows attached guests to override the default window-open handler", () =>
     },
     contents:
       contents as unknown as InstallBrowserWebviewSecurityInput["contents"],
-    onGuestAttached: (guestContents) => {
-      guestContents.setWindowOpenHandler?.(({ url }) => {
-        customOpenedUrl = url;
-        return { action: "deny" };
-      });
+    resolveGuestAttachment: (_guestContents, { params: attachedParams }) => {
+      attachedPartition = attachedParams.partition ?? null;
+      return {
+        windowOpenHandler: ({ url }) => {
+          customOpenedUrl = url;
+          return { action: "deny" };
+        }
+      };
     },
     openExternal: (url) => {
       externallyOpenedUrl = url;
@@ -370,31 +559,40 @@ test("allows attached guests to override the default window-open handler", () =>
     webPreferences,
     params
   );
-  contents.emit(
-    "did-attach-webview",
-    {},
-    {
-      id: 42,
-      setWindowOpenHandler(handler: WindowOpenHandler) {
-        captured.windowOpenHandler = handler;
-      }
-    }
-  );
+  contents.emit("did-attach-webview", {}, guestContents);
 
-  cleanup();
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === guestContents.id ? guestContents : null)
+  });
+  await manager.registerGuest({
+    nodeId: "workspace-app-browser-node",
+    profileId: null,
+    sessionMode: "shared",
+    sessionPartition: params.partition,
+    url: params.src,
+    webContentsId: guestContents.id
+  });
 
-  if (!captured.windowOpenHandler) {
+  if (!guestContents.windowOpenHandler) {
     throw new Error("expected a window-open handler to be installed");
   }
 
   assert.deepEqual(
-    captured.windowOpenHandler({ url: "https://example.com/" }),
+    guestContents.windowOpenHandler({ url: "https://example.com/" }),
     {
       action: "deny"
     }
   );
+  assert.equal(attachedPartition, "persist:tutti-app:workspace:hello");
+  assert.equal(guestContents.setWindowOpenHandlerCount, 1);
   assert.equal(customOpenedUrl, "https://example.com/");
   assert.equal(externallyOpenedUrl, null);
+  assert.equal(events.filter((event) => event.type === "open-url").length, 0);
+
+  manager.dispose();
+  cleanup();
 });
 
 test("sanitizes Electron token from Browser Node guest user agents", () => {
@@ -972,6 +1170,7 @@ test("blocks cross-origin Browser Node guest navigation for policy-bound session
       }
     ]
   );
+  assert.equal(contents.setWindowOpenHandlerCount, 1);
 });
 
 test("opens Browser Node URLs externally after validation", async () => {
@@ -1434,6 +1633,114 @@ test("reports Browser Node guest HTTP error navigations", async () => {
   );
 });
 
+test("reloads a failed Browser Node guest without cache until navigation recovers", async () => {
+  const events: BrowserNodeEvent[] = [];
+  const contents = new MockBrowserGuestWebContents(30);
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-failed-reload",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 30
+  });
+
+  contents.emit(
+    "did-navigate",
+    {},
+    "http://127.0.0.1:3000/",
+    502,
+    "Bad Gateway"
+  );
+  await manager.reload({ nodeId: "browser-failed-reload" });
+
+  assert.equal(contents.reloadIgnoringCacheCalls, 1);
+  assert.equal(contents.reloadCalls, 0);
+
+  contents.emit("did-navigate", {}, "http://127.0.0.1:3000/", 200, "OK");
+  await manager.reload({ nodeId: "browser-failed-reload" });
+
+  assert.equal(contents.reloadIgnoringCacheCalls, 1);
+  assert.equal(contents.reloadCalls, 1);
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === "state" &&
+        event.navigationStatusCode === 200 &&
+        event.nodeId === "browser-failed-reload"
+    ),
+    true
+  );
+});
+
+test("keeps subframe failures out of main navigation recovery state", async () => {
+  const events: BrowserNodeEvent[] = [];
+  const contents = new MockBrowserGuestWebContents(31);
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-subframe-failure",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 31
+  });
+  events.length = 0;
+
+  contents.emit(
+    "did-fail-load",
+    {},
+    -102,
+    "ERR_CONNECTION_REFUSED",
+    "https://example.com/frame",
+    false
+  );
+  await manager.reload({ nodeId: "browser-subframe-failure" });
+
+  assert.equal(
+    events.some((event) => event.type === "error"),
+    false
+  );
+  assert.equal(contents.reloadIgnoringCacheCalls, 0);
+  assert.equal(contents.reloadCalls, 1);
+});
+
+test("ends failed reload recovery after a successful non-HTTP navigation", async () => {
+  const contents = new MockBrowserGuestWebContents(32);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-non-http-recovery",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 32
+  });
+  contents.emit(
+    "did-navigate",
+    {},
+    "http://127.0.0.1:3000/",
+    502,
+    "Bad Gateway"
+  );
+  contents.emit("did-navigate", {}, "about:blank", -1, "");
+
+  await manager.reload({ nodeId: "browser-non-http-recovery" });
+
+  assert.equal(contents.reloadIgnoringCacheCalls, 0);
+  assert.equal(contents.reloadCalls, 1);
+});
+
 test("keeps Browser Node navigation failures as the final emitted event", async () => {
   const events: BrowserNodeEvent[] = [];
   const contents = new MockBrowserGuestWebContents(19);
@@ -1759,6 +2066,8 @@ class MockBrowserGuestWebContents
   loading = false;
   printCalls = 0;
   reloadCalls = 0;
+  reloadIgnoringCacheCalls = 0;
+  setWindowOpenHandlerCount = 0;
   findInPageCalls: Array<{
     options: Record<string, unknown> | undefined;
     text: string;
@@ -1858,9 +2167,14 @@ class MockBrowserGuestWebContents
     this.reloadCalls += 1;
   }
 
+  reloadIgnoringCache(): void {
+    this.reloadIgnoringCacheCalls += 1;
+  }
+
   setWindowOpenHandler(
     handler: (details: { url: string }) => BrowserGuestWindowOpenHandlerResponse
   ): void {
+    this.setWindowOpenHandlerCount += 1;
     this.windowOpenHandler = handler;
   }
 

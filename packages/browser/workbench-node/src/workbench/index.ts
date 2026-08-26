@@ -12,7 +12,10 @@ import type {
 import { createMultiInstanceDockEntryOptions } from "@tutti-os/workbench-surface";
 import type { BrowserNodeFeature } from "../core/feature.ts";
 import type { BrowserNodeAutomationTargetMetadata } from "../core/types.ts";
-import { BrowserNode } from "../react/BrowserNode.tsx";
+import {
+  BrowserNode,
+  type BrowserNodeErrorRenderContext
+} from "../react/BrowserNode.tsx";
 import { BrowserNodeWorkbenchHeader } from "../react/BrowserNodeChrome.tsx";
 import {
   resolveBrowserNodeInitialUrl,
@@ -35,6 +38,7 @@ export interface CreateBrowserNodeDefinitionInput {
   feature: BrowserNodeFeature;
   frame?: WorkbenchFrame;
   onNavigated?: (input: { nodeId: string; url: string }) => void;
+  renderError?: (context: BrowserNodeErrorRenderContext) => ReactNode;
   renderTrafficLights?: (
     context: WorkbenchHostNodeHeaderContext<BrowserNodeExternalState>
   ) => ReactNode;
@@ -84,6 +88,7 @@ export function createBrowserNodeDefinition({
   feature,
   frame = defaultBrowserNodeFrame,
   onNavigated,
+  renderError,
   renderTrafficLights,
   typeId = defaultBrowserNodeTypeId
 }: CreateBrowserNodeDefinitionInput): WorkbenchHostNodeDefinition<BrowserNodeExternalState> {
@@ -110,6 +115,7 @@ export function createBrowserNodeDefinition({
         feature,
         hidden: context.node.isMinimized,
         nodeId: context.node.id,
+        renderError,
         onFocusRequest: context.isFocused ? undefined : () => context.focus(),
         onNavigated: onNavigated
           ? (url) =>

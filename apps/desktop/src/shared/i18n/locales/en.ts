@@ -8,6 +8,14 @@ export const en = {
       title: "Login state import"
     }
   },
+  workspaceAppPopup: {
+    deferredUnsupportedDescription:
+      "Popups that navigate after opening are not supported. Try another sign-in method or contact the app provider.",
+    deferredUnsupportedTitle: "This app cannot open the authorization popup",
+    postUnsupportedDescription:
+      "POST-based popups are not supported. Try another sign-in method or contact the app provider.",
+    postUnsupportedTitle: "This app cannot open the authorization popup"
+  },
   common: {
     cancel: "Cancel",
     close: "Close",
@@ -1340,6 +1348,9 @@ export const en = {
         codexSaverModeDescription:
           "Show a remembered Codex composer switch that delegates suitable subtasks to Luna Max.",
         codexSaverModeLabel: "Codex saver mode",
+        rtkSaverModeDescription:
+          "Show a remembered RTK switch for every Agent. Tutti includes RTK and copies it only into enabled sessions without a global install.",
+        rtkSaverModeLabel: "RTK saver mode",
         removeFileDefaultOpener: "Remove .{{extension}}",
         releaseChannelDescription:
           "Choose stable release updates, or opt in to preview builds for internal verification.",

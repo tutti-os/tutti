@@ -104,6 +104,7 @@ export function composerSettingsFromPendingRecord(
   }
   for (const key of [
     "codexSaverMode",
+    "rtkSaverMode",
     "planMode",
     "browserUse",
     "computerUse"

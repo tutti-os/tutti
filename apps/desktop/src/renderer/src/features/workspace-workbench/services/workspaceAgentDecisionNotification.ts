@@ -1,10 +1,4 @@
-import {
-  approvalOptionDisplayLabel,
-  getPromptToolDetails,
-  isPromptRequestIdTitle,
-  managedAgentRoundedIconUrl,
-  type WorkspaceAgentMessageCenterItem
-} from "@tutti-os/agent-gui/agent-message-center";
+import type { WorkspaceAgentMessageCenterItem } from "@tutti-os/agent-gui/agent-message-center";
 import { resolveWorkspaceAgentDecisionIdentity } from "./workspaceAgentDecisionNotificationIdentity.ts";
 
 export interface WorkspaceAgentDecisionSubmitInput {
@@ -30,13 +24,23 @@ export interface WorkspaceAgentDecisionNotification {
   prompt: NonNullable<WorkspaceAgentMessageCenterItem["pendingPrompt"]>;
 }
 
+export interface WorkspaceAgentDecisionNotificationLabels {
+  approvalOptionLabel: (option: {
+    id: string;
+    kind: string;
+    label: string;
+  }) => string;
+  commandLabel: string;
+  fallbackAgentIconUrl: string;
+  fallbackAgentName: string;
+  isRequestIdTitle: (value: string) => boolean;
+  planModes: Array<{ id: string; label: string }>;
+  promptCommand: (input: Record<string, unknown> | null) => string | null;
+}
+
 export function buildWorkspaceAgentDecisionNotification(
   item: WorkspaceAgentMessageCenterItem,
-  labels: {
-    commandLabel: string;
-    fallbackAgentName: string;
-    planModes: Array<{ id: string; label: string }>;
-  }
+  labels: WorkspaceAgentDecisionNotificationLabels
 ): WorkspaceAgentDecisionNotification | null {
   const prompt = item.pendingPrompt;
   if (!prompt) {
@@ -45,10 +49,20 @@ export function buildWorkspaceAgentDecisionNotification(
   const { agentIconUrl, agentName } = resolveWorkspaceAgentDecisionIdentity({
     agentAvatarUrl: item.agentAvatarUrl,
     agentName: item.agentName,
-    fallbackAgentIconUrl: managedAgentRoundedIconUrl(undefined),
+    fallbackAgentIconUrl: labels.fallbackAgentIconUrl,
     fallbackAgentName: labels.fallbackAgentName
   });
   const conversationTitle = item.title.trim();
+  if (prompt.kind === "plan-implementation") {
+    return {
+      agentIconUrl,
+      agentName,
+      conversationTitle,
+      description: prompt.title,
+      options: [],
+      prompt
+    };
+  }
   switch (prompt.kind) {
     case "approval":
       return {
@@ -59,7 +73,7 @@ export function buildWorkspaceAgentDecisionNotification(
         options: prompt.options.map((option) => ({
           description: option.description,
           id: option.id,
-          label: approvalOptionDisplayLabel(option),
+          label: labels.approvalOptionLabel(option),
           submitInput: {
             requestId: prompt.requestId,
             optionId: option.id
@@ -124,17 +138,28 @@ function approvalNotificationDescription(
     NonNullable<WorkspaceAgentMessageCenterItem["pendingPrompt"]>,
     { kind: "approval" }
   >,
-  labels: { commandLabel: string }
+  labels: Pick<
+    WorkspaceAgentDecisionNotificationLabels,
+    "commandLabel" | "isRequestIdTitle" | "promptCommand"
+  >
 ): string {
-  const command = getPromptToolDetails(prompt.input).find(
-    (detail) => detail.kind === "command"
-  )?.value;
+  const command = labels.promptCommand(prompt.input);
   if (command) {
     return `${labels.commandLabel}: ${command}`;
   }
   const title = prompt.title.trim();
-  if (!title || isPromptRequestIdTitle(title)) {
+  if (!title || labels.isRequestIdTitle(title)) {
     return labels.commandLabel;
   }
   return title;
+}
+
+export function isWorkspaceAgentDecisionNotificationPresentable(
+  notification: WorkspaceAgentDecisionNotification | null
+): notification is WorkspaceAgentDecisionNotification {
+  return Boolean(
+    notification &&
+    (notification.prompt.kind === "plan-implementation" ||
+      notification.options.length > 0)
+  );
 }

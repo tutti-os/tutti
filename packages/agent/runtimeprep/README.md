@@ -58,7 +58,8 @@ value. VM-backed hosts must pass the explicit stable root and must not create a
 compatibility facade under the Linux login Home.
 
 Desktop composition also supplies the provider user's stable personal Skill
-root. Runtime preparation exposes that directory directly as
+root and materializes it with the provider user's ownership before preparation.
+Runtime preparation requires that root to exist and exposes it directly as
 `$CODEX_HOME/skills` (a symlink on POSIX and a directory junction on Windows),
 so Codex's native skill-creator keeps its ordinary personal-by-default behavior
 without copying or promoting content from historical Session homes. Tutti-owned

@@ -73,6 +73,7 @@ export interface UseAgentGUINodeControllerInput {
   openSessionRequest?: AgentGUIOpenSessionRequest | null;
   prefillPromptRequest?: AgentGUIPrefillPromptRequest | null;
   codexSaverModeEntryEnabled?: boolean;
+  rtkSaverModeEntryEnabled?: boolean;
   onDataChange: (
     updater: (current: AgentGUINodeData) => AgentGUINodeData
   ) => void;

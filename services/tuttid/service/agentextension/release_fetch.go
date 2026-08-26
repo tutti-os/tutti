@@ -153,6 +153,7 @@ func (m *Manager) resolveReleaseRecord(
 			source.Key,
 			tuttitypes.ResolveAppVersion(),
 			source.PinnedVersion,
+			tuttitypes.IsDevelopmentEnv(),
 		)
 		if err != nil {
 			return VersionRecord{}, fmt.Errorf("select release from index %s: %w", indexURL, err)
@@ -241,7 +242,7 @@ func httpsOnlyRedirectClient(client *http.Client, downgradeError error) *http.Cl
 	return &clone
 }
 
-func selectVersion(document Versions, key string, appVersion string, pinnedVersion string) (VersionRecord, error) {
+func selectVersion(document Versions, key string, appVersion string, pinnedVersion string, development bool) (VersionRecord, error) {
 	if document.SchemaVersion != versionsSchema || document.AgentKey != key {
 		return VersionRecord{}, errors.New("invalid extension versions identity")
 	}
@@ -257,7 +258,7 @@ func selectVersion(document Versions, key string, appVersion string, pinnedVersi
 			continue
 		}
 		if record.Status != "active" || !validSemver(record.Version) || !validSemver(record.MinTuttiVersion) ||
-			semver.Compare("v"+appVersion, "v"+record.MinTuttiVersion) < 0 || len(record.RequiredHostCapabilities) != 0 {
+			(!development && semver.Compare("v"+appVersion, "v"+record.MinTuttiVersion) < 0) || len(record.RequiredHostCapabilities) != 0 {
 			return VersionRecord{}, errors.New("pinned extension version is not active or compatible with this client")
 		}
 		if record.Release.Version != record.Version {

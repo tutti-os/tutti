@@ -9,6 +9,61 @@ import type { AgentGUIComposerDefaultsAuthorityReconciler } from "./agentGuiComp
 import { useAgentGUIComposerOptionsSync } from "./useAgentGUIComposerOptionsSync";
 
 describe("useAgentGUIComposerOptionsSync", () => {
+  it("waits for the authoritative model catalog when prewarming a draft session", async () => {
+    const getComposerOptions = vi.fn(async () => ({}));
+    const data = targetData("opencode");
+    const target = composerTarget("opencode");
+    const rendered = renderHook(() =>
+      useAgentGUIComposerOptionsSync({
+        activeSessionTarget: null,
+        activeConversationId: null,
+        activeConversationIdRef: { current: null },
+        agentActivityRuntime: {
+          getComposerOptions,
+          getSnapshot: () => ({})
+        } as unknown as AgentGUIRuntime,
+        composerTargetData: target,
+        conversationFilter: null,
+        currentUserId: "user-1",
+        data,
+        dataRef: { current: data },
+        defaultReasoningEffort: null,
+        draftSettingsBySessionIdRef: { current: {} },
+        isComposerHome: true,
+        isComposerHomeRef: { current: true },
+        isCreatingConversation: false,
+        loadDraftComposerOptionsRef: { current: () => {} },
+        loadSessionState: vi.fn(),
+        onComposerDefaultsAuthorityReloadedRef:
+          createComposerDefaultsAuthorityReconcilerRef(),
+        optimisticComposerTarget: null,
+        providerComposerOptions: {
+          behavior: { prewarmDraftSession: true }
+        },
+        selectedComposerTargetDataRef: { current: target },
+        selectedProjectPath: "/workspace/project",
+        selectedProjectPathRef: { current: "/workspace/project" },
+        syncConversationListProjection: vi.fn(async () => {}),
+        workspaceId: "workspace-1",
+        workspacePath: "/workspace"
+      })
+    );
+
+    try {
+      await waitFor(() =>
+        expect(getComposerOptions).toHaveBeenCalledWith(
+          expect.objectContaining({
+            agentTargetId: "local:opencode",
+            force: true,
+            waitForFreshModelCatalog: true
+          })
+        )
+      );
+    } finally {
+      rendered.unmount();
+    }
+  });
+
   it("loads a switched target once without bypassing its cache", async () => {
     const getComposerOptions = vi.fn(async () => ({}));
     const activeConversationIdRef = { current: null };

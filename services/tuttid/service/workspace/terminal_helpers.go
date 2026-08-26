@@ -65,6 +65,42 @@ func terminalProcessEnv(cwd string) []string {
 	)
 }
 
+func prependTerminalExecutablePath(env []string, executable string) ([]string, error) {
+	executable = strings.TrimSpace(executable)
+	if executable == "" || !filepath.IsAbs(executable) {
+		return nil, errors.New("tutti terminal rtk executable must be an absolute path")
+	}
+	info, err := os.Stat(executable)
+	if err != nil {
+		return nil, fmt.Errorf("inspect Tutti terminal rtk executable: %w", err)
+	}
+	if !info.Mode().IsRegular() {
+		return nil, fmt.Errorf("tutti terminal rtk executable is not a regular file: %s", executable)
+	}
+	dir := filepath.Dir(executable)
+	pathKey := "PATH"
+	pathValue := os.Getenv("PATH")
+	next := make([]string, 0, len(env)+1)
+	for _, entry := range env {
+		key, value, ok := strings.Cut(entry, "=")
+		if ok && strings.EqualFold(key, "PATH") {
+			pathKey = key
+			pathValue = value
+			continue
+		}
+		next = append(next, entry)
+	}
+	entries := filepath.SplitList(pathValue)
+	filtered := make([]string, 0, len(entries)+1)
+	filtered = append(filtered, dir)
+	for _, entry := range entries {
+		if filepath.Clean(entry) != filepath.Clean(dir) {
+			filtered = append(filtered, entry)
+		}
+	}
+	return append(next, pathKey+"="+strings.Join(filtered, string(os.PathListSeparator))), nil
+}
+
 func appendTerminalUTF8LocaleFallback(env []string, goos string) []string {
 	if goos != "darwin" {
 		return env

@@ -7,6 +7,7 @@ func TestLabFlagRegistryKeysAndDefaults(t *testing.T) {
 		LabFlagAutomationRules,
 		LabFlagAgentSideConversation,
 		LabFlagCodexSaverMode,
+		LabFlagRTKSaverMode,
 		LabFlagConnectors,
 		LabFlagPreviewAgents,
 	}
@@ -40,6 +41,7 @@ func TestIsLabFlagEnabledFailsClosed(t *testing.T) {
 		LabFlagAutomationRules,
 		LabFlagAgentSideConversation,
 		LabFlagCodexSaverMode,
+		LabFlagRTKSaverMode,
 		LabFlagConnectors,
 		LabFlagPreviewAgents,
 	} {

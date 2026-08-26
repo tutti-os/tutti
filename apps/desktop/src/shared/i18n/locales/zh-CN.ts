@@ -9,6 +9,14 @@ export const zhCN = {
       title: "登录状态导入"
     }
   },
+  workspaceAppPopup: {
+    deferredUnsupportedDescription:
+      "暂不支持打开后再跳转的弹窗，请尝试其他登录方式或联系应用提供方",
+    deferredUnsupportedTitle: "这个应用无法打开授权弹窗",
+    postUnsupportedDescription:
+      "暂不支持通过 POST 打开的弹窗，请尝试其他登录方式或联系应用提供方",
+    postUnsupportedTitle: "这个应用无法打开授权弹窗"
+  },
   common: {
     cancel: "取消",
     close: "关闭",
@@ -1257,6 +1265,9 @@ export const zhCN = {
         codexSaverModeDescription:
           "在 Codex 输入框显示可记忆的省额度开关，将合适的子任务交给 Luna Max",
         codexSaverModeLabel: "Codex 省额度模式",
+        rtkSaverModeDescription:
+          "在所有 Agent 输入框显示可记忆的 RTK 开关；Tutti 已内置 RTK，仅为开启的会话复制，不执行全局安装",
+        rtkSaverModeLabel: "RTK 省钱模式",
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",
         releaseChannelLabel: "发布渠道",

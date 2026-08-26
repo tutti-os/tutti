@@ -2,6 +2,7 @@ package agentruntime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"sync"
@@ -379,6 +380,206 @@ func TestStandardACPAdapterJoinsKimiAskUserQuestionInputAfterPermission(t *testi
 	localAnswersByQuestionID := payloadObject(localPayload["answersByQuestionId"])
 	if len(localAnswersByQuestionID) != 1 || asString(localAnswersByQuestionID["question-1"]) != "很好" {
 		t.Fatalf("local completed output = %#v, want the canonical per-question answer preserved", callCompletedOutput)
+	}
+}
+
+func TestStandardACPAdapterJoinsKimiApprovalDetailAfterPermission(t *testing.T) {
+	t.Parallel()
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-approval-1")
+	transport.conn.promptKind = "approval-after-permission"
+	gate := make(chan struct{})
+	transport.conn.pauseBeforeAskUserToolUpdate = gate
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	session.ProviderSessionID = "kimi-session-approval-1"
+	requested := make(chan activityshared.Event, 2)
+	started := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("read the file"), "", "turn-kimi-read", func(events []activityshared.Event) {
+			for _, event := range events {
+				if event.Type == activityshared.EventCallStarted && event.Payload.CallID == "read-file-1" {
+					select {
+					case started <- struct{}{}:
+					default:
+					}
+				}
+				if event.Type == activityshared.EventInteractionRequested {
+					requested <- event
+				}
+			}
+		}, nil)
+		done <- err
+	}()
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("permission not observed")
+	}
+	select {
+	case event := <-requested:
+		t.Fatalf("premature interaction: %#v", event)
+	default:
+	}
+	wrongTurnUpdate := json.RawMessage(`{"update":{"sessionUpdate":"tool_call","toolCallId":"read-file-1","title":"Read file","kind":"read","status":"pending","rawInput":{"path":"C:\\\\Users\\\\anonymous\\\\workspace\\\\wrong-turn.txt"}}}`)
+	wrongTurnNormalizer := newACPTurnNormalizer()
+	_ = standardACPUpdateEvents(adapter.config, session, "turn-other", wrongTurnUpdate, wrongTurnNormalizer)
+	if events := adapter.standardACPDeferredInteractionRequestedEvents(session, "turn-other", wrongTurnUpdate, wrongTurnNormalizer); len(events) != 0 {
+		t.Fatalf("wrong-turn update published interaction: %#v", events)
+	}
+	close(gate)
+	var event activityshared.Event
+	select {
+	case event = <-requested:
+	case <-time.After(2 * time.Second):
+		t.Fatal("joined interaction not published")
+	}
+	toolInput := payloadObject(payloadObject(event.Payload.Interaction.Input["toolCall"])["input"])
+	if got := asString(toolInput["path"]); got != `C:\Users\anonymous\workspace\secret.txt` {
+		t.Fatalf("path=%q input=%#v", got, event.Payload.Interaction.Input)
+	}
+	select {
+	case duplicate := <-requested:
+		t.Fatalf("duplicate interaction: %#v", duplicate)
+	default:
+	}
+	if _, err := adapter.SubmitInteractive(context.Background(), session, SubmitInteractiveInput{TurnID: "turn-kimi-read", RequestID: "permission-1", OptionID: "reject"}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("exec did not finish")
+	}
+	select {
+	case stale := <-requested:
+		t.Fatalf("stale interaction after resolution=%#v", stale)
+	default:
+	}
+}
+
+func TestStandardACPAdapterKeepsKimiApprovalHiddenWhenToolUpdateNeverArrives(t *testing.T) {
+	t.Parallel()
+	transport := newStandardACPTransport("Kimi Code", "kimi-session-fallback")
+	transport.conn.promptPermission = true
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	session := standardTestSession("acp:kimi-code")
+	if _, err := adapter.Start(context.Background(), session); err != nil {
+		t.Fatal(err)
+	}
+	session.ProviderSessionID = "kimi-session-fallback"
+	permissionStarted := make(chan struct{}, 1)
+	cancellationResolved := make(chan struct{}, 1)
+	done := make(chan error, 1)
+	var mu sync.Mutex
+	var emittedActivity []activityshared.Event
+	go func() {
+		_, err := adapter.Exec(context.Background(), session, textPrompt("run"), "", "turn-fallback", func(events []activityshared.Event) {
+			batchStarted := false
+			batchResolved := false
+			for _, event := range events {
+				if event.Type == activityshared.EventCallStarted && event.Payload.CallID == "approval-1" {
+					batchStarted = true
+				}
+				if event.Type == activityshared.EventCallFailed && event.Payload.CallID == "approval-1" {
+					batchResolved = true
+				}
+			}
+			mu.Lock()
+			emittedActivity = append(emittedActivity, events...)
+			mu.Unlock()
+			if batchStarted {
+				select {
+				case permissionStarted <- struct{}{}:
+				default:
+				}
+			}
+			if batchResolved {
+				select {
+				case cancellationResolved <- struct{}{}:
+				default:
+				}
+			}
+		}, nil)
+		done <- err
+	}()
+	select {
+	case <-permissionStarted:
+	case <-time.After(2 * time.Second):
+		t.Fatal("permission not observed")
+	}
+	mu.Lock()
+	requestedBeforeCancel := eventsOfType(emittedActivity, activityshared.EventInteractionRequested)
+	supersededBeforeCancel := eventsOfType(emittedActivity, activityshared.EventInteractionSuperseded)
+	mu.Unlock()
+	if len(requestedBeforeCancel) != 0 || len(supersededBeforeCancel) != 0 {
+		t.Fatalf("interaction events before cancellation: requested=%#v superseded=%#v", requestedBeforeCancel, supersededBeforeCancel)
+	}
+	if snapshot := adapter.SessionState(session); snapshot.PendingInteractive != nil {
+		t.Fatalf("pending interactive before cancellation=%#v, want hidden approval", snapshot.PendingInteractive)
+	}
+	cancelEvents, err := adapter.Cancel(context.Background(), session, "user")
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if len(cancelEvents) != 0 {
+		t.Fatalf("Cancel events=%#v, want provider acknowledgment events only", cancelEvents)
+	}
+	transport.conn.mu.Lock()
+	cancelCalls := transport.conn.cancelCalls
+	cancelSessionID := asString(transport.conn.lastCancelParams["sessionId"])
+	transport.conn.mu.Unlock()
+	if cancelCalls != 1 || cancelSessionID != session.ProviderSessionID {
+		t.Fatalf("ACP cancel calls=%d sessionId=%q, want one call for %q", cancelCalls, cancelSessionID, session.ProviderSessionID)
+	}
+	select {
+	case err := <-done:
+		if err != nil && !errors.Is(err, context.Canceled) {
+			t.Fatalf("Exec error=%v, want nil or canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("exec did not finish")
+	}
+	select {
+	case <-cancellationResolved:
+	case <-time.After(2 * time.Second):
+		t.Fatal("permission cancellation did not resolve")
+	}
+	mu.Lock()
+	requested := eventsOfType(emittedActivity, activityshared.EventInteractionRequested)
+	superseded := eventsOfType(emittedActivity, activityshared.EventInteractionSuperseded)
+	failed := eventsOfType(emittedActivity, activityshared.EventCallFailed)
+	turnUpdates := eventsOfType(emittedActivity, activityshared.EventTurnUpdated)
+	mu.Unlock()
+	if len(requested) != 0 || len(superseded) != 0 {
+		t.Fatalf("hidden approval interaction events after cancellation: requested=%#v superseded=%#v", requested, superseded)
+	}
+	if snapshot := adapter.SessionState(session); snapshot.PendingInteractive != nil {
+		t.Fatalf("pending interactive after cancellation=%#v, want nil", snapshot.PendingInteractive)
+	}
+	if pending := adapter.getPendingApproval(session.AgentSessionID, "turn-fallback", "permission-1"); pending != nil {
+		t.Fatalf("pending approval after cancellation=%#v, want removed", pending)
+	}
+	if got := adapter.terminalInteractiveDisposition(session.AgentSessionID, "turn-fallback", "permission-1"); got != InteractiveDispositionInterrupted {
+		t.Fatalf("terminal disposition=%q, want %q", got, InteractiveDispositionInterrupted)
+	}
+	if len(failed) != 1 || failed[0].Payload.CallID != "approval-1" {
+		t.Fatalf("call.failed events=%#v, want approval-1 failure", failed)
+	}
+	foundWorking := false
+	for _, event := range turnUpdates {
+		if event.Payload.TurnID == "turn-fallback" && event.Payload.TurnPhase == string(activityshared.TurnPhaseWorking) {
+			foundWorking = true
+		}
+	}
+	if !foundWorking {
+		t.Fatalf("turn.updated events=%#v, want turn-fallback working", turnUpdates)
 	}
 }
 

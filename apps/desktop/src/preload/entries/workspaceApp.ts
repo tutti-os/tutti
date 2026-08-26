@@ -10,7 +10,6 @@ import type {
 } from "@tutti-os/workspace-external-core/contracts";
 import { createWorkspaceAppExternalBridge } from "./workspaceAppExternalBridge.ts";
 import { installWorkspaceAppInteractionForwarding } from "./workspaceAppInteractionForwarding.ts";
-import { installWorkspaceAppLinkInterception } from "./workspaceAppLinks.ts";
 import { createWorkspaceAppUserProjectSnapshotBridge } from "./workspaceAppUserProjectSnapshots.ts";
 
 const appContextChannels = {
@@ -39,23 +38,6 @@ export interface WorkspaceAppHostContext {
 }
 
 function installWorkspaceAppMainFrameBridge(): void {
-  installWorkspaceAppLinkInterception({
-    executeInMainWorld(script) {
-      const result = contextBridge.executeInMainWorld(script) as unknown;
-      return result;
-    },
-    reportDiagnostic(diagnostic) {
-      ipcRenderer.send(appContextChannels.diagnostic, {
-        event: "workspace-app-link-interception",
-        ...diagnostic
-      });
-    },
-    scope: globalThis.window,
-    send(channel, payload) {
-      ipcRenderer.send(channel, payload);
-    }
-  });
-
   const contextListeners = new Set<
     (context: DesktopWorkspaceAppContext) => void
   >();

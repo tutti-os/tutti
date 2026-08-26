@@ -82,6 +82,7 @@ type Service struct {
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
+	LiveModelCatalogUpdated        func(string)
 	liveModelDiscoveryWaitTimeout  time.Duration
 	GeneratedFilesClock            func() time.Time
 	LiveModelDiscoveryDeleteDelay  time.Duration
@@ -741,6 +742,8 @@ type CreateSessionInput struct {
 	ComputerUse           *bool
 	CodexSaverMode        *bool
 	CodexSaverModeAllowed bool
+	RTKSaverMode          *bool
+	RTKSaverModeAllowed   bool
 	ProviderTargetRef     map[string]any
 	ReasoningEffort       *string
 	// ReasoningEffortExplicit has the same compatibility semantics as

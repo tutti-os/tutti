@@ -69,7 +69,8 @@ import type {
   DesktopBrowserAutomationRequest,
   DesktopBrowserAutomationHostReady,
   DesktopBrowserAutomationTurnClaim,
-  DesktopBrowserAutomationResponse
+  DesktopBrowserAutomationResponse,
+  DesktopWorkspaceAppPopupRejectedEvent
 } from "../shared/contracts/ipc";
 import type { BrowserNodeHostApi } from "@tutti-os/browser-node";
 import type { DesktopDistribution } from "../shared/distribution/desktopDistribution.ts";
@@ -217,6 +218,12 @@ export interface DesktopWorkspaceAppExternalHostApi {
       | DesktopWorkspaceAppExternalHostRequestResult
   ): () => void;
   sendEvent(event: DesktopWorkspaceAppExternalRendererEvent): void;
+}
+
+export interface DesktopWorkspaceAppApi {
+  onPopupRejected(
+    listener: (event: DesktopWorkspaceAppPopupRejectedEvent) => void
+  ): () => void;
 }
 
 export interface DesktopHostFilesApi {
@@ -374,5 +381,6 @@ export interface DesktopApi {
   runtime: DesktopRuntimeApi;
   update: DesktopUpdateApi;
   wallpaper: DesktopWallpaperApi;
+  workspaceApp?: DesktopWorkspaceAppApi;
   workspaceAppExternal?: DesktopWorkspaceAppExternalHostApi;
 }

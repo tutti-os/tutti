@@ -55,6 +55,9 @@ func startAgentModelInvalidationAuthWatcher(
 			"changed_files", providerAuthChangeDiagnostics(changes),
 		)
 	}
+	sessions.LiveModelCatalogUpdated = func(provider string) {
+		publish([]string{provider}, "agent.model_catalog.refreshed", nil)
+	}
 	watcher := startProviderAuthWatcher(
 		replayComposition,
 		nil,

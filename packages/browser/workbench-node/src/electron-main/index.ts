@@ -45,9 +45,12 @@ export {
   installBrowserWebviewSecurity,
   isBrowserNodeWebviewAttach,
   type BrowserNodeWebviewMatcher,
+  type BrowserWebviewGuestAttachedInput,
+  type BrowserWebviewGuestAttachment,
   type BrowserWebviewPreloadResolver,
   type BrowserWebviewPreloadResolverInput,
   type BrowserWebviewSecurityInput,
   type BrowserWebviewSecurityResult,
+  type BrowserWebviewWindowOpenHandler,
   type InstallBrowserWebviewSecurityInput
 } from "./webviewSecurity.ts";

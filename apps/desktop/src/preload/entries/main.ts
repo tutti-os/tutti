@@ -9,6 +9,7 @@ import { createPlatformDesktopApi } from "../api/platform";
 import { createRuntimeDesktopApi } from "../api/runtime";
 import { createUpdateDesktopApi } from "../api/update";
 import { createWallpaperDesktopApi } from "../api/wallpaper";
+import { createWorkspaceAppDesktopApi } from "../api/workspaceApp";
 import { createWorkspaceAppExternalDesktopApi } from "../api/workspaceAppExternal";
 import type { DesktopApi } from "../types";
 import {
@@ -37,6 +38,7 @@ const desktopApi: DesktopApi = {
 
 if (shouldExposeWorkspaceSurfaceApis(globalThis.location.search)) {
   desktopApi.browser = createBrowserDesktopApi();
+  desktopApi.workspaceApp = createWorkspaceAppDesktopApi();
   desktopApi.workspaceAppExternal = createWorkspaceAppExternalDesktopApi();
 }
 

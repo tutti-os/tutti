@@ -116,6 +116,7 @@ export function projectQuickComposerSettings(
     draftSettings: {
       browserUse: input.settings.browserUse ?? true,
       codexSaverMode: false,
+      rtkSaverMode: false,
       computerUse: true,
       model: selectedModel,
       permissionModeId: selectedPermissionMode,
