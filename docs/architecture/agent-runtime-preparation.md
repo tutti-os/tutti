@@ -51,10 +51,16 @@ The canonical template and shared skill bodies remain in runtimeprep so hosts
 do not fork the actual prompt content. `PrepareInput.SharedInvocation` and
 `EnabledConnectors` render the session-sticky enable-set protocol in
 `connector-discovery`: a non-empty set is the current user-enabled connectors,
-and an empty set is discovery mode over the listed connectors. Shared
-invocations add Caller-versus-Owner routing rules. Hosts pass the full enable
-set on each turn as connector prompt blocks; `packages/agent/daemon` injects
-only enable/disable deltas into the provider-visible turn.
+and an empty set is discovery mode over the listed connectors. Runtimeprep
+renders each available Connector key, display name, and alias into one routing
+index. A request matching any generated entry, or asking to operate a service
+represented by that index, must begin with `connector available --json` before
+the provider asks clarifying questions, reads a Connector-owned Skill, or calls
+a Connector interface. The current Turn's discovery result is authoritative;
+the policy does not hard-code service-specific mappings. Shared invocations add
+Caller-versus-Owner routing rules. Hosts pass the full enable set on each turn
+as connector prompt blocks; `packages/agent/daemon` injects only enable/disable
+deltas into the provider-visible turn.
 
 Tutti Agent keeps auth, configuration, transcripts, and other mutable state in
 its session-scoped `TUTTI_AGENT_HOME`, while Tutti-managed Skills use a
