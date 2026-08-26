@@ -43,11 +43,11 @@ function patchChangeToUnifiedDiff(
       change.oldString ?? change.content ?? rawDiff
     );
   }
-  if (change.oldString != null || change.newString != null) {
+  if (change.oldString != null && change.newString != null) {
     return modifiedFilePatch(
       path,
-      change.oldString ?? "",
-      change.newString ?? ""
+      change.oldString,
+      change.newString
     );
   }
   return "";

@@ -23,6 +23,7 @@ type multiProcStandardACPTransport struct {
 	configOptions            []map[string]any
 	initializeError          *acpError
 	newSessionError          *acpError
+	newSessionErrors         []*acpError
 	loadSessionError         *acpError
 	closeFailures            int
 	specs                    []ProcessSpec
@@ -64,6 +65,7 @@ func (t *multiProcStandardACPTransport) Start(_ context.Context, spec ProcessSpe
 		configOptions:            configOptions,
 		initializeError:          t.initializeError,
 		newSessionError:          t.newSessionError,
+		newSessionErrors:         append([]*acpError(nil), t.newSessionErrors...),
 		loadSessionError:         t.loadSessionError,
 		closeFailures:            t.closeFailures,
 	}
@@ -123,6 +125,8 @@ type standardACPConnection struct {
 	closeSessionExits             bool
 	isClosed                      bool
 	lastNewSessionParams          map[string]any
+	newSessionCallCount           int
+	newSessionErrors              []*acpError
 	lastLoadSessionParams         map[string]any
 	lastCloseSessionParams        map[string]any
 	lastPromptParamsSnapshot      map[string]any

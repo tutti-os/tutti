@@ -18,7 +18,11 @@ import (
 )
 
 const (
-	codexAppServerModelListTimeout  = 8 * time.Second
+	// Codex and Tutti Agent may launch a Windows npm .cmd shim and let the
+	// provider refresh its own model metadata before model/list responds. The
+	// model catalog has a separate outer fetch bound, so this process/request
+	// bound can be generous without making unrelated provider paths slower.
+	codexAppServerModelListTimeout  = 30 * time.Second
 	codexAppServerShutdownWaitDelay = 100 * time.Millisecond
 	codexAppServerIdleTTL           = 2 * time.Minute
 	codexModelListMaxLineBytes      = 16 * 1024 * 1024

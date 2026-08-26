@@ -10,6 +10,8 @@ import type { AgentEnvPanelFocus } from "./agentEnvPanelActions";
  */
 export type AgentRunErrorCode =
   | "auth_required"
+  | "account_not_allowed"
+  | "billing_error"
   | "cli_not_found"
   | "cli_version_unsupported"
   | "network_error"
@@ -19,6 +21,10 @@ export type AgentRunErrorCode =
   | "provider_stream_disconnected"
   | "provider_empty_response"
   | "provider_concurrency_limit"
+  | "provider_unavailable"
+  | "invalid_request"
+  | "model_not_available"
+  | "max_output_tokens"
   | "insufficient_credits"
   | "model_not_allowed"
   | "plugin_unavailable"
@@ -122,6 +128,8 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
     focus: "auth",
     actionKey: "agentHost.agentGui.visibleErrorActionRelogin"
   },
+  account_not_allowed: { messageKey: null, ...NO_CTA },
+  billing_error: { messageKey: null, ...NO_CTA },
   cli_not_found: {
     messageKey: "agentHost.agentGui.visibleErrorCliNotFound",
     focus: "install",
@@ -165,6 +173,10 @@ const PRESENTATIONS: Record<AgentRunErrorCode, AgentErrorPresentation> = {
     messageKey: "agentHost.agentGui.visibleErrorConcurrencyLimit",
     ...NO_CTA
   },
+  provider_unavailable: { messageKey: null, ...NO_CTA },
+  invalid_request: { messageKey: null, ...NO_CTA },
+  model_not_available: { messageKey: null, ...NO_CTA },
+  max_output_tokens: { messageKey: null, ...NO_CTA },
   insufficient_credits: {
     messageKey: "agentHost.agentGui.visibleErrorInsufficientCreditsUnknown",
     ...NO_CTA

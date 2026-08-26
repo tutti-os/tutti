@@ -57,7 +57,7 @@ func TestRunStandardACPSetupRejectsUnadvertisedMethod(t *testing.T) {
 	}
 }
 
-func TestRunStandardACPSetupPreservesExplicitAuthenticationFailure(t *testing.T) {
+func TestRunStandardACPSetupPreservesExplicitAuthenticationFailureWithoutTextInference(t *testing.T) {
 	t.Parallel()
 
 	transport := newStandardACPTransport("Example Agent", "setup-session")
@@ -233,6 +233,22 @@ func TestRunStandardACPSetupReadyWhenTerminalMethodRemainsAdvertised(t *testing.
 	}
 	if got := transport.conn.authenticatedMethodID(); got != "" {
 		t.Fatalf("authenticated method id = %q, want no ACP authenticate call", got)
+	}
+}
+
+func TestStandardACPSetupSessionNewAuthCompatibilityIsExact(t *testing.T) {
+	authErr := &acpCallError{Method: acpMethodNewSession, Err: acpError{
+		Code: -32000, Message: "authentication required",
+	}}
+	if !standardACPSetupSessionNewAuthRejected(authErr) {
+		t.Fatal("exact setup authentication rejection was not recognized")
+	}
+
+	providerErr := &acpCallError{Method: acpMethodNewSession, Err: acpError{
+		Code: -32000, Message: "server overloaded; relay returned 524",
+	}}
+	if standardACPSetupSessionNewAuthRejected(providerErr) {
+		t.Fatal("unrelated provider failure must not become setup auth_required")
 	}
 }
 

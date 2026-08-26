@@ -14,6 +14,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
@@ -64,6 +65,18 @@ func TestHostWorkspaceRuntimeDisconnectConformance(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestHostRuntimeConfigurationRebindConformance(t *testing.T) {
+	for _, scenario := range hostconformance.RuntimeConfigurationRebindScenarios() {
+		scenario := scenario
+		t.Run(scenario.Name, func(t *testing.T) {
+			driver := &legacyHostConformanceDriver{t: t, directHost: true}
+			if err := hostconformance.RunRuntimeConfigurationRebind(context.Background(), driver, scenario); err != nil {
+				t.Fatal(err)
+			}
+		})
 	}
 }
 
@@ -305,11 +318,29 @@ type legacyHostConformanceDriver struct {
 	deletionEvents           *[]string
 	historicalState          *conformanceHistoricalStateStore
 	runtimeStartReportWrites int
+	runtimeCleanupInputs     []runtimeprep.CleanupInput
+}
+
+type conformanceRuntimePreparer struct {
+	cleanupInputs *[]runtimeprep.CleanupInput
+}
+
+func (conformanceRuntimePreparer) Prepare(
+	_ context.Context,
+	input runtimeprep.PrepareInput,
+) (runtimeprep.PreparedRuntime, error) {
+	return runtimeprep.PreparedRuntime{Cwd: input.Cwd}, nil
+}
+
+func (p conformanceRuntimePreparer) Cleanup(_ context.Context, input runtimeprep.CleanupInput) error {
+	*p.cleanupInputs = append(*p.cleanupInputs, input)
+	return nil
 }
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
 	d.runtime.guidanceTargetMismatch = fixture.GuidanceTargetMismatch
+	d.runtime.resumeErr = fixture.ResumeErr
 	if fixture.CancelDeliveryUnconfirmed {
 		d.runtime.cancelErr = agenthost.ErrRuntimeCancelDeliveryUnconfirmed
 	}
@@ -368,6 +399,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.recoverySteps = &steps
 	d.operationPort = &conformanceRuntimeOperationStore{runtimeOperationMemoryStore: d.operations, steps: &steps}
 	d.service = newUnconfiguredIsolatedAgentService(d.runtime)
+	d.runtimeCleanupInputs = nil
+	d.service.RuntimePreparer = conformanceRuntimePreparer{cleanupInputs: &d.runtimeCleanupInputs}
 	d.service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	d.service.ConnectorMarketSnapshots = connectorMarketSnapshotStub{snapshot: market.Snapshot{
 		Connectors: []market.Connector{
@@ -568,7 +601,11 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		settings.BrowserUse == nil && settings.ComputerUse == nil && settings.ReasoningEffort == "" && settings.Speed == "" {
 		settings.PlanMode = true
 	}
-	runtimeContext := map[string]any{"tuttiInitialTitleEstablished": seed.InitialTitleEstablished}
+	runtimeContext := clonePayload(seed.RuntimeContext)
+	if runtimeContext == nil {
+		runtimeContext = map[string]any{}
+	}
+	runtimeContext["tuttiInitialTitleEstablished"] = seed.InitialTitleEstablished
 	if seed.ExternalResumeSupported != nil {
 		runtimeContext["externalImportResumeSupported"] = *seed.ExternalResumeSupported
 	}
@@ -649,7 +686,7 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 			ID: seed.AgentSessionID, WorkspaceID: seed.WorkspaceID, Provider: seed.Provider,
 			ProviderSessionID: seed.ProviderSessionID, Cwd: seed.Cwd, Status: "ready",
 			Settings: &settings, Title: seed.Title, InitialTitleEstablished: seed.InitialTitleEstablished,
-			Visible: true, PinnedAtUnixMS: boolUnixMS(seed.Pinned), CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
+			Visible: true, RuntimeContext: clonePayload(runtimeContext), PinnedAtUnixMS: boolUnixMS(seed.Pinned), CreatedAtUnixMS: 1, UpdatedAtUnixMS: 2,
 		}
 	}
 	if fixture.Turn != nil {
@@ -712,6 +749,28 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 		}
 	}
 	return nil
+}
+
+func (d *legacyHostConformanceDriver) RebindAndSend(
+	ctx context.Context,
+	ref agenthost.SessionRef,
+	reprepare agenthost.ReprepareRuntimeSessionInput,
+	send agenthost.SendInput,
+) (hostconformance.SendObservation, error) {
+	result, err := d.service.ApplicationHost().ReprepareRuntimeSessionAndSendInput(ctx, agenthost.ReprepareRuntimeSessionAndSendInputInput{Reprepare: reprepare, Send: send})
+	if err != nil {
+		return hostconformance.SendObservation{}, err
+	}
+	d.recordSubmittedTurn(ref.WorkspaceID, ref.AgentSessionID, result.TurnID)
+	return hostconformance.SendObservation{TurnID: result.TurnID, Kind: result.Kind}, nil
+}
+
+func (d *legacyHostConformanceDriver) CanonicalRuntimeContext(ctx context.Context, ref agenthost.SessionRef) (map[string]any, error) {
+	result, err := d.service.ApplicationHost().GetSession(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+	return clonePayload(result.Canonical.InternalRuntimeContext), nil
 }
 
 func (d *legacyHostConformanceDriver) ResetProviderlessTerminalExec(
@@ -1401,6 +1460,10 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 	}
 	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
 		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState
+	}
+	metrics.RuntimePreparationCleanupCalls = len(d.runtimeCleanupInputs)
+	if cleanupCallCount := len(d.runtimeCleanupInputs); cleanupCallCount > 0 {
+		metrics.LastCleanupPreservedRecoverableState = d.runtimeCleanupInputs[cleanupCallCount-1].PreserveRuntimeRoot
 	}
 	if d.deletionGuard != nil {
 		metrics.DeleteAdmissionPlans = append([]agenthost.DeleteSessionsPlan(nil), d.deletionGuard.plans...)

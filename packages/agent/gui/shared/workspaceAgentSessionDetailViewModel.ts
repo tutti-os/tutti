@@ -21,6 +21,7 @@ export interface WorkspaceAgentSessionDetailMessage {
     code: string | null;
     phase: string | null;
     provider: string | null;
+    origin?: string | null;
     detail: string | null;
     detailAvailable?: boolean;
     retryable: boolean | null;

@@ -18,7 +18,7 @@ func TestProbeRemoteAuthClassifiesProviderEvidence(t *testing.T) {
 	}{
 		{name: "accepted", statusCode: http.StatusOK, wantKind: AuthEvidenceRemoteSuccess},
 		{name: "unauthorized", statusCode: http.StatusUnauthorized, wantKind: AuthEvidenceRemoteAuthFailure, wantReason: AuthReasonSessionExpired},
-		{name: "forbidden", statusCode: http.StatusForbidden, wantKind: AuthEvidenceRemoteAuthFailure, wantReason: AuthReasonSessionExpired},
+		{name: "forbidden", statusCode: http.StatusForbidden, wantKind: AuthEvidenceProbeFailure, wantReason: AuthReasonProbeFailed},
 		{name: "rate limited", statusCode: http.StatusTooManyRequests, wantKind: AuthEvidenceProbeFailure, wantReason: AuthReasonProbeFailed},
 		{name: "server failure", statusCode: http.StatusBadGateway, wantKind: AuthEvidenceProbeFailure, wantReason: AuthReasonProbeFailed},
 	}

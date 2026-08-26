@@ -20,6 +20,9 @@ export const zhCNAgentGui = {
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:
     "主模型保持不变；合适的独立子任务改用 Luna Max，按当前额度口径约为 Sol High 的 1/10。实际效果与速度因任务而异。",
+  rtkSaverModeLabel: "RTK 省钱模式",
+  rtkSaverModeDescription:
+    "保持当前模型，并为新会话注入 RTK.md 与会话私有 rtk 指令，用更精简的工具输出节省 token",
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
   followupPlaceholder: "要求 {{provider}} 继续后续变更",
   installRequiredPlaceholder: "请先连接 {{provider}}，然后再发送消息",
@@ -36,6 +39,7 @@ export const zhCNAgentGui = {
   providerGateLoginTitle: "登录 {{provider}}",
   providerGateLoginDescription: "使用账号登录后即可开始使用 {{provider}} 对话",
   providerGateLoginAction: "登录",
+  providerGateModelPlanAction: "使用自己的模型",
   providerGateComingSoonTitle: "{{provider}} 即将上线",
   providerGateComingSoonDescription:
     "{{provider}} 暂未开放。准备好后即可在这里使用这个 Agent。",
@@ -53,7 +57,7 @@ export const zhCNAgentGui = {
   providerGatePendingRefresh: "正在检测…",
   targetSetupTitle: "设置 {{provider}}",
   targetSetupDescription:
-    "优先使用兼容的本地运行时，也可由 Tutti 安装并验证固定版本",
+    "已经安装了 {{provider}}？Tutti 可以直接使用，也可以为你安装",
   targetSetupAuthRequired: "运行时已安装并通过 ACP 检测，但仍需完成登录",
   targetSetupReady: "已检测到运行时，可重新检测或重新登录",
   targetSetupOpen: "打开设置",
@@ -369,6 +373,8 @@ export const zhCNAgentGui = {
   pastedTextAttachmentFailed: "无法保存粘贴的文本",
   pastedTextRestoreToComposer: "在文本框中显示",
   copyMessage: "复制消息",
+  selectedTextFragment: "1 个已选文本片段",
+  selectedTextFragments: "{{count}} 个已选文本片段",
   forkThroughTurn: "从此轮进行会话 Fork",
   forkThroughTurnPending: "正在进行会话 Fork",
   continuedFromTask: "接续自任务",
@@ -688,7 +694,7 @@ export const zhCNAgentGui = {
   browserUseCapabilitySettingsDescription: "配置 Agent 使用的浏览器。",
   capabilityInlineSettingsLabel: "设置",
   computerUseCapabilityLabel: "电脑控制",
-  computerUseCapabilityDescription: "让 Agent 控制 macOS 桌面。",
+  computerUseCapabilityDescription: "让 Agent 控制你的电脑桌面",
   computerUseCapabilitySetupRequiredDescription: "未安装。按 Enter 打开设置。",
   computerUseCapabilityAuthorizationRequiredDescription:
     "需要授权。按 Enter 打开设置。",

@@ -5,6 +5,15 @@ import type { AgentTranscriptPresentationKind } from "./agentTranscriptPresentat
 import type { AgentCollaborationVM } from "./agentCollaborationVM";
 import type { AgentToolGroupRowVM } from "./agentToolGroupRowVM";
 
+export type AgentMessageContentKind =
+  | "text"
+  | "image-grid"
+  | "plan"
+  | "collaboration"
+  | "tutti-checkpoint-wake"
+  | "tutti-plan-issue-link"
+  | "selected-text";
+
 export interface AgentMessageContentVM {
   kind: "message-content";
   id: string;
@@ -13,13 +22,7 @@ export interface AgentMessageContentVM {
   presentationKind: AgentTranscriptPresentationKind;
   copyText?: string | null;
   statusKind?: ToolCallStatusKind | null;
-  contentKind?:
-    | "text"
-    | "image-grid"
-    | "plan"
-    | "collaboration"
-    | "tutti-checkpoint-wake"
-    | "tutti-plan-issue-link";
+  contentKind?: AgentMessageContentKind;
   isTurnFinalText?: true;
   /** Typed payload for `contentKind: "collaboration"` rows. */
   collaboration?: AgentCollaborationVM | null;
@@ -35,12 +38,15 @@ export interface AgentMessageContentVM {
    * Mode plan (messageId "plan-issue:<issueID>").
    */
   planIssueLink?: AgentTuttiPlanIssueLinkVM | null;
+  /** Typed payload for `contentKind: "selected-text"` rows. */
+  selectedText?: AgentSelectedTextVM | null;
   images?: AgentMessageImageVM[];
   occurredAtUnixMs: number | null;
   visibleError?: {
     code: string | null;
     phase: string | null;
     provider: string | null;
+    origin?: string | null;
     detail: string | null;
     detailAvailable?: boolean;
     retryable: boolean | null;
@@ -57,6 +63,11 @@ export interface AgentMessageContentVM {
     retryable: boolean | null;
   } | null;
   sourceTimelineItems?: WorkspaceAgentActivityTimelineItem[];
+}
+
+export interface AgentSelectedTextVM {
+  count: number;
+  texts: readonly string[];
 }
 
 export interface AgentTuttiModeCheckpointWakeVM {

@@ -20,6 +20,7 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 | `TUTTI_AGENT_RUNTIME_DIR`     | [Local State Storage](./local-state-storage.md)                                                            | Overrides the managed Agent Extension runtime root for isolated diagnostics.         |
 | `TUTTI_DESKTOP_USER_DATA_DIR` | [Local State Storage](./local-state-storage.md), [Scripts](../../tools/scripts/README.md)                  | Overrides Electron `userData` for isolated desktop diagnostics.                      |
 | `TUTTI_MANAGED_POSIX_SHELL`   | [Workspace App Runtime](./workspace-app-runtime.md)                                                        | Overrides the absolute managed POSIX shell path used by Windows script adapters.     |
+| `TUTTI_BUNDLED_RTK_PATH`      | [Workspace App Runtime](./workspace-app-runtime.md)                                                        | Overrides the exact Tutti-bundled RTK executable for packaging diagnostics.          |
 | `TUTTI_LOG_DIR`               | [Local State Storage](./local-state-storage.md), [Logging](./logging.md)                                   | Overrides the shared log directory under the state model.                            |
 | `TUTTID_DB_PATH`              | [Local State Storage](./local-state-storage.md)                                                            | Overrides the daemon SQLite database path for narrow operational needs.              |
 | `TUTTID_RUN_DIR`              | [Local State Storage](./local-state-storage.md)                                                            | Overrides listener-info and pid paths, but not the state-root ownership lock.        |
@@ -56,17 +57,18 @@ Use the owner documents linked below for detailed behavior. This file exists to 
 
 ## Account Remote Services
 
-| Variable                              | Owner document                                                                                     | Purpose                                                                                                                     |
-| ------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| `TUTTI_ACCOUNT_BASE_URL`              | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the daemon account auth/user-info API base URL.                                                                   |
-| `TUTTI_AGENT_LLM_APP_ID`              | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md)              | Overrides the Tutti LLM application id used when issuing provider auth tokens.                                              |
-| `TUTTI_AUTH_LOGIN_URL`                | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the desktop account login URL used by the auth bridge.                                                            |
-| `TUTTI_COMMERCE_BASE_URL`             | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.                            |
-| `TUTTI_CONNECTOR_MCP_BASE_URL`        | [Remote Connector MCP](../architecture/connector-remote-mcp.md)                                    | Overrides the tsh-server desktop gateway base URL used for remote Connector MCP requests.                                   |
-| `TUTTI_MOBILE_CONTROL_PLANE_BASE_URL` | [Mobile AgentGUI And DeviceLink Design](../specs/2026-07-23-mobile-agentgui-device-link-design.md) | Overrides the tsh-server desktop control-plane base URL used by Personal device pairing.                                    |
-| `TUTTI_MOBILE_REALTIME_URL`           | [Mobile AgentGUI And DeviceLink Design](../specs/2026-07-23-mobile-agentgui-device-link-design.md) | Overrides the device-level V2 WebSocket used to wake Personal paired-device attempt reads; unset uses `wss://ws.tutti.sh/`. |
-| `TUTTI_PPE_LANE`                      | [Remote Connector MCP](../architecture/connector-remote-mcp.md)                                    | Sends the external `x-zk-ppe-lane` header on Account and Connector control-plane requests for local PPE testing.            |
-| `TUTTI_WEB_BASE_URL`                  | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI.                           |
+| Variable                                      | Owner document                                                                                     | Purpose                                                                                                                     |
+| --------------------------------------------- | -------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `TUTTI_ACCOUNT_BASE_URL`                      | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the daemon account auth/user-info API base URL.                                                                   |
+| `TUTTI_AGENT_ACTIVITY_CONTROL_PLANE_BASE_URL` | [Agent GUI Node](../architecture/agent-gui-node.md)                                                | Overrides the control-plane base URL used by tuttid for global Agent Activity queries.                                      |
+| `TUTTI_AGENT_LLM_APP_ID`                      | [Tutti Agent Readiness Bootstrap](../architecture/tutti-agent-readiness-bootstrap.md)              | Overrides the Tutti LLM application id used when issuing provider auth tokens.                                              |
+| `TUTTI_AUTH_LOGIN_URL`                        | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the desktop account login URL used by the auth bridge.                                                            |
+| `TUTTI_COMMERCE_BASE_URL`                     | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the Tutti commerce gateway base URL for session-cookie membership and credits fetches.                            |
+| `TUTTI_CONNECTOR_MCP_BASE_URL`                | [Remote Connector MCP](../architecture/connector-remote-mcp.md)                                    | Overrides the tsh-server desktop gateway base URL used for remote Connector MCP requests.                                   |
+| `TUTTI_MOBILE_CONTROL_PLANE_BASE_URL`         | [Mobile AgentGUI And DeviceLink Design](../specs/2026-07-23-mobile-agentgui-device-link-design.md) | Overrides the tsh-server desktop control-plane base URL used by Personal device pairing.                                    |
+| `TUTTI_MOBILE_REALTIME_URL`                   | [Mobile AgentGUI And DeviceLink Design](../specs/2026-07-23-mobile-agentgui-device-link-design.md) | Overrides the device-level V2 WebSocket used to wake Personal paired-device attempt reads; unset uses `wss://ws.tutti.sh/`. |
+| `TUTTI_PPE_LANE`                              | [Remote Connector MCP](../architecture/connector-remote-mcp.md)                                    | Sends the external `x-zk-ppe-lane` header on Account and Connector control-plane requests for local PPE testing.            |
+| `TUTTI_WEB_BASE_URL`                          | [Agent Account And Commerce](../architecture/agent-account-and-commerce.md)                        | Overrides the Tutti web origin used by tuttid when returning account profile links to desktop UI.                           |
 
 ## Desktop Update Admission Development
 
@@ -226,6 +228,17 @@ Claude-native credential and endpoint values pass through unchanged. Logs may
 record only their presence, storage source, expiry metadata, and non-reversible
 fingerprints; they must never record values, account names, or personal paths.
 
+Codex and Tutti Agent use the Codex app-server protocol for their model and
+dynamic capability catalogs. Their model-list operation has a 30-second
+provider-process bound and a 35-second outer catalog-fetch bound; the
+capability-list operation has the same 30-second provider-process bound. These
+provider-specific windows cover a cold Windows npm shim and the provider's
+own model-metadata refresh without widening unrelated status or interactive
+session timeouts. The persistent model catalog cache still uses its existing
+five-minute success and short failed-fetch windows. A timeout from Codex's own
+`codex_models_manager` or a stale runtime-selection error is provider-owned
+and is not converted into success by these Tutti bounds.
+
 OpenCode provider availability checks the `opencode` CLI directly and launches
 sessions through the official `opencode acp` command. Do not add model,
 agent, or auto-mode CLI flags to that ACP command. Session model selection must
@@ -243,17 +256,21 @@ OpenCode config directory. A model access plan, when present, writes its
 OpenCode composer model options and model-specific reasoning variants come from
 `opencode models --verbose`. Run that command from the composer workspace cwd
 because OpenCode resolves project configuration relative to the current
-directory. OpenCode model lists are not stored in the daemon model-catalog
-cache; each composer-options request observes the current CLI catalog. An empty
-`variants` object is authoritative: AgentGUI must not expose or submit an ACP
+directory. The daemon gives this CLI fetch a 35-second outer request bound and
+a 30-second provider-specific process bound to accommodate a cold Windows npm
+shim without making other providers slower. Successful catalogs are cached in
+memory for five minutes and failed fetches for 30 seconds, but the cache key
+includes the workspace cwd and is not persisted across daemon restarts. An
+empty `variants` object is authoritative: AgentGUI must not expose or submit an ACP
 `effort` value for that model. Do not restore a provider-wide static effort list,
 because OpenCode models use different variant vocabularies (for example `max`
 rather than `xhigh`) and some reasoning-capable models expose no selectable
 variant at all. The provider auth/config watcher still publishes the
 `agent.model.catalog.invalidated` event when OpenCode's auth marker
 (`~/.local/share/opencode/auth.json`) or configured OpenCode config files change
-so an open composer refreshes immediately; it does not invalidate an OpenCode
-model-list cache. OpenCode composer skill options are discovered with slash triggers
+so an open composer refreshes immediately; it invalidates existing in-memory
+OpenCode model-list cache entries so the next request refetches for its cwd.
+OpenCode composer skill options are discovered with slash triggers
 from native `.opencode/skills/*/SKILL.md`, Claude-compatible `.claude/skills`,
 agent-compatible `.agents/skills`, global `~/.config/opencode/skills`,
 `~/.claude/skills`, `~/.agents/skills`, and the `OPENCODE_CONFIG_DIR` skills

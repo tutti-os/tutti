@@ -15,6 +15,8 @@ import {
 } from "./render-data/agentToolRenderData";
 import { CollapsibleReveal } from "../CollapsibleReveal";
 import { fileRange } from "./AgentReadContent";
+import { structuredToolText } from "./render-data/structuredToolText";
+import { getPromptToolDetails } from "../../promptToolDetails";
 
 export interface AgentToolRendererProps {
   call: AgentToolCallVM;
@@ -162,7 +164,11 @@ export function AgentDefaultToolContent({
 
 export function hasAgentToolContent(call: AgentToolCallVM): boolean {
   if (call.rendererKind === "approval") {
-    return Boolean(call.input?.toolCall || call.summary.trim());
+    return Boolean(
+      call.input?.toolCall ||
+      call.summary.trim() ||
+      getPromptToolDetails(call.input).length > 0
+    );
   }
 
   switch (call.rendererKind) {
@@ -398,36 +404,7 @@ export function firstNonEmptyText(...values: Array<unknown>): string | null {
 }
 
 function structuredText(value: unknown): string | null {
-  if (typeof value === "string" && value.trim()) {
-    return value.trim();
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-  const record = value as Record<string, unknown>;
-  const preferred = [
-    stringValue(record.plan),
-    stringValue(record.text),
-    stringValue(record.summary),
-    stringValue(record.message),
-    stringValue(record.stdout),
-    stringValue(record.stderr),
-    stringValue(record.query),
-    stringValue(record.path),
-    stringValue(record.file),
-    stringValue(record.filePath),
-    stringValue(record.file_path),
-    stringValue(record.url),
-    stringValue(record.cmd),
-    stringValue(record.command)
-  ].find(Boolean);
-  if (preferred) {
-    return preferred;
-  }
-  return null;
+  return structuredToolText(value);
 }
 
 export function RawPayloadSection({

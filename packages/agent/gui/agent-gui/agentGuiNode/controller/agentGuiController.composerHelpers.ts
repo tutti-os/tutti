@@ -2,8 +2,11 @@
 
 import type {
   AgentActivityComposerOptions,
+  AgentActivityGoalControlAction,
   AgentActivitySlashCommandPolicy
 } from "@tutti-os/agent-activity-core";
+import { parseAgentActivityGoalControlText } from "@tutti-os/agent-activity-core";
+import type { AgentPromptContentBlock } from "../../../shared/contracts/dto";
 import type {
   AgentSessionComposerSettings,
   AgentSessionPermissionConfig,
@@ -22,6 +25,22 @@ import { normalizeOptionalText } from "./agentGuiController.promptHelpers";
 
 export function normalizeConfigOptionValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+export function typedGoalControlFromComposer(
+  content: AgentPromptContentBlock[],
+  _displayPrompt: string | undefined,
+  goalControlSupported: boolean
+): { action: AgentActivityGoalControlAction; objective?: string } | null {
+  if (
+    !goalControlSupported ||
+    content.length !== 1 ||
+    content[0]?.type !== "text"
+  ) {
+    return null;
+  }
+  // Presentation-only displayPrompt must not hide or manufacture a control.
+  return parseAgentActivityGoalControlText(content[0].text ?? "");
 }
 
 export function composerSettingOptionsFromActivity(
@@ -424,6 +443,7 @@ export function sameComposerSettings(
 ): boolean {
   return (
     left?.codexSaverMode === right?.codexSaverMode &&
+    left?.rtkSaverMode === right?.rtkSaverMode &&
     (left?.model ?? null) === (right?.model ?? null) &&
     (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
     (left?.speed ?? null) === (right?.speed ?? null) &&
@@ -446,6 +466,7 @@ export function buildNodeDefaultComposerSettings(
   const composerOverrides = nodeComposerOverridesForProvider(data) ?? {};
   return {
     codexSaverMode: composerOverrides.codexSaverMode === true,
+    rtkSaverMode: composerOverrides.rtkSaverMode === true,
     model: normalizeOptionalText(composerOverrides.model),
     reasoningEffort:
       (normalizeOptionalText(
@@ -503,6 +524,7 @@ export function nodeDataFromComposerSettings(
   // Generic cleanup only — provider-level clamping is owned by the daemon.
   const composerOverrides = {
     codexSaverMode: settings.codexSaverMode === true,
+    rtkSaverMode: settings.rtkSaverMode === true,
     model: normalizeOptionalText(settings.model),
     reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
     speed: normalizeOptionalText(settings.speed),
@@ -518,7 +540,7 @@ export function nodeDataFromComposerSettings(
     return {
       ...current,
       composerOverridesByAgentTargetId: {
-        ...(current.composerOverridesByAgentTargetId ?? {}),
+        ...current.composerOverridesByAgentTargetId,
         [agentTargetId]: composerOverrides
       }
     };
@@ -527,7 +549,7 @@ export function nodeDataFromComposerSettings(
     ...current,
     composerOverrides,
     composerOverridesByProvider: {
-      ...(current.composerOverridesByProvider ?? {}),
+      ...current.composerOverridesByProvider,
       [current.provider]: composerOverrides
     }
   };

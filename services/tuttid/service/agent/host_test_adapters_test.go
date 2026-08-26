@@ -71,6 +71,25 @@ func (a serviceHostStore) GetSession(ctx context.Context, workspaceID, sessionID
 	return storesqlite.Session{}, false, nil
 }
 
+func (a serviceHostStore) CompareAndSwapSessionRuntimeContext(
+	ctx context.Context,
+	workspaceID string,
+	sessionID string,
+	expected map[string]any,
+	replacement map[string]any,
+) (storesqlite.Session, bool, error) {
+	updater, ok := a.service.SessionReader.(interface {
+		CompareAndSwapSessionRuntimeContext(context.Context, string, string, map[string]any, map[string]any) (PersistedSession, bool, error)
+	})
+	if !ok {
+		return storesqlite.Session{}, false, nil
+	}
+	persisted, updated, err := updater.CompareAndSwapSessionRuntimeContext(
+		ctx, workspaceID, sessionID, expected, replacement,
+	)
+	return activitySessionFromPersisted(persisted), updated, err
+}
+
 func (a serviceHostStore) ResolveRuntimeSessionRailPlacement(
 	ctx context.Context,
 	input agenthost.ResolveRuntimeSessionRailPlacementInput,

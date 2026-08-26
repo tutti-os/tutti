@@ -18,6 +18,45 @@ vi.mock("./AgentGUIConversationTimelinePane", () => ({
 }));
 
 describe("AgentGUISideConversationPane", () => {
+  it("contains an asynchronous close failure at the inline presentation boundary", async () => {
+    const onClose = vi.fn(async () => {
+      throw new Error("daemon unavailable");
+    });
+    render(
+      <AgentGUISideConversationPane
+        active={
+          {
+            status: "idle",
+            activeTurnId: null,
+            conversation: null,
+            error: null
+          } as never
+        }
+        availableSkills={[]}
+        composerProps={{} as never}
+        conversationFlowLabels={{
+          thinkingLabel: "Thinking",
+          toolCallsLabel: (count) => `${count}`,
+          processing: "Processing",
+          turnSummary: "Summary",
+          userMessageLocator: "User"
+        }}
+        isVisible
+        loadingLabel="Loading"
+        workspaceAppIcons={[]}
+        onClose={onClose}
+        onFocusChange={vi.fn()}
+      />
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse Side conversation" })
+    );
+    await Promise.resolve();
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
   it("shows the timeline loading state while Side is opening", () => {
     render(
       <AgentGUISideConversationPane

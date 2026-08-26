@@ -10,9 +10,6 @@ import (
 
 func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	profile := composerProfileFor(agentprovider.Codex)
-	if !profile.SubagentSaverMode {
-		t.Fatal("Codex composer profile must advertise subagent saver mode")
-	}
 	if !profile.ModelSelection || !profile.UsesModelCatalog || profile.ModelCatalog != "codex-cli" {
 		t.Fatalf("model profile = %#v", profile)
 	}
@@ -33,6 +30,24 @@ func TestCodexComposerProfileComesFromProviderDescriptor(t *testing.T) {
 	}
 	if profile.CapabilityCatalogKind != providerregistry.CapabilityCatalogKindCodexAppServer {
 		t.Fatalf("capability catalog profile = %#v", profile)
+	}
+}
+
+func TestRTKSaverModeSupportIsProviderNeutral(t *testing.T) {
+	for _, provider := range []string{
+		agentprovider.Codex,
+		agentprovider.ClaudeCode,
+		agentprovider.Cursor,
+		agentprovider.OpenCode,
+		agentprovider.TuttiAgent,
+		"extension-provider",
+	} {
+		if !composerProviderSupportsRTKSaverMode(provider) {
+			t.Errorf("provider %q does not support RTK saver mode", provider)
+		}
+	}
+	if composerProviderSupportsRTKSaverMode("") {
+		t.Fatal("empty provider must not support RTK saver mode")
 	}
 }
 
@@ -134,13 +149,12 @@ func TestOpenCodeSlashCommandPolicyComesFromProviderDescriptor(t *testing.T) {
 		t.Fatal("slash command policy missing")
 		return
 	}
-	if !reflect.DeepEqual(policy.FallbackCommands, []string{"compact", "goal", "review"}) {
+	if !reflect.DeepEqual(policy.FallbackCommands, []string{"compact", "review"}) {
 		t.Fatalf("fallbackCommands = %#v", policy.FallbackCommands)
 	}
 	want := []providerregistry.SlashCommandEffectDescriptor{
 		{Command: "compact", Effect: providerregistry.SlashCommandEffectSubmitImmediate},
 		{Command: "review", Effect: providerregistry.SlashCommandEffectShowReviewPicker},
-		{Command: "goal", Effect: providerregistry.SlashCommandEffectActivateGoalMode},
 		{Command: "plan", Effect: providerregistry.SlashCommandEffectTogglePlanMode},
 	}
 	if !reflect.DeepEqual(policy.CommandEffects, want) {

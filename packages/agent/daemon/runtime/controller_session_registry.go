@@ -519,26 +519,6 @@ func (c *Controller) publishConfigOptionsUpdates(
 	c.enqueueSessionSnapshotReport(context.Background(), session)
 }
 
-func (c *Controller) publish(session Session, events []activityshared.Event) {
-	if len(events) == 0 {
-		return
-	}
-	projected := ProjectActivityEventsToStreamEvents(session, events)
-	c.enrichStreamStateEventsWithSessionSnapshot(session, projected)
-	slog.Debug(
-		"agent session publish events",
-		"event", "agent_session.publish",
-		"room_id", session.RoomID,
-		"agent_session_id", session.AgentSessionID,
-		"provider", session.Provider,
-		"provider_session_id", session.ProviderSessionID,
-		"activity_event_count", len(events),
-		"projected_event_count", len(projected),
-		"projected_event_type_counts", streamEventTypeCounts(projected),
-	)
-	c.publishStreamEvents(session.RoomID, session.AgentSessionID, projected)
-}
-
 func streamEventTypeCounts(events []StreamEvent) []string {
 	if len(events) == 0 {
 		return nil

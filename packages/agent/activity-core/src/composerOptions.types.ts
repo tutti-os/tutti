@@ -5,6 +5,7 @@ export interface AgentActivityComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  consumptionMultiplier?: string;
   supportsImageInput?: boolean;
   /** True when the entry mirrors the requested/current selection, not the provider catalog. */
   requested?: boolean;
@@ -72,6 +73,7 @@ export interface AgentActivityComposerPermissionConfig {
 
 export interface AgentActivityComposerSettings {
   codexSaverMode?: boolean | null;
+  rtkSaverMode?: boolean | null;
   model?: string | null;
   reasoningEffort?: string | null;
   speed?: string | null;
@@ -106,6 +108,7 @@ export interface AgentActivityComposerBehavior {
 
 export interface AgentActivityComposerOptions {
   codexSaverModeSupported?: boolean;
+  rtkSaverModeSupported?: boolean;
   provider: string;
   /** Typed capabilities available before a session exists. */
   capabilities: AgentActivitySessionCapabilities | null;
@@ -162,6 +165,7 @@ export interface AgentActivityLoadComposerOptionsInput {
    * port always supplies a non-empty value.
    */
   agentTargetId?: string | null;
+  agentSessionId?: string | null;
   workspaceId: string;
   provider: string;
   section?: "full" | "core" | "capabilities" | "connectors";

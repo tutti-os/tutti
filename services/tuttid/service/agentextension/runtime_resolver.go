@@ -26,6 +26,7 @@ type RuntimeBinding struct {
 	ToolAliases                  map[string]string
 	AuthenticationMethods        map[string]AuthenticationMethodProfile
 	ModelConfigOptionID          string
+	ModelDescriptionFormat       string
 	PermissionConfigOptionID     string
 	ReasoningConfigOptionID      string
 	PermissionModes              map[string]string
@@ -84,6 +85,7 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		AuthMessage:                  binding.Installation.AuthMessage,
 		ToolAliases:                  binding.ToolAliases,
 		ModelConfigOptionID:          binding.ModelConfigOptionID,
+		ModelDescriptionFormat:       binding.ModelDescriptionFormat,
 		PermissionConfigOptionID:     binding.PermissionConfigOptionID,
 		ReasoningConfigOptionID:      binding.ReasoningConfigOptionID,
 		RestrictConfigOptions:        true,

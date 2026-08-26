@@ -631,9 +631,11 @@ test("clears an explicit catalog refresh when the accepted operation is already 
 test("rejects overlapping mutations for one connector", async () => {
   const install =
     deferred<Awaited<ReturnType<ConnectorMarketBackend["installConnector"]>>>();
+  const diagnostics: unknown[] = [];
   const service = new ConnectorMarketService({
     backend: backendWith({ installConnector: async () => install.promise }),
-    createRequestId: () => "request-1"
+    createRequestId: () => "request-1",
+    reportDiagnostic: (error) => diagnostics.push(error)
   });
   const first = service.install("github");
   assert.equal(
@@ -641,6 +643,8 @@ test("rejects overlapping mutations for one connector", async () => {
     true
   );
   await assert.rejects(service.install("github"), ConnectorMarketBusyError);
+  assert.equal(diagnostics.length, 1);
+  assert.ok(diagnostics[0] instanceof ConnectorMarketBusyError);
   install.resolve({
     connector: connector("github", 1),
     operation: {
@@ -1360,6 +1364,86 @@ test("a second authorization command joins the in-flight attempt", async () => {
   service.dispose();
 });
 
+test("queues disconnect behind an authorization mutation after connected is projected", async () => {
+  const authorizationOperation = deferred<ConnectorOperation>();
+  const initial = connector("github", 1);
+  initial.installation = {
+    installedReleaseDigest: initial.release.releaseDigest,
+    state: "installed"
+  };
+  initial.authorization = { state: "disconnected" };
+  const connected = connector("github", 2);
+  connected.installation = initial.installation;
+  connected.authorization = { state: "connected" };
+  const disconnected = connector("github", 3);
+  disconnected.installation = initial.installation;
+  disconnected.authorization = { state: "disconnected" };
+  let disconnectCalls = 0;
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      getConnector: async () => connected,
+      getOperation: async () => authorizationOperation.promise,
+      beginAuthorization: async () => ({
+        connector: connected,
+        operation: {
+          ...operation("start_authorization", 2),
+          stage: "authorizing",
+          state: "running"
+        },
+        revision: 2
+      }),
+      disconnectAuthorization: async () => {
+        disconnectCalls += 1;
+        return {
+          connector: disconnected,
+          operation: {
+            attempt: 1,
+            clientRequestId: "disconnect-1",
+            connectorKey: "github",
+            createdAt: "2026-08-03T00:00:02Z",
+            kind: "disconnect_authorization",
+            operationId: "disconnect-operation-1",
+            stage: "completed",
+            state: "completed",
+            updatedAt: "2026-08-03T00:00:03Z"
+          },
+          revision: 3
+        };
+      }
+    }),
+    createRequestId: () => "request-1"
+  });
+  await service.ensureLoaded();
+
+  const authorization = service.beginAuthorization("github");
+  await waitFor(
+    () =>
+      service.dataStore.connectorsByKey.github?.authorization.state ===
+        "connected" &&
+      service.dataStore.mutationPhasesByConnectorKey.github === "authorizing"
+  );
+  const disconnect = service.disconnectAuthorization("github");
+  await Promise.resolve();
+
+  assert.equal(disconnectCalls, 0);
+  authorizationOperation.resolve({
+    ...operation("start_authorization", 2),
+    stage: "completed",
+    state: "completed"
+  });
+  await authorization;
+  await disconnect;
+
+  assert.equal(disconnectCalls, 1);
+  assert.equal(
+    service.dataStore.connectorsByKey.github?.authorization.state,
+    "disconnected"
+  );
+  assert.deepEqual(service.dataStore.mutationPhasesByConnectorKey, {});
+  service.dispose();
+});
+
 test("a new authorization command starts only after the user cancels", async () => {
   const firstAuthorization =
     deferred<
@@ -1463,9 +1547,20 @@ test("converges a busy authorization continuation from a connected snapshot", as
     backend: backendWith({
       getSnapshot: async () => {
         snapshotReads += 1;
-        return snapshotReads === 1
-          ? snapshot(1, [disconnected])
-          : snapshot(4, [connected]);
+        if (snapshotReads === 1) {
+          return snapshot(1, [disconnected]);
+        }
+        return {
+          ...snapshot(4, [connected]),
+          operations: [
+            {
+              ...operation("start_authorization", 4),
+              clientRequestId: "one-notion-authorization",
+              connectorKey: "notion",
+              state: "completed" as const
+            }
+          ]
+        };
       },
       beginAuthorization: async (request) => {
         requests.push(request);
@@ -1522,6 +1617,155 @@ test("converges a busy authorization continuation from a connected snapshot", as
     "connected"
   );
   assert.equal(service.dataStore.lastError, null);
+  service.dispose();
+});
+
+test("converges a retryable authorization continuation failure from its durable receipt", async () => {
+  const requests: ConnectorAuthorizationInput[] = [];
+  const diagnostics: unknown[] = [];
+  let snapshotReads = 0;
+  const disconnected = connector("github-cli", 1);
+  disconnected.authorization = { state: "disconnected" };
+  const connected = connector("github-cli", 4);
+  connected.authorization = { state: "connected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => {
+        snapshotReads += 1;
+        if (snapshotReads === 1) {
+          return snapshot(1, [disconnected]);
+        }
+        return {
+          ...snapshot(4, [connected]),
+          operations: [
+            {
+              ...operation("start_authorization", 4),
+              clientRequestId: "one-github-cli-authorization",
+              connectorKey: "github-cli",
+              operationId: "github-cli-authorization",
+              state: "completed" as const
+            }
+          ]
+        };
+      },
+      beginAuthorization: async (request) => {
+        requests.push(request);
+        if (requests.length > 1) {
+          throw Object.assign(new Error("authorization response was lost"), {
+            code: "connector_market_unavailable",
+            retryable: true
+          });
+        }
+        const pending = connector("github-cli", 2);
+        pending.authorization = { state: "pending" };
+        return {
+          connector: pending,
+          operation: {
+            ...operation("start_authorization", 2),
+            clientRequestId: "one-github-cli-authorization",
+            connectorKey: "github-cli",
+            operationId: "github-cli-authorization",
+            state: "completed" as const
+          },
+          authorizationView: {
+            protocol: "tutti.connector.authorization.view.v1",
+            viewId: "github-cli-device-code",
+            view: {
+              type: "device_code",
+              verificationUrl: "https://github.com/login/device",
+              userCode: "ABCD-EFGH"
+            }
+          },
+          revision: 2
+        };
+      }
+    }),
+    createRequestId: () => "one-github-cli-authorization",
+    reportDiagnostic: (error) => diagnostics.push(error),
+    waitForAuthorizationContinuation: async () => undefined
+  });
+  await service.ensureLoaded();
+
+  await service.beginAuthorization("github-cli");
+
+  assert.equal(snapshotReads, 2);
+  assert.equal(requests.length, 2);
+  assert.deepEqual(
+    requests.map(({ clientRequestId }) => clientRequestId),
+    ["one-github-cli-authorization", "one-github-cli-authorization"]
+  );
+  assert.equal(
+    service.dataStore.connectorsByKey["github-cli"]?.authorization.state,
+    "connected"
+  );
+  assert.equal(service.dataStore.lastError, null);
+  assert.equal(diagnostics.length, 1);
+  service.dispose();
+});
+
+test("does not accept an unrelated connected receipt after a continuation failure", async () => {
+  const disconnected = connector("github-cli", 1);
+  disconnected.authorization = { state: "disconnected" };
+  const connected = connector("github-cli", 4);
+  connected.authorization = { state: "connected" };
+  const responseLoss = Object.assign(
+    new Error("authorization response was lost"),
+    {
+      code: "connector_market_unavailable",
+      retryable: true
+    }
+  );
+  let snapshotReads = 0;
+  let authorizationCalls = 0;
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => {
+        snapshotReads += 1;
+        if (snapshotReads === 1) {
+          return snapshot(1, [disconnected]);
+        }
+        return {
+          ...snapshot(4, [connected]),
+          operations: [
+            {
+              ...operation("start_authorization", 4),
+              clientRequestId: "another-authorization",
+              connectorKey: "github-cli",
+              state: "completed" as const
+            }
+          ]
+        };
+      },
+      beginAuthorization: async () => {
+        authorizationCalls += 1;
+        if (authorizationCalls > 1) {
+          throw responseLoss;
+        }
+        const pending = connector("github-cli", 2);
+        pending.authorization = { state: "pending" };
+        return {
+          connector: pending,
+          operation: {
+            ...operation("start_authorization", 2),
+            clientRequestId: "one-github-cli-authorization",
+            connectorKey: "github-cli",
+            state: "completed" as const
+          },
+          authorizationUrl: "https://github.com/login/device",
+          revision: 2
+        };
+      }
+    }),
+    createRequestId: () => "one-github-cli-authorization",
+    openAuthorizationUrl: async () => undefined,
+    waitForAuthorizationContinuation: async () => undefined
+  });
+  await service.ensureLoaded();
+
+  await assert.rejects(service.beginAuthorization("github-cli"), responseLoss);
+
+  assert.equal(snapshotReads, 2);
+  assert.equal(authorizationCalls, 2);
   service.dispose();
 });
 
@@ -1654,16 +1898,17 @@ test("continues one authorization session, opens each URL once, and clears loadi
         requests.push(request);
         step += 1;
         const next = connector("lark-cli", step + 1);
-        next.authorization = { state: step === 3 ? "connected" : "pending" };
+        next.authorization = { state: step === 4 ? "connected" : "pending" };
         return {
           connector: next,
           operation: {
             ...operation("start_authorization", step + 1),
             connectorKey: "lark-cli",
+            operationId: "lark-cli-authorization",
             state: "completed" as const
           },
           authorizationUrl:
-            step === 2
+            step === 3
               ? "https://accounts.feishu.cn/device?user_code=authorization"
               : "https://open.feishu.cn/page/cli?user_code=configuration",
           revision: step + 1
@@ -1673,13 +1918,14 @@ test("continues one authorization session, opens each URL once, and clears loadi
     createRequestId: () => "one-authorization-request",
     openAuthorizationUrl: async (url) => {
       openedUrls.push(url);
-    }
+    },
+    waitForAuthorizationContinuation: async () => undefined
   });
   await service.ensureLoaded();
 
   await service.beginAuthorization("lark-cli");
 
-  assert.equal(step, 3);
+  assert.equal(step, 4);
   assert.deepEqual(requests, [
     {
       connectorKey: "lark-cli",
@@ -1701,6 +1947,13 @@ test("continues one authorization session, opens each URL once, and clears loadi
       replacementPolicy: "replace_active",
       expectedRevision: 1,
       expectedConnectorRevision: 3
+    },
+    {
+      connectorKey: "lark-cli",
+      clientRequestId: "one-authorization-request",
+      replacementPolicy: "replace_active",
+      expectedRevision: 1,
+      expectedConnectorRevision: 4
     }
   ]);
   assert.deepEqual(openedUrls, [
@@ -1712,6 +1965,66 @@ test("continues one authorization session, opens each URL once, and clears loadi
     "connected"
   );
   assert.deepEqual(service.dataStore.authorizingConnectorKeys, {});
+  service.dispose();
+});
+
+test("keeps consuming a versioned authorization session when the next step is delayed", async () => {
+  const requests: Array<{ afterAuthorizationStepRevision?: number }> = [];
+  const openedUrls: string[] = [];
+  let call = 0;
+  const initial = connector("generic-oauth", 1);
+  initial.authorization = { state: "disconnected" };
+  const service = new ConnectorMarketService({
+    backend: backendWith({
+      getSnapshot: async () => snapshot(1, [initial]),
+      beginAuthorization: async (request) => {
+        requests.push(request);
+        call += 1;
+        const connected = call === 4;
+        const next = connector("generic-oauth", call + 1);
+        next.authorization = { state: connected ? "connected" : "pending" };
+        const authorizationStepRevision = call < 3 ? 1 : call === 3 ? 2 : 3;
+        return {
+          connector: next,
+          operation: {
+            ...operation("start_authorization", call + 1),
+            connectorKey: "generic-oauth",
+            operationId: "generic-authorization",
+            state: "completed" as const
+          },
+          ...(connected
+            ? {}
+            : {
+                authorizationUrl:
+                  call < 3
+                    ? "https://accounts.example.com/configure"
+                    : "https://accounts.example.com/device"
+              }),
+          authorizationStepRevision,
+          revision: call + 1
+        };
+      }
+    }),
+    createRequestId: () => "versioned-authorization-request",
+    openAuthorizationUrl: async (url) => {
+      openedUrls.push(url);
+    },
+    waitForAuthorizationContinuation: async () => undefined
+  });
+  await service.ensureLoaded();
+
+  await service.beginAuthorization("generic-oauth");
+
+  assert.deepEqual(
+    requests.map(
+      ({ afterAuthorizationStepRevision }) => afterAuthorizationStepRevision
+    ),
+    [undefined, 1, 1, 2]
+  );
+  assert.deepEqual(openedUrls, [
+    "https://accounts.example.com/configure",
+    "https://accounts.example.com/device"
+  ]);
   service.dispose();
 });
 
@@ -1895,7 +2208,7 @@ test("keeps QR authorization in app state without opening its payload", async ()
   service.dispose();
 });
 
-test("opens a device-code verification page once while keeping the code visible", async () => {
+test("opens device-code authorization once and keeps the view until completion", async () => {
   const continueAuthorization = deferred<void>();
   const openedUrls: string[] = [];
   let step = 0;

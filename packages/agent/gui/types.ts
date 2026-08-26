@@ -175,6 +175,12 @@ export interface AgentGUIAgent {
   sharedAccess?: AgentGUISharedAgentAccess | null;
   availability: AgentGUIAgentAvailability;
   provider: AgentGUIProvider;
+  /**
+   * False when this exact target routes model access through a Host-owned
+   * Model Plan, so the Runtime provider's native account usage is unrelated.
+   * Omitted values preserve the ordinary provider account-usage behavior.
+   */
+  providerAccountUsageApplicable?: boolean;
   setupKind?: "target_runtime" | null;
 }
 
@@ -226,6 +232,8 @@ export interface AgentGUIAgentTarget {
   ownerDeviceLabel?: string;
   ownership?: AgentGUIAgentOwnership;
   availability?: AgentGUIAgentAvailability;
+  /** Host projection of whether provider-native account usage applies here. */
+  providerAccountUsageApplicable?: boolean;
   disabled?: boolean;
   unavailableReason?: string;
 }
@@ -379,6 +387,11 @@ export type AgentGUIProviderReadinessGateAction =
 export interface AgentGUIProviderReadinessGate {
   status: AgentGUIProviderReadinessGateStatus;
   pendingAction?: AgentGUIProviderReadinessGateAction | null;
+  /**
+   * Opens the host-owned model-plan setup route for this blocked provider.
+   * Absent stays hidden; non-Tutti hosts should omit the capability.
+   */
+  onModelPlanSetup?: () => void;
   onAction?: (
     provider: AgentGUIProvider,
     action: AgentGUIProviderReadinessGateAction

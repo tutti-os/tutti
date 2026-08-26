@@ -2,8 +2,15 @@ package agentruntime
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
+
+var acpModelConsumptionDescriptionPattern = regexp.MustCompile(
+	`(?i)^\s*(?:x\s*([0-9]+(?:\.[0-9]+)?)|([0-9]+(?:\.[0-9]+)?)\s*x)\s*credits?\s*$`,
+)
+
+const StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 = "credit-consumption-multiplier-v1"
 
 type acpModelInfo struct {
 	Description             string          `json:"description"`
@@ -16,7 +23,7 @@ type acpModelInfo struct {
 	Meta                    json.RawMessage `json:"_meta"`
 }
 
-func applyACPModelsResult(state *acpLiveState, raw json.RawMessage) {
+func applyACPModelsResult(state *acpLiveState, raw json.RawMessage, descriptionMetadataFormat string) {
 	if state == nil || len(raw) == 0 {
 		return
 	}
@@ -41,8 +48,12 @@ func applyACPModelsResult(state *acpLiveState, raw json.RawMessage) {
 			label = modelID
 		}
 		option := map[string]any{"value": modelID, "label": label}
-		if description := strings.TrimSpace(model.Description); description != "" {
+		description, consumptionMultiplier := normalizeACPModelDescription(model.Description, descriptionMetadataFormat)
+		if description != "" {
 			option["description"] = description
+		}
+		if consumptionMultiplier != "" {
+			option["consumptionMultiplier"] = consumptionMultiplier
 		}
 		applyACPModelMetadata(option, model)
 		options = append(options, option)
@@ -69,6 +80,82 @@ func applyACPModelsResult(state *acpLiveState, raw json.RawMessage) {
 		descriptors = append(descriptors, descriptor)
 	}
 	applyACPConfigOptionDescriptors(state, descriptors)
+}
+
+// normalizeACPModelDescription converts the standalone credit multiplier into
+// typed model metadata only when a verified Extension explicitly declares the
+// closed format. Shared catalog and GUI layers must not infer this semantic
+// from provider-owned presentation text.
+func normalizeACPModelDescription(description string, metadataFormat string) (string, string) {
+	original := strings.TrimSpace(description)
+	if strings.TrimSpace(metadataFormat) != StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
+		return original, ""
+	}
+	parts := strings.FieldsFunc(description, func(value rune) bool {
+		return value == '·' || value == '•' || value == '\n' || value == '\r'
+	})
+	kept := make([]string, 0, len(parts))
+	consumptionMultiplier := ""
+	foundConsumption := false
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		if matches := acpModelConsumptionDescriptionPattern.FindStringSubmatch(part); len(matches) > 0 {
+			foundConsumption = true
+			if consumptionMultiplier == "" {
+				consumptionMultiplier = firstNonEmptyString(matches[1], matches[2])
+			}
+			continue
+		}
+		kept = append(kept, part)
+	}
+	if !foundConsumption {
+		return original, ""
+	}
+	return strings.Join(kept, " · "), consumptionMultiplier
+}
+
+func normalizeACPModelConfigOptionDescriptions(
+	descriptors []map[string]any,
+	modelConfigOptionID string,
+	metadataFormat string,
+) {
+	modelConfigOptionID = strings.TrimSpace(modelConfigOptionID)
+	for _, descriptor := range descriptors {
+		options, ok := descriptor["options"].([]any)
+		if !ok {
+			continue
+		}
+		for _, rawOption := range options {
+			option, ok := rawOption.(map[string]any)
+			if !ok {
+				continue
+			}
+			// This field is an extension-owned semantic. Never allow a raw ACP
+			// provider payload to smuggle it through the shared runtime context;
+			// it may only be re-added below after the declared adapter format has
+			// parsed the description.
+			delete(option, "consumptionMultiplier")
+			if strings.TrimSpace(asString(descriptor["id"])) != modelConfigOptionID ||
+				strings.TrimSpace(metadataFormat) != StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
+				continue
+			}
+			description, consumptionMultiplier := normalizeACPModelDescription(
+				asString(option["description"]),
+				metadataFormat,
+			)
+			if description == "" {
+				delete(option, "description")
+			} else {
+				option["description"] = description
+			}
+			if consumptionMultiplier != "" {
+				option["consumptionMultiplier"] = consumptionMultiplier
+			}
+		}
+	}
 }
 
 func applyACPModelMetadata(option map[string]any, model acpModelInfo) {

@@ -5,6 +5,41 @@ stable CLI and authorization contracts in
 [Tutti CLI Contract](../tutti-cli-contract.md); keep symptom-driven diagnosis
 and recovery here.
 
+## Computer use keeps reopening setup after installation or authorization
+
+### Symptom
+
+The Desktop settings row reports that computer use is installed and authorized,
+but selecting `/computer` opens setup again. On macOS, the first visit to a
+Privacy & Security pane may not list CuaDriver, or Screen Recording may remain
+granted but not effective until the driver is restarted.
+
+### Root cause and fix
+
+Desktop permission status and Agent Composer options refresh independently. A
+fresh host probe may therefore be authorized while an older Composer snapshot
+still reports computer use as unavailable. Treat the fresh installed and
+authorized host status as sufficient for the Composer interaction; the daemon
+still performs its authoritative readiness clamp when the session launches.
+
+On macOS, start the user-initiated permission grant before opening System
+Settings so TCC has registered CuaDriver on the first visit. After both
+Accessibility and Screen Recording are granted but capture is not yet
+effective, restart CuaDriver through its app bundle and then read status again;
+plain polling cannot clear the process-cached permission state.
+
+### Validation
+
+- An uninstalled driver still routes `/computer` to setup.
+- An installed and authorized driver inserts and submits `/computer` without
+  reopening setup, even if Composer options were loaded before authorization.
+- CuaDriver appears on the first user-initiated visit to each macOS permission
+  pane.
+- Returning from macOS System Settings reconciles granted permissions and
+  capture readiness without restarting Tutti.
+- Windows continues to use `doctor --json`; macOS-only reconciliation never
+  runs on Windows.
+
 ## A computer click reports success but the UI does not change
 
 ### Symptom
@@ -90,3 +125,32 @@ different application target; never automate the authorization UI.
 - Every state-changing action is followed by a fresh screenshot.
 - An inconsistent success-code error and a protected authorization target have
   explicit diagnostic messages.
+
+## A Windows CUA doctor check is slow or reports UIA fallback
+
+### Symptom
+
+Windows computer-use status takes several seconds, or the driver doctor
+reports that optional UI Automation support is unhealthy and is falling back to
+Win32-only window tools. A status response may still be authorized because
+the installed driver can perform the core Win32 actions.
+
+### Root cause and fix
+
+The Windows doctor probes both the optional UIA adapter and the native Win32
+path. A broken accessibility provider can make the optional probe slow or
+degraded even when native input remains usable. The desktop and daemon bound
+the doctor process at 10 seconds and classify the explicit UIA-to-Win32
+fallback as a degraded-but-usable result. The desktop preserves its diagnostic
+message with reason `driver-doctor-failed`, while the daemon keeps host-managed
+computer tools available. A real timeout, malformed response, or missing driver
+remains an unknown/not-ready result; do not silently treat those as healthy.
+
+### Validation
+
+- Run the exact installed `cua-driver doctor --json` executable and record
+  whether the response is healthy, degraded, timed out, or unparseable.
+- Confirm degraded output keeps Win32 computer actions available while the
+  diagnostic warns that UIA-specific window operations may not work.
+- Confirm a real doctor timeout returns within 10 seconds and does not leave a
+  child process running.

@@ -13,6 +13,7 @@ import type {
   AgentGUIProviderReadinessGateAction,
   AgentGUIProps
 } from "@tutti-os/agent-gui";
+import { openWorkspaceSettingsPanel } from "@tutti-os/agent-gui/workspace-settings-panel";
 import type { WorkbenchHostNodeBodyContext } from "@tutti-os/workbench-surface";
 import type { DesktopComputerUseApi } from "@preload/types";
 import {
@@ -287,10 +288,14 @@ export function useDesktopAgentGUIReadiness(input: {
     },
     [agentEnvService, agentProviderStatusService, host, workspaceId]
   );
+  const handleModelPlanSetup = useCallback(() => {
+    openWorkspaceSettingsPanel({ pane: "managed-models" });
+  }, []);
   const providerReadinessGates = useMemo(() => {
     const gates = projectDesktopAgentProviderReadinessGates({
       snapshot: effectiveProviderStatusSnapshot,
-      onAction: handleProviderReadinessGateAction
+      onAction: handleProviderReadinessGateAction,
+      onModelPlanSetup: handleModelPlanSetup
     });
     if (!suppressNotReadyProjection) {
       return gates;
@@ -302,6 +307,7 @@ export function useDesktopAgentGUIReadiness(input: {
     return provider ? { ...gates, [provider]: checkingGate } : gates;
   }, [
     effectiveProviderStatusSnapshot,
+    handleModelPlanSetup,
     handleProviderReadinessGateAction,
     provider,
     suppressNotReadyProjection

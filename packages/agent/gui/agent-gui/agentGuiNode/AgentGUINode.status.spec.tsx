@@ -195,7 +195,8 @@ describe("AgentGUINode status controller integration", () => {
       agentTargetId: "local:tutti-agent",
       provider: "tutti-agent",
       label: target.label,
-      ownership: "self"
+      ownership: "self",
+      presentation: "menu"
     });
     expect(latestViewProps().agentConfigAccountContent).toBeTruthy();
 
@@ -206,7 +207,8 @@ describe("AgentGUINode status controller integration", () => {
       agentTargetId: "local:tutti-agent",
       provider: "tutti-agent",
       label: target.label,
-      ownership: "self"
+      ownership: "self",
+      presentation: "menu"
     });
   });
 
@@ -228,6 +230,9 @@ describe("AgentGUINode status controller integration", () => {
     );
 
     expect(renderAgentConfigSystemActions).toHaveBeenCalledOnce();
+    expect(renderAgentConfigSystemActions).toHaveBeenCalledWith({
+      presentation: "menu"
+    });
     expect(latestViewProps().agentConfigSystemActionsContent).toBeTruthy();
   });
 
@@ -314,6 +319,37 @@ describe("AgentGUINode status controller integration", () => {
     expect(latestViewProps().slashStatusUsageErrorMessage).toBe(
       "agentHost.agentGui.slashStatusUsageSubscriptionRequired"
     );
+  });
+
+  it("disables provider-account usage refresh for a Model Plan target", () => {
+    const target = {
+      ...createLocalAgentGUIAgentTarget("codex"),
+      agentTargetId: "workspace-agent:kimi-code",
+      targetId: "workspace-agent:kimi-code",
+      providerAccountUsageApplicable: false
+    };
+    mockViewModel = createViewModel({
+      selectedAgentTarget: target,
+      agentTargets: [target],
+      conversationFilter: {
+        kind: "agentTarget",
+        agentTargetId: "workspace-agent:kimi-code"
+      }
+    });
+    render(
+      <AgentGUINode
+        {...createProps({
+          runtimeRequests: {
+            agentStatusController: createAgentStatusController({
+              source: { open: vi.fn(() => vi.fn()) }
+            })
+          }
+        })}
+      />
+    );
+
+    expect(latestViewProps().onAgentUsageRefresh).toBeUndefined();
+    expect(latestViewProps().onSlashStatusRefresh).toBeUndefined();
   });
 
   it("projects the host billing label into the rail config menu", () => {
@@ -480,9 +516,11 @@ interface CapturedViewProps {
   agentConfigSystemActionsContent?: React.ReactNode;
   onAgentConfigMenuOpen?: () => void;
   onAgentConfigMenuClose?: () => void;
+  onAgentUsageRefresh?: () => void;
   providerAuthAccountLabels?: Partial<Record<string, string>>;
   onSlashStatusOpen?: () => void;
   onSlashStatusClose?: () => void;
+  onSlashStatusRefresh?: () => void;
   slashStatusUsageErrorMessage?: string | null;
   slashStatusOverride?: {
     contextWindow?: { usedTokens?: number | null } | null;

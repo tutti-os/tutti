@@ -60,6 +60,39 @@ test("Claude fork inspection exposes only root user message UUIDs", async () => 
   assert.deepEqual(result, { providerTurnIds: ["prompt-1", "prompt-2"] });
 });
 
+test("Claude fork inspection excludes top-level tool result messages", async () => {
+  const sdk = fakeSDK();
+  sdk.getSessionMessages = (async () => [
+    message("user", "prompt-1", { role: "user", content: "one" }),
+    message("assistant", "tool-call-1", {
+      role: "assistant",
+      content: [{ type: "tool_use", id: "tool-1", name: "Read", input: {} }]
+    }),
+    message("user", "tool-result-1", {
+      role: "user",
+      content: [
+        { type: "tool_result", tool_use_id: "tool-1", content: "result" }
+      ]
+    }),
+    message("assistant", "answer-1", {
+      role: "assistant",
+      content: "first"
+    }),
+    message("user", "prompt-2", { role: "user", content: "two" }),
+    message("assistant", "answer-2", {
+      role: "assistant",
+      content: "second"
+    })
+  ]) as typeof sdk.getSessionMessages;
+
+  const result = await inspectClaudeForkCheckpoints(
+    { sessionId: "source", cwd: "/workspace" },
+    sdk
+  );
+
+  assert.deepEqual(result, { providerTurnIds: ["prompt-1", "prompt-2"] });
+});
+
 test("Claude turn recovery resolves one exact opaque UUID and checkpoint", async () => {
   const token = "opaque-submit-2";
   const sdk = fakeSDK();
@@ -261,6 +294,77 @@ test("Claude fork returns every child provider turn and checkpoint binding", asy
   ]);
 });
 
+test("Claude fork keeps tool results inside their canonical turn binding", async () => {
+  const childWithToolResult = [
+    message(
+      "user",
+      "child-prompt-1",
+      { role: "user", content: "one" },
+      childSessionId
+    ),
+    message(
+      "assistant",
+      "child-tool-call-1",
+      {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "tool-1", name: "Read", input: {} }]
+      },
+      childSessionId
+    ),
+    message(
+      "user",
+      "child-tool-result-1",
+      {
+        role: "user",
+        content: [
+          { type: "tool_result", tool_use_id: "tool-1", content: "result" }
+        ]
+      },
+      childSessionId
+    ),
+    message(
+      "assistant",
+      "child-answer-1",
+      { role: "assistant", content: "first" },
+      childSessionId
+    ),
+    message(
+      "user",
+      "child-prompt-2",
+      { role: "user", content: "two" },
+      childSessionId
+    ),
+    message(
+      "assistant",
+      "child-answer-2",
+      { role: "assistant", content: "second" },
+      childSessionId
+    )
+  ];
+
+  const result = await forkClaudeSession(
+    {
+      sessionId: "source",
+      providerTurnId: "prompt-2",
+      providerCheckpointMessageId: "answer-2",
+      cwd: "/workspace",
+      title: "Child"
+    },
+    fakeSDK([], childWithToolResult)
+  );
+
+  assert.deepEqual(result.targetProviderTurnBindings, [
+    {
+      providerTurnId: "child-prompt-1",
+      checkpointMessageId: "child-answer-1"
+    },
+    {
+      providerTurnId: "child-prompt-2",
+      checkpointMessageId: "child-answer-2"
+    }
+  ]);
+});
+
 test("Claude fork recovers an ephemeral persisted checkpoint before creating a child", async () => {
   const calls: Array<Record<string, unknown>> = [];
   const sdk = fakeSDK(calls);
@@ -357,13 +461,24 @@ test("legacy checkpoint lookup keeps task notifications inside the selected turn
 
 test("official Claude fork preserves a trailing system checkpoint", async () => {
   const store = new InMemorySessionStore();
-  const projectKey = "-workspace";
+  const cwd = "/workspace";
   const sourceSessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
   const sourcePrompt1 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
   const sourceAnswer1 = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
   const sourceSystem = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
   const sourcePrompt2 = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
   const sourceAnswer2 = "ffffffff-ffff-4fff-8fff-ffffffffffff";
+  let projectKey = "";
+  const load = store.load.bind(store);
+  store.load = async (key) => {
+    projectKey = key.projectKey;
+    return load(key);
+  };
+  await sdkGetSessionMessages(sourceSessionId, {
+    dir: cwd,
+    sessionStore: store
+  });
+  assert.notEqual(projectKey, "");
   await store.append({ projectKey, sessionId: sourceSessionId }, [
     transcriptEntry("user", sourcePrompt1, null, sourceSessionId, {
       role: "user",
@@ -409,7 +524,7 @@ test("official Claude fork preserves a trailing system checkpoint", async () => 
       sessionId: sourceSessionId,
       providerTurnId: sourcePrompt1,
       providerCheckpointMessageId: "",
-      cwd: "/workspace",
+      cwd,
       title: "Child"
     },
     sdk

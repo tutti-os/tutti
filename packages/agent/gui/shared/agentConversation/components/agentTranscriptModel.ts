@@ -211,7 +211,14 @@ export function summarizeUserMessageRow(
   row: Extract<AgentConversationVM["rows"][number], { kind: "message" }>
 ): string {
   return normalizeLocatorSummary(
-    row.messages.map((message) => message.copyText ?? message.body).join(" ")
+    row.messages
+      .map((message) => {
+        if (message.contentKind === "selected-text") {
+          return message.selectedText?.texts.join(" ") ?? "";
+        }
+        return message.copyText ?? message.body;
+      })
+      .join(" ")
   );
 }
 

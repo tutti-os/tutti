@@ -18,9 +18,9 @@ import (
 const defaultMaxSearchCandidates = 5000
 
 // defaultSearchIgnoredDirectoryNames preserves the search scope of the former
-// filesystem walker. Native index providers use the same list to discard
-// predictable noise before applying their candidate limit, while
-// localFileSearchCandidates applies it again as a provider-independent guard.
+// filesystem walker. localFileSearchCandidates owns the provider-independent
+// guard; native providers may push down equivalent filtering only when their
+// query semantics preserve responsiveness.
 var defaultSearchIgnoredDirectoryNames = []string{
 	".git",
 	".next",
@@ -98,9 +98,7 @@ func (a LocalFilesAdapter) Search(
 		provider = newPlatformLocalFileSearchProvider()
 	}
 	if provider == nil {
-		err := fmt.Errorf("%w: no platform adapter", workspacefiles.ErrSearchUnavailable)
-		logWorkspaceFileSearch(start, root, input, "none", localFileSearchStats{}, 0, 0, err)
-		return workspacefiles.SearchResult{}, err
+		provider = filesystemSearchProvider{}
 	}
 
 	searchCtx := ctx
@@ -110,19 +108,20 @@ func (a LocalFilesAdapter) Search(
 	}
 	defer cancel()
 
-	paths, err := provider.Search(searchCtx, localFileSearchRequest{
+	request := localFileSearchRequest{
 		CandidateLimit: a.maxSearchCandidates(),
 		Filters:        input.Filters,
 		IncludeHidden:  input.IncludeHidden,
 		IncludeKinds:   input.IncludeKinds,
 		Query:          strings.TrimSpace(input.Query),
 		SearchRootPath: searchRootPath,
-	})
+	}
+	paths, providerName, err := searchWithFilesystemFallback(searchCtx, provider, request)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
-			err = fmt.Errorf("%w: %s: %v", workspacefiles.ErrSearchUnavailable, provider.Name(), err)
+			err = fmt.Errorf("%w: %s: %v", workspacefiles.ErrSearchUnavailable, providerName, err)
 		}
-		logWorkspaceFileSearch(start, root, input, provider.Name(), localFileSearchStats{}, len(paths), 0, err)
+		logWorkspaceFileSearch(start, root, input, providerName, localFileSearchStats{}, len(paths), 0, err)
 		return workspacefiles.SearchResult{}, err
 	}
 
@@ -139,12 +138,51 @@ func (a LocalFilesAdapter) Search(
 	} else {
 		entries = workspacefiles.BuildListingEntries(logicalRoot, candidates, input.Limit)
 	}
-	logWorkspaceFileSearch(start, root, input, provider.Name(), stats, len(paths), len(entries), nil)
+	logWorkspaceFileSearch(start, root, input, providerName, stats, len(paths), len(entries), nil)
 	return workspacefiles.SearchResult{
 		WorkspaceID: root.WorkspaceID,
 		Root:        logicalRoot,
 		Entries:     entries,
 	}, nil
+}
+
+type localFileSearchProviderResult struct {
+	paths []string
+	err   error
+}
+
+func searchWithFilesystemFallback(
+	ctx context.Context,
+	provider localFileSearchProvider,
+	request localFileSearchRequest,
+) ([]string, string, error) {
+	if _, isFilesystem := provider.(filesystemSearchProvider); isFilesystem {
+		paths, err := provider.Search(ctx, request)
+		return paths, provider.Name(), err
+	}
+
+	fallback := filesystemSearchProvider{}
+	fallbackCtx, cancelFallback := context.WithCancel(ctx)
+	defer cancelFallback()
+	fallbackResult := make(chan localFileSearchProviderResult, 1)
+	go func() {
+		paths, err := fallback.Search(fallbackCtx, request)
+		fallbackResult <- localFileSearchProviderResult{paths: paths, err: err}
+	}()
+
+	paths, err := provider.Search(ctx, request)
+	if len(paths) > 0 {
+		return paths, provider.Name(), nil
+	}
+	result := <-fallbackResult
+	providerName := provider.Name() + "+" + fallback.Name()
+	if len(result.paths) > 0 || result.err == nil {
+		return result.paths, providerName, nil
+	}
+	if err != nil {
+		return nil, providerName, err
+	}
+	return nil, providerName, result.err
 }
 
 func resolveLocalFileSearchRoot(

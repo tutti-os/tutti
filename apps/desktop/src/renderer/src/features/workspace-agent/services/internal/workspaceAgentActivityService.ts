@@ -889,6 +889,7 @@ export class WorkspaceAgentActivityService
   }
 
   async getComposerOptions(input: {
+    agentSessionId?: string | null;
     agentTargetId: string;
     cwd?: string | null;
     force?: boolean;
@@ -903,6 +904,7 @@ export class WorkspaceAgentActivityService
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const entry = this.entry(workspaceId);
     return entry.engine.loadComposerOptions({
+      agentSessionId: input.agentSessionId,
       cwd: input.cwd,
       force: input.force,
       waitForFreshModelCatalog: input.waitForFreshModelCatalog,

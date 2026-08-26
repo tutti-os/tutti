@@ -23,14 +23,17 @@ export type DesktopAgentGUIHostProps = {
     AgentGUIProps["hostCapabilities"],
     | "referenceProvenanceFilterEnabled"
     | "sideConversationEnabled"
+    | "sideConversationPresentation"
     | "sessionInputHistoryEnabled"
     | "sessionWorktreeEnabled"
     | "sessionLaunchModesByProjectSectionKey"
     | "codexSaverModeEntryEnabled"
+    | "rtkSaverModeEntryEnabled"
     | "capabilityMenuState"
     | "visibleErrorPresentationOverrides"
     | "comingSoonProviders"
     | "providerReadinessGates"
+    | "accountUsageRefreshInline"
     | "defaultAgentTargetId"
     | "providerAuthAccountLabels"
     | "mentionService"
@@ -110,6 +113,8 @@ export function useStableDesktopAgentGUIHostProps({
       referenceProvenanceFilterEnabled:
         nextHostCapabilities.referenceProvenanceFilterEnabled,
       sideConversationEnabled: nextHostCapabilities.sideConversationEnabled,
+      sideConversationPresentation:
+        nextHostCapabilities.sideConversationPresentation,
       sessionInputHistoryEnabled:
         nextHostCapabilities.sessionInputHistoryEnabled,
       sessionWorktreeEnabled: nextHostCapabilities.sessionWorktreeEnabled,
@@ -117,11 +122,13 @@ export function useStableDesktopAgentGUIHostProps({
         nextHostCapabilities.sessionLaunchModesByProjectSectionKey,
       codexSaverModeEntryEnabled:
         nextHostCapabilities.codexSaverModeEntryEnabled,
+      rtkSaverModeEntryEnabled: nextHostCapabilities.rtkSaverModeEntryEnabled,
       capabilityMenuState: nextHostCapabilities.capabilityMenuState,
       visibleErrorPresentationOverrides:
         nextHostCapabilities.visibleErrorPresentationOverrides,
       comingSoonProviders: nextHostCapabilities.comingSoonProviders,
       providerReadinessGates: nextHostCapabilities.providerReadinessGates,
+      accountUsageRefreshInline: nextHostCapabilities.accountUsageRefreshInline,
       defaultAgentTargetId: nextHostCapabilities.defaultAgentTargetId,
       providerAuthAccountLabels: nextHostCapabilities.providerAuthAccountLabels,
       mentionService: nextHostCapabilities.mentionService,

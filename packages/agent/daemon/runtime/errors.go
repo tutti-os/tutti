@@ -4,6 +4,7 @@ import "errors"
 
 const (
 	AppErrorProviderSessionNotFound           = "agent.provider_session_not_found"
+	AppErrorProviderSessionCreateFailed       = "agent.provider_session_create_failed"
 	AppErrorProviderAcceptanceMissingIdentity = "provider_acceptance_missing_identity"
 	AppErrorProcessCleanupPending             = "agent.process_cleanup_pending"
 	AppErrorResumeSessionNotLocal             = "agent.resume_session_not_local"

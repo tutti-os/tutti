@@ -12,6 +12,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 )
 
@@ -20,9 +21,9 @@ type ComposerProfile struct {
 	Model         json.RawMessage `json:"model"`
 	Permission    json.RawMessage `json:"permission"`
 	ConfigOptions *struct {
-		Model      ComposerConfigOptionReference `json:"model"`
-		Permission ComposerConfigOptionReference `json:"permission"`
-		Reasoning  ComposerConfigOptionReference `json:"reasoning"`
+		Model      ComposerModelConfigOptionReference `json:"model"`
+		Permission ComposerConfigOptionReference      `json:"permission"`
+		Reasoning  ComposerConfigOptionReference      `json:"reasoning"`
 	} `json:"configOptions,omitempty"`
 	PermissionModes []ComposerPermissionMode `json:"permissionModes"`
 	LaunchSettings  *struct {
@@ -128,6 +129,11 @@ type ComposerConfigOptionReference struct {
 	ACPOptionID string `json:"acpOptionId"`
 }
 
+type ComposerModelConfigOptionReference struct {
+	ACPOptionID               string `json:"acpOptionId"`
+	DescriptionMetadataFormat string `json:"descriptionMetadataFormat,omitempty"`
+}
+
 func (profile ComposerProfile) ACPConfigOptionIDs() (model string, permission string, reasoning string) {
 	if strings.TrimSpace(profile.SchemaVersion) == "" {
 		return "", "", ""
@@ -147,6 +153,13 @@ func (profile ComposerProfile) ACPConfigOptionIDs() (model string, permission st
 		permission = "mode"
 	}
 	return model, permission, "reasoning_effort"
+}
+
+func (profile ComposerProfile) ModelDescriptionMetadataFormat() string {
+	if profile.ConfigOptions == nil {
+		return ""
+	}
+	return strings.TrimSpace(profile.ConfigOptions.Model.DescriptionMetadataFormat)
 }
 
 type CapabilitiesProfile struct {
@@ -383,14 +396,19 @@ func validateComposerProfile(profile ComposerProfile) error {
 		}
 	}
 	if profile.ConfigOptions != nil {
-		for _, option := range []ComposerConfigOptionReference{
-			profile.ConfigOptions.Model,
-			profile.ConfigOptions.Permission,
-			profile.ConfigOptions.Reasoning,
+		for _, id := range []string{
+			profile.ConfigOptions.Model.ACPOptionID,
+			profile.ConfigOptions.Permission.ACPOptionID,
+			profile.ConfigOptions.Reasoning.ACPOptionID,
 		} {
-			if id := strings.TrimSpace(option.ACPOptionID); id != "" && !composerConfigOptionID.MatchString(id) {
+			if optionID := strings.TrimSpace(id); optionID != "" && !composerConfigOptionID.MatchString(optionID) {
 				return errors.New("composer ACP config option id is unsupported")
 			}
+		}
+		if metadataFormat := profile.ModelDescriptionMetadataFormat(); metadataFormat != "" && metadataFormat != agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
+			return errors.New("composer model description metadata format is unsupported")
+		} else if metadataFormat != "" && strings.TrimSpace(profile.ConfigOptions.Model.ACPOptionID) == "" {
+			return errors.New("composer model description metadata format requires a model ACP config option")
 		}
 	}
 	for _, mode := range profile.PermissionModes {

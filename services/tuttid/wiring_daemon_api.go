@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -35,6 +36,7 @@ import (
 	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
+	globalagentactivityservice "github.com/tutti-os/tutti/services/tuttid/service/globalagentactivity"
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
@@ -233,6 +235,7 @@ func buildDaemonAPI(
 	// probe (List side) — see agentRunOutcomeReporter.
 	runOutcomes := agentStatusService.RunOutcomes
 	accountService := accountservice.NewService("")
+	globalAgentActivityService := globalagentactivityservice.NewService(accountService)
 	mobileRemoteService, err := buildMobileRemoteService(
 		agentExtensionStateDir,
 		accountService,
@@ -265,6 +268,7 @@ func buildDaemonAPI(
 			payload, _ := json.Marshal(map[string]string{"error": reconcileErr.Error()})
 			slog.Warn("agent_extension.reconcile_failed", "payload", string(payload))
 		}
+		agentTargetSetup.WakeManagedRuntimeReconciler()
 		agentTargetSetup.WakeAccountUsageCompanionReconciler()
 	})
 	agentRuntimeConfig := agentdaemon.Config{
@@ -286,7 +290,17 @@ func buildDaemonAPI(
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("create agent runtime: %w", err)
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
-	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()}})
+	rtkExecutableResolver := func(ctx context.Context) (string, error) {
+		return resolveTuttiRTKExecutable(ctx, managedRuntimeResolver)
+	}
+	agentRuntimePreparer.RTKExecutableResolver = rtkExecutableResolver
+	userHome, err := os.UserHomeDir()
+	if err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("resolve user home for personal Codex Skills: %w", err)
+	}
+	if err := registerDaemonCodexPreparer(agentRuntimePreparer, tuttitypes.DefaultStateDir(), userHome); err != nil {
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
+	}
 	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
 	configureAgentRuntimeAvailability(agentRuntimePreparer, browserService, computerService)
 	userProjectService := userprojectservice.Service{
@@ -796,6 +810,7 @@ func buildDaemonAPI(
 	agentRuntimePreparer.CommandCatalog = runtimePrepCommandCatalog{Catalog: cliRegistry}
 
 	terminalService := workspaceservice.NewTerminalService(workspaceservice.NewPlatformTerminalProcessFactory())
+	terminalService.RTKExecutableResolver = rtkExecutableResolver
 	tuttiAgentReadiness := configureReplayAwareTuttiAgentReadiness(
 		replayComposition, accountService, &agentStatusService, agentTargets,
 	)
@@ -803,10 +818,10 @@ func buildDaemonAPI(
 	providerAuthWatcher := startAgentModelInvalidationAuthWatcher(
 		replayComposition, agentModelCatalog, agentSessionService, events,
 	)
-
-	if err := agentTargetSetup.StartAccountUsageCompanionReconciler(); err != nil {
+	if err := startAgentExtensionReconcilers(agentTargetSetup); err != nil {
+		providerAuthWatcher.Close()
 		agentRuntime.Close()
-		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("start account usage companion reconciler: %w", err)
+		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
 	}
 	if refreshAgentExtensionsInBackground {
 		startAgentExtensionBackgroundRefresh(agentExtensionManager, agentTargetSetup)
@@ -814,24 +829,25 @@ func buildDaemonAPI(
 	agentSessionReplayVerifier := composeAgentReplayVerifier(agentProcessComposition.replay, replaySemanticRuntime)
 
 	return tuttiapi.DaemonAPI{
-		AccountService:            accountService,
-		MobileRemoteService:       mobileRemoteService,
-		UserProjectService:        userProjectService,
-		AgentQuickPromptService:   agentQuickPromptService,
-		AgentTargetService:        agentTargets,
-		AgentTargetSetupService:   agentTargetSetup,
-		AgentTargetAccountUsage:   agentTargetAccountUsage,
-		PreferencesService:        preferences,
-		AgentMaintenanceService:   agentMaintenance,
-		ManagedCredentialsService: managedCredentials,
-		ModelPlanService:          modelPlans,
-		WorkspaceAgentService:     workspaceAgents,
-		AgentModelBindingService:  modelBindings,
-		ModelPolicyService:        modelPolicies,
-		CollaborationRunService:   collabRuns,
-		AutomationRuleService:     automationRules,
-		EventStreamService:        events,
-		WorkspaceService:          workspaceService,
+		AccountService:             accountService,
+		GlobalAgentActivityService: globalAgentActivityService,
+		MobileRemoteService:        mobileRemoteService,
+		UserProjectService:         userProjectService,
+		AgentQuickPromptService:    agentQuickPromptService,
+		AgentTargetService:         agentTargets,
+		AgentTargetSetupService:    agentTargetSetup,
+		AgentTargetAccountUsage:    agentTargetAccountUsage,
+		PreferencesService:         preferences,
+		AgentMaintenanceService:    agentMaintenance,
+		ManagedCredentialsService:  managedCredentials,
+		ModelPlanService:           modelPlans,
+		WorkspaceAgentService:      workspaceAgents,
+		AgentModelBindingService:   modelBindings,
+		ModelPolicyService:         modelPolicies,
+		CollaborationRunService:    collabRuns,
+		AutomationRuleService:      automationRules,
+		EventStreamService:         events,
+		WorkspaceService:           workspaceService,
 		WorkbenchService: workspaceservice.WorkbenchService{
 			Store: workspaceStore,
 			SnapshotReconciler: workspaceservice.TerminalWorkbenchSnapshotReconciler{
@@ -867,4 +883,20 @@ func buildDaemonAPI(
 			}
 		},
 	}, appCenterService, agentRuntime, providerAuthWatcher, nil
+}
+
+func registerDaemonCodexPreparer(
+	preparer *runtimeprep.DefaultPreparer,
+	stateDir string,
+	userHome string,
+) error {
+	personalSkillRoot := filepath.Join(userHome, ".codex", "skills")
+	if err := os.MkdirAll(personalSkillRoot, 0o700); err != nil {
+		return fmt.Errorf("create personal Codex Skills root: %w", err)
+	}
+	preparer.RegisterProvider(runtimeprep.CodexPreparer{
+		AuthProjector:     runtimeprep.MutagenAuthFileProjector{StateDir: stateDir},
+		PersonalSkillRoot: personalSkillRoot,
+	})
+	return nil
 }

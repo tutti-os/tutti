@@ -16,6 +16,13 @@ type CanonicalSessionStore interface {
 	ListChildSessions(context.Context, string, string) ([]storesqlite.Session, error)
 }
 
+// CanonicalRuntimeContextCASStore is the narrow durable commit required by a
+// runtime configuration rebind. It remains optional so external read/custom
+// stores are not source-broken; rebind fails closed when it is unavailable.
+type CanonicalRuntimeContextCASStore interface {
+	CompareAndSwapSessionRuntimeContext(context.Context, string, string, map[string]any, map[string]any) (storesqlite.Session, bool, error)
+}
+
 // RuntimeSessionRailPlacementResolver is the optional create-time capability
 // that resolves a prepared runtime's final canonical rail placement before a
 // provider process starts. Keeping it separate preserves source compatibility
@@ -94,6 +101,7 @@ type SessionForkStore interface {
 	GetSessionForkOperationByRequest(context.Context, string, string) (storesqlite.SessionForkOperation, bool, error)
 	MarkSessionForkDispatching(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
 	FailPreparedSessionFork(context.Context, string, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	FailAcceptedSessionFork(context.Context, string, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
 	RecordSessionForkProviderResult(context.Context, storesqlite.SessionForkProviderResult) (storesqlite.SessionForkOperation, bool, error)
 	CommitSessionFork(context.Context, string, string, int64) (storesqlite.SessionForkCommitResult, error)
 	AcknowledgeSessionForkOperation(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, bool, error)
@@ -454,6 +462,7 @@ type RuntimePreparationInput struct {
 	BrowserUse             bool
 	ComputerUse            bool
 	CodexSaverMode         bool
+	RTKSaverMode           bool
 	ProviderTargetRef      map[string]any
 	Model                  string
 	ReasoningEffort        string

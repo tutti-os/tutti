@@ -152,6 +152,22 @@ row; they must not infer isolation from `cwd`.
 AgentGUI has no host-API activity fallback. A host must inject the runtime and
 the grouped `AgentGUINodeProps` responsibility objects.
 
+## Side Presentation
+
+Side remains a surface-owned, transient conversation. By default AgentGUI
+renders it through the inline `AgentGUISideConversationPane`. A host that owns
+an external panel system may create an
+`AgentGUISideConversationPresentation`, pass it through
+`hostCapabilities.sideConversationPresentation`, and render the published
+`AgentGUISideConversationSurface` itself.
+
+The presentation store carries only the exact source/Side identities, surface
+props, and close intent. It does not own provider commands, runtime state, or
+persistence. External hosts must key tabs by the exact identities, propagate
+panel visibility through `isVisible` so focus is released while hidden, and
+invoke `close` only for the currently matching projection. Omitting the bridge
+preserves the inline behavior for existing hosts.
+
 ## Headless Conversation Message Controller
 
 `@tutti-os/agent-gui/conversation-message-controller` is the renderer-neutral
@@ -589,4 +605,7 @@ Account and Commerce remain Host chrome. A Host may use
 account/quota block and `hostActions.onAgentConfigMenuOpen` to refresh its
 Host-owned account state. Both receive the same exact target context. Returning
 `null` preserves the default provider account and quota presentation; the slot
-must not start requests or own menu lifecycle.
+must not start requests or own menu lifecycle. The context declares
+`presentation: "menu"`; interactive slot content must therefore use ui-system
+`DropdownMenuItem` / `DropdownMenuSub` primitives instead of plain buttons or
+links. The same rule applies to `renderSlots.agentConfigSystemActions`.

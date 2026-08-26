@@ -8,6 +8,7 @@ import (
 	agentsessionstore "github.com/tutti-os/tutti/packages/agent/daemon/activity"
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
+	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 )
 
@@ -215,14 +216,25 @@ func isPrecommitTerminalTextMessage(event activityshared.Event) bool {
 
 func eventSourceFromSession(session Session) canonical.EventSource {
 	return canonical.EventSource{
-		Provider:               strings.TrimSpace(session.Provider),
-		ProviderSessionID:      strings.TrimSpace(session.ProviderSessionID),
-		SessionCreatedAtUnixMS: session.CreatedAtUnixMS,
-		AgentID:                strings.TrimSpace(session.AgentSessionID),
-		AgentTargetID:          strings.TrimSpace(session.AgentTargetID),
-		CWD:                    strings.TrimSpace(session.CWD),
-		SessionOrigin:          agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		Provider:                   strings.TrimSpace(session.Provider),
+		ProviderSessionID:          strings.TrimSpace(session.ProviderSessionID),
+		SessionCreatedAtUnixMS:     session.CreatedAtUnixMS,
+		AgentID:                    strings.TrimSpace(session.AgentSessionID),
+		AgentTargetID:              strings.TrimSpace(session.AgentTargetID),
+		CWD:                        strings.TrimSpace(session.CWD),
+		SessionOrigin:              agentsessionstore.WorkspaceAgentSessionOriginRuntime,
+		ProviderGlobalAuthEligible: providerGlobalAuthEligible(session),
 	}
+}
+
+func providerGlobalAuthEligible(session Session) bool {
+	snapshot, _ := session.RuntimeContext["sessionRuntimeSnapshot"].(map[string]any)
+	configuration, _ := snapshot["modelConfiguration"].(map[string]any)
+	if strings.TrimSpace(asString(configuration["source"])) != "provider-native" {
+		return false
+	}
+	_, migrated := providerregistry.Find(session.Provider)
+	return migrated
 }
 
 func activityEventContext(session Session, eventID string, turnID string) (activityshared.EventContext, bool) {

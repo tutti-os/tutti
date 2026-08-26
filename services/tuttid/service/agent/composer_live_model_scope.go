@@ -97,6 +97,11 @@ func normalizeComposerProjectScope(cwd string) string {
 }
 
 func composerSettingsSignature(settings ComposerSettings) string {
+	// Model selection is an output of catalog discovery, not an input to the
+	// hidden discovery session. Keeping it in the signature makes the first
+	// successful catalog unreachable as soon as the composer acknowledges the
+	// advertised default model and reloads its options.
+	settings.Model = ""
 	payload, _ := json.Marshal(settings)
 	digest := sha256.Sum256(payload)
 	return fmt.Sprintf("%x", digest[:8])

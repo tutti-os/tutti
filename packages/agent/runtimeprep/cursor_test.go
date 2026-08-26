@@ -78,6 +78,25 @@ func TestCursorBackgroundTaskGuardAllowsForegroundAndDeniesBackground(t *testing
 	}
 }
 
+func TestCursorPromptPolicyUsesRelativeSearchRootsOnWindows(t *testing.T) {
+	base := "base runtime policy"
+	windowsPolicy := cursorPromptPolicyForGOOS(base, "windows")
+	for _, expected := range []string{
+		"## Windows file-search boundary",
+		"drive-qualified absolute Windows paths",
+		"workspace-relative path",
+		"native terminal",
+		"retry through the relative-path or native-terminal route",
+	} {
+		if !strings.Contains(windowsPolicy, expected) {
+			t.Fatalf("Windows Cursor policy missing %q: %s", expected, windowsPolicy)
+		}
+	}
+	if got := cursorPromptPolicyForGOOS(base, "linux"); got != base {
+		t.Fatalf("non-Windows Cursor policy = %q, want unchanged base policy", got)
+	}
+}
+
 func TestCursorBackgroundTaskGuardLauncherUsesCursorBundledNode(t *testing.T) {
 	nodePath, err := exec.LookPath("node")
 	if err != nil {

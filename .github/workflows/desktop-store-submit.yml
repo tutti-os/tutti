@@ -333,6 +333,8 @@ jobs:
       - name: Setup Microsoft Store Developer CLI
         if: ${{ inputs.submit }}
         uses: microsoft/microsoft-store-apppublisher@v1.1
+        with:
+          version: v0.4.1
 
       - name: Authenticate Partner Center
         if: ${{ inputs.submit }}
@@ -364,7 +366,9 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $msixPath = '${{ steps.submission.outputs.path }}'
-          msstore publish $msixPath -id "$env:TUTTI_MICROSOFT_STORE_PRODUCT_ID"
+          $packageSize = (Get-Item -LiteralPath $msixPath).Length
+          "Microsoft Store upload package size: $packageSize bytes"
+          msstore publish $msixPath -id "$env:TUTTI_MICROSOFT_STORE_PRODUCT_ID" -ut 600
 
       - name: Record submission summary
         shell: pwsh

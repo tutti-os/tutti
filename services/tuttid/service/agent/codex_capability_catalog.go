@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -14,7 +15,11 @@ import (
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 )
 
-const codexAppServerCapabilityListTimeout = 8 * time.Second
+// Codex and Tutti Agent capability catalogs use the same app-server startup
+// path as model/list, including the provider's first model metadata refresh.
+// Keep this bounded independently from the composer request so a cold Windows
+// npm shim does not turn a valid capability catalog into a false failure.
+const codexAppServerCapabilityListTimeout = 30 * time.Second
 
 type appServerCatalogRequestSet string
 
@@ -70,7 +75,59 @@ func discoverComposerCapabilityOptions(
 	if err != nil {
 		return fallback, []string{err.Error()}
 	}
-	return mergeComposerCapabilityOptions(fallback, options), nil
+	return mergeCodexComposerCapabilityOptions(fallback, options), nil
+}
+
+func mergeCodexComposerCapabilityOptions(
+	fallback []ComposerCapabilityOption,
+	native []ComposerCapabilityOption,
+) []ComposerCapabilityOption {
+	result := append([]ComposerCapabilityOption(nil), fallback...)
+	sameSkillFile := newComposerSkillFileIdentityMatcher()
+
+	for _, option := range native {
+		replacedFallback := false
+		for index := range result {
+			if result[index].Kind == "skill" && option.Kind == "skill" && sameSkillFile(result[index].Path, option.Path) {
+				result[index] = option
+				replacedFallback = true
+				break
+			}
+		}
+		if !replacedFallback {
+			result = append(result, option)
+		}
+	}
+	return dedupeComposerCapabilityOptions(result)
+}
+
+func newComposerSkillFileIdentityMatcher() func(string, string) bool {
+	fileInfoByPath := make(map[string]os.FileInfo)
+	missingFileInfo := make(map[string]struct{})
+	fileInfo := func(path string) (os.FileInfo, bool) {
+		path = strings.TrimSpace(path)
+		if path == "" {
+			return nil, false
+		}
+		if info, ok := fileInfoByPath[path]; ok {
+			return info, true
+		}
+		if _, ok := missingFileInfo[path]; ok {
+			return nil, false
+		}
+		info, err := os.Stat(path)
+		if err != nil || info.IsDir() {
+			missingFileInfo[path] = struct{}{}
+			return nil, false
+		}
+		fileInfoByPath[path] = info
+		return info, true
+	}
+	return func(leftPath string, rightPath string) bool {
+		leftInfo, leftOK := fileInfo(leftPath)
+		rightInfo, rightOK := fileInfo(rightPath)
+		return leftOK && rightOK && os.SameFile(leftInfo, rightInfo)
+	}
 }
 
 func composerCapabilityCatalogLister(profile composerProfile) (CodexCLICapabilityLister, bool, error) {

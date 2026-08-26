@@ -1,6 +1,8 @@
 package computer
 
 import (
+	"context"
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -61,6 +63,57 @@ func TestParseWindowsDriverDoctor(t *testing.T) {
 	}
 	if _, err := parseWindowsDriverDoctor([]byte(`{"ok":false}`)); err != nil {
 		t.Fatalf("parseWindowsDriverDoctor false result: %v", err)
+	}
+}
+
+func TestEvaluateWindowsDriverDoctorAcceptsUsableWin32Fallback(t *testing.T) {
+	output := []byte("\x1b[33mwarning\x1b[0m\n" + `{
+		"ok": false,
+		"message": "UIA health probe exceeded 2000ms; falling back to Win32-only window tools"
+	}`)
+	if err := evaluateWindowsDriverDoctor(output, errors.New("exit status 1"), nil); err != nil {
+		t.Fatalf("evaluateWindowsDriverDoctor degraded fallback: %v", err)
+	}
+}
+
+func TestEvaluateWindowsDriverDoctorRejectsOrdinaryFailure(t *testing.T) {
+	err := evaluateWindowsDriverDoctor(
+		[]byte(`{"ok":false,"message":"interactive desktop unavailable"}`),
+		errors.New("exit status 1"),
+		nil,
+	)
+	if err == nil {
+		t.Fatal("evaluateWindowsDriverDoctor ordinary failure returned nil")
+	}
+}
+
+func TestEvaluateWindowsDriverDoctorRejectsUnexpectedHealthyNonzeroExit(t *testing.T) {
+	err := evaluateWindowsDriverDoctor(
+		[]byte(`{"ok":true}`),
+		errors.New("exit status 1"),
+		nil,
+	)
+	if err == nil {
+		t.Fatal("evaluateWindowsDriverDoctor healthy nonzero exit returned nil")
+	}
+}
+
+func TestEvaluateWindowsDriverDoctorRejectsMalformedOutput(t *testing.T) {
+	if err := evaluateWindowsDriverDoctor([]byte("not json"), nil, nil); err == nil {
+		t.Fatal("evaluateWindowsDriverDoctor malformed output returned nil")
+	}
+	if err := evaluateWindowsDriverDoctor(nil, nil, nil); err == nil {
+		t.Fatal("evaluateWindowsDriverDoctor empty output returned nil")
+	}
+}
+
+func TestEvaluateWindowsDriverDoctorRejectsCancelledProbe(t *testing.T) {
+	output := []byte(`{
+		"ok": false,
+		"message": "falling back to Win32-only window tools"
+	}`)
+	if err := evaluateWindowsDriverDoctor(output, errors.New("signal: killed"), context.DeadlineExceeded); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("evaluateWindowsDriverDoctor deadline error = %v, want deadline exceeded", err)
 	}
 }
 

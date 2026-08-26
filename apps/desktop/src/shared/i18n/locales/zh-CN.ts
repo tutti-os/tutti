@@ -253,6 +253,7 @@ export const zhCN = {
         openRightPanel: "展开右侧面板",
         resizeSidebar: "调整工具侧栏宽度",
         shrinkPanel: "缩小面板",
+        side: "Side",
         tasks: "任务",
         terminal: "终端",
         tool: "工具",
@@ -998,7 +999,7 @@ export const zhCN = {
           ready: "可用",
           harnessLabel: "Agent Runtime",
           harnessUnavailable: "Agent Runtime 不可用",
-          behaviorDetailsTitle: "完整指令与调用条件",
+          advancedOptionsTitle: "进阶选项",
           callConditionsLabel: "调用条件",
           callConditionsPlaceholder: "发布决策前调用\n架构风险较高时调用",
           instructionsLabel: "指令",
@@ -1256,6 +1257,9 @@ export const zhCN = {
         codexSaverModeDescription:
           "在 Codex 输入框显示可记忆的省额度开关，将合适的子任务交给 Luna Max",
         codexSaverModeLabel: "Codex 省额度模式",
+        rtkSaverModeDescription:
+          "在所有 Agent 输入框显示可记忆的 RTK 开关；Tutti 已内置 RTK，仅为开启的会话复制，不执行全局安装",
+        rtkSaverModeLabel: "RTK 省钱模式",
         removeFileDefaultOpener: "移除 .{{extension}}",
         releaseChannelDescription: "选择稳定版更新；需要提前验收时可切到预览版",
         releaseChannelLabel: "发布渠道",

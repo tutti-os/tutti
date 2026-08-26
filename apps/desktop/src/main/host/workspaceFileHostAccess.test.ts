@@ -410,6 +410,31 @@ test("workspace file host access rejects an existing project directory name", as
   );
 });
 
+test("workspace file host access rejects case-only duplicate project names", async () => {
+  const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
+  await mkdir(path.join(documentsRoot, "tutti", "Demo project"), {
+    recursive: true
+  });
+  const hostAccess = createWorkspaceFileHostAccess({
+    getDocumentsPath: () => documentsRoot
+  });
+
+  await assert.rejects(
+    () =>
+      hostAccess.createUserDocumentsProjectDirectory({
+        name: "demo PROJECT"
+      }),
+    (error: unknown) => {
+      assert.ok(error instanceof Error);
+      assert.equal(
+        (error as NodeJS.ErrnoException).code,
+        desktopErrorCodes.projectDirectoryAlreadyExists
+      );
+      return true;
+    }
+  );
+});
+
 test("workspace file host access treats an existing directory as success when allowExisting is set", async () => {
   const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
   const sessionName = "session-cf25318a-0f29-437d-943b-dfb8a478bc64";
@@ -457,13 +482,20 @@ test("workspace file host access gives project-specific codes for create failure
   );
 });
 
-test("workspace file host access rejects project names that escape Documents", async () => {
+test("workspace file host access rejects unsafe cross-platform project names", async () => {
   const documentsRoot = await mkdtemp(path.join(tmpdir(), "tutti-documents-"));
   const hostAccess = createWorkspaceFileHostAccess({
     getDocumentsPath: () => documentsRoot
   });
 
-  for (const name of ["../outside", ""]) {
+  for (const name of [
+    "../outside",
+    "",
+    "bad:name",
+    "trailing.",
+    "CON",
+    "x".repeat(256)
+  ]) {
     await assert.rejects(
       () => hostAccess.createUserDocumentsProjectDirectory({ name }),
       (error: unknown) => {

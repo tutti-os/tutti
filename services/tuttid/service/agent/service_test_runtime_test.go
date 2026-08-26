@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"sort"
 	"strconv"
@@ -50,6 +51,7 @@ type fakeRuntime struct {
 	goalRecoveryPolicyHook  func(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
 	goalGenerationFences    []RuntimeGoalGenerationFenceInput
 	goalGenerationFenceHook func(context.Context, RuntimeGoalGenerationFenceInput) error
+	resumeErr               error
 	resumeCalls             []RuntimeResumeInput
 	sessions                map[string]ProviderRuntimeSession
 	disconnectedSessions    map[string]bool
@@ -295,6 +297,26 @@ type fakeSessionReader struct {
 	children           map[string][]PersistedSession
 	recoverableDeleted []agentactivitybiz.DeletedSessionResource
 	runtime            RuntimeController
+}
+
+func (f *fakeSessionReader) CompareAndSwapSessionRuntimeContext(
+	_ context.Context,
+	workspaceID string,
+	sessionID string,
+	expected map[string]any,
+	replacement map[string]any,
+) (PersistedSession, bool, error) {
+	if f == nil {
+		return PersistedSession{}, false, nil
+	}
+	key := strings.TrimSpace(workspaceID) + ":" + strings.TrimSpace(sessionID)
+	session, found := f.sessions[key]
+	if !found || !reflect.DeepEqual(session.InternalRuntimeContext, expected) {
+		return session, false, nil
+	}
+	session.InternalRuntimeContext = clonePayload(replacement)
+	f.sessions[key] = session
+	return session, true, nil
 }
 
 type fakeSessionInitializer struct {
@@ -728,6 +750,9 @@ func (f *fakeRuntime) UpdateSettings(_ context.Context, input RuntimeUpdateSetti
 
 func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (ProviderRuntimeSession, error) {
 	f.resumeCalls = append(f.resumeCalls, input)
+	if f.resumeErr != nil {
+		return ProviderRuntimeSession{}, f.resumeErr
+	}
 	session := ProviderRuntimeSession{
 		ID:                input.AgentSessionID,
 		AgentTargetID:     input.AgentTargetID,

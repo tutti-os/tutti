@@ -121,19 +121,20 @@ export function useAgentGUIViewLabels(input: {
     workspaceAppIcons,
     workspaceId
   } = input;
-  return useMemo<AgentGUIViewLabels>(
-    () => ({
-      initialPlaceholder: t("agentHost.agentGui.initialPlaceholder", {
-        provider: displayProviderLabel
-      }),
-      followupPlaceholder: t("agentHost.agentGui.followupPlaceholder", {
-        provider: displayProviderLabel
-      }),
+  return useMemo<AgentGUIViewLabels>(() => {
+    const providerInterpolation = { provider: displayProviderLabel };
+    return {
+      initialPlaceholder: t(
+        "agentHost.agentGui.initialPlaceholder",
+        providerInterpolation
+      ),
+      followupPlaceholder: t(
+        "agentHost.agentGui.followupPlaceholder",
+        providerInterpolation
+      ),
       installRequiredPlaceholder: t(
         "agentHost.agentGui.installRequiredPlaceholder",
-        {
-          provider: displayProviderLabel
-        }
+        providerInterpolation
       ),
       installRequiredAction: t("agentHost.agentGui.installRequiredAction"),
       providerGateCheckingTitle: t(
@@ -141,57 +142,61 @@ export function useAgentGUIViewLabels(input: {
       ),
       providerGateCheckingDescription: t(
         "agentHost.agentGui.providerGateCheckingDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateCheckingAgentsDescription: t(
         "agentHost.agentGui.providerGateCheckingAgentsDescription"
       ),
       providerGateInstallTitle: t(
         "agentHost.agentGui.providerGateInstallTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateInstallDescription: t(
         "agentHost.agentGui.providerGateInstallDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateInstallAction: t(
         "agentHost.agentGui.providerGateInstallAction"
       ),
-      providerGateLoginTitle: t("agentHost.agentGui.providerGateLoginTitle", {
-        provider: displayProviderLabel
-      }),
+      providerGateLoginTitle: t(
+        "agentHost.agentGui.providerGateLoginTitle",
+        providerInterpolation
+      ),
       providerGateLoginDescription: t(
         "agentHost.agentGui.providerGateLoginDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateLoginAction: t("agentHost.agentGui.providerGateLoginAction"),
+      providerGateModelPlanAction: t(
+        "agentHost.agentGui.providerGateModelPlanAction"
+      ),
       providerGateComingSoonTitle: t(
         "agentHost.agentGui.providerGateComingSoonTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateComingSoonDescription: t(
         "agentHost.agentGui.providerGateComingSoonDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateComingSoonAction: t(
         "agentHost.agentGui.providerGateComingSoonAction"
       ),
       providerGateUnavailableTitle: t(
         "agentHost.agentGui.providerGateUnavailableTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateUnavailableDescription: t(
         "agentHost.agentGui.providerGateUnavailableDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateRetryAction: t("agentHost.agentGui.providerGateRetryAction"),
       providerGateRuntimeSelectionTitle: t(
         "agentHost.agentGui.providerGateRuntimeSelectionTitle",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateRuntimeSelectionDescription: t(
         "agentHost.agentGui.providerGateRuntimeSelectionDescription",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       providerGateRuntimeSelectionAction: t(
         "agentHost.agentGui.providerGateRuntimeSelectionAction"
@@ -281,6 +286,8 @@ export function useAgentGUIViewLabels(input: {
       codexSaverModeDescription: t(
         "agentHost.agentGui.codexSaverModeDescription"
       ),
+      rtkSaverModeLabel: t("agentHost.agentGui.rtkSaverModeLabel"),
+      rtkSaverModeDescription: t("agentHost.agentGui.rtkSaverModeDescription"),
       normalModeLabel: t("agentHost.agentGui.normalModeLabel"),
       normalModeDescription: t("agentHost.agentGui.normalModeDescription"),
       ...agentGUITuttiModeLabels(t),
@@ -364,7 +371,7 @@ export function useAgentGUIViewLabels(input: {
       planImplementationSend: t("agentHost.agentGui.planImplementationSend"),
       planImplementationSkip: t("agentHost.agentGui.planImplementationSkip"),
       noRunningResponse: t("agentHost.agentGui.noRunningResponse"),
-      empty: t("agentHost.agentGui.empty", { provider: displayProviderLabel }),
+      empty: t("agentHost.agentGui.empty", providerInterpolation),
       homeSuggestions: buildAgentHomeSuggestions(
         t,
         workspaceId,
@@ -467,12 +474,13 @@ export function useAgentGUIViewLabels(input: {
       batchDeleteConversationsConfirm: t(
         "agentHost.agentGui.batchDeleteConversationsConfirm"
       ),
-      approvalRequired: t("agentHost.agentGui.approvalRequired", {
-        provider: displayProviderLabel
-      }),
+      approvalRequired: t(
+        "agentHost.agentGui.approvalRequired",
+        providerInterpolation
+      ),
       fileChangeApprovalRequired: t(
         "agentHost.agentGui.fileChangeApprovalRequired",
-        { provider: displayProviderLabel }
+        providerInterpolation
       ),
       approvalUnavailable: t("agentHost.agentGui.approvalUnavailable"),
       authRequired: t("agentHost.agentGui.authRequired"),
@@ -532,6 +540,8 @@ export function useAgentGUIViewLabels(input: {
       submitAnswers: t("agentHost.agentGui.submitAnswers"),
       answerPlaceholder: t("agentHost.agentGui.answerPlaceholder"),
       waitingForAnswer: t("agentHost.agentGui.waitingForAnswer"),
+      returnToConversation: t("agentHost.agentGui.returnToConversation"),
+      continueAnswering: t("agentHost.agentGui.continueAnswering"),
       thinkingLabel: t("agentHost.workspaceAgentSessionDetailThinking"),
       toolCallsLabel: (count: number) =>
         t("agentHost.workspaceAgentSessionDetailToolCalls", { count }),
@@ -764,16 +774,15 @@ export function useAgentGUIViewLabels(input: {
         }),
       handoffTargetSelf: t("agentHost.agentGui.handoffTargetSelf"),
       handoffTargetShared: t("agentHost.agentGui.handoffTargetShared")
-    }),
-    [
-      displayProviderLabel,
-      disabledHomeSuggestions,
-      fallbackAgentTitle,
-      t,
-      workspaceId,
-      workspaceAppIcons
-    ]
-  );
+    };
+  }, [
+    displayProviderLabel,
+    disabledHomeSuggestions,
+    fallbackAgentTitle,
+    t,
+    workspaceId,
+    workspaceAppIcons
+  ]);
 }
 export function useAgentGUIWorkspaceFileReferenceCopy(
   t: TranslateFn

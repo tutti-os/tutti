@@ -22,6 +22,9 @@ Use the focused runtime index or open one area directly:
   incompatible system Python.
   Also covers Kimi Code ACP sessions that advertise no model or hide provider
   failures behind an empty `end_turn`.
+  Also covers Cursor ACP session-service startup races and tool results that
+  hide aborted/TLS failures in provider-specific output fields, plus Cursor CLI
+  questions that are absent from the ACP tool catalog.
   Also covers focus-driven provider CLI scans, repeated Extension Target version
   probes, Windows managed-runtime adoption sharing violations, optional Provider
   absence misclassified as an environment failure, extension release refresh
@@ -46,7 +49,9 @@ Use the focused runtime index or open one area directly:
   the durable transcript, Claude failures before provider Turn identity that
   leave AgentGUI thinking, and Claude Fork operations that fail because an
   empty query never creates a durable provider child. It also covers a Claude
-  Query that keeps returning connection errors after the machine network recovers.
+  Query that keeps returning connection errors after the machine network
+  recovers, and forked conversations that disappear from the Rail after their
+  active/running overlay settles.
   Also covers inactive Claude Resume timing out the queue send and leaving later
   prompts stuck as 排队中 behind `uncertainDelivery`, and Standard ACP process
   cleanup failures that stop a send before provider dispatch while preserving
@@ -142,6 +147,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 
 Connector catalog, installation, account authorization, and runtime convergence.
 
+- [Disconnect fails immediately after authorization succeeds](./connector-market.md#disconnect-fails-immediately-after-authorization-succeeds)
 - [A second authorize click starts another OAuth session](./connector-market.md#a-second-authorize-click-starts-another-oauth-session)
 - [OAuth finishes in the browser but does not return to the initiating desktop build](./connector-market.md#oauth-finishes-in-the-browser-but-does-not-return-to-the-initiating-desktop-build)
 - [Composer install stays spinning on an OAuth remote connector](./connector-market.md#composer-install-stays-spinning-on-an-oauth-remote-connector)

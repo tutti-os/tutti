@@ -112,6 +112,10 @@ func (s *Service) prepareRuntimeForResume(ctx context.Context, session Persisted
 		input.CodexSaverMode = boolPointer(enabled)
 		input.CodexSaverModeAllowed = enabled
 	}
+	if enabled, ok := snapshot.EffectiveConfig["rtkSaverMode"].(bool); ok {
+		input.RTKSaverMode = boolPointer(enabled)
+		input.RTKSaverModeAllowed = enabled
+	}
 	if err := s.applyHarnessFromSessionRuntimeSnapshot(ctx, snapshot, &input); err != nil {
 		return preparedRuntime{}, err
 	}

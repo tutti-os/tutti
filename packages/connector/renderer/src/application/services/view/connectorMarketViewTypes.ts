@@ -5,6 +5,7 @@ import type {
   ConnectorOperationStage
 } from "../../contracts/index.ts";
 import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-contracts/authorization/v1";
+import type { ConnectorMutationPhase } from "../connectorMarketService.interface.ts";
 
 export type ConnectorMarketViewStatus = "empty" | "error" | "loading" | "ready";
 
@@ -32,6 +33,7 @@ export interface ConnectorCardView {
   iconUrl: string;
   implementationTags: string[];
   installationState: ConnectorInstallationState;
+  mutationPhase: ConnectorMutationPhase | null;
   operationStage: ConnectorOperationStage | null;
   canUninstall: boolean;
   status:

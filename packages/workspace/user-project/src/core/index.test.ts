@@ -4,12 +4,34 @@ import {
   areWorkspaceUserProjectPathsEqual,
   basenameWorkspaceUserProjectPath,
   getWorkspaceUserProjectErrorCode,
+  isValidWorkspaceUserProjectName,
   pinWorkspaceUserProjectOptimistically,
   prepareWorkspaceUserProjectSelection,
   resolveWorkspaceUserProjectDisplayLabel,
   stripAbsolutePathFromWorkspaceUserProjectLabel,
   upsertWorkspaceUserProject
 } from "./index.ts";
+
+test("workspace user project names remain portable across Windows and macOS", () => {
+  for (const name of ["Project alpha", "项目 Alpha", "report.final"]) {
+    assert.equal(isValidWorkspaceUserProjectName(name), true, name);
+  }
+  for (const name of [
+    "",
+    ".",
+    "..",
+    "bad:name",
+    "bad/name",
+    "bad\\name",
+    "trailing.",
+    "trailing ",
+    "CON",
+    "com1.txt",
+    "x".repeat(256)
+  ]) {
+    assert.equal(isValidWorkspaceUserProjectName(name), false, name);
+  }
+});
 
 test("workspace user project path identity handles Windows separators and case", () => {
   assert.equal(

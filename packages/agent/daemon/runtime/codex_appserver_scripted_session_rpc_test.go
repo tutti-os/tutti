@@ -294,6 +294,33 @@ func (s *fakeCodexAppServer) handleSessionRPC(message scriptedAppServerMessage) 
 				"thread": map[string]any{"id": "codex-thread-1"},
 			})
 		}
+	case appServerMethodPluginList:
+		s.sendJSON(map[string]any{
+			"id": message.ID,
+			"result": map[string]any{
+				"marketplaces": []any{map[string]any{
+					"name": "local",
+					"plugins": []any{
+						map[string]any{"id": "plugin-one", "name": "one", "installed": true, "enabled": true},
+						map[string]any{"id": "plugin-two", "name": "two", "installed": true, "enabled": false},
+					},
+				}},
+			},
+		})
+	case appServerMethodSkillsList:
+		s.sendJSON(map[string]any{
+			"id": message.ID,
+			"result": map[string]any{
+				"data": []any{map[string]any{
+					"cwd":    "/workspace/room-1",
+					"errors": []any{},
+					"skills": []any{
+						map[string]any{"name": "skill-one", "path": "/skills/one/SKILL.md", "enabled": true},
+						map[string]any{"name": "skill-two", "path": "/skills/two/SKILL.md", "enabled": false},
+					},
+				}},
+			},
+		})
 	case appServerMethodThreadFork:
 		if s.forkRPCError {
 			s.sendJSON(map[string]any{

@@ -89,6 +89,7 @@ export function AgentModelReasoningDropdown({
    */
   modelHistoryTargetId?: string | null;
   onRetryComposerOptions?: (options?: {
+    force?: boolean;
     section?: "core" | "capabilities" | "connectors";
     waitForFreshModelCatalog?: boolean;
   }) => void;
@@ -714,6 +715,17 @@ function ComposerModelOptionTooltip({
         {option.tooltip.description ? (
           <span className="mt-1.5 block text-[13px] leading-[1.35] text-[var(--text-tertiary)]">
             {option.tooltip.description}
+          </span>
+        ) : null}
+        {option.tooltip.consumptionMultiplier ? (
+          <span className="mt-3 flex w-full items-center justify-between gap-6 border-t border-[var(--line-2)] pt-3">
+            <span>
+              {translate("agentHost.agentGui.modelConsumptionSpeedLabel")}
+            </span>
+            <span className="shrink-0 tabular-nums">
+              {option.tooltip.consumptionMultiplier}{" "}
+              {translate("agentHost.agentGui.modelConsumptionMultiplierSuffix")}
+            </span>
           </span>
         ) : null}
         {option.tooltip.contextWindow ? (

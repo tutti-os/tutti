@@ -24,7 +24,6 @@ export function ConnectorMarketToolbar() {
       <Button
         aria-label={i18n.t("actionRefresh")}
         disabled={marketView.refreshing}
-        size="sm"
         type="button"
         variant="secondary"
         onClick={() => void market.refreshCatalog().catch(() => undefined)}

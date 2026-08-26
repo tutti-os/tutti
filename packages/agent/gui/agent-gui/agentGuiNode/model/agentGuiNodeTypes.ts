@@ -99,6 +99,7 @@ export interface AgentGUIComposerSettingOption {
   value: string;
   label: string;
   description?: string;
+  consumptionMultiplier?: string;
   supportsImageInput?: boolean;
   /** Bound plan identity for options aggregated from model access plans. */
   modelPlanId?: string | null;
@@ -333,6 +334,7 @@ export interface AgentGUIComposerSettingsVM {
   sessionSettings: AgentSessionComposerSettings | null;
   draftSettings: {
     codexSaverMode?: boolean;
+    rtkSaverMode?: boolean;
     model: string | null;
     reasoningEffort: AgentSessionReasoningEffort | null;
     speed: AgentSessionSpeed | null;
@@ -345,6 +347,7 @@ export interface AgentGUIComposerSettingsVM {
   };
   supportsModel: boolean;
   supportsCodexSaverMode?: boolean;
+  supportsRTKSaverMode?: boolean;
   supportsReasoningEffort: boolean;
   supportsSpeed: boolean;
   supportsPermissionMode?: boolean;
@@ -568,6 +571,8 @@ export interface AgentGUIComposerViewModel {
 
 export interface AgentGUIInteractionViewModel {
   approvalDisabledReason: string | null;
+  /** The visible prompt is the one exact pending question Composer can answer. */
+  canAnswerPendingInteractivePromptFromComposer?: boolean;
   interactivePromptDisabledReason: string | null;
   isRespondingApproval: boolean;
   isRespondingInteractivePrompt: boolean;

@@ -1,4 +1,5 @@
 import { readFileSync, statSync } from "node:fs";
+import { isAbsolute, normalize } from "node:path";
 import type {
   Options as ClaudeQueryOptions,
   SdkPluginConfig
@@ -6,6 +7,8 @@ import type {
 
 const claudeSystemPromptFileEnv = "TUTTI_CLAUDE_SYSTEM_PROMPT_FILE";
 const claudePluginDirEnv = "TUTTI_CLAUDE_PLUGIN_DIR";
+const claudeAdditionalDirectoriesEnv =
+  "TUTTI_CLAUDE_ADDITIONAL_DIRECTORIES_JSON";
 
 export type ClaudeToolsOption = NonNullable<ClaudeQueryOptions["tools"]>;
 
@@ -14,6 +17,7 @@ export type SidecarClaudeOptions = {
   planModeInstructions: string;
   allowedTools: string[];
   disallowedTools: string[];
+  additionalDirectories: string[];
   plugins: SdkPluginConfig[];
   extraArgs: Record<string, string | null>;
   tools: ClaudeToolsOption;
@@ -28,6 +32,9 @@ export function sidecarClaudeOptionsFromPayload(
   const explicitPlugins = pluginListValue(payload.plugins);
   const extraArgs = stringRecordValue(payload.extraArgs);
   const pluginDir = explicitPlugins.length > 0 ? "" : env[claudePluginDirEnv];
+  const additionalDirectories = claudeAdditionalDirectories(
+    env[claudeAdditionalDirectoriesEnv]
+  );
 
   if (pluginDir) {
     let info;
@@ -51,6 +58,7 @@ export function sidecarClaudeOptionsFromPayload(
     planModeInstructions: stringValue(payload.planModeInstructions),
     allowedTools: stringArrayValue(payload.allowedTools),
     disallowedTools: stringArrayValue(payload.disallowedTools),
+    additionalDirectories,
     plugins:
       explicitPlugins.length > 0
         ? explicitPlugins
@@ -90,6 +98,7 @@ export function claudeQueryOptionOverrides(
   | "allowedTools"
   | "planModeInstructions"
   | "disallowedTools"
+  | "additionalDirectories"
   | "plugins"
   | "extraArgs"
   | "mcpServers"
@@ -112,6 +121,9 @@ export function claudeQueryOptionOverrides(
     ...(options.disallowedTools.length > 0
       ? { disallowedTools: options.disallowedTools }
       : {}),
+    ...(options.additionalDirectories.length > 0
+      ? { additionalDirectories: options.additionalDirectories }
+      : {}),
     ...(options.plugins.length > 0 ? { plugins: options.plugins } : {}),
     ...(Object.keys(options.extraArgs).length > 0
       ? { extraArgs: options.extraArgs }
@@ -120,6 +132,54 @@ export function claudeQueryOptionOverrides(
       ? { mcpServers: options.mcpServers }
       : {})
   };
+}
+
+function claudeAdditionalDirectories(
+  encoded: string | null | undefined
+): string[] {
+  if (!encoded) {
+    return [];
+  }
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(encoded);
+  } catch (error) {
+    throw new Error(
+      `decode claude additional directories: ${errorMessage(error)}`
+    );
+  }
+  if (!Array.isArray(decoded) || decoded.length === 0 || decoded.length > 32) {
+    throw new Error(
+      "claude additional directories must be a non-empty array with at most 32 entries"
+    );
+  }
+  const directories: string[] = [];
+  const seen = new Set<string>();
+  for (const item of decoded) {
+    const directory = normalize(stringValue(item));
+    if (!directory || !isAbsolute(directory)) {
+      throw new Error("claude additional directory must be absolute");
+    }
+    if (seen.has(directory)) {
+      continue;
+    }
+    let info;
+    try {
+      info = statSync(directory);
+    } catch (error) {
+      throw new Error(
+        `stat claude additional directory: ${errorMessage(error)}`
+      );
+    }
+    if (!info.isDirectory()) {
+      throw new Error(
+        `claude additional directory is not a directory: ${directory}`
+      );
+    }
+    seen.add(directory);
+    directories.push(directory);
+  }
+  return directories;
 }
 
 function mcpServersValue(

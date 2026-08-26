@@ -40,7 +40,7 @@ import {
 import { WorkspaceWindowRegistry } from "./workspaceWindowRegistry.ts";
 import {
   resolveWorkspaceWindowChromeOptions,
-  resolveWorkspaceWindowTitleBarOverlay
+  syncWorkspaceWindowTitleBarOverlayTargets
 } from "./workspaceWindowChrome.ts";
 import { supportsWorkspaceWindowCloseGuard } from "./workspaceWindowCloseGuard.ts";
 
@@ -393,15 +393,15 @@ export function syncWorkspaceWindowTitleBarOverlayColors(
     return;
   }
 
-  const titleBarOverlay = resolveWorkspaceWindowTitleBarOverlay(appearance);
-  for (const workspaceWindow of BrowserWindow.getAllWindows()) {
-    if (
-      !workspaceWindow.isDestroyed() &&
-      workspaceWindows.getKind(workspaceWindow) !== null
-    ) {
-      workspaceWindow.setTitleBarOverlay(titleBarOverlay);
-    }
-  }
+  syncWorkspaceWindowTitleBarOverlayTargets({
+    appearance,
+    getWindowKind: (workspaceWindow) =>
+      workspaceWindows.getKind(workspaceWindow),
+    isDestroyed: (workspaceWindow) => workspaceWindow.isDestroyed(),
+    setTitleBarOverlay: (workspaceWindow, titleBarOverlay) =>
+      workspaceWindow.setTitleBarOverlay(titleBarOverlay),
+    targets: BrowserWindow.getAllWindows()
+  });
 }
 
 export function findWorkspaceWindow(

@@ -6,7 +6,8 @@ import type { AgentSideConversationViewState } from "../../../agentSideConversat
 import type { AgentMessageMarkdownWorkspaceAppIcon } from "../../../shared/AgentMessageMarkdown";
 import type { WorkspaceLinkAction } from "../../../actions/workspaceLinkActions";
 import type { AgentTranscriptVirtualScrollController } from "../../../shared/agentConversation/components/AgentTranscriptView";
-import { AgentComposer, type AgentComposerProps } from "../AgentComposer";
+import { AgentComposer } from "../AgentComposer";
+import type { AgentComposerProps } from "../composer/AgentComposer.types";
 import type { AgentGUIProviderSkillOption } from "../model/agentGuiNodeTypes";
 import { AgentGUIConversationTimelinePane } from "./AgentGUIConversationTimelinePane";
 import { useTranslation } from "../../../i18n/index";
@@ -35,12 +36,17 @@ export interface AgentGUISideConversationPaneProps {
   isVisible: boolean;
   loadingLabel: string;
   workspaceAppIcons: readonly AgentMessageMarkdownWorkspaceAppIcon[];
-  onClose(): void;
+  onClose(): void | Promise<void>;
   onFocusChange(focused: boolean): void;
   onLinkAction?: (action: WorkspaceLinkAction) => void;
 }
 
-export function AgentGUISideConversationPane({
+export type AgentGUISideConversationSurfaceProps = Omit<
+  AgentGUISideConversationPaneProps,
+  "onClose"
+>;
+
+export function AgentGUISideConversationSurface({
   active,
   availableSkills,
   composerProps,
@@ -48,10 +54,9 @@ export function AgentGUISideConversationPane({
   isVisible,
   loadingLabel,
   workspaceAppIcons,
-  onClose,
   onFocusChange,
   onLinkAction
-}: AgentGUISideConversationPaneProps): React.JSX.Element {
+}: AgentGUISideConversationSurfaceProps): React.JSX.Element {
   const { t } = useTranslation();
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const timelineContentRef = useRef<HTMLDivElement | null>(null);
@@ -60,46 +65,17 @@ export function AgentGUISideConversationPane({
   const [followEndMode, setFollowEndMode] = useState<"following" | "detached">(
     "following"
   );
-  const [widthPx, setWidthPx] = useState(440);
-  const sidePaneRef = useCallback(
+  const sideSurfaceRef = useCallback(
     (node: HTMLElement | null) => {
       if (!node || !isVisible) onFocusChange(false);
     },
     [isVisible, onFocusChange]
   );
 
-  const resize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const handle = event.currentTarget;
-    const pane = handle.parentElement;
-    const workbench = pane?.parentElement;
-    if (!pane || !workbench) return;
-    const paneRight = pane.getBoundingClientRect().right;
-    const maxWidth = Math.min(
-      600,
-      Math.max(360, workbench.getBoundingClientRect().width - 320)
-    );
-    handle.setPointerCapture(event.pointerId);
-    const onPointerMove = (moveEvent: PointerEvent) => {
-      setWidthPx(
-        Math.min(maxWidth, Math.max(360, paneRight - moveEvent.clientX))
-      );
-    };
-    const finish = () => {
-      handle.removeEventListener("pointermove", onPointerMove);
-      handle.removeEventListener("pointerup", finish);
-      handle.removeEventListener("pointercancel", finish);
-    };
-    handle.addEventListener("pointermove", onPointerMove);
-    handle.addEventListener("pointerup", finish);
-    handle.addEventListener("pointercancel", finish);
-  }, []);
-
   return (
     <section
-      ref={sidePaneRef}
-      className={styles.sidePane}
-      style={{ "--agent-gui-side-pane-width": `${widthPx}px` } as CSSProperties}
+      ref={sideSurfaceRef}
+      className={styles.sideSurface}
       aria-label={t("agentHost.agentGui.sidePanelTitle")}
       data-testid="agent-gui-side-panel"
       onFocusCapture={() => onFocusChange(true)}
@@ -109,36 +85,6 @@ export function AgentGUISideConversationPane({
         }
       }}
     >
-      <div
-        className={styles.sideResizeHandle}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t("agentHost.agentGui.sideResize")}
-        tabIndex={0}
-        onPointerDown={resize}
-        onKeyDown={(event) => {
-          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-          event.preventDefault();
-          setWidthPx((current) =>
-            Math.min(
-              600,
-              Math.max(360, current + (event.key === "ArrowLeft" ? 24 : -24))
-            )
-          );
-        }}
-      />
-      <header className={styles.sideHeader}>
-        <button
-          type="button"
-          className={styles.sideCloseButton}
-          aria-label={t("agentHost.agentGui.sideCollapse")}
-          title={t("agentHost.agentGui.sideCollapse")}
-          onClick={onClose}
-          disabled={active.status === "closing"}
-        >
-          <PanelIcon aria-hidden="true" className="size-[18px]" />
-        </button>
-      </header>
       <ScrollArea
         scrollbarMode="native"
         className={styles.sideTimelineFrame}
@@ -202,5 +148,99 @@ export function AgentGUISideConversationPane({
         <AgentComposer {...composerProps} />
       </div>
     </section>
+  );
+}
+
+export function AgentGUISideConversationPane({
+  active,
+  availableSkills,
+  composerProps,
+  conversationFlowLabels,
+  isVisible,
+  loadingLabel,
+  workspaceAppIcons,
+  onClose,
+  onFocusChange,
+  onLinkAction
+}: AgentGUISideConversationPaneProps): React.JSX.Element {
+  const { t } = useTranslation();
+  const [widthPx, setWidthPx] = useState(440);
+
+  const resize = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const handle = event.currentTarget;
+    const pane = handle.parentElement;
+    const workbench = pane?.parentElement;
+    if (!pane || !workbench) return;
+    const paneRight = pane.getBoundingClientRect().right;
+    const maxWidth = Math.min(
+      600,
+      Math.max(360, workbench.getBoundingClientRect().width - 320)
+    );
+    handle.setPointerCapture(event.pointerId);
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      setWidthPx(
+        Math.min(maxWidth, Math.max(360, paneRight - moveEvent.clientX))
+      );
+    };
+    const finish = () => {
+      handle.removeEventListener("pointermove", onPointerMove);
+      handle.removeEventListener("pointerup", finish);
+      handle.removeEventListener("pointercancel", finish);
+    };
+    handle.addEventListener("pointermove", onPointerMove);
+    handle.addEventListener("pointerup", finish);
+    handle.addEventListener("pointercancel", finish);
+  }, []);
+
+  return (
+    <div
+      className={styles.sidePane}
+      style={{ "--agent-gui-side-pane-width": `${widthPx}px` } as CSSProperties}
+    >
+      <div
+        className={styles.sideResizeHandle}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t("agentHost.agentGui.sideResize")}
+        tabIndex={0}
+        onPointerDown={resize}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+          event.preventDefault();
+          setWidthPx((current) =>
+            Math.min(
+              600,
+              Math.max(360, current + (event.key === "ArrowLeft" ? 24 : -24))
+            )
+          );
+        }}
+      />
+      <header className={styles.sideHeader}>
+        <button
+          type="button"
+          className={styles.sideCloseButton}
+          aria-label={t("agentHost.agentGui.sideCollapse")}
+          title={t("agentHost.agentGui.sideCollapse")}
+          onClick={() => {
+            void Promise.resolve(onClose()).catch(() => {});
+          }}
+          disabled={active.status === "closing"}
+        >
+          <PanelIcon aria-hidden="true" className="size-[18px]" />
+        </button>
+      </header>
+      <AgentGUISideConversationSurface
+        active={active}
+        availableSkills={availableSkills}
+        composerProps={composerProps}
+        conversationFlowLabels={conversationFlowLabels}
+        isVisible={isVisible}
+        loadingLabel={loadingLabel}
+        workspaceAppIcons={workspaceAppIcons}
+        onFocusChange={onFocusChange}
+        onLinkAction={onLinkAction}
+      />
+    </div>
   );
 }

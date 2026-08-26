@@ -1,5 +1,17 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor
+} from "@testing-library/react";
+import {
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger
+} from "@tutti-os/ui-system";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import {
@@ -26,8 +38,108 @@ const labels = {
   agentSettingsMenu: "Settings"
 } as unknown as AgentGUIViewLabels;
 
+function openConfigMenu(): void {
+  const trigger = screen.getByRole("button", { name: "More" });
+  fireEvent.pointerDown(trigger, {
+    button: 0,
+    ctrlKey: false,
+    pointerType: "mouse"
+  });
+}
+
 describe("AgentGUIConfigMenu", () => {
-  it("keeps Host system actions interactive after Agent settings", () => {
+  it("dispatches a native ui-system submenu selection", async () => {
+    const onSelect = vi.fn();
+    render(
+      <AgentGUIConfigMenu
+        environmentSetupVisible={false}
+        labels={labels}
+        providerScopedActionsVisible
+        slashStatusLimits={[]}
+        slashStatusLimitsLoading={false}
+        slashStatusLimitsResolvedEmpty={false}
+        slashStatusUsageCapturedAtUnixMs={null}
+        slashStatusUsageDidFail={false}
+        slashStatusUsageAttempted={false}
+        systemActionsContent={
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Export logs</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={onSelect}>
+                Recent logs
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        }
+        onOpenAgentEnvSetup={vi.fn()}
+        onOpenAgentSettings={vi.fn()}
+      />
+    );
+
+    openConfigMenu();
+    expect(screen.getByTestId("agent-gui-config-menu")).toHaveClass(
+      "nodrag",
+      "[-webkit-app-region:no-drag]"
+    );
+    const exportTrigger = screen.getByRole("menuitem", {
+      name: "Export logs"
+    });
+    fireEvent.click(exportTrigger);
+    const exportItem = await screen.findByRole("menuitem", {
+      name: "Recent logs"
+    });
+    fireEvent.pointerDown(exportItem, { button: 0, ctrlKey: false });
+    fireEvent.click(exportItem);
+
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(
+      screen.queryByTestId("agent-gui-config-menu")
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens and closes the native submenu with directional keys", async () => {
+    const onSelect = vi.fn();
+    render(
+      <AgentGUIConfigMenu
+        environmentSetupVisible={false}
+        labels={labels}
+        providerScopedActionsVisible
+        slashStatusLimits={[]}
+        slashStatusLimitsLoading={false}
+        slashStatusLimitsResolvedEmpty={false}
+        slashStatusUsageCapturedAtUnixMs={null}
+        slashStatusUsageDidFail={false}
+        slashStatusUsageAttempted={false}
+        systemActionsContent={
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>Export logs</DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              <DropdownMenuItem onSelect={onSelect}>
+                Recent logs
+              </DropdownMenuItem>
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        }
+        onOpenAgentEnvSetup={vi.fn()}
+        onOpenAgentSettings={vi.fn()}
+      />
+    );
+
+    openConfigMenu();
+    const trigger = screen.getByRole("menuitem", { name: "Export logs" });
+    trigger.focus();
+    fireEvent.keyDown(trigger, { key: "ArrowRight" });
+    const item = await screen.findByRole("menuitem", { name: "Recent logs" });
+    expect(item).toBeInTheDocument();
+    fireEvent.keyDown(item, { key: "ArrowLeft" });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("menuitem", { name: "Recent logs" })
+      ).not.toBeInTheDocument()
+    );
+  });
+
+  it("dispatches and closes a Host system menu action", () => {
     const onSystemAction = vi.fn();
     render(
       <AgentGUIConfigMenu
@@ -41,20 +153,22 @@ describe("AgentGUIConfigMenu", () => {
         slashStatusUsageDidFail={false}
         slashStatusUsageAttempted={false}
         systemActionsContent={
-          <button type="button" onClick={onSystemAction}>
+          <DropdownMenuItem onSelect={onSystemAction}>
             Check for updates
-          </button>
+          </DropdownMenuItem>
         }
         onOpenAgentEnvSetup={vi.fn()}
         onOpenAgentSettings={vi.fn()}
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
-    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    openConfigMenu();
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Check for updates" })
+    );
 
     expect(onSystemAction).toHaveBeenCalledOnce();
-    expect(screen.getByText("Settings")).toBeInTheDocument();
+    expect(screen.queryByText("Settings")).not.toBeInTheDocument();
   });
 
   it("replaces provider quota chrome only when the Host supplies account content", () => {
@@ -79,7 +193,7 @@ describe("AgentGUIConfigMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    openConfigMenu();
 
     expect(onOpen).toHaveBeenCalledOnce();
     expect(screen.getByText("Host Commerce account")).toBeInTheDocument();
@@ -88,40 +202,58 @@ describe("AgentGUIConfigMenu", () => {
     expect(screen.getByText("Settings")).toBeInTheDocument();
   });
 
-  it("preserves the provider account and quota fallback without Host content", () => {
-    render(
-      <AgentGUIConfigMenu
-        environmentSetupVisible={false}
-        labels={labels}
-        providerScopedActionsVisible
-        provider="codex"
-        providerAuthAccountLabel="provider@example.test"
-        slashStatusLimits={[
-          {
-            id: "weekly",
-            label: "Weekly",
-            percentRemaining: 50,
-            value: "50%",
-            reset: null
-          }
-        ]}
-        slashStatusLimitsLoading={false}
-        slashStatusLimitsResolvedEmpty={false}
-        slashStatusUsageCapturedAtUnixMs={null}
-        slashStatusUsageDidFail={false}
-        slashStatusUsageAttempted
-        onAgentConfigMenuOpen={vi.fn()}
-        onOpenAgentEnvSetup={vi.fn()}
-        onOpenAgentSettings={vi.fn()}
-      />
-    );
+  it.each([
+    {
+      expectedRole: "menuitem",
+      usageRefreshInline: undefined
+    },
+    {
+      expectedRole: "button",
+      usageRefreshInline: true
+    }
+  ] as const)(
+    "preserves provider account fallback with the refresh exposed as a $expectedRole",
+    ({ expectedRole, usageRefreshInline }) => {
+      render(
+        <AgentGUIConfigMenu
+          environmentSetupVisible={false}
+          labels={labels}
+          providerScopedActionsVisible
+          provider="codex"
+          providerAuthAccountLabel="provider@example.test"
+          slashStatusLimits={[
+            {
+              id: "weekly",
+              label: "Weekly",
+              percentRemaining: 50,
+              value: "50%",
+              reset: null
+            }
+          ]}
+          slashStatusLimitsLoading={false}
+          slashStatusLimitsResolvedEmpty={false}
+          slashStatusUsageCapturedAtUnixMs={null}
+          slashStatusUsageDidFail={false}
+          slashStatusUsageAttempted
+          usageRefreshInline={usageRefreshInline}
+          onAgentConfigMenuOpen={vi.fn()}
+          onAgentUsageRefresh={vi.fn()}
+          onOpenAgentEnvSetup={vi.fn()}
+          onOpenAgentSettings={vi.fn()}
+        />
+      );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
+      openConfigMenu();
 
-    expect(screen.getByText("provider@example.test")).toBeInTheDocument();
-    expect(screen.getByText("Limits")).toBeInTheDocument();
-    expect(screen.getByText("Weekly")).toBeInTheDocument();
-  });
+      expect(screen.getByText("provider@example.test")).toBeInTheDocument();
+      expect(screen.getByText("Limits")).toBeInTheDocument();
+      expect(screen.getByText("Weekly")).toBeInTheDocument();
+      const usageRefresh = screen.getByRole(expectedRole, {
+        name: "Refresh usage"
+      });
+      expect(usageRefresh).toHaveAttribute("aria-describedby");
+    }
+  );
 
   it("uses the Agent Target label and original icon for Kimi billing", () => {
     render(
@@ -146,7 +278,7 @@ describe("AgentGUIConfigMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    openConfigMenu();
 
     expect(screen.getByText("Kimi Code account")).toBeInTheDocument();
     expect(screen.getByText("API Usage Billing")).toBeInTheDocument();
@@ -184,7 +316,7 @@ describe("AgentGUIConfigMenu", () => {
         />
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      openConfigMenu();
 
       expect(screen.getByText(providerAuthAccountLabel)).toBeInTheDocument();
       expect(
@@ -214,7 +346,7 @@ describe("AgentGUIConfigMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    openConfigMenu();
 
     expect(
       document.querySelector('span[style*="custom-mask.png"]')
@@ -240,7 +372,7 @@ describe("AgentGUIConfigMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    openConfigMenu();
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "Configure an API key or sign in"
@@ -281,7 +413,7 @@ describe("AgentGUIConfigMenu", () => {
         />
       );
 
-      fireEvent.click(screen.getByRole("button", { name: "More" }));
+      openConfigMenu();
 
       expect(screen.getByText("provider@example.test")).toBeInTheDocument();
       expect(screen.getByText("Limits")).toBeInTheDocument();
@@ -310,7 +442,7 @@ describe("AgentGUIConfigMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    openConfigMenu();
 
     expect(screen.queryByText("Limits")).not.toBeInTheDocument();
     expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();
@@ -341,7 +473,7 @@ describe("AgentGUIConfigMenu", () => {
       />
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    openConfigMenu();
 
     expect(screen.getByText("Coding Plan required")).toBeInTheDocument();
     expect(screen.queryByText("Unavailable")).not.toBeInTheDocument();

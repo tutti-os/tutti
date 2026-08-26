@@ -304,9 +304,18 @@ function mergeAdjacentAssistantMessageRows(
       const lastMessage = previous.messages.at(-1);
       const nextMessage = row.messages[0];
       if (lastMessage && nextMessage) {
-        lastMessage.body += nextMessage.body;
+        lastMessage.body = joinAdjacentAssistantMessageBodies(
+          lastMessage.body,
+          nextMessage.body,
+          nextMessage.statusKind
+        );
         lastMessage.statusKind =
-          nextMessage.statusKind ?? lastMessage.statusKind ?? null;
+          nextMessage.statusKind ??
+          (lastMessage.statusKind === "working" ||
+          lastMessage.statusKind === "waiting"
+            ? null
+            : lastMessage.statusKind) ??
+          null;
         lastMessage.occurredAtUnixMs =
           nextMessage.occurredAtUnixMs ?? lastMessage.occurredAtUnixMs;
       }
@@ -320,6 +329,29 @@ function mergeAdjacentAssistantMessageRows(
     merged.push(row);
   }
   return merged;
+}
+
+/**
+ * Join adjacent assistant bodies without fusing independent Markdown blocks.
+ * Active streaming fragments remain byte-for-byte continuations, while a
+ * settled fragment gains a line boundary when neither side provides one.
+ */
+function joinAdjacentAssistantMessageBodies(
+  previousBody: string,
+  nextBody: string,
+  nextStatusKind: AgentMessageContentVM["statusKind"]
+): string {
+  if (nextStatusKind === "working" || nextStatusKind === "waiting") {
+    return previousBody + nextBody;
+  }
+  if (
+    previousBody.endsWith("\n") ||
+    nextBody.startsWith("\n") ||
+    nextBody.startsWith("\r")
+  ) {
+    return previousBody + nextBody;
+  }
+  return `${previousBody}\n${nextBody}`;
 }
 
 function dropCodexDiagnosticNotices(

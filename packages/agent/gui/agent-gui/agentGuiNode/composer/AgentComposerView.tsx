@@ -251,6 +251,7 @@ export function AgentComposerView(
         >
           <AgentInteractivePromptSurface
             prompt={visibleActivePrompt}
+            conversationReturn={labels.conversationReturn}
             embedded={true}
             edgeGlow={true}
             keyboardShortcuts={activePromptKeyboardShortcutsEnabled}
@@ -640,6 +641,9 @@ export function AgentComposerView(
             inputDisabled={inputDisabled}
             settingsControlsDisabled={settingsControlsDisabled}
             codexSaverModeDisabled={
+              settingsControlsDisabled || Boolean(input.props.agentSessionId)
+            }
+            rtkSaverModeDisabled={
               settingsControlsDisabled || Boolean(input.props.agentSessionId)
             }
             permissionModeControlsDisabled={permissionModeControlsDisabled}

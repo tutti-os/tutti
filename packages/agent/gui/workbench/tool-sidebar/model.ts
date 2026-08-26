@@ -4,12 +4,14 @@ export const agentToolPanelIds = [
   "browser",
   "tasks",
   "apps",
-  "messages"
+  "messages",
+  "side"
 ] as const;
 
 export type AgentToolPanelId = (typeof agentToolPanelIds)[number];
 
 export interface AgentToolPanelDefinition {
+  canAdd?: boolean;
   id: AgentToolPanelId;
   label: string;
 }
@@ -27,7 +29,7 @@ export function isAgentToolPanelId(value: string): value is AgentToolPanelId {
 }
 
 export function filterAgentToolPanels(
-  panels: readonly { id: string; label: string }[]
+  panels: readonly { canAdd?: boolean; id: string; label: string }[]
 ): AgentToolPanelDefinition[] {
   const seen = new Set<AgentToolPanelId>();
   const filtered: AgentToolPanelDefinition[] = [];
@@ -36,9 +38,19 @@ export function filterAgentToolPanels(
       continue;
     }
     seen.add(panel.id);
-    filtered.push({ id: panel.id, label: panel.label });
+    filtered.push({
+      id: panel.id,
+      label: panel.label,
+      ...(panel.canAdd === false ? { canAdd: false } : {})
+    });
   }
   return filtered;
+}
+
+export function filterAgentToolAddablePanels(
+  panels: readonly AgentToolPanelDefinition[]
+): AgentToolPanelDefinition[] {
+  return panels.filter((panel) => panel.canAdd !== false);
 }
 
 const adjacentPanelDefaultWidth = 720;
@@ -53,6 +65,7 @@ export const agentToolPanelDefaultWidthById: Record<AgentToolPanelId, number> =
     browser: adjacentPanelDefaultWidth,
     files: adjacentPanelDefaultWidth,
     messages: adjacentPanelDefaultWidth,
+    side: 440,
     tasks: adjacentPanelDefaultWidth,
     terminal: adjacentPanelDefaultWidth
   };
@@ -62,6 +75,7 @@ export const agentToolPanelMinWidthById: Record<AgentToolPanelId, number> = {
   browser: 420,
   files: 480,
   messages: 320,
+  side: 360,
   tasks: 420,
   terminal: 420
 };
@@ -71,6 +85,7 @@ export const agentToolPanelMaxWidthById: Record<AgentToolPanelId, number> = {
   browser: 1_200,
   files: Number.MAX_SAFE_INTEGER,
   messages: 1_200,
+  side: 600,
   tasks: 1_200,
   terminal: 1_200
 };

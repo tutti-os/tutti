@@ -174,6 +174,9 @@ func generatedComposerConfigOption(config agentservice.ComposerConfigOption) tut
 		if strings.TrimSpace(option.Description) != "" {
 			resultOption.Description = optionalStringPointer(option.Description)
 		}
+		if strings.TrimSpace(option.ConsumptionMultiplier) != "" {
+			resultOption.ConsumptionMultiplier = optionalStringPointer(option.ConsumptionMultiplier)
+		}
 		if option.SupportsImageInput != nil {
 			resultOption.SupportsImageInput = option.SupportsImageInput
 		}

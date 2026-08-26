@@ -109,6 +109,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerRailMode = "catalog",
     comingSoonProviders,
     providerReadinessGates = null,
+    accountUsageRefreshInline = false,
     targetConnectionSource = null,
     interactionReadinessSource = null,
     observationGapSource = null,
@@ -121,9 +122,11 @@ export const AgentGUINode = memo(function AgentGUINode({
     referenceProvenanceFilterEnabled = false,
     sessionInputHistoryEnabled = false,
     sideConversationEnabled = false,
+    sideConversationPresentation = null,
     sessionWorktreeEnabled = false,
     sessionLaunchModesByProjectSectionKey,
-    codexSaverModeEntryEnabled = false
+    codexSaverModeEntryEnabled = false,
+    rtkSaverModeEntryEnabled = false
   } = hostCapabilities;
   const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
     agentTargets,
@@ -296,6 +299,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     openSessionRequest,
     prefillPromptRequest,
     codexSaverModeEntryEnabled,
+    rtkSaverModeEntryEnabled,
     agentTargets,
     agentTargetsLoading,
     handoffAgentTargets,
@@ -401,7 +405,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     ? (renderAgentConfigAccount?.(agentConfigMenuContext) ?? null)
     : null;
   const agentConfigSystemActionsContent =
-    renderAgentConfigSystemActions?.() ?? null;
+    renderAgentConfigSystemActions?.({ presentation: "menu" }) ?? null;
 
   return (
     <AgentGUIMentionServiceBoundary
@@ -520,6 +524,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               onAgentConfigMenuClose={handleAgentConfigMenuClose}
               onAgentConfigMenuOpen={handleAgentConfigMenuOpen}
               onAgentUsageRefresh={handleAgentUsageRefresh}
+              accountUsageRefreshInline={accountUsageRefreshInline}
               onSlashStatusOpen={handleSlashStatusOpen}
               onSlashStatusClose={handleSlashStatusClose}
               onSlashStatusRefresh={handleSlashStatusRefresh}
@@ -588,6 +593,7 @@ export const AgentGUINode = memo(function AgentGUINode({
               referenceProvenanceFilters={referenceProvenanceFilters}
               sessionInputHistoryEnabled={sessionInputHistoryEnabled}
               sideConversationEnabled={sideConversationEnabled}
+              sideConversationPresentation={sideConversationPresentation}
               sessionWorktreeEnabled={sessionWorktreeEnabled}
               sessionLaunchModesByProjectSectionKey={
                 sessionLaunchModesByProjectSectionKey
@@ -639,6 +645,7 @@ function resolveAgentConfigMenuContext(
     agentTargetId,
     provider,
     label: target.label,
+    presentation: "menu",
     ...(target.ownership ? { ownership: target.ownership } : {})
   };
 }

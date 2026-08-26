@@ -85,6 +85,7 @@ describe("ComposerPrimaryCapabilityControl", () => {
       { button: 0, ctrlKey: false, pointerType: "mouse" }
     );
     expect(onRetryComposerOptions).toHaveBeenCalledWith({
+      force: true,
       section: "connectors"
     });
     expect(
@@ -184,6 +185,7 @@ describe("ComposerPrimaryCapabilityControl", () => {
 
     await act(async () => completeInstall());
     expect(onRetryComposerOptions).toHaveBeenCalledWith({
+      force: true,
       section: "connectors"
     });
   });
@@ -231,5 +233,30 @@ describe("ComposerPrimaryCapabilityControl", () => {
     });
     expect(onCapabilitySettingsRequest).not.toHaveBeenCalled();
     expect(onConnectorSelected).not.toHaveBeenCalled();
+  });
+
+  it("previews a read-only draft selection on the composer trigger", () => {
+    renderControl({
+      availableSkills: [
+        {
+          connectorKey: "google-forms",
+          kind: "connector",
+          name: "Google Forms",
+          sourceKind: "connector",
+          status: "setupRequired",
+          trigger: "/google-forms"
+        }
+      ],
+      connectorsReadOnly: true,
+      connectorsVisible: true,
+      selectedConnectorKeys: ["google-forms"]
+    });
+
+    expect(
+      screen.getByTestId("connector-market-composer-preview-google-forms")
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Connectors" })
+    ).not.toHaveTextContent("Connectors");
   });
 });

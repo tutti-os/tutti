@@ -160,6 +160,7 @@ type StandardACPAdapterConfig struct {
 	AuthMessage                  string
 	ToolAliases                  map[string]string
 	ModelConfigOptionID          string
+	ModelDescriptionFormat       string
 	PermissionConfigOptionID     string
 	ReasoningConfigOptionID      string
 	RestrictConfigOptions        bool
@@ -187,6 +188,10 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 	provider := strings.TrimSpace(config.Provider)
 	if provider == "" || len(config.Command) == 0 || strings.TrimSpace(config.Command[0]) == "" {
 		return nil, fmt.Errorf("standard ACP provider and command are required")
+	}
+	modelDescriptionFormat := strings.TrimSpace(config.ModelDescriptionFormat)
+	if modelDescriptionFormat != "" && modelDescriptionFormat != StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
+		return nil, errors.New("standard ACP model description metadata format is unsupported")
 	}
 	launchPermission, err := validateStandardACPLaunchPermissionSetting(config.Command, config.LaunchPermission)
 	if err != nil {
@@ -219,6 +224,7 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 			authRequiredMessage:          strings.TrimSpace(config.AuthMessage),
 			toolAliases:                  cloneStandardACPToolAliases(config.ToolAliases),
 			modelConfigOptionID:          strings.TrimSpace(config.ModelConfigOptionID),
+			modelDescriptionFormat:       modelDescriptionFormat,
 			permissionConfigOptionID:     strings.TrimSpace(config.PermissionConfigOptionID),
 			reasoningConfigOptionID:      strings.TrimSpace(config.ReasoningConfigOptionID),
 			restrictConfigOptions:        config.RestrictConfigOptions,

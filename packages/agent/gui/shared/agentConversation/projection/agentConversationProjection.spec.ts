@@ -1667,7 +1667,11 @@ describe("projectAgentConversationVM", () => {
               },
               {
                 kind: "message",
-                message: { id: "assistant-2", body: "0.0.0.0:4173`" }
+                message: {
+                  id: "assistant-2",
+                  body: "0.0.0.0:4173`",
+                  statusKind: "working"
+                }
               }
             ]
           }
@@ -1689,6 +1693,209 @@ describe("projectAgentConversationVM", () => {
     expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
       "现在可直接访问：`http://0.0.0.0:4173`"
     ]);
+  });
+
+  it("keeps a line boundary when merging settled adjacent assistant messages so Markdown fences never fuse", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Explain the fix" },
+            userMessages: [{ id: "user-1", body: "Explain the fix" }],
+            agentMessages: [
+              { id: "assistant-1", body: "```ts\nconst x = 1;\n```" },
+              { id: "assistant-2", body: "现在运行 pnpm test" }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "```ts\nconst x = 1;\n```" }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "现在运行 pnpm test",
+                  statusKind: "completed"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
+      "```ts\nconst x = 1;\n```\n现在运行 pnpm test"
+    ]);
+  });
+
+  it("keeps a line boundary when merging settled adjacent messages so list markers stay on their own lines", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "List the steps" },
+            userMessages: [{ id: "user-1", body: "List the steps" }],
+            agentMessages: [
+              { id: "assistant-1", body: "- step one\n- step two" },
+              { id: "assistant-2", body: "- step three" }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "- step one\n- step two"
+                }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "- step three",
+                  statusKind: "completed"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
+      "- step one\n- step two\n- step three"
+    ]);
+  });
+
+  it("merges adjacent assistant messages without inserting a boundary when one side already provides a newline", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Go" },
+            userMessages: [{ id: "user-1", body: "Go" }],
+            agentMessages: [
+              { id: "assistant-1", body: "First line.\n" },
+              { id: "assistant-2", body: "Second line." }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: { id: "assistant-1", body: "First line.\n" }
+              },
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-2",
+                  body: "Second line.",
+                  statusKind: "completed"
+                }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    expect(assistantRows[0]?.messages.map((message) => message.body)).toEqual([
+      "First line.\nSecond line."
+    ]);
+  });
+
+  it("does not keep a previous working status when the merged follow-up carries no status", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: { id: "user-1", body: "Go" },
+            userMessages: [{ id: "user-1", body: "Go" }],
+            agentMessages: [
+              { id: "assistant-1", body: "Part one" },
+              { id: "assistant-2", body: "Part two" }
+            ],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: [
+              {
+                kind: "message",
+                message: {
+                  id: "assistant-1",
+                  body: "Part one",
+                  statusKind: "working"
+                }
+              },
+              {
+                kind: "message",
+                message: { id: "assistant-2", body: "Part two" }
+              }
+            ]
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const assistantRows = conversation.rows.filter(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "assistant"
+    );
+
+    expect(assistantRows).toHaveLength(1);
+    const mergedMessage = assistantRows[0]?.messages[0];
+    expect(mergedMessage?.body).toBe("Part one\nPart two");
+    expect(mergedMessage?.statusKind).toBeNull();
   });
 
   it("marks user text and each settled turn's latest assistant text reply as copyable", () => {
@@ -2138,6 +2345,198 @@ describe("projectAgentConversationVM", () => {
     );
   });
 
+  it("projects selected prompt text as a reference part instead of flattening it into the bubble", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "这里说了什么\n> 对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt:
+                        "这里说了什么\n> 对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。",
+                      content: [
+                        { type: "text", text: "这里说了什么" },
+                        {
+                          type: "text",
+                          text: "> 对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "selected-text",
+      "text"
+    ]);
+    expect(userRow?.messages[0]).toMatchObject({
+      body: "",
+      selectedText: {
+        count: 1,
+        texts: [
+          "对 tutti-lab/tutti 的影响是：它需要把 Go 依赖从旧的 tsh-server module 更新到新的 tutti-server module。"
+        ]
+      }
+    });
+    expect(userRow?.messages[1]?.body).toBe("这里说了什么");
+  });
+
+  it("projects every legacy quote after a typed prompt into one reference part", () => {
+    const conversation = projectUserPromptForTest({
+      body: "Ask about both excerpts\n> first excerpt\n> second excerpt",
+      displayPrompt:
+        "Ask about both excerpts\n> first excerpt\n> second excerpt",
+      content: [
+        { type: "text", text: "Ask about both excerpts" },
+        { type: "text", text: "> first excerpt" },
+        { type: "text", text: "> second excerpt" }
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "selected-text",
+      "text"
+    ]);
+    expect(userRow?.messages[0]?.selectedText).toEqual({
+      count: 2,
+      texts: ["first excerpt", "second excerpt"]
+    });
+    expect(userRow?.messages[1]?.body).toBe("Ask about both excerpts");
+  });
+
+  it("keeps ambiguous quote-only legacy content as ordinary Markdown", () => {
+    const conversation = projectUserPromptForTest({
+      body: "> first authored line\n> second authored line",
+      displayPrompt: "> first authored line\n> second authored line",
+      content: [
+        { type: "text", text: "> first authored line" },
+        { type: "text", text: "> second authored line" }
+      ]
+    });
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages.map((message) => message.contentKind)).toEqual([
+      "text"
+    ]);
+    expect(userRow?.messages[0]?.body).toBe(
+      "> first authored line\n> second authored line"
+    );
+  });
+
+  it("preserves an explicit selected-text kind already present in persisted content", () => {
+    const conversation = projectAgentConversationVM(
+      detailViewModel({
+        turns: [
+          {
+            id: "turn-1",
+            userMessage: null,
+            userMessages: [
+              {
+                id: "user-1",
+                body: "Ask about the selection",
+                sourceTimelineItems: [
+                  {
+                    id: 1,
+                    agentSessionId: "session-1",
+                    eventId: "event-1",
+                    actorType: "user",
+                    actorId: "user",
+                    itemType: "message",
+                    role: "user",
+                    payload: {
+                      displayPrompt: "Ask about the selection",
+                      content: [
+                        { type: "text", text: "Ask about the selection" },
+                        {
+                          type: "text",
+                          kind: "selected-text",
+                          text: "Selected source text"
+                        }
+                      ]
+                    }
+                  }
+                ]
+              }
+            ],
+            agentMessages: [],
+            toolCalls: [],
+            toolCallCount: 0,
+            hasFailedToolCall: false,
+            agentItems: []
+          }
+        ],
+        showProcessingIndicator: false
+      })
+    );
+
+    const userRow = conversation.rows.find(
+      (
+        row
+      ): row is Extract<
+        (typeof conversation.rows)[number],
+        { kind: "message" }
+      > => row.kind === "message" && row.speaker === "user"
+    );
+
+    expect(userRow?.messages[0]?.selectedText).toEqual({
+      count: 1,
+      texts: ["Selected source text"]
+    });
+    expect(userRow?.messages[1]?.body).toBe("Ask about the selection");
+  });
+
   it("prefers materialized content text over legacy composer-file displayPrompt", () => {
     const conversation = projectAgentConversationVM(
       detailViewModel({
@@ -2537,6 +2936,52 @@ function detailViewModel(
     showProcessingIndicator: true,
     ...overrides
   };
+}
+
+function projectUserPromptForTest(input: {
+  body: string;
+  displayPrompt: string;
+  content: readonly unknown[];
+}): ReturnType<typeof projectAgentConversationVM> {
+  const baseTurn = detailViewModel().turns[0]!;
+  return projectAgentConversationVM(
+    detailViewModel({
+      turns: [
+        {
+          ...baseTurn,
+          id: "turn-user-prompt",
+          userMessage: null,
+          userMessages: [
+            {
+              id: "user-prompt",
+              body: input.body,
+              sourceTimelineItems: [
+                {
+                  id: 1,
+                  agentSessionId: "session-1",
+                  eventId: "event-1",
+                  actorType: "user",
+                  actorId: "user",
+                  itemType: "message",
+                  role: "user",
+                  payload: {
+                    displayPrompt: input.displayPrompt,
+                    content: input.content
+                  }
+                }
+              ]
+            }
+          ],
+          agentMessages: [],
+          toolCalls: [],
+          toolCallCount: 0,
+          hasFailedToolCall: false,
+          agentItems: []
+        }
+      ],
+      showProcessingIndicator: false
+    })
+  );
 }
 
 function compactNoticeMessage(

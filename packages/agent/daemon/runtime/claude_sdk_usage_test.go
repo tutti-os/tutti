@@ -337,6 +337,27 @@ func TestClaudeCodeSDKAdapterMapsContextUsageUpdatedIntoRuntimeContext(t *testin
 	if got, ok := int64Value(contextWindow["totalTokens"]); !ok || got != 200_000 {
 		t.Fatalf("totalTokens = %#v, want model context window", contextWindow["totalTokens"])
 	}
+
+	patch, ok := statePatchFromSessionEvent(
+		reportTestSource(),
+		events[0],
+		session.AgentSessionID,
+		100,
+	)
+	if !ok {
+		t.Fatal("statePatchFromSessionEvent() did not accept usage update")
+	}
+	usagePatch, ok := patch.RuntimeContext["usage"].(map[string]any)
+	if !ok {
+		t.Fatalf("runtime context patch = %#v, want usage", patch.RuntimeContext)
+	}
+	patchedContextWindow, ok := usagePatch["contextWindow"].(map[string]any)
+	if !ok {
+		t.Fatalf("usage patch = %#v, want contextWindow", usagePatch)
+	}
+	if got, ok := int64Value(patchedContextWindow["totalTokens"]); !ok || got != 200_000 {
+		t.Fatalf("patched totalTokens = %#v, want 200000", patchedContextWindow["totalTokens"])
+	}
 }
 
 func TestClaudeCodeSDKAdapterStartAppliesRestoreUsageBeforeSessionStarted(t *testing.T) {

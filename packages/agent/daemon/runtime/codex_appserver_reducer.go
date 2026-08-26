@@ -218,6 +218,27 @@ func (r codexAppServerReducer) reduceNotification(
 			return emit(nil)
 		}
 		return emit(a.appServerItemEvents(session, turnID, item, true, normalizer))
+	case appServerNotifyFileChangePatchUpdated:
+		if normalizer == nil {
+			return codexAppServerReduction{}
+		}
+		rawChanges := params["changes"]
+		changes := payloadArray(rawChanges)
+		if len(changes) == 0 {
+			return codexAppServerReduction{}
+		}
+		update, ok := appServerItemToolCallUpdate(map[string]any{
+			"id":      asString(params["itemId"]),
+			"type":    "fileChange",
+			"status":  "inProgress",
+			"changes": rawChanges,
+		}, false)
+		if !ok {
+			return codexAppServerReduction{}
+		}
+		events, _ := normalizer.ToolCallEvents(session, turnID, update)
+		events = append(events, normalizer.recordFileChangesEvents(session, turnID, changes)...)
+		return emit(events)
 	case appServerNotifyPlanUpdated:
 		if normalizer == nil {
 			return codexAppServerReduction{}

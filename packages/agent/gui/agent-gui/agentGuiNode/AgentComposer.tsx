@@ -54,6 +54,8 @@ import {
   resolveAgentExternalPromptEntries
 } from "./model/agentExternalPromptEntries";
 import { useComposerInputHistory } from "./composer/useComposerInputHistory";
+import { refreshComposerSlashCapabilities } from "./composer/useComposerSlashCapabilitiesRefresh";
+import { useComposerDraftCapabilitiesRequest } from "./composer/useComposerDraftCapabilitiesRequest";
 
 export { formatSlashStatusTokenCount };
 
@@ -162,33 +164,13 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     onRequestGitBranches = null,
     referenceProvenanceFilters = null
   } = props;
-  const capabilitiesRequestedKeyRef = useRef<string | null>(null);
-  const requestCapabilitiesForDraft = useCallback(
-    (nextDraft: AgentComposerDraft): void => {
-      if (!onRetryComposerOptions) {
-        return;
-      }
-      const nextPrompt = agentComposerDraftPrompt(nextDraft).trimStart();
-      if (!nextPrompt.startsWith("/")) {
-        return;
-      }
-      const requestKey = `${provider}:${agentSessionId ?? "draft"}`;
-      if (capabilitiesRequestedKeyRef.current === requestKey) {
-        return;
-      }
-      capabilitiesRequestedKeyRef.current = requestKey;
-      onRetryComposerOptions({ section: "capabilities" });
-    },
-    [agentSessionId, onRetryComposerOptions, provider]
-  );
-  const handleDraftContentChange: AgentComposerProps["onDraftContentChange"] =
-    useCallback(
-      (nextDraft, sourceScopeKey) => {
-        requestCapabilitiesForDraft(nextDraft);
-        onDraftContentChange(nextDraft, sourceScopeKey);
-      },
-      [onDraftContentChange, requestCapabilitiesForDraft]
-    );
+  const slashCapabilitiesRefreshedSessionRef = useRef<string | null>(null);
+  const handleDraftContentChange = useComposerDraftCapabilitiesRequest({
+    agentSessionId,
+    onDraftContentChange,
+    onRetryComposerOptions,
+    provider
+  });
   const {
     canQueueWhileBusy,
     editorDisabled: disabled,
@@ -361,6 +343,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     editorHandleRef
   });
   const {
+    computerExecutable,
     filteredSkills,
     resolvedSlashCommands,
     skillQueryMatch,
@@ -397,7 +380,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
 
   useEffect(() => {
     setHighlightedIndex(0);
-  }, [skillQueryMatch?.prefix, skillQueryMatch?.query, slashQuery]);
+    refreshComposerSlashCapabilities({
+      agentSessionId,
+      isPaletteOpen,
+      onRetryComposerOptions,
+      refreshedSessionRef: slashCapabilitiesRefreshedSessionRef,
+      slashQuery
+    });
+  }, [
+    agentSessionId,
+    isPaletteOpen,
+    onRetryComposerOptions,
+    skillQueryMatch?.prefix,
+    skillQueryMatch?.query,
+    slashQuery
+  ]);
 
   useEffect(() => {
     const preferredKey =
@@ -488,6 +485,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     promptImagesSupported: canUploadAttachment && promptImagesSupported,
     availableSkills,
     composerSettings,
+    computerExecutable,
     // Host-gated product capability: omit or enabled:false must hide /tutti.
     // Fail closed like other unsupported host capabilities — do not treat a
     // missing flag as enabled.

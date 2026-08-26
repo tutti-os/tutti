@@ -64,6 +64,24 @@ test("parseCuaDriverDoctorStatus preserves failed probe diagnostics", () => {
   );
 });
 
+test("parseCuaDriverDoctorStatus recognizes usable Win32 fallback", () => {
+  assert.deepEqual(
+    parseCuaDriverDoctorStatus(
+      JSON.stringify({
+        ok: false,
+        message:
+          "UIA health probe exceeded 2000ms; falling back to Win32-only window tools"
+      })
+    ),
+    {
+      ok: false,
+      degraded: true,
+      diagnosticMessage:
+        "UIA health probe exceeded 2000ms; falling back to Win32-only window tools"
+    }
+  );
+});
+
 test("parseCuaDriverPermissionsStatus maps driver-daemon permission payload", () => {
   assert.deepEqual(
     parseCuaDriverPermissionsStatus(

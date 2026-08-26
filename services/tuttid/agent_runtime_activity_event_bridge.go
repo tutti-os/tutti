@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/liveprotocol"
@@ -16,11 +17,24 @@ import (
 // stream into the public business-event WebSocket. Durable canonical updates
 // continue to come from ActivityProjection after commit.
 type agentRuntimeActivityEventBridge struct {
-	publisher eventstreamservice.AgentActivityPublisher
+	publisher              eventstreamservice.AgentActivityPublisher
+	reconcileMu            sync.Mutex
+	reconcileLastByKey     map[string]time.Time
+	reconcileInFlightByKey map[string]struct{}
 }
 
+const (
+	// A malformed or cross-scoped live event is a hint to refresh canonical
+	// state, not a reason to enqueue one refresh per delta. Keep a short retry
+	// window so a persistent protocol error still gets periodic recovery while
+	// a burst is collapsed to one notification.
+	agentRuntimeReconcileThrottle  = 250 * time.Millisecond
+	agentRuntimeReconcileRetention = 5 * time.Minute
+	agentRuntimeReconcileStateCap  = 1024
+)
+
 //nolint:revive // RuntimeStreamEventFilter requires a bridge method; filtering is stateless.
-func (b agentRuntimeActivityEventBridge) FilterRuntimeStreamEvents(
+func (b *agentRuntimeActivityEventBridge) FilterRuntimeStreamEvents(
 	workspaceID string,
 	agentSessionID string,
 	events []agentruntime.StreamEvent,
@@ -44,12 +58,19 @@ func (b agentRuntimeActivityEventBridge) FilterRuntimeStreamEvents(
 	return filtered
 }
 
-func (b agentRuntimeActivityEventBridge) publishSessionReconcileRequired(
+func (b *agentRuntimeActivityEventBridge) publishSessionReconcileRequired(
 	ctx context.Context,
 	workspaceID string,
 	agentSessionID string,
 ) error {
-	return b.publisher.PublishAgentActivityUpdated(
+	workspaceID = strings.TrimSpace(workspaceID)
+	agentSessionID = strings.TrimSpace(agentSessionID)
+	key := workspaceID + "\x00" + agentSessionID
+	claimedAt := time.Now()
+	if !b.claimSessionReconcile(key, claimedAt) {
+		return nil
+	}
+	err := b.publisher.PublishAgentActivityUpdated(
 		ctx,
 		workspaceID,
 		agentSessionID,
@@ -58,9 +79,11 @@ func (b agentRuntimeActivityEventBridge) publishSessionReconcileRequired(
 			"lastEventUnixMs": time.Now().UnixMilli(),
 		},
 	)
+	b.finishSessionReconcile(key, claimedAt, err)
+	return err
 }
 
-func (b agentRuntimeActivityEventBridge) ObserveRuntimeStreamEvents(
+func (b *agentRuntimeActivityEventBridge) ObserveRuntimeStreamEvents(
 	ctx context.Context,
 	workspaceID string,
 	agentSessionID string,
@@ -113,6 +136,62 @@ func (b agentRuntimeActivityEventBridge) ObserveRuntimeStreamEvents(
 		}
 	}
 	return errors.Join(publishErrors...)
+}
+
+func (b *agentRuntimeActivityEventBridge) claimSessionReconcile(key string, now time.Time) bool {
+	if b == nil || key == "\x00" {
+		return false
+	}
+	b.reconcileMu.Lock()
+	defer b.reconcileMu.Unlock()
+	if b.reconcileLastByKey == nil {
+		b.reconcileLastByKey = make(map[string]time.Time)
+	}
+	if b.reconcileInFlightByKey == nil {
+		b.reconcileInFlightByKey = make(map[string]struct{})
+	}
+	for staleKey, last := range b.reconcileLastByKey {
+		if _, inFlight := b.reconcileInFlightByKey[staleKey]; !inFlight && now.Sub(last) >= agentRuntimeReconcileRetention {
+			delete(b.reconcileLastByKey, staleKey)
+		}
+	}
+	if _, inFlight := b.reconcileInFlightByKey[key]; inFlight {
+		return false
+	}
+	if last, ok := b.reconcileLastByKey[key]; ok && now.Sub(last) < agentRuntimeReconcileThrottle {
+		return false
+	}
+	if len(b.reconcileLastByKey) >= agentRuntimeReconcileStateCap {
+		var oldestKey string
+		var oldest time.Time
+		for candidateKey, last := range b.reconcileLastByKey {
+			if oldestKey == "" || last.Before(oldest) {
+				oldestKey = candidateKey
+				oldest = last
+			}
+		}
+		if oldestKey != "" {
+			delete(b.reconcileLastByKey, oldestKey)
+		}
+	}
+	b.reconcileInFlightByKey[key] = struct{}{}
+	return true
+}
+
+func (b *agentRuntimeActivityEventBridge) finishSessionReconcile(key string, claimedAt time.Time, _ error) {
+	if b == nil {
+		return
+	}
+	b.reconcileMu.Lock()
+	defer b.reconcileMu.Unlock()
+	delete(b.reconcileInFlightByKey, key)
+	if b.reconcileLastByKey == nil {
+		b.reconcileLastByKey = make(map[string]time.Time)
+	}
+	// Throttle failed attempts too. A broken publisher must not turn a
+	// persistent scope mismatch into one retry per incoming delta; the next
+	// event after the short window can still retry the recovery signal.
+	b.reconcileLastByKey[key] = claimedAt
 }
 
 func runtimeMessageDeltaMatchesScope(

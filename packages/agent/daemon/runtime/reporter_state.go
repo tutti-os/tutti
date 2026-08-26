@@ -192,7 +192,10 @@ func turnFailureDetails(event activityshared.Event) (string, string) {
 		return "", ""
 	}
 	message := activityshared.BestEffortErrorMessage(event.Payload)
-	code := activityshared.BestEffortErrorCode(event.Payload)
+	code := firstNonEmptyString(
+		payloadString(event.Payload.Metadata, "code"),
+		activityshared.BestEffortErrorCode(event.Payload),
+	)
 	if code == "" {
 		code = providerStopFailureCode(payloadString(event.Payload.Metadata, "stopReason"))
 	}
@@ -550,7 +553,7 @@ func statePatchLastError(event activityshared.Event) string {
 	if detail == "" {
 		return ""
 	}
-	code := visibleFailureCode(detail)
+	code := firstNonEmptyString(payloadString(event.Payload.Metadata, "code"), visibleFailureCode(detail))
 	switch code {
 	case FailureCodeInsufficientCredits,
 		FailureCodeModelNotAllowed,

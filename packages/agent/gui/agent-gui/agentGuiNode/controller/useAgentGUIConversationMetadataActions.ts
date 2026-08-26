@@ -5,7 +5,10 @@ import {
   type SetStateAction
 } from "react";
 import {
+  isPendingActivationViable,
   dispatchSessionForkThroughTurn,
+  selectLatestActivationForSession,
+  selectEngineSession,
   type AgentSessionEngine
 } from "@tutti-os/agent-activity-core";
 import { areWorkspaceUserProjectPathsEqual } from "@tutti-os/workspace-user-project/core";
@@ -37,6 +40,71 @@ export interface UseAgentGUIConversationMetadataActionsInput {
   sessionEngine: AgentSessionEngine;
   currentUserId: string | null | undefined;
   selectConversation?: (agentSessionId: string) => void;
+}
+
+const CANONICAL_SESSION_WAIT_TIMEOUT_MS = 30_000;
+
+type CanonicalSessionWaitResult = "ready" | "unavailable" | "timed_out";
+
+async function waitForCanonicalSession(
+  sessionEngine: AgentSessionEngine,
+  agentSessionId: string
+): Promise<CanonicalSessionWaitResult> {
+  const hasCanonicalSession = (): boolean =>
+    selectEngineSession(sessionEngine.getSnapshot(), agentSessionId) !== null;
+  if (hasCanonicalSession()) {
+    return "ready";
+  }
+
+  const pendingActivation = selectLatestActivationForSession(
+    sessionEngine.getSnapshot(),
+    agentSessionId
+  );
+  if (!isPendingActivationViable(pendingActivation)) {
+    return "unavailable";
+  }
+
+  return new Promise((resolve) => {
+    let unsubscribe: (() => void) | null = null;
+    let active = true;
+    const timeoutSignal = AbortSignal.timeout(
+      CANONICAL_SESSION_WAIT_TIMEOUT_MS
+    );
+    const finish = (result: CanonicalSessionWaitResult): void => {
+      if (!active) {
+        return;
+      }
+      active = false;
+      timeoutSignal.removeEventListener("abort", onTimeout);
+      unsubscribe?.();
+      unsubscribe = null;
+      resolve(result);
+    };
+    const check = (): void => {
+      if (hasCanonicalSession()) {
+        finish("ready");
+        return;
+      }
+      const activation = selectLatestActivationForSession(
+        sessionEngine.getSnapshot(),
+        agentSessionId
+      );
+      if (!isPendingActivationViable(activation)) {
+        finish("unavailable");
+      }
+    };
+    function onTimeout(): void {
+      finish("timed_out");
+    }
+    timeoutSignal.addEventListener("abort", onTimeout, { once: true });
+    const registeredUnsubscribe = sessionEngine.subscribe(check);
+    if (active) {
+      unsubscribe = registeredUnsubscribe;
+    } else {
+      registeredUnsubscribe();
+    }
+    check();
+  });
 }
 
 export function useAgentGUIConversationMetadataActions(
@@ -205,8 +273,19 @@ export function useAgentGUIConversationMetadataActions(
       }
       setDetailError(null);
       try {
-        await agentActivityRuntime.renameSession({
-          workspaceId,
+        const canonicalSessionWait = await waitForCanonicalSession(
+          sessionEngine,
+          normalizedAgentSessionId
+        );
+        if (canonicalSessionWait !== "ready") {
+          throw Object.assign(
+            new Error(translate("agentHost.agentGui.sessionActionUnavailable")),
+            {
+              reason: `agent_gui_rename_session_${canonicalSessionWait}`
+            }
+          );
+        }
+        await sessionEngine.renameSession({
           agentSessionId: normalizedAgentSessionId,
           title: normalizedTitle
         });
@@ -225,7 +304,14 @@ export function useAgentGUIConversationMetadataActions(
         throw error;
       }
     },
-    [agentActivityRuntime, agentHostApi.toast, workspaceId]
+    [
+      agentActivityRuntime,
+      agentHostApi.toast,
+      dataRef,
+      sessionEngine,
+      setDetailError,
+      workspaceId
+    ]
   );
 
   const forkConversationThroughTurn = useCallback(

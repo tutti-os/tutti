@@ -178,6 +178,11 @@ export interface AgentComposerProps {
   handoffLabel?: string;
   handoffMenuLabel?: string;
   labels: {
+    /** Capability plus copy for returning to a Composer that answers the prompt. */
+    conversationReturn?: {
+      continueAnswering: string;
+      returnToConversation: string;
+    };
     send: string;
     /**
      * Plan-review send copy: with an empty-send override active the send
@@ -229,6 +234,8 @@ export interface AgentComposerProps {
     planModeLabel: string;
     codexSaverModeLabel: string;
     codexSaverModeDescription: string;
+    rtkSaverModeLabel: string;
+    rtkSaverModeDescription: string;
     tuttiModeLabel: string;
     tuttiModeDescription: string;
     tuttiModeRemove: string;
@@ -284,6 +291,10 @@ export interface AgentComposerProps {
     slashPaletteConnectorNotConnected: string;
     slashPaletteConnectorUnsupported: string;
     slashPaletteMcpGroup: string;
+    slashCommandPresentation?: (commandName: string) => {
+      description?: string;
+      label?: string;
+    };
     slashCommandCompactLabel: string;
     slashCommandContextLabel: string;
     slashCommandFastLabel: string;
@@ -416,6 +427,7 @@ export interface AgentComposerProps {
   ) => void;
   onSettingsChange: (settings: {
     codexSaverMode?: boolean;
+    rtkSaverMode?: boolean;
     model?: string | null;
     reasoningEffort?: string | null;
     speed?: string | null;
@@ -426,6 +438,7 @@ export interface AgentComposerProps {
   }) => void;
   /** Retries or explicitly refreshes the target-scoped composer options. */
   onRetryComposerOptions?: (options?: {
+    force?: boolean;
     section?: "core" | "capabilities" | "connectors";
     waitForFreshModelCatalog?: boolean;
   }) => void;

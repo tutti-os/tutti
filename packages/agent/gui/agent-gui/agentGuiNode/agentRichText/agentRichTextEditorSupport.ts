@@ -414,18 +414,7 @@ export function scrollEditorSelectionIntoView(editor: Editor): void {
     return;
   }
 
-  const selection = scrollContainer.ownerDocument.getSelection();
-  const anchorNode = selection?.anchorNode ?? null;
-  if (
-    !selection ||
-    selection.rangeCount === 0 ||
-    !anchorNode ||
-    !scrollContainer.contains(anchorNode)
-  ) {
-    return;
-  }
-
-  const selectionRect = selection.getRangeAt(0).getBoundingClientRect();
+  const selectionRect = editor.view.coordsAtPos(editor.state.selection.head);
   const containerRect = scrollContainer.getBoundingClientRect();
   const overflowBottom = selectionRect.bottom - containerRect.bottom;
   if (overflowBottom > 0) {

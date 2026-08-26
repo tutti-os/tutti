@@ -5,7 +5,8 @@ import { buildDockAgentProbeTooltipLines } from "../../workspaceDesktop/view/des
 import type { AgentComposerSlashStatus } from "../AgentComposer";
 import type { AgentGUINodeProps } from "../AgentGUINode.types";
 import {
-  resolveAgentGUIRailStatusProvider,
+  resolveAgentGUIRailStatusTarget,
+  resolveAgentGUIStatusTarget,
   slashStatusLimitsFromQuotas,
   slashStatusUsageErrorMessage
 } from "../AgentGUINode.usage";
@@ -63,14 +64,23 @@ export function useAgentGUIStatus(input: {
     viewModel.rail.activeConversationId?.trim() ||
     viewModel.interaction.sessionChrome.rawState?.agentSessionId?.trim() ||
     null;
-  const railStatusProvider = useMemo(
+  const activeStatusTarget = useMemo(
     () =>
-      resolveAgentGUIRailStatusProvider({
+      resolveAgentGUIStatusTarget({
+        agentTargets: viewModel.rail.agentTargets,
+        scopeKey: activeStatusScopeKey
+      }),
+    [activeStatusScopeKey, viewModel.rail.agentTargets]
+  );
+  const railStatusTarget = useMemo(
+    () =>
+      resolveAgentGUIRailStatusTarget({
         conversationFilter: viewModel.rail.conversationFilter,
         agentTargets: viewModel.rail.agentTargets
       }),
     [viewModel.rail.conversationFilter, viewModel.rail.agentTargets]
   );
+  const railStatusProvider = railStatusTarget?.provider ?? null;
   const railStatusScopeKey =
     viewModel.rail.conversationFilter.kind === "agentTarget"
       ? viewModel.rail.conversationFilter.agentTargetId.trim()
@@ -306,10 +316,16 @@ export function useAgentGUIStatus(input: {
     handleAgentConfigMenuOpen,
     handleAgentProbeInfoClose,
     handleAgentProbeInfoOpen,
-    handleAgentUsageRefresh,
+    handleAgentUsageRefresh:
+      railStatusTarget?.providerAccountUsageApplicable === false
+        ? undefined
+        : handleAgentUsageRefresh,
     handleSlashStatusClose,
     handleSlashStatusOpen,
-    handleSlashStatusRefresh,
+    handleSlashStatusRefresh:
+      activeStatusTarget?.providerAccountUsageApplicable === false
+        ? undefined
+        : handleSlashStatusRefresh,
     railStatusProvider,
     slashStatusLimits: agentStatusLimits,
     slashStatusLimitsUnavailable:

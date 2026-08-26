@@ -19,6 +19,7 @@ type ModelOption struct {
 	ID                         string
 	DisplayName                string
 	Description                string
+	ConsumptionMultiplier      string
 	DefaultReasoningEffort     string
 	DefaultSpeed               string
 	IsDefault                  bool

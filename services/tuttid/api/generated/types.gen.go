@@ -88,6 +88,57 @@ func (e AccountProductSummaryPartialErrorScope) Valid() bool {
 	}
 }
 
+// Defines values for AccountUserPresenceUserAvailability.
+const (
+	DEGRADED    AccountUserPresenceUserAvailability = "DEGRADED"
+	NOTWATCHED  AccountUserPresenceUserAvailability = "NOT_WATCHED"
+	READY       AccountUserPresenceUserAvailability = "READY"
+	STALE       AccountUserPresenceUserAvailability = "STALE"
+	SUBSCRIBING AccountUserPresenceUserAvailability = "SUBSCRIBING"
+	SYNCING     AccountUserPresenceUserAvailability = "SYNCING"
+	UNKNOWN     AccountUserPresenceUserAvailability = "UNKNOWN"
+)
+
+// Valid indicates whether the value is a known member of the AccountUserPresenceUserAvailability enum.
+func (e AccountUserPresenceUserAvailability) Valid() bool {
+	switch e {
+	case DEGRADED:
+		return true
+	case NOTWATCHED:
+		return true
+	case READY:
+		return true
+	case STALE:
+		return true
+	case SUBSCRIBING:
+		return true
+	case SYNCING:
+		return true
+	case UNKNOWN:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AccountUserPresenceUserStatus.
+const (
+	OFFLINE AccountUserPresenceUserStatus = "OFFLINE"
+	ONLINE  AccountUserPresenceUserStatus = "ONLINE"
+)
+
+// Valid indicates whether the value is a known member of the AccountUserPresenceUserStatus enum.
+func (e AccountUserPresenceUserStatus) Valid() bool {
+	switch e {
+	case OFFLINE:
+		return true
+	case ONLINE:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AgentPromptContentBlockMimeType.
 const (
 	AgentPromptContentBlockMimeTypeImagejpeg AgentPromptContentBlockMimeType = "image/jpeg"
@@ -5287,6 +5338,50 @@ type AccountUserInfoResponse struct {
 	User *AccountUserInfo `json:"user"`
 }
 
+// AccountUserPresenceCurrentRoomRequest defines model for AccountUserPresenceCurrentRoomRequest.
+type AccountUserPresenceCurrentRoomRequest struct {
+	Members []AccountUserPresenceRoomMember `json:"members"`
+	RoomId  string                          `json:"roomId"`
+}
+
+// AccountUserPresenceForegroundRequest defines model for AccountUserPresenceForegroundRequest.
+type AccountUserPresenceForegroundRequest struct {
+	Foreground bool `json:"foreground"`
+}
+
+// AccountUserPresenceRoomMember defines model for AccountUserPresenceRoomMember.
+type AccountUserPresenceRoomMember struct {
+	// AccountPresenceCapable False for system identities without Account Device Presence semantics.
+	AccountPresenceCapable bool `json:"accountPresenceCapable"`
+
+	// MembershipActive True only for a currently joined, non-deleted membership.
+	MembershipActive bool   `json:"membershipActive"`
+	UserId           string `json:"userId"`
+}
+
+// AccountUserPresenceRoomResponse defines model for AccountUserPresenceRoomResponse.
+type AccountUserPresenceRoomResponse struct {
+	Members []AccountUserPresenceUser `json:"members"`
+	RoomId  string                    `json:"roomId"`
+}
+
+// AccountUserPresenceUser defines model for AccountUserPresenceUser.
+type AccountUserPresenceUser struct {
+	Authoritative       bool                                `json:"authoritative"`
+	AuthorityGeneration string                              `json:"authorityGeneration"`
+	Availability        AccountUserPresenceUserAvailability `json:"availability"`
+	ObservedAt          *time.Time                          `json:"observedAt,omitempty"`
+	PresenceRevision    string                              `json:"presenceRevision"`
+	Status              AccountUserPresenceUserStatus       `json:"status"`
+	UserId              string                              `json:"userId"`
+}
+
+// AccountUserPresenceUserAvailability defines model for AccountUserPresenceUser.Availability.
+type AccountUserPresenceUserAvailability string
+
+// AccountUserPresenceUserStatus defines model for AccountUserPresenceUser.Status.
+type AccountUserPresenceUserStatus string
+
 // AddIssueManagerContextRefItem defines model for AddIssueManagerContextRefItem.
 type AddIssueManagerContextRefItem struct {
 	ContextRefId *string `json:"contextRefId,omitempty"`
@@ -5505,9 +5600,11 @@ type AgentProviderComposerConfig struct {
 
 // AgentProviderComposerConfigOptionValue defines model for AgentProviderComposerConfigOptionValue.
 type AgentProviderComposerConfigOptionValue struct {
-	Description *string `json:"description,omitempty"`
-	Id          string  `json:"id"`
-	Label       string  `json:"label"`
+	// ConsumptionMultiplier Provider-reported credit consumption multiplier without the display suffix. Runtime adapters normalize provider wire data into this typed field; clients must not infer it from description.
+	ConsumptionMultiplier *string `json:"consumptionMultiplier,omitempty"`
+	Description           *string `json:"description,omitempty"`
+	Id                    string  `json:"id"`
+	Label                 string  `json:"label"`
 
 	// Requested True when the entry mirrors the requested/current selection instead of the provider catalog (warm-catalog append of the requested model, selected-model bootstrap echo). Clients keep such entries selectable but must not treat them as proof the provider can run the model; create validation runs against the raw catalog only.
 	Requested          *bool  `json:"requested,omitempty"`
@@ -5523,7 +5620,7 @@ type AgentProviderComposerOptionsResponse struct {
 	Capabilities      *WorkspaceAgentCapabilities     `json:"capabilities,omitempty"`
 	CapabilityCatalog []AgentProviderCapabilityOption `json:"capabilityCatalog"`
 
-	// CodexSaverModeSupported Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+	// CodexSaverModeSupported Whether this resolved provider target supports the Codex-specific saver subagent mode
 	CodexSaverModeSupported *bool `json:"codexSaverModeSupported,omitempty"`
 
 	// Commands Commands advertised by the resolved runtime session.
@@ -5534,6 +5631,9 @@ type AgentProviderComposerOptionsResponse struct {
 	Provider                WorkspaceAgentProvider                       `json:"provider"`
 	ReasoningConfig         AgentProviderComposerConfig                  `json:"reasoningConfig"`
 	ReasoningOptionsByModel AgentProviderComposerReasoningOptionsByModel `json:"reasoningOptionsByModel"`
+
+	// RtkSaverModeSupported Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode
+	RtkSaverModeSupported *bool `json:"rtkSaverModeSupported,omitempty"`
 
 	// RuntimeContext Opaque provider runtime metadata retained for legacy and diagnostic consumers. Typed composer fields are authoritative; new composer capabilities must not be added to this object.
 	RuntimeContext     map[string]interface{}       `json:"runtimeContext"`
@@ -5768,13 +5868,18 @@ type AgentSessionCassetteListResponse struct {
 
 // AgentSessionComposerSettings defines model for AgentSessionComposerSettings.
 type AgentSessionComposerSettings struct {
-	BrowserUse       *bool   `json:"browserUse,omitempty"`
+	BrowserUse *bool `json:"browserUse,omitempty"`
+
+	// CodexSaverMode Enables the Codex-specific saver subagent mode
 	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	PlanMode         *bool   `json:"planMode,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
-	Speed            *string `json:"speed,omitempty"`
+
+	// RtkSaverMode Enables provider-neutral RTK saver mode
+	RtkSaverMode *bool   `json:"rtkSaverMode,omitempty"`
+	Speed        *string `json:"speed,omitempty"`
 }
 
 // AgentSessionModelPolicyOverride defines model for AgentSessionModelPolicyOverride.
@@ -6616,9 +6721,11 @@ type ConnectorMarketAuthorizationReplacementPolicy string
 
 // ConnectorMarketAuthorizationRequest defines model for ConnectorMarketAuthorizationRequest.
 type ConnectorMarketAuthorizationRequest struct {
-	ClientRequestId           string `json:"clientRequestId"`
-	ExpectedConnectorRevision *int64 `json:"expectedConnectorRevision,omitempty"`
-	ExpectedRevision          int64  `json:"expectedRevision"`
+	// AfterAuthorizationStepRevision Cursor for a previously delivered authorization step. When provided, the Host resumes the same authorization attempt and waits briefly for a later step. A bounded poll may replay the current step. The cursor contains no authorization URL, user code, or credential material.
+	AfterAuthorizationStepRevision *int64 `json:"afterAuthorizationStepRevision,omitempty"`
+	ClientRequestId                string `json:"clientRequestId"`
+	ExpectedConnectorRevision      *int64 `json:"expectedConnectorRevision,omitempty"`
+	ExpectedRevision               int64  `json:"expectedRevision"`
 
 	// ReplacementPolicy When set to replace_active, the Host fences and terminates a different unresolved authorization attempt before starting this request. Omission preserves the legacy resume-or-conflict behavior.
 	ReplacementPolicy *ConnectorMarketAuthorizationReplacementPolicy `json:"replacementPolicy,omitempty"`
@@ -6628,7 +6735,10 @@ type ConnectorMarketAuthorizationRequest struct {
 // ConnectorMarketAuthorizationResponse defines model for ConnectorMarketAuthorizationResponse.
 type ConnectorMarketAuthorizationResponse struct {
 	AuthorizationExpiresAt time.Time `json:"authorizationExpiresAt"`
-	AuthorizationUrl       *string   `json:"authorizationUrl,omitempty"`
+
+	// AuthorizationStepRevision Monotonic, non-secret revision of the provider authorization event returned by this response. Clients pass it back as afterAuthorizationStepRevision when waiting for a later step.
+	AuthorizationStepRevision int64   `json:"authorizationStepRevision"`
+	AuthorizationUrl          *string `json:"authorizationUrl,omitempty"`
 
 	// AuthorizationView Opaque runtime Authorization View V1 envelope. Clients must validate it with the shared authorization protocol before rendering.
 	AuthorizationView *map[string]interface{}  `json:"authorizationView,omitempty"`
@@ -7020,7 +7130,7 @@ type CreateWorkspaceAgentSessionRequest struct {
 	CapabilityRefs *[]WorkspaceAgentCapabilityReference `json:"capabilityRefs,omitempty"`
 	ClientSubmitId string                               `json:"clientSubmitId"`
 
-	// CodexSaverMode Enables the Codex Luna subagent saver mode for this session without changing the main model
+	// CodexSaverMode Enables the Codex-specific saver subagent mode for this Agent Session
 	CodexSaverMode *bool                     `json:"codexSaverMode,omitempty"`
 	Cwd            *string                   `json:"cwd,omitempty"`
 	InitialContent []AgentPromptContentBlock `json:"initialContent"`
@@ -7052,7 +7162,10 @@ type CreateWorkspaceAgentSessionRequest struct {
 	ReasoningEffortExplicit *bool `json:"reasoningEffortExplicit,omitempty"`
 
 	// RecordingId Developer create-session scenario waiting for this root Session.
-	RecordingId       *openapi_types.UUID     `json:"recordingId,omitempty"`
+	RecordingId *openapi_types.UUID `json:"recordingId,omitempty"`
+
+	// RtkSaverMode Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model
+	RtkSaverMode      *bool                   `json:"rtkSaverMode,omitempty"`
 	Speed             *string                 `json:"speed,omitempty"`
 	SubmitDiagnostics *AgentSubmitDiagnostics `json:"submitDiagnostics,omitempty"`
 	Title             *string                 `json:"title,omitempty"`
@@ -7220,11 +7333,15 @@ type DeletedAgentConversationRetentionDays int
 
 // DesktopAgentComposerDefaults defines model for DesktopAgentComposerDefaults.
 type DesktopAgentComposerDefaults struct {
+	// CodexSaverMode Enables the Codex-specific saver subagent mode
 	CodexSaverMode   *bool   `json:"codexSaverMode,omitempty"`
 	Model            *string `json:"model,omitempty"`
 	PermissionModeId *string `json:"permissionModeId,omitempty"`
 	ReasoningEffort  *string `json:"reasoningEffort,omitempty"`
-	Speed            *string `json:"speed,omitempty"`
+
+	// RtkSaverMode Enables provider-neutral RTK saver mode
+	RtkSaverMode *bool   `json:"rtkSaverMode,omitempty"`
+	Speed        *string `json:"speed,omitempty"`
 }
 
 // DesktopAgentComposerDefaultsByAgentTarget defines model for DesktopAgentComposerDefaultsByAgentTarget.
@@ -7624,6 +7741,9 @@ type ForkWorkspaceAgentSessionRequest struct {
 
 // GetAgentProviderComposerOptionsRequest defines model for GetAgentProviderComposerOptionsRequest.
 type GetAgentProviderComposerOptionsRequest struct {
+	// AgentSessionId Active Agent session whose isolated provider home contributes session-created Skills to the composer catalog.
+	AgentSessionId *string `json:"agentSessionId,omitempty"`
+
 	// AgentTargetId Agent target whose provider and runtime context the composer options resolve against. Optional; when omitted the provider path parameter is used directly.
 	AgentTargetId *string        `json:"agentTargetId,omitempty"`
 	Cwd           *string        `json:"cwd,omitempty"`
@@ -7654,6 +7774,71 @@ type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
 
 // GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection Independently loadable composer section.
 type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection string
+
+// GlobalAgentActivityAgent defines model for GlobalAgentActivityAgent.
+type GlobalAgentActivityAgent struct {
+	AgentKey      string `json:"agentKey"`
+	AgentTargetId string `json:"agentTargetId"`
+	IconKey       string `json:"iconKey"`
+	Name          string `json:"name"`
+	Provider      string `json:"provider"`
+}
+
+// GlobalAgentActivityFilterOptionsResponse defines model for GlobalAgentActivityFilterOptionsResponse.
+type GlobalAgentActivityFilterOptionsResponse struct {
+	Agents        []GlobalAgentActivityAgent        `json:"agents"`
+	Rooms         []GlobalAgentActivityRoom         `json:"rooms"`
+	SessionOwners []GlobalAgentActivitySessionOwner `json:"sessionOwners"`
+	TimeBounds    GlobalAgentActivityTimeBounds     `json:"timeBounds"`
+}
+
+// GlobalAgentActivityRoom defines model for GlobalAgentActivityRoom.
+type GlobalAgentActivityRoom struct {
+	AvatarUri string `json:"avatarUri"`
+	Name      string `json:"name"`
+	RoomId    string `json:"roomId"`
+}
+
+// GlobalAgentActivitySession defines model for GlobalAgentActivitySession.
+type GlobalAgentActivitySession struct {
+	ActivityAtUnixMs      int64                           `json:"activityAtUnixMs"`
+	Agent                 GlobalAgentActivityAgent        `json:"agent"`
+	AgentSessionId        string                          `json:"agentSessionId"`
+	EndedAtUnixMs         int64                           `json:"endedAtUnixMs"`
+	LatestMessageAtUnixMs int64                           `json:"latestMessageAtUnixMs"`
+	LatestTurnId          string                          `json:"latestTurnId"`
+	LatestUserPrompt      string                          `json:"latestUserPrompt"`
+	NeedsAttention        bool                            `json:"needsAttention"`
+	Room                  GlobalAgentActivityRoom         `json:"room"`
+	SessionOwner          GlobalAgentActivitySessionOwner `json:"sessionOwner"`
+	StartedAtUnixMs       int64                           `json:"startedAtUnixMs"`
+	Status                string                          `json:"status"`
+	Summary               string                          `json:"summary"`
+	Title                 string                          `json:"title"`
+	WorkspaceId           string                          `json:"workspaceId"`
+}
+
+// GlobalAgentActivitySessionListResponse defines model for GlobalAgentActivitySessionListResponse.
+type GlobalAgentActivitySessionListResponse struct {
+	Items     []GlobalAgentActivitySession `json:"items"`
+	Truncated bool                         `json:"truncated"`
+}
+
+// GlobalAgentActivitySessionOwner defines model for GlobalAgentActivitySessionOwner.
+type GlobalAgentActivitySessionOwner struct {
+	AvatarClientTransform bool   `json:"avatarClientTransform"`
+	AvatarFallbackUrl     string `json:"avatarFallbackUrl"`
+	AvatarUrl             string `json:"avatarUrl"`
+	DisplayName           string `json:"displayName"`
+	UserId                string `json:"userId"`
+}
+
+// GlobalAgentActivityTimeBounds defines model for GlobalAgentActivityTimeBounds.
+type GlobalAgentActivityTimeBounds struct {
+	MaxActivityAtUnixMs int64 `json:"maxActivityAtUnixMs"`
+	MinActivityAtUnixMs int64 `json:"minActivityAtUnixMs"`
+	ServerNowUnixMs     int64 `json:"serverNowUnixMs"`
+}
 
 // HealthStatusResponse defines model for HealthStatusResponse.
 type HealthStatusResponse struct {
@@ -10848,6 +11033,15 @@ type ListConnectorMarketCatalogParams struct {
 // ListConnectorMarketCatalogParamsInstallation defines parameters for ListConnectorMarketCatalog.
 type ListConnectorMarketCatalogParamsInstallation string
 
+// ListGlobalAgentActivitySessionsParams defines parameters for ListGlobalAgentActivitySessions.
+type ListGlobalAgentActivitySessionsParams struct {
+	RoomIds             *[]string `form:"roomIds,omitempty" json:"roomIds,omitempty"`
+	SessionOwnerUserIds *[]string `form:"sessionOwnerUserIds,omitempty" json:"sessionOwnerUserIds,omitempty"`
+	AgentKeys           *[]string `form:"agentKeys,omitempty" json:"agentKeys,omitempty"`
+	ActivityFromUnixMs  *int64    `form:"activityFromUnixMs,omitempty" json:"activityFromUnixMs,omitempty"`
+	ActivityToUnixMs    *int64    `form:"activityToUnixMs,omitempty" json:"activityToUnixMs,omitempty"`
+}
+
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
 type ListWorkspaceAgentGeneratedFilesParams struct {
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
@@ -11133,6 +11327,12 @@ type ListWorkspaceWorkflowsParamsCheckpointStatus string
 
 // DismissAccountRegistrationCreditsRewardJSONRequestBody defines body for DismissAccountRegistrationCreditsReward for application/json ContentType.
 type DismissAccountRegistrationCreditsRewardJSONRequestBody = DismissAccountRegistrationCreditsRewardRequest
+
+// PutAccountUserPresenceCurrentRoomJSONRequestBody defines body for PutAccountUserPresenceCurrentRoom for application/json ContentType.
+type PutAccountUserPresenceCurrentRoomJSONRequestBody = AccountUserPresenceCurrentRoomRequest
+
+// PutAccountUserPresenceForegroundJSONRequestBody defines body for PutAccountUserPresenceForeground for application/json ContentType.
+type PutAccountUserPresenceForegroundJSONRequestBody = AccountUserPresenceForegroundRequest
 
 // GetAgentProviderComposerOptionsJSONRequestBody defines body for GetAgentProviderComposerOptions for application/json ContentType.
 type GetAgentProviderComposerOptionsJSONRequestBody = GetAgentProviderComposerOptionsRequest

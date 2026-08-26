@@ -61,7 +61,6 @@ function isSlashCommandCapability(
 
 export function useComposerPaletteCatalog({
   provider,
-  isGoalModeActive,
   goalSupported,
   paletteDraftPrompt,
   availableCommands,
@@ -75,16 +74,18 @@ export function useComposerPaletteCatalog({
   uiLanguage,
   editorHandleRef
 }: UseComposerPaletteCatalogInput) {
-  // Host menu state means desktop can present and configure computer use.
-  // Daemon support can be false while cua-driver is not ready; launch still
-  // goes through the daemon readiness clamp.
-  const computerExecutable = Boolean(composerSettings.supportsComputerUse);
+  // Desktop status is refreshed independently from Composer options. Prefer a
+  // fresh, authorized host probe when an older Composer snapshot still says
+  // the driver is unavailable; launch remains protected by the daemon clamp.
+  const computerHostReady =
+    capabilityMenuState?.computerUse?.installed === true &&
+    capabilityMenuState.computerUse.authorization === "authorized";
+  const computerExecutable =
+    Boolean(composerSettings.supportsComputerUse) || computerHostReady;
   const computerPresentationSupported =
     computerExecutable ||
     capabilityMenuState?.computerUse?.presentationSupported === true;
-  const slashQuery = isGoalModeActive
-    ? null
-    : getPromptStartSlashCommandQuery(paletteDraftPrompt);
+  const slashQuery = getPromptStartSlashCommandQuery(paletteDraftPrompt);
   const slashCommandPolicy = composerSettings.slashCommandPolicy;
   const promptBeforeSelection =
     editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
@@ -305,6 +306,7 @@ export function useComposerPaletteCatalog({
     labels.computerUseCapabilitySettingsLabel,
     labels.tuttiModeDescription,
     labels.tuttiModeLabel,
+    labels.slashCommandPresentation,
     labels.slashCommandCompactLabel,
     labels.slashCommandContextLabel,
     labels.slashCommandFastLabel,
@@ -328,6 +330,7 @@ export function useComposerPaletteCatalog({
   ]);
   return {
     availableCapabilities,
+    computerExecutable,
     filteredSkills,
     resolvedSlashCommands,
     skillQueryMatch,

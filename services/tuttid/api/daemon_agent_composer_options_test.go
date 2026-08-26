@@ -22,7 +22,7 @@ func TestGeneratedComposerConfigOptionKeepsRequestedProvenance(t *testing.T) {
 		CurrentValue:   "default",
 		EffectiveValue: "claude-haiku-4-5-20251001",
 		Options: []agentservice.ComposerConfigOptionValue{
-			{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", Value: "gpt-5.6-sol"},
+			{ID: "gpt-5.6-sol", Label: "GPT-5.6 Sol", Value: "gpt-5.6-sol", ConsumptionMultiplier: "0.71"},
 			{ID: "x-ai/grok-4.5", Label: "x-ai/grok-4.5", Value: "x-ai/grok-4.5", Requested: true},
 		},
 	})
@@ -31,6 +31,9 @@ func TestGeneratedComposerConfigOptionKeepsRequestedProvenance(t *testing.T) {
 	}
 	if generated.Options[0].Requested != nil {
 		t.Fatal("catalog entry must omit the requested field")
+	}
+	if generated.Options[0].ConsumptionMultiplier == nil || *generated.Options[0].ConsumptionMultiplier != "0.71" {
+		t.Fatalf("consumption multiplier = %#v, want 0.71", generated.Options[0].ConsumptionMultiplier)
 	}
 	if generated.Options[1].Requested == nil || !*generated.Options[1].Requested {
 		t.Fatal("requested-origin entry must project requested=true")

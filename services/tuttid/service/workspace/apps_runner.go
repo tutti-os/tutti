@@ -67,9 +67,15 @@ type AppStartInput struct {
 
 type appProcess struct {
 	command       *exec.Cmd
+	containment   appProcessContainment
 	done          chan error
 	stopRequested bool
 	logFile       *os.File
+}
+
+type appProcessContainment interface {
+	close() error
+	kill() error
 }
 
 type appStart struct {
@@ -299,6 +305,27 @@ func (r *AppRunner) startProcessAttempt(ctx context.Context, key string, input A
 		r.setFailedForStart(key, start, "startup", fmt.Errorf("start app process: %w", err))
 		return
 	}
+	containment, err := containAppProcess(command)
+	if err != nil {
+		_ = signalAppProcessTree(command, true)
+		_ = command.Wait()
+		_ = logFile.Close()
+		wrappedErr := fmt.Errorf("contain app process tree: %w", err)
+		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "startup", wrappedErr)
+		r.setFailedForStart(key, start, "startup", wrappedErr)
+		return
+	}
+	process.containment = containment
+	if err := releaseAppProcessCommand(command); err != nil {
+		_ = killAppProcess(process)
+		_ = command.Wait()
+		_ = containment.close()
+		_ = logFile.Close()
+		wrappedErr := fmt.Errorf("release contained app process: %w", err)
+		logAppRuntimeControl("workspace_app_runtime_start_failed", input, port, "startup", wrappedErr)
+		r.setFailedForStart(key, start, "startup", wrappedErr)
+		return
+	}
 
 	r.mu.Lock()
 	if r.starts[key] != start || ctx.Err() != nil {
@@ -306,7 +333,7 @@ func (r *AppRunner) startProcessAttempt(ctx context.Context, key string, input A
 		r.mu.Unlock()
 		go waitForDetachedAppProcess(process)
 		if err := interruptAppProcess(process.command); err != nil {
-			_ = killAppProcess(process.command)
+			_ = killAppProcess(process)
 		}
 		return
 	}
@@ -523,20 +550,20 @@ func (r *AppRunner) stopProcess(ctx context.Context, key string, process *appPro
 	r.notifyStateChanged(key, stoppingState)
 
 	if err := interruptAppProcess(process.command); err != nil {
-		_ = killAppProcess(process.command)
+		_ = killAppProcess(process)
 	}
 
 	select {
 	case <-process.done:
 	case <-ctx.Done():
-		_ = killAppProcess(process.command)
+		_ = killAppProcess(process)
 		select {
 		case <-process.done:
 		case <-time.After(500 * time.Millisecond):
 		}
 		return r.setStoppedProcessFailed(key, process, "stop", ctx.Err()), ctx.Err()
 	case <-time.After(2 * time.Second):
-		_ = killAppProcess(process.command)
+		_ = killAppProcess(process)
 		select {
 		case <-process.done:
 			return r.setStoppedProcessIdle(key, process), nil

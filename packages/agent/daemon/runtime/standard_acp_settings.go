@@ -302,8 +302,13 @@ func (a *standardACPAdapter) updateSessionConfigOptionsResult(agentSessionID str
 	if session == nil {
 		return
 	}
-	applyACPConfigOptionsResult(&session.acpLiveState, raw)
-	applyACPModelsResult(&session.acpLiveState, raw)
+	applyACPConfigOptionsResult(
+		&session.acpLiveState,
+		raw,
+		a.config.modelConfigOptionID,
+		a.config.modelDescriptionFormat,
+	)
+	applyACPModelsResult(&session.acpLiveState, raw, a.config.modelDescriptionFormat)
 	applyACPModesResult(&session.acpLiveState, raw)
 }
 

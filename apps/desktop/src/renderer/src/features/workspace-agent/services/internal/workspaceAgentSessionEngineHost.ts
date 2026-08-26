@@ -12,6 +12,7 @@ import {
   type EngineEffectOptions,
   type EngineExternalCommand,
   type EngineIntent,
+  type EngineScheduler,
   type PlanSubmitDecisionResult,
   type SessionAcknowledgeForkObservedCommand,
   type SessionReconcileCommand,
@@ -38,6 +39,7 @@ export interface WorkspaceAgentSessionEngineHost {
   adapter: AgentActivityAdapter;
   commandAdapter: DesktopAgentActivityCommandAdapter;
   engine: AgentSessionEngine;
+  scheduler: EngineScheduler;
   dispose(): void;
 }
 
@@ -171,6 +173,12 @@ export function createWorkspaceAgentSessionEngineHost(
     takePendingSessionRecording: input.takePendingSessionRecording,
     restorePendingSessionRecording: input.restorePendingSessionRecording
   });
+  const scheduler: EngineScheduler = {
+    schedule(delayMs, task) {
+      const timer = setTimeout(task, delayMs);
+      return { cancel: () => clearTimeout(timer) };
+    }
+  };
   const engine = createAgentSessionEngine({
     clock: { nowUnixMs: () => Date.now() },
     commandPort: {
@@ -289,6 +297,9 @@ export function createWorkspaceAgentSessionEngineHost(
             ]);
           case "composerOptions/load":
             return adapter.loadComposerOptions({
+              ...(command.agentSessionId !== undefined
+                ? { agentSessionId: command.agentSessionId }
+                : {}),
               agentTargetId: command.targetKey,
               ...(command.cwd !== undefined ? { cwd: command.cwd } : {}),
               provider: command.provider,
@@ -388,12 +399,7 @@ export function createWorkspaceAgentSessionEngineHost(
           )
         }
       : {}),
-    scheduler: {
-      schedule(delayMs, task) {
-        const timer = setTimeout(task, delayMs);
-        return { cancel: () => clearTimeout(timer) };
-      }
-    }
+    scheduler
   });
   const unsubscribeSessionEvents = input.subscribeSessionEvents(
     input.workspaceId,
@@ -421,6 +427,7 @@ export function createWorkspaceAgentSessionEngineHost(
     adapter,
     commandAdapter: adapter,
     engine,
+    scheduler,
     dispose() {
       unsubscribeSessionEvents();
       engine.dispose();

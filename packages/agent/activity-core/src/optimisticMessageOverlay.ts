@@ -30,6 +30,11 @@ export interface AgentActivityOptimisticMessageScope {
 
 export interface AgentActivityOptimisticMessageOverlay {
   apply(event: AgentActivityLiveEvent): AgentActivityOptimisticApplyResult;
+  /** Returns one already-applied optimistic message without projecting its Session history. */
+  getOptimisticMessage(
+    scope: AgentActivityOptimisticMessageScope,
+    messageId: string
+  ): AgentActivityMessage | null;
   /**
    * Replaces the authoritative base for one Session after a successful read.
    *
@@ -112,6 +117,16 @@ export function createAgentActivityOptimisticMessageOverlay(): AgentActivityOpti
         markScopeChanged(event);
       }
       return result;
+    },
+
+    getOptimisticMessage(scope, messageId) {
+      const key = `${scopePrefix(scope)}${messageId}`;
+      const entry = optimistic.get(key);
+      if (!entry) return null;
+      const base = canonical.get(key);
+      return base
+        ? materialize(base, entry.message, entry.payloadUnset)
+        : cloneMessage(entry.message);
     },
 
     reconcile(scope, messages) {

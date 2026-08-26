@@ -10,6 +10,8 @@ import (
 	"strings"
 )
 
+const tuttiAgentExtraSkillRootsEnv = "TUTTI_AGENT_EXTRA_SKILL_ROOTS_JSON"
+
 // TuttiAgentPreparer materializes the session-scoped TUTTI_AGENT_HOME for the
 // tutti-agent provider. Account-token bootstrap remains a host responsibility
 // and can be injected through BeforePrepare.
@@ -90,7 +92,7 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 		if err != nil {
 			return ProviderPrepareResult{}, fmt.Errorf("encode tutti-agent extra skill roots: %w", err)
 		}
-		env = append(env, "TUTTI_AGENT_EXTRA_SKILL_ROOTS_JSON="+string(encodedRoots))
+		env = append(env, tuttiAgentExtraSkillRootsEnv+"="+string(encodedRoots))
 	}
 	if !input.SkipSkills {
 		if root := strings.TrimSpace(p.StableSystemSkillBundleRoot); root != "" {

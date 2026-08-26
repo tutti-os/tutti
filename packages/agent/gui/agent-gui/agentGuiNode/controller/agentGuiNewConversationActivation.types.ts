@@ -19,6 +19,7 @@ import type { AgentGUIConversationRailRevealReason } from "../model/agentGuiConv
 
 export interface UseAgentGUINewConversationActivationInput {
   codexSaverModeEntryEnabled: boolean;
+  rtkSaverModeEntryEnabled: boolean;
   getCachedComposerOptions: () =>
     | import("@tutti-os/agent-activity-core").AgentActivityComposerOptions
     | null;

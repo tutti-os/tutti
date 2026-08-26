@@ -1,4 +1,5 @@
 import type { JSX } from "react";
+import { canonicalInteractionKey } from "@tutti-os/agent-activity-core";
 import {
   Tooltip,
   TooltipContent,
@@ -27,9 +28,20 @@ import {
  */
 export type AgentInteractivePromptVariant = "full" | "compact";
 
+export interface AgentInteractivePromptConversationReturn {
+  continueAnswering: string;
+  returnToConversation: string;
+}
+
 export interface AgentInteractivePromptSurfaceProps {
   prompt: AgentConversationPromptVM;
   variant?: AgentInteractivePromptVariant;
+  /**
+   * Opt in only when the host Composer can answer this exact pending
+   * Interaction. The surface also fails closed for non-canonical and
+   * fixed-choice prompts.
+   */
+  conversationReturn?: AgentInteractivePromptConversationReturn;
   edgeGlow?: boolean;
   keyboardShortcuts?: boolean;
   isSubmitting: boolean;
@@ -60,6 +72,7 @@ export interface AgentInteractivePromptSurfaceProps {
 export function AgentInteractivePromptSurface({
   prompt,
   variant = "full",
+  conversationReturn,
   edgeGlow = false,
   embedded = false,
   keyboardShortcuts = true,
@@ -85,6 +98,15 @@ export function AgentInteractivePromptSurface({
       requestId: prompt.requestId
     });
   };
+  const isComposerAnswerableAskUser =
+    prompt.kind === "ask-user" &&
+    Boolean(prompt.agentSessionId?.trim()) &&
+    Boolean(prompt.turnId?.trim()) &&
+    prompt.questions.length > 0 &&
+    prompt.questions.every((question) => question.allowFreeText !== false);
+  const askUserConversationReturn = isComposerAnswerableAskUser
+    ? conversationReturn
+    : undefined;
 
   let promptSurface: JSX.Element;
   if (prompt.kind === "approval") {
@@ -129,9 +151,14 @@ export function AgentInteractivePromptSurface({
   } else {
     promptSurface = (
       <AgentAskUserPromptSurface
-        key={prompt.requestId}
+        key={canonicalInteractionKey(
+          prompt.agentSessionId ?? "",
+          prompt.turnId ?? "",
+          prompt.requestId
+        )}
         prompt={prompt}
         variant={variant}
+        conversationReturn={askUserConversationReturn}
         embedded={embedded}
         edgeGlow={edgeGlow}
         isSubmitting={isSubmitting}
@@ -146,23 +173,36 @@ export function AgentInteractivePromptSurface({
   if (!isInteractionDisabled || !normalizedReason) {
     return promptSurface;
   }
+  const hasPresentationNavigation =
+    prompt.kind === "ask-user" &&
+    variant === "full" &&
+    askUserConversationReturn !== undefined;
 
   return (
     <TooltipProvider delayDuration={120} skipDelayDuration={0}>
       <Tooltip>
         <TooltipTrigger asChild>
           <div
-            aria-disabled="true"
+            aria-disabled={hasPresentationNavigation ? undefined : "true"}
             aria-label={normalizedReason}
-            className="cursor-not-allowed rounded-md outline-none"
+            className={
+              hasPresentationNavigation
+                ? "rounded-md outline-none"
+                : "cursor-not-allowed rounded-md outline-none"
+            }
             data-agent-interaction-disabled="true"
             role="group"
             tabIndex={0}
           >
-            {/* Disabled form controls do not reliably dispatch pointer events.
-                Keep the actual prompt out of hit testing so the wrapper can
-                receive hover/focus events and expose the disabled reason. */}
-            <div className="pointer-events-none">{promptSurface}</div>
+            {/* Without a presentation-only escape action, keep disabled
+                controls out of hit testing so the wrapper owns the tooltip. */}
+            <div
+              className={
+                hasPresentationNavigation ? undefined : "pointer-events-none"
+              }
+            >
+              {promptSurface}
+            </div>
           </div>
         </TooltipTrigger>
         <TooltipContent

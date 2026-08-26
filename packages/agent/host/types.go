@@ -94,6 +94,7 @@ type SessionTurnQuery struct {
 
 type ComposerSettings struct {
 	CodexSaverMode   bool
+	RTKSaverMode     bool
 	Model            string
 	ModelPlanID      string
 	PermissionModeID string
@@ -111,6 +112,7 @@ type ComposerSettings struct {
 
 type ComposerSettingsPatch struct {
 	CodexSaverMode   *bool
+	RTKSaverMode     *bool
 	Model            *string
 	PermissionModeID *string
 	PlanMode         *bool
@@ -301,6 +303,7 @@ type RuntimeStartInput struct {
 	BrowserUse              *bool
 	ComputerUse             *bool
 	CodexSaverMode          bool
+	RTKSaverMode            bool
 	ProviderTargetRef       map[string]any
 	RuntimeContext          map[string]any
 	ReasoningEffort         string
@@ -374,6 +377,12 @@ type ReprepareRuntimeSessionInput struct {
 	WorkspaceID           string
 	AgentSessionID        string
 	RuntimeContextOverlay map[string]any
+	// ExpectedRuntimeContext and ReplacementRuntimeContext are supplied
+	// together for a durable configuration rebind. Host prepares and launches
+	// from ReplacementRuntimeContext, then compare-and-swaps it into canonical
+	// state before admitting a Turn.
+	ExpectedRuntimeContext    map[string]any
+	ReplacementRuntimeContext map[string]any
 }
 
 // ReprepareRuntimeSessionAndSendInputInput atomically replaces an idle
@@ -674,6 +683,7 @@ type CreateSessionInput struct {
 	BrowserUse             *bool
 	ComputerUse            *bool
 	CodexSaverMode         *bool
+	RTKSaverMode           *bool
 	ProviderTargetRef      map[string]any
 	ReasoningEffort        *string
 	RuntimeContext         map[string]any

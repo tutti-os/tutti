@@ -18,6 +18,7 @@ func codexDescriptor() ProviderDescriptor {
 			Command:             []string{"codex", "app-server"},
 			ClientInfoName:      "codex_cli_rs",
 			AuthRequiredMessage: "Codex requires authentication. Run `codex login` on the host (or sync Codex credentials), then retry this session.",
+			AppServerSkillRoots: AppServerSkillRootsStrategyTuttiStable,
 			NativeSessionFork:   true,
 			AppServerFork: AppServerForkDescriptor{
 				UserAgentBrand:        "codex",

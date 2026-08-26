@@ -41,6 +41,8 @@ const COMPUTER_USE_GRANT_TIMEOUT_MS = 75_000;
 const COMPUTER_USE_GRANT_TIMEOUT_OUTPUT =
   "Timed out waiting for macOS permission confirmation. Open System Settings > Privacy & Security and enable CuaDriver permissions, then check again.";
 const COMPUTER_USE_DRIVER_STOP_TIMEOUT_MS = 10_000;
+const COMPUTER_USE_WINDOWS_DRIVER_SCRIPT_TIMEOUT_MS = 300_000;
+const COMPUTER_USE_WINDOWS_DOCTOR_TIMEOUT_MS = 10_000;
 // Relaunching the daemon never prompts — TCC prompts belong exclusively to
 // the grant flow — so the restart only needs to wait for the app to come up.
 const COMPUTER_USE_DRIVER_LAUNCH_TIMEOUT_MS = 10_000;
@@ -68,6 +70,8 @@ interface ComputerUseGrantActionState {
 
 let computerUseGrantActionState: ComputerUseGrantActionState | null = null;
 let computerUseRestartPromise: Promise<DesktopComputerUseRestartDriverResult> | null =
+  null;
+let computerUseInstallPromise: Promise<DesktopComputerUseActionResult> | null =
   null;
 let checkStatusInFlight: Promise<DesktopComputerUseStatus> | null = null;
 let lastComputerUseStatusLogSignature: string | null = null;
@@ -560,12 +564,31 @@ async function checkWindowsCuaDriverStatus(
   startedAtUnixMs: number
 ): Promise<DesktopComputerUseStatus> {
   const commandStartedAtUnixMs = Date.now();
-  const doctorResult = await runSubprocess(executable, ["doctor", "--json"]);
+  const doctorResult = await runSubprocess(executable, ["doctor", "--json"], {
+    timeoutMs: COMPUTER_USE_WINDOWS_DOCTOR_TIMEOUT_MS,
+    timeoutOutput: "Windows cua-driver doctor timed out."
+  });
   getDesktopLogger().debug("computer use driver doctor command completed", {
     elapsedMs: Date.now() - commandStartedAtUnixMs,
     outputBytes: doctorResult.output.length,
     success: doctorResult.success
   });
+
+  const doctor = parseCuaDriverDoctorStatus(doctorResult.output);
+  if (doctor?.degraded) {
+    const status = resolveComputerUseStatus({
+      installed: true,
+      platform: "win32",
+      permissions: null,
+      authorization: "authorized",
+      reason: "driver-doctor-failed",
+      diagnosticMessage: doctor.diagnosticMessage ?? doctorResult.output
+    });
+    logComputerUseStatusChecked(status, "warn", {
+      elapsedMs: Date.now() - startedAtUnixMs
+    });
+    return status;
+  }
 
   if (!doctorResult.success) {
     const status = resolveComputerUseStatus({
@@ -581,7 +604,6 @@ async function checkWindowsCuaDriverStatus(
     return status;
   }
 
-  const doctor = parseCuaDriverDoctorStatus(doctorResult.output);
   if (!doctor || !doctor.ok) {
     const status = resolveComputerUseStatus({
       installed: true,
@@ -831,7 +853,7 @@ function runWindowsCuaDriverScript(
 ): Promise<DesktopComputerUseActionResult> {
   const command = buildWindowsCuaDriverCommand(action, url);
   return runLoggedCuaDriverCommand(action, command.command, command.args, {
-    timeoutMs: 120_000,
+    timeoutMs: COMPUTER_USE_WINDOWS_DRIVER_SCRIPT_TIMEOUT_MS,
     timeoutOutput: "Windows driver script timed out.",
     logFields: {
       scriptUrl: url,
@@ -841,6 +863,17 @@ function runWindowsCuaDriverScript(
 }
 
 function installCuaDriver(): Promise<DesktopComputerUseActionResult> {
+  if (computerUseInstallPromise) {
+    getDesktopLogger().info("computer use driver install reused");
+    return computerUseInstallPromise;
+  }
+  computerUseInstallPromise = performCuaDriverInstall().finally(() => {
+    computerUseInstallPromise = null;
+  });
+  return computerUseInstallPromise;
+}
+
+function performCuaDriverInstall(): Promise<DesktopComputerUseActionResult> {
   if (process.platform === "win32") {
     return runWindowsCuaDriverScript(
       "install",

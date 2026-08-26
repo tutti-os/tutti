@@ -23,6 +23,7 @@ import {
   type IconProps
 } from "@tutti-os/ui-system";
 import {
+  filterAgentToolAddablePanels,
   formatAgentToolReminderCount,
   type AgentToolPanelDefinition,
   type AgentToolPanelId
@@ -48,6 +49,7 @@ const iconByPanel = {
   browser: WebIcon,
   files: FolderIcon,
   messages: ChatIcon,
+  side: ChatIcon,
   tasks: TaskIcon,
   terminal: TerminalLinedIcon
 } satisfies Record<AgentToolPanelId, ComponentType<IconProps>>;
@@ -123,7 +125,7 @@ export function AgentToolSidebarToolbar({
               className="min-w-36"
               style={{ zIndex: "var(--z-panel-popover)" }}
             >
-              {panels.map((panel) => (
+              {filterAgentToolAddablePanels(panels).map((panel) => (
                 <DropdownMenuItem
                   key={panel.id}
                   onSelect={() => onAddPanel(panel.id)}

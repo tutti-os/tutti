@@ -1,5 +1,10 @@
 # Codex 省额度模式验收记录（2026-08-03）
 
+> This Codex-specific Luna subagent mode remains a supported, independent
+> composer option. Provider-neutral, Session-scoped RTK saver mode is an
+> additional option for every Agent provider; it does not replace this mode or
+> install anything globally. See `docs/architecture/agent-runtime-preparation.md`.
+
 > 目标：用户开启输入框旁的单一开关后，主线程继续使用用户选择的 Codex 主模型，适合拆分的独立子任务默认交给 `gpt-5.6-luna`（`max` 推理），并跨新会话与应用重启记住开关状态。
 
 ## 结论

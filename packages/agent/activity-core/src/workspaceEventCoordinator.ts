@@ -12,10 +12,13 @@ import type {
 } from "./types.ts";
 import type {
   AgentSessionEngine,
-  EngineConnectionStatus
+  EngineConnectionStatus,
+  EngineScheduledTask,
+  EngineScheduler
 } from "./engine/types.ts";
 
 const EMPTY_MESSAGES: readonly AgentActivityMessage[] = [];
+export const AGENT_ACTIVITY_NOTIFICATION_BATCH_DELAY_MS = 33;
 
 export interface AgentActivityWorkspaceReconcileKey {
   agentSessionId?: string;
@@ -92,6 +95,8 @@ export interface AgentActivityWorkspaceEventIngestOptions {
 
 export interface CreateAgentActivityWorkspaceEventCoordinatorInput {
   engine: AgentSessionEngine;
+  notificationBatchDelayMs?: number;
+  notificationScheduler: EngineScheduler;
   readCanonicalSnapshot: () => AgentActivitySnapshot;
   workspaceId: string;
 }
@@ -107,6 +112,8 @@ export interface CreateAgentActivityWorkspaceEventCoordinatorInput {
  */
 export function createAgentActivityWorkspaceEventCoordinator({
   engine,
+  notificationBatchDelayMs = AGENT_ACTIVITY_NOTIFICATION_BATCH_DELAY_MS,
+  notificationScheduler,
   readCanonicalSnapshot,
   workspaceId
 }: CreateAgentActivityWorkspaceEventCoordinatorInput): AgentActivityWorkspaceEventCoordinator {
@@ -127,12 +134,36 @@ export function createAgentActivityWorkspaceEventCoordinator({
     projected: AgentActivitySnapshot;
     revision: number;
   } | null = null;
+  let pendingNotification: EngineScheduledTask | null = null;
   let disposed = false;
 
-  const markChanged = (): void => {
+  const notifyListeners = (): void => {
+    for (const listener of listeners) listener();
+  };
+
+  const flushPendingNotification = (): void => {
+    if (pendingNotification) {
+      pendingNotification.cancel();
+      pendingNotification = null;
+    }
+    notifyListeners();
+  };
+
+  const markChanged = (mode: "batched" | "immediate" = "immediate"): void => {
     revision += 1;
     snapshotCache = null;
-    for (const listener of listeners) listener();
+    if (mode === "immediate") {
+      flushPendingNotification();
+      return;
+    }
+    if (pendingNotification) return;
+    pendingNotification = notificationScheduler.schedule(
+      notificationBatchDelayMs,
+      () => {
+        pendingNotification = null;
+        if (!disposed) notifyListeners();
+      }
+    );
   };
 
   const requestSessionReconcile = (input: {
@@ -243,13 +274,7 @@ export function createAgentActivityWorkspaceEventCoordinator({
 
       const prioritySet = new Set(prioritySessionIds);
       const canonical = readCanonicalSnapshot();
-      const cachedMessageSessionIds = Object.entries(
-        canonical.sessionMessagesById
-      ).flatMap(([agentSessionId, messages]) =>
-        messages.length > 0 ? [agentSessionId] : []
-      );
       for (const agentSessionId of normalizedSessionIds([
-        ...cachedMessageSessionIds,
         ...overlaySessionIds
       ])) {
         if (prioritySet.has(agentSessionId)) continue;
@@ -263,6 +288,8 @@ export function createAgentActivityWorkspaceEventCoordinator({
     dispose() {
       if (disposed) return;
       disposed = true;
+      pendingNotification?.cancel();
+      pendingNotification = null;
       overlaySessionIds.clear();
       listeners.clear();
       snapshotCache = null;
@@ -312,7 +339,7 @@ export function createAgentActivityWorkspaceEventCoordinator({
         const applied = overlay.apply(parsed);
         if (applied.applied) {
           overlaySessionIds.add(agentSessionId);
-          markChanged();
+          markChanged("batched");
         }
         if (applied.needsReconcile) {
           requestSessionReconcile({
@@ -325,10 +352,13 @@ export function createAgentActivityWorkspaceEventCoordinator({
           });
         }
         const optimisticMessage = applied.applied
-          ? (project(readCanonicalSnapshot()).sessionMessagesById[
-              agentSessionId
-            ]?.find((message) => message.messageId === parsed.data.messageId) ??
-            null)
+          ? overlay.getOptimisticMessage(
+              {
+                agentSessionId,
+                workspaceId: normalizedWorkspaceId
+              },
+              parsed.data.messageId
+            )
           : null;
         return {
           ...eventResult(eventType, applied.applied, "applied"),

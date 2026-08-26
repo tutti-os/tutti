@@ -419,13 +419,17 @@ func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
 // model catalog before they can answer the first JSON-RPC request. The generic
 // three-second probe is enough for most providers but is too aggressive for
 // Windows npm shims such as OpenCode and Cursor Agent. Cursor's PowerShell +
-// Node launcher can take more than twenty seconds on a cold start, so give it
-// a larger but still bounded probe window; this turns a false "stuck" status
-// into the real auth/runtime state.
+// Node launchers can take more than twenty seconds on a cold start, so give
+// them a larger but still bounded probe window; this turns a false "stuck"
+// status into the real auth/runtime state. OpenCode's npm shim has the same
+// cold-start shape as Cursor and needs its own explicit bound.
 func (s Service) probeTimeoutForSpec(spec ProviderSpec) time.Duration {
 	timeout := s.probeTimeout()
 	if strings.EqualFold(strings.TrimSpace(spec.Provider), "cursor") && timeout < 35*time.Second {
 		return 35 * time.Second
+	}
+	if strings.EqualFold(strings.TrimSpace(spec.Provider), "opencode") && timeout < 30*time.Second {
+		return 30 * time.Second
 	}
 	if isStandardACPStatusSpec(spec) && timeout < 15*time.Second {
 		return 15 * time.Second

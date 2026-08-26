@@ -14,6 +14,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
+	"github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 )
 
@@ -208,7 +209,7 @@ func codexComposerSkillRoots(cwd string, env []string) []composerSkillRoot {
 		})
 		roots = append(roots, composerSkillRoot{
 			path:       filepath.Join(codexHome, "skills"),
-			sourceKind: composerSkillSourceTuttiInjected,
+			sourceKind: composerSkillSourcePersonal,
 		})
 	}
 	return roots
@@ -661,10 +662,30 @@ func shouldHideComposerSkill(root composerSkillRoot, name string) bool {
 	if root.sourceKind == composerSkillSourceTuttiInjected {
 		return true
 	}
+	if _, err := os.Stat(filepath.Join(root.path, name, ".tutti-managed-skill")); err == nil {
+		return true
+	}
 	if _, ok := hiddenTuttiProviderSkills[strings.TrimSpace(name)]; ok {
 		return true
 	}
 	return false
+}
+
+func (s *Service) composerSessionEnv(input ComposerOptionsInput, provider string) []string {
+	agentSessionID := strings.TrimSpace(input.AgentSessionID)
+	workspaceID := strings.TrimSpace(input.WorkspaceID)
+	if agentSessionID == "" || workspaceID == "" || s.SessionReader == nil || s.WorktreeStateDir == "" {
+		return nil
+	}
+	session, ok := s.SessionReader.GetSession(workspaceID, agentSessionID)
+	if !ok || agentprovider.NormalizeOpen(session.Provider) != agentprovider.NormalizeOpen(provider) {
+		return nil
+	}
+	runtimeRoot, err := (runtimeprep.LocalStore{StateDir: s.WorktreeStateDir}).RuntimeRoot(workspaceID, agentSessionID)
+	if err != nil {
+		return nil
+	}
+	return []string{"CODEX_HOME=" + filepath.Join(runtimeRoot, "codex-home")}
 }
 
 func composerSkillOptionsRuntimeContext(options []ComposerSkillOption) []map[string]any {
@@ -691,6 +712,30 @@ func composerSkillOptionsRuntimeContext(options []ComposerSkillOption) []map[str
 			value["invocation"] = option.Invocation
 		}
 		result = append(result, value)
+	}
+	return result
+}
+
+func filterComposerSkillsRepresentedByCapabilityCatalog(
+	skills []ComposerSkillOption,
+	catalog []ComposerCapabilityOption,
+) []ComposerSkillOption {
+	if len(skills) == 0 || len(catalog) == 0 {
+		return append([]ComposerSkillOption(nil), skills...)
+	}
+	sameSkillFile := newComposerSkillFileIdentityMatcher()
+	result := make([]ComposerSkillOption, 0, len(skills))
+	for _, skill := range skills {
+		represented := false
+		for _, option := range catalog {
+			if option.Kind == "skill" && sameSkillFile(skill.Path, option.Path) {
+				represented = true
+				break
+			}
+		}
+		if !represented {
+			result = append(result, skill)
+		}
 	}
 	return result
 }

@@ -20,6 +20,21 @@ import type { AgentGUIViewLabels } from "./AgentGUINodeView.types";
 import { conversationPlainTitle, stringValue } from "./agentGUIViewUtils";
 export { isDifferentKnownConversationOwner } from "../model/agentGuiComposerGate";
 
+export function resolveAgentGUIConversationReturn(
+  labels: Pick<
+    AgentGUIViewLabels,
+    "continueAnswering" | "returnToConversation"
+  >,
+  enabled = true
+): { continueAnswering: string; returnToConversation: string } | undefined {
+  return enabled && labels.continueAnswering && labels.returnToConversation
+    ? {
+        continueAnswering: labels.continueAnswering,
+        returnToConversation: labels.returnToConversation
+      }
+    : undefined;
+}
+
 export function commandAppSource(
   command: unknown
 ): Record<string, unknown> | null {
@@ -363,6 +378,31 @@ export function handoffProjectPathForConversation(
   return (
     conversation?.project?.path?.trim() || conversation?.cwd?.trim() || null
   );
+}
+
+export function agentGUIDetailBottomDockStoreRevision(input: {
+  activePromptResponsePending: boolean;
+  bottomDockLiftedPrompt: { requestId?: string } | null | undefined;
+  bottomDockReplacementPrompt: { requestId?: string } | null | undefined;
+  inlineNoticeChrome:
+    | { recovery?: { message?: string } | null }
+    | null
+    | undefined;
+  sessionChrome: AgentGUISessionChrome;
+  viewModel: Pick<AgentGUINodeViewModel, "composer">;
+}): string {
+  return [
+    input.bottomDockLiftedPrompt?.requestId ?? "",
+    input.bottomDockReplacementPrompt?.requestId ?? "",
+    input.inlineNoticeChrome?.recovery?.message ?? "",
+    input.sessionChrome.auth?.message ?? "",
+    input.sessionChrome.recovery?.kind ?? "",
+    input.sessionChrome.recovery?.message ?? "",
+    input.viewModel.composer.queuedPrompts.map((prompt) => prompt.id).join(","),
+    input.viewModel.composer.queueStatus,
+    input.viewModel.composer.drainingQueuedPromptId ?? "",
+    input.activePromptResponsePending ? "1" : "0"
+  ].join("|");
 }
 
 export function mergeWorkspaceAppIconsFromCommands(input: {

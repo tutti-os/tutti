@@ -31,6 +31,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
   );
   return {
     codexSaverModeSupported: result.codexSaverModeSupported === true,
+    rtkSaverModeSupported: result.rtkSaverModeSupported === true,
     provider: normalizeText(result.provider) ?? provider,
     capabilities: sessionCapabilitiesFromValue(result.capabilities),
     models: modelsFromConfig,
@@ -207,6 +208,9 @@ function composerSettingsFromValue(
     ...(typeof settings.codexSaverMode === "boolean"
       ? { codexSaverMode: settings.codexSaverMode }
       : {}),
+    ...(typeof settings.rtkSaverMode === "boolean"
+      ? { rtkSaverMode: settings.rtkSaverMode }
+      : {}),
     model: normalizeText(settings.model),
     reasoningEffort: normalizeText(settings.reasoningEffort),
     speed: normalizeText(settings.speed),
@@ -292,6 +296,7 @@ function settingOptionsFromRawOptions(
     seen.add(optionValue);
     const label = firstTextValue(record, keys.labelKeys) ?? optionValue;
     const description = normalizeText(record.description);
+    const consumptionMultiplier = normalizeText(record.consumptionMultiplier);
     const supportsImageInput =
       typeof record.supportsImageInput === "boolean"
         ? record.supportsImageInput
@@ -300,6 +305,7 @@ function settingOptionsFromRawOptions(
       value: optionValue,
       label,
       ...(description ? { description } : {}),
+      ...(consumptionMultiplier ? { consumptionMultiplier } : {}),
       ...(supportsImageInput !== undefined ? { supportsImageInput } : {}),
       // Daemon provenance: the entry mirrors the requested selection (warm
       // catalog append / bootstrap echo) and is not catalog testimony.

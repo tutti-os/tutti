@@ -36,6 +36,7 @@ export const enAgentGui = {
   providerGateLoginDescription:
     "Log in with your account to start chatting with {{provider}}.",
   providerGateLoginAction: "Log in",
+  providerGateModelPlanAction: "Use your own model",
   providerGateComingSoonTitle: "{{provider}} is coming soon",
   providerGateComingSoonDescription:
     "{{provider}} is not available yet. We will enable this agent when it is ready.",
@@ -53,7 +54,7 @@ export const enAgentGui = {
   providerGatePendingRefresh: "Checking…",
   targetSetupTitle: "Set up {{provider}}",
   targetSetupDescription:
-    "Use a compatible local runtime, or let Tutti install and verify the pinned runtime.",
+    "Already have {{provider}} installed? Tutti can use it — or set it up for you.",
   targetSetupAuthRequired:
     "Runtime is installed and responds over ACP, but authentication is required.",
   targetSetupReady:
@@ -332,6 +333,8 @@ export const enAgentGui = {
   pastedTextAttachmentFailed: "Pasted text couldn't be saved",
   pastedTextRestoreToComposer: "Show in text field",
   copyMessage: "Copy message",
+  selectedTextFragment: "1 selected text fragment",
+  selectedTextFragments: "{{count}} selected text fragments",
   forkThroughTurn: "Fork through this turn",
   forkThroughTurnPending: "Forking through this turn",
   continuedFromTask: "Continued from task",
@@ -674,7 +677,7 @@ export const enAgentGui = {
     "Configure the browser the agent can use.",
   capabilityInlineSettingsLabel: "Settings",
   computerUseCapabilityLabel: "Computer",
-  computerUseCapabilityDescription: "Let the agent control the macOS desktop.",
+  computerUseCapabilityDescription: "Let the agent control your desktop.",
   computerUseCapabilitySetupRequiredDescription:
     "Not installed. Press Enter to open setup.",
   computerUseCapabilityAuthorizationRequiredDescription:

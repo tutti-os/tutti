@@ -59,6 +59,7 @@ import type { AgentGUIEngagementEventSink } from "./engagement/agentGUIEngagemen
 import type { AgentGUIComposerAppendRequest } from "./controller/useAgentGUIComposerAppendRequest";
 import type { OpenAgentEnvPanelInput } from "../../shared/agentEnv";
 import type { AgentGUISessionLaunchMode } from "./model/agentSessionLaunchMode";
+import type { AgentGUISideConversationPresentation } from "../../agentSideConversationPresentation";
 
 export interface AgentGUINodeIdentity {
   nodeId: string;
@@ -133,6 +134,8 @@ export interface AgentGUINodeHostCapabilities {
   sessionInputHistoryEnabled?: boolean;
   /** Host-owned experimental opt-in for Side and transcript selection actions. */
   sideConversationEnabled?: boolean;
+  /** Optional presentation-only bridge for rendering Side outside AgentGUI. */
+  sideConversationPresentation?: AgentGUISideConversationPresentation | null;
   /** Host-owned opt-in for launching self-owned local Sessions in git worktrees. */
   sessionWorktreeEnabled?: boolean;
   /** Host-owned durable launch preference projection for this workspace. */
@@ -141,6 +144,8 @@ export interface AgentGUINodeHostCapabilities {
   >;
   /** Host-owned experimental opt-in for the Codex saver-mode composer entry. */
   codexSaverModeEntryEnabled?: boolean;
+  /** Host-owned experimental opt-in for the provider-neutral RTK saver mode. */
+  rtkSaverModeEntryEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   /**
    * Keeps owner-supported Browser/Computer capability entries visible while
@@ -172,6 +177,8 @@ export interface AgentGUINodeHostCapabilities {
   providerReadinessGates?: Partial<
     Record<AgentGUIProvider, AgentGUIProviderReadinessGate | null>
   > | null;
+  /** Tutti-only presentation opt-in for placing usage refresh in the limits header. */
+  accountUsageRefreshInline?: boolean;
   /** Target-level connection for new-conversation and ordinary Composer admission. */
   targetConnectionSource?: AgentGUITargetConnectionSource | null;
   /**
@@ -246,6 +253,13 @@ export interface AgentGUIAgentConfigMenuContext {
   provider: AgentGUIProvider;
   label: string;
   ownership?: AgentGUIAgentOwnership;
+  /** The Host must render interactive account controls as ui-system menu items. */
+  presentation: "menu";
+}
+
+export interface AgentGUIConfigMenuPresentationContext {
+  /** Interactive slot content must use ui-system DropdownMenuItem/Sub primitives. */
+  presentation: "menu";
 }
 
 export interface AgentGUINodeRenderSlots {
@@ -259,10 +273,16 @@ export interface AgentGUINodeRenderSlots {
   /**
    * Optional Host chrome for the exact target's account/Commerce presentation.
    * Returning null preserves AgentGUI's provider account and quota content.
+   * Interactive content must honor the supplied menu presentation contract.
    */
   agentConfigAccount?: (context: AgentGUIAgentConfigMenuContext) => ReactNode;
-  /** Optional Host-owned system actions appended to the Agent config menu. */
-  agentConfigSystemActions?: () => ReactNode;
+  /**
+   * Optional Host-owned system actions appended to the Agent config menu.
+   * Actions must be ui-system DropdownMenuItem/Sub primitives.
+   */
+  agentConfigSystemActions?: (
+    context: AgentGUIConfigMenuPresentationContext
+  ) => ReactNode;
   projectDirectoryPickerHeaderActions?: ReferenceSourcePickerProps["renderHeaderActions"];
   projectSelectOptions?: AgentProjectDropdownOptions;
   referencePickerSidebarActions?: (
@@ -304,6 +324,8 @@ function agentGuiStateEquals(
         (right.composerOverrides?.model ?? null) &&
       left.composerOverrides?.codexSaverMode ===
         right.composerOverrides?.codexSaverMode &&
+      left.composerOverrides?.rtkSaverMode ===
+        right.composerOverrides?.rtkSaverMode &&
       (left.composerOverrides?.reasoningEffort ?? null) ===
         (right.composerOverrides?.reasoningEffort ?? null) &&
       (left.composerOverrides?.planMode ?? null) ===
@@ -337,6 +359,7 @@ function composerOverridesByProviderEqual(
     const rightSettings = right?.[key] ?? null;
     if (
       leftSettings?.codexSaverMode !== rightSettings?.codexSaverMode ||
+      leftSettings?.rtkSaverMode !== rightSettings?.rtkSaverMode ||
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
@@ -363,6 +386,7 @@ function composerOverridesByAgentTargetIdEqual(
     const rightSettings = right?.[key] ?? null;
     if (
       leftSettings?.codexSaverMode !== rightSettings?.codexSaverMode ||
+      leftSettings?.rtkSaverMode !== rightSettings?.rtkSaverMode ||
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
@@ -438,10 +462,12 @@ export function areAgentGUINodePropsEqual(
       nc.referenceProvenanceFilterEnabled &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
     pc.sideConversationEnabled === nc.sideConversationEnabled &&
+    pc.sideConversationPresentation === nc.sideConversationPresentation &&
     pc.sessionWorktreeEnabled === nc.sessionWorktreeEnabled &&
     pc.sessionLaunchModesByProjectSectionKey ===
       nc.sessionLaunchModesByProjectSectionKey &&
     pc.codexSaverModeEntryEnabled === nc.codexSaverModeEntryEnabled &&
+    pc.rtkSaverModeEntryEnabled === nc.rtkSaverModeEntryEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
     pf.position.y === nf.position.y &&
@@ -476,6 +502,7 @@ export function areAgentGUINodePropsEqual(
     pc.providerRailMode === nc.providerRailMode &&
     pc.comingSoonProviders === nc.comingSoonProviders &&
     pc.providerReadinessGates === nc.providerReadinessGates &&
+    pc.accountUsageRefreshInline === nc.accountUsageRefreshInline &&
     pc.targetConnectionSource === nc.targetConnectionSource &&
     pc.interactionReadinessSource === nc.interactionReadinessSource &&
     pc.observationGapSource === nc.observationGapSource &&

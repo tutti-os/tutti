@@ -35,6 +35,8 @@ const styles = {
   interactivePromptFooter: "agent-gui-conversation__interactive-prompt-footer",
   interactivePromptActions:
     "agent-gui-conversation__interactive-prompt-actions",
+  interactivePromptCollapsed:
+    "agent-gui-conversation__interactive-prompt-collapsed",
   userMessageFlow: "agent-gui-conversation__user-message-flow",
   assistantMessageFlow: "agent-gui-conversation__assistant-message-flow",
   participantMessageLayout:

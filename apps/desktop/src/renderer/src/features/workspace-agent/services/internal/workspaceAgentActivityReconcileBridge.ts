@@ -1,4 +1,5 @@
 import {
+  type AgentActivityMessage,
   type AgentActivitySession,
   type AgentActivitySnapshot,
   type AgentActivitySessionDetailSnapshot,
@@ -48,11 +49,24 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     string,
     Set<(event: unknown) => void>
   >();
+  private readonly prioritySessionRefCountsByWorkspaceId = new Map<
+    string,
+    Map<string, number>
+  >();
+  private readonly pendingOptimisticSessionEventsByWorkspaceId = new Map<
+    string,
+    Map<string, unknown>
+  >();
   private readonly composerOptionsInvalidation =
     new WorkspaceAgentComposerOptionsInvalidationCoordinator(() =>
       this.entries.values()
     );
   private readonly eventStreamDisposables: Array<() => void> = [];
+  private readonly pendingActivityUpdates = new Map<
+    string,
+    WorkspaceAgentActivityBridgeEvent[]
+  >();
+  private readonly activityUpdateFlushScheduled = new Set<string>();
   private disposed = false;
   private eventStreamStarted = false;
   private eventStreamConnectionState: "connected" | "disconnected" | null =
@@ -141,6 +155,13 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
     if (agentSessionId) {
+      let refCounts =
+        this.prioritySessionRefCountsByWorkspaceId.get(workspaceId);
+      if (!refCounts) {
+        refCounts = new Map();
+        this.prioritySessionRefCountsByWorkspaceId.set(workspaceId, refCounts);
+      }
+      refCounts.set(agentSessionId, (refCounts.get(agentSessionId) ?? 0) + 1);
       this.entry(workspaceId).engine.dispatch({
         agentSessionId,
         needsMessages: true,
@@ -149,7 +170,22 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         workspaceId
       });
     }
-    return () => {};
+    let released = false;
+    return () => {
+      if (released || !agentSessionId) return;
+      released = true;
+      const refCounts =
+        this.prioritySessionRefCountsByWorkspaceId.get(workspaceId);
+      const nextCount = (refCounts?.get(agentSessionId) ?? 0) - 1;
+      if (nextCount > 0) {
+        refCounts?.set(agentSessionId, nextCount);
+        return;
+      }
+      refCounts?.delete(agentSessionId);
+      if (refCounts?.size === 0) {
+        this.prioritySessionRefCountsByWorkspaceId.delete(workspaceId);
+      }
+    };
   }
 
   onSessionEvent(
@@ -210,6 +246,8 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       dispose();
     }
     this.sessionEventListenersByWorkspaceId.clear();
+    this.prioritySessionRefCountsByWorkspaceId.clear();
+    this.pendingOptimisticSessionEventsByWorkspaceId.clear();
     this.composerOptionsInvalidation.dispose();
     this.snapshotProjectors.clear();
     for (const coordinator of this.eventCoordinators.values()) {
@@ -217,6 +255,8 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     }
     this.eventCoordinators.clear();
     this.sessionReconcileExecutors.clear();
+    this.pendingActivityUpdates.clear();
+    this.activityUpdateFlushScheduled.clear();
   }
 
   protected async fetchActivitySessionDetail(
@@ -468,6 +508,43 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     for (const listener of listeners) listener(event);
   }
 
+  private prioritySessionIds(workspaceId: string): string[] {
+    return [
+      ...(this.prioritySessionRefCountsByWorkspaceId.get(workspaceId)?.keys() ??
+        [])
+    ];
+  }
+
+  private queueOptimisticSessionEvent(
+    workspaceId: string,
+    message: AgentActivityMessage
+  ): void {
+    if (!this.sessionEventListenersByWorkspaceId.has(workspaceId)) return;
+    let pending =
+      this.pendingOptimisticSessionEventsByWorkspaceId.get(workspaceId);
+    if (!pending) {
+      pending = new Map();
+      this.pendingOptimisticSessionEventsByWorkspaceId.set(
+        workspaceId,
+        pending
+      );
+    }
+    pending.set(
+      `${message.agentSessionId}\u0000${message.messageId}`,
+      hostMessageEventFromCore(message)
+    );
+  }
+
+  private flushPendingOptimisticSessionEvents(workspaceId: string): void {
+    const pending =
+      this.pendingOptimisticSessionEventsByWorkspaceId.get(workspaceId);
+    if (!pending) return;
+    this.pendingOptimisticSessionEventsByWorkspaceId.delete(workspaceId);
+    for (const event of pending.values()) {
+      this.emitSessionEvent(workspaceId, event);
+    }
+  }
+
   private subscribeWorkspaceEventStream(workspaceId: string): void {
     const eventStreamClient = this.reconcileDependencies.eventStreamClient;
     if (!eventStreamClient) return;
@@ -517,6 +594,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
             workspaceId
           });
           this.eventCoordinator(workspaceId).eventStreamConnectionChanged({
+            prioritySessionIds: this.prioritySessionIds(workspaceId),
             status: state
           });
         }
@@ -553,23 +631,23 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
       });
     }
     if (result.optimisticMessage) {
-      this.emitSessionEvent(
-        workspaceId,
-        hostMessageEventFromCore(result.optimisticMessage)
-      );
+      this.queueOptimisticSessionEvent(workspaceId, result.optimisticMessage);
     }
     if (result.inlineApplied) {
+      this.flushPendingOptimisticSessionEvents(workspaceId);
       for (const message of result.inlineMessages) {
         this.emitSessionEvent(workspaceId, hostMessageEventFromCore(message));
       }
     }
     if (input.eventType === "session_deleted" && result.accepted) {
+      this.flushPendingOptimisticSessionEvents(workspaceId);
       this.emitSessionEvent(workspaceId, {
         data: input.data,
         eventType: input.eventType
       });
     }
     if (input.eventType === "turn_update" && result.accepted) {
+      this.flushPendingOptimisticSessionEvents(workspaceId);
       this.emitSessionEvent(workspaceId, {
         data: input.data,
         eventType: input.eventType
@@ -580,9 +658,25 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
   private scheduleAgentActivityUpdate(
     input: WorkspaceAgentActivityBridgeEvent
   ): void {
+    if (this.disposed) return;
     const agentSessionId = input.agentSessionId.trim();
     if (!agentSessionId) return;
-    void this.reconcileAgentActivityUpdate(input);
+    const workspaceId = normalizeWorkspaceId(input.workspaceId);
+    const pending = this.pendingActivityUpdates.get(workspaceId) ?? [];
+    pending.push(input);
+    this.pendingActivityUpdates.set(workspaceId, pending);
+    if (this.activityUpdateFlushScheduled.has(workspaceId)) return;
+    this.activityUpdateFlushScheduled.add(workspaceId);
+    queueMicrotask(() => {
+      this.activityUpdateFlushScheduled.delete(workspaceId);
+      const updates = this.pendingActivityUpdates.get(workspaceId) ?? [];
+      this.pendingActivityUpdates.delete(workspaceId);
+      if (this.disposed) return;
+      for (const update of updates) {
+        if (this.disposed) return;
+        void this.reconcileAgentActivityUpdate(update);
+      }
+    });
   }
 
   private eventCoordinator(
@@ -591,12 +685,21 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     const normalizedWorkspaceId = normalizeWorkspaceId(workspaceId);
     const existing = this.eventCoordinators.get(normalizedWorkspaceId);
     if (existing) return existing;
+    const entry = this.entry(normalizedWorkspaceId);
     const coordinator = createAgentActivityWorkspaceEventCoordinator({
-      engine: this.entry(normalizedWorkspaceId).engine,
+      engine: entry.engine,
+      notificationScheduler: entry.scheduler,
       readCanonicalSnapshot: () =>
         this.canonicalActivitySnapshot(normalizedWorkspaceId),
       workspaceId: normalizedWorkspaceId
     });
+    // The coordinator batches optimistic overlay notifications on the
+    // host-injected scheduler. Flush matching host events from that same
+    // boundary so the UI observes one coherent snapshot without a second
+    // renderer timer.
+    coordinator.subscribe(() =>
+      this.flushPendingOptimisticSessionEvents(normalizedWorkspaceId)
+    );
     this.eventCoordinators.set(normalizedWorkspaceId, coordinator);
     if (this.eventStreamConnectionState) {
       this.entry(normalizedWorkspaceId).engine.dispatch({
@@ -605,6 +708,7 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         workspaceId: normalizedWorkspaceId
       });
       coordinator.eventStreamConnectionChanged({
+        prioritySessionIds: this.prioritySessionIds(normalizedWorkspaceId),
         status: this.eventStreamConnectionState
       });
     }

@@ -368,6 +368,7 @@ interface AgentGUIProviderReadinessGatePaneProps {
     | "providerGateLoginTitle"
     | "providerGateLoginDescription"
     | "providerGateLoginAction"
+    | "providerGateModelPlanAction"
     | "providerGateComingSoonTitle"
     | "providerGateComingSoonDescription"
     | "providerGateComingSoonAction"
@@ -430,6 +431,9 @@ export const AgentGUIProviderReadinessGatePane = memo(
         ? emptyLabel
         : content.title;
     const action = resolveAgentGUIProviderReadinessAction(gate.status);
+    const modelPlanActionAvailable =
+      typeof gate.onModelPlanSetup === "function" &&
+      (gate.status === "not_installed" || gate.status === "auth_required");
     const pendingLabel =
       pendingAction === "install"
         ? labels.providerGatePendingInstall
@@ -491,38 +495,66 @@ export const AgentGUIProviderReadinessGatePane = memo(
               {pendingLabel}
             </div>
           ) : null}
-          {action ? (
-            <Button
-              type="button"
+          {action || content.actionLabel || modelPlanActionAvailable ? (
+            <div
               className={cn(
-                styles.emptyProviderGateAction,
-                "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+                "items-center justify-center gap-2",
+                modelPlanActionAvailable
+                  ? "grid w-full max-w-[320px] grid-cols-2"
+                  : "flex flex-wrap"
               )}
-              data-testid="agent-gui-provider-readiness-gate-action"
-              disabled={isPending}
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={() => {
-                if (isPending) {
-                  return;
-                }
-                gate.onAction?.(provider, action);
-              }}
             >
-              {isPending && pendingLabel ? pendingLabel : content.actionLabel}
-            </Button>
-          ) : content.actionLabel ? (
-            <Button
-              type="button"
-              className={cn(
-                styles.emptyProviderGateAction,
-                "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
-              )}
-              data-testid="agent-gui-provider-readiness-gate-action"
-              disabled
-              onPointerDown={(event) => event.stopPropagation()}
-            >
-              {content.actionLabel}
-            </Button>
+              {action ? (
+                <Button
+                  type="button"
+                  className={cn(
+                    styles.emptyProviderGateAction,
+                    "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+                  )}
+                  data-testid="agent-gui-provider-readiness-gate-action"
+                  disabled={isPending}
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => {
+                    if (isPending) {
+                      return;
+                    }
+                    gate.onAction?.(provider, action);
+                  }}
+                >
+                  {isPending && pendingLabel
+                    ? pendingLabel
+                    : content.actionLabel}
+                </Button>
+              ) : content.actionLabel ? (
+                <Button
+                  type="button"
+                  className={cn(
+                    styles.emptyProviderGateAction,
+                    "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+                  )}
+                  data-testid="agent-gui-provider-readiness-gate-action"
+                  disabled
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  {content.actionLabel}
+                </Button>
+              ) : null}
+              {modelPlanActionAvailable ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={cn(
+                    styles.emptyProviderGateAction,
+                    "nodrag tsh-desktop-no-drag [-webkit-app-region:no-drag]"
+                  )}
+                  data-testid="agent-gui-provider-readiness-model-plan-action"
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={() => gate.onModelPlanSetup?.()}
+                >
+                  {labels.providerGateModelPlanAction}
+                </Button>
+              ) : null}
+            </div>
           ) : null}
         </div>
       </div>

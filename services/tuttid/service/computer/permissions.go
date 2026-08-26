@@ -84,22 +84,58 @@ func checkComputerPermissions(ctx context.Context, executable string) error {
 }
 
 type windowsDriverDoctor struct {
-	OK bool `json:"ok"`
+	OK      bool   `json:"ok"`
+	Message string `json:"message"`
+	Reason  string `json:"reason"`
+	Probes  []struct {
+		Message string `json:"message"`
+		Detail  string `json:"detail"`
+	} `json:"probes"`
 }
 
 func checkWindowsDriver(ctx context.Context, executable string) error {
 	output, err := exec.CommandContext(ctx, executable, "doctor", "--json").CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("cua-driver doctor failed: %w%s", err, stderrSuffix(output))
+	return evaluateWindowsDriverDoctor(output, err, ctx.Err())
+}
+
+func evaluateWindowsDriverDoctor(output []byte, commandErr, contextErr error) error {
+	// A timed-out or cancelled probe is never usable, even if its partial output
+	// happens to contain the fallback diagnostic.
+	if contextErr != nil {
+		return fmt.Errorf("cua-driver doctor failed: %w%s", contextErr, stderrSuffix(output))
 	}
 	doctor, err := parseWindowsDriverDoctor(output)
 	if err != nil {
+		if commandErr != nil {
+			return fmt.Errorf("cua-driver doctor failed: %w%s", commandErr, stderrSuffix(output))
+		}
 		return err
 	}
-	if !doctor.OK {
-		return errors.New("cua-driver Windows desktop readiness check failed")
+	if doctor.hasUsableWin32Fallback() {
+		return nil
 	}
-	return nil
+	if commandErr != nil {
+		return fmt.Errorf("cua-driver doctor failed: %w%s", commandErr, stderrSuffix(output))
+	}
+	if doctor.OK {
+		return nil
+	}
+	return errors.New("cua-driver Windows desktop readiness check failed")
+}
+
+func (doctor windowsDriverDoctor) hasUsableWin32Fallback() bool {
+	const fallbackDiagnostic = "falling back to win32-only window tools"
+	if strings.Contains(strings.ToLower(doctor.Message), fallbackDiagnostic) ||
+		strings.Contains(strings.ToLower(doctor.Reason), fallbackDiagnostic) {
+		return true
+	}
+	for _, probe := range doctor.Probes {
+		if strings.Contains(strings.ToLower(probe.Message), fallbackDiagnostic) ||
+			strings.Contains(strings.ToLower(probe.Detail), fallbackDiagnostic) {
+			return true
+		}
+	}
+	return false
 }
 
 func parseWindowsDriverDoctor(output []byte) (windowsDriverDoctor, error) {

@@ -6,10 +6,19 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 )
 
 const cursorPluginDirEnv = "TUTTI_CURSOR_PLUGIN_DIR"
 const cursorPromptContextFileEnv = "TUTTI_CURSOR_PROMPT_CONTEXT_FILE"
+
+const cursorWindowsFileSearchPolicy = `## Windows file-search boundary
+
+- Cursor ACP's built-in Glob and Grep do not reliably execute drive-qualified absolute Windows paths such as C:\... or C:/.... Do not pass those paths as path or target_directory.
+- When the target is inside the current session workspace, use a workspace-relative path with Glob or Grep; use . for the workspace root. Treat the session cwd as the workspace root.
+- When the target is outside the workspace or a relative conversion is uncertain, use the native terminal with rg or PowerShell and the exact absolute Windows path instead of Glob or Grep.
+- If Glob or Grep reports a Windows path or rg error, retry through the relative-path or native-terminal route. Report only files returned by that retry.`
 
 const (
 	cursorBackgroundTaskGuardCommand       = `"${CURSOR_PLUGIN_ROOT}/hooks/guard-background-task.sh"`
@@ -171,11 +180,23 @@ func installCursorTuttiPlugin(pluginDir string, input PrepareInput) error {
 	if err != nil {
 		return fmt.Errorf("install cursor tutti skill plugin: %w", err)
 	}
-	context := renderProviderPromptContext(policy, skillPaths)
+	context := renderProviderPromptContext(cursorPromptPolicy(policy), skillPaths)
 	if err := os.WriteFile(filepath.Join(pluginDir, "tutti-context.md"), []byte(context+"\n"), 0o600); err != nil {
 		return fmt.Errorf("write cursor prompt context: %w", err)
 	}
 	return nil
+}
+
+func cursorPromptPolicy(policy string) string {
+	return cursorPromptPolicyForGOOS(policy, runtime.GOOS)
+}
+
+func cursorPromptPolicyForGOOS(policy string, goos string) string {
+	policy = strings.TrimSpace(policy)
+	if goos != "windows" {
+		return policy
+	}
+	return strings.TrimSpace(policy + "\n\n" + cursorWindowsFileSearchPolicy)
 }
 
 func installCursorBackgroundTaskGuard(hooksDir string) error {

@@ -2,7 +2,6 @@ package agentruntime
 
 import (
 	"errors"
-	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 )
@@ -29,21 +28,11 @@ func newClaudeSDKProviderRejectedError(
 	session Session,
 	payload map[string]any,
 ) error {
-	detail := strings.TrimSpace(payloadString(payload, "error"))
-	providerCode := strings.TrimSpace(payloadString(payload, "code"))
-	if detail == "" {
-		detail = providerCode
-	}
-	if detail == "" {
-		detail = "Claude provider rejected the Turn before acceptance"
-	}
-	code := visibleFailureCode(strings.Join([]string{providerCode, detail}, " "))
-	if providerCode == "authentication_failed" || payloadInt64(payload, "apiErrorStatus") == 401 {
-		code = "auth_required"
-	}
+	failure := claudeProviderFailure(payload)
+	detail := sanitizeProviderFailureText(failure.Message)
 	return &claudeSDKProviderRejectedError{providerError: &AppError{
-		Code:         code,
-		Message:      visibleFailureContent(session.Provider, "turn", code),
+		Code:         failure.Code,
+		Message:      visibleFailureContent(session.Provider, "turn", failure.Code),
 		DebugMessage: detail,
 		Cause:        errors.New(detail),
 	}}
@@ -69,11 +58,17 @@ func ensureClaudeSDKPreAcceptanceFailureEvent(
 		}
 	}
 	if !hasTurnFailed {
-		metadata := map[string]any{
+		metadata := claudeProviderFailure(payload).metadata()
+		metadata["stopReason"] = "failed_before_provider_acceptance"
+		for key, value := range map[string]any{
 			"stopReason":     "failed_before_provider_acceptance",
 			"code":           payloadString(payload, "code"),
 			"error":          payloadString(payload, "error"),
 			"apiErrorStatus": payloadInt64(payload, "apiErrorStatus"),
+		} {
+			if _, exists := metadata[key]; !exists {
+				metadata[key] = value
+			}
 		}
 		if rejected {
 			metadata["dispatchDisposition"] = string(DispatchDispositionRejected)
