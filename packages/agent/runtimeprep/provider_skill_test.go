@@ -178,6 +178,31 @@ func TestTuttiCLIPolicyUsesPreparedCLIAndProviderRules(t *testing.T) {
 	}
 }
 
+func TestTuttiCLIPolicyInjectsRTKInstructionsForEveryProvider(t *testing.T) {
+	for _, provider := range []string{
+		"codex",
+		"claude-code",
+		"cursor",
+		"opencode",
+		"tutti-agent",
+		"extension-provider",
+	} {
+		t.Run(provider, func(t *testing.T) {
+			policy, err := tuttiCLIPolicy(testInputWithCommands(t, PrepareInput{
+				AgentSessionID: "session-1",
+				Provider:       provider,
+				RTKSaverMode:   true,
+			}))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(policy, "Always prefix supported shell commands with `rtk`.") {
+				t.Fatalf("provider %q policy is missing RTK instructions: %s", provider, policy)
+			}
+		})
+	}
+}
+
 func TestConnectorDiscoveryPolicyRendersLocalSharedAndEnabledSet(t *testing.T) {
 	local, err := tuttiCLIPolicy(testInputWithCommands(t, PrepareInput{
 		AgentSessionID:    "session-1",

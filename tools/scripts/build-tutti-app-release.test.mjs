@@ -809,10 +809,7 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
     /Resolved release version seed \$\{latest\.version\} from \$\{latest\.source\}/
   );
   assert.match(workflow, /release_bump requires create_release_tag/);
-  assert.match(
-    workflow,
-    /\[ "\$\{PREPARE_ONLY\}" != "true" \]/
-  );
+  assert.match(workflow, /\[ "\$\{PREPARE_ONLY\}" != "true" \]/);
   assert.match(workflow, /create_release_tag requires release_bump/);
   assert.match(
     workflow,
@@ -859,9 +856,15 @@ test("Tutti app release workflow is reusable by external app repositories", asyn
   assert.match(workflow, /uses: actions\/download-artifact@v5/);
   assert.match(workflow, /run-id: \$\{\{ inputs\.candidate_run_id \}\}/);
   assert.match(workflow, /Approved release candidate mismatch/);
-  assert.match(workflow, /candidate\.artifactSha256 !== expectedArtifactSha256/);
+  assert.match(
+    workflow,
+    /candidate\.artifactSha256 !== expectedArtifactSha256/
+  );
   assert.match(workflow, /candidate\.gitSha !== expectedGitSha/);
-  assert.match(workflow, /catalog_only and prepare_only are mutually exclusive/);
+  assert.match(
+    workflow,
+    /catalog_only and prepare_only are mutually exclusive/
+  );
   assert.match(
     workflow,
     /if: \$\{\{ inputs\.prepare_only \}\}[\s\S]*path: tutti-app-release/
@@ -944,7 +947,13 @@ test("production candidate verification hashes the local archive before cloud ac
   const root = await mkdtemp(path.join(tmpdir(), "tutti-local-candidate-"));
   const appId = "candidate-test";
   const version = "1.2.3";
-  const releaseDir = path.join(root, "tutti-app-release", "apps", appId, version);
+  const releaseDir = path.join(
+    root,
+    "tutti-app-release",
+    "apps",
+    appId,
+    version
+  );
   const latestDir = path.dirname(releaseDir);
   const artifactName = `${appId}-${version}.zip`;
   const artifact = Buffer.from("approved candidate archive", "utf8");

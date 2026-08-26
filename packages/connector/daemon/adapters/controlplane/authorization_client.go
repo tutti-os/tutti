@@ -148,6 +148,7 @@ func (client *AuthorizationClient) Begin(ctx context.Context, request market.Aut
 	switch actionType {
 	case "redirect":
 		session.State = market.AuthorizationStatePending
+		session.StepRevision = max(request.StepRevisionBase, 1)
 		authorizationURL, parseErr := url.Parse(strings.TrimSpace(response.Session.NextAction.URL))
 		if parseErr != nil || authorizationURL.Scheme != "https" || authorizationURL.Host == "" || authorizationURL.User != nil {
 			return market.AuthorizationSession{}, errors.New("connector authorization start returned an unsafe redirect URL")

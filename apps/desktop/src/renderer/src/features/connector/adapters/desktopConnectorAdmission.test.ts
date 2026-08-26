@@ -1,7 +1,26 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { requestDesktopConnectorInstallAdmission } from "./desktopConnectorAdmission.ts";
+import {
+  canRequestDesktopConnectorMarket,
+  requestDesktopConnectorInstallAdmission
+} from "./desktopConnectorAdmission.ts";
+
+test("connector market requests require authentication and the lab flag", () => {
+  assert.equal(canRequestDesktopConnectorMarket(true, {}), false);
+  assert.equal(
+    canRequestDesktopConnectorMarket(true, { "lab.connectors": false }),
+    false
+  );
+  assert.equal(
+    canRequestDesktopConnectorMarket(false, { "lab.connectors": true }),
+    false
+  );
+  assert.equal(
+    canRequestDesktopConnectorMarket(true, { "lab.connectors": true }),
+    true
+  );
+});
 
 test("connector install admission starts account login without reporting a successful launch", async () => {
   let loginCalls = 0;

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 	"sync"
@@ -1457,16 +1458,25 @@ func TestApplicationManagedAuthorizationContinuationReplaysBeforeProjectionTrans
 		t.Fatal(err)
 	}
 	if first.AuthorizationURL != "https://open.feishu.cn/page/cli" ||
-		projections.projection.State != AuthorizationStatePending {
+		first.AuthorizationStepRevision != 1 || projections.projection.State != AuthorizationStatePending {
 		t.Fatalf("first result=%#v projection=%#v", first, projections.projection)
 	}
+	mutation.AfterAuthorizationStepRevision = first.AuthorizationStepRevision
 	continued, err := application.BeginAuthorization(context.Background(), mutation, nil)
 	if err != nil {
 		t.Fatalf("continue authorization: %v", err)
 	}
 	if continued.Operation.OperationID != first.Operation.OperationID ||
-		continued.AuthorizationURL != "https://accounts.feishu.cn/device" || provider.begins != 2 {
+		continued.AuthorizationURL != "https://accounts.feishu.cn/device" ||
+		continued.AuthorizationStepRevision != 2 || provider.begins != 2 {
 		t.Fatalf("continued=%#v first=%#v provider begins=%d", continued, first, provider.begins)
+	}
+	if !reflect.DeepEqual(provider.afterStepRevisions, []uint64{0, 1}) {
+		t.Fatalf("provider cursors = %v", provider.afterStepRevisions)
+	}
+	stored := repository.operations[first.Operation.OperationID].Execution.AuthorizationSession
+	if stored == nil || stored.StepRevision != 2 {
+		t.Fatalf("stored authorization session = %#v", stored)
 	}
 	if len(scheduler.operationIDs) != 0 {
 		t.Fatalf("pending authorization scheduled runtime operations: %v", scheduler.operationIDs)
@@ -1484,6 +1494,46 @@ func TestApplicationManagedAuthorizationContinuationReplaysBeforeProjectionTrans
 	var domainError *DomainError
 	if !errors.As(err, &domainError) || domainError.Code != ErrorCodeOperationInProgress {
 		t.Fatalf("different authorization error = %#v, want operation in progress", err)
+	}
+}
+
+func TestApplicationConnectedAuthorizationPlansRuntimeWithoutWaitingForHostConvergence(t *testing.T) {
+	connector := testManagedAuthorizedConnector("github-cli")
+	connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
+	repository := newMemoryRepository(connector)
+	projections := &recordingAuthorizationProjectionStore{}
+	runtime := &memoryInstallRuntime{reconcileErrors: map[string]error{
+		connector.Key: NewDomainError(ErrorCodeRevisionConflict, "runtime changed during convergence", true, nil),
+	}}
+	application := newTestApplication(t, repository, &memoryScheduler{}, runtime, CatalogSnapshot{})
+	application.config.Authorization = connectedAuthorizationProviderStub{}
+	application.config.AuthorizationProjections = projections
+	application.config.RuntimeBindings = AccountRuntimeBindingResolver{Projections: projections}
+
+	result, err := application.BeginAuthorization(context.Background(), ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "connected-authorization"},
+		ConnectorKey: connector.Key,
+		AccountID:    "account-1",
+	}, nil)
+	if err != nil {
+		t.Fatalf("BeginAuthorization returned a post-commit runtime error: %v", err)
+	}
+	convergence, err := repository.RuntimeConvergence(
+		context.Background(), OperationScope{AccountID: "account-1"}, connector.Key,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Connector.Authorization.State != AuthorizationStateConnected ||
+		result.Operation.State != OperationStateCompleted ||
+		projections.projection.State != AuthorizationStateConnected {
+		t.Fatalf("authorization did not commit: result=%#v projection=%#v", result, projections.projection)
+	}
+	if convergence.Desired.AuthorizationState != AuthorizationStateConnected || !convergence.Desired.Enabled {
+		t.Fatalf("runtime desired = %#v", convergence.Desired)
+	}
+	if runtime.reconciles != 0 {
+		t.Fatalf("authorization waited for runtime host convergence %d times", runtime.reconciles)
 	}
 }
 
@@ -2885,7 +2935,8 @@ func (connectedAuthorizationProviderStub) Begin(_ context.Context, request Autho
 
 type continuingAuthorizationProviderStub struct {
 	authorizationProviderStub
-	begins int
+	begins             int
+	afterStepRevisions []uint64
 }
 
 func (provider *continuingAuthorizationProviderStub) Begin(
@@ -2893,6 +2944,7 @@ func (provider *continuingAuthorizationProviderStub) Begin(
 	request AuthorizationStartRequest,
 ) (AuthorizationSession, error) {
 	provider.begins++
+	provider.afterStepRevisions = append(provider.afterStepRevisions, request.AfterStepRevision)
 	authorizationURL := "https://open.feishu.cn/page/cli"
 	if provider.begins > 1 {
 		authorizationURL = "https://accounts.feishu.cn/device"
@@ -2903,6 +2955,7 @@ func (provider *continuingAuthorizationProviderStub) Begin(
 		SessionID:        request.OperationID + "/credential-broker",
 		ActionType:       "redirect",
 		AuthorizationURL: authorizationURL,
+		StepRevision:     uint64(provider.begins),
 		State:            AuthorizationStatePending,
 	}, nil
 }

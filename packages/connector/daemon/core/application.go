@@ -588,6 +588,9 @@ func (application *Application) BeginAuthorization(
 	if err != nil {
 		return AuthorizationResult{}, err
 	}
+	if !idempotentReplay && mutation.AfterAuthorizationStepRevision != 0 {
+		return AuthorizationResult{}, invalidRequest("authorization step cursor requires an existing attempt")
+	}
 	if !idempotentReplay {
 		if mutation.ReplacementPolicy == AuthorizationReplacementPolicyReplaceActive && !requestExecution.replacedLive {
 			if err := application.verifyConnectorMutationRevision(requestExecution.context, mutation); err != nil {
@@ -682,6 +685,7 @@ func (application *Application) BeginAuthorization(
 
 	session, err := application.beginAuthorizationSession(
 		requestExecution.context, accepted.Operation, secret, mutation.ReplacementPolicy,
+		mutation.AfterAuthorizationStepRevision,
 	)
 	if err != nil {
 		// Starting authorization has no durable provider receipt yet. Keep retry
@@ -721,12 +725,13 @@ func (application *Application) BeginAuthorization(
 		}
 	}
 	return AuthorizationResult{
-		Connector:              connector,
-		Operation:              operation,
-		AuthorizationURL:       session.AuthorizationURL,
-		AuthorizationView:      authorizationViewForSession(connector.Release, session),
-		AuthorizationExpiresAt: session.ExpiresAt,
-		Revision:               connector.Revision,
+		Connector:                 connector,
+		Operation:                 operation,
+		AuthorizationURL:          session.AuthorizationURL,
+		AuthorizationView:         authorizationViewForSession(connector.Release, session),
+		AuthorizationExpiresAt:    session.ExpiresAt,
+		AuthorizationStepRevision: session.StepRevision,
+		Revision:                  connector.Revision,
 	}, nil
 }
 

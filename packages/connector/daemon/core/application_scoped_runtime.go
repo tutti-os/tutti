@@ -205,6 +205,28 @@ func (application *Application) projectAuthorizationAndScheduleRuntime(
 	return application.ReconcileRuntimeDesired(ctx, scope, connectorKey)
 }
 
+// projectAuthorizationAndPlanRuntime keeps provider authorization completion
+// independent from slow runtime convergence. The durable Desired record is the
+// handoff to the daemon convergence worker; the authorization response does
+// not wait for a process receipt that can be retried independently.
+func (application *Application) projectAuthorizationAndPlanRuntime(
+	ctx context.Context,
+	scope OperationScope,
+	connectorKey, connectionID string,
+	state AuthorizationState,
+	failureCode string,
+) error {
+	_, err := application.projectAuthorization(ctx, scope, connectorKey, connectionID, state, failureCode)
+	if err != nil || application.config.AuthorizationProjections == nil || strings.TrimSpace(scope.AccountID) == "" {
+		return err
+	}
+	if state == AuthorizationStatePending {
+		return nil
+	}
+	_, err = application.EnsureRuntimeDesired(ctx, scope, connectorKey)
+	return err
+}
+
 // projectAuthorization persists authorization truth without creating runtime
 // work. Recovery callers use it before the daemon creates and awaits exactly
 // one reconcile under the account lifecycle fence.

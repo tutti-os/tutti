@@ -147,6 +147,7 @@ App Center, workspace-app lifecycle, App Factory, file references, and File Mana
 
 Connector catalog, installation, account authorization, and runtime convergence.
 
+- [Disconnect fails immediately after authorization succeeds](./connector-market.md#disconnect-fails-immediately-after-authorization-succeeds)
 - [A second authorize click starts another OAuth session](./connector-market.md#a-second-authorize-click-starts-another-oauth-session)
 - [OAuth finishes in the browser but does not return to the initiating desktop build](./connector-market.md#oauth-finishes-in-the-browser-but-does-not-return-to-the-initiating-desktop-build)
 - [Composer install stays spinning on an OAuth remote connector](./connector-market.md#composer-install-stays-spinning-on-an-oauth-remote-connector)

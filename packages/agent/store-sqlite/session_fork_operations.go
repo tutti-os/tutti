@@ -97,6 +97,28 @@ func (s *Store) FailPreparedSessionFork(
 	)
 }
 
+// FailAcceptedSessionFork durably quarantines provider-accepted evidence that
+// cannot be materialized without inventing canonical provider identity.
+func (s *Store) FailAcceptedSessionFork(
+	ctx context.Context,
+	workspaceID, operationID, lastError string,
+	now int64,
+) (SessionForkOperation, bool, error) {
+	return s.transitionSessionFork(
+		ctx,
+		workspaceID,
+		operationID,
+		SessionForkStatusProviderAccepted,
+		SessionForkStatusFailed,
+		"",
+		nil,
+		"",
+		"",
+		lastError,
+		now,
+	)
+}
+
 func (s *Store) RecordSessionForkProviderResult(ctx context.Context, input SessionForkProviderResult) (SessionForkOperation, bool, error) {
 	input.WorkspaceID, input.OperationID = strings.TrimSpace(input.WorkspaceID), strings.TrimSpace(input.OperationID)
 	input.TargetProviderSessionID = strings.TrimSpace(input.TargetProviderSessionID)
@@ -497,6 +519,7 @@ func sessionForkTargetProviderTurnBindings(
 	}
 	if len(sourceTurnIDs) != len(op.TargetProviderTurnBindings) {
 		return nil, errors.Join(
+			ErrSessionForkMaterializationInconsistent,
 			ErrSessionForkTurnState,
 			fmt.Errorf(
 				"provider-owned session fork returned %d bindings for %d provider-bound canonical turns",
@@ -517,6 +540,7 @@ func sessionForkTargetProviderTurnBindings(
 		strings.TrimSpace(boundaryBinding.ProviderTurnID) == "" ||
 		len(boundaryBinding.ProviderTurnBindingJSON) == 0 {
 		return nil, errors.Join(
+			ErrSessionForkMaterializationInconsistent,
 			ErrSessionForkTurnState,
 			errors.New("provider-owned session fork omitted the canonical boundary binding"),
 		)
@@ -563,10 +587,24 @@ func (s *Store) transitionSessionFork(
 	}
 	result, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_session_fork_operations
-SET status = ?, target_provider_session_id = NULLIF(?, ''), last_error = ?,
-    target_provider_turn_bindings_json = ?,
-    provider_state_binding_mode = ?,
-    provider_state_binding_receipt = ?,
+SET status = ?,
+    target_provider_session_id = CASE
+      WHEN ? = 'failed' THEN target_provider_session_id
+      ELSE NULLIF(?, '')
+    END,
+    last_error = ?,
+    target_provider_turn_bindings_json = CASE
+      WHEN ? = 'failed' THEN target_provider_turn_bindings_json
+      ELSE ?
+    END,
+    provider_state_binding_mode = CASE
+      WHEN ? = 'failed' THEN provider_state_binding_mode
+      ELSE ?
+    END,
+    provider_state_binding_receipt = CASE
+      WHEN ? = 'failed' THEN provider_state_binding_receipt
+      ELSE ?
+    END,
     dispatched_at_unix_ms = CASE WHEN ? = 'dispatching' THEN ? ELSE dispatched_at_unix_ms END,
     accepted_at_unix_ms = CASE WHEN ? = 'provider_accepted' THEN ? ELSE accepted_at_unix_ms END,
     completed_at_unix_ms = CASE
@@ -576,10 +614,11 @@ SET status = ?, target_provider_session_id = NULLIF(?, ''), last_error = ?,
     END,
     updated_at_unix_ms = ?
 WHERE workspace_id = ? AND operation_id = ? AND status = ?
-	`, toStatus, strings.TrimSpace(targetProviderSessionID), strings.TrimSpace(lastError),
-		string(targetProviderTurnBindingsJSON),
-		strings.TrimSpace(stateBindingMode),
-		strings.TrimSpace(stateBindingReceipt),
+	`, toStatus,
+		toStatus, strings.TrimSpace(targetProviderSessionID), strings.TrimSpace(lastError),
+		toStatus, string(targetProviderTurnBindingsJSON),
+		toStatus, strings.TrimSpace(stateBindingMode),
+		toStatus, strings.TrimSpace(stateBindingReceipt),
 		toStatus, now, toStatus, now, toStatus, toStatus, now, now,
 		workspaceID, operationID, fromStatus)
 	if err != nil {

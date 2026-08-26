@@ -31,6 +31,7 @@ export function agentActivityComposerOptionsFromTuttidResult(
   );
   return {
     codexSaverModeSupported: result.codexSaverModeSupported === true,
+    rtkSaverModeSupported: result.rtkSaverModeSupported === true,
     provider: normalizeText(result.provider) ?? provider,
     capabilities: sessionCapabilitiesFromValue(result.capabilities),
     models: modelsFromConfig,
@@ -206,6 +207,9 @@ function composerSettingsFromValue(
   return {
     ...(typeof settings.codexSaverMode === "boolean"
       ? { codexSaverMode: settings.codexSaverMode }
+      : {}),
+    ...(typeof settings.rtkSaverMode === "boolean"
+      ? { rtkSaverMode: settings.rtkSaverMode }
       : {}),
     model: normalizeText(settings.model),
     reasoningEffort: normalizeText(settings.reasoningEffort),

@@ -52,6 +52,8 @@ func (a *standardACPAdapter) handleACPMessage(
 		return nil, nil
 	}
 	switch message.Method {
+	case acpMethodWriteTextFile:
+		return standardACPWriteTextFileEvents(ctx, client, session, turnID, message, normalizer)
 	case acpMethodUpdate:
 		if !a.standardACPUpdateMatchesProviderSession(session, message.Params) {
 			return nil, nil

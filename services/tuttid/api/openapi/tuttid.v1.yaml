@@ -16,6 +16,8 @@ tags:
     description: Workspace-scoped selectable Agent directory
   - name: runtime
   - name: account
+  - name: user-presence
+    description: Process-local room interest and account user presence projection
   - name: analytics
   - name: cli
     description: Public local capability protocol for the bundled CLI and future approved local integrations. Command metadata is machine-readable protocol data; command execution remains authorized by the daemon bearer token and filtered by daemon-owned context.
@@ -30,6 +32,8 @@ tags:
   - name: app-factory
   - name: user-project
   - name: agent-quick-prompt
+  - name: global-agent-activity
+    description: Authenticated cross-room Agent Activity read model
 paths:
   /v1/health:
     get:
@@ -191,6 +195,178 @@ paths:
       responses:
         "204":
           description: Account signed out
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/global-agent-activity/filter-options:
+    get:
+      operationId: getGlobalAgentActivityFilterOptions
+      tags:
+        - global-agent-activity
+      summary: List global Agent Activity filter options
+      description: Returns rooms owned by the signed-in user plus session owner, Agent, and activity-time options. Account credentials remain daemon-owned.
+      responses:
+        "200":
+          description: Global Agent Activity filter options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalAgentActivityFilterOptionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/global-agent-activity/sessions:
+    get:
+      operationId: listGlobalAgentActivitySessions
+      tags:
+        - global-agent-activity
+      summary: List filtered global Agent Activity sessions
+      description: At least one room, session owner, Agent, or activity-time filter is required. Results are bounded by the control plane and expose truncation instead of pagination.
+      parameters:
+        - name: roomIds
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          style: form
+          explode: true
+        - name: sessionOwnerUserIds
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          style: form
+          explode: true
+        - name: agentKeys
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          style: form
+          explode: true
+        - name: activityFromUnixMs
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: activityToUnixMs
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: Filtered global Agent Activity sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalAgentActivitySessionListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/user-presence/current-room:
+    put:
+      operationId: putAccountUserPresenceCurrentRoom
+      tags:
+        - user-presence
+      summary: Visit or refresh the currently displayed room presence projection
+      description: >-
+        Moves the room to the head of the daemon process-local ten-room LRU,
+        atomically replaces its eligible member source, waits for the exact
+        WebSocket subscription ACK, and then obtains an authoritative presence
+        snapshot. The LRU and presence cache are never persisted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUserPresenceCurrentRoomRequest"
+      responses:
+        "200":
+          description: Current room presence projection
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserPresenceRoomResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/user-presence/rooms/{roomID}:
+    get:
+      operationId: getAccountUserPresenceRoom
+      tags:
+        - user-presence
+      summary: Read the cached presence projection for one recently visited room
+      parameters:
+        - name: roomID
+          in: path
+          required: true
+          schema:
+            type: string
+            minLength: 1
+      responses:
+        "200":
+          description: Cached room presence projection, or an empty projection when the room is not in the LRU
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountUserPresenceRoomResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/account/user-presence/foreground:
+    put:
+      operationId: putAccountUserPresenceForeground
+      tags:
+        - user-presence
+      summary: Update whether foreground snapshot reconciliation is active
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccountUserPresenceForegroundRequest"
+      responses:
+        "204":
+          description: Foreground state accepted
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
         "401":
           $ref: "#/components/responses/UnauthorizedError"
         "405":
@@ -7445,6 +7621,94 @@ components:
                   code: tutti_mode_archive_conflict
                   reason: tutti_archive_request_conflict
   schemas:
+    AccountUserPresenceCurrentRoomRequest:
+      type: object
+      required:
+        - roomId
+        - members
+      properties:
+        roomId:
+          type: string
+          minLength: 1
+        members:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/AccountUserPresenceRoomMember"
+    AccountUserPresenceRoomMember:
+      type: object
+      required:
+        - userId
+        - membershipActive
+        - accountPresenceCapable
+      properties:
+        userId:
+          type: string
+          minLength: 1
+          maxLength: 256
+        membershipActive:
+          type: boolean
+          description: True only for a currently joined, non-deleted membership.
+        accountPresenceCapable:
+          type: boolean
+          description: False for system identities without Account Device Presence semantics.
+    AccountUserPresenceForegroundRequest:
+      type: object
+      required:
+        - foreground
+      properties:
+        foreground:
+          type: boolean
+    AccountUserPresenceRoomResponse:
+      type: object
+      required:
+        - roomId
+        - members
+      properties:
+        roomId:
+          type: string
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/AccountUserPresenceUser"
+    AccountUserPresenceUser:
+      type: object
+      required:
+        - userId
+        - status
+        - availability
+        - authoritative
+        - authorityGeneration
+        - presenceRevision
+      properties:
+        userId:
+          type: string
+        status:
+          type: string
+          enum:
+            - ONLINE
+            - OFFLINE
+        availability:
+          type: string
+          enum:
+            - NOT_WATCHED
+            - SUBSCRIBING
+            - SYNCING
+            - READY
+            - STALE
+            - UNKNOWN
+            - DEGRADED
+        authoritative:
+          type: boolean
+        authorityGeneration:
+          type: string
+        presenceRevision:
+          type: string
+          pattern: "^[0-9]*$"
+        observedAt:
+          type: string
+          format: date-time
+          nullable: true
     SwitchTuttiModeGoalReviewToSelfRequest:
       type: object
       additionalProperties: false
@@ -7560,6 +7824,172 @@ components:
           allOf:
             - $ref: "#/components/schemas/AccountUserInfo"
           nullable: true
+    GlobalAgentActivityRoom:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - name
+        - avatarUri
+      properties:
+        roomId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+        avatarUri:
+          type: string
+    GlobalAgentActivitySessionOwner:
+      type: object
+      additionalProperties: false
+      required:
+        - userId
+        - displayName
+        - avatarUrl
+        - avatarFallbackUrl
+        - avatarClientTransform
+      properties:
+        userId:
+          type: string
+          minLength: 1
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        avatarFallbackUrl:
+          type: string
+        avatarClientTransform:
+          type: boolean
+    GlobalAgentActivityAgent:
+      type: object
+      additionalProperties: false
+      required:
+        - agentKey
+        - agentTargetId
+        - provider
+        - name
+        - iconKey
+      properties:
+        agentKey:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+        provider:
+          type: string
+        name:
+          type: string
+        iconKey:
+          type: string
+    GlobalAgentActivityTimeBounds:
+      type: object
+      additionalProperties: false
+      required:
+        - minActivityAtUnixMs
+        - maxActivityAtUnixMs
+        - serverNowUnixMs
+      properties:
+        minActivityAtUnixMs:
+          type: integer
+          format: int64
+        maxActivityAtUnixMs:
+          type: integer
+          format: int64
+        serverNowUnixMs:
+          type: integer
+          format: int64
+    GlobalAgentActivityFilterOptionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - rooms
+        - sessionOwners
+        - agents
+        - timeBounds
+      properties:
+        rooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivityRoom"
+        sessionOwners:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivitySessionOwner"
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivityAgent"
+        timeBounds:
+          $ref: "#/components/schemas/GlobalAgentActivityTimeBounds"
+    GlobalAgentActivitySession:
+      type: object
+      additionalProperties: false
+      required:
+        - room
+        - workspaceId
+        - agentSessionId
+        - sessionOwner
+        - agent
+        - status
+        - title
+        - summary
+        - latestUserPrompt
+        - needsAttention
+        - activityAtUnixMs
+        - latestMessageAtUnixMs
+        - startedAtUnixMs
+        - endedAtUnixMs
+        - latestTurnId
+      properties:
+        room:
+          $ref: "#/components/schemas/GlobalAgentActivityRoom"
+        workspaceId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        sessionOwner:
+          $ref: "#/components/schemas/GlobalAgentActivitySessionOwner"
+        agent:
+          $ref: "#/components/schemas/GlobalAgentActivityAgent"
+        status:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        latestUserPrompt:
+          type: string
+        needsAttention:
+          type: boolean
+        activityAtUnixMs:
+          type: integer
+          format: int64
+        latestMessageAtUnixMs:
+          type: integer
+          format: int64
+        startedAtUnixMs:
+          type: integer
+          format: int64
+        endedAtUnixMs:
+          type: integer
+          format: int64
+        latestTurnId:
+          type: string
+    GlobalAgentActivitySessionListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - truncated
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivitySession"
+        truncated:
+          type: boolean
     AccountMembershipSummary:
       type: object
       additionalProperties: false
@@ -8538,6 +8968,10 @@ components:
       properties:
         codexSaverMode:
           type: boolean
+          description: Enables the Codex-specific saver subagent mode
+        rtkSaverMode:
+          type: boolean
+          description: Enables provider-neutral RTK saver mode
         model:
           type: string
         permissionModeId:
@@ -11867,6 +12301,11 @@ components:
         codexSaverMode:
           type: boolean
           nullable: true
+          description: Enables the Codex-specific saver subagent mode
+        rtkSaverMode:
+          type: boolean
+          nullable: true
+          description: Enables provider-neutral RTK saver mode
         model:
           type: string
           nullable: true
@@ -12064,7 +12503,10 @@ components:
       properties:
         codexSaverModeSupported:
           type: boolean
-          description: Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+          description: Whether this resolved provider target supports the Codex-specific saver subagent mode
+        rtkSaverModeSupported:
+          type: boolean
+          description: Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode
         provider:
           $ref: "#/components/schemas/WorkspaceAgentProvider"
         modelConfig:
@@ -15026,7 +15468,11 @@ components:
         codexSaverMode:
           type: boolean
           nullable: true
-          description: Enables the Codex Luna subagent saver mode for this session without changing the main model
+          description: Enables the Codex-specific saver subagent mode for this Agent Session
+        rtkSaverMode:
+          type: boolean
+          nullable: true
+          description: Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model
         agentSessionId:
           type: string
           format: uuid

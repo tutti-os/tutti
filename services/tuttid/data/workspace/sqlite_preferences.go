@@ -155,6 +155,12 @@ WHERE id = ?
 				return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("agent composer defaults field %q must be boolean", field)
 			}
 			defaults.CodexSaverMode = next
+		case preferencesbiz.AgentComposerDefaultsFieldRTKSaverMode:
+			next, ok := value.(bool)
+			if !ok {
+				return preferencesbiz.AgentComposerDefaults{}, fmt.Errorf("agent composer defaults field %q must be boolean", field)
+			}
+			defaults.RTKSaverMode = next
 		case preferencesbiz.AgentComposerDefaultsFieldModel:
 			defaults.Model, err = agentComposerDefaultsTextPatchValue(value)
 		case preferencesbiz.AgentComposerDefaultsFieldPermissionModeID:

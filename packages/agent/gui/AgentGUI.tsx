@@ -102,6 +102,7 @@ export const AgentGUI = memo(function AgentGUI({
     () => projectAgentGUIAgentsToTargets(normalizedAgents),
     [normalizedAgents]
   );
+  const hostCapabilities = props.hostCapabilities;
   const effectiveHandoffAgentDirectory =
     handoffAgentDirectory ?? agentDirectory;
   const normalizedHandoffAgents = useMemo(
@@ -115,14 +116,34 @@ export const AgentGUI = memo(function AgentGUI({
       normalizedAgents
     ]
   );
-  const handoffAgentTargets = useMemo(
-    () =>
+  const handoffAgentTargets = useMemo(() => {
+    const targets =
       normalizedHandoffAgents === normalizedAgents
         ? agentTargets
-        : projectAgentGUIAgentsToTargets(normalizedHandoffAgents),
-    [agentTargets, normalizedAgents, normalizedHandoffAgents]
-  );
-  const hostCapabilities = props.hostCapabilities;
+        : projectAgentGUIAgentsToTargets(normalizedHandoffAgents);
+    if (
+      !targets.some(
+        (target) =>
+          target.disabled !== true &&
+          (target.availability?.status !== "ready" ||
+            hostCapabilities?.providerReadinessGates?.[target.provider] != null)
+      )
+    ) {
+      return targets;
+    }
+    return targets.map((target) =>
+      (target.availability?.status === "ready" &&
+        hostCapabilities?.providerReadinessGates?.[target.provider] == null) ||
+      target.disabled === true
+        ? target
+        : { ...target, disabled: true }
+    );
+  }, [
+    agentTargets,
+    hostCapabilities?.providerReadinessGates,
+    normalizedAgents,
+    normalizedHandoffAgents
+  ]);
   const renderSlots = props.renderSlots;
   const nodeHostCapabilities = useMemo<AgentGUINodeProps["hostCapabilities"]>(
     () => ({

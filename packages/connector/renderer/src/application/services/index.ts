@@ -13,7 +13,8 @@ export {
   type ConnectorInstallOutcome,
   type ConnectorMarketLoadState,
   type ConnectorMarketServiceDependencies,
-  type ConnectorMarketStoreState
+  type ConnectorMarketStoreState,
+  type ConnectorMutationPhase
 } from "./connectorMarketService.interface.ts";
 export * from "./core/index.ts";
 export * from "./ui-state/index.ts";

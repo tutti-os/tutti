@@ -113,6 +113,7 @@ export function resolveSparseNewConversationActivationSettings(input: {
   composerOptions: AgentActivityComposerOptions | null;
   requiredSettingsPatch?: Partial<AgentSessionComposerSettings> | null;
   codexSaverModeEntryEnabled?: boolean;
+  rtkSaverModeEntryEnabled?: boolean;
 }): AgentSessionComposerSettings {
   const draft = input.draftSettings ?? {};
   const patch = input.requiredSettingsPatch ?? {};
@@ -166,7 +167,13 @@ export function resolveSparseNewConversationActivationSettings(input: {
       input.composerOptions?.codexSaverModeSupported === true &&
       (patch.codexSaverMode ??
         draft.codexSaverMode ??
-        input.composerOptions.effectiveSettings?.codexSaverMode) === true
+        input.composerOptions.effectiveSettings?.codexSaverMode) === true,
+    rtkSaverMode:
+      input.rtkSaverModeEntryEnabled === true &&
+      input.composerOptions?.rtkSaverModeSupported === true &&
+      (patch.rtkSaverMode ??
+        draft.rtkSaverMode ??
+        input.composerOptions.effectiveSettings?.rtkSaverMode) === true
   };
 }
 
@@ -239,6 +246,7 @@ export function useAgentGUINewConversationActivation(
 ) {
   const {
     codexSaverModeEntryEnabled,
+    rtkSaverModeEntryEnabled,
     getCachedComposerOptions,
     selectedAgentTargetRef,
     selectedComposerTargetDataRef,
@@ -344,7 +352,8 @@ export function useAgentGUINewConversationActivation(
         draftSettings: initialNodeSettings,
         composerOptions: snapshotComposerOptions,
         requiredSettingsPatch,
-        codexSaverModeEntryEnabled
+        codexSaverModeEntryEnabled,
+        rtkSaverModeEntryEnabled
       });
       const settingProvenance = resolveNewConversationSettingProvenance(
         requiredSettingsPatch
@@ -455,6 +464,7 @@ export function useAgentGUINewConversationActivation(
     [
       activeSessionState,
       codexSaverModeEntryEnabled,
+      rtkSaverModeEntryEnabled,
       currentUserId,
       data,
       defaultReasoningEffort,

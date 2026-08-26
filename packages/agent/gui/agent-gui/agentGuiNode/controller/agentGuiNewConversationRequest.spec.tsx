@@ -110,8 +110,9 @@ describe("P0 new-conversation placement scenarios", () => {
     const scenario = renderNewConversationScenario({
       activeConversation: null,
       codexSaverModeEntryEnabled: false,
+      rtkSaverModeEntryEnabled: false,
       initialHomeProjectPath: null,
-      rememberedSettings: { codexSaverMode: true },
+      rememberedSettings: { codexSaverMode: true, rtkSaverMode: true },
       userProjects: []
     });
 
@@ -119,7 +120,7 @@ describe("P0 new-conversation placement scenarios", () => {
     act(() => scenario.submitPrompt([{ type: "text", text: "start safely" }]));
 
     expect(await scenario.waitForActivation()).toMatchObject({
-      settings: { codexSaverMode: false }
+      settings: { codexSaverMode: false, rtkSaverMode: false }
     });
   });
 
@@ -128,7 +129,7 @@ describe("P0 new-conversation placement scenarios", () => {
       activeConversation: null,
       codexSaverModeEntryEnabled: true,
       initialHomeProjectPath: null,
-      rememberedSettings: { codexSaverMode: true },
+      rememberedSettings: { codexSaverMode: true, rtkSaverMode: true },
       userProjects: []
     });
 
@@ -138,7 +139,7 @@ describe("P0 new-conversation placement scenarios", () => {
     );
 
     expect(await scenario.waitForActivation()).toMatchObject({
-      settings: { codexSaverMode: true }
+      settings: { codexSaverMode: true, rtkSaverMode: true }
     });
   });
 
@@ -256,6 +257,7 @@ function renderNewConversationScenario(input: {
   activeConversation: AgentGUIConversationSummary | null;
   authoritativeSettings?: AgentSessionComposerSettings;
   codexSaverModeEntryEnabled?: boolean;
+  rtkSaverModeEntryEnabled?: boolean;
   initialHomeProjectPath: string | null;
   rememberedSettings?: AgentSessionComposerSettings;
   userProjects: AgentHostUserProject[];
@@ -369,6 +371,7 @@ function renderNewConversationScenario(input: {
       conversationListQuery,
       conversationsRef,
       codexSaverModeEntryEnabled: input.codexSaverModeEntryEnabled ?? true,
+      rtkSaverModeEntryEnabled: input.rtkSaverModeEntryEnabled ?? true,
       currentUserId: "user-1",
       data: dataRef.current,
       defaultReasoningEffort: "high",
@@ -391,6 +394,7 @@ function renderNewConversationScenario(input: {
         },
         capabilities: null,
         codexSaverModeSupported: true,
+        rtkSaverModeSupported: true,
         effectiveSettings: input.authoritativeSettings,
         loadedAtUnixMs: 1,
         models: [],

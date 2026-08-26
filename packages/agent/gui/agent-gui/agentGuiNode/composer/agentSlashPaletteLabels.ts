@@ -2,6 +2,18 @@ import type { TranslateFn } from "../../../i18n/index";
 
 export function agentSlashPaletteLabels(t: TranslateFn) {
   return {
+    slashCommandPresentation: (commandName: string) => {
+      const normalizedName = commandName.trim().toLowerCase();
+      const keyPrefix = `agentHost.agentGui.slashCommands.${normalizedName}`;
+      const labelKey = `${keyPrefix}.label`;
+      const descriptionKey = `${keyPrefix}.description`;
+      const label = t(labelKey);
+      const description = t(descriptionKey);
+      return {
+        ...(label !== labelKey ? { label } : {}),
+        ...(description !== descriptionKey ? { description } : {})
+      };
+    },
     slashCommandPalette: t("agentHost.agentGui.slashCommandPalette"),
     skillPickerPalette: t("agentHost.agentGui.skillPickerPalette"),
     slashPaletteCommandsGroup: t(

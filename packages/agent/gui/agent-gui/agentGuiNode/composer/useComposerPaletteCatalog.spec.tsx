@@ -2,11 +2,78 @@ import { renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { AgentGUIComposerSettingsVM } from "../model/agentGuiNodeTypes";
 import { resolveSlashCommandSubmitEffect } from "../model/agentSlashCommandProviderPolicy";
+import { translateInUiLanguage } from "../../../i18n/index";
 import type { AgentComposerProps } from "./AgentComposer.types";
+import { agentSlashPaletteLabels } from "./agentSlashPaletteLabels";
 import { useComposerPaletteCatalog } from "./useComposerPaletteCatalog";
 
 describe("useComposerPaletteCatalog", () => {
-  it("shows host-managed computer use as a capability while daemon readiness is false", () => {
+  it("uses localized presentation for declared commands while preserving their identity", () => {
+    const commands = ["help", "mcp", "tasks"].map((name) => ({ name }));
+    const { result } = renderHook(() =>
+      useComposerPaletteCatalog({
+        provider: "codex",
+        isGoalModeActive: false,
+        goalSupported: false,
+        paletteDraftPrompt: "/",
+        availableCommands: commands,
+        availableSkills: [],
+        hasCompactableContext: false,
+        compactSupported: false,
+        composerSettings: {
+          supportsPlanMode: false,
+          supportsBrowser: false,
+          supportsComputerUse: false,
+          slashCommandPolicy: {
+            fallbackCommands: [],
+            commandEffects: commands.map(({ name }) => ({
+              command: name,
+              effect: "submitImmediate" as const
+            })),
+            commandCatalogAuthoritative: true
+          }
+        } as unknown as AgentGUIComposerSettingsVM,
+        capabilityControlsReadOnly: false,
+        labels: agentSlashPaletteLabels((key, options) =>
+          translateInUiLanguage("zh-CN", key, options)
+        ) as AgentComposerProps["labels"],
+        uiLanguage: "zh-CN",
+        editorHandleRef: { current: null }
+      })
+    );
+
+    expect(
+      result.current.slashPaletteEntries
+        .filter((entry) => entry.type === "command")
+        .map((entry) => ({
+          command: entry.command.name,
+          label: entry.primaryLabel,
+          rawLabel: entry.secondaryLabel,
+          description: entry.description
+        }))
+    ).toEqual([
+      {
+        command: "help",
+        label: "帮助",
+        rawLabel: "help",
+        description: "查看可用命令和帮助"
+      },
+      {
+        command: "mcp",
+        label: "MCP 服务",
+        rawLabel: "mcp",
+        description: "管理 MCP 服务"
+      },
+      {
+        command: "tasks",
+        label: "任务",
+        rawLabel: "tasks",
+        description: "查看和管理后台任务"
+      }
+    ]);
+  });
+
+  it("uses fresh host readiness when Composer capability state is stale", () => {
     const { result } = renderHook(() =>
       useComposerPaletteCatalog({
         provider: "codex",
@@ -58,16 +125,20 @@ describe("useComposerPaletteCatalog", () => {
       result.current.slashPaletteEntries.find(
         (entry) => entry.key === "capability:computerUse"
       )
-    ).toMatchObject({ selectAction: "settings", type: "capability" });
+    ).toMatchObject({ selectAction: "capability", type: "capability" });
     expect(
       resolveSlashCommandSubmitEffect({
         provider: "codex",
         policy: result.current.slashCommandPolicy,
-        computerSupported: false,
+        computerSupported: result.current.computerExecutable,
         commands: result.current.resolvedSlashCommands,
         draft: "/computer click Confirm"
       })
-    ).toBeNull();
+    ).toMatchObject({
+      kind: "submitPrompt",
+      displayPrompt: "/computer click Confirm",
+      requiredSettingsPatch: { computerUse: true }
+    });
   });
 
   it("places connector entries before ordinary skills", () => {

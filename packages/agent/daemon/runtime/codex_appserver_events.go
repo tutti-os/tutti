@@ -95,7 +95,7 @@ func appServerNotificationUsesNormalizer(method string) bool {
 	switch method {
 	case appServerNotifyAgentMessageDelta, appServerNotifyReasoningDelta, appServerNotifyReasoningSummary,
 		appServerNotifyItemStarted, appServerNotifyItemCompleted, appServerNotifyCommandOutputDelta,
-		appServerNotifyPlanUpdated, appServerNotifyWarning:
+		appServerNotifyFileChangePatchUpdated, appServerNotifyPlanUpdated, appServerNotifyWarning:
 		return true
 	default:
 		return false

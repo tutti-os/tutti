@@ -46,6 +46,12 @@ the neutral Renderer UI contracts. Neither host is imported by this package.
 Wire authorization schemas and the OpenAPI fragment are published by
 `@tutti-os/connector-contracts`.
 
+When a newly received Authorization View is an `external_link`, Connector
+Renderer opens its activation URL once. A `device_code` View instead replaces
+the contents of the existing authorization dialog without opening the browser.
+The user can copy its code and explicitly activate the dialog action when they
+are ready to open the verification URL.
+
 Hosts that compile Tailwind utilities from published packages must include the
 Renderer build output as a source, for example:
 

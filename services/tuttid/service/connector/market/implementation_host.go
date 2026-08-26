@@ -40,6 +40,8 @@ type ImplementationHost struct {
 	artifacts PreparedArtifactResolver
 }
 
+var _ market.AuthorizationObserver = (*ImplementationHost)(nil)
+
 func NewConnectorRuntimeRegistry() *ConnectorRuntimeRegistry {
 	return &ConnectorRuntimeRegistry{runtime: implementationhost.NewRouteRegistry(), mcp: implementationhost.NewMCPRegistry()}
 }
@@ -114,6 +116,13 @@ func (host *ImplementationHost) InspectAuthorization(ctx context.Context, reques
 		return market.AuthorizationObservation{}, errors.New("connector authorization inspector is unavailable")
 	}
 	return host.runtime.InspectAuthorization(ctx, request)
+}
+
+func (host *ImplementationHost) Observe(ctx context.Context, request market.AuthorizationObserveRequest) (market.AuthorizationObservation, error) {
+	if host == nil || host.runtime == nil {
+		return market.AuthorizationObservation{}, errors.New("connector authorization observer is unavailable")
+	}
+	return host.runtime.ObserveAuthorization(ctx, request)
 }
 
 func (host *ImplementationHost) DeactivateRuntime(ctx context.Context, request market.RuntimeDeactivationRequest) error {

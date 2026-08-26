@@ -238,6 +238,9 @@ import type {
   GetAccountUserInfoData,
   GetAccountUserInfoErrors,
   GetAccountUserInfoResponses,
+  GetAccountUserPresenceRoomData,
+  GetAccountUserPresenceRoomErrors,
+  GetAccountUserPresenceRoomResponses,
   GetAgentProviderComposerOptionsData,
   GetAgentProviderComposerOptionsErrors,
   GetAgentProviderComposerOptionsResponses,
@@ -286,6 +289,9 @@ import type {
   GetDesktopUpdateAdmissionStartupData,
   GetDesktopUpdateAdmissionStartupErrors,
   GetDesktopUpdateAdmissionStartupResponses,
+  GetGlobalAgentActivityFilterOptionsData,
+  GetGlobalAgentActivityFilterOptionsErrors,
+  GetGlobalAgentActivityFilterOptionsResponses,
   GetHealthData,
   GetHealthErrors,
   GetHealthResponses,
@@ -421,6 +427,9 @@ import type {
   ListConnectorMarketCategoriesData,
   ListConnectorMarketCategoriesErrors,
   ListConnectorMarketCategoriesResponses,
+  ListGlobalAgentActivitySessionsData,
+  ListGlobalAgentActivitySessionsErrors,
+  ListGlobalAgentActivitySessionsResponses,
   ListMobileRemotePairingsData,
   ListMobileRemotePairingsErrors,
   ListMobileRemotePairingsResponses,
@@ -568,6 +577,12 @@ import type {
   PurgeWorkspaceDeletedAgentSessionsData,
   PurgeWorkspaceDeletedAgentSessionsErrors,
   PurgeWorkspaceDeletedAgentSessionsResponses,
+  PutAccountUserPresenceCurrentRoomData,
+  PutAccountUserPresenceCurrentRoomErrors,
+  PutAccountUserPresenceCurrentRoomResponses,
+  PutAccountUserPresenceForegroundData,
+  PutAccountUserPresenceForegroundErrors,
+  PutAccountUserPresenceForegroundResponses,
   PutDesktopPreferencesData,
   PutDesktopPreferencesErrors,
   PutDesktopPreferencesResponses,
@@ -958,6 +973,110 @@ export const logoutAccount = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/account/logout",
     ...options
+  });
+
+/**
+ * List global Agent Activity filter options
+ *
+ * Returns rooms owned by the signed-in user plus session owner, Agent, and activity-time options. Account credentials remain daemon-owned.
+ */
+export const getGlobalAgentActivityFilterOptions = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<GetGlobalAgentActivityFilterOptionsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetGlobalAgentActivityFilterOptionsResponses,
+    GetGlobalAgentActivityFilterOptionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/global-agent-activity/filter-options",
+    ...options
+  });
+
+/**
+ * List filtered global Agent Activity sessions
+ *
+ * At least one room, session owner, Agent, or activity-time filter is required. Results are bounded by the control plane and expose truncation instead of pagination.
+ */
+export const listGlobalAgentActivitySessions = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<ListGlobalAgentActivitySessionsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListGlobalAgentActivitySessionsResponses,
+    ListGlobalAgentActivitySessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/global-agent-activity/sessions",
+    ...options
+  });
+
+/**
+ * Visit or refresh the currently displayed room presence projection
+ *
+ * Moves the room to the head of the daemon process-local ten-room LRU, atomically replaces its eligible member source, waits for the exact WebSocket subscription ACK, and then obtains an authoritative presence snapshot. The LRU and presence cache are never persisted.
+ */
+export const putAccountUserPresenceCurrentRoom = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PutAccountUserPresenceCurrentRoomData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    PutAccountUserPresenceCurrentRoomResponses,
+    PutAccountUserPresenceCurrentRoomErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/user-presence/current-room",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Read the cached presence projection for one recently visited room
+ */
+export const getAccountUserPresenceRoom = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAccountUserPresenceRoomData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAccountUserPresenceRoomResponses,
+    GetAccountUserPresenceRoomErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/user-presence/rooms/{roomID}",
+    ...options
+  });
+
+/**
+ * Update whether foreground snapshot reconciliation is active
+ */
+export const putAccountUserPresenceForeground = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PutAccountUserPresenceForegroundData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    PutAccountUserPresenceForegroundResponses,
+    PutAccountUserPresenceForegroundErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/user-presence/foreground",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**
