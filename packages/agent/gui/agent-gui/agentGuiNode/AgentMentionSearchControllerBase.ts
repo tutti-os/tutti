@@ -21,7 +21,6 @@ import {
   DEFAULT_ISSUE_LIMIT,
   DEFAULT_PROVIDER_TIMEOUT_MS,
   type AgentMentionFilterId,
-  type AgentMentionBrowseCategory,
   type AgentMentionGroup,
   type AgentMentionGroupId,
   type AgentMentionIssueTopicGroup,
@@ -117,7 +116,6 @@ export class AgentMentionSearchControllerBase {
     groups: [],
     error: null
   };
-
   constructor(options: AgentMentionSearchControllerOptions) {
     this.contextMentionProviders = new Map(
       (options.contextMentionProviders ?? []).map((provider) => [
@@ -140,11 +138,7 @@ export class AgentMentionSearchControllerBase {
     this.hiddenFilterIds = [...(options.hiddenFilterIds ?? [])];
     this.currentFileSearchLimit = this.fileLimit;
     this.currentIssueSearchLimit = this.issueLimit;
-    this.state.categories = this.buildBrowseCategories();
-  }
-
-  protected buildBrowseCategories(): AgentMentionBrowseCategory[] {
-    return buildBrowseCategories(this.hiddenFilterIds);
+    this.state.categories = buildBrowseCategories(this.hiddenFilterIds);
   }
 
   protected startBrowseModeFetch(filter: AgentMentionFilterId): void {
@@ -184,7 +178,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -256,7 +250,7 @@ export class AgentMentionSearchControllerBase {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups,
         error: null
       });
@@ -287,7 +281,7 @@ export class AgentMentionSearchControllerBase {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -365,7 +359,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups,
         error: null
       });
@@ -391,7 +385,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -602,7 +596,7 @@ export class AgentMentionSearchControllerBase {
       query: "",
       mode: "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: [],
       error: null
     });
@@ -686,12 +680,9 @@ export class AgentMentionSearchControllerBase {
   }
 
   protected setState(state: AgentMentionSearchState): void {
-    this.state = {
-      ...state,
-      categories: this.buildBrowseCategories()
-    };
+    this.state = state;
     for (const listener of this.listeners) {
-      listener(this.state);
+      listener(state);
     }
   }
 

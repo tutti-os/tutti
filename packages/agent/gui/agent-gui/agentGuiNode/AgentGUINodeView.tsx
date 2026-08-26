@@ -331,7 +331,6 @@ export function AgentGUINodeView({
     isRailResizing,
     railResizeWidthPx
   ]);
-
   const handleConversationRailResizeKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {
       if (conversationRailCollapsed) {

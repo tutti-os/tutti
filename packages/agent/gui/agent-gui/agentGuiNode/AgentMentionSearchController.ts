@@ -130,7 +130,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: [],
         error: null
       });
@@ -145,7 +145,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -190,7 +190,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: [],
         error: null
       });
@@ -201,7 +201,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -351,7 +351,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: this.currentQuery ? "results" : "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -364,7 +364,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: this.currentQuery ? "results" : "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -396,7 +396,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: this.currentQuery ? "results" : "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -431,7 +431,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: "",
       mode: "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -473,7 +473,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
           query: "",
           mode: "browse",
           filter: "file",
-          categories: buildBrowseCategories(),
+          categories: buildBrowseCategories(this.hiddenFilterIds),
           groups: this.groupsFromRawGroups(),
           error: null
         });
@@ -499,7 +499,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
           query: "",
           mode: "browse",
           filter: "file",
-          categories: buildBrowseCategories(),
+          categories: buildBrowseCategories(this.hiddenFilterIds),
           groups: this.groupsFromRawGroups(),
           error: error instanceof Error ? error.message : String(error)
         });
@@ -520,7 +520,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -553,7 +553,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
         query: this.currentQuery,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -576,7 +576,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: "results",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: this.groupsFromRawGroups(),
       error: null
     });
@@ -600,7 +600,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: "",
       mode: "browse",
       filter: DEFAULT_AGENT_MENTION_FILTER,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: [],
       error: null
     });
@@ -763,7 +763,7 @@ export class AgentMentionSearchController extends AgentMentionSearchControllerBa
       query: this.currentQuery,
       mode: this.currentQuery ? "results" : "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: this.groupsFromRawGroups(),
       error: null
     });
