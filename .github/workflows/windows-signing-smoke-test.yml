@@ -4,6 +4,9 @@ name: Windows signing smoke test
 # throwaway executable and never builds or publishes Tutti.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/certum-windows-signing
 
 permissions:
   contents: read
