@@ -2,6 +2,31 @@
 
 [Agent runtime index](./agent-runtime.md) · [All troubleshooting](./README.md)
 
+### A newly opened Agent window shows processing but no transcript
+
+- **Symptom:** A Session is already running, but opening it in another window
+  shows only the processing status and omits the submitted user message. The
+  original window may still show the complete conversation.
+- **Quick checks:** Correlate the new renderer's selected Session with its first
+  canonical detail and message reads. If the message read fails or times out
+  while the Session projection still reports active work, the transcript is
+  temporarily unhydrated rather than deleted.
+- **Root cause:** The focused Session reconcile reached a terminal transport
+  failure, but the synchronization lease did not observe that failure or
+  request recovery. The new window therefore retained only the live processing
+  projection.
+- **Fix:** Preserve timeout as an explicit reconcile failure. While the Session
+  remains focused, report the failure and perform one bounded state-and-message
+  retry. Stop focus-owned recovery when the window releases the synchronization
+  lease.
+- **Validation:** Make the first focused message hydration fail, then return a
+  canonical user message on the retry. Assert exactly two reads, one reported
+  initial failure, and a restored transcript. Separately cover the reducer's
+  timeout outcome so it remains observable.
+- **References:**
+  [sessionReconcile.reducer.ts](../../../packages/agent/activity-core/src/engine/sessionReconcile.reducer.ts),
+  [workspaceAgentActivityReconcileBridge.ts](../../../apps/desktop/src/renderer/src/features/workspace-agent/services/internal/workspaceAgentActivityReconcileBridge.ts)
+
 ### Claude cancellation reaches `context deadline exceeded`
 
 - **Symptom:** Canceling a Claude Code Turn, closing its Session, or leaving a

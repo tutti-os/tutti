@@ -435,11 +435,18 @@ function settleReconcile(
   const settled = {
     ...record,
     errorCode:
-      intent.outcome === "succeeded" ? null : intent.errorCode?.trim() || null,
+      intent.outcome === "succeeded"
+        ? null
+        : intent.outcome === "timedOut"
+          ? "timeout"
+          : intent.errorCode?.trim() || null,
     errorMessage:
       intent.outcome === "succeeded"
         ? null
-        : intent.errorMessage?.trim() || null,
+        : intent.errorMessage?.trim() ||
+          (intent.outcome === "timedOut"
+            ? "Session synchronization timed out."
+            : null),
     inFlightCommandId: null,
     inFlightLive: false,
     inFlightScope: null,

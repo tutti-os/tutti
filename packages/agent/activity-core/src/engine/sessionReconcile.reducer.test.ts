@@ -451,6 +451,29 @@ test("a timed-out reconcile releases merged demand into the next command", () =>
   );
 });
 
+test("a timed-out focused reconcile remains an observable synchronization failure", () => {
+  let state = reduce(createInitialSessionReconcileState(), {
+    type: "session/reconcileRequested",
+    agentSessionId: "session-1",
+    needsMessages: true,
+    needsState: true,
+    workspaceId: "workspace-1"
+  }).state;
+
+  state = reduce(state, {
+    type: "engine/commandResult",
+    commandId: "session:reconcile:session-1:1",
+    commandType: "session/reconcile",
+    outcome: "timedOut"
+  }).state;
+
+  assert.equal(state.recordsBySessionId["session-1"]?.errorCode, "timeout");
+  assert.equal(
+    state.recordsBySessionId["session-1"]?.errorMessage,
+    "Session synchronization timed out."
+  );
+});
+
 test("failed reconcile preserves typed error details for exact recovery", () => {
   let state = reduce(createInitialSessionReconcileState(), {
     type: "session/reconcileRequested",

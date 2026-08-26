@@ -10,7 +10,8 @@ import {
 import {
   createAgentActivitySnapshotProjector,
   createAgentActivitySessionReconcileExecutor,
-  createAgentActivityWorkspaceEventCoordinator
+  createAgentActivityWorkspaceEventCoordinator,
+  selectEngineSessionReconcile
 } from "@tutti-os/agent-activity-core";
 import type { WorkspaceAgentActivityEnsureSessionSynchronizedInput } from "../workspaceAgentActivityService.interface.ts";
 import type { WorkspaceAgentSessionEngineHost } from "./workspaceAgentSessionEngineHost.ts";
@@ -28,6 +29,17 @@ import type {
 } from "./workspaceAgentActivityReconcileTypes.ts";
 import { WorkspaceAgentComposerOptionsInvalidationCoordinator } from "./workspaceAgentComposerOptionsInvalidationCoordinator.ts";
 import { editRetryAvailabilityFromTuttid } from "./workspaceAgentEditRetry.ts";
+
+function sessionSynchronizationError(
+  errorCode: string,
+  errorMessage: string
+): Error {
+  const error = new Error(
+    errorMessage || errorCode || "Session synchronization failed."
+  ) as Error & { code?: string };
+  if (errorCode) error.code = errorCode;
+  return error;
+}
 
 export abstract class WorkspaceAgentActivityReconcileBridge {
   private readonly reconcileDependencies: WorkspaceAgentActivityReconcileDependencies;
@@ -154,6 +166,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
     // Keep the release hook for hosts that implement a narrower stream lease.
     const workspaceId = normalizeWorkspaceId(input.workspaceId);
     const agentSessionId = input.agentSessionId.trim();
+    let released = false;
+    let retryingAfterFailure = false;
+    let lastReportedFailure: string | null = null;
+    let unsubscribeReconcile = () => {};
     if (agentSessionId) {
       let refCounts =
         this.prioritySessionRefCountsByWorkspaceId.get(workspaceId);
@@ -162,7 +178,45 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         this.prioritySessionRefCountsByWorkspaceId.set(workspaceId, refCounts);
       }
       refCounts.set(agentSessionId, (refCounts.get(agentSessionId) ?? 0) + 1);
-      this.entry(workspaceId).engine.dispatch({
+      const engine = this.entry(workspaceId).engine;
+      const observeReconcile = () => {
+        if (released) return;
+        const record = selectEngineSessionReconcile(
+          engine.getSnapshot(),
+          agentSessionId
+        );
+        if (
+          !record ||
+          record.inFlightCommandId ||
+          record.pendingMessages ||
+          record.pendingState
+        ) {
+          return;
+        }
+        const errorCode = record.errorCode?.trim() ?? "";
+        const errorMessage = record.errorMessage?.trim() ?? "";
+        if (!errorCode && !errorMessage) {
+          retryingAfterFailure = false;
+          lastReportedFailure = null;
+          return;
+        }
+        const failureKey = `${errorCode}\u0000${errorMessage}`;
+        if (failureKey !== lastReportedFailure) {
+          lastReportedFailure = failureKey;
+          input.onError?.(sessionSynchronizationError(errorCode, errorMessage));
+        }
+        if (retryingAfterFailure) return;
+        retryingAfterFailure = true;
+        engine.dispatch({
+          agentSessionId,
+          needsMessages: true,
+          needsState: true,
+          type: "session/reconcileRequested",
+          workspaceId
+        });
+      };
+      unsubscribeReconcile = engine.subscribe(observeReconcile);
+      engine.dispatch({
         agentSessionId,
         needsMessages: true,
         needsState: true,
@@ -170,10 +224,10 @@ export abstract class WorkspaceAgentActivityReconcileBridge {
         workspaceId
       });
     }
-    let released = false;
     return () => {
       if (released || !agentSessionId) return;
       released = true;
+      unsubscribeReconcile();
       const refCounts =
         this.prioritySessionRefCountsByWorkspaceId.get(workspaceId);
       const nextCount = (refCounts?.get(agentSessionId) ?? 0) - 1;

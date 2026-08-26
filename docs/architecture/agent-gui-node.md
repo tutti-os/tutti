@@ -121,6 +121,9 @@ Realtime events reduce latency but are not automatically complete truth:
   invalid/unanchored deltas, nonterminal deltas after known terminal message
   truth, reconnects, Turn, Interaction, and state changes trigger authoritative
   reconciliation
+- a focused conversation holds a synchronization lease. A terminal initial
+  reconcile failure is observable through that lease and receives one bounded
+  retry; releasing the lease prevents further focus-owned recovery work
 - event publication or observer failure cannot roll back a committed canonical transaction
 - message projections preserve the original textual content, including leading
   and trailing whitespace; trimmed or whitespace-collapsed copies may decide

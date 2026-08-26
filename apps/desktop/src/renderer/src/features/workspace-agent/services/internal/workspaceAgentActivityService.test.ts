@@ -160,6 +160,114 @@ test("WorkspaceAgentActivityService coalesces concurrent workspace loads", async
   assert.equal(listCalls, 1);
 });
 
+test("WorkspaceAgentActivityService retries a failed focused message hydration and restores the transcript", async (t) => {
+  const session = workspaceAgentSession({ status: "ready" });
+  const synchronizationErrors: unknown[] = [];
+  let messageReads = 0;
+  let resolveHydrated!: () => void;
+  const hydrated = new Promise<void>((resolve) => {
+    resolveHydrated = resolve;
+  });
+  let resolveReadAfterRelease!: () => void;
+  const readAfterRelease = new Promise<void>((resolve) => {
+    resolveReadAfterRelease = resolve;
+  });
+  const service = new WorkspaceAgentActivityService({
+    tuttidClient: {
+      getWorkspaceAgentSession: async (
+        ...args: Parameters<TuttidClient["getWorkspaceAgentSession"]>
+      ) => ({
+        ...sessionDetailProjection(args[2]),
+        childSessions: [],
+        editRetry: workspaceAgentEditRetryAvailability(),
+        session,
+        turns: []
+      }),
+      listWorkspaceAgentSessionMessages: async () => {
+        messageReads += 1;
+        if (messageReads === 1) {
+          throw new Error("transient message read failure");
+        }
+        if (messageReads === 3) {
+          resolveReadAfterRelease();
+          throw new Error("failure after synchronization release");
+        }
+        resolveHydrated();
+        return {
+          hasMore: false,
+          latestVersion: 1,
+          messages: [
+            {
+              agentSessionId: "session-1",
+              kind: "text",
+              messageId: "message-1",
+              occurredAtUnixMs: 1,
+              payload: { text: "你是谁" },
+              role: "user",
+              sequence: 1,
+              turnId: "turn-1",
+              version: 1
+            }
+          ]
+        };
+      },
+      listWorkspaceAgentSessions: async () => ({
+        hasMore: false,
+        sessions: [session],
+        workspaceId: "ws-1"
+      })
+    } as unknown as TuttidClient,
+    runtimeApi: { logTerminalDiagnostic: async () => {} }
+  });
+  t.after(() => service.dispose());
+  await service.load("ws-1");
+
+  const release = service.ensureSessionSynchronized({
+    agentSessionId: "session-1",
+    onError: (error) => synchronizationErrors.push(error),
+    workspaceId: "ws-1"
+  });
+  t.after(release);
+  await Promise.race([
+    hydrated,
+    new Promise<never>((_, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("focused message hydration did not retry")),
+        5_000
+      );
+      timeout.unref();
+    })
+  ]);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.equal(messageReads, 2);
+  assert.equal(synchronizationErrors.length, 1);
+  assert.match(
+    synchronizationErrors[0] instanceof Error
+      ? synchronizationErrors[0].message
+      : "",
+    /transient message read failure/
+  );
+  assert.equal(
+    service.getSnapshot("ws-1").sessionMessagesById["session-1"]?.[0]?.payload
+      .text,
+    "你是谁"
+  );
+
+  release();
+  service.getSessionEngine("ws-1").dispatch({
+    agentSessionId: "session-1",
+    needsMessages: true,
+    needsState: false,
+    type: "session/reconcileRequested",
+    workspaceId: "ws-1"
+  });
+  await readAfterRelease;
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(messageReads, 3, "a released focus lease must not retry");
+  assert.equal(synchronizationErrors.length, 1);
+});
+
 test("WorkspaceAgentActivityService.sendInput preserves the authoritative ready response", async () => {
   const readySession = workspaceAgentSession({ status: "ready" });
   const service = new WorkspaceAgentActivityService({
