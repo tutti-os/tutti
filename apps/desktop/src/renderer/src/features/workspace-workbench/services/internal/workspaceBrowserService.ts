@@ -387,7 +387,7 @@ function launchOpenUrl(
   event: BrowserNodeOpenUrlEvent,
   workspaceId: string,
   source?: "browser" | "workspace_app"
-) {
+): void {
   void requestWorkspaceBrowserLaunch({
     reuseIfOpen: event.reuseIfOpen,
     ...(source ? { source } : {}),

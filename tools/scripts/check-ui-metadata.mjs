@@ -501,7 +501,7 @@ if (metadata !== undefined) {
         const barrelPath = publicEntrypoints.get(component.from);
         const sourcePath = path.normalize(component.source);
 
-        if (barrelPath === sourcePath) {
+        if (path.normalize(barrelPath) === sourcePath) {
           return;
         }
 

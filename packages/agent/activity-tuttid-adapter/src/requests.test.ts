@@ -33,6 +33,7 @@ test("create and send projections share one prompt allowlist", () => {
       settings: {
         browserUse: true,
         codexSaverMode: true,
+        rtkSaverMode: true,
         computerUse: true
       },
       workspaceId: "workspace-1"
@@ -54,6 +55,7 @@ test("create and send projections share one prompt allowlist", () => {
   }
   assert.equal(activationCreate.browserUse, true);
   assert.equal(activationCreate.codexSaverMode, true);
+  assert.equal(activationCreate.rtkSaverMode, true);
   assert.equal(activationCreate.isolation, "worktree");
   assert.equal(activationCreate.modelExplicit, false);
   assert.equal(activationCreate.reasoningEffortExplicit, true);

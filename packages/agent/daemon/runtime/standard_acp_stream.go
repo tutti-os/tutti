@@ -52,6 +52,8 @@ func (a *standardACPAdapter) handleACPMessage(
 		return nil, nil
 	}
 	switch message.Method {
+	case acpMethodWriteTextFile:
+		return standardACPWriteTextFileEvents(ctx, client, session, turnID, message, normalizer)
 	case acpMethodUpdate:
 		if !a.standardACPUpdateMatchesProviderSession(session, message.Params) {
 			return nil, nil
@@ -114,7 +116,14 @@ func (a *standardACPAdapter) handleACPMessage(
 		// Automatic tiers resolve the request from the live permission tier
 		// without prompting; the tool call still streams its own activity via
 		// session/update.
-		if decision := a.automaticPermissionDecision(session.AgentSessionID); decision != "" {
+		decision := ""
+		if a.config.providerPermissionRequestDecision != nil {
+			decision = strings.TrimSpace(a.config.providerPermissionRequestDecision(message.Params))
+		}
+		if decision == "" {
+			decision = a.automaticPermissionDecision(session.AgentSessionID)
+		}
+		if decision != "" {
 			if optionID, ok := acpPermissionRequestDecisionOptionID(
 				message.Params,
 				decision,

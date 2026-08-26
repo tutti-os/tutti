@@ -66,6 +66,7 @@ const connectorMarketEn = {
   categoryUnnamed: "Category",
   close: "Close",
   connectedStatus: "Connected",
+  copyDeviceCode: "Copy device code",
   connectorAuthorizationFailed:
     "Authorization could not be started. Try again.",
   connectorAuthorizationTimedOut:
@@ -88,6 +89,7 @@ const connectorMarketEn = {
   detailRuntime: "Runtime",
   detailTransport: "Interfaces",
   detailVersion: "Version",
+  deviceCodeCopied: "Device code copied",
   dialogAuthorizationDescription:
     "Tutti will access {{name}} only within the permissions shown below",
   dialogAuthorizationPending:
@@ -188,6 +190,7 @@ const connectorMarketZhCN = {
   categoryUnnamed: "分类",
   close: "关闭",
   connectedStatus: "已连接",
+  copyDeviceCode: "复制设备代码",
   connectorAuthorizationFailed: "无法启动授权，请重试",
   connectorAuthorizationTimedOut: "授权已超时，请重新授权",
   connectorAuthorizationConfigurationInvalid: "连接器授权配置无效",
@@ -206,6 +209,7 @@ const connectorMarketZhCN = {
   detailRuntime: "运行时",
   detailTransport: "运行方式",
   detailVersion: "版本",
+  deviceCodeCopied: "设备代码已复制",
   dialogAuthorizationDescription:
     "Tutti 只会在下方列出的权限范围内访问 {{name}}",
   dialogAuthorizationPending: "请在浏览器中完成授权，然后返回 Tutti",

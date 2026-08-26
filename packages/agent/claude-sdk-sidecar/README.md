@@ -77,6 +77,9 @@ therefore binds the selected remapped child root UUID and the last SDK-visible
 child checkpoint without comparing source and child message content. Task
 notifications and internal synthetic user messages extend the checkpoint when
 visible, but are not treated as origin root Turns.
+Top-level Claude `user` messages that carry `tool_result` blocks likewise stay
+inside the preceding root Turn checkpoint and never become independent Turn
+bindings.
 
 For live Turns, the UUID supplied on the outbound SDK user message is a
 `promptCorrelationId` only because Claude Code may rewrite it in the durable

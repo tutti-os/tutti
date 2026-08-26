@@ -966,6 +966,8 @@ function createDependenciesStub(): {
       copyFilesToClipboard: fail
     },
     tuttidClient: {
+      getGlobalAgentActivityFilterOptions: fail,
+      listGlobalAgentActivitySessions: fail,
       appendAgentSessionRecordingActivityEvents: fail,
       deleteAgentSessionRecording: async () => {},
       listAgentSessionRecordings: async () => [],

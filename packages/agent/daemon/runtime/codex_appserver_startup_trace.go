@@ -16,6 +16,7 @@ import (
 
 const codexAppServerStartupTraceFileName = "tutti-codex-appserver-startup.jsonl"
 const codexAppServerStartupTraceMaxBytes = 64 * 1024 * 1024
+const codexAppServerStderrTailLimit = 8 * 1024
 
 var codexAppServerStartupTraceMu sync.Mutex
 
@@ -49,6 +50,9 @@ type codexAppServerStartupTrace struct {
 	startupObserver    CodexAppServerStartupObserver
 	stderrMu           sync.Mutex
 	stderrLine         []byte
+	stderrTail         []byte
+	stderrBytes        atomic.Int64
+	stderrChunks       atomic.Int64
 	openSpans          map[string][]codexAppServerOpenSpan
 	spanSequence       atomic.Uint64
 	completedSpanCount atomic.Int64
@@ -169,10 +173,17 @@ func (t *codexAppServerStartupTrace) Finish(err error) {
 		return
 	}
 	outcome := "succeeded"
-	fields := map[string]any{}
+	stderrChunks, stderrBytes, stderrTail := t.stderrDiagnostics()
+	fields := map[string]any{
+		"stderr_chunks": stderrChunks,
+		"stderr_bytes":  stderrBytes,
+	}
 	if err != nil {
 		outcome = "failed"
 		fields["error"] = err.Error()
+		if stderrTail != "" {
+			fields["stderr_tail"] = truncateACPLogValue(stderrTail, codexAppServerStderrTailLimit)
+		}
 		t.Log("start.failed", fields)
 	} else {
 		t.Log("start.succeeded", fields)
@@ -198,16 +209,14 @@ func (t *codexAppServerStartupTrace) LogMessage(method string, hasID bool, param
 }
 
 func (t *codexAppServerStartupTrace) LogStderr(chunk []byte) {
-	text := strings.TrimSpace(string(chunk))
-	if text == "" {
+	if len(chunk) == 0 {
 		return
 	}
-	t.Log("process.stderr", map[string]any{
-		"message": truncateACPLogValue(text, 2000),
-		"size":    len(chunk),
-	})
+	t.stderrChunks.Add(1)
+	t.stderrBytes.Add(int64(len(chunk)))
 
 	t.stderrMu.Lock()
+	t.stderrTail = appendCodexAppServerStderrTail(t.stderrTail, chunk, codexAppServerStderrTailLimit)
 	observations := make([]CodexAppServerSpanObservation, 0)
 	t.stderrLine = append(t.stderrLine, chunk...)
 	for {
@@ -227,6 +236,28 @@ func (t *codexAppServerStartupTrace) LogStderr(chunk []byte) {
 	for _, observation := range observations {
 		t.notifySpanObserver(observation)
 	}
+}
+
+func appendCodexAppServerStderrTail(tail, chunk []byte, limit int) []byte {
+	if limit <= 0 {
+		return nil
+	}
+	if len(chunk) >= limit {
+		return append([]byte(nil), chunk[len(chunk)-limit:]...)
+	}
+	if keep := limit - len(chunk); len(tail) > keep {
+		tail = tail[len(tail)-keep:]
+	}
+	return append(tail, chunk...)
+}
+
+func (t *codexAppServerStartupTrace) stderrDiagnostics() (chunks, bytes int64, tail string) {
+	chunks = t.stderrChunks.Load()
+	bytes = t.stderrBytes.Load()
+	t.stderrMu.Lock()
+	tail = strings.TrimSpace(string(t.stderrTail))
+	t.stderrMu.Unlock()
+	return chunks, bytes, tail
 }
 
 func withCodexAppServerLogging(env []string) []string {

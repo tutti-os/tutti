@@ -20,6 +20,7 @@ export function createConnectorMarketStoreState(): ConnectorMarketStoreState {
     connectorKeys: [],
     pendingInstallationsByConnectorKey: {},
     pendingAuthorizationsByConnectorKey: {},
+    mutationPhasesByConnectorKey: {},
     pendingUninstallNotificationsByOperationId: {},
     operationsByConnectorKey: {},
     authorizingConnectorKeys: {},
@@ -46,6 +47,7 @@ export function clearConnectorMarketStoreState(
     initial.pendingInstallationsByConnectorKey;
   state.pendingAuthorizationsByConnectorKey =
     initial.pendingAuthorizationsByConnectorKey;
+  state.mutationPhasesByConnectorKey = initial.mutationPhasesByConnectorKey;
   state.pendingUninstallNotificationsByOperationId =
     initial.pendingUninstallNotificationsByOperationId;
   state.operationsByConnectorKey = initial.operationsByConnectorKey;

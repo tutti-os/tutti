@@ -32,12 +32,14 @@ import {
   getAccountLoginStatus,
   getAccountProductSummary,
   getAccountUserInfo,
+  getGlobalAgentActivityFilterOptions,
   getMobileRemotePairingChallenge,
   dismissAccountRegistrationCreditsReward,
   getHealth,
   getAgentTargetSetup,
   getStartupWorkspace,
   listAgentTargets,
+  listGlobalAgentActivitySessions,
   probeAgentTargetAccountUsage,
   listAgentQuickPrompts,
   getWorkspaceFileTreeSnapshot,
@@ -122,6 +124,7 @@ import type {
 
 export type {
   CreateTuttidClientInput,
+  GlobalAgentActivityFilters,
   MobileRemoteAccessClient,
   TuttidClient,
   TuttidRequestOptions,
@@ -253,6 +256,18 @@ export function createTuttidClient(
     async getAccountProductSummary() {
       const response = await getAccountProductSummary({ client });
       return unwrapData(response, "Account product summary request failed.");
+    },
+    async getGlobalAgentActivityFilterOptions() {
+      return unwrapData(
+        await getGlobalAgentActivityFilterOptions({ client }),
+        "Global Agent Activity filter options request failed."
+      );
+    },
+    async listGlobalAgentActivitySessions(filters) {
+      return unwrapData(
+        await listGlobalAgentActivitySessions({ client, query: filters }),
+        "Global Agent Activity sessions request failed."
+      );
     },
     async dismissAccountRegistrationCreditsReward(rewardID) {
       const response = await dismissAccountRegistrationCreditsReward({

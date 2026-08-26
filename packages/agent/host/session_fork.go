@@ -396,10 +396,31 @@ func (h *Host) processSessionForkOperationWithSource(
 				)
 			}
 		}
+		now := h.now().UnixMilli()
 		commit, err := h.sessionForks.CommitSessionFork(
-			ctx, operation.WorkspaceID, operation.OperationID, h.now().UnixMilli(),
+			ctx, operation.WorkspaceID, operation.OperationID, now,
 		)
 		if err != nil {
+			if errors.Is(err, storesqlite.ErrSessionForkMaterializationInconsistent) {
+				failed, _, failErr := h.sessionForks.FailAcceptedSessionFork(
+					ctx,
+					operation.WorkspaceID,
+					operation.OperationID,
+					err.Error(),
+					now,
+				)
+				if failErr != nil {
+					return ForkSessionResult{Operation: operation}, fmt.Errorf(
+						"quarantine permanently inconsistent accepted session fork: %w",
+						failErr,
+					)
+				}
+				logQuarantinedSessionFork(ctx, failed, err)
+				return ForkSessionResult{Operation: failed}, errors.Join(
+					ErrSessionForkFailed,
+					fmt.Errorf("materialize accepted session fork: %w", err),
+				)
+			}
 			return ForkSessionResult{Operation: operation}, fmt.Errorf(
 				"materialize accepted session fork: %w",
 				err,

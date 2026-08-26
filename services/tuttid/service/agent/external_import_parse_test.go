@@ -2,6 +2,7 @@ package agent
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -256,6 +257,102 @@ func TestParseCodexJSONLSkipsAgentsAndEnvironmentPreamble(t *testing.T) {
 	}
 	if len(session.Messages) != 1 || session.Messages[0].Text != "Real question here" {
 		t.Fatalf("messages = %#v, want only the real user message", session.Messages)
+	}
+}
+
+func TestParseCodexJSONLStripsLeadingRecommendedPluginsPreamble(t *testing.T) {
+	tests := []struct {
+		name         string
+		userTexts    []string
+		wantTitle    string
+		wantMessages []string
+	}{
+		{
+			name: "preamble followed by prompt",
+			userTexts: []string{
+				"<recommended_plugins>\n- Airtable (airtable@openai-curated-remote)\n- Asana (asana@openai-curated-remote)\n</recommended_plugins>\nPlease diagnose the import bug",
+			},
+			wantTitle:    "Please diagnose the import bug",
+			wantMessages: []string{"Please diagnose the import bug"},
+		},
+		{
+			name:         "closing tag followed directly by prompt",
+			userTexts:    []string{"<recommended_plugins>plugin catalog</recommended_plugins>Keep the adjacent request"},
+			wantTitle:    "Keep the adjacent request",
+			wantMessages: []string{"Keep the adjacent request"},
+		},
+		{
+			name: "preamble-only event",
+			userTexts: []string{
+				"<recommended_plugins>\n- Airtable (airtable@openai-curated-remote)\n</recommended_plugins>",
+				"Keep this real request",
+			},
+			wantTitle:    "Keep this real request",
+			wantMessages: []string{"Keep this real request"},
+		},
+		{
+			name:         "embedded user-authored markup",
+			userTexts:    []string{"Explain <recommended_plugins>this literal tag</recommended_plugins>"},
+			wantTitle:    "Explain <recommended_plugins>this literal tag</recommended_plugins>",
+			wantMessages: []string{"Explain <recommended_plugins>this literal tag</recommended_plugins>"},
+		},
+		{
+			name:         "malformed leading markup",
+			userTexts:    []string{"<recommended_plugins>keep this unclosed user text"},
+			wantTitle:    "<recommended_plugins>keep this unclosed user text",
+			wantMessages: []string{"<recommended_plugins>keep this unclosed user text"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cwd := t.TempDir()
+			events := []map[string]any{
+				{
+					"timestamp": "2026-08-23T00:00:00Z",
+					"type":      "session_meta",
+					"payload":   map[string]any{"id": "codex-recommended-plugins", "cwd": cwd},
+				},
+			}
+			for index, userText := range tt.userTexts {
+				events = append(events, map[string]any{
+					"timestamp": fmt.Sprintf("2026-08-23T00:00:%02dZ", index+1),
+					"type":      "response_item",
+					"payload": map[string]any{
+						"type":    "message",
+						"role":    "user",
+						"content": []any{map[string]any{"type": "input_text", "text": userText}},
+					},
+				})
+			}
+
+			session, ok, err := parseCodexJSONL(
+				filepath.Join(cwd, "rollout.jsonl"),
+				strings.NewReader(testAgentJSONL(t, events...)),
+			)
+			if err != nil || !ok {
+				t.Fatalf("parseCodexJSONL ok=%v err=%v", ok, err)
+			}
+			if session.Title != tt.wantTitle {
+				t.Fatalf("title = %q, want %q", session.Title, tt.wantTitle)
+			}
+			if len(session.Messages) != len(tt.wantMessages) {
+				t.Fatalf("messages = %#v, want texts %#v", session.Messages, tt.wantMessages)
+			}
+			for index, wantText := range tt.wantMessages {
+				if session.Messages[index].Text != wantText {
+					t.Fatalf("messages[%d].Text = %q, want %q", index, session.Messages[index].Text, wantText)
+				}
+			}
+		})
+	}
+}
+
+func TestExternalImportCleanUserTextKeepsRecommendedPluginsMarkupForClaude(t *testing.T) {
+	text := "<recommended_plugins>user-authored Claude text</recommended_plugins>"
+	cleaned, ok := externalImportCleanUserText("claude-code", text)
+	if !ok || cleaned != text {
+		t.Fatalf("externalImportCleanUserText() = %q, %v, want original Claude text", cleaned, ok)
 	}
 }
 

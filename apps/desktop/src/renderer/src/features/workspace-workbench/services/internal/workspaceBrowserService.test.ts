@@ -170,6 +170,62 @@ test("workspace browser service opens Browser popups in tabs and launches app UR
   ]);
 });
 
+test("workspace browser service launches every canonical Workspace App popup event", () => {
+  const requests: WorkspaceBrowserLaunchRequest[] = [];
+  let emitDesktopBrowserEvent = (_event: BrowserNodeEvent): void => undefined;
+  const service = createWorkspaceBrowserService({
+    browserApi: createBrowserNodeHostApi({
+      onEvent(listener) {
+        emitDesktopBrowserEvent = listener;
+        return () => {
+          emitDesktopBrowserEvent = () => undefined;
+        };
+      }
+    })
+  });
+  const appFeature = createBrowserNodeFeature({
+    hostApi: service.createFeatureHostApi({
+      acceptsEvent: (event) => workspaceAppOwnsEvent(event),
+      source: "workspace_app",
+      workspaceId: "workspace-popup-events"
+    })
+  });
+  const disposeLaunchHandler = registerWorkspaceBrowserLaunchHandler(
+    "workspace-popup-events",
+    (request) => {
+      requests.push(request);
+      return `browser:${requests.length}`;
+    }
+  );
+  const event = {
+    reuseIfOpen: false,
+    sourceNodeId: "workspace-app:99",
+    type: "open-url" as const,
+    url: "https://open.feishu.cn/authorization"
+  };
+
+  service.ensureFeatureConnected(appFeature);
+  emitDesktopBrowserEvent(event);
+  emitDesktopBrowserEvent(event);
+  assert.deepEqual(requests, [
+    {
+      kind: "open",
+      reuseIfOpen: false,
+      source: "workspace_app",
+      url: event.url,
+      workspaceId: "workspace-popup-events"
+    },
+    {
+      kind: "open",
+      reuseIfOpen: false,
+      source: "workspace_app",
+      url: event.url,
+      workspaceId: "workspace-popup-events"
+    }
+  ]);
+  disposeLaunchHandler();
+});
+
 test("workspace browser service reuses matching pages and creates tabs for new URLs", () => {
   const service = createWorkspaceBrowserService({
     browserApi: createBrowserNodeHostApi()
@@ -631,7 +687,7 @@ function createBrowserStateEvent(
     isOccluded: false,
     lifecycle: "active",
     nodeId,
-    title: null,
+    title: "Browser",
     type: "state",
     url
   };

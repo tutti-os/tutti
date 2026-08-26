@@ -5,6 +5,7 @@ import type {
   AuthorizationViewEnvelopeV1
 } from "@tutti-os/connector-contracts/authorization/v1";
 import {
+  BareIconButton,
   Button,
   Checkbox,
   DialogFooter,
@@ -16,6 +17,7 @@ import {
   SelectValue,
   Spinner
 } from "@tutti-os/ui-system/components";
+import { CheckIcon, CopyIcon } from "@tutti-os/ui-system/icons";
 import qrcode from "qrcode-generator";
 import { useMemo, useState, type ComponentType, type FormEvent } from "react";
 
@@ -24,11 +26,57 @@ import { createAuthorizationSubmitEvent } from "../../application/authorization/
 export interface AuthorizationRendererLabels {
   activate: string;
   cancel: string;
+  copyDeviceCode: string;
+  deviceCodeCopied: string;
   refresh: string;
   qrCodeAlt: string;
   retry: string;
   submit: string;
   unsupportedField: string;
+}
+
+function AuthorizationDeviceCode({
+  copiedLabel,
+  copyLabel,
+  userCode
+}: {
+  copiedLabel: string;
+  copyLabel: string;
+  userCode: string;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const copyUserCode = async () => {
+    if (typeof navigator.clipboard?.writeText !== "function") return;
+
+    try {
+      await navigator.clipboard.writeText(userCode);
+      setCopied(true);
+    } catch {
+      // Keep the copy affordance available when the host rejects clipboard access.
+    }
+  };
+
+  return (
+    <output className="flex items-center justify-center gap-3 rounded-lg border border-[var(--border-1)] bg-[var(--surface-2)] px-4 py-3 text-[var(--text-primary)]">
+      <span className="font-mono text-lg font-semibold tracking-widest">
+        {userCode}
+      </span>
+      <BareIconButton
+        aria-label={copied ? copiedLabel : copyLabel}
+        className={
+          copied ? "text-[var(--text-primary)]" : "text-[var(--text-tertiary)]"
+        }
+        onClick={() => void copyUserCode()}
+      >
+        {copied ? (
+          <CheckIcon aria-hidden="true" />
+        ) : (
+          <CopyIcon aria-hidden="true" />
+        )}
+      </BareIconButton>
+    </output>
+  );
 }
 
 export interface AuthorizationViewRendererProps {
@@ -263,6 +311,7 @@ function AuthorizationViewHeading({
 function AuthorizationActionFooter({
   actionLabel,
   actionType,
+  allowCancelWhileBusy = false,
   busy,
   cancelLabel,
   viewId,
@@ -270,6 +319,7 @@ function AuthorizationActionFooter({
 }: {
   actionLabel?: string;
   actionType?: AuthorizationActionEventType;
+  allowCancelWhileBusy?: boolean;
   busy: boolean;
   cancelLabel: string;
   viewId: string;
@@ -278,7 +328,7 @@ function AuthorizationActionFooter({
   return (
     <DialogFooter className="sm:justify-center">
       <Button
-        disabled={busy}
+        disabled={busy && !allowCancelWhileBusy}
         size="dialog"
         type="button"
         variant="secondary"
@@ -390,7 +440,10 @@ export function DefaultAuthorizationViewRenderer(
   const action =
     view.type === "external_link" || view.type === "device_code"
       ? {
-          label: view.actionLabel ?? props.labels.activate,
+          label:
+            view.type === "device_code" && props.busy
+              ? props.labels.activate
+              : (view.actionLabel ?? props.labels.activate),
           type: "activate" as const
         }
       : view.type === "result" &&
@@ -406,9 +459,12 @@ export function DefaultAuthorizationViewRenderer(
         title={view.title}
       />
       {view.type === "device_code" ? (
-        <output className="rounded-lg border border-[var(--border-1)] bg-[var(--surface-2)] px-4 py-3 font-mono text-lg font-semibold tracking-widest text-[var(--text-primary)]">
-          {view.userCode}
-        </output>
+        <AuthorizationDeviceCode
+          copiedLabel={props.labels.deviceCodeCopied}
+          copyLabel={props.labels.copyDeviceCode}
+          key={`${props.view.viewId}:${view.userCode}`}
+          userCode={view.userCode}
+        />
       ) : null}
       {"message" in view && view.message ? (
         <p className="m-0 text-sm text-[var(--text-secondary)]">
@@ -418,6 +474,7 @@ export function DefaultAuthorizationViewRenderer(
       <AuthorizationActionFooter
         actionLabel={action?.label}
         actionType={action?.type}
+        allowCancelWhileBusy={view.type === "device_code"}
         busy={props.busy}
         cancelLabel={props.labels.cancel}
         viewId={props.view.viewId}

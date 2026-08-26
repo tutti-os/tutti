@@ -25,6 +25,12 @@ function createTransportClient(
   overrides: Partial<TuttidClient> = {}
 ): TuttidClient {
   const client: TuttidClient = {
+    async getGlobalAgentActivityFilterOptions() {
+      throw new Error("not used");
+    },
+    async listGlobalAgentActivitySessions() {
+      throw new Error("not used");
+    },
     async appendAgentSessionRecordingActivityEvents() {
       throw new Error("not used");
     },

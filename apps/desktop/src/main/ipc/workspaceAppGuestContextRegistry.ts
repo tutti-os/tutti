@@ -1,4 +1,5 @@
 import electron, { type BrowserWindow, type WebContents } from "electron";
+import type { BrowserWebviewGuestAttachment } from "@tutti-os/browser-node/electron-main";
 import {
   desktopIpcChannels,
   type DesktopWorkspaceAppContext,
@@ -7,6 +8,7 @@ import {
 import { normalizeTuttiExternalAtInvalidation } from "@tutti-os/workspace-external-core/core";
 import type { TuttiExternalWorkspaceOpenRouteIntent } from "@tutti-os/workspace-external-core/contracts";
 import type { DesktopLocale } from "../../shared/i18n";
+import { parseWorkspaceAppSessionPartition } from "../../shared/contracts/workspaceAppSessionPartition.ts";
 import type { DesktopLogger } from "../logging";
 import {
   resolveDesktopDaemonBaseUrl,
@@ -15,7 +17,7 @@ import {
 import { createWorkspaceAppContextToken } from "./workspaceAppContextToken.ts";
 import type { WorkspaceAppGuestContext } from "./workspaceAppContextTypes.ts";
 import { isRecord, isStringRecord } from "./workspaceAppPayloadValidation.ts";
-import { installWorkspaceAppWindowOpenHandler } from "./workspaceAppWindowOpen.ts";
+import { createWorkspaceAppWindowOpenHandler } from "../windows/workspaceAppWindowOpen.ts";
 
 const { webContents } = electron;
 
@@ -32,7 +34,7 @@ export function registerWorkspaceAppGuestContext(input: {
   onDestroyed?: (webContentsId: number) => void;
   ownerWindow: BrowserWindow;
   partition?: string | null;
-}): void {
+}): BrowserWebviewGuestAttachment {
   const { contents, logger, onDestroyed, ownerWindow, partition } = input;
   workspaceAppGuestWebContents.add(contents);
   const context = readWorkspaceAppGuestContext(ownerWindow, partition);
@@ -44,7 +46,6 @@ export function registerWorkspaceAppGuestContext(input: {
       webContentsId: contents.id
     });
   }
-  installWorkspaceAppWindowOpenHandler({ contents, logger, ownerWindow });
   contents.on("preload-error", (_event, preloadPath, error) => {
     logger?.warn("workspace app guest preload failed", {
       error: error.message,
@@ -57,6 +58,13 @@ export function registerWorkspaceAppGuestContext(input: {
     workspaceAppGuestContexts.delete(contents.id);
     onDestroyed?.(contents.id);
   });
+  return {
+    windowOpenHandler: createWorkspaceAppWindowOpenHandler({
+      contents,
+      logger,
+      ownerWindow
+    })
+  };
 }
 
 export function getWorkspaceAppGuestContext(
@@ -197,29 +205,11 @@ export function isWorkspaceAppExternalRendererEvent(
   return isWorkspaceAppUserProjectSnapshot(value.snapshot);
 }
 
-export function parseWorkspaceAppGuestPartition(
-  partition: string | null | undefined
-): { appID: string; workspaceID: string } | null {
-  const prefix = "persist:tutti-app:";
-  if (!partition?.startsWith(prefix)) {
-    return null;
-  }
-  const value = partition.slice(prefix.length);
-  const separator = value.indexOf(":");
-  if (separator <= 0 || separator >= value.length - 1) {
-    return null;
-  }
-  return {
-    appID: decodeURIComponent(value.slice(separator + 1)),
-    workspaceID: decodeURIComponent(value.slice(0, separator))
-  };
-}
-
 function readWorkspaceAppGuestContext(
   ownerWindow: BrowserWindow,
   partition: string | null | undefined
 ): WorkspaceAppGuestContext | null {
-  const parsed = parseWorkspaceAppGuestPartition(partition);
+  const parsed = parseWorkspaceAppSessionPartition(partition);
   if (!parsed) {
     return null;
   }
