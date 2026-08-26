@@ -81,6 +81,9 @@ func (p TuttiAgentPreparer) Prepare(ctx context.Context, input ProviderPrepareIn
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if err := ensureRTKInstructionsReferenceFirst(instructionsPath, input.PrepareInput); err != nil {
+		return ProviderPrepareResult{}, err
+	}
 	if input.Manifest != nil {
 		input.Manifest.RecordManagedFile(instructionsPath, "provider-instructions", writeResult.Created)
 		input.Manifest.RecordManagedFile(home, "tutti-agent-home", true)

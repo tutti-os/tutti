@@ -146,6 +146,7 @@ func (p *DefaultPreparer) Prepare(ctx context.Context, input PrepareInput) (Prep
 		}
 		manifest.RecordManagedFile(rtkRuntime.Executable, "rtk-executable", rtkRuntime.ExecutableCreated)
 		manifest.RecordManagedFile(rtkRuntime.Instructions, "rtk-instructions", rtkRuntime.InstructionsCreated)
+		input.rtkInstructionsPath = rtkRuntime.Instructions
 	}
 	if provider := p.provider(input); provider != nil {
 		logRuntimePrepareTrace("runtime_prepare.provider_requested", input, map[string]any{

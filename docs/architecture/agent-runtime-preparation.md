@@ -24,10 +24,13 @@ routing policy; enabling either mode does not implicitly enable or disable the
 other.
 Preparation copies that executable and the canonical `RTK.md`
 into the exact Session runtime and prepends only the private binary directory to
-that Session's `PATH`. The common Tutti Runtime policy carries the same RTK
-instructions through each provider's native instruction channel (for example,
-Codex or OpenCode `AGENTS.md`, Claude's system-prompt file, and Cursor's plugin
-context). New providers and extensions therefore inherit the mode without a
+that Session's `PATH`. Session-private Codex, Tutti Agent, and OpenCode
+`AGENTS.md` files start with an absolute `@<runtime>/rtk/RTK.md` reference,
+matching RTK's native Codex integration. The common Tutti Runtime policy also
+carries the same RTK instructions inline through every provider's native
+instruction channel as a compatibility fallback (for example, Claude's
+system-prompt file and Cursor's plugin context). New providers and extensions
+therefore inherit the mode without a
 provider-name branch. RTK's database, tee output, and telemetry policy are also
 isolated under the Session runtime.
 

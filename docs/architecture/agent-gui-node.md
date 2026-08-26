@@ -283,8 +283,9 @@ RTK saver mode follows this launch-only path for every resolved Agent provider.
 The remembered composer value is only an opt-in; provider-neutral runtime
 preparation resolves the pinned Tutti-bundled or managed-runtime `rtk`
 executable, copies it and the canonical `RTK.md` into the exact Session runtime,
-injects the RTK rule through
-the provider's existing instruction channel, and prepend only that private
+places an absolute reference to that file first in session-private `AGENTS.md`
+providers, retains the inline RTK rule as a compatibility fallback through the
+provider's existing instruction channel, and prepends only that private
 binary directory to the Session environment. Tutti never runs an RTK package
 manager or global installer. RTK usage data, tee output, and telemetry policy
 are also Session-scoped, so enabling the mode cannot change another Agent's

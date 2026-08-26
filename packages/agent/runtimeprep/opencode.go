@@ -33,6 +33,9 @@ func (OpenCodePreparer) Prepare(_ context.Context, input ProviderPrepareInput) (
 	if err != nil {
 		return ProviderPrepareResult{}, err
 	}
+	if err := ensureRTKInstructionsReferenceFirst(instructionsPath, input.PrepareInput); err != nil {
+		return ProviderPrepareResult{}, err
+	}
 	if _, err := installProviderNativeSkillsSessionScoped(filepath.Join(configDir, "skills"), input.PrepareInput); err != nil {
 		return ProviderPrepareResult{}, fmt.Errorf("install opencode tutti skills: %w", err)
 	}
