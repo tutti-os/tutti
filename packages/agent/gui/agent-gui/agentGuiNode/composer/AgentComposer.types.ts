@@ -496,6 +496,8 @@ export interface AgentComposerProps {
   userProjectApi?: WorkspaceUserProjectApi | null;
   onRequestGitBranches?: AgentComposerGitBranchLoader | null;
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
+  /** Host-owned mention categories to omit from the palette. */
+  hiddenMentionFilterIds?: readonly string[];
 }
 
 export type AgentComposerCapabilitySettingsTarget =

@@ -7,13 +7,14 @@ Host provided a Tutti dynamic skill bundle.
 No-mention default:
 
 - Without `mention://...`, do not treat this bundle alone as intent.
-- Use Tutti only when the user explicitly asks for Tutti, a Tutti workspace/app/issue/session capability, or a command described in this bundle.
+- Use Tutti only when the user explicitly asks for Tutti, a Tutti workspace/app{{if hasFamily "issue"}}/issue{{end}}/session capability, or a command described in this bundle.
 - Generic subagents use provider-native tools; `$tutti-handoff` is for explicit Tutti handoffs or `mention://agent-target/...`.
 
 Required mention routing:
 
 - Route any `mention://...` URI by type before files, repo search, shell, browser/web tools, MCP, or raw CLI.
-- `mention://workspace-issue/<id>?workspaceId=...` → `$issue-manager`
+  {{if hasFamily "issue"}}- `mention://workspace-issue/<id>?workspaceId=...` → `$issue-manager`
+  {{end}}
 - `mention://workspace-app/<appId>?workspaceId=...` → `$workspace-app`
 - `mention://workspace-reference/<id>?source=...&workspaceId=...` → `$reference`
 - `mention://agent-session/<id>?workspaceId=...` → `$tutti-cli`
@@ -36,9 +37,9 @@ Execution:
 
 Fallback only when the matching Skill is unavailable:
 
-{{if has "issue-manager.issue.get"}}- Issue mention: `{{command "issue-manager.issue.get"}}`
+{{if hasFamily "issue"}}{{if has "issue-manager.issue.get"}}- Issue mention: `{{command "issue-manager.issue.get"}}`
 {{else}}- Issue mention: unavailable; do not guess a command.
-{{end}}- App mention: match `App id: <appId>` in `command-guide.md`.
+{{end}}{{end}}- App mention: match `App id: <appId>` in `command-guide.md`.
 {{if has "references.task.list"}}- Reference mention: `{{command "references.task.list" (args "source" "task" "id" "<id>")}}`
 {{else if has "references.reference.list"}}- Reference mention: `{{command "references.reference.list" (args "source" "<source>" "id" "<id>")}}`
 {{else}}- Reference mention: unavailable; do not guess a command.

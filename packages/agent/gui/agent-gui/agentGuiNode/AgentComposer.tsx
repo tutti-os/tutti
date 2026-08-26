@@ -82,6 +82,8 @@ export type {
 } from "./composer/AgentComposer.types";
 import { useSessionWorktreeLaunch } from "./composer/useSessionWorktreeLaunch";
 
+const EMPTY_HIDDEN_MENTION_FILTER_IDS: readonly string[] = [];
+
 export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   "use memo";
   const {
@@ -162,7 +164,8 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     prepareExternalPromptFiles = null,
     promptAssetLimit = null,
     onRequestGitBranches = null,
-    referenceProvenanceFilters = null
+    referenceProvenanceFilters = null,
+    hiddenMentionFilterIds = EMPTY_HIDDEN_MENTION_FILTER_IDS
   } = props;
   const slashCapabilitiesRefreshedSessionRef = useRef<string | null>(null);
   const handleDraftContentChange = useComposerDraftCapabilitiesRequest({
@@ -317,7 +320,10 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   });
   const promptTipRef = useRef<HTMLSpanElement | null>(null);
   const { mentionControllerRef, mentionSearchState } =
-    useAgentMentionSearchController(referenceProvenanceFilters);
+    useAgentMentionSearchController(
+      referenceProvenanceFilters,
+      hiddenMentionFilterIds
+    );
   const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const wasActiveRef = useRef(isActive);
   const lastComposerFocusRequestRef = useRef<number | null>(null);

@@ -588,6 +588,8 @@ export interface AgentGUINodeViewProps extends AgentGUIComposerExternalPromptPro
   viewModel: AgentGUINodeViewModel;
   /** Complete presentation-only catalog for exact Agent mention identity. */
   mentionAgentTargets?: readonly AgentGUIAgentTarget[];
+  /** Host-owned mention categories to omit from the palette. */
+  hiddenMentionFilterIds?: readonly string[];
   referenceProvenanceFilters?: AgentComposerReferenceProvenanceFilters | null;
   sessionInputHistoryEnabled?: boolean;
   sideConversationEnabled?: boolean;

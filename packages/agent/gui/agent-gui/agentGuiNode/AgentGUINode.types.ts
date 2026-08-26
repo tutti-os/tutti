@@ -166,6 +166,8 @@ export interface AgentGUINodeHostCapabilities {
   agentTargetsLoading?: boolean;
   /** Complete presentation-only catalog for resolving Agent mention identity. */
   mentionAgentTargets?: readonly AgentGUIAgentTarget[];
+  /** Host-owned mention categories to omit from the palette. */
+  hiddenMentionFilterIds?: readonly string[];
   /** Launch-only targets for active-conversation handoff. */
   handoffAgentTargets?: readonly AgentGUIAgentTarget[];
   handoffAgentTargetsLoading?: boolean;
@@ -460,6 +462,7 @@ export function areAgentGUINodePropsEqual(
       nc.referenceProvenanceFilterCatalog &&
     pc.referenceProvenanceFilterEnabled ===
       nc.referenceProvenanceFilterEnabled &&
+    pc.hiddenMentionFilterIds === nc.hiddenMentionFilterIds &&
     pc.sessionInputHistoryEnabled === nc.sessionInputHistoryEnabled &&
     pc.sideConversationEnabled === nc.sideConversationEnabled &&
     pc.sideConversationPresentation === nc.sideConversationPresentation &&

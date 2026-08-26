@@ -120,6 +120,27 @@ func TestVisibleFailureCodeClassifiesStreamDisconnected(t *testing.T) {
 	}
 }
 
+func TestVisibleFailureCodeClassifiesProviderModelNotFound(t *testing.T) {
+	detail := `stream disconnected before completion: modelCode：不存在[2026082021072905b55e622c4a42ba]`
+	if got := visibleFailureCode(detail); got != "provider_model_not_found" {
+		t.Fatalf("visibleFailureCode() = %q, want provider_model_not_found", got)
+	}
+}
+
+func TestVisibleFailureCodeClassifiesConfiguredRouteNotFound(t *testing.T) {
+	detail := `unexpected status 404 Not Found: 404 page not found, url: http://127.0.0.1:7794/_tsh/configured-routes/route-1/v1/responses`
+	if got := visibleFailureCode(detail); got != "configured_route_not_found" {
+		t.Fatalf("visibleFailureCode() = %q, want configured_route_not_found", got)
+	}
+}
+
+func TestVisibleFailureCodeClassifiesClosedProviderStream(t *testing.T) {
+	detail := `provider process stream is closed; error_code=provider_process_stream_closed; stream_phase=send; cause=io: read/write on closed pipe`
+	if got := visibleFailureCode(detail); got != "provider_process_stream_closed" {
+		t.Fatalf("visibleFailureCode() = %q, want provider_process_stream_closed", got)
+	}
+}
+
 func TestVisibleFailureCodeClassifiesProviderEmptyResponse(t *testing.T) {
 	detail := "provider_empty_response: ACP agent ended the turn without assistant output or tool activity"
 	if got := visibleFailureCode(detail); got != "provider_empty_response" {

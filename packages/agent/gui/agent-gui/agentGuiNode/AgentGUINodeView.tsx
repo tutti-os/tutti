@@ -75,6 +75,7 @@ import { useAgentGUIExternalRequests } from "./view/useAgentGUIExternalRequests"
 export function AgentGUINodeView({
   viewModel,
   mentionAgentTargets,
+  hiddenMentionFilterIds = [],
   referenceProvenanceFilters = null,
   sessionInputHistoryEnabled = false,
   sideConversationEnabled = false,
@@ -331,7 +332,6 @@ export function AgentGUINodeView({
     isRailResizing,
     railResizeWidthPx
   ]);
-
   const handleConversationRailResizeKeyDown = useCallback(
     (event: KeyboardEvent<HTMLDivElement>): void => {
       if (conversationRailCollapsed) {
@@ -690,6 +690,7 @@ export function AgentGUINodeView({
                 operations={viewModel.operations}
                 homeTargetProjection={homeTargetProjection}
                 referenceProvenanceFilters={referenceProvenanceFilters}
+                hiddenMentionFilterIds={hiddenMentionFilterIds}
                 sessionInputHistoryEnabled={sessionInputHistoryEnabled}
                 sideConversationEnabled={sideConversationEnabled}
                 sideConversationPresentation={sideConversationPresentation}
