@@ -26,9 +26,11 @@ const tuttiAppRuntimeCatalogEnv = "TUTTI_APP_RUNTIME_CATALOG"
 const appRuntimeCatalogSchemaVersion = "tutti.app.runtimes.v2"
 const appRuntimeBaselineProfile = "baseline"
 const appRuntimeNodeStaticProfile = "connector-node-static"
+const appRuntimeRTKSaverProfile = "rtk-saver"
 const defaultTuttiAppRuntimeCatalogURL = "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-app-runtimes/catalog.json"
 
 const NodeStaticProfile = appRuntimeNodeStaticProfile
+const RTKSaverProfile = appRuntimeRTKSaverProfile
 
 const maxManagedAppRuntimeArtifactBytes int64 = 512 * 1024 * 1024
 const maxManagedAppRuntimeExpandedBytes int64 = 2 * 1024 * 1024 * 1024
@@ -53,6 +55,7 @@ type ResolvedRuntime struct {
 	Python       string
 	Node         string
 	NPM          string
+	RTK          string
 	BinDirs      []string
 	EnvOverrides []string
 }
@@ -190,6 +193,8 @@ func (r DefaultResolver) resolvedRuntimeForComponents(root string, components []
 	node := filepath.Join(nodeBinDir, nodeBinaryName())
 	npm := filepath.Join(nodeBinDir, npmBinaryName())
 	corepack := filepath.Join(nodeBinDir, corepackBinaryName())
+	rtkBinDir := filepath.Join(root, "rtk", "bin")
+	rtk := filepath.Join(rtkBinDir, rtkBinaryName())
 
 	var (
 		binDirs      []string
@@ -221,6 +226,13 @@ func (r DefaultResolver) resolvedRuntimeForComponents(root string, components []
 			resolved.NPM = npm
 			binDirs = append(binDirs, nodeBinDir)
 			envOverrides = append(envOverrides, "TUTTI_APP_NODE="+node, "TUTTI_APP_NPM="+npm)
+		case "rtk":
+			if !isExecutableFile(rtk) {
+				return ResolvedRuntime{}, fmt.Errorf("managed app runtime rtk executable is unavailable at %s", rtk)
+			}
+			resolved.RTK = rtk
+			binDirs = append(binDirs, rtkBinDir)
+			envOverrides = append(envOverrides, "TUTTI_APP_RTK="+rtk)
 		}
 	}
 
@@ -373,6 +385,8 @@ func appRuntimeComponentReady(root string, name string) bool {
 		return isExecutableFile(filepath.Join(nodeBinDir, nodeBinaryName())) &&
 			isExecutableFile(filepath.Join(nodeBinDir, npmBinaryName())) &&
 			isStandaloneCorepackWrapper(filepath.Join(nodeBinDir, corepackBinaryName()))
+	case "rtk":
+		return isExecutableFile(filepath.Join(root, "rtk", "bin", rtkBinaryName()))
 	default:
 		info, err := os.Stat(filepath.Join(root, name))
 		return err == nil && info.IsDir()
@@ -806,6 +820,13 @@ func corepackBinaryName() string {
 		return "corepack.cmd"
 	}
 	return "corepack"
+}
+
+func rtkBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "rtk.exe"
+	}
+	return "rtk"
 }
 
 func isStandaloneCorepackWrapper(path string) bool {

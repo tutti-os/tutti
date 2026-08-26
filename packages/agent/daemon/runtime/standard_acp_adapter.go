@@ -20,6 +20,15 @@ type standardACPProviderMessageHandler func(
 	EventSink,
 ) ([]activityshared.Event, bool, error)
 
+// standardACPLocalToolBridge projects provider-specific, Tutti-owned tools
+// through the ACP session's standard HTTP MCP extension point. The returned
+// release function owns the exact binding lease so a replaced process cannot
+// revoke its successor's authority.
+type standardACPLocalToolBridge interface {
+	Bind(context.Context, Session) (MCPServerBinding, func(), error)
+	ActivateTurn(Session, string, EventSink) func()
+}
+
 type standardACPConfig struct {
 	provider            string
 	adapterName         string
@@ -87,6 +96,11 @@ type standardACPConfig struct {
 	// token ("approved" / "denied") to apply automatically, or "" to prompt
 	// the user as usual. Nil (the default) always prompts.
 	automaticPermissionDecision func(permissionModeID string) string
+	// providerPermissionRequestDecision resolves a narrowly recognized
+	// provider request before the permission tier is consulted. It is used only
+	// for non-mutating, Tutti-owned local tools whose own operation presents the
+	// real user interaction.
+	providerPermissionRequestDecision func(json.RawMessage) string
 	// filterPermissionOptions narrows provider-offered approval choices before
 	// they become a durable interaction. Providers use it only when an option
 	// would conflict with live permission-tier semantics.
@@ -111,6 +125,7 @@ type standardACPConfig struct {
 	setModelReasoningEffortMeta    bool
 	messageDiagnostics             *standardACPMessageDiagnostics
 	providerMessageHandler         standardACPProviderMessageHandler
+	localToolBridge                standardACPLocalToolBridge
 	capabilities                   []string
 	agentTargetID                  string
 	installationID                 string
@@ -188,6 +203,15 @@ type standardACPSession struct {
 	// initialPromptContext remains pending until the provider accepts its first
 	// prompt. A failed transport call leaves it pending for the next attempt.
 	initialPromptContext string
+	localToolRelease     func()
+	localToolReleaseOnce sync.Once
+}
+
+func (session *standardACPSession) releaseLocalTools() {
+	if session == nil || session.localToolRelease == nil {
+		return
+	}
+	session.localToolReleaseOnce.Do(session.localToolRelease)
 }
 
 func (a *standardACPAdapter) resolveInitialPromptContext(session Session) (string, error) {

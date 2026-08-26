@@ -4,6 +4,49 @@ export type ClientOptions = {
   baseUrl: "http://127.0.0.1:4545" | (string & {});
 };
 
+export type AccountUserPresenceCurrentRoomRequest = {
+  roomId: string;
+  members: Array<AccountUserPresenceRoomMember>;
+};
+
+export type AccountUserPresenceRoomMember = {
+  userId: string;
+  /**
+   * True only for a currently joined, non-deleted membership.
+   */
+  membershipActive: boolean;
+  /**
+   * False for system identities without Account Device Presence semantics.
+   */
+  accountPresenceCapable: boolean;
+};
+
+export type AccountUserPresenceForegroundRequest = {
+  foreground: boolean;
+};
+
+export type AccountUserPresenceRoomResponse = {
+  roomId: string;
+  members: Array<AccountUserPresenceUser>;
+};
+
+export type AccountUserPresenceUser = {
+  userId: string;
+  status: "ONLINE" | "OFFLINE";
+  availability:
+    | "NOT_WATCHED"
+    | "SUBSCRIBING"
+    | "SYNCING"
+    | "READY"
+    | "STALE"
+    | "UNKNOWN"
+    | "DEGRADED";
+  authoritative: boolean;
+  authorityGeneration: string;
+  presenceRevision: string;
+  observedAt?: string | null;
+};
+
 export type SwitchTuttiModeGoalReviewToSelfRequest = {
   checkpointId: string;
   expectedGraphRevision: number;
@@ -44,6 +87,64 @@ export type AccountUserInfo = {
 
 export type AccountUserInfoResponse = {
   user: AccountUserInfo | null;
+};
+
+export type GlobalAgentActivityRoom = {
+  roomId: string;
+  name: string;
+  avatarUri: string;
+};
+
+export type GlobalAgentActivitySessionOwner = {
+  userId: string;
+  displayName: string;
+  avatarUrl: string;
+  avatarFallbackUrl: string;
+  avatarClientTransform: boolean;
+};
+
+export type GlobalAgentActivityAgent = {
+  agentKey: string;
+  agentTargetId: string;
+  provider: string;
+  name: string;
+  iconKey: string;
+};
+
+export type GlobalAgentActivityTimeBounds = {
+  minActivityAtUnixMs: number;
+  maxActivityAtUnixMs: number;
+  serverNowUnixMs: number;
+};
+
+export type GlobalAgentActivityFilterOptionsResponse = {
+  rooms: Array<GlobalAgentActivityRoom>;
+  sessionOwners: Array<GlobalAgentActivitySessionOwner>;
+  agents: Array<GlobalAgentActivityAgent>;
+  timeBounds: GlobalAgentActivityTimeBounds;
+};
+
+export type GlobalAgentActivitySession = {
+  room: GlobalAgentActivityRoom;
+  workspaceId: string;
+  agentSessionId: string;
+  sessionOwner: GlobalAgentActivitySessionOwner;
+  agent: GlobalAgentActivityAgent;
+  status: string;
+  title: string;
+  summary: string;
+  latestUserPrompt: string;
+  needsAttention: boolean;
+  activityAtUnixMs: number;
+  latestMessageAtUnixMs: number;
+  startedAtUnixMs: number;
+  endedAtUnixMs: number;
+  latestTurnId: string;
+};
+
+export type GlobalAgentActivitySessionListResponse = {
+  items: Array<GlobalAgentActivitySession>;
+  truncated: boolean;
 };
 
 export type AccountMembershipSummary = {
@@ -545,7 +646,14 @@ export type DesktopWorkbenchWindowSnappingShortcutPreset =
   | "commandShiftArrows";
 
 export type DesktopAgentComposerDefaults = {
+  /**
+   * Enables the Codex-specific saver subagent mode
+   */
   codexSaverMode?: boolean;
+  /**
+   * Enables provider-neutral RTK saver mode
+   */
+  rtkSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
@@ -1948,7 +2056,14 @@ export type WorkspaceAgentSource = "user" | "legacy_binding";
 export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
+  /**
+   * Enables the Codex-specific saver subagent mode
+   */
   codexSaverMode?: boolean | null;
+  /**
+   * Enables provider-neutral RTK saver mode
+   */
+  rtkSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
@@ -2042,9 +2157,13 @@ export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
 
 export type AgentProviderComposerOptionsResponse = {
   /**
-   * Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+   * Whether this resolved provider target supports the Codex-specific saver subagent mode
    */
   codexSaverModeSupported?: boolean;
+  /**
+   * Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode
+   */
+  rtkSaverModeSupported?: boolean;
   provider: WorkspaceAgentProvider;
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
@@ -3349,9 +3468,13 @@ export type WorkspaceAgentInitialGoalControl = {
 
 export type CreateWorkspaceAgentSessionRequest = {
   /**
-   * Enables the Codex Luna subagent saver mode for this session without changing the main model
+   * Enables the Codex-specific saver subagent mode for this Agent Session
    */
   codexSaverMode?: boolean | null;
+  /**
+   * Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model
+   */
+  rtkSaverMode?: boolean | null;
   agentSessionId: string;
   /**
    * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
@@ -5136,6 +5259,10 @@ export type ConnectorMarketAuthorizationRequest = {
   clientRequestId: string;
   expectedRevision: number;
   expectedConnectorRevision?: number;
+  /**
+   * Cursor for a previously delivered authorization step. When provided, the Host resumes the same authorization attempt and waits briefly for a later step. A bounded poll may replay the current step. The cursor contains no authorization URL, user code, or credential material.
+   */
+  afterAuthorizationStepRevision?: number;
   replacementPolicy?: ConnectorMarketAuthorizationReplacementPolicy;
 };
 
@@ -5161,6 +5288,10 @@ export type ConnectorMarketAuthorizationResponse = {
     [key: string]: unknown;
   };
   authorizationExpiresAt: string;
+  /**
+   * Monotonic, non-secret revision of the provider authorization event returned by this response. Clients pass it back as afterAuthorizationStepRevision when waiting for a later step.
+   */
+  authorizationStepRevision: number;
   revision: number;
 };
 
@@ -5303,6 +5434,10 @@ export type ConnectorMarketAuthorizationRequestWritable = {
   clientRequestId: string;
   expectedRevision: number;
   expectedConnectorRevision?: number;
+  /**
+   * Cursor for a previously delivered authorization step. When provided, the Host resumes the same authorization attempt and waits briefly for a later step. A bounded poll may replay the current step. The cursor contains no authorization URL, user code, or credential material.
+   */
+  afterAuthorizationStepRevision?: number;
   replacementPolicy?: ConnectorMarketAuthorizationReplacementPolicy;
   secret?: string;
 };
@@ -5699,6 +5834,209 @@ export type LogoutAccountResponses = {
 
 export type LogoutAccountResponse =
   LogoutAccountResponses[keyof LogoutAccountResponses];
+
+export type GetGlobalAgentActivityFilterOptionsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/global-agent-activity/filter-options";
+};
+
+export type GetGlobalAgentActivityFilterOptionsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetGlobalAgentActivityFilterOptionsError =
+  GetGlobalAgentActivityFilterOptionsErrors[keyof GetGlobalAgentActivityFilterOptionsErrors];
+
+export type GetGlobalAgentActivityFilterOptionsResponses = {
+  /**
+   * Global Agent Activity filter options
+   */
+  200: GlobalAgentActivityFilterOptionsResponse;
+};
+
+export type GetGlobalAgentActivityFilterOptionsResponse =
+  GetGlobalAgentActivityFilterOptionsResponses[keyof GetGlobalAgentActivityFilterOptionsResponses];
+
+export type ListGlobalAgentActivitySessionsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    roomIds?: Array<string>;
+    sessionOwnerUserIds?: Array<string>;
+    agentKeys?: Array<string>;
+    activityFromUnixMs?: number;
+    activityToUnixMs?: number;
+  };
+  url: "/v1/global-agent-activity/sessions";
+};
+
+export type ListGlobalAgentActivitySessionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListGlobalAgentActivitySessionsError =
+  ListGlobalAgentActivitySessionsErrors[keyof ListGlobalAgentActivitySessionsErrors];
+
+export type ListGlobalAgentActivitySessionsResponses = {
+  /**
+   * Filtered global Agent Activity sessions
+   */
+  200: GlobalAgentActivitySessionListResponse;
+};
+
+export type ListGlobalAgentActivitySessionsResponse =
+  ListGlobalAgentActivitySessionsResponses[keyof ListGlobalAgentActivitySessionsResponses];
+
+export type PutAccountUserPresenceCurrentRoomData = {
+  body: AccountUserPresenceCurrentRoomRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/account/user-presence/current-room";
+};
+
+export type PutAccountUserPresenceCurrentRoomErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PutAccountUserPresenceCurrentRoomError =
+  PutAccountUserPresenceCurrentRoomErrors[keyof PutAccountUserPresenceCurrentRoomErrors];
+
+export type PutAccountUserPresenceCurrentRoomResponses = {
+  /**
+   * Current room presence projection
+   */
+  200: AccountUserPresenceRoomResponse;
+};
+
+export type PutAccountUserPresenceCurrentRoomResponse =
+  PutAccountUserPresenceCurrentRoomResponses[keyof PutAccountUserPresenceCurrentRoomResponses];
+
+export type GetAccountUserPresenceRoomData = {
+  body?: never;
+  path: {
+    roomID: string;
+  };
+  query?: never;
+  url: "/v1/account/user-presence/rooms/{roomID}";
+};
+
+export type GetAccountUserPresenceRoomErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAccountUserPresenceRoomError =
+  GetAccountUserPresenceRoomErrors[keyof GetAccountUserPresenceRoomErrors];
+
+export type GetAccountUserPresenceRoomResponses = {
+  /**
+   * Cached room presence projection, or an empty projection when the room is not in the LRU
+   */
+  200: AccountUserPresenceRoomResponse;
+};
+
+export type GetAccountUserPresenceRoomResponse =
+  GetAccountUserPresenceRoomResponses[keyof GetAccountUserPresenceRoomResponses];
+
+export type PutAccountUserPresenceForegroundData = {
+  body: AccountUserPresenceForegroundRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/account/user-presence/foreground";
+};
+
+export type PutAccountUserPresenceForegroundErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PutAccountUserPresenceForegroundError =
+  PutAccountUserPresenceForegroundErrors[keyof PutAccountUserPresenceForegroundErrors];
+
+export type PutAccountUserPresenceForegroundResponses = {
+  /**
+   * Foreground state accepted
+   */
+  204: void;
+};
+
+export type PutAccountUserPresenceForegroundResponse =
+  PutAccountUserPresenceForegroundResponses[keyof PutAccountUserPresenceForegroundResponses];
 
 export type ListCliCapabilitiesData = {
   body?: never;

@@ -3,6 +3,7 @@ import type {
   PendingActivationIntentRecord,
   PendingSubmitIntentRecord
 } from "./pendingIntents.types.ts";
+import { promptQueuePromptIdForClientSubmit } from "./promptQueue.lookup.ts";
 import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 
 const pendingActivationsCache = new WeakMap<
@@ -217,7 +218,20 @@ function stopTargetMayStillProduceUnsettledTurn(
 ): boolean {
   if (pending.status === "failed") return false;
   const turnId = pending.turnId?.trim() ?? "";
-  if (!turnId) return true;
+  if (!turnId) {
+    if (pending.submitDiagnostics?.queued !== true) return true;
+    const queue = state.promptQueue.recordsBySessionId[pending.agentSessionId];
+    const promptId = promptQueuePromptIdForClientSubmit(
+      state.promptQueue,
+      pending.agentSessionId,
+      pending.clientSubmitId
+    );
+    return Boolean(
+      promptId &&
+      (queue?.inFlight?.promptId === promptId ||
+        queue?.uncertainDelivery?.promptId === promptId)
+    );
+  }
   const turn =
     state.sessionLifecycle.turnsById[
       canonicalTurnKey(pending.agentSessionId, turnId)

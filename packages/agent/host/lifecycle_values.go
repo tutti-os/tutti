@@ -17,7 +17,7 @@ func createPreparationInput(workspaceID string, input CreateSessionInput) Runtim
 	return RuntimePreparationInput{
 		WorkspaceID: workspaceID, AgentSessionID: input.AgentSessionID, AgentTargetID: input.AgentTargetID,
 		Provider: input.Provider, Cwd: value(input.Cwd), Title: value(input.Title), PermissionModeID: value(input.PermissionModeID),
-		PlanMode: valueBool(input.PlanMode), BrowserUse: valueBoolDefault(input.BrowserUse, true), ComputerUse: valueBoolDefault(input.ComputerUse, true), CodexSaverMode: valueBool(input.CodexSaverMode),
+		PlanMode: valueBool(input.PlanMode), BrowserUse: valueBoolDefault(input.BrowserUse, true), ComputerUse: valueBoolDefault(input.ComputerUse, true), CodexSaverMode: valueBool(input.CodexSaverMode), RTKSaverMode: valueBool(input.RTKSaverMode),
 		ProviderTargetRef: cloneMap(input.ProviderTargetRef), Model: value(input.Model), ReasoningEffort: value(input.ReasoningEffort),
 		ConversationDetailMode: input.ConversationDetailMode, Metadata: cloneMap(input.Metadata), RuntimeContext: cloneMap(input.RuntimeContext),
 	}
@@ -27,7 +27,7 @@ func resumePreparationInput(session storesqlite.Session, settings ComposerSettin
 	return RuntimePreparationInput{
 		WorkspaceID: session.WorkspaceID, AgentSessionID: session.ID, AgentTargetID: session.AgentTargetID,
 		Provider: session.Provider, Cwd: session.Cwd, Title: session.Title, PermissionModeID: settings.PermissionModeID,
-		PlanMode: settings.PlanMode, BrowserUse: valueBoolDefault(settings.BrowserUse, true), ComputerUse: valueBoolDefault(settings.ComputerUse, true), CodexSaverMode: settings.CodexSaverMode,
+		PlanMode: settings.PlanMode, BrowserUse: valueBoolDefault(settings.BrowserUse, true), ComputerUse: valueBoolDefault(settings.ComputerUse, true), CodexSaverMode: settings.CodexSaverMode, RTKSaverMode: settings.RTKSaverMode,
 		Model: settings.Model, ReasoningEffort: settings.ReasoningEffort, ConversationDetailMode: settings.ConversationDetailMode,
 		RuntimeContext: cloneMap(session.InternalRuntimeContext), SessionOrigin: session.Origin,
 		ProviderSessionID: session.ProviderSessionID, CreatedAtUnixMS: session.CreatedAtUnixMS,
@@ -59,6 +59,7 @@ func overlayRuntimeContext(base map[string]any, overlay map[string]any) map[stri
 func composerSettingsFromMap(values map[string]any) ComposerSettings {
 	result := ComposerSettings{}
 	result.CodexSaverMode, _ = values["codexSaverMode"].(bool)
+	result.RTKSaverMode, _ = values["rtkSaverMode"].(bool)
 	result.Model, _ = values["model"].(string)
 	result.PermissionModeID, _ = values["permissionModeId"].(string)
 	result.PlanMode, _ = values["planMode"].(bool)

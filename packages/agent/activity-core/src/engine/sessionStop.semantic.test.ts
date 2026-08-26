@@ -7,6 +7,7 @@ import {
   selectLatestStopTargetSubmitForSession,
   selectSessionHasPendingSubmitStopTarget
 } from "./pendingIntents.selectors.ts";
+import { canonicalTurnKey } from "./sessionEntityKeys.ts";
 import { selectEngineCancelState } from "./sessionLifecycle.selectors.ts";
 import { createTestEngineCommandPort } from "./testEngineCommandPort.ts";
 import type { EngineExternalCommand, EngineScheduler } from "./types.ts";
@@ -138,6 +139,222 @@ test("semantic session stop targets the latest pending prompt admission", () => 
     "submit-1"
   );
   assert.equal(harness.commands.at(-1)?.type, "queue/sendPrompt");
+});
+
+test("semantic session stop does not target a visible queued prompt that was never dispatched", () => {
+  const harness = createHarness(true);
+
+  assert.deepEqual(
+    harness.engine.submitPrompt({
+      agentSessionId: "session-1",
+      clientSubmitId: "submit-queued",
+      content: [{ text: "send after the turn", type: "text" }]
+    }),
+    { accepted: true, queued: true }
+  );
+
+  harness.engine.stopSession({ agentSessionId: "session-1" });
+
+  const turn = settledTurn();
+  harness.engine.dispatch({
+    sessions: [
+      {
+        ...session(null),
+        latestTurn: turn,
+        updatedAtUnixMs: turn.updatedAtUnixMs
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+
+  const snapshot = harness.engine.getSnapshot();
+  assert.equal(
+    snapshot.promptQueue.recordsBySessionId["session-1"]?.suspendReason,
+    "user_stop"
+  );
+  assert.equal(
+    snapshot.promptQueue.recordsBySessionId["session-1"]?.inFlight,
+    null
+  );
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(snapshot, "session-1"),
+    false
+  );
+});
+
+test("stop target selection keeps a queued prompt during in-flight and uncertain delivery", () => {
+  const harness = createHarness(true);
+
+  assert.deepEqual(
+    harness.engine.submitPrompt({
+      agentSessionId: "session-1",
+      clientSubmitId: "submit-queued",
+      content: [{ text: "send after the turn", type: "text" }]
+    }),
+    { accepted: true, queued: true }
+  );
+  const turn = settledTurn();
+  harness.engine.dispatch({
+    sessions: [
+      {
+        ...session(null),
+        latestTurn: turn,
+        updatedAtUnixMs: turn.updatedAtUnixMs
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+
+  const snapshot = harness.engine.getSnapshot();
+  assert.equal(
+    snapshot.promptQueue.recordsBySessionId["session-1"]?.inFlight?.promptId,
+    "submit-queued"
+  );
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(snapshot, "session-1"),
+    true
+  );
+
+  const commandId =
+    snapshot.promptQueue.recordsBySessionId["session-1"]?.inFlight?.commandId;
+  assert.ok(commandId);
+  harness.engine.dispatch({
+    commandId,
+    commandType: "queue/sendPrompt",
+    correlationId: "submit-queued",
+    errorCode: "timeout",
+    outcome: "timedOut",
+    type: "engine/commandResult"
+  });
+
+  const uncertainSnapshot = harness.engine.getSnapshot();
+  assert.equal(
+    uncertainSnapshot.promptQueue.recordsBySessionId["session-1"]
+      ?.uncertainDelivery?.promptId,
+    "submit-queued"
+  );
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(uncertainSnapshot, "session-1"),
+    true
+  );
+});
+
+test("stop target selection never correlates a queued prompt by prompt id alone", () => {
+  const harness = createHarness(true);
+
+  harness.engine.submitPrompt({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-target",
+    content: [{ text: "target", type: "text" }]
+  });
+  harness.engine.dispatch({
+    agentSessionId: "session-1",
+    promptId: "submit-target",
+    type: "queue/removed"
+  });
+  harness.engine.dispatch({
+    agentSessionId: "session-1",
+    prompt: {
+      clientSubmitId: "other-submit",
+      content: [{ text: "other", type: "text" }],
+      createdAtUnixMs: 101,
+      id: "submit-target"
+    },
+    type: "queue/enqueued",
+    workspaceId: "workspace-1"
+  });
+  const turn = settledTurn();
+  harness.engine.dispatch({
+    sessions: [
+      {
+        ...session(null),
+        latestTurn: turn,
+        updatedAtUnixMs: turn.updatedAtUnixMs
+      }
+    ],
+    type: "session/snapshotReceived"
+  });
+
+  const snapshot = harness.engine.getSnapshot();
+  assert.equal(
+    snapshot.promptQueue.recordsBySessionId["session-1"]?.inFlight?.promptId,
+    "submit-target"
+  );
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(snapshot, "session-1"),
+    false
+  );
+});
+
+test("stop target selection keeps immediate submits with missing or running canonical Turn evidence", () => {
+  const missingTurnHarness = createHarness(false);
+  missingTurnHarness.engine.submitPrompt({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-missing-turn",
+    content: [{ text: "hello", type: "text" }]
+  });
+  const missingTurnSnapshot = missingTurnHarness.engine.getSnapshot();
+  const missingTurnPending =
+    missingTurnSnapshot.pendingIntents.submitsByClientSubmitId[
+      "submit-missing-turn"
+    ];
+  assert.ok(missingTurnPending);
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(
+      {
+        ...missingTurnSnapshot,
+        pendingIntents: {
+          ...missingTurnSnapshot.pendingIntents,
+          submitsByClientSubmitId: {
+            ...missingTurnSnapshot.pendingIntents.submitsByClientSubmitId,
+            "submit-missing-turn": {
+              ...missingTurnPending,
+              turnId: "turn-not-observed"
+            }
+          }
+        }
+      },
+      "session-1"
+    ),
+    true
+  );
+
+  const runningTurnHarness = createHarness(true);
+  runningTurnHarness.engine.submitPrompt({
+    agentSessionId: "session-1",
+    clientSubmitId: "submit-running-turn",
+    content: [{ text: "hello", type: "text" }]
+  });
+  const runningTurnSnapshot = runningTurnHarness.engine.getSnapshot();
+  const runningTurnPending =
+    runningTurnSnapshot.pendingIntents.submitsByClientSubmitId[
+      "submit-running-turn"
+    ];
+  assert.ok(runningTurnPending);
+  assert.ok(
+    runningTurnSnapshot.sessionLifecycle.turnsById[
+      canonicalTurnKey("session-1", "turn-1")
+    ]
+  );
+  assert.equal(
+    selectSessionHasPendingSubmitStopTarget(
+      {
+        ...runningTurnSnapshot,
+        pendingIntents: {
+          ...runningTurnSnapshot.pendingIntents,
+          submitsByClientSubmitId: {
+            ...runningTurnSnapshot.pendingIntents.submitsByClientSubmitId,
+            "submit-running-turn": {
+              ...runningTurnPending,
+              turnId: "turn-1"
+            }
+          }
+        }
+      },
+      "session-1"
+    ),
+    true
+  );
 });
 
 test("semantic session stop does not target a failed submit admission", () => {

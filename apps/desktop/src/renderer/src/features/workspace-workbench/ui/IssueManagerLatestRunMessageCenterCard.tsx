@@ -1,11 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type JSX
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, type JSX } from "react";
 import { AgentGuiI18nProvider } from "@tutti-os/agent-gui/i18n";
 import {
   buildWorkspaceAgentMessageCenterModelFromEngine,
@@ -18,8 +11,8 @@ import {
   type WorkspaceAgentMessageCenterCardProps
 } from "@tutti-os/agent-gui/agent-message-center";
 import {
-  selectWorkspaceAgentConsumerSession,
-  type AgentActivityMessage
+  selectSessionMessagesById,
+  selectWorkspaceAgentConsumerSession
 } from "@tutti-os/agent-activity-core";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import type { DesktopLocale } from "@shared/i18n";
@@ -76,13 +69,14 @@ function IssueManagerLatestRunMessageCenterCard({
   workspaceId: string;
 }): JSX.Element {
   const requestedMessageSummarySessionIdsRef = useRef<Set<string>>(new Set());
-  const [sessionMessagesById, setSessionMessagesById] = useState<
-    Record<string, AgentActivityMessage[]>
-  >({});
   const agentSessionId = input.latestRun.agentSessionId?.trim() ?? "";
   const sessionEngine = useMemo(
     () => workspaceAgentActivityService.getSessionEngine(workspaceId),
     [workspaceAgentActivityService, workspaceId]
+  );
+  const sessionMessagesById = useEngineSelector(
+    sessionEngine,
+    selectSessionMessagesById
   );
   const messageCenterPresentation = useEngineSelector(
     sessionEngine,
@@ -182,12 +176,6 @@ function IssueManagerLatestRunMessageCenterCard({
         order: "desc",
         signal: abortController.signal,
         workspaceId
-      })
-      .then((page) => {
-        setSessionMessagesById((current) => ({
-          ...current,
-          [sessionId]: page.messages
-        }));
       })
       .catch((error: unknown) => {
         requestedMessageSummarySessionIdsRef.current.delete(sessionId);

@@ -433,6 +433,44 @@ test("exposes disconnect directly for an authorized connector", () => {
   assert.equal(view.cardsByKey[connector.key]?.operationStage, "completed");
 });
 
+test("keeps an authorized connector busy until the renderer authorization mutation settles", () => {
+  const market = createConnectorMarketStoreState();
+  const connector = connectorFixture();
+  connector.installation = {
+    installedReleaseDigest: connector.release.releaseDigest,
+    state: "installed"
+  };
+  connector.authorization = { state: "connected" };
+  market.connectorKeys = [connector.key];
+  market.connectorsByKey[connector.key] = connector;
+  market.mutationPhasesByConnectorKey[connector.key] = "authorizing";
+  market.operationsByConnectorKey[connector.key] = {
+    attempt: 1,
+    clientRequestId: "authorize",
+    connectorKey: connector.key,
+    createdAt: "2026-08-06T00:00:00Z",
+    kind: "start_authorization",
+    operationId: "authorize-operation",
+    stage: "completed",
+    state: "completed",
+    updatedAt: "2026-08-06T00:00:01Z"
+  };
+
+  const view = buildConnectorMarketView(market, {
+    ...uiState,
+    dialog: { connectorKey: connector.key, kind: "connector" }
+  });
+
+  assert.equal(view.cardsByKey[connector.key]?.action, "busy");
+  assert.equal(view.cardsByKey[connector.key]?.canUninstall, false);
+  assert.equal(view.cardsByKey[connector.key]?.status, "connected");
+  assert.equal(view.cardsByKey[connector.key]?.mutationPhase, "authorizing");
+  assert.equal(
+    view.dialog?.kind === "authorization" && view.dialog.authorizing,
+    true
+  );
+});
+
 test("keeps authorization-free connectors on the management action", () => {
   const market = createConnectorMarketStoreState();
   const connector = connectorFixture();

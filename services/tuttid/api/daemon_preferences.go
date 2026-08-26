@@ -579,6 +579,7 @@ func agentComposerDefaultsFromGenerated(
 ) preferencesbiz.AgentComposerDefaults {
 	return preferencesbiz.AgentComposerDefaults{
 		CodexSaverMode:   value.CodexSaverMode != nil && *value.CodexSaverMode,
+		RTKSaverMode:     value.RtkSaverMode != nil && *value.RtkSaverMode,
 		Model:            optionalStringValue(value.Model),
 		PermissionModeID: optionalStringValue(value.PermissionModeId),
 		ReasoningEffort:  optionalStringValue(value.ReasoningEffort),

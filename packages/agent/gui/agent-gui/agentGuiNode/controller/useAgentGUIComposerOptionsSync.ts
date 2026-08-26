@@ -286,14 +286,16 @@ export function useAgentGUIComposerOptionsSync(input: {
     const conversationCreationSettled =
       previousIsCreatingConversationRef.current &&
       !input.isCreatingConversation;
+    const shouldPrewarmDraftSession =
+      input.providerComposerOptions?.behavior?.prewarmDraftSession === true &&
+      input.isComposerHome;
     previousIsCreatingConversationRef.current = input.isCreatingConversation;
     loadDraftComposerOptions(
-      conversationCreationSettled ||
-        (input.providerComposerOptions?.behavior?.prewarmDraftSession ===
-          true &&
-          input.isComposerHome)
+      conversationCreationSettled
         ? { force: true }
-        : undefined
+        : shouldPrewarmDraftSession
+          ? { force: true, waitForFreshModelCatalog: true }
+          : undefined
     );
   }, [
     input.activeConversationId,

@@ -67,6 +67,43 @@ func TestAppServerFileChangeCompletionUpdatesCanonicalTurn(t *testing.T) {
 	}
 }
 
+func TestAppServerFileChangePatchUpdatePreservesAuthoritativeDiff(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderCodex)
+	normalizer := newACPTurnNormalizer()
+	reduction := newCodexAppServerReducer(&CodexAppServerAdapter{}).ReduceNotification(
+		nil,
+		session,
+		"turn-1",
+		acpMessage{
+			Method: appServerNotifyFileChangePatchUpdated,
+			Params: mustJSONRawMessage(t, map[string]any{
+				"itemId": "item-file-change",
+				"changes": []any{map[string]any{
+					"path": "/workspace/project/src/app.ts",
+					"kind": map[string]any{"type": "update"},
+					"diff": "@@ -1 +1 @@\n-old\n+new\n",
+				}},
+			}),
+		},
+		normalizer,
+		nil,
+	)
+	if len(reduction.Events) < 2 {
+		t.Fatalf("events = %#v, want tool update and canonical turn update", reduction.Events)
+	}
+	last := reduction.Events[len(reduction.Events)-1]
+	if last.Type != activityshared.EventTurnUpdated {
+		t.Fatalf("last event type = %q, want turn updated", last.Type)
+	}
+	files := payloadArray(payloadMap(last.Payload.Metadata, "fileChanges")["files"])
+	if len(files) != 1 || files[0]["change"] != "modified" ||
+		files[0]["unifiedDiff"] != "@@ -1 +1 @@\n-old\n+new\n" {
+		t.Fatalf("file changes = %#v, want authoritative modified diff", files)
+	}
+}
+
 func TestAppServerFileChangeApprovalUsesStartedItemChanges(t *testing.T) {
 	t.Parallel()
 

@@ -2,9 +2,15 @@ package implementationhost
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -94,13 +100,14 @@ func TestStartCLIExecutesExactCurrentRouteAndOwnsLifecycle(t *testing.T) {
 	spec := transport.specs[0]
 	inner := transport.connection
 	transport.mu.Unlock()
-	wantCommand := []string{"/managed/node", "/snapshot/lark-cli.mjs", "--json", "message", "send", "--text", "hello"}
+	wantCommand := append([]string{route.cliLaunch.executable.Path}, route.cliLaunch.arguments...)
+	wantCommand = append(wantCommand, request.Arguments...)
 	if !reflect.DeepEqual(spec.Command, wantCommand) {
 		t.Fatalf("command = %#v, want %#v", spec.Command, wantCommand)
 	}
-	if spec.CWD != "/snapshot" || !reflect.DeepEqual(spec.Env, []string{
+	if spec.CWD != request.WorkingDirectory || !reflect.DeepEqual(spec.Env, []string{
 		"TUTTI_CONNECTOR_CONNECTION_ID=connection-1", "TUTTI_CONNECTOR_KEY=lark-cli", "TUTTI_CONNECTOR_LANGUAGE=node",
-		"TUTTI_CONNECTOR_STATE_DIR=/state", "HOME=/home/owner", "USERPROFILE=/home/owner",
+		"TUTTI_CONNECTOR_STATE_DIR=" + route.cliLaunch.stateDir, "HOME=" + route.userHome, "USERPROFILE=" + route.userHome,
 	}) {
 		t.Fatalf("process spec = %#v", spec)
 	}
@@ -140,6 +147,16 @@ func TestStartCLIFailsClosedForStaleOrInvalidIdentity(t *testing.T) {
 	if _, err := host.StartCLI(context.Background(), invalid); !errors.Is(err, ErrCLIExecutionInvalid) {
 		t.Fatalf("invalid argument error = %v", err)
 	}
+	invalid = request
+	invalid.WorkingDirectory = "relative/workspace"
+	if _, err := host.StartCLI(context.Background(), invalid); !errors.Is(err, ErrCLIExecutionInvalid) {
+		t.Fatalf("relative working directory error = %v", err)
+	}
+	invalid = request
+	invalid.WorkingDirectory += "\x00suffix"
+	if _, err := host.StartCLI(context.Background(), invalid); !errors.Is(err, ErrCLIExecutionInvalid) {
+		t.Fatalf("NUL working directory error = %v", err)
+	}
 	transport.mu.Lock()
 	defer transport.mu.Unlock()
 	if len(transport.specs) != 0 {
@@ -169,18 +186,109 @@ func TestStartCLIEnforcesManifestTimeout(t *testing.T) {
 	}
 }
 
+func TestStartCLIUsesWorkingDirectoryForRelativePathResolution(t *testing.T) {
+	workspace := t.TempDir()
+	workingDirectory := filepath.Join(workspace, "project", "reports")
+	if err := os.MkdirAll(workingDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workingDirectory, "report.pdf"), []byte("workspace-relative-content"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	executable, identity := copyCLIExecutorTestExecutable(t)
+	processes, err := agentruntime.NewConnectorProcessTransport()
+	if err != nil {
+		t.Fatal(err)
+	}
+	generation := market.HostGeneration{BootEpoch: "boot-fixture", Generation: 1}
+	route := &connectorRoute{
+		id: connectorRouteKey("cwd-fixture", "fixture-cli"), connectionID: "cwd-fixture", connectorKey: "fixture-cli",
+		connectorVersion: "1.0.0", releaseDigest: cliExecutorTestDigest, generation: generation,
+		processes: connectorruntime.NewProcessGroup(), userHome: filepath.Join(workspace, "connector-home"),
+		cliContractHash: cliExecutorTestContractHash,
+		cliLaunch: &managedCLILaunch{
+			executable: connectorruntime.ConnectorExecutable{Path: executable, SHA256: identity.SHA256, SizeBytes: identity.SizeBytes},
+			cwd:        filepath.Join(workspace, "connector-installation"), language: "native", stateDir: filepath.Join(workspace, "state"),
+		},
+	}
+	table := connectorruntime.NewRouteTable()
+	if err := table.Commit(route); err != nil {
+		t.Fatal(err)
+	}
+	host := &Host{routes: table, processes: processes}
+	connection, err := host.StartCLI(context.Background(), CLIExecutionRequest{
+		ConnectionID: route.connectionID, ConnectorKey: route.connectorKey, ConnectorVersion: route.connectorVersion,
+		ReleaseDigest: route.releaseDigest, Generation: route.generation, CLIContractHash: route.cliContractHash,
+		WorkingDirectory: workingDirectory, Arguments: []string{"-test.run=^TestCLIExecutorWorkingDirectoryFixture$"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer connection.Close()
+	var stdout strings.Builder
+	for {
+		frame, err := connection.Recv()
+		if err != nil {
+			t.Fatal(err)
+		}
+		stdout.Write(frame.Stdout)
+		if frame.ExitCode == nil {
+			continue
+		}
+		if *frame.ExitCode != 0 {
+			t.Fatalf("fixture exit code = %d, stderr = %q", *frame.ExitCode, frame.Stderr)
+		}
+		break
+	}
+	if !strings.Contains(stdout.String(), "workspace-relative-content") {
+		t.Fatalf("fixture stdout = %q", stdout.String())
+	}
+}
+
+func TestCLIExecutorWorkingDirectoryFixture(t *testing.T) {
+	if os.Getenv("TUTTI_CONNECTOR_CONNECTION_ID") != "cwd-fixture" {
+		return
+	}
+	contents, err := os.ReadFile("report.pdf")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fmt.Print(string(contents))
+}
+
+func copyCLIExecutorTestExecutable(t *testing.T) (string, *agentruntime.ExecutableIdentity) {
+	t.Helper()
+	source, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	contents, err := os.ReadFile(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(t.TempDir(), "connector-cli-fixture"+filepath.Ext(source))
+	if err := os.WriteFile(target, contents, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(contents)
+	return target, &agentruntime.ExecutableIdentity{SHA256: hex.EncodeToString(digest[:]), SizeBytes: int64(len(contents))}
+}
+
 func newCLIExecutionTestHost(t *testing.T) (*Host, *connectorRoute, *cliExecutionTransportStub, CLIExecutionRequest) {
 	t.Helper()
+	root := t.TempDir()
+	snapshot := filepath.Join(root, "snapshot")
 	generation := market.HostGeneration{BootEpoch: "boot-1", Generation: 7}
 	transport := &cliExecutionTransportStub{}
 	table := connectorruntime.NewRouteTable()
 	route := &connectorRoute{
 		id: connectorRouteKey("connection-1", "lark-cli"), connectionID: "connection-1", connectorKey: "lark-cli",
 		connectorVersion: "1.2.3", releaseDigest: cliExecutorTestDigest, generation: generation,
-		processes: connectorruntime.NewProcessGroup(), userHome: "/home/owner", cliContractHash: cliExecutorTestContractHash,
+		processes: connectorruntime.NewProcessGroup(), userHome: filepath.Join(root, "home", "owner"), cliContractHash: cliExecutorTestContractHash,
 		cliLaunch: &managedCLILaunch{
-			arguments: []string{"/snapshot/lark-cli.mjs", "--json"}, cwd: "/snapshot", language: "node", stateDir: "/state",
-			executable: connectorruntime.ConnectorExecutable{Path: "/managed/node", SHA256: "node-digest", SizeBytes: 42},
+			arguments: []string{filepath.Join(snapshot, "lark-cli.mjs"), "--json"}, cwd: snapshot, language: "node",
+			stateDir:   filepath.Join(root, "state"),
+			executable: connectorruntime.ConnectorExecutable{Path: filepath.Join(root, "managed", "node"), SHA256: "node-digest", SizeBytes: 42},
 		},
 	}
 	if err := table.Commit(route); err != nil {
@@ -189,7 +297,9 @@ func newCLIExecutionTestHost(t *testing.T) (*Host, *connectorRoute, *cliExecutio
 	host := &Host{routes: table, processes: transport}
 	request := CLIExecutionRequest{
 		ConnectionID: "connection-1", ConnectorKey: "lark-cli", ConnectorVersion: "1.2.3", ReleaseDigest: cliExecutorTestDigest,
-		Generation: generation, CLIContractHash: cliExecutorTestContractHash, Arguments: []string{"message", "send", "--text", "hello"},
+		Generation: generation, CLIContractHash: cliExecutorTestContractHash,
+		WorkingDirectory: filepath.Join(root, "workspace", "project", "reports"),
+		Arguments:        []string{"message", "send", "--text", "hello"},
 	}
 	return host, route, transport, request
 }

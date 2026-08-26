@@ -14,6 +14,7 @@ import (
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	hostconformance "github.com/tutti-os/tutti/packages/agent/host/conformance"
+	runtimeprep "github.com/tutti-os/tutti/packages/agent/runtimeprep"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	market "github.com/tutti-os/tutti/packages/connector/daemon/core"
@@ -317,11 +318,29 @@ type legacyHostConformanceDriver struct {
 	deletionEvents           *[]string
 	historicalState          *conformanceHistoricalStateStore
 	runtimeStartReportWrites int
+	runtimeCleanupInputs     []runtimeprep.CleanupInput
+}
+
+type conformanceRuntimePreparer struct {
+	cleanupInputs *[]runtimeprep.CleanupInput
+}
+
+func (conformanceRuntimePreparer) Prepare(
+	_ context.Context,
+	input runtimeprep.PrepareInput,
+) (runtimeprep.PreparedRuntime, error) {
+	return runtimeprep.PreparedRuntime{Cwd: input.Cwd}, nil
+}
+
+func (p conformanceRuntimePreparer) Cleanup(_ context.Context, input runtimeprep.CleanupInput) error {
+	*p.cleanupInputs = append(*p.cleanupInputs, input)
+	return nil
 }
 
 func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconformance.Fixture) error {
 	d.runtime = newFakeRuntime()
 	d.runtime.guidanceTargetMismatch = fixture.GuidanceTargetMismatch
+	d.runtime.resumeErr = fixture.ResumeErr
 	if fixture.CancelDeliveryUnconfirmed {
 		d.runtime.cancelErr = agenthost.ErrRuntimeCancelDeliveryUnconfirmed
 	}
@@ -380,6 +399,8 @@ func (d *legacyHostConformanceDriver) Reset(_ context.Context, fixture hostconfo
 	d.recoverySteps = &steps
 	d.operationPort = &conformanceRuntimeOperationStore{runtimeOperationMemoryStore: d.operations, steps: &steps}
 	d.service = newUnconfiguredIsolatedAgentService(d.runtime)
+	d.runtimeCleanupInputs = nil
+	d.service.RuntimePreparer = conformanceRuntimePreparer{cleanupInputs: &d.runtimeCleanupInputs}
 	d.service.AgentTargetStore = fakeAgentTargetStore{targets: defaultTestAgentTargets()}
 	d.service.ConnectorMarketSnapshots = connectorMarketSnapshotStub{snapshot: market.Snapshot{
 		Connectors: []market.Connector{
@@ -1439,6 +1460,10 @@ func (d *legacyHostConformanceDriver) Metrics() hostconformance.Metrics {
 	}
 	if closeCallCount := len(d.runtime.closeCalls); closeCallCount > 0 {
 		metrics.LastClosePreservedCanonicalState = d.runtime.closeCalls[closeCallCount-1].PreserveCanonicalState
+	}
+	metrics.RuntimePreparationCleanupCalls = len(d.runtimeCleanupInputs)
+	if cleanupCallCount := len(d.runtimeCleanupInputs); cleanupCallCount > 0 {
+		metrics.LastCleanupPreservedRecoverableState = d.runtimeCleanupInputs[cleanupCallCount-1].PreserveRuntimeRoot
 	}
 	if d.deletionGuard != nil {
 		metrics.DeleteAdmissionPlans = append([]agenthost.DeleteSessionsPlan(nil), d.deletionGuard.plans...)

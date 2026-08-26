@@ -5,6 +5,41 @@ stable CLI and authorization contracts in
 [Tutti CLI Contract](../tutti-cli-contract.md); keep symptom-driven diagnosis
 and recovery here.
 
+## Computer use keeps reopening setup after installation or authorization
+
+### Symptom
+
+The Desktop settings row reports that computer use is installed and authorized,
+but selecting `/computer` opens setup again. On macOS, the first visit to a
+Privacy & Security pane may not list CuaDriver, or Screen Recording may remain
+granted but not effective until the driver is restarted.
+
+### Root cause and fix
+
+Desktop permission status and Agent Composer options refresh independently. A
+fresh host probe may therefore be authorized while an older Composer snapshot
+still reports computer use as unavailable. Treat the fresh installed and
+authorized host status as sufficient for the Composer interaction; the daemon
+still performs its authoritative readiness clamp when the session launches.
+
+On macOS, start the user-initiated permission grant before opening System
+Settings so TCC has registered CuaDriver on the first visit. After both
+Accessibility and Screen Recording are granted but capture is not yet
+effective, restart CuaDriver through its app bundle and then read status again;
+plain polling cannot clear the process-cached permission state.
+
+### Validation
+
+- An uninstalled driver still routes `/computer` to setup.
+- An installed and authorized driver inserts and submits `/computer` without
+  reopening setup, even if Composer options were loaded before authorization.
+- CuaDriver appears on the first user-initiated visit to each macOS permission
+  pane.
+- Returning from macOS System Settings reconciles granted permissions and
+  capture readiness without restarting Tutti.
+- Windows continues to use `doctor --json`; macOS-only reconciliation never
+  runs on Windows.
+
 ## A computer click reports success but the UI does not change
 
 ### Symptom

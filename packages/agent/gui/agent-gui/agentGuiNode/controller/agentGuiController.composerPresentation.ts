@@ -354,7 +354,12 @@ export function resolvePresentedComposerSettings(input: {
     return null;
   };
   const firstBoolean = (
-    field: "codexSaverMode" | "planMode" | "browserUse" | "computerUse",
+    field:
+      | "codexSaverMode"
+      | "rtkSaverMode"
+      | "planMode"
+      | "browserUse"
+      | "computerUse",
     fallback: boolean
   ): boolean => {
     for (const layer of layers) {
@@ -367,6 +372,7 @@ export function resolvePresentedComposerSettings(input: {
   };
   return {
     codexSaverMode: firstBoolean("codexSaverMode", false),
+    rtkSaverMode: firstBoolean("rtkSaverMode", false),
     model: firstText("model"),
     reasoningEffort: firstText(
       "reasoningEffort"

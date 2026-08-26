@@ -1194,7 +1194,35 @@ function ComputerUseSetupRow({
         clearMessage: false,
         diagnosticTrigger: "window-focus",
         silent: true
-      });
+      })
+        .then(async (nextStatus) => {
+          if (
+            !shouldReconcileComputerUseAfterPermissionChange(nextStatus) ||
+            restartInFlightRef.current
+          ) {
+            return;
+          }
+          restartInFlightRef.current = true;
+          try {
+            const { status: reconciledStatus } =
+              await settingsService.restartComputerUseDriver({ force: true });
+            lastKnownStatusRef.current = reconciledStatus;
+            setComputerUseStatus(reconciledStatus);
+            setStatus(
+              reconciledStatus.installed ? "installed" : "not-installed"
+            );
+            setLastCheckedAtUnixMs(Date.now());
+          } finally {
+            restartInFlightRef.current = false;
+          }
+        })
+        .catch(() => {
+          logPermissionDiagnostic(
+            "computer_use.permission_focus_reconcile_failed",
+            {},
+            "warn"
+          );
+        });
     };
     window.addEventListener("focus", refreshOnVisibility);
     document.addEventListener("visibilitychange", refreshOnVisibility);
@@ -1202,7 +1230,13 @@ function ComputerUseSetupRow({
       window.removeEventListener("focus", refreshOnVisibility);
       document.removeEventListener("visibilitychange", refreshOnVisibility);
     };
-  }, [checkStatus, computerUseStatus, status]);
+  }, [
+    checkStatus,
+    computerUseStatus,
+    logPermissionDiagnostic,
+    settingsService,
+    status
+  ]);
 
   const handleInstall = async () => {
     logPermissionDiagnostic("computer_use.permission_install_clicked");
@@ -1372,9 +1406,18 @@ function ComputerUseSetupRow({
     if (!wizardGrantFiredRef.current[pane]) {
       wizardGrantFiredRef.current[pane] = true;
       logPermissionDiagnostic("computer_use.wizard_grant_fired", { pane });
-      void settingsService
-        .startComputerUsePermissionGrant()
-        .catch(() => undefined);
+      try {
+        // Wait only until the long-running grant process has actually been
+        // launched. This registers CuaDriver with TCC before System Settings
+        // opens, so the permission row is present on the first visit.
+        await settingsService.startComputerUsePermissionGrant();
+      } catch {
+        wizardGrantFiredRef.current[pane] = false;
+        setMessage(
+          t("workspace.settings.general.computerUseOpenSettingsFailed")
+        );
+        return;
+      }
     }
     try {
       await settingsService.openComputerUsePermissionSettings(pane);
@@ -2183,6 +2226,17 @@ function isComputerUseFullyAuthorized(
     permissions.accessibility === true &&
     permissions.screenRecording === true &&
     permissions.screenRecordingCapturable === true
+  );
+}
+
+function shouldReconcileComputerUseAfterPermissionChange(
+  status: DesktopComputerUseStatus | null
+): boolean {
+  return (
+    status?.platform === "darwin" &&
+    status?.permissions?.accessibility === true &&
+    status.permissions.screenRecording === true &&
+    status.permissions.screenRecordingCapturable !== true
   );
 }
 

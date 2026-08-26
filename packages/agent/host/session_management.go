@@ -130,6 +130,7 @@ func (h *Host) updateSettings(ctx context.Context, input UpdateSettingsInput) (U
 	if updater, ok := h.runtime.(RuntimeRetainedSettingsUpdater); ok && runtimeFound {
 		patch := ComposerSettingsPatch{
 			CodexSaverMode: boolPointer(settings.CodexSaverMode),
+			RTKSaverMode:   boolPointer(settings.RTKSaverMode),
 			Model:          stringPointer(settings.Model), PermissionModeID: stringPointer(settings.PermissionModeID),
 			PlanMode: boolPointer(settings.PlanMode), BrowserUse: cloneBoolPointer(settings.BrowserUse),
 			ComputerUse: cloneBoolPointer(settings.ComputerUse), ReasoningEffort: stringPointer(settings.ReasoningEffort),
@@ -451,6 +452,9 @@ func normalizedSessionRef(ref SessionRef) SessionRef {
 func applyComposerSettingsPatch(settings ComposerSettings, patch ComposerSettingsPatch) ComposerSettings {
 	if patch.CodexSaverMode != nil {
 		settings.CodexSaverMode = *patch.CodexSaverMode
+	}
+	if patch.RTKSaverMode != nil {
+		settings.RTKSaverMode = *patch.RTKSaverMode
 	}
 	if patch.Model != nil {
 		settings.Model = strings.TrimSpace(*patch.Model)

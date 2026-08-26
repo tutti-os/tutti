@@ -177,7 +177,7 @@ func TestEnsureRuntimeSessionPreservesLiveResumableObservation(t *testing.T) {
 	}
 }
 
-func TestEnsureRuntimeSessionCleansPreparedResourcesWhenResumeFails(t *testing.T) {
+func TestEnsureRuntimeSessionCleansPreparedResourcesAndPreservesRecoverableStateWhenResumeFails(t *testing.T) {
 	resumeErr := errors.New("resume failed")
 	store := liveResumeCanonicalStore{
 		session: storesqlite.Session{
@@ -204,7 +204,8 @@ func TestEnsureRuntimeSessionCleansPreparedResourcesWhenResumeFails(t *testing.T
 	}
 	if preparation.cleanupInput.WorkspaceID != "workspace-1" ||
 		preparation.cleanupInput.AgentSessionID != "session-1" ||
-		preparation.cleanupInput.Provider != "codex" {
+		preparation.cleanupInput.Provider != "codex" ||
+		!preparation.cleanupInput.PreserveRecoverableState {
 		t.Fatalf("cleanup input = %#v", preparation.cleanupInput)
 	}
 }

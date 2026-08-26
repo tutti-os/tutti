@@ -20,6 +20,9 @@ export const zhCNAgentGui = {
   codexSaverModeLabel: "Codex 省额度模式",
   codexSaverModeDescription:
     "主模型保持不变；合适的独立子任务改用 Luna Max，按当前额度口径约为 Sol High 的 1/10。实际效果与速度因任务而异。",
+  rtkSaverModeLabel: "RTK 省钱模式",
+  rtkSaverModeDescription:
+    "保持当前模型，并为新会话注入 RTK.md 与会话私有 rtk 指令，用更精简的工具输出节省 token",
   initialPlaceholder: "输入 @ 引用会话、文件、任务和应用",
   followupPlaceholder: "要求 {{provider}} 继续后续变更",
   installRequiredPlaceholder: "请先连接 {{provider}}，然后再发送消息",
@@ -692,7 +695,7 @@ export const zhCNAgentGui = {
   browserUseCapabilitySettingsDescription: "配置 Agent 使用的浏览器。",
   capabilityInlineSettingsLabel: "设置",
   computerUseCapabilityLabel: "电脑控制",
-  computerUseCapabilityDescription: "让 Agent 控制 macOS 桌面。",
+  computerUseCapabilityDescription: "让 Agent 控制你的电脑桌面",
   computerUseCapabilitySetupRequiredDescription: "未安装。按 Enter 打开设置。",
   computerUseCapabilityAuthorizationRequiredDescription:
     "需要授权。按 Enter 打开设置。",

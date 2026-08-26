@@ -406,6 +406,8 @@ type AuthorizationStartRequest struct {
 	Connector         Connector
 	Release           Release
 	Secret            []byte
+	AfterStepRevision uint64
+	StepRevisionBase  uint64
 }
 
 type AuthorizationCancelRequest struct {

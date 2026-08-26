@@ -172,6 +172,9 @@ func sessionRuntimeEffectiveConfig(input CreateSessionInput) map[string]any {
 	if input.CodexSaverMode != nil {
 		result["codexSaverMode"] = *input.CodexSaverMode
 	}
+	if input.RTKSaverMode != nil {
+		result["rtkSaverMode"] = *input.RTKSaverMode
+	}
 	if value := strings.TrimSpace(value(input.ReasoningEffort)); value != "" {
 		result["reasoningEffort"] = value
 	}
