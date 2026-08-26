@@ -48,6 +48,7 @@ import {
   resolveOptionalBrowserNodeDesiredUrl,
   resolveBrowserNodeUrlError
 } from "./guestNavigation.ts";
+import { registerBrowserGuestWindowOpenRoute } from "./guestWindowOpenRouter.ts";
 
 interface BrowserGuestSession {
   appliedColorScheme: BrowserPreferredColorScheme | null;
@@ -70,6 +71,7 @@ interface BrowserGuestSession {
   sessionMode: BrowserNodeSessionMode;
   sessionPartition: string | null;
   webContentsId: number | null;
+  windowOpenRouteCleanup: (() => void) | null;
 }
 
 async function applyPreferredColorSchemeToGuest(
@@ -184,7 +186,8 @@ export function createBrowserGuestManager({
       profileId: input?.profileId ?? null,
       sessionMode: input?.sessionMode ?? "shared",
       sessionPartition: input?.sessionPartition ?? null,
-      webContentsId: null
+      webContentsId: null,
+      windowOpenRouteCleanup: null
     };
     sessions.set(nodeId, session);
     return session;
@@ -225,6 +228,8 @@ export function createBrowserGuestManager({
       }
     }
     session.listeners = [];
+    session.windowOpenRouteCleanup?.();
+    session.windowOpenRouteCleanup = null;
     automationRegistry?.unregister(session.nodeId, contents);
     session.contents = null;
     session.appliedColorScheme = null;
@@ -857,17 +862,20 @@ export function createBrowserGuestManager({
           session.automationTarget
         );
       }
-      contents.setWindowOpenHandler?.(({ url }) => {
-        if (isGoogleGisOAuthPopupUrl(url)) {
-          logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
-            nodeId: session.nodeId,
-            webContentsId: session.webContentsId
-          });
-          return { action: "allow" };
-        }
+      session.windowOpenRouteCleanup = registerBrowserGuestWindowOpenRoute(
+        contents,
+        ({ url }) => {
+          if (isGoogleGisOAuthPopupUrl(url)) {
+            logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
+              nodeId: session.nodeId,
+              webContentsId: session.webContentsId
+            });
+            return { action: "allow" };
+          }
 
-        return emitOpenUrlFromGuest(session, url);
-      });
+          return emitOpenUrlFromGuest(session, url);
+        }
+      );
       attachGuestListeners(session);
       await applyPreferredColorSchemeToGuest(
         session,

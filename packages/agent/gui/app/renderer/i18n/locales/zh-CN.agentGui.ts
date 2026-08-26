@@ -539,6 +539,7 @@ export const zhCNAgentGui = {
     manualApproval: "允许，并手动确认编辑",
     rejectOnce: "拒绝执行",
     rejectAlways: "拒绝，并且不再询问",
+    rejectAndStopTurn: "拒绝并停止当前回复",
     rejectWithFollowUp: "拒绝，然后发送新的指令"
   },
   authRequired: "需要认证",

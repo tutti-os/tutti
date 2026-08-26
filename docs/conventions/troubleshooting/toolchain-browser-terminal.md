@@ -464,6 +464,62 @@ delimited by ---`, and the composer skill picker may show partial or
   [tabsStore.ts](../../../packages/browser/workbench-node/src/core/tabsStore.ts)
   [nodeController.ts](../../../packages/browser/workbench-node/src/core/nodeController.ts)
 
+### Workspace App authorization opens two Browser windows
+
+- Symptom:
+  One Workspace App connection action opens two internal Browser windows for
+  the same authorization URL.
+- Quick checks:
+  Starting from one user action, count Electron window-open producer callbacks,
+  `workspace app emitted open-url` events, Workbench launch requests, and
+  materialized Browser surfaces. Popup events should report
+  `producer=window-open-handler`. Equal URLs do not prove duplicate delivery,
+  and different OAuth query parameters do not prove separate user intent.
+- Root cause:
+  Intercepting one cross-origin blank-link in preload while also installing
+  Electron's window-open handler creates two popup transports. A downstream
+  workspace, source node, local UUID, or URL cannot prove that independently
+  produced events represent one user action. Renderer deduplication therefore
+  masks the producer boundary and can merge intentional popup requests.
+- Fix:
+  Leave blank links, `window.open`, and popup forms to Electron's
+  `setWindowOpenHandler`; preload must not globally intercept clicks or patch
+  page APIs. Install one delegate while attaching the guest and give its
+  host-provided Workspace App route priority. Browser Node `registerGuest` may
+  update only the delegate's ordinary Browser route; it must not install a
+  second handler. Main compares accepted HTTP(S) targets with the current guest
+  origin: internal URLs navigate the current guest after the handler returns
+  `deny`, while external URLs emit one Browser event. Reject POST and
+  empty/`about:blank` deferred popups with localized feedback instead of losing
+  the request body or later navigation. Keep the renderer as a stateless
+  one-event/one-launch adapter.
+- Validation:
+  Start from one real internal popup and assert one producer callback, current
+  guest navigation, and zero Browser events, launches, surfaces, and native
+  child windows. Then start from one real external popup and assert producer
+  callback count one, Browser event count one, Workbench launch count one, and
+  surface count one.
+  Two events indicate duplicate production; one event with two launches
+  indicates duplicate routing or subscription; one launch with two surfaces
+  indicates a Workbench materialization race. Two real `window.open` requests
+  must remain two independent launches even when their URLs are equal.
+  The Electron integration fixture covers `did-attach-webview` followed by
+  `registerGuest`, installs the real Workspace App preload, and uses different
+  loopback origins for the guest and popup target. It then covers blank links,
+  internal blank links, `window.open` return semantics, external blank links,
+  external `window.open`, GET forms, deferred-popup rejection, and POST
+  rejection. Its owner renderer runs the real
+  workspace Browser event service, launch coordinator, presenter, and public
+  Workbench host with the production Browser multi-instance launch handler, so
+  one process asserts callback, Browser event, launch, materialized surface,
+  rejection notification, and denied native-child counts. The package boundary
+  test separately asserts that guest attachment installs one stable Electron
+  handler.
+- References:
+  [workspaceAppWindowOpen.ts](../../../apps/desktop/src/main/ipc/workspaceAppWindowOpen.ts)
+  [workspaceBrowserService.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/internal/workspaceBrowserService.ts)
+  [workbenchWorkspaceBrowserPresenter.ts](../../../apps/desktop/src/renderer/src/features/workspace-workbench/services/workbenchWorkspaceBrowserPresenter.ts)
+
 ### Agent opening several pages repeatedly steals workspace focus
 
 - Symptom:

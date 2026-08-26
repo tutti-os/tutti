@@ -521,6 +521,11 @@ describe("AgentInteractivePromptSurface", () => {
     expect(
       screen.getByTestId("agent-approval-request-approval-deny")
     ).toHaveAttribute("data-agent-approval-option-id", "abort");
+    expect(
+      screen.getByRole("button", {
+        name: "Deny and stop the current response"
+      })
+    ).toBe(screen.getByTestId("agent-approval-request-approval-deny"));
 
     fireEvent.click(
       screen.getByRole("button", { name: "No, then send new instructions" })

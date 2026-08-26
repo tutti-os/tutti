@@ -32,7 +32,7 @@ import {
   normalizeWorkspaceAppDiagnosticLogRecord,
   type WorkspaceAppFrontendLogWriter
 } from "./workspaceAppFrontendLogging.ts";
-import { dispatchWorkspaceAppOpenUrl } from "./workspaceAppWindowOpen.ts";
+import { dispatchWorkspaceAppOpenUrl } from "../host/workspaceAppBrowserOpen.ts";
 import { isRecord } from "./workspaceAppPayloadValidation.ts";
 import { requestWorkspaceAppExternalRenderer } from "./workspaceAppRendererBridge.ts";
 import { createWorkspaceAppAtQueryDirectoryRequest } from "./workspaceAppAtQueryDirectoryRequest.ts";
@@ -158,13 +158,6 @@ export function registerWorkspaceAppShellIpc(input: {
         typeof normalizedPayload?.event === "string"
           ? normalizedPayload.event
           : "";
-      if (diagnosticEvent === "workspace-app-link-interception") {
-        logger?.info("workspace app link interception diagnostic", {
-          payload: normalizedPayload,
-          webContentsId: event.sender.id
-        });
-        return;
-      }
       if (diagnosticEvent.includes("failed")) {
         logger?.warn("workspace app context preload diagnostic", {
           payload: normalizedPayload
@@ -223,6 +216,7 @@ export function registerWorkspaceAppShellIpc(input: {
       contents: event.sender,
       logger,
       ownerWindow: context.ownerWindow,
+      producer: "external-browser-api",
       url: payload.url
     });
   });

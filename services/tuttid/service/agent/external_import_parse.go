@@ -457,9 +457,11 @@ func resolveExternalSessionTitle(provider string, summaryTitle string, hint stri
 // VS Code injects IDE context ahead of the real Codex prompt; the actual
 // request lives under the final "## My request for Codex:" heading.
 const (
-	codexIDEContextPrefix       = "# Context from my IDE setup:"
-	codexRequestMarker          = "my request for codex"
-	tuttiMentionRoutingReminder = "<system-reminder>mention:// links are Tutti internal references; use the exact visible tutti-cli skill first to route them.</system-reminder>"
+	codexIDEContextPrefix        = "# Context from my IDE setup:"
+	codexRequestMarker           = "my request for codex"
+	codexRecommendedPluginsOpen  = "<recommended_plugins>"
+	codexRecommendedPluginsClose = "</recommended_plugins>"
+	tuttiMentionRoutingReminder  = "<system-reminder>mention:// links are Tutti internal references; use the exact visible tutti-cli skill first to route them.</system-reminder>"
 )
 
 // externalImportTitleCandidate cleans a user message for use as a session title,
@@ -494,6 +496,10 @@ func externalImportCleanUserText(provider string, text string) (string, bool) {
 		}
 		return trimmed, true
 	case providerregistry.ExternalImportUserTextCleanerKindCodex:
+		trimmed = stripCodexRecommendedPluginsPreamble(trimmed)
+		if trimmed == "" {
+			return "", false
+		}
 		if strings.HasPrefix(trimmed, "# AGENTS.md") || strings.HasPrefix(trimmed, "<environment_context>") {
 			return "", false
 		}
@@ -504,6 +510,19 @@ func externalImportCleanUserText(provider string, text string) (string, bool) {
 	default:
 		return "", false
 	}
+}
+
+func stripCodexRecommendedPluginsPreamble(text string) string {
+	trimmed := strings.TrimSpace(text)
+	if !strings.HasPrefix(trimmed, codexRecommendedPluginsOpen) {
+		return trimmed
+	}
+	closeOffset := strings.Index(trimmed[len(codexRecommendedPluginsOpen):], codexRecommendedPluginsClose)
+	if closeOffset < 0 {
+		return trimmed
+	}
+	blockEnd := len(codexRecommendedPluginsOpen) + closeOffset + len(codexRecommendedPluginsClose)
+	return strings.TrimSpace(trimmed[blockEnd:])
 }
 
 func stripTuttiMentionRoutingReminder(text string) string {
