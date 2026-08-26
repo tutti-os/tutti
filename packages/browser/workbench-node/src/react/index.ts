@@ -1,5 +1,6 @@
 export {
   BrowserNode,
+  type BrowserNodeErrorRenderContext,
   type BrowserNodeHomeRenderContext,
   type BrowserNodeProps
 } from "./BrowserNode.tsx";

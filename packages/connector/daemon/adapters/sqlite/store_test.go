@@ -415,7 +415,7 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 		Execution: market.OperationExecution{AuthorizationSession: &market.AuthorizationSession{
 			OperationID: "authorization-1", ConnectorKey: connector.Key,
 			SessionID: "session-1", ActionType: "redirect", AuthorizationURL: "https://example.test/authorize",
-			State: market.AuthorizationStatePending,
+			StepRevision: 3, State: market.AuthorizationStatePending,
 		}},
 	}
 	if err := store.Transaction(ctx, func(tx market.Transaction) error {
@@ -453,6 +453,8 @@ func TestStoreKeepsAuthorizationSessionPrivateAndAvailableAfterReopen(t *testing
 	}
 	if len(operations) != 1 || operations[0].Execution.AuthorizationSession == nil ||
 		operations[0].Execution.AuthorizationSession.SessionID != "session-1" ||
+		operations[0].Execution.AuthorizationSession.StepRevision != 3 ||
+		operations[0].Execution.AuthorizationSession.AuthorizationURL != "" ||
 		operations[0].Execution.AuthorizationSession.Resolution != market.AuthorizationSessionResolutionCanceling {
 		t.Fatalf("authorization operations = %#v", operations)
 	}

@@ -193,9 +193,10 @@ func TestDaemonAPIForwardsReplaceActiveAuthorizationPolicy(t *testing.T) {
 				ConnectorKey: connector.Key, Kind: market.OperationKindStartAuthorization,
 				State: market.OperationStateCompleted, CreatedAt: time.Now(), UpdatedAt: time.Now(),
 			},
-			AuthorizationURL:       "https://accounts.example.com/oauth",
-			AuthorizationExpiresAt: time.Now().Add(time.Minute),
-			Revision:               2,
+			AuthorizationURL:          "https://accounts.example.com/oauth",
+			AuthorizationExpiresAt:    time.Now().Add(time.Minute),
+			AuthorizationStepRevision: 2,
+			Revision:                  2,
 		}, nil
 	}}
 	mux := http.NewServeMux()
@@ -207,12 +208,14 @@ func TestDaemonAPIForwardsReplaceActiveAuthorizationPolicy(t *testing.T) {
 	recorder := performGeneratedRouteRequest(t, mux, http.MethodPost,
 		"/v1/connector-market/connectors/notion/authorization:start", map[string]any{
 			"clientRequestId": "authorization-b", "expectedRevision": 1,
-			"replacementPolicy": "replace_active",
+			"afterAuthorizationStepRevision": 1,
+			"replacementPolicy":              "replace_active",
 		})
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want %d; body: %s", recorder.Code, http.StatusOK, recorder.Body.String())
 	}
 	if received.AccountID != "account-1" || received.ClientRequestID != "authorization-b" ||
+		received.AfterAuthorizationStepRevision != 1 ||
 		received.ReplacementPolicy != market.AuthorizationReplacementPolicyReplaceActive {
 		t.Fatalf("authorization mutation = %#v", received)
 	}

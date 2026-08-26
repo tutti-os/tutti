@@ -35,6 +35,15 @@ type ServerInterface interface {
 	// Mark the current registration credits reward toast as shown
 	// (POST /v1/account/registration_credits_reward/dismiss)
 	DismissAccountRegistrationCreditsReward(w http.ResponseWriter, r *http.Request)
+	// Visit or refresh the currently displayed room presence projection
+	// (PUT /v1/account/user-presence/current-room)
+	PutAccountUserPresenceCurrentRoom(w http.ResponseWriter, r *http.Request)
+	// Update whether foreground snapshot reconciliation is active
+	// (PUT /v1/account/user-presence/foreground)
+	PutAccountUserPresenceForeground(w http.ResponseWriter, r *http.Request)
+	// Read the cached presence projection for one recently visited room
+	// (GET /v1/account/user-presence/rooms/{roomID})
+	GetAccountUserPresenceRoom(w http.ResponseWriter, r *http.Request, roomID string)
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(w http.ResponseWriter, r *http.Request)
@@ -149,6 +158,12 @@ type ServerInterface interface {
 	// Attach a WebSocket stream to daemon business events
 	// (GET /v1/events/ws)
 	AttachEventStream(w http.ResponseWriter, r *http.Request)
+	// List global Agent Activity filter options
+	// (GET /v1/global-agent-activity/filter-options)
+	GetGlobalAgentActivityFilterOptions(w http.ResponseWriter, r *http.Request)
+	// List filtered global Agent Activity sessions
+	// (GET /v1/global-agent-activity/sessions)
+	ListGlobalAgentActivitySessions(w http.ResponseWriter, r *http.Request, params ListGlobalAgentActivitySessionsParams)
 	// Get daemon health status
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -933,6 +948,78 @@ func (siw *ServerInterfaceWrapper) DismissAccountRegistrationCreditsReward(w htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DismissAccountRegistrationCreditsReward(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutAccountUserPresenceCurrentRoom operation middleware
+func (siw *ServerInterfaceWrapper) PutAccountUserPresenceCurrentRoom(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutAccountUserPresenceCurrentRoom(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutAccountUserPresenceForeground operation middleware
+func (siw *ServerInterfaceWrapper) PutAccountUserPresenceForeground(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutAccountUserPresenceForeground(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountUserPresenceRoom operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountUserPresenceRoom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomID" -------------
+	var roomID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomID", r.PathValue("roomID"), &roomID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountUserPresenceRoom(w, r, roomID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2162,6 +2249,117 @@ func (siw *ServerInterfaceWrapper) AttachEventStream(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AttachEventStream(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGlobalAgentActivityFilterOptions operation middleware
+func (siw *ServerInterfaceWrapper) GetGlobalAgentActivityFilterOptions(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGlobalAgentActivityFilterOptions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGlobalAgentActivitySessions operation middleware
+func (siw *ServerInterfaceWrapper) ListGlobalAgentActivitySessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListGlobalAgentActivitySessionsParams
+
+	// ------------- Optional query parameter "roomIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "roomIds", r.URL.Query(), &params.RoomIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "roomIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sessionOwnerUserIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sessionOwnerUserIds", r.URL.Query(), &params.SessionOwnerUserIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sessionOwnerUserIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionOwnerUserIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agentKeys" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentKeys", r.URL.Query(), &params.AgentKeys, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentKeys"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentKeys", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "activityFromUnixMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "activityFromUnixMs", r.URL.Query(), &params.ActivityFromUnixMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "activityFromUnixMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "activityFromUnixMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "activityToUnixMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "activityToUnixMs", r.URL.Query(), &params.ActivityToUnixMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "activityToUnixMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "activityToUnixMs", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGlobalAgentActivitySessions(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11752,6 +11950,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/logout", wrapper.LogoutAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/product_summary", wrapper.GetAccountProductSummary)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/registration_credits_reward/dismiss", wrapper.DismissAccountRegistrationCreditsReward)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/account/user-presence/current-room", wrapper.PutAccountUserPresenceCurrentRoom)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/account/user-presence/foreground", wrapper.PutAccountUserPresenceForeground)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user-presence/rooms/{roomID}", wrapper.GetAccountUserPresenceRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user_info", wrapper.GetAccountUserInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-maintenance/deleted-conversations/purge", wrapper.PurgeDeletedAgentConversations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
@@ -11790,6 +11991,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/desktop-update-admission/refresh", wrapper.RefreshDesktopUpdateAdmission)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/desktop-update-admission/startup", wrapper.GetDesktopUpdateAdmissionStartup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events/ws", wrapper.AttachEventStream)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/global-agent-activity/filter-options", wrapper.GetGlobalAgentActivityFilterOptions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/global-agent-activity/sessions", wrapper.ListGlobalAgentActivitySessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/mobile-remote-access/pairing-challenges", wrapper.StartMobileRemotePairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/mobile-remote-access/pairing-challenges/{challengeID}", wrapper.GetMobileRemotePairingChallenge)
@@ -12421,6 +12624,236 @@ type DismissAccountRegistrationCreditsReward503JSONResponse struct {
 }
 
 func (response DismissAccountRegistrationCreditsReward503JSONResponse) VisitDismissAccountRegistrationCreditsRewardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoomRequestObject struct {
+	Body *PutAccountUserPresenceCurrentRoomJSONRequestBody
+}
+
+type PutAccountUserPresenceCurrentRoomResponseObject interface {
+	VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error
+}
+
+type PutAccountUserPresenceCurrentRoom200JSONResponse AccountUserPresenceRoomResponse
+
+func (response PutAccountUserPresenceCurrentRoom200JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceCurrentRoom400JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response PutAccountUserPresenceCurrentRoom401JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceCurrentRoom405JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceCurrentRoom503JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForegroundRequestObject struct {
+	Body *PutAccountUserPresenceForegroundJSONRequestBody
+}
+
+type PutAccountUserPresenceForegroundResponseObject interface {
+	VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error
+}
+
+type PutAccountUserPresenceForeground204Response struct {
+}
+
+func (response PutAccountUserPresenceForeground204Response) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PutAccountUserPresenceForeground400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceForeground400JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForeground401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response PutAccountUserPresenceForeground401JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForeground405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceForeground405JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForeground503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceForeground503JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoomRequestObject struct {
+	RoomID string `json:"roomID"`
+}
+
+type GetAccountUserPresenceRoomResponseObject interface {
+	VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error
+}
+
+type GetAccountUserPresenceRoom200JSONResponse AccountUserPresenceRoomResponse
+
+func (response GetAccountUserPresenceRoom200JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoom401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAccountUserPresenceRoom401JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoom405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAccountUserPresenceRoom405JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoom503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAccountUserPresenceRoom503JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -15744,6 +16177,189 @@ type AttachEventStream503JSONResponse struct {
 }
 
 func (response AttachEventStream503JSONResponse) VisitAttachEventStreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptionsRequestObject struct {
+}
+
+type GetGlobalAgentActivityFilterOptionsResponseObject interface {
+	VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error
+}
+
+type GetGlobalAgentActivityFilterOptions200JSONResponse GlobalAgentActivityFilterOptionsResponse
+
+func (response GetGlobalAgentActivityFilterOptions200JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetGlobalAgentActivityFilterOptions401JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetGlobalAgentActivityFilterOptions405JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetGlobalAgentActivityFilterOptions502JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetGlobalAgentActivityFilterOptions503JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessionsRequestObject struct {
+	Params ListGlobalAgentActivitySessionsParams
+}
+
+type ListGlobalAgentActivitySessionsResponseObject interface {
+	VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error
+}
+
+type ListGlobalAgentActivitySessions200JSONResponse GlobalAgentActivitySessionListResponse
+
+func (response ListGlobalAgentActivitySessions200JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions400JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListGlobalAgentActivitySessions401JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions405JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions502JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions503JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -40887,6 +41503,15 @@ type StrictServerInterface interface {
 	// Mark the current registration credits reward toast as shown
 	// (POST /v1/account/registration_credits_reward/dismiss)
 	DismissAccountRegistrationCreditsReward(ctx context.Context, request DismissAccountRegistrationCreditsRewardRequestObject) (DismissAccountRegistrationCreditsRewardResponseObject, error)
+	// Visit or refresh the currently displayed room presence projection
+	// (PUT /v1/account/user-presence/current-room)
+	PutAccountUserPresenceCurrentRoom(ctx context.Context, request PutAccountUserPresenceCurrentRoomRequestObject) (PutAccountUserPresenceCurrentRoomResponseObject, error)
+	// Update whether foreground snapshot reconciliation is active
+	// (PUT /v1/account/user-presence/foreground)
+	PutAccountUserPresenceForeground(ctx context.Context, request PutAccountUserPresenceForegroundRequestObject) (PutAccountUserPresenceForegroundResponseObject, error)
+	// Read the cached presence projection for one recently visited room
+	// (GET /v1/account/user-presence/rooms/{roomID})
+	GetAccountUserPresenceRoom(ctx context.Context, request GetAccountUserPresenceRoomRequestObject) (GetAccountUserPresenceRoomResponseObject, error)
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(ctx context.Context, request GetAccountUserInfoRequestObject) (GetAccountUserInfoResponseObject, error)
@@ -41001,6 +41626,12 @@ type StrictServerInterface interface {
 	// Attach a WebSocket stream to daemon business events
 	// (GET /v1/events/ws)
 	AttachEventStream(ctx context.Context, request AttachEventStreamRequestObject) (AttachEventStreamResponseObject, error)
+	// List global Agent Activity filter options
+	// (GET /v1/global-agent-activity/filter-options)
+	GetGlobalAgentActivityFilterOptions(ctx context.Context, request GetGlobalAgentActivityFilterOptionsRequestObject) (GetGlobalAgentActivityFilterOptionsResponseObject, error)
+	// List filtered global Agent Activity sessions
+	// (GET /v1/global-agent-activity/sessions)
+	ListGlobalAgentActivitySessions(ctx context.Context, request ListGlobalAgentActivitySessionsRequestObject) (ListGlobalAgentActivitySessionsResponseObject, error)
 	// Get daemon health status
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -41819,6 +42450,98 @@ func (sh *strictHandler) DismissAccountRegistrationCreditsReward(w http.Response
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DismissAccountRegistrationCreditsRewardResponseObject); ok {
 		if err := validResponse.VisitDismissAccountRegistrationCreditsRewardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutAccountUserPresenceCurrentRoom operation middleware
+func (sh *strictHandler) PutAccountUserPresenceCurrentRoom(w http.ResponseWriter, r *http.Request) {
+	var request PutAccountUserPresenceCurrentRoomRequestObject
+
+	var body PutAccountUserPresenceCurrentRoomJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutAccountUserPresenceCurrentRoom(ctx, request.(PutAccountUserPresenceCurrentRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutAccountUserPresenceCurrentRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutAccountUserPresenceCurrentRoomResponseObject); ok {
+		if err := validResponse.VisitPutAccountUserPresenceCurrentRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutAccountUserPresenceForeground operation middleware
+func (sh *strictHandler) PutAccountUserPresenceForeground(w http.ResponseWriter, r *http.Request) {
+	var request PutAccountUserPresenceForegroundRequestObject
+
+	var body PutAccountUserPresenceForegroundJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutAccountUserPresenceForeground(ctx, request.(PutAccountUserPresenceForegroundRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutAccountUserPresenceForeground")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutAccountUserPresenceForegroundResponseObject); ok {
+		if err := validResponse.VisitPutAccountUserPresenceForegroundResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountUserPresenceRoom operation middleware
+func (sh *strictHandler) GetAccountUserPresenceRoom(w http.ResponseWriter, r *http.Request, roomID string) {
+	var request GetAccountUserPresenceRoomRequestObject
+
+	request.RoomID = roomID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountUserPresenceRoom(ctx, request.(GetAccountUserPresenceRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountUserPresenceRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountUserPresenceRoomResponseObject); ok {
+		if err := validResponse.VisitGetAccountUserPresenceRoomResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -42930,6 +43653,56 @@ func (sh *strictHandler) AttachEventStream(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AttachEventStreamResponseObject); ok {
 		if err := validResponse.VisitAttachEventStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGlobalAgentActivityFilterOptions operation middleware
+func (sh *strictHandler) GetGlobalAgentActivityFilterOptions(w http.ResponseWriter, r *http.Request) {
+	var request GetGlobalAgentActivityFilterOptionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGlobalAgentActivityFilterOptions(ctx, request.(GetGlobalAgentActivityFilterOptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGlobalAgentActivityFilterOptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGlobalAgentActivityFilterOptionsResponseObject); ok {
+		if err := validResponse.VisitGetGlobalAgentActivityFilterOptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListGlobalAgentActivitySessions operation middleware
+func (sh *strictHandler) ListGlobalAgentActivitySessions(w http.ResponseWriter, r *http.Request, params ListGlobalAgentActivitySessionsParams) {
+	var request ListGlobalAgentActivitySessionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListGlobalAgentActivitySessions(ctx, request.(ListGlobalAgentActivitySessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListGlobalAgentActivitySessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListGlobalAgentActivitySessionsResponseObject); ok {
+		if err := validResponse.VisitListGlobalAgentActivitySessionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

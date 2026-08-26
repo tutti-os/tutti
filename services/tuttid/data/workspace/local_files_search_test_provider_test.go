@@ -14,6 +14,34 @@ import (
 // select it because this file is compiled only into tests.
 type testFilesystemSearchProvider struct{}
 
+type emptyLocalFileSearchProvider struct{}
+
+type failingLocalFileSearchProvider struct {
+	err error
+}
+
+func (emptyLocalFileSearchProvider) Name() string {
+	return "empty-index"
+}
+
+func (emptyLocalFileSearchProvider) Search(
+	context.Context,
+	localFileSearchRequest,
+) ([]string, error) {
+	return nil, nil
+}
+
+func (failingLocalFileSearchProvider) Name() string {
+	return "failing-index"
+}
+
+func (f failingLocalFileSearchProvider) Search(
+	context.Context,
+	localFileSearchRequest,
+) ([]string, error) {
+	return nil, f.err
+}
+
 // testFilesystemSearchProvider intentionally preserves the old temporary-tree
 // traversal semantics for deterministic unit tests. Production code cannot
 // select it because this file is compiled only into tests.

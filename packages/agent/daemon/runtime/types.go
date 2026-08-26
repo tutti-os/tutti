@@ -54,12 +54,13 @@ const (
 	messageStreamStateCompleted = "completed"
 	messageStreamStateFailed    = "failed"
 
-	StreamEventMessageUpdate     = "message_update"
-	StreamEventMessageDelta      = "message_delta"
-	StreamEventStatePatch        = "state_patch"
-	StreamEventAvailableCommands = "available_commands_update"
-	StreamEventConfigOptions     = "config_options_update"
-	StreamEventSessionAudit      = "session_audit"
+	StreamEventMessageUpdate            = "message_update"
+	StreamEventMessageDelta             = "message_delta"
+	StreamEventStatePatch               = "state_patch"
+	StreamEventAvailableCommands        = "available_commands_update"
+	StreamEventConfigOptions            = "config_options_update"
+	StreamEventSessionAudit             = "session_audit"
+	StreamEventSessionReconcileRequired = "session_reconcile_required"
 )
 
 type StartInput struct {
@@ -350,6 +351,7 @@ type UpdateSettingsInput struct {
 
 type SessionSettings struct {
 	CodexSaverMode         bool   `json:"codexSaverMode,omitempty"`
+	RTKSaverMode           bool   `json:"rtkSaverMode,omitempty"`
 	Model                  string `json:"model,omitempty"`
 	ReasoningEffort        string `json:"reasoningEffort,omitempty"`
 	Speed                  string `json:"speed,omitempty"`

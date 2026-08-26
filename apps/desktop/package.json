@@ -49,6 +49,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/rtk",
+        "to": "bin/rtk",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "publish": [
@@ -69,7 +76,8 @@
       "hardenedRuntime": true,
       "binaries": [
         "Contents/Resources/bin/tuttid",
-        "Contents/Resources/bin/tutti"
+        "Contents/Resources/bin/tutti",
+        "Contents/Resources/bin/rtk/rtk"
       ]
     },
     "dmg": {

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -1271,5 +1272,76 @@ func TestWorkspaceAgentSessionUnmarshalProtoSessionStatusFallback(t *testing.T) 
 	}
 	if got := session.UpdatedAtUnixMS; got != 1710000002000 {
 		t.Fatalf("UpdatedAtUnixMS = %d", got)
+	}
+}
+
+func TestClientGetsGlobalAgentActivityFilterOptions(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet || req.URL.Path != "/v2/agent-activity/filter-options" {
+			t.Fatalf("request = %s %s", req.Method, req.URL.Path)
+		}
+		if got := req.Header.Get("Cookie"); got != "session=test" {
+			t.Fatalf("cookie = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"rooms":[{"roomId":"room-1","name":"Room 1"}],"sessionOwners":[],"agents":[],"timeBounds":{"minActivityAtUnixMs":"10","maxActivityAtUnixMs":"20","serverNowUnixMs":"30"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL, SessionCookie: "session=test"})
+	options, err := client.GetGlobalAgentActivityFilterOptions(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options.Rooms) != 1 || options.Rooms[0].RoomID != "room-1" || options.TimeBounds.ServerNowUnixMS != 30 {
+		t.Fatalf("options = %#v", options)
+	}
+}
+
+func TestClientListsGlobalAgentActivitySessionsWithFilters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodGet || req.URL.Path != "/v2/agent-activity/sessions" {
+			t.Fatalf("request = %s %s", req.Method, req.URL.Path)
+		}
+		query := req.URL.Query()
+		if got := query["roomIds"]; !reflect.DeepEqual(got, []string{"room-1", "room-2"}) {
+			t.Fatalf("roomIds = %#v", got)
+		}
+		if got := query.Get("sessionOwnerUserIds"); got != "owner-1" {
+			t.Fatalf("sessionOwnerUserIds = %q", got)
+		}
+		if got := query.Get("agentKeys"); got != "target:codex" {
+			t.Fatalf("agentKeys = %q", got)
+		}
+		if got := query.Get("activityFromUnixMs"); got != "100" {
+			t.Fatalf("activityFromUnixMs = %q", got)
+		}
+		if got := query.Get("activityToUnixMs"); got != "200" {
+			t.Fatalf("activityToUnixMs = %q", got)
+		}
+		_, _ = w.Write([]byte(`{"items":[{"room":{"roomId":"room-1","name":"Room 1"},"workspaceId":"workspace-1","agentSessionId":"session-1","sessionOwner":{"userId":"owner-1"},"agent":{"agentKey":"target:codex","agentTargetId":"codex"},"status":"working","title":"Task","activityAtUnixMs":"150"}],"truncated":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(Config{BaseURL: server.URL})
+	reply, err := client.ListGlobalAgentActivitySessions(context.Background(), ListGlobalAgentActivitySessionsInput{
+		RoomIDs:             []string{" room-1 ", "room-2", "room-1"},
+		SessionOwnerUserIDs: []string{"owner-1"},
+		AgentKeys:           []string{"target:codex"},
+		ActivityFromUnixMS:  100,
+		ActivityToUnixMS:    200,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reply.Items) != 1 || reply.Items[0].AgentSessionID != "session-1" || !reply.Truncated {
+		t.Fatalf("reply = %#v", reply)
+	}
+}
+
+func TestClientRejectsUnfilteredGlobalAgentActivityRequest(t *testing.T) {
+	client := NewClient(Config{})
+	_, err := client.ListGlobalAgentActivitySessions(context.Background(), ListGlobalAgentActivitySessionsInput{})
+	if err == nil || !strings.Contains(err.Error(), "at least one global agent activity filter is required") {
+		t.Fatalf("error = %v, want required filter error", err)
 	}
 }

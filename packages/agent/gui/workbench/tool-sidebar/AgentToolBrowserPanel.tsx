@@ -18,6 +18,7 @@ import {
   type BrowserNodeHostApi,
   type BrowserNodeSessionMode
 } from "@tutti-os/browser-node";
+import type { BrowserNodeErrorRenderContext } from "@tutti-os/browser-node/react";
 import type { I18nRuntime } from "@tutti-os/ui-i18n-runtime";
 import { createAgentToolBrowserPage } from "./agentToolBrowserPage.ts";
 
@@ -54,6 +55,7 @@ export interface AgentToolBrowserPanelProps {
   onCloseRequest?: () => void;
   onControllerReady?: (controller: AgentToolBrowserController | null) => void;
   profileId?: string | null;
+  renderError?: (context: BrowserNodeErrorRenderContext) => ReactNode;
   sessionMode?: BrowserNodeSessionMode;
   sessionPartition?: string | null;
 }
@@ -82,6 +84,7 @@ export function AgentToolBrowserPanel({
   onCloseRequest,
   onControllerReady,
   profileId = null,
+  renderError,
   sessionMode = "shared",
   sessionPartition = null
 }: AgentToolBrowserPanelProps): ReactNode {
@@ -165,6 +168,7 @@ export function AgentToolBrowserPanel({
             feature={feature}
             hidden={hidden}
             nodeId={nodeId}
+            renderError={renderError}
             onCloseRequest={onCloseRequest}
             profileId={profileId}
             sessionMode={sessionMode}

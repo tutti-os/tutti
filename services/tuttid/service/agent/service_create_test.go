@@ -109,6 +109,42 @@ func TestServiceCreateAppliesCodexSaverModeWithoutChangingMainModel(t *testing.T
 	}
 }
 
+func TestServiceCreateAppliesRTKSaverModeToNonCodexProvider(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	enabled := true
+	if _, err := service.Create(context.Background(), "ws-rtk-claude", CreateSessionInput{
+		AgentSessionID:      "15151515-1515-4151-8151-151515151515",
+		AgentTargetID:       agenttargetbiz.IDLocalClaudeCode,
+		RTKSaverMode:        &enabled,
+		RTKSaverModeAllowed: true,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 || !runtime.startCalls[0].RTKSaverMode || runtime.startCalls[0].CodexSaverMode || runtime.startCalls[0].Provider != "claude-code" {
+		t.Fatalf("runtime starts = %#v", runtime.startCalls)
+	}
+}
+
+func TestServiceCreateKeepsCodexAndRTKSaverModesIndependent(t *testing.T) {
+	runtime := newFakeRuntime()
+	service := newTestService(runtime)
+	enabled := true
+	if _, err := service.Create(context.Background(), "ws-both-savers", CreateSessionInput{
+		AgentSessionID:        "16161616-1616-4161-8161-161616161616",
+		AgentTargetID:         agenttargetbiz.IDLocalCodex,
+		CodexSaverMode:        &enabled,
+		CodexSaverModeAllowed: true,
+		RTKSaverMode:          &enabled,
+		RTKSaverModeAllowed:   true,
+	}); err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if len(runtime.startCalls) != 1 || !runtime.startCalls[0].CodexSaverMode || !runtime.startCalls[0].RTKSaverMode {
+		t.Fatalf("runtime starts = %#v, want both saver modes enabled", runtime.startCalls)
+	}
+}
+
 func TestServiceApplicationHostUsesConfiguredSingleton(t *testing.T) {
 	service := newTestService(newFakeRuntime())
 	host := service.ApplicationHost()

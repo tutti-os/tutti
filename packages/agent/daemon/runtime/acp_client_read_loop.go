@@ -51,7 +51,11 @@ func (c *acpClient) readLoop() {
 					}
 				}
 			}
-			slog.Warn("agent session ACP stderr",
+			// Provider stderr is already retained in the startup trace and the
+			// bounded diagnostics tail. It is normal for providers to emit many
+			// small stderr frames, so keep this duplicate diagnostic off the
+			// default warning log path.
+			slog.Debug("agent session ACP stderr",
 				"event", "agent_session.acp.stderr",
 				"message", truncateACPLogValue(string(frame.Stderr), 1200),
 			)

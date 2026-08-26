@@ -142,6 +142,13 @@ jobs:
           if (-not (Test-Path (Join-Path $mutagenRuntimeRoot 'SSPL-LICENSE') -PathType Leaf)) { throw 'packaged Mutagen SSPL license is missing' }
           & $mutagen version
           if ($LASTEXITCODE -ne 0) { throw 'packaged Mutagen validation failed' }
+          $rtkRuntimeRoot = Resolve-Path 'apps/desktop/dist/win-unpacked/resources/bin/rtk'
+          $rtkMetadata = Get-Content (Join-Path $rtkRuntimeRoot 'runtime.json') -Raw | ConvertFrom-Json
+          $rtk = Resolve-Path (Join-Path $rtkRuntimeRoot $rtkMetadata.executable)
+          if (-not (Test-Path (Join-Path $rtkRuntimeRoot 'LICENSE') -PathType Leaf)) { throw 'packaged RTK license is missing' }
+          if (-not (Test-Path (Join-Path $rtkRuntimeRoot 'THIRD_PARTY_NOTICES.md') -PathType Leaf)) { throw 'packaged RTK notice is missing' }
+          $rtkVersion = & $rtk --version
+          if ($LASTEXITCODE -ne 0 -or $rtkVersion -ne "rtk $($rtkMetadata.version)") { throw 'packaged RTK validation failed' }
           $package = Resolve-Path 'services/tuttid/builtin-apps/tutti-onboarding/build/package'
           $runtime = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-runtime'
           $data = Join-Path $env:RUNNER_TEMP 'tutti-onboarding-data'

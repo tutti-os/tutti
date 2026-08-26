@@ -84,6 +84,37 @@ func runProviderAcceptedForkRecovery(
 	return nil
 }
 
+func runPermanentlyInconsistentForkRecovery(
+	ctx context.Context,
+	driver SessionForkDriver,
+) error {
+	if err := driver.ResetSessionFork(ctx, SessionForkFixture{
+		RecoverProviderAccepted:        true,
+		RecoverPermanentlyInconsistent: true,
+	}); err != nil {
+		return err
+	}
+	if err := driver.RecoverSessionForks(ctx); err != nil {
+		return fmt.Errorf("RecoverSessionForks(): %w", err)
+	}
+	result, found, err := driver.GetSessionForkOperation(
+		ctx, "workspace-fork", "operation-fork",
+	)
+	if err != nil {
+		return err
+	}
+	if !found || result.Operation.Status != storesqlite.SessionForkStatusFailed {
+		return fmt.Errorf(
+			"recovered operation = found %v, status %q; want failed",
+			found, result.Operation.Status,
+		)
+	}
+	if calls := driver.SessionForkMetrics().ProviderForkCalls; calls != 0 {
+		return fmt.Errorf("provider ForkSession calls during quarantine = %d, want 0", calls)
+	}
+	return nil
+}
+
 func runActiveSourceFork(
 	ctx context.Context,
 	driver SessionForkDriver,

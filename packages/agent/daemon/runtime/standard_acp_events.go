@@ -28,7 +28,7 @@ func defaultACPInitializeParams(host HostMetadata) map[string]any {
 		"clientCapabilities": map[string]any{
 			"fs": map[string]any{
 				"readTextFile":  false,
-				"writeTextFile": false,
+				"writeTextFile": true,
 			},
 			"terminal": false,
 			"_meta": map[string]any{

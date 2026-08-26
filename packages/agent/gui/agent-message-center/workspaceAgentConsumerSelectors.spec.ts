@@ -241,6 +241,163 @@ describe("workspaceAgentConsumerSelectors", () => {
     });
   });
 
+  it("keeps a completed plan waiting in the production message center model when host messages are empty", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities()
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(1);
+    expect(model.items[0]).toMatchObject({
+      id: "message-center-session-1",
+      agentSessionId: "session-1",
+      status: "waiting",
+      needsAttentionKind: "constraint",
+      pendingInteractionTarget: null,
+      pendingPrompt: {
+        kind: "plan-implementation",
+        requestId: "turn-plan"
+      },
+      latestTurnOutcome: null
+    });
+  });
+
+  it.each([
+    {
+      name: "the tagged plan belongs to an older turn",
+      latestTurnId: "turn-current",
+      planTurnId: "turn-old",
+      capabilities: planImplementationCapabilities()
+    },
+    {
+      name: "the session explicitly disables plan implementation",
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: {
+        ...planImplementationCapabilities(),
+        planImplementation: false
+      }
+    }
+  ])("does not synthesize plan waiting when $name", (input) => {
+    const engine = createCompletedPlanEngine(input);
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(0);
+    expect(model.items[0]).toMatchObject({
+      status: "completed",
+      pendingPrompt: null,
+      latestTurnOutcome: {
+        status: "completed",
+        turnId: input.latestTurnId
+      }
+    });
+  });
+
+  it("keeps the legacy presentation shape compatible and fails closed", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities()
+    });
+    const {
+      awaitingPlanImplementationTurnIdBySessionId: _derivedPlanWait,
+      ...legacyPresentation
+    } = selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot());
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      legacyPresentation,
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: { "session-1": [planMessage("turn-plan")] }
+      }
+    );
+
+    expect(model.waitingCount).toBe(0);
+    expect(model.items[0]).toMatchObject({
+      status: "completed",
+      pendingPrompt: null
+    });
+  });
+
+  it("keeps a durable interaction authoritative over a synthetic plan wait", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities(),
+      pendingInteractions: [
+        {
+          requestId: "request-approval",
+          agentSessionId: "session-1",
+          turnId: "turn-plan",
+          kind: "approval",
+          status: "pending",
+          toolName: "Bash",
+          input: {
+            command: "pnpm test",
+            options: [{ optionId: "allow", label: "Allow" }]
+          },
+          createdAtUnixMs: 21,
+          updatedAtUnixMs: 21
+        }
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(1);
+    expect(model.items[0]).toMatchObject({
+      status: "waiting",
+      pendingInteractionTarget: {
+        agentSessionId: "session-1",
+        requestId: "request-approval",
+        turnId: "turn-plan"
+      },
+      pendingPrompt: {
+        kind: "approval",
+        requestId: "request-approval"
+      }
+    });
+  });
+
+  it("removes a skipped plan from the production message center model", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities()
+    });
+    engine.dispatch({
+      type: "plan/skipped",
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      turnId: "turn-plan",
+      requestId: "turn-plan"
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(0);
+    expect(model.items[0]).toMatchObject({
+      status: "completed",
+      pendingPrompt: null
+    });
+  });
+
   it("tracks Plan feedback through explicit source identity instead of submit-id parsing", () => {
     const engine = createEngine();
     engine.dispatch({
@@ -644,6 +801,231 @@ describe("workspaceAgentConsumerSelectors", () => {
     expect(model.waitingCount).toBe(0);
   });
 
+  it("keeps the session title for a continued historical session", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ title: "Original request" })]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-old",
+              version: 1,
+              turnId: "turn-old",
+              role: "user",
+              kind: "message",
+              payload: { text: "Original request" },
+              occurredAtUnixMs: 10
+            },
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-latest",
+              version: 2,
+              turnId: "turn-latest",
+              role: "user",
+              kind: "message",
+              payload: { text: "Continue with the latest request" },
+              occurredAtUnixMs: 20
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]?.title).toBe("Original request");
+  });
+
+  it("keeps the session title and waiting plan prompt", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          title: "Original request",
+          activeTurnId: "turn-plan",
+          activeTurn: {
+            turnId: "turn-plan",
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "waiting",
+            startedAtUnixMs: 10,
+            updatedAtUnixMs: 20
+          },
+          pendingInteractions: [
+            {
+              requestId: "request-exit-plan",
+              agentSessionId: "session-1",
+              turnId: "turn-plan",
+              kind: "approval",
+              status: "pending",
+              toolName: "ExitPlanMode",
+              input: {
+                toolCall: { kind: "switch_mode" },
+                options: [{ optionId: "acceptEdits", label: "Accept edits" }]
+              },
+              createdAtUnixMs: 20,
+              updatedAtUnixMs: 20
+            }
+          ]
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-plan",
+              version: 1,
+              turnId: "turn-plan",
+              role: "user",
+              kind: "message",
+              payload: { text: "Implement the revised plan" },
+              occurredAtUnixMs: 19
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]).toMatchObject({
+      title: "Original request",
+      status: "waiting",
+      pendingPrompt: {
+        kind: "exit-plan",
+        requestId: "request-exit-plan"
+      }
+    });
+  });
+
+  it("uses message version to select the latest reply when timestamps match", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ title: "Original request" })]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "assistant-latest",
+              version: 2,
+              turnId: "turn-latest",
+              role: "assistant",
+              kind: "message",
+              payload: { text: "Current reply" },
+              occurredAtUnixMs: 20
+            },
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "assistant-previous",
+              version: 1,
+              turnId: "turn-previous",
+              role: "assistant",
+              kind: "message",
+              payload: { text: "Previous reply" },
+              occurredAtUnixMs: 20
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]).toMatchObject({
+      title: "Original request",
+      lastAgentMessageSummary: "Current reply",
+      digest: {
+        primary: {
+          summary: "Current reply"
+        }
+      }
+    });
+  });
+
+  it("updates the recent summary only when a realtime reply becomes durable", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ title: "Original request" })]
+    });
+    const previousReply = {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "assistant-previous",
+      version: 1,
+      sequence: 1,
+      turnId: "turn-previous",
+      role: "assistant",
+      kind: "message",
+      payload: { text: "Previous reply" },
+      occurredAtUnixMs: 10
+    } as const;
+    const streamingReply = {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "assistant-current",
+      version: 0,
+      turnId: "turn-current",
+      role: "assistant",
+      kind: "message",
+      status: "streaming",
+      payload: { text: "Current reply in progress" },
+      occurredAtUnixMs: 20
+    } as const;
+
+    const streamingModel = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [previousReply, streamingReply]
+        }
+      }
+    );
+    expect(streamingModel.items[0]?.lastAgentMessageSummary).toBe(
+      "Previous reply"
+    );
+
+    const completedModel = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            previousReply,
+            { ...streamingReply, sequence: 2, status: "completed", version: 2 }
+          ]
+        }
+      }
+    );
+    expect(completedModel.items[0]).toMatchObject({
+      title: "Original request",
+      lastAgentMessageSummary: "Current reply in progress",
+      digest: { primary: { summary: "Current reply in progress" } }
+    });
+  });
+
   it("omits hidden sessions from the message center model by default", () => {
     const engine = createEngine();
     engine.dispatch({
@@ -762,4 +1144,76 @@ function session(
     title: "Canonical session",
     ...overrides
   });
+}
+
+function planMessage(turnId: string) {
+  return {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    messageId: `plan-${turnId}`,
+    version: 1,
+    turnId,
+    role: "agent" as const,
+    kind: "message" as const,
+    payload: { messageKind: "plan" },
+    occurredAtUnixMs: 19
+  };
+}
+
+function planImplementationCapabilities() {
+  return {
+    imageInput: false,
+    modelImageInputRequired: false,
+    modelPlanBinding: false,
+    modelSwitch: false,
+    skills: false,
+    compact: false,
+    tokenUsage: false,
+    rateLimits: false,
+    planMode: true,
+    interrupt: false,
+    activeTurnGuidance: false,
+    browserUse: false,
+    computerUse: false,
+    goalPause: false,
+    planImplementation: true,
+    permissionModeChangeDuringTurn: false,
+    permissionModeChangeDeferred: false,
+    review: false,
+    resumeRunningTurn: false
+  };
+}
+
+function createCompletedPlanEngine(input: {
+  latestTurnId: string;
+  planTurnId: string;
+  capabilities: ReturnType<typeof planImplementationCapabilities>;
+  pendingInteractions?: AgentActivitySession["pendingInteractions"];
+}) {
+  const engine = createEngine();
+  engine.dispatch({
+    type: "session/snapshotReceived",
+    sessions: [
+      session({
+        latestTurn: {
+          turnId: input.latestTurnId,
+          agentSessionId: "session-1",
+          origin: "user_prompt",
+          phase: "settled",
+          outcome: "completed",
+          startedAtUnixMs: 10,
+          settledAtUnixMs: 20,
+          updatedAtUnixMs: 20
+        },
+        capabilities: input.capabilities,
+        pendingInteractions: input.pendingInteractions ?? []
+      })
+    ]
+  });
+  engine.dispatch({
+    type: "message/snapshotReceived",
+    workspaceId: "workspace-1",
+    messages: [planMessage(input.planTurnId)]
+  });
+  return engine;
 }

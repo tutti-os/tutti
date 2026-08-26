@@ -2,6 +2,44 @@
 
 [Back to troubleshooting index](./README.md)
 
+### Windows workspace reference type filters time out
+
+- Symptom:
+  On Windows, opening the Agent reference picker and selecting a file type with
+  an empty search term fails with `workspace_operation_failed`. Structured
+  `workspace local file search failed` logs show
+  `provider=windows-system-index`, `query_length=0`, a non-empty `filters`
+  value, and `context deadline exceeded` near the search deadline.
+- Quick checks:
+  Reproduce with
+  `GET /v1/workspaces/{workspaceID}/files/search?query=&limit=30&includeKinds=file&filters=document`.
+  Compare the requested result limit with the Windows Search SQL candidate
+  limit, and time PowerShell startup separately from the OleDb query. Lowering
+  only `SELECT TOP` is not sufficient evidence that a recursive `SCOPE` query
+  will meet the deadline.
+- Root cause:
+  The filter-only path sent one recursive `SCOPE` query with every selected
+  category extension and asked Windows Search for 5000 candidates even though
+  the UI needed 30. More fundamentally, it launched PowerShell and initialized
+  OleDb on every request; measured process startup alone could exceed the
+  1.5-second search budget. On affected machines the provider was canceled
+  before it could return any result.
+- Fix:
+  Keep keyword searches on the recursive indexed query. For empty-query type
+  filters, use an in-process breadth-first traversal with separate directory,
+  entry, and matching-result limits; read large directories in batches, avoid
+  hidden/noise and reparse-point directories, and stop before the existing
+  hard deadline. Keep the common Go filtering pass as the final semantic guard.
+- Validation:
+  Cover filter-only script generation, result/candidate bounds, `other`
+  category semantics, hidden and reparse-point handling, the unchanged keyword
+  path, and the same daemon HTTP request on Windows. A successful live response
+  must avoid the provider timeout and contain only the requested category.
+- References:
+  [files.go](../../../services/tuttid/service/workspace/files.go)
+  [local_files_search.go](../../../services/tuttid/data/workspace/local_files_search.go)
+  [local_files_search_windows.go](../../../services/tuttid/data/workspace/local_files_search_windows.go)
+
 ### App Factory job keeps loading after AgentGUI Stop
 
 - Symptom:

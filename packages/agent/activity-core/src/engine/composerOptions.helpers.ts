@@ -10,6 +10,7 @@ export function cloneAgentActivityComposerOptions(
   return {
     provider: options.provider,
     codexSaverModeSupported: options.codexSaverModeSupported,
+    rtkSaverModeSupported: options.rtkSaverModeSupported,
     capabilities: options.capabilities ? { ...options.capabilities } : null,
     models: options.models.map((option) => ({ ...option })),
     reasoningEfforts: options.reasoningEfforts.map((option) => ({ ...option })),

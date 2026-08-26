@@ -187,6 +187,9 @@ export const desktopIpcChannels = {
     userProjectsUse: "workspace-app-user-projects:use",
     workspaceFeatureOpen: "workspace-app-feature:open"
   },
+  workspaceApp: {
+    popupRejected: "workspace-app-popup:rejected"
+  },
   browser: {
     activate: "browser:activate",
     automationHostReady: "browser:automation-host-ready",
@@ -1098,6 +1101,10 @@ export interface DesktopBrowserAutomationTurnClaim {
   agentSessionId: string;
   agentTurnId: string;
   workspaceId: string;
+}
+
+export interface DesktopWorkspaceAppPopupRejectedEvent {
+  reason: "deferred-navigation-unsupported" | "post-unsupported";
 }
 
 export type DesktopBrowserAutomationResponse =

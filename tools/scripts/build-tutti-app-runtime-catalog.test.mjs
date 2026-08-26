@@ -7,11 +7,11 @@ import { buildTuttiAppRuntimeCatalog } from "./build-tutti-app-runtime-catalog.m
 
 const runtimeWorkflowPath = new URL(
   "../../.github/workflows/publish-tutti-app-runtime.yml",
-  import.meta.url,
+  import.meta.url
 );
 const runtimeLockPath = new URL(
   "../../config/tutti.app-runtime.lock.json",
-  import.meta.url,
+  import.meta.url
 );
 
 test("buildTuttiAppRuntimeCatalog writes runtime catalog from artifact metadata", async () => {
@@ -22,12 +22,12 @@ test("buildTuttiAppRuntimeCatalog writes runtime catalog from artifact metadata"
       python: {
         artifactPath:
           "2026.06.0/darwin-arm64/python/tutti-app-runtime-python-darwin-arm64-2026.06.0.zip",
-        artifactSha256: "a".repeat(64),
-      },
+        artifactSha256: "a".repeat(64)
+      }
     },
     profiles: {
-      baseline: ["python"],
-    },
+      baseline: ["python"]
+    }
   });
   const linux = await runtimeMetadataFile(tempDir, {
     platform: "linux-amd64",
@@ -35,36 +35,36 @@ test("buildTuttiAppRuntimeCatalog writes runtime catalog from artifact metadata"
       node: {
         artifactPath:
           "2026.06.0/linux-amd64/node/tutti-app-runtime-node-linux-amd64-2026.06.0.zip",
-        artifactSha256: "b".repeat(64),
-      },
+        artifactSha256: "b".repeat(64)
+      }
     },
     profiles: {
       baseline: ["node"],
-      "node-static": ["node"],
-    },
+      "node-static": ["node"]
+    }
   });
   const output = path.join(tempDir, "catalog.json");
 
   const catalog = await buildTuttiAppRuntimeCatalog({
     artifactBaseUrl: "https://cdn.example.test/app-runtimes/",
     metadataFiles: [linux, darwin],
-    output,
+    output
   });
 
   assert.deepEqual(Object.keys(catalog.runtimes), [
     "darwin-arm64",
-    "linux-amd64",
+    "linux-amd64"
   ]);
   assert.deepEqual(JSON.parse(await readFile(output, "utf8")), catalog);
   assert.equal(
     catalog.runtimes["darwin-arm64"].components.python.artifactUrl,
-    "https://cdn.example.test/app-runtimes/2026.06.0/darwin-arm64/python/tutti-app-runtime-python-darwin-arm64-2026.06.0.zip",
+    "https://cdn.example.test/app-runtimes/2026.06.0/darwin-arm64/python/tutti-app-runtime-python-darwin-arm64-2026.06.0.zip"
   );
   assert.deepEqual(catalog.runtimes["darwin-arm64"].profiles.baseline, [
-    "python",
+    "python"
   ]);
   assert.deepEqual(catalog.runtimes["linux-amd64"].profiles["node-static"], [
-    "node",
+    "node"
   ]);
 });
 
@@ -75,24 +75,24 @@ test("buildTuttiAppRuntimeCatalog rejects duplicate platforms", async () => {
     components: {
       python: {
         artifactPath: "2026.06.0/darwin-arm64/python/first.zip",
-        artifactSha256: "a".repeat(64),
-      },
+        artifactSha256: "a".repeat(64)
+      }
     },
     profiles: {
-      baseline: ["python"],
-    },
+      baseline: ["python"]
+    }
   });
   const second = await runtimeMetadataFile(tempDir, {
     platform: "darwin-arm64",
     components: {
       python: {
         artifactPath: "2026.06.0/darwin-arm64/python/second.zip",
-        artifactSha256: "b".repeat(64),
-      },
+        artifactSha256: "b".repeat(64)
+      }
     },
     profiles: {
-      baseline: ["python"],
-    },
+      baseline: ["python"]
+    }
   });
 
   await assert.rejects(
@@ -100,9 +100,9 @@ test("buildTuttiAppRuntimeCatalog rejects duplicate platforms", async () => {
       buildTuttiAppRuntimeCatalog({
         artifactBaseUrl: "https://cdn.example.test/app-runtimes",
         metadataFiles: [first, second],
-        output: path.join(tempDir, "catalog.json"),
+        output: path.join(tempDir, "catalog.json")
       }),
-    /duplicate runtime platform darwin-arm64/,
+    /duplicate runtime platform darwin-arm64/
   );
 });
 
@@ -123,11 +123,15 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /SHASUMS256\.txt/);
   assert.match(
     workflow,
-    /tutti-app-runtime-python-\$\{PLATFORM\}-\$\{RUNTIME_VERSION\}\.zip/,
+    /tutti-app-runtime-python-\$\{PLATFORM\}-\$\{RUNTIME_VERSION\}\.zip/
   );
   assert.match(
     workflow,
-    /tutti-app-runtime-node-\$\{PLATFORM\}-\$\{RUNTIME_VERSION\}\.zip/,
+    /tutti-app-runtime-node-\$\{PLATFORM\}-\$\{RUNTIME_VERSION\}\.zip/
+  );
+  assert.match(
+    workflow,
+    /tutti-app-runtime-rtk-\$\{PLATFORM\}-\$\{RUNTIME_VERSION\}\.zip/
   );
   assert.match(workflow, /node\/bin\/npm/);
   assert.match(workflow, /npm-cli\.js/);
@@ -137,7 +141,11 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /corepack\/dist\/corepack\.js/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npm" --version/);
   assert.match(workflow, /"node-static": \["node"\]/);
+  assert.match(workflow, /"rtk-saver": \["rtk"\]/);
   assert.match(workflow, /baseline = @\('python', 'node'\)/);
+  assert.match(workflow, /'rtk-saver' = @\('rtk'\)/);
+  assert.match(workflow, /RTK_ARCHIVE_SHA256/);
+  assert.match(workflow, /RTK_LICENSE_SHA256/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/npx" --version/);
   assert.match(workflow, /\$\{node_staging\}\/node\/bin\/corepack" --version/);
   assert.match(workflow, /path: downloaded-tutti-app-runtime/);
@@ -145,13 +153,13 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   assert.match(workflow, /Restore runtime artifact layout/);
   assert.match(
     workflow,
-    /target_dir="tutti-app-runtime\/\$\{runtime_version\}\/\$\{platform\}"/,
+    /target_dir="tutti-app-runtime\/\$\{runtime_version\}\/\$\{platform\}"/
   );
   assertAwsValidationBeforeConfigure(workflow, [
     "AWS_REGION_VALUE",
     "AWS_ROLE_ARN_VALUE",
     "S3_BUCKET_VALUE",
-    "ARTIFACT_BASE_URL_VALUE",
+    "ARTIFACT_BASE_URL_VALUE"
   ]);
   assert.match(workflow, /build-tutti-app-runtime-catalog\.mjs/);
   assert.match(workflow, /max-age=31536000, immutable/);
@@ -165,11 +173,11 @@ test("Windows runtime pins the official signed CPython 3.12.10 embeddable packag
   assert.equal(lock.python.windows.version, "3.12.10");
   assert.equal(
     lock.python.windows.archiveUrl,
-    "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip",
+    "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"
   );
   assert.equal(
     lock.python.windows.archiveSha256,
-    "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3",
+    "4acbed6dd1c744b0376e3b1cf57ce906f9dc9e95e68824584c8099a63025a3c3"
   );
 });
 
@@ -180,7 +188,7 @@ function assertAwsValidationBeforeConfigure(workflow, names) {
   assert.notEqual(configureIndex, -1, "workflow should configure AWS");
   assert.ok(
     validationIndex < configureIndex,
-    "AWS validation must run before credentials configuration",
+    "AWS validation must run before credentials configuration"
   );
   for (const name of names) {
     assert.match(workflow, new RegExp(`for name in[\\s\\S]*${name}`));
@@ -201,23 +209,23 @@ async function runtimeMetadataFile(tempDir, overrides) {
         artifactPath:
           "2026.06.0/darwin-arm64/python/tutti-app-runtime-python-darwin-arm64-2026.06.0.zip",
         artifactSha256: "a".repeat(64),
-        artifactSizeBytes: 123,
+        artifactSizeBytes: 123
       },
       node: {
         version: "22.22.3",
         artifactPath:
           "2026.06.0/darwin-arm64/node/tutti-app-runtime-node-darwin-arm64-2026.06.0.zip",
         artifactSha256: "b".repeat(64),
-        artifactSizeBytes: 456,
-      },
+        artifactSizeBytes: 456
+      }
     },
     profiles: {
-      baseline: ["python", "node"],
-    },
+      baseline: ["python", "node"]
+    }
   };
   const metadata = {
     ...baseMetadata,
-    ...overrides,
+    ...overrides
   };
   if (overrides.components) {
     metadata.components = Object.fromEntries(
@@ -231,14 +239,14 @@ async function runtimeMetadataFile(tempDir, overrides) {
               ? baseMetadata.nodeVersion
               : baseMetadata.pythonVersion),
           artifactSizeBytes: component.artifactSizeBytes ?? 123,
-          ...component,
-        },
-      ]),
+          ...component
+        }
+      ])
     );
   }
   const filePath = path.join(
     tempDir,
-    `${metadata.platform}-${Math.random()}.json`,
+    `${metadata.platform}-${Math.random()}.json`
   );
   await writeFile(filePath, `${JSON.stringify(metadata, null, 2)}\n`);
   return filePath;
