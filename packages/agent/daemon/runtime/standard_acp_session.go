@@ -383,7 +383,11 @@ func (a *standardACPAdapter) resumeLocked(ctx context.Context, session Session) 
 	if err := a.applySessionConfigOptions(ctx, client, session, loadSessionResult); err != nil {
 		return err
 	}
-	if err := a.applyACPMode(ctx, client, session, a.startupModeID(session)); err != nil {
+	targetModeID := a.startupModeID(session)
+	if standardACPResumeModeMatchesPersistedSelection(session, targetModeID) {
+		a.setSessionCurrentMode(session.AgentSessionID, targetModeID)
+	}
+	if err := a.applyACPMode(ctx, client, session, targetModeID); err != nil {
 		return err
 	}
 	started = true

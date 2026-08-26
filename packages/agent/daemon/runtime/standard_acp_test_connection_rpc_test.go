@@ -54,6 +54,9 @@ func (c *standardACPConnection) Send(data []byte) error {
 				result["sessionCapabilities"] = sessionCapabilities
 			}
 			agentCapabilities := map[string]any{}
+			if c.promptImage {
+				agentCapabilities["promptCapabilities"] = map[string]any{"image": true}
+			}
 			if c.supportsAgentLoadSession {
 				agentCapabilities["loadSession"] = true
 			}

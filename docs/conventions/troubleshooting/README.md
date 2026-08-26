@@ -58,7 +58,9 @@ Use the focused runtime index or open one area directly:
   cleanup failures that stop a send before provider dispatch while preserving
   the composer draft. Standard ACP cancellation that returns before the active
   provider prompt drains, causing every later prompt to remain provider-queued,
-  is covered here too.
+  is covered here too. Historical Standard ACP sessions that reject image
+  preflight before reconnect, or incorrectly choose replaying `session/load`
+  over an advertised object-form `session/resume`, are covered here as well.
 - [Agent Approvals And Child Sessions](./agent-approvals-subagents.md): Approval gates, plan exits, root/parent/child event attribution, child sessions, and Message Center.
   Includes provider-native work that continues invisibly after root cancellation
   and late child creation racing the durable cancel boundary.

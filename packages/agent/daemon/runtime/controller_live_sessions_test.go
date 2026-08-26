@@ -219,6 +219,60 @@ func TestControllerRecyclesIdleKimiCodeProcessAndResumesOnNextExec(t *testing.T)
 	}
 }
 
+func TestControllerResumesIdleKimiCodeBeforeHistoricalImagePreflight(t *testing.T) {
+	t.Parallel()
+
+	transport := &multiProcStandardACPTransport{
+		agentTitle:               "Kimi Code",
+		sessionID:                "kimi-session-image-resume",
+		supportsAgentLoadSession: true,
+		promptImage:              true,
+	}
+	adapter := newKimiCodeExtensionTestAdapter(t, transport)
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID:         "room-kimi-image-resume",
+		AgentSessionID: "kimi-agent-session-image-resume",
+		Provider:       "acp:kimi-code",
+		CWD:            `C:\Users\tester\Documents\project`,
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer func() {
+		_, _ = controller.Close(context.Background(), CloseInput{
+			RoomID:         started.Session.RoomID,
+			AgentSessionID: started.Session.AgentSessionID,
+		})
+	}()
+
+	nowTime := time.Now()
+	setSessionUpdatedAt(t, controller, started.Session, nowTime.Add(-31*time.Minute))
+	result := controller.ReleaseIdleLiveSessions(context.Background(), ReleaseIdleLiveSessionsInput{
+		IdleAfter: 30 * time.Minute,
+		Now:       nowTime,
+	})
+	if result.Released != 1 {
+		t.Fatalf("release result = %#v, want one released Kimi Code process", result)
+	}
+
+	err = controller.ValidatePromptContent(context.Background(), ExecInput{
+		RoomID:         started.Session.RoomID,
+		AgentSessionID: started.Session.AgentSessionID,
+		Content: []PromptContentBlock{{
+			Type:     "image",
+			MimeType: "image/png",
+			Data:     "aGk=",
+		}},
+	})
+	if err != nil {
+		t.Fatalf("ValidatePromptContent after idle release: %v", err)
+	}
+	if spawned, live := transport.snapshot(); spawned != 2 || len(live) != 1 {
+		t.Fatalf("processes after image preflight = spawned %d live %d, want resumed process", spawned, len(live))
+	}
+}
+
 func TestControllerKeepsIdleStandardACPProcessWithoutResumeCapability(t *testing.T) {
 	t.Parallel()
 

@@ -229,18 +229,43 @@ func acpResumeMethod(raw json.RawMessage) string {
 	if len(raw) == 0 || json.Unmarshal(raw, &result) != nil {
 		return ""
 	}
-	if truthyNested(result, "sessionCapabilities", "resume") ||
+	if sessionCapabilitySupported(result, "resume") ||
 		truthyNested(result, "agentCapabilities", "resumeSession") ||
 		truthyNested(result, "agentCapabilities", "resume") {
 		return acpMethodResume
 	}
-	if truthyNested(result, "sessionCapabilities", "load") ||
-		truthyNested(result, "sessionCapabilities", "loadSession") ||
+	if sessionCapabilitySupported(result, "load") ||
+		sessionCapabilitySupported(result, "loadSession") ||
 		truthyNested(result, "agentCapabilities", "loadSession") ||
 		truthyNested(result, "agentCapabilities", "load") {
 		return acpMethodLoadSession
 	}
 	return ""
+}
+
+func sessionCapabilitySupported(value map[string]any, fieldKey string) bool {
+	if nestedCapabilitySupported(value, "sessionCapabilities", fieldKey) {
+		return true
+	}
+	agentCapabilities, ok := value["agentCapabilities"].(map[string]any)
+	return ok && nestedCapabilitySupported(agentCapabilities, "sessionCapabilities", fieldKey)
+}
+
+func nestedCapabilitySupported(value map[string]any, objectKey, fieldKey string) bool {
+	nested, ok := value[objectKey].(map[string]any)
+	if !ok {
+		return false
+	}
+	field, exists := nested[fieldKey]
+	if !exists || field == nil {
+		return false
+	}
+	// ACP session capabilities use an object whose presence declares support;
+	// older agents may still publish the same capability as a boolean.
+	if _, ok := field.(map[string]any); ok {
+		return true
+	}
+	return truthyNested(value, objectKey, fieldKey)
 }
 
 func truthyNested(value map[string]any, objectKey, fieldKey string) bool {

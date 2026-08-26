@@ -15,12 +15,25 @@ import (
 )
 
 func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient, session Session, modeID string) error {
+	modeID = strings.TrimSpace(modeID)
 	if modeID == "" {
 		a.logStandardACPStartupDiagnostics("session_mode.skipped", map[string]any{
 			"room_id":             session.RoomID,
 			"agent_session_id":    session.AgentSessionID,
 			"provider_session_id": session.ProviderSessionID,
 			"permission_mode_id":  session.PermissionModeID,
+			"reason":              "no_target_mode",
+		})
+		return nil
+	}
+	if currentModeID := a.sessionCurrentMode(session.AgentSessionID); currentModeID == modeID {
+		a.logStandardACPStartupDiagnostics("session_mode.skipped", map[string]any{
+			"room_id":             session.RoomID,
+			"agent_session_id":    session.AgentSessionID,
+			"provider_session_id": session.ProviderSessionID,
+			"permission_mode_id":  session.PermissionModeID,
+			"mode_id":             modeID,
+			"reason":              "already_current",
 		})
 		return nil
 	}
@@ -79,6 +92,7 @@ func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient
 		)
 		return nil
 	}
+	a.setSessionCurrentMode(session.AgentSessionID, modeID)
 	slog.Info("agent session ACP mode update succeeded",
 		"event", "agent_session.acp.session_mode.succeeded",
 		"provider", a.config.provider,
@@ -97,6 +111,30 @@ func (a *standardACPAdapter) applyACPMode(ctx context.Context, client *acpClient
 		"elapsed_ms":          time.Since(setModeStartedAt).Milliseconds(),
 	})
 	return nil
+}
+
+func (a *standardACPAdapter) sessionCurrentMode(agentSessionID string) string {
+	if a == nil {
+		return ""
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	session := a.sessions[strings.TrimSpace(agentSessionID)]
+	if session == nil {
+		return ""
+	}
+	return strings.TrimSpace(session.currentMode)
+}
+
+func (a *standardACPAdapter) setSessionCurrentMode(agentSessionID string, modeID string) {
+	if a == nil {
+		return
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if session := a.sessions[strings.TrimSpace(agentSessionID)]; session != nil {
+		session.currentMode = strings.TrimSpace(modeID)
+	}
 }
 
 func (a *standardACPAdapter) applySessionConfigOptions(
@@ -137,8 +175,7 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 	modelSet := false
 	if model := strings.TrimSpace(settings.Model); model != "" && modelConfigID != "" &&
 		(supported[modelConfigID] || (modelConfigID == "model" && modelsAPI)) {
-		modelAlreadySelected := modelsAPI && modelConfigID == "model" &&
-			strings.TrimSpace(a.sessionCurrentModelID(session.AgentSessionID)) == model
+		modelAlreadySelected := a.sessionConfigOptionMatches(session.AgentSessionID, modelConfigID, model)
 		if !modelAlreadySelected {
 			var err error
 			if modelsAPI && modelConfigID == "model" {
@@ -172,6 +209,8 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 				"provider_session_id":  session.ProviderSessionID,
 				"supported_option_ids": acpConfigOptionIDList(startResult),
 			})
+		} else if a.sessionConfigOptionMatches(session.AgentSessionID, reasoningConfigID, reasoning) {
+			a.updateSessionConfigOption(session.AgentSessionID, reasoningConfigID, reasoning)
 		} else if err := a.setSessionConfigOption(ctx, client, session, reasoningConfigID, reasoning); err != nil {
 			a.logStartupConfigOptionRejected(session, reasoningConfigID, reasoning, err)
 		} else {
@@ -179,10 +218,13 @@ func (a *standardACPAdapter) applySessionConfigOptions(
 		}
 	}
 	if speed := strings.TrimSpace(settings.Speed); speed != "" && supported["fast"] {
-		if err := a.setSessionConfigOption(ctx, client, session, "fast", speed); err != nil {
+		if a.sessionConfigOptionMatches(session.AgentSessionID, "fast", speed) {
+			a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
+		} else if err := a.setSessionConfigOption(ctx, client, session, "fast", speed); err != nil {
 			return fmt.Errorf("agent session ACP fast configuration failed: %w", err)
+		} else {
+			a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
 		}
-		a.updateSessionConfigOption(session.AgentSessionID, "fast", speed)
 	}
 	a.logStandardACPStartupDiagnostics("config_options.succeeded", map[string]any{
 		"room_id":             session.RoomID,

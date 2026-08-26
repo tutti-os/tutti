@@ -1335,6 +1335,57 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [service_send_input.go](../../../services/tuttid/service/agent/service_send_input.go)
 
+### Historical Standard ACP session cannot send after its process was released
+
+- Symptom:
+  Continuing an idle historical Session fails before a new Turn starts. An
+  image submission may report `agent prompt image input is unsupported` even
+  though the same Session previously advertised image input. A text submission
+  may reconnect but then fail a redundant settings RPC, or the following prompt
+  may end without assistant, thought, or tool output.
+- Quick checks:
+  Confirm the canonical Session still has a provider Session ID while the
+  adapter has no live process. For images, look for validation failure without
+  a preceding provider process start. For text, inspect `initialize`: an ACP
+  agent may advertise legacy `agentCapabilities.loadSession: true` together
+  with object-form `sessionCapabilities.resume: {}` (some agents place that
+  object under `agentCapabilities.sessionCapabilities`). If Tutti then calls
+  `session/load`, historical updates are replayed even though Tutti already has
+  the transcript. Also check whether an unchanged persisted permission/Plan
+  selection is followed by `session/set_mode`.
+- Root cause:
+  Image capability is negotiated by the live ACP handshake, but preflight used
+  the released adapter state before reconnecting. Separately, the ACP
+  capability parser only recognized boolean/string values. ACP declares newer
+  session capabilities by object presence, so `{}` was treated as unsupported
+  and the legacy `session/load` path won over `session/resume`. Kimi's current
+  response uses the nested placement, which is accepted by the compatibility
+  parser. Load replays
+  history; resume reattaches without replay. Resume also reasserted an unchanged
+  mode even though the provider Session owns restored state, which fails for
+  non-idempotent mode implementations.
+- Fix:
+  Reconnect a released Standard ACP process before image capability preflight,
+  so unsupported images are still rejected before attachment persistence using
+  the fresh handshake. Recognize object-form session capabilities and prefer
+  `session/resume` when advertised. Use Tutti's persisted permission and Plan
+  selection to avoid reasserting the same mode after reattachment, while still
+  sending a setting changed while detached. Keep the behavior provider- and
+  platform-neutral; do not match a provider ID or error string.
+- Validation:
+  Release a resumable Standard ACP Session and prove that image preflight starts
+  one replacement process before validation. Given an initialize response with
+  both legacy load support and `sessionCapabilities.resume: {}` in standard and
+  nested placement, prove Tutti selects `session/resume`. Prove the persisted unchanged mode is not reasserted
+  but an actual offline permission or Plan change is. Use a native Windows-shaped
+  CWD in the image case and cross-compile the runtime test package for Windows in
+  addition to executing the focused tests on POSIX.
+- References:
+  [controller_live_sessions.go](../../../packages/agent/daemon/runtime/controller_live_sessions.go)
+  [acp_update_events.go](../../../packages/agent/daemon/runtime/acp_update_events.go)
+  [standard_acp_settings.go](../../../packages/agent/daemon/runtime/standard_acp_settings.go)
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
+
 ### Remote Agent image reaches the provider as an unsupported URL
 
 - Symptom:

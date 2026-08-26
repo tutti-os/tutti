@@ -20,6 +20,7 @@ type multiProcStandardACPTransport struct {
 	sessionID                string
 	supportsLoadSession      bool
 	supportsAgentLoadSession bool
+	promptImage              bool
 	configOptions            []map[string]any
 	initializeError          *acpError
 	newSessionError          *acpError
@@ -61,6 +62,7 @@ func (t *multiProcStandardACPTransport) Start(_ context.Context, spec ProcessSpe
 		sessionID:                t.sessionID,
 		supportsLoadSession:      t.supportsLoadSession,
 		supportsAgentLoadSession: t.supportsAgentLoadSession,
+		promptImage:              t.promptImage,
 		supportsHTTPMCP:          true,
 		configOptions:            configOptions,
 		initializeError:          t.initializeError,
@@ -120,6 +122,7 @@ type standardACPConnection struct {
 	rejectModelValue              string
 	supportsLoadSession           bool
 	supportsAgentLoadSession      bool
+	promptImage                   bool
 	supportsHTTPMCP               bool
 	supportsCloseSession          bool
 	closeSessionExits             bool

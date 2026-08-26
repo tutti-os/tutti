@@ -517,7 +517,7 @@ func sessionRecreatedNoticeEvent(session Session) (activityshared.Event, bool) {
 	}, "system_notice", true)
 }
 
-func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) error {
+func (c *Controller) ValidatePromptContent(ctx context.Context, input ExecInput) error {
 	session, adapter, err := c.sessionAndAdapter(input.RoomID, input.AgentSessionID)
 	if err != nil {
 		return err
@@ -531,6 +531,17 @@ func (c *Controller) ValidatePromptContent(_ context.Context, input ExecInput) e
 	}
 	providerContent, _ := projectRuntimeConnectorPromptContent(content, session.AnnouncedConnectorKeys, true)
 	if promptAdapter, ok := adapter.(PromptContentAdapter); ok {
+		// Image support is negotiated by the live provider handshake. An idle
+		// Standard ACP Session retains its canonical record after releasing the
+		// process, so reconnect before capability preflight instead of rejecting
+		// a historical Session merely because its live adapter state is absent.
+		// Exec validates again after this boundary; unsupported providers still
+		// fail before the Host persists the attachment.
+		if promptContentHasImage(providerContent) {
+			if err := c.ensureLiveAdapterSession(ctx, session, adapter); err != nil {
+				return err
+			}
+		}
 		return promptAdapter.ValidatePromptContent(session, providerContent)
 	}
 	return nil
