@@ -56,6 +56,7 @@ import {
 } from "@renderer/lib/compositeNotificationService";
 import { installRendererDiagnostics } from "@renderer/lib/rendererDiagnostics";
 import { createWorkspaceWindowLifecycle } from "@renderer/lib/workspaceWindowLifecycle.ts";
+import { registerWorkspaceAppPopupNotifications } from "./workspaceAppPopupNotifications.ts";
 import { resolveDesktopEnvironment } from "@renderer/platform/desktop/resolveDesktopEnvironment";
 import { createDesktopTuttidEventStreamClient } from "@renderer/platform/tuttid/createDesktopTuttidEventStreamClient";
 import { createDesktopTuttidClient } from "@renderer/platform/tuttid/createDesktopTuttidClient";
@@ -134,6 +135,12 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     })
   });
   registry.registerInstance(INotificationService, notificationService);
+  const disposeWorkspaceAppPopupNotifications =
+    registerWorkspaceAppPopupNotifications({
+      notifications: notificationService,
+      translate,
+      workspaceAppApi: desktopApi.workspaceApp
+    });
   const analyticsDebugAvailable = isAnalyticsDebugAvailable({
     isDev: import.meta.env.DEV
   });
@@ -446,6 +453,7 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     disposeConnectorMarketAgentSync();
     disposeConnectorMarketAccountRefresh();
     disposeConnectorMarketResumeRefresh();
+    disposeWorkspaceAppPopupNotifications();
     workspaceAgentServices.dispose();
     windowLifecycle.dispose();
     daemonConnectionAnalytics.release();

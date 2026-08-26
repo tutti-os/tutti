@@ -92,15 +92,22 @@ export function projectAgentTurnSummaryRowForTurn(
     return [];
   }
   const visiblePaths = new Set(files.map((file) => file.path));
-  const patchBatches = patchBatchesFromCalls(
+  const candidatePatchBatches = patchBatchesFromCalls(
     turnToolCallsForSummary(turn),
     options
-  ).flatMap((batch) => {
-    const changes = batch.changes.filter((change) =>
-      visiblePaths.has(change.path)
-    );
-    return changes.length > 0 ? [{ ...batch, changes }] : [];
-  });
+  );
+  const coveredPaths = new Set(
+    candidatePatchBatches.flatMap((batch) =>
+      batch.changes.map((change) => change.path)
+    )
+  );
+  const hasCompletePatchCoverage =
+    candidatePatchBatches.length > 0 &&
+    candidatePatchBatches.every((batch) =>
+      batch.changes.every((change) => visiblePaths.has(change.path))
+    ) &&
+    files.every((file) => coveredPaths.has(file.path));
+  const patchBatches = hasCompletePatchCoverage ? candidatePatchBatches : [];
   const createdCount = files.filter(
     (file) => file.changeType === "created"
   ).length;
@@ -270,13 +277,22 @@ function patchBatchFromPayload(
   const metadata = objectValue(payload?.metadata);
   const input = toolInput ?? objectValue(payload?.input);
   const output = toolOutput ?? objectValue(payload?.output);
+  const canonicalFileChanges = objectValue(payload?.fileChanges);
   const changes = firstFileChangeValue(
+    canonicalFileChanges?.files,
     output?.changes,
     payload?.changes,
     input?.changes
   );
-  const patchChanges = patchChangesFromChangeMap(changes);
-  if (patchChanges.length === 0) {
+  const sourcePatchChanges = patchChangesFromChangeMap(changes);
+  const patchChanges = sourcePatchChanges.flatMap((change) => {
+    const path = normalizedFilePath(change.path, options);
+    return path ? [{ ...change, path }] : [];
+  });
+  if (
+    patchChanges.length === 0 ||
+    patchChanges.length !== sourcePatchChanges.length
+  ) {
     return [];
   }
   return [
@@ -298,7 +314,8 @@ function patchBatchFromPayload(
 function patchChangesFromChangeMap(
   changes: unknown
 ): AgentTurnSummaryPatchChangeVM[] {
-  return fileChangeEntriesFromChanges(changes).flatMap((entry) => {
+  const entries = fileChangeEntriesFromChanges(changes);
+  const patchChanges = entries.flatMap((entry) => {
     const change = entry.change;
     const path = entry.path.trim();
     if (!path) {
@@ -311,13 +328,12 @@ function patchChangesFromChangeMap(
       change.diff,
       change.patch
     );
-    const unifiedDiff =
-      firstValidUnifiedDiff(
-        change.unified_diff,
-        change.unifiedDiff,
-        change.diff,
-        change.patch
-      ) ?? rawDiff;
+    const unifiedDiff = firstValidUnifiedDiff(
+      change.unified_diff,
+      change.unifiedDiff,
+      change.diff,
+      change.patch
+    );
     let oldString = firstPresentString(
       literalStringValue(change.old_string),
       literalStringValue(change.oldString)
@@ -340,8 +356,18 @@ function patchChangesFromChangeMap(
     }
     const content = firstPresentString(
       changeType === "deleted" ? null : explicitContent,
-      changeType === "created" ? newString : null
+      changeType === "created" ? (newString ?? rawDiff) : null
     );
+    const resolvedChangeType =
+      changeType ??
+      (unifiedDiff ? inferAgentPatchChangeType(unifiedDiff) : "modified");
+    if (
+      resolvedChangeType === "modified" &&
+      !unifiedDiff &&
+      (oldString === null || newString === null)
+    ) {
+      return [];
+    }
     if (
       !unifiedDiff &&
       oldString === null &&
@@ -353,7 +379,7 @@ function patchChangesFromChangeMap(
     return [
       {
         path,
-        changeType: changeType ?? inferAgentPatchChangeType(unifiedDiff),
+        changeType: resolvedChangeType,
         unifiedDiff,
         oldString,
         newString,
@@ -361,6 +387,7 @@ function patchChangesFromChangeMap(
       }
     ];
   });
+  return patchChanges.length === entries.length ? patchChanges : [];
 }
 
 function firstRawString(...values: unknown[]): string | null {

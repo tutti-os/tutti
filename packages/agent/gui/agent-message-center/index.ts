@@ -32,6 +32,7 @@ export {
   PLAN_IMPLEMENTATION_PROMPT
 } from "../shared/agentConversation/planImplementationPresentation";
 export { dispatchAgentPlanPromptAction } from "../shared/agentConversation/agentPlanPromptDispatch";
+export type { AgentPlanPromptAction } from "../shared/agentConversation/agentPlanPromptDispatch";
 export { useEngineSelector } from "../shared/engine/useEngineSelector";
 export type { PromptToolDetail } from "../shared/agentConversation/promptToolDetails";
 export type {

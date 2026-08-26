@@ -6,9 +6,11 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
@@ -17,6 +19,52 @@ type fakeAgentTargetSetupReader struct {
 	snapshots map[string]agentextensionservice.SetupSnapshot
 	mu        sync.Mutex
 	calls     map[string]int
+}
+
+type blockingAgentTargetSetupReader struct {
+	started chan struct{}
+	release <-chan struct{}
+}
+
+func (f *blockingAgentTargetSetupReader) GetSetup(ctx context.Context, _ agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error) {
+	close(f.started)
+	select {
+	case <-ctx.Done():
+		return agentextensionservice.SetupSnapshot{}, ctx.Err()
+	case <-f.release:
+		return agentextensionservice.SetupSnapshot{Status: agentextensionservice.SetupReady}, nil
+	}
+}
+
+type blockingProviderAvailabilitySessions struct {
+	fakeAgentSessions
+	started chan struct{}
+	release <-chan struct{}
+}
+
+type errorAfterSignalProviderAvailabilitySessions struct {
+	fakeAgentSessions
+	wait <-chan struct{}
+	err  error
+}
+
+func (f *errorAfterSignalProviderAvailabilitySessions) ListProviderAvailability(ctx context.Context, _ agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error) {
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-f.wait:
+		return nil, f.err
+	}
+}
+
+func (f *blockingProviderAvailabilitySessions) ListProviderAvailability(ctx context.Context, _ agentservice.ProviderAvailabilityInput) ([]agentservice.ProviderAvailability, error) {
+	close(f.started)
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case <-f.release:
+		return []agentservice.ProviderAvailability{availableProvider("codex")}, nil
+	}
 }
 
 func (f *fakeAgentTargetSetupReader) GetSetup(_ context.Context, input agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error) {
@@ -65,6 +113,209 @@ func TestAgentListUsesExtensionTargetAvailabilityWithoutProviderProbe(t *testing
 	availability := agent["availability"].(map[string]any)
 	if availability["status"] != "unavailable" || availability["reasonCode"] != "compatible_runtime_not_installed" {
 		t.Fatalf("availability = %#v", availability)
+	}
+}
+
+func TestAgentListRunsBuiltinAndExtensionAvailabilityProbesConcurrently(t *testing.T) {
+	builtinLaunchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("codex", agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeBuiltinLocal, Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON(builtin): %v", err)
+	}
+	launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("acp:kimi-code", agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: "kimi-code@1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON: %v", err)
+	}
+	builtin := agenttargetbiz.Target{
+		ID: "local:codex", Provider: "codex", Name: "Codex", Enabled: true,
+		Source: agenttargetbiz.SourceSystem, AvailabilityStatus: "ready", LaunchRefJSON: builtinLaunchRef,
+	}
+	extension := agenttargetbiz.Target{
+		ID: "extension:kimi-code", Provider: "acp:kimi-code", Name: "Kimi Code", Enabled: true,
+		Source: agenttargetbiz.SourceSystem, AvailabilityStatus: "ready", LaunchRefJSON: launchRef,
+	}
+	builtinStarted := make(chan struct{})
+	extensionStarted := make(chan struct{})
+	sessions := &blockingProviderAvailabilitySessions{started: builtinStarted, release: extensionStarted}
+	setup := &blockingAgentTargetSetupReader{started: extensionStarted, release: builtinStarted}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions, nil, fakeAgentTargetList{targets: []agenttargetbiz.Target{builtin, extension}},
+	).WithAgentTargetSetup(setup)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	type handlerResult struct {
+		output cliservice.CommandOutput
+		err    error
+	}
+	result := make(chan handlerResult, 1)
+	go func() {
+		output, handlerErr := provider.newAgentsCommand().Handler(ctx, cliservice.InvokeRequest{
+			OutputMode: cliservice.OutputModeJSON,
+		})
+		result <- handlerResult{output: output, err: handlerErr}
+	}()
+
+	var completed handlerResult
+	select {
+	case completed = <-result:
+	case <-time.After(3 * time.Second):
+		t.Fatal("agent catalog probes did not satisfy the concurrency barrier")
+	}
+	if completed.err != nil {
+		t.Fatalf("Handler: %v", completed.err)
+	}
+	byID := map[string]map[string]any{}
+	for _, raw := range completed.output.Value["agents"].([]any) {
+		agent := raw.(map[string]any)
+		byID[agent["id"].(string)] = agent["availability"].(map[string]any)
+	}
+	for _, agentID := range []string{builtin.ID, extension.ID} {
+		if got := byID[agentID]; got["status"] != "available" {
+			t.Fatalf("availability(%s) = %#v", agentID, got)
+		}
+	}
+}
+
+func TestAgentListCancelsExtensionWaiterWhenBuiltinAvailabilityFails(t *testing.T) {
+	builtinLaunchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("codex", agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeBuiltinLocal, Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON(builtin): %v", err)
+	}
+	extensionLaunchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("acp:kimi-code", agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: "kimi-code@1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON(extension): %v", err)
+	}
+	builtin := agenttargetbiz.Target{
+		ID: agenttargetbiz.IDLocalCodex, Provider: "codex", Name: "Codex", Enabled: true,
+		Source: agenttargetbiz.SourceSystem, AvailabilityStatus: "ready", LaunchRefJSON: builtinLaunchRef,
+	}
+	extension := agenttargetbiz.Target{
+		ID: "extension:kimi-code", Provider: "acp:kimi-code", Name: "Kimi Code", Enabled: true,
+		Source: agenttargetbiz.SourceSystem, AvailabilityStatus: "ready", LaunchRefJSON: extensionLaunchRef,
+	}
+	extensionStarted := make(chan struct{})
+	releaseExtensionProbe := make(chan struct{})
+	setup := &blockingAgentTargetSetupReader{started: extensionStarted, release: releaseExtensionProbe}
+	wantErr := errors.New("built-in availability failed")
+	sessions := &errorAfterSignalProviderAvailabilitySessions{wait: extensionStarted, err: wantErr}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions, nil, fakeAgentTargetList{targets: []agenttargetbiz.Target{builtin, extension}},
+	).WithAgentTargetSetup(setup)
+
+	result := make(chan error, 1)
+	go func() {
+		_, handlerErr := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+		result <- handlerErr
+	}()
+	select {
+	case err = <-result:
+		close(releaseExtensionProbe)
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("Handler error = %v, want %v", err, wantErr)
+		}
+	case <-time.After(2 * time.Second):
+		close(releaseExtensionProbe)
+		<-result
+		t.Fatal("Handler did not cancel the extension availability waiter after built-in availability failed")
+	}
+}
+
+func TestAgentListExactBuiltinSkipsUnrelatedExtensionSetupProbe(t *testing.T) {
+	builtinLaunchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("codex", agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeBuiltinLocal, Provider: "codex",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON(builtin): %v", err)
+	}
+	extensionLaunchRef, err := agenttargetbiz.CanonicalLaunchRefJSON("acp:kimi-code", agenttargetbiz.LaunchRef{
+		Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: "kimi-code@1.0.0",
+	})
+	if err != nil {
+		t.Fatalf("CanonicalLaunchRefJSON(extension): %v", err)
+	}
+	builtin := agenttargetbiz.Target{
+		ID: agenttargetbiz.IDLocalCodex, Provider: "codex", Name: "Codex", Enabled: true,
+		Source: agenttargetbiz.SourceSystem, AvailabilityStatus: "ready", LaunchRefJSON: builtinLaunchRef,
+	}
+	extension := agenttargetbiz.Target{
+		ID: "extension:kimi-code", Provider: "acp:kimi-code", Name: "Kimi Code", Enabled: true,
+		Source: agenttargetbiz.SourceSystem, AvailabilityStatus: "ready", LaunchRefJSON: extensionLaunchRef,
+	}
+	setup := &fakeAgentTargetSetupReader{snapshots: map[string]agentextensionservice.SetupSnapshot{
+		extension.ID: {Status: agentextensionservice.SetupReady},
+	}}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{}, nil, fakeAgentTargetList{targets: []agenttargetbiz.Target{builtin, extension}},
+	).WithAgentTargetSetup(setup)
+
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": builtin.ID}, OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if calls := setup.callCount(extension.ID); calls != 0 {
+		t.Fatalf("extension setup calls = %d, want 0", calls)
+	}
+	agents := output.Value["agents"].([]any)
+	if len(agents) != 1 || agents[0].(map[string]any)["id"] != builtin.ID {
+		t.Fatalf("agents = %#v", agents)
+	}
+}
+
+func TestAgentListExactExtensionColdCacheSkipsOtherTargetsAndBuiltinAvailability(t *testing.T) {
+	newExtension := func(id, provider string) agenttargetbiz.Target {
+		launchRef, err := agenttargetbiz.CanonicalLaunchRefJSON(provider, agenttargetbiz.LaunchRef{
+			Type: agenttargetbiz.LaunchRefTypeAgentExtension, ExtensionInstallationID: strings.TrimPrefix(id, "extension:") + "@1.0.0",
+		})
+		if err != nil {
+			t.Fatalf("CanonicalLaunchRefJSON(%s): %v", id, err)
+		}
+		return agenttargetbiz.Target{
+			ID: id, Provider: provider, Name: id, Enabled: true, Source: agenttargetbiz.SourceSystem,
+			AvailabilityStatus: "ready", LaunchRefJSON: launchRef,
+		}
+	}
+	kimi := newExtension("extension:kimi-code", "acp:kimi-code")
+	hermes := newExtension("extension:hermes", "acp:hermes")
+	setup := &fakeAgentTargetSetupReader{snapshots: map[string]agentextensionservice.SetupSnapshot{
+		kimi.ID: {Status: agentextensionservice.SetupReady}, hermes.ID: {Status: agentextensionservice.SetupReady},
+	}}
+	sessions := &fakeAgentSessions{availabilityErr: errors.New("exact extension must not probe built-in providers")}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		sessions, nil, fakeAgentTargetList{targets: []agenttargetbiz.Target{kimi, hermes}},
+	).WithAgentTargetSetup(setup)
+
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": kimi.ID}, OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	if len(sessions.availabilityIn) != 0 {
+		t.Fatalf("provider availability calls = %#v", sessions.availabilityIn)
+	}
+	if calls := setup.callCount(kimi.ID); calls != 1 {
+		t.Fatalf("Kimi setup calls = %d, want 1", calls)
+	}
+	if calls := setup.callCount(hermes.ID); calls != 0 {
+		t.Fatalf("Hermes setup calls = %d, want 0", calls)
+	}
+	agents := output.Value["agents"].([]any)
+	if len(agents) != 1 || agents[0].(map[string]any)["id"] != kimi.ID {
+		t.Fatalf("agents = %#v", agents)
 	}
 }
 

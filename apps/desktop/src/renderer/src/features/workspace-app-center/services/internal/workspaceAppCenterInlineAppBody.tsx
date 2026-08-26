@@ -28,8 +28,13 @@ import {
   shouldRenderWorkspaceAppBrowserNode,
   shouldSyncWorkspaceAppWebviewDefaultUrl
 } from "./workspaceAppCenterWebviewHandoff.ts";
+import {
+  createWorkspaceAppSessionPartition,
+  workspaceAppSessionPartitionPrefix
+} from "@shared/contracts/workspaceAppSessionPartition.ts";
 
-export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
+export const workspaceAppBrowserPartitionPrefix =
+  workspaceAppSessionPartitionPrefix;
 
 export function WorkspaceAppCenterInlineAppBody({
   appCenterService,
@@ -287,7 +292,8 @@ function workspaceAppBrowserSessionPartition(input: {
   appId: string;
   workspaceId: string;
 }): string {
-  return `${workspaceAppBrowserPartitionPrefix}${encodeURIComponent(
-    input.workspaceId
-  )}:${encodeURIComponent(input.appId)}`;
+  return createWorkspaceAppSessionPartition({
+    appID: input.appId,
+    workspaceID: input.workspaceId
+  });
 }

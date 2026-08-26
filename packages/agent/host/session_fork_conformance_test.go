@@ -175,9 +175,9 @@ func TestHostColdRecoveryQuarantinesPermanentlyInconsistentAcceptedFork(t *testi
 			Status:                     storesqlite.SessionForkStatusProviderAccepted,
 			TargetProviderSessionID:    "provider-next-target",
 			TargetProviderTurnBindings: bindings,
-			StateBindingMode:            string(agenthost.SessionForkStateBindingProviderOwned),
-			StateBindingReceipt:         "next-provider-owned-receipt",
-			OccurredAtUnixMS:            nextAt + 2,
+			StateBindingMode:           string(agenthost.SessionForkStateBindingProviderOwned),
+			StateBindingReceipt:        "next-provider-owned-receipt",
+			OccurredAtUnixMS:           nextAt + 2,
 		},
 	); err != nil {
 		t.Fatal(err)
@@ -453,14 +453,14 @@ func (d *sqliteSessionForkConformanceDriver) ResetSessionFork(
 	_, _, err = d.store.RecordSessionForkProviderResult(
 		ctx,
 		storesqlite.SessionForkProviderResult{
-			WorkspaceID:             operation.WorkspaceID,
-			OperationID:             operation.OperationID,
-			Status:                  storesqlite.SessionForkStatusProviderAccepted,
-			TargetProviderSessionID: "provider-target",
+			WorkspaceID:                operation.WorkspaceID,
+			OperationID:                operation.OperationID,
+			Status:                     storesqlite.SessionForkStatusProviderAccepted,
+			TargetProviderSessionID:    "provider-target",
 			TargetProviderTurnBindings: targetBindings,
-			StateBindingMode:    string(agenthost.SessionForkStateBindingProviderOwned),
-			StateBindingReceipt: "conformance-provider-owned-receipt",
-			OccurredAtUnixMS:    operationAt + 2,
+			StateBindingMode:           string(agenthost.SessionForkStateBindingProviderOwned),
+			StateBindingReceipt:        "conformance-provider-owned-receipt",
+			OccurredAtUnixMS:           operationAt + 2,
 		},
 	)
 	return err

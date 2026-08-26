@@ -390,6 +390,9 @@ func standardACPPermissionRequested(
 		response:        make(chan pendingInteractiveResponse, 1),
 	}
 	pending.interactionRequested = true
+	if adapter != nil && adapter.config.deferApprovalUntilToolInput && pending.kind == "approval" && len(normalizedApprovalDisplayInput(params.ToolCall, knownInput)) == 0 {
+		pending.interactionRequested = false
+	}
 	var bridgeErr error
 	if pending.kind == "ask-user" && len(pending.options) > 0 {
 		_, bridgeState, err := normalizeACPAskUserPermissionBridge(pending)
@@ -406,6 +409,7 @@ func standardACPPermissionRequested(
 	if pending.callType == "interactive" {
 		payload["input"] = clonePayload(pending.input)
 	}
+	publishInteraction := pending.interactionRequested
 	adapter.storePendingApproval(pending)
 	if bridgeErr != nil {
 		pending.supersede(bridgeErr)
@@ -426,7 +430,7 @@ func standardACPPermissionRequested(
 			payload,
 		),
 	}
-	if pending.interactionRequested {
+	if publishInteraction {
 		events = append(events, normalizedInteractionRequestedEvent(session, turnID, pending))
 	}
 	return events, pending, nil
@@ -446,10 +450,9 @@ func standardACPInteractiveToolCallWithKnownInput(toolCall map[string]any, known
 }
 
 // standardACPDeferredInteractionRequestedEvents joins providers that emit
-// session/request_permission before the matching tool_call input. The
-// Interaction is published only once its immutable canonical input contains
-// exactly one provider-representable single-select question. Unsupported
-// shapes reject the provider request without publishing actionable state.
+// session/request_permission before matching tool_call input. Deferred ordinary
+// approvals are published only after display detail is known; deferred questions
+// additionally require one provider-representable single-select question.
 func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
 	session Session,
 	turnID string,
@@ -478,7 +481,7 @@ func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
 		return nil
 	}
 	knownInput := normalizer.KnownToolCallInput(callID)
-	if len(payloadArray(knownInput["questions"])) == 0 {
+	if len(knownInput) == 0 {
 		return nil
 	}
 
@@ -494,7 +497,7 @@ func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
 	for _, pending := range acpSession.pendingApprovals {
 		if pending == nil ||
 			pending.interactionRequested ||
-			pending.kind != "ask-user" ||
+			(pending.kind != "ask-user" && pending.kind != "approval") ||
 			strings.TrimSpace(pending.turnID) != strings.TrimSpace(turnID) ||
 			strings.TrimSpace(pending.callID) != callID {
 			continue
@@ -509,8 +512,17 @@ func (a *standardACPAdapter) standardACPDeferredInteractionRequestedEvents(
 			}
 		}
 		pending.input = mergedInput
+		if toolCall := payloadObject(mergedInput["toolCall"]); toolCall != nil {
+			toolCall["input"] = clonePayload(knownInput)
+			mergedInput["toolCall"] = toolCall
+		}
 		if pending.prompt != nil {
 			pending.prompt.Input = clonePayload(mergedInput)
+		}
+		if pending.kind == "approval" {
+			pending.interactionRequested = true
+			requested = normalizedInteractionRequestedEvent(session, turnID, pending)
+			break
 		}
 		_, bridgeState, err := normalizeACPAskUserPermissionBridge(pending)
 		if bridgeState == acpAskUserPermissionBridgeIncomplete {

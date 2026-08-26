@@ -18,6 +18,7 @@ export function approvalOptionDisplayLabel(
   const label = option.label.trim();
   const specificTranslationKey = approvalOptionSpecificTranslationKey(
     idToken,
+    kindToken,
     label,
     intent
   );
@@ -100,11 +101,18 @@ export function normalizeApprovalOptionToken(value: string): string {
 
 function approvalOptionSpecificTranslationKey(
   token: string,
+  kindToken: string,
   label: string,
   intent: { feedback?: boolean } = {}
 ): string | null {
   const labelToken = normalizeApprovalOptionToken(label);
   switch (token) {
+    case "abort":
+      return !intent.feedback &&
+        kindToken === "rejectalways" &&
+        labelToken === "denyandstoptheturn"
+        ? "agentHost.agentGui.approvalOptions.rejectAndStopTurn"
+        : null;
     case "approved":
       return isGenericAllowOnceLabel(label)
         ? "agentHost.agentGui.approvalOptions.allowOnce"

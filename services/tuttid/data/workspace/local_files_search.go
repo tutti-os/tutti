@@ -59,6 +59,7 @@ type localFileSearchRequest struct {
 	IncludeHidden  bool
 	IncludeKinds   []workspacefiles.EntryKind
 	Query          string
+	ResultLimit    int
 	SearchRootPath string
 }
 
@@ -114,6 +115,7 @@ func (a LocalFilesAdapter) Search(
 		IncludeHidden:  input.IncludeHidden,
 		IncludeKinds:   input.IncludeKinds,
 		Query:          strings.TrimSpace(input.Query),
+		ResultLimit:    input.Limit,
 		SearchRootPath: searchRootPath,
 	}
 	paths, providerName, err := searchWithFilesystemFallback(searchCtx, provider, request)
@@ -372,6 +374,7 @@ func logWorkspaceFileSearch(
 		"limit", input.Limit,
 		"include_hidden", input.IncludeHidden,
 		"include_kinds", input.IncludeKinds,
+		"filters", input.Filters,
 		"duration_ms", time.Since(start).Milliseconds(),
 		"indexed_path_count", indexedPathCount,
 		"candidate_count", stats.candidateCount,

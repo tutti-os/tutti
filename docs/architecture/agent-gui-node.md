@@ -1525,6 +1525,10 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
   newer Turn
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
+- a durable pending-submit record does not by itself make queued backlog
+  stoppable. A queued prompt without a Turn becomes a pending-submit Stop target
+  only while that exact queue prompt is in flight or has uncertain delivery;
+  visible or suspended backlog must not keep the Composer Stop spinner alive
 - a prompt settings precondition is an explicit preparation stage, not a nested
   host effect. It serializes with direct and post-activation settings writes,
   updates the canonical Session on success, starts send before releasing later

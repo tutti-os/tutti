@@ -130,6 +130,7 @@ React rendering, Workbench state, external stores, input composition, and UI per
 
 App Center, workspace-app lifecycle, App Factory, file references, and File Manager.
 
+- [Windows workspace reference type filters time out](./workspace-apps-files.md#windows-workspace-reference-type-filters-time-out)
 - [App Factory job keeps loading after AgentGUI Stop](./workspace-apps-files.md#app-factory-job-keeps-loading-after-agentgui-stop)
 - [App Center list requests repeatedly log runtime preload](./workspace-apps-files.md#app-center-list-requests-repeatedly-log-runtime-preload)
 - [Workspace app commands fail inside Corepack before pnpm starts](./workspace-apps-files.md#workspace-app-commands-fail-inside-corepack-before-pnpm-starts)

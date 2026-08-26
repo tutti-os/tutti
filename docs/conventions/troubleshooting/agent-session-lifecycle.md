@@ -2792,6 +2792,10 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   affected paths. For `invalid-patch`, inspect the durable tool output for
   malformed unified-diff control markers. A no-newline marker must begin with
   `\`, not a leading context-space followed by `\`. For
+  a synthesized whole-file edit, verify that an empty old or new side has a
+  hunk count of `0`; `@@ -1,1 +1,N @@` with no old or context line is corrupt.
+  If only one side of a modified file was persisted, Undo must be unavailable
+  instead of guessing that the file was created. For
   `patch-does-not-apply`, compare the recorded after-state with the current
   file rather than assuming the original turn is still the latest writer. For
   missing patch data, check whether Standard ACP logged an unsupported
@@ -2805,6 +2809,11 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   but later edits changed its context. On Windows, leaving an absolute drive
   path in either a synthesized patch or an existing unified-diff header also
   violates Git's cwd-relative patch contract and can report that an untracked
+  created file does not exist in the index.
+  Historical raw tool payloads can also contradict the canonical
+  `fileChanges` classification. Giving that raw payload priority can turn a
+  created file into a one-sided modified edit; forcing an empty side to count
+  as one then produces a syntactically corrupt patch.
   created file does not exist in the index. Patch data is also lost when a
   Standard ACP host advertises file writes as unsupported and therefore cannot
   snapshot the old content, or when an app-server adapter ignores the
@@ -2816,6 +2825,12 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   before persistence, and canonicalize historical no-newline markers on read.
   AgentGUI must make synthesized paths and existing unified-diff headers
   relative to the patch cwd, using case-insensitive path identity for Windows.
+  Executable batches prefer canonical per-call `fileChanges`; incomplete raw
+  modified changes fail closed. Undo/Reapply is atomic for the settled Turn:
+  every canonical visible path and every source-batch change must have an
+  executable patch, otherwise the whole action stays unavailable. When both
+  modified-file sides are known, hunk counts use the actual line counts,
+  including zero, and text synthesis rejects NUL-containing binary content.
   Standard ACP hosts that advertise `writeTextFile` must implement the matching
   `fs/write_text_file` request, capture the exact old and new content, and emit
   canonical turn file changes. App-server adapters must preserve authoritative
@@ -2830,6 +2845,8 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   Cover leading-whitespace no-newline markers, historical activity projection,
   corrupt-patch preflight without mutation, worktree divergence, reverse
   application, cwd-relative Windows drive paths for synthesized and complete
+  diffs, zero-sided whole-file edits with LF and CRLF input, binary fail-closed
+  behavior, canonical-versus-raw conflicts, and the existing
   diffs, Standard ACP overwrite capture and relative-path rejection, Codex
   incremental patch projection, one-sided modified metadata, and the existing
   untracked-created-file behavior.
@@ -2839,6 +2856,8 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [codex_appserver_reducer.go](../../../packages/agent/daemon/runtime/codex_appserver_reducer.go)
   [agentTurnSummaryPatchDiff.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentTurnSummaryPatchDiff.ts)
   [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
+  [agentTurnSummaryProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/agentTurnSummaryProjection.ts)
+  [agentTurnSummaryPatchDiff.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentTurnSummaryPatchDiff.ts)
   [git_patch.go](../../../services/tuttid/service/agent/git_patch.go)
 
 ### AgentGUI changed-files summary shows negative lines for a new file

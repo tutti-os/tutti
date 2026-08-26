@@ -37,10 +37,8 @@ import type {
 } from "@tutti-os/workspace-app-center";
 import { createWorkspaceAppCenterOpenedLease } from "./workspaceAppCenterAnalytics.ts";
 import { createWorkspaceAppWebviewExternalStateSource } from "./workspaceAppCenterExternalState.ts";
-import {
-  WorkspaceAppCenterInlineAppBody,
-  workspaceAppBrowserPartitionPrefix
-} from "./workspaceAppCenterInlineAppBody.tsx";
+import { createWorkspaceAppSessionPartition } from "@shared/contracts/workspaceAppSessionPartition.ts";
+import { WorkspaceAppCenterInlineAppBody } from "./workspaceAppCenterInlineAppBody.tsx";
 import {
   workspaceAppCenterDockOrder,
   workspaceAppDockOrderStart
@@ -766,7 +764,8 @@ function workspaceAppBrowserSessionPartition(input: {
   appId: string;
   workspaceId: string;
 }): string {
-  return `${workspaceAppBrowserPartitionPrefix}${encodeURIComponent(
-    input.workspaceId
-  )}:${encodeURIComponent(input.appId)}`;
+  return createWorkspaceAppSessionPartition({
+    appID: input.appId,
+    workspaceID: input.workspaceId
+  });
 }

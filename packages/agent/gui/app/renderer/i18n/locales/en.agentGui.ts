@@ -510,6 +510,7 @@ export const enAgentGui = {
     manualApproval: "Yes, and manually approve edits",
     rejectOnce: "No, don't run",
     rejectAlways: "No, and don't ask again",
+    rejectAndStopTurn: "Deny and stop the current response",
     rejectWithFollowUp: "No, then send new instructions"
   },
   authRequired: "Authentication required",

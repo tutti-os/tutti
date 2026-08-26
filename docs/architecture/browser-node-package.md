@@ -114,6 +114,39 @@ recent initialized Browser surface. If that surface's tab state is not
 available, it launches a new Browser surface instead of replacing the active
 page. Explicit non-reuse requests continue to launch a new surface.
 
+Workspace App popups have one main-process policy owner. Preload does not
+intercept blank-link clicks or patch `window.open`; blank links, `window.open`,
+and popup forms all reach the guest's single `setWindowOpenHandler` delegate.
+Desktop keeps the Electron popup decision and same-origin guest navigation in
+`main/windows/workspaceAppWindowOpen.ts`, while
+`main/host/workspaceAppBrowserOpen.ts` owns publication of the accepted
+external URL to the Browser event channel. `main/ipc/*` adapters delegate to
+those owners instead of implementing popup policy or Browser host dispatch.
+The host-provided Workspace App route has priority over the default Browser
+route; later `registerGuest` calls only update the delegate's Browser route and
+never reinstall or override the handler. Main compares an accepted HTTP(S)
+target with the current guest origin. Internal targets return `deny` and then
+navigate the current guest; external targets return `deny` and emit exactly one
+Browser open-url event. Returning `deny` means page code receives no child
+`WindowProxy`; apps must not depend on `focus`, `location`, or `close` on that
+return value. Empty or `about:blank` deferred-navigation popups and POST popup
+forms are rejected with localized feedback because the Browser open-url
+contract cannot preserve their later navigation or request body. Rejection
+events use the Workspace App-specific preload API and IPC namespace rather
+than extending the generic Browser host API. Workspace App session partition
+construction, parsing, and validation share the single contract in
+`shared/contracts/workspaceAppSessionPartition.ts`; renderer and main must not
+redeclare its prefix. Renderer behavior does not deduplicate or merge events by
+source node or URL. Every accepted external popup remains an independent
+`reuseIfOpen: false` launch, and the Workbench presenter remains the narrow
+launch/focus adapter. Default reuse requests still delegate to the workspace
+Browser page service so matching tabs are focused, missing URLs become tabs in
+an initialized Browser surface, and unavailable tab state launches a new
+surface.
+The explicit Workspace App `browser.openUrl` bridge remains an IPC command and
+is logged as `external-browser-api`; it is an application API request, not a
+second DOM-popup transport.
+
 ## Package Entry Points
 
 The package uses multiple exports from one package rather than several small
@@ -410,12 +443,22 @@ import { installBrowserWebviewSecurity } from "@tutti-os/browser-node/electron-m
 installBrowserWebviewSecurity({
   contents: ownerWindow.webContents,
   openExternal,
+  resolveGuestAttachment(guestContents, { params }) {
+    return registerHostGuestRoute(guestContents, params.partition);
+  },
   resolvePreload: () => browserGuestPreloadPath
 });
 ```
 
 The installer clears any guest-supplied preload first and applies the host
-resolver only after Browser Node partition and URL validation succeeds.
+resolver only after Browser Node partition and URL validation succeeds. On
+attachment it first installs a stable deny handler, then applies the guest user
+agent and calls `resolveGuestAttachment`. A returned `windowOpenHandler` updates
+that stable delegate without reinstalling it; if setup throws, the guest stays
+fail closed. The legacy `onGuestAttached(guestContents)` hook remains available
+for published consumers that directly replace Electron's handler. It runs last
+to preserve that override behavior, and an exception restores the package deny
+handler.
 
 Guest preload installation should not hardcode a product namespace:
 
