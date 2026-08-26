@@ -1434,6 +1434,114 @@ test("reports Browser Node guest HTTP error navigations", async () => {
   );
 });
 
+test("reloads a failed Browser Node guest without cache until navigation recovers", async () => {
+  const events: BrowserNodeEvent[] = [];
+  const contents = new MockBrowserGuestWebContents(30);
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-failed-reload",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 30
+  });
+
+  contents.emit(
+    "did-navigate",
+    {},
+    "http://127.0.0.1:3000/",
+    502,
+    "Bad Gateway"
+  );
+  await manager.reload({ nodeId: "browser-failed-reload" });
+
+  assert.equal(contents.reloadIgnoringCacheCalls, 1);
+  assert.equal(contents.reloadCalls, 0);
+
+  contents.emit("did-navigate", {}, "http://127.0.0.1:3000/", 200, "OK");
+  await manager.reload({ nodeId: "browser-failed-reload" });
+
+  assert.equal(contents.reloadIgnoringCacheCalls, 1);
+  assert.equal(contents.reloadCalls, 1);
+  assert.equal(
+    events.some(
+      (event) =>
+        event.type === "state" &&
+        event.navigationStatusCode === 200 &&
+        event.nodeId === "browser-failed-reload"
+    ),
+    true
+  );
+});
+
+test("keeps subframe failures out of main navigation recovery state", async () => {
+  const events: BrowserNodeEvent[] = [];
+  const contents = new MockBrowserGuestWebContents(31);
+  const manager = createBrowserGuestManager({
+    emit: (event) => events.push(event),
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-subframe-failure",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 31
+  });
+  events.length = 0;
+
+  contents.emit(
+    "did-fail-load",
+    {},
+    -102,
+    "ERR_CONNECTION_REFUSED",
+    "https://example.com/frame",
+    false
+  );
+  await manager.reload({ nodeId: "browser-subframe-failure" });
+
+  assert.equal(
+    events.some((event) => event.type === "error"),
+    false
+  );
+  assert.equal(contents.reloadIgnoringCacheCalls, 0);
+  assert.equal(contents.reloadCalls, 1);
+});
+
+test("ends failed reload recovery after a successful non-HTTP navigation", async () => {
+  const contents = new MockBrowserGuestWebContents(32);
+  const manager = createBrowserGuestManager({
+    emit: () => undefined,
+    openExternal: () => undefined,
+    resolveWebContents: (id) => (id === contents.id ? contents : null)
+  });
+
+  await manager.registerGuest({
+    nodeId: "browser-non-http-recovery",
+    profileId: null,
+    sessionMode: "shared",
+    webContentsId: 32
+  });
+  contents.emit(
+    "did-navigate",
+    {},
+    "http://127.0.0.1:3000/",
+    502,
+    "Bad Gateway"
+  );
+  contents.emit("did-navigate", {}, "about:blank", -1, "");
+
+  await manager.reload({ nodeId: "browser-non-http-recovery" });
+
+  assert.equal(contents.reloadIgnoringCacheCalls, 0);
+  assert.equal(contents.reloadCalls, 1);
+});
+
 test("keeps Browser Node navigation failures as the final emitted event", async () => {
   const events: BrowserNodeEvent[] = [];
   const contents = new MockBrowserGuestWebContents(19);
@@ -1759,6 +1867,7 @@ class MockBrowserGuestWebContents
   loading = false;
   printCalls = 0;
   reloadCalls = 0;
+  reloadIgnoringCacheCalls = 0;
   findInPageCalls: Array<{
     options: Record<string, unknown> | undefined;
     text: string;
@@ -1856,6 +1965,10 @@ class MockBrowserGuestWebContents
 
   reload(): void {
     this.reloadCalls += 1;
+  }
+
+  reloadIgnoringCache(): void {
+    this.reloadIgnoringCacheCalls += 1;
   }
 
   setWindowOpenHandler(
