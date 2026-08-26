@@ -1,394 +1,101 @@
-name: PR Checks
+name: Windows signing smoke test
 
+# Manual validation of the shared Certum SimplySign path. This signs only a
+# throwaway executable and never builds or publishes Tutti.
 on:
+  workflow_dispatch:
+  push:
+    branches:
+      - codex/certum-windows-signing
   pull_request:
     branches:
       - main
+    paths:
+      - .github/workflows/windows-signing-smoke-test.yml
+
+permissions:
+  contents: read
 
 concurrency:
-  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: certum-simplysign-signing
+  cancel-in-progress: false
 
 jobs:
-  changes:
-    name: PR Change Classification
+  sign-test-executable:
     runs-on: ubuntu-latest
-    outputs:
-      pack_all: ${{ steps.changed-files.outputs.pack_all }}
-      pack_packages: ${{ steps.changed-files.outputs.pack_packages }}
-      run_agent_session_replay: ${{ steps.changed-files.outputs.run_agent_session_replay }}
-      run_boundaries: ${{ steps.changed-files.outputs.run_boundaries }}
-      run_contracts: ${{ steps.changed-files.outputs.run_contracts }}
-      run_generated: ${{ steps.changed-files.outputs.run_generated }}
-      run_go: ${{ steps.changed-files.outputs.run_go }}
-      run_pack: ${{ steps.changed-files.outputs.run_pack }}
-      run_ts: ${{ steps.changed-files.outputs.run_ts }}
-      run_ts_tests: ${{ steps.changed-files.outputs.run_ts_tests }}
-      test_all: ${{ steps.changed-files.outputs.test_all }}
-      test_packages: ${{ steps.changed-files.outputs.test_packages }}
-      test_shards: ${{ steps.changed-files.outputs.test_shards }}
-
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/reactiveui/certum-signer@sha256:fb03892c379b6703bee9bfd7a2f66df3a5696de149d6d6240e1897ae15afc3e4
+    env:
+      CERTUM_USER_ID: ${{ secrets.CERTUM_USER_ID }}
+      CERTUM_OTP_URI: ${{ secrets.CERTUM_OTP_URI }}
+      CERTUM_CERT_FINGERPRINT: ${{ vars.CERTUM_CERT_FINGERPRINT }}
+      TSH_CERTUM_LOGIN_MAX_ATTEMPTS: "3"
+      TSH_CERTUM_SIGN_MAX_ATTEMPTS: "3"
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Classify changed files
-        id: changed-files
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          node ./tools/scripts/change-classification.mjs
-          --base "${BASE_SHA}"
-          --head "${HEAD_SHA}"
-          --github-output "${GITHUB_OUTPUT}"
-
-  tooling-consistency:
-    name: Tooling Consistency
-    needs: changes
-    if: always()
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Require change classification
-        env:
-          CHANGES_RESULT: ${{ needs.changes.result }}
-        run: test "${CHANGES_RESULT}" = "success"
-
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-
-      - name: Check changed-file whitespace
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: git diff --check "${BASE_SHA}...${HEAD_SHA}"
-
-      - name: Check repository naming policy
-        run: node ./tools/scripts/check-tutti-names.mjs
-
-      - name: Set up pnpm
-        if: >-
-          needs.changes.outputs.run_contracts == 'true' ||
-          needs.changes.outputs.run_generated == 'true' ||
-          needs.changes.outputs.run_boundaries == 'true'
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Go
-        if: >-
-          needs.changes.outputs.run_generated == 'true' ||
-          needs.changes.outputs.run_boundaries == 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.5"
-          cache-dependency-path: |
-            go.work
-            go.work.sum
-            packages/agent/daemon/go.sum
-            services/tuttid/go.sum
-
-      - name: Install workspace dependencies
-        if: >-
-          needs.changes.outputs.run_contracts == 'true' ||
-          needs.changes.outputs.run_generated == 'true' ||
-          needs.changes.outputs.run_boundaries == 'true'
-        run: pnpm install --frozen-lockfile
-
-      - name: Run repository contract tests
-        if: needs.changes.outputs.run_contracts == 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          node ./tools/scripts/run-repository-checks.mjs
-          --group contracts --base "${BASE_SHA}" --head "${HEAD_SHA}"
-
-      - name: Run generated contract checks
-        if: needs.changes.outputs.run_generated == 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          node ./tools/scripts/run-repository-checks.mjs
-          --group generated --base "${BASE_SHA}" --head "${HEAD_SHA}"
-
-      - name: Run repository boundary checks
-        if: needs.changes.outputs.run_boundaries == 'true'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          node ./tools/scripts/run-repository-checks.mjs
-          --group boundaries --base "${BASE_SHA}" --head "${HEAD_SHA}"
-
-  ts-lint:
-    name: TypeScript Lint
-    needs: changes
-    if: needs.changes.outputs.run_ts == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run TypeScript lint
-        env:
-          NODE_OPTIONS: --max-old-space-size=4096
-        run: pnpm lint:ts
-
-  typecheck:
-    name: Typecheck
-    needs: changes
-    if: needs.changes.outputs.run_ts == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run workspace typecheck
-        run: pnpm typecheck
-
-  ts-test-shards:
-    name: TypeScript Test Shard ${{ matrix.shard }}
-    needs: changes
-    if: needs.changes.outputs.run_ts_tests == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        shard: ${{ fromJSON(needs.changes.outputs.test_shards) }}
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run TypeScript tests
-        env:
-          TEST_ALL: ${{ needs.changes.outputs.test_all }}
-          TEST_PACKAGES: ${{ needs.changes.outputs.test_packages }}
-          TEST_SHARD: ${{ matrix.shard }}
-        run: >-
-          if [ "${TEST_ALL}" = "true" ]; then
-            pnpm test:ts -- --shard "${TEST_SHARD}";
-          else
-            pnpm test:ts -- --packages-json "${TEST_PACKAGES}" --shard "${TEST_SHARD}";
-          fi
-
-  ts-tests:
-    name: TypeScript Tests
-    needs:
-      - changes
-      - ts-test-shards
-    if: always()
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Require change classification
-        env:
-          CHANGES_RESULT: ${{ needs.changes.result }}
-        run: test "${CHANGES_RESULT}" = "success"
-
-      - name: Require selected test shards
-        if: needs.changes.outputs.run_ts_tests == 'true'
-        env:
-          SHARDS_RESULT: ${{ needs.ts-test-shards.result }}
-        run: test "${SHARDS_RESULT}" = "success"
-
-      - name: No workspace package tests selected
-        if: needs.changes.outputs.run_ts_tests != 'true'
-        run: echo "No workspace package tests selected"
-
-  npm-package-packs:
-    name: npm Package Pack Check
-    needs: changes
-    if: needs.changes.outputs.run_pack == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Validate package tarballs
-        env:
-          PACK_ALL: ${{ needs.changes.outputs.pack_all }}
-          PACK_PACKAGES: ${{ needs.changes.outputs.pack_packages }}
-        run: >-
-          if [ "${PACK_ALL}" = "true" ]; then
-            pnpm release:pack:check;
-          else
-            pnpm release:pack:check -- --packages-json "${PACK_PACKAGES}";
-          fi
-
-  go-tests:
-    name: Go Tests
-    needs: changes
-    if: needs.changes.outputs.run_go == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.5"
-          cache-dependency-path: |
-            go.work
-            go.work.sum
-            **/go.mod
-            **/go.sum
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Run changed Go tests
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          node ./tools/scripts/run-changed-go-validation.mjs
-          --base "${BASE_SHA}"
-          --head "${HEAD_SHA}"
-          --kind test
-          --tail-lines 400
-
-  go-lint:
-    name: Go Lint
-    needs: changes
-    if: needs.changes.outputs.run_go == 'true'
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version-file: .node-version
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.24.5"
-          cache-dependency-path: |
-            go.work
-            go.work.sum
-            **/go.mod
-            **/go.sum
-
-      - name: Install workspace dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Install pinned golangci-lint
+      - name: Validate signing configuration
+        shell: bash
         run: |
-          version=$(tr -d '\n' < services/tuttid/.golangci-lint-version)
-          install_dir="${RUNNER_TEMP}/golangci-lint/bin"
-          installer="${RUNNER_TEMP}/golangci-lint-install.sh"
-          mkdir -p "${install_dir}"
-          curl \
-            --retry 5 \
-            --retry-all-errors \
-            --retry-delay 2 \
-            --silent \
-            --show-error \
-            --fail \
-            --location \
-            --output "${installer}" \
-            https://golangci-lint.run/install.sh
-          sh "${installer}" -b "${install_dir}" "${version}"
-          test -x "${install_dir}/golangci-lint"
-          echo "${install_dir}" >> "${GITHUB_PATH}"
+          set -euo pipefail
+          : "${CERTUM_USER_ID:?CERTUM_USER_ID organization secret is required}"
+          : "${CERTUM_OTP_URI:?CERTUM_OTP_URI organization secret is required}"
+          : "${CERTUM_CERT_FINGERPRINT:?CERTUM_CERT_FINGERPRINT organization variable is required}"
+          [[ "${CERTUM_CERT_FINGERPRINT}" =~ ^[[:xdigit:]]{64}$ ]]
 
-      - name: Run changed Go lint
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: >-
-          node ./tools/scripts/run-changed-go-validation.mjs
-          --base "${BASE_SHA}"
-          --head "${HEAD_SHA}"
-          --kind lint
-          --tail-lines 400
+      - name: Checkout signing tooling
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install smoke-test build and verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends file gcc-mingw-w64-x86-64 nodejs osslsigncode
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Build throwaway Windows executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          printf '%s\n' \
+            '#include <windows.h>' \
+            'int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command, int show) {' \
+            '  (void)instance; (void)previous; (void)command; (void)show;' \
+            '  return 0;' \
+            '}' > "${RUNNER_TEMP}/signing-smoke-test.c"
+          x86_64-w64-mingw32-gcc -Os -s -mwindows \
+            -o signing/tutti-signing-smoke-test.exe \
+            "${RUNNER_TEMP}/signing-smoke-test.c"
+          file signing/tutti-signing-smoke-test.exe | grep -q 'PE32+'
+
+      - name: Connect SimplySign with bounded retries
+        shell: bash
+        run: bash tools/scripts/windows/connect-simplysign-linux.sh
+
+      - name: Sign with Certum SimplySign
+        shell: bash
+        run: node tools/scripts/windows/certum-sign-windows.cjs --root signing
+
+      - name: Independently verify Authenticode and timestamp
+        shell: bash
+        run: |
+          set -euo pipefail
+          verification="${RUNNER_TEMP}/osslsigncode-verification.txt"
+          osslsigncode verify \
+            -CAfile /etc/ssl/certs/ca-certificates.crt \
+            -TSA-CAfile /etc/ssl/certs/ca-certificates.crt \
+            -in signing/tutti-signing-smoke-test.exe \
+            2>&1 | tee "${verification}"
+          grep -q 'Signature verification: ok' "${verification}"
+          grep -q 'Timestamp Server Signature verification: ok' "${verification}"
+
+      - name: Upload signed smoke-test executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-signing-smoke-test-${{ github.run_id }}
+          path: signing/tutti-signing-smoke-test.exe
+          if-no-files-found: error
+          retention-days: 3
