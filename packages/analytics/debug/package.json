@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/analytics-debug",
-  "version": "0.1.0",
+  "version": "0.0.425",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -23,8 +23,8 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/analytics": "workspace:*",
-    "@tutti-os/ui-system": "workspace:*"
+    "@tutti-os/analytics": "0.0.425",
+    "@tutti-os/ui-system": "0.0.425"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",

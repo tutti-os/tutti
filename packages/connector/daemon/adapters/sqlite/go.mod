@@ -5,7 +5,7 @@ go 1.24.3
 toolchain go1.24.5
 
 require (
-	github.com/tutti-os/tutti/packages/connector/daemon/core v0.0.0
+	github.com/tutti-os/tutti/packages/connector/daemon/core v0.0.425
 	modernc.org/sqlite v1.45.0
 )
 
@@ -22,5 +22,3 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )
-
-replace github.com/tutti-os/tutti/packages/connector/daemon/core => ../../core

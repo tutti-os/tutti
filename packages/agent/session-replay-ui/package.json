@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/agent-session-replay",
-  "version": "0.1.0",
+  "version": "0.0.425",
   "private": false,
   "type": "module",
   "types": "./src/index.ts",
@@ -27,7 +27,7 @@
     "typecheck": "node ../../../tools/scripts/run-tsgo-typecheck.mjs"
   },
   "dependencies": {
-    "@tutti-os/agent-activity-core": "workspace:*"
+    "@tutti-os/agent-activity-core": "0.0.425"
   },
   "devDependencies": {
     "@tutti-os/config-tsconfig": "workspace:*",

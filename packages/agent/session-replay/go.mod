@@ -6,9 +6,9 @@ toolchain go1.24.5
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/tutti-os/tutti/packages/agent/host v0.0.0
-	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.0
-	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.0
+	github.com/tutti-os/tutti/packages/agent/host v0.0.425
+	github.com/tutti-os/tutti/packages/agent/store-sqlite v0.0.425
+	github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical v0.0.425
 )
 
 require (
@@ -23,9 +23,3 @@ require (
 	modernc.org/memory v1.11.0 // indirect
 	modernc.org/sqlite v1.45.0 // indirect
 )
-
-replace github.com/tutti-os/tutti/packages/agent/host => ../host
-
-replace github.com/tutti-os/tutti/packages/agent/store-sqlite => ../store-sqlite
-
-replace github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical => ../store-sqlite/canonical
