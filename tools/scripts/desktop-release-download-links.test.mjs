@@ -45,7 +45,7 @@ test("desktop release notes append macOS and Windows direct download links for m
   );
   assert.match(
     nextBody,
-    /\[Windows \(x64, unsigned\)\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-win-x64\.exe\)/
+    /\[Windows \(x64, signed\)\]\(https:\/\/d111111abcdef8\.cloudfront\.net\/desktop-release-assets\/v0\.1\.0-rc\.2\/Tutti-0\.1\.0-rc\.2-win-x64\.exe\)/
   );
   assert.doesNotMatch(nextBody, /\[Linux\]/);
 });

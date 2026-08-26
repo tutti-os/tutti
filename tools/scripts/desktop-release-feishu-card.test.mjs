@@ -155,7 +155,7 @@ test("release Feishu card includes tsh-aligned release context fields", () => {
 
   assert.deepEqual(actionLabels, [
     "下载 macOS",
-    "下载 Windows（未签名）",
+    "下载 Windows",
     "查看完整更新日志",
     "查看技术详情"
   ]);
@@ -176,7 +176,7 @@ test("release Feishu card uses the mirrored Windows installer URL", () => {
 
   const windowsAction = payload.card.elements
     .find((element) => element.tag === "action")
-    .actions.find((action) => action.text.content === "下载 Windows（未签名）");
+    .actions.find((action) => action.text.content === "下载 Windows");
 
   assert.equal(
     windowsAction?.url,

@@ -332,16 +332,14 @@ function buildCardPayload({
   const actions = [
     { label: candidate ? "下载 macOS 体验版" : "下载 macOS", url: macUrl },
     {
-      label: candidate ? "下载 Windows 体验版" : "下载 Windows（未签名）",
+      label: candidate ? "下载 Windows 候选版" : "下载 Windows",
       url: winUrl
     },
     {
       label: candidate ? "编辑更新说明" : "查看完整更新日志",
       url: releaseUrl
     },
-    ...(candidate
-      ? [{ label: "打开发布审核流水线", url: promotionUrl }]
-      : []),
+    ...(candidate ? [{ label: "打开发布审核流水线", url: promotionUrl }] : []),
     { label: "查看技术详情", url: runUrl }
   ]
     .filter((action) => action.url)

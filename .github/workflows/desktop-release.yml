@@ -434,7 +434,7 @@ jobs:
           retention-days: 7
 
   build-windows:
-    name: Build Windows (unsigned)
+    name: Prepare Windows application
     needs: resolve
     runs-on: windows-latest
     timeout-minutes: 60
@@ -487,17 +487,204 @@ jobs:
         shell: pwsh
         run: node scripts/apply-ci-release-version.mjs "$env:TUTTI_DESKTOP_RELEASE_TAG"
 
-      - name: Build unsigned Windows NSIS package
+      - name: Build Windows package input
         shell: pwsh
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
-        run: pnpm --filter @tutti-os/desktop build:win
+        run: |
+          if ($env:TUTTI_DESKTOP_DRY_RUN -eq 'true') {
+            pnpm --filter @tutti-os/desktop build:win
+          } else {
+            pnpm --filter @tutti-os/desktop build:win:unpacked
+          }
 
       - name: Verify Windows release metadata
+        if: env.TUTTI_DESKTOP_DRY_RUN == 'true'
         shell: pwsh
         run: node apps/desktop/scripts/validate-windows-release-artifacts.mjs apps/desktop/dist "$env:TUTTI_DESKTOP_RELEASE_CHANNEL" "$env:TUTTI_DESKTOP_RELEASE_TAG"
 
-      - name: Upload Windows release artifacts
+      - name: Upload unsigned Windows dry-run artifacts
+        if: env.TUTTI_DESKTOP_DRY_RUN == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-desktop-release-assets-windows
+          compression-level: 0
+          path: |
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Windows application prepared for Certum signing
+        if: env.TUTTI_DESKTOP_DRY_RUN != 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-windows-prepared-${{ github.run_id }}
+          compression-level: 0
+          path: apps/desktop/dist/win-unpacked/**
+          if-no-files-found: error
+          retention-days: 7
+
+  sign-windows:
+    name: Sign Windows application and NSIS
+    needs: [resolve, build-windows]
+    if: needs.resolve.outputs.release_dry_run != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: certum-simplysign-signing
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/reactiveui/certum-signer@sha256:fb03892c379b6703bee9bfd7a2f66df3a5696de149d6d6240e1897ae15afc3e4
+    env:
+      CERTUM_USER_ID: ${{ secrets.CERTUM_USER_ID }}
+      CERTUM_OTP_URI: ${{ secrets.CERTUM_OTP_URI }}
+      CERTUM_CERT_FINGERPRINT: ${{ vars.CERTUM_CERT_FINGERPRINT }}
+      TSH_WINDOWS_EXPECTED_PUBLISHER: ${{ vars.TSH_WINDOWS_EXPECTED_PUBLISHER }}
+      TUTTI_DESKTOP_RELEASE_TAG: ${{ needs.resolve.outputs.release_tag }}
+      TUTTI_DESKTOP_RELEASE_TARGET: ${{ needs.resolve.outputs.release_target }}
+      TSH_CERTUM_LOGIN_MAX_ATTEMPTS: "3"
+      TSH_CERTUM_SIGN_MAX_ATTEMPTS: "3"
+
+    steps:
+      - name: Validate Certum signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${CERTUM_USER_ID:?CERTUM_USER_ID organization secret is required}"
+          : "${CERTUM_OTP_URI:?CERTUM_OTP_URI organization secret is required}"
+          : "${CERTUM_CERT_FINGERPRINT:?CERTUM_CERT_FINGERPRINT organization variable is required}"
+          : "${TSH_WINDOWS_EXPECTED_PUBLISHER:?TSH_WINDOWS_EXPECTED_PUBLISHER organization variable is required}"
+          [[ "${CERTUM_CERT_FINGERPRINT}" =~ ^[[:xdigit:]]{64}$ ]]
+
+      - name: Checkout release target
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.TUTTI_DESKTOP_RELEASE_TARGET }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout immutable signing tooling
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: .release-tooling
+          persist-credentials: false
+          sparse-checkout: |
+            tools/scripts/windows/connect-simplysign-linux.sh
+            tools/scripts/windows/certum-sign-windows.cjs
+          sparse-checkout-cone-mode: false
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .node-version
+
+      - name: Install NSIS cross-build and verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          dpkg --add-architecture i386
+          apt-get update
+          apt-get install -y --no-install-recommends osslsigncode p7zip-full wine wine32:i386 wine64
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Install Electron Builder dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Align package version with release tag
+        working-directory: apps/desktop
+        run: node scripts/apply-ci-release-version.mjs "${TUTTI_DESKTOP_RELEASE_TAG}"
+
+      - name: Download unpacked Windows application
+        uses: actions/download-artifact@v4
+        with:
+          name: tutti-windows-prepared-${{ github.run_id }}
+          path: apps/desktop/dist/win-unpacked
+
+      - name: Connect SimplySign with bounded retries
+        shell: bash
+        run: bash .release-tooling/tools/scripts/windows/connect-simplysign-linux.sh
+
+      - name: Sign every executable in the unpacked application
+        shell: bash
+        run: >-
+          node .release-tooling/tools/scripts/windows/certum-sign-windows.cjs
+          --root apps/desktop/dist/win-unpacked
+
+      - name: Build and sign final NSIS artifacts
+        shell: bash
+        env:
+          TSH_WINDOWS_PREPACKAGED_DIR: ${{ github.workspace }}/apps/desktop/dist/win-unpacked
+          TSH_CERTUM_ELECTRON_BUILDER_SIGNER: ${{ github.workspace }}/.release-tooling/tools/scripts/windows/certum-sign-windows.cjs
+        run: pnpm --filter @tutti-os/desktop build:win:prepackaged
+
+      - name: Verify signed NSIS payload and embedded uninstaller
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' installers < <(find apps/desktop/dist -maxdepth 1 -type f -name '*.exe' -print0)
+          if (( ${#installers[@]} != 1 )); then
+            echo "Expected exactly one signed Windows installer, found ${#installers[@]}." >&2
+            exit 1
+          fi
+          node .release-tooling/tools/scripts/windows/certum-sign-windows.cjs \
+            --verify-root apps/desktop/dist/win-unpacked
+          outer="${RUNNER_TEMP}/signed-nsis-outer"
+          mkdir -p "${outer}"
+          7z x -y "-o${outer}" "${installers[0]}" >/dev/null
+          node .release-tooling/tools/scripts/windows/certum-sign-windows.cjs --verify-root "${outer}"
+          node apps/desktop/scripts/validate-windows-release-artifacts.mjs \
+            apps/desktop/dist "${{ needs.resolve.outputs.release_channel }}" "${TUTTI_DESKTOP_RELEASE_TAG}"
+
+      - name: Upload signed Windows package
+        uses: actions/upload-artifact@v7
+        with:
+          name: tutti-windows-signed-${{ github.run_id }}
+          compression-level: 0
+          path: |
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.yml
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-signed-windows:
+    name: Verify signed Windows package
+    needs: [resolve, sign-windows]
+    if: needs.resolve.outputs.release_dry_run != 'true'
+    runs-on: windows-latest
+    env:
+      TSH_WINDOWS_EXPECTED_PUBLISHER: ${{ vars.TSH_WINDOWS_EXPECTED_PUBLISHER }}
+
+    steps:
+      - name: Checkout release target
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.resolve.outputs.release_target }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Download signed Windows package
+        uses: actions/download-artifact@v4
+        with:
+          name: tutti-windows-signed-${{ github.run_id }}
+          path: apps/desktop/dist
+
+      - name: Independently verify Publisher, Authenticode, and timestamp
+        shell: pwsh
+        run: |
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          tools/scripts/windows/verify-certum-windows-package.ps1 `
+            -DistDirectory 'apps/desktop/dist' `
+            -SevenZipExecutable $sevenZip `
+            -ExpectedPublisher $env:TSH_WINDOWS_EXPECTED_PUBLISHER
+
+      - name: Publish verified Windows release artifacts
         uses: actions/upload-artifact@v7
         with:
           name: tutti-desktop-release-assets-windows
@@ -527,12 +714,15 @@ jobs:
 
   stage:
     name: Stage Release Draft
-    needs: [resolve, build-macos, build-windows]
+    needs:
+      [resolve, build-macos, build-windows, sign-windows, verify-signed-windows]
     if: >-
       ${{ always() && needs.resolve.result == 'success' &&
           (github.event_name == 'push' || needs.resolve.outputs.release_dry_run != 'true') &&
           needs.build-macos.result == 'success' &&
-          needs.build-windows.result == 'success' }}
+          needs.build-windows.result == 'success' &&
+          needs.sign-windows.result == 'success' &&
+          needs.verify-signed-windows.result == 'success' }}
     runs-on: ubuntu-latest
     outputs:
       release_url: ${{ needs.resolve.outputs.release_candidate == 'true' && steps.resolve-candidate-release-url.outputs.release_url || steps.stage-release.outputs.url }}
