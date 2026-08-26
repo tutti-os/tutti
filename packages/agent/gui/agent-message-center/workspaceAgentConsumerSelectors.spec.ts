@@ -241,6 +241,163 @@ describe("workspaceAgentConsumerSelectors", () => {
     });
   });
 
+  it("keeps a completed plan waiting in the production message center model when host messages are empty", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities()
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(1);
+    expect(model.items[0]).toMatchObject({
+      id: "message-center-session-1",
+      agentSessionId: "session-1",
+      status: "waiting",
+      needsAttentionKind: "constraint",
+      pendingInteractionTarget: null,
+      pendingPrompt: {
+        kind: "plan-implementation",
+        requestId: "turn-plan"
+      },
+      latestTurnOutcome: null
+    });
+  });
+
+  it.each([
+    {
+      name: "the tagged plan belongs to an older turn",
+      latestTurnId: "turn-current",
+      planTurnId: "turn-old",
+      capabilities: planImplementationCapabilities()
+    },
+    {
+      name: "the session explicitly disables plan implementation",
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: {
+        ...planImplementationCapabilities(),
+        planImplementation: false
+      }
+    }
+  ])("does not synthesize plan waiting when $name", (input) => {
+    const engine = createCompletedPlanEngine(input);
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(0);
+    expect(model.items[0]).toMatchObject({
+      status: "completed",
+      pendingPrompt: null,
+      latestTurnOutcome: {
+        status: "completed",
+        turnId: input.latestTurnId
+      }
+    });
+  });
+
+  it("keeps the legacy presentation shape compatible and fails closed", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities()
+    });
+    const {
+      awaitingPlanImplementationTurnIdBySessionId: _derivedPlanWait,
+      ...legacyPresentation
+    } = selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot());
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      legacyPresentation,
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: { "session-1": [planMessage("turn-plan")] }
+      }
+    );
+
+    expect(model.waitingCount).toBe(0);
+    expect(model.items[0]).toMatchObject({
+      status: "completed",
+      pendingPrompt: null
+    });
+  });
+
+  it("keeps a durable interaction authoritative over a synthetic plan wait", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities(),
+      pendingInteractions: [
+        {
+          requestId: "request-approval",
+          agentSessionId: "session-1",
+          turnId: "turn-plan",
+          kind: "approval",
+          status: "pending",
+          toolName: "Bash",
+          input: {
+            command: "pnpm test",
+            options: [{ optionId: "allow", label: "Allow" }]
+          },
+          createdAtUnixMs: 21,
+          updatedAtUnixMs: 21
+        }
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(1);
+    expect(model.items[0]).toMatchObject({
+      status: "waiting",
+      pendingInteractionTarget: {
+        agentSessionId: "session-1",
+        requestId: "request-approval",
+        turnId: "turn-plan"
+      },
+      pendingPrompt: {
+        kind: "approval",
+        requestId: "request-approval"
+      }
+    });
+  });
+
+  it("removes a skipped plan from the production message center model", () => {
+    const engine = createCompletedPlanEngine({
+      latestTurnId: "turn-plan",
+      planTurnId: "turn-plan",
+      capabilities: planImplementationCapabilities()
+    });
+    engine.dispatch({
+      type: "plan/skipped",
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      turnId: "turn-plan",
+      requestId: "turn-plan"
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      { workspaceId: "workspace-1", sessionMessagesById: {} }
+    );
+
+    expect(model.waitingCount).toBe(0);
+    expect(model.items[0]).toMatchObject({
+      status: "completed",
+      pendingPrompt: null
+    });
+  });
+
   it("tracks Plan feedback through explicit source identity instead of submit-id parsing", () => {
     const engine = createEngine();
     engine.dispatch({
@@ -987,4 +1144,76 @@ function session(
     title: "Canonical session",
     ...overrides
   });
+}
+
+function planMessage(turnId: string) {
+  return {
+    workspaceId: "workspace-1",
+    agentSessionId: "session-1",
+    messageId: `plan-${turnId}`,
+    version: 1,
+    turnId,
+    role: "agent" as const,
+    kind: "message" as const,
+    payload: { messageKind: "plan" },
+    occurredAtUnixMs: 19
+  };
+}
+
+function planImplementationCapabilities() {
+  return {
+    imageInput: false,
+    modelImageInputRequired: false,
+    modelPlanBinding: false,
+    modelSwitch: false,
+    skills: false,
+    compact: false,
+    tokenUsage: false,
+    rateLimits: false,
+    planMode: true,
+    interrupt: false,
+    activeTurnGuidance: false,
+    browserUse: false,
+    computerUse: false,
+    goalPause: false,
+    planImplementation: true,
+    permissionModeChangeDuringTurn: false,
+    permissionModeChangeDeferred: false,
+    review: false,
+    resumeRunningTurn: false
+  };
+}
+
+function createCompletedPlanEngine(input: {
+  latestTurnId: string;
+  planTurnId: string;
+  capabilities: ReturnType<typeof planImplementationCapabilities>;
+  pendingInteractions?: AgentActivitySession["pendingInteractions"];
+}) {
+  const engine = createEngine();
+  engine.dispatch({
+    type: "session/snapshotReceived",
+    sessions: [
+      session({
+        latestTurn: {
+          turnId: input.latestTurnId,
+          agentSessionId: "session-1",
+          origin: "user_prompt",
+          phase: "settled",
+          outcome: "completed",
+          startedAtUnixMs: 10,
+          settledAtUnixMs: 20,
+          updatedAtUnixMs: 20
+        },
+        capabilities: input.capabilities,
+        pendingInteractions: input.pendingInteractions ?? []
+      })
+    ]
+  });
+  engine.dispatch({
+    type: "message/snapshotReceived",
+    workspaceId: "workspace-1",
+    messages: [planMessage(input.planTurnId)]
+  });
+  return engine;
 }

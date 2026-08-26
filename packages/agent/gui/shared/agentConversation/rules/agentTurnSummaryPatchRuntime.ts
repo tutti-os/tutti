@@ -6,12 +6,16 @@ import type {
 import { normalizeWorkspaceFilePath } from "../../../actions/workspaceFilePathCandidate";
 
 export function fileCanBuildPatch(file: AgentTurnSummaryFileVM): boolean {
-  return (
-    file.unifiedDiff != null ||
-    file.content != null ||
-    file.oldString != null ||
-    file.newString != null
-  );
+  if (file.unifiedDiff != null) {
+    return true;
+  }
+  if (file.changeType === "created") {
+    return file.content != null || file.newString != null;
+  }
+  if (file.changeType === "deleted") {
+    return file.oldString != null || file.content != null;
+  }
+  return file.oldString != null && file.newString != null;
 }
 
 export function patchBatchDirectoryCwd(

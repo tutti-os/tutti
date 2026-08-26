@@ -108,6 +108,9 @@ type Service struct {
 	worktreeIsolationLock          *sync.RWMutex
 	generatedFilesCacheMu          sync.Mutex
 	generatedFilesCache            map[string]generatedFilesCacheEntry
+	providerRuntimeAuthMu          sync.Mutex
+	providerRuntimeAuthGeneration  map[string]uint64
+	providerRuntimeSessionAuth     map[providerRuntimeSessionAuthKey]providerRuntimeSessionAuthGeneration
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.

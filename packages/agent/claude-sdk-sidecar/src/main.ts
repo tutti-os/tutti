@@ -16,6 +16,7 @@ import {
 import { booleanValue, envObject, stringValue } from "./runtimeValues.ts";
 import { sidecarSessionSettings } from "./sessionSettings.ts";
 import { SessionRuntime } from "./sessionRuntime.ts";
+import { probeClaudeAccountUsage } from "./accountUsageProbe.ts";
 import {
   forkClaudeSession,
   inspectClaudeForkCheckpoints,
@@ -111,6 +112,15 @@ export async function handleRequest(
           ),
           cwd: stringValue(payload.cwd),
           title: stringValue(payload.title)
+        });
+        emit({ id, type: "ok", payload: result });
+        return;
+      }
+      case "probe_usage": {
+        const payload = request.payload ?? {};
+        const result = await probeClaudeAccountUsage({
+          cwd: stringValue(payload.cwd),
+          env: envObject(payload.env)
         });
         emit({ id, type: "ok", payload: result });
         return;

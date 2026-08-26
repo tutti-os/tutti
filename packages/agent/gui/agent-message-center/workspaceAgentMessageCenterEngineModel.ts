@@ -20,7 +20,10 @@ import {
   extractExitPlanModeOptions,
   isExitPlanSwitchModeInput
 } from "../shared/agentConversation/exitPlanOptions";
-import { consumerAwaitingPlanImplementation } from "../shared/agentConversation/planImplementationAwaiting";
+import {
+  consumerAwaitingPlanImplementation,
+  selectRootAgentSessionIdsAwaitingPlanImplementation
+} from "../shared/agentConversation/planImplementationAwaiting";
 import { planImplementationPromptFromPlanTurn } from "../shared/agentConversation/planImplementationPresentation";
 import {
   buildWorkspaceAgentMessageCenterItem,
@@ -55,20 +58,38 @@ export function buildWorkspaceAgentMessageCenterModelFromEngine(
     )
     .map((consumer) => {
       const interaction = latestPendingInteraction(consumer);
+      const planTurn =
+        !interaction &&
+        consumer.latestTurn?.turnId ===
+          presentation.awaitingPlanImplementationTurnIdBySessionId?.[
+            consumer.session.agentSessionId
+          ]
+          ? consumer.latestTurn
+          : null;
+      const planPrompt = planTurn
+        ? planImplementationPromptFromPlanTurn(
+            planTurn.turnId,
+            consumer.session.title
+          )
+        : null;
       const needsAttention = interaction
         ? needsAttentionFromInteraction(consumer, interaction)
-        : null;
+        : planTurn && planPrompt
+          ? needsAttentionFromPlan(consumer, planTurn, planPrompt.title)
+          : null;
       return buildWorkspaceAgentMessageCenterItem({
         session: consumer.session,
         latestTurn: consumer.latestTurn,
         messages: sessionMessages(snapshot.sessionMessagesById, consumer),
-        status: consumer.displayStatus,
+        status: planTurn ? "waiting" : consumer.displayStatus,
         needsAttention,
         pendingInteractionTarget: interaction
           ? interactionTarget(interaction)
           : null,
-        pendingPrompt: interaction ? promptFromInteraction(interaction) : null,
-        latestTurnOutcome: turnOutcome(consumer),
+        pendingPrompt: interaction
+          ? promptFromInteraction(interaction)
+          : planPrompt,
+        latestTurnOutcome: planTurn ? null : turnOutcome(consumer),
         options
       });
     });
@@ -87,6 +108,13 @@ interface WorkspaceAgentMessageCenterMessageSnapshot {
 
 export interface WorkspaceAgentMessageCenterPresentation {
   consumers: readonly WorkspaceAgentConsumerSession[];
+  /**
+   * Derived from the canonical Engine message window. Optional for hosts that
+   * construct the older presentation shape; absence fails closed.
+   */
+  awaitingPlanImplementationTurnIdBySessionId?: Readonly<
+    Record<string, string>
+  >;
   dismissedPlanTurnKeys: Readonly<Record<string, true>>;
   promptStatusByKey: Readonly<
     Record<string, WorkspaceAgentMessageCenterPromptStatus>
@@ -102,8 +130,20 @@ export function selectWorkspaceAgentMessageCenterPresentation(
     WorkspaceAgentMessageCenterPromptStatus
   > = {};
   const dismissedPlanTurnKeys: Record<string, true> = {};
+  const awaitingPlanImplementationTurnIdBySessionId: Record<string, string> =
+    {};
+  const awaitingPlanImplementationSessionIds = new Set(
+    selectRootAgentSessionIdsAwaitingPlanImplementation(state)
+  );
   for (const consumer of consumers) {
     const sessionId = consumer.session.agentSessionId;
+    if (
+      awaitingPlanImplementationSessionIds.has(sessionId) &&
+      consumer.latestTurn
+    ) {
+      awaitingPlanImplementationTurnIdBySessionId[sessionId] =
+        consumer.latestTurn.turnId;
+    }
     for (const interaction of consumer.pendingInteractions) {
       const response = selectEngineInteractionResponse(
         state,
@@ -149,6 +189,7 @@ export function selectWorkspaceAgentMessageCenterPresentation(
   }
   return {
     consumers,
+    awaitingPlanImplementationTurnIdBySessionId,
     dismissedPlanTurnKeys,
     promptStatusByKey
   };
@@ -159,6 +200,10 @@ export function workspaceAgentMessageCenterPresentationEqual(
   right: WorkspaceAgentMessageCenterPresentation
 ): boolean {
   return (
+    stringMapsEqual(
+      left.awaitingPlanImplementationTurnIdBySessionId ?? {},
+      right.awaitingPlanImplementationTurnIdBySessionId ?? {}
+    ) &&
     booleanMapsEqual(left.dismissedPlanTurnKeys, right.dismissedPlanTurnKeys) &&
     promptStatusMapsEqual(left.promptStatusByKey, right.promptStatusByKey) &&
     left.consumers.length === right.consumers.length &&
@@ -266,14 +311,21 @@ export function selectWorkspaceAgentAttentionItems(
       latestTurn?.turnId ?? "",
       latestTurn?.turnId ?? ""
     );
+    if (!latestTurn) {
+      continue;
+    }
+    const presentationAwaitsPlan =
+      presentation.awaitingPlanImplementationTurnIdBySessionId?.[
+        consumer.session.agentSessionId
+      ] === latestTurn.turnId;
     if (
+      !presentationAwaitsPlan &&
       !consumerAwaitingPlanImplementation({
         capabilities: consumer.session.capabilities,
         dismissed: presentation.dismissedPlanTurnKeys[statusKey] === true,
         latestTurn,
         messages
-      }) ||
-      !latestTurn
+      })
     ) {
       continue;
     }
@@ -288,17 +340,11 @@ export function selectWorkspaceAgentAttentionItems(
       latestTurn.turnId,
       consumer.session.title
     );
-    const needsAttention: AgentActivityNeedsAttentionItem = {
-      id: `plan-implementation:${latestTurn.turnId}`,
-      workspaceId: consumer.session.workspaceId,
-      agentSessionId: consumer.session.agentSessionId,
-      provider: consumer.session.provider,
-      title: prompt.title,
-      cwd: consumer.session.cwd,
-      kind: "constraint",
-      summary: prompt.title,
-      occurredAtUnixMs: latestTurn.settledAtUnixMs ?? latestTurn.updatedAtUnixMs
-    };
+    const needsAttention = needsAttentionFromPlan(
+      consumer,
+      latestTurn,
+      prompt.title
+    );
     const item = buildWorkspaceAgentMessageCenterItem({
       session: consumer.session,
       latestTurn,
@@ -424,6 +470,17 @@ function booleanMapsEqual(
   );
 }
 
+function stringMapsEqual(
+  left: Readonly<Record<string, string>>,
+  right: Readonly<Record<string, string>>
+): boolean {
+  const keys = Object.keys(left);
+  return (
+    keys.length === Object.keys(right).length &&
+    keys.every((key) => left[key] === right[key])
+  );
+}
+
 function sessionMessages(
   sessionMessagesById: Readonly<
     Record<string, readonly AgentActivityMessage[]>
@@ -478,6 +535,24 @@ function needsAttentionFromInteraction(
           : "constraint",
     summary,
     occurredAtUnixMs: interaction.createdAtUnixMs
+  };
+}
+
+function needsAttentionFromPlan(
+  consumer: WorkspaceAgentConsumerSession,
+  turn: NonNullable<WorkspaceAgentConsumerSession["latestTurn"]>,
+  title: string
+): AgentActivityNeedsAttentionItem {
+  return {
+    id: `plan-implementation:${turn.turnId}`,
+    workspaceId: consumer.session.workspaceId,
+    agentSessionId: consumer.session.agentSessionId,
+    provider: consumer.session.provider,
+    title,
+    cwd: consumer.session.cwd,
+    kind: "constraint",
+    summary: title,
+    occurredAtUnixMs: turn.settledAtUnixMs ?? turn.updatedAtUnixMs
   };
 }
 

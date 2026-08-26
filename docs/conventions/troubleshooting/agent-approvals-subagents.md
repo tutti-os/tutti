@@ -84,11 +84,13 @@ session-level child summaries.
   after receiving the approval response, then stress the test and assert the
   call-resolution event always precedes the Turn terminal.
 
-### Kimi Code AskUserQuestion waits without showing a question card
+### Kimi Code split-frame approval or AskUserQuestion lacks detail
 
 - Symptom: the Turn says it is waiting for an answer, and the transcript may
   contain an `AskUserQuestion` tool row, but AgentGUI shows no selectable
   question card.
+- For an ordinary approval, the unsafe variant is a selectable card with only a
+  generic title and options because the file path or command has not arrived.
 - A second failure can appear after the card is fixed: AgentGUI shows
   `回答：<choice>`, but Kimi's tool output contains `answers: {}` and says the
   user dismissed the question.
@@ -115,6 +117,12 @@ session-level child summaries.
   can persist an immutable partial Interaction before the event is ready. Keep
   response delivery and local call resolution ahead of the provider terminal
   caused by that response.
+  Apply the same hidden-until-detail rule to ordinary Kimi approvals: never
+  publish an actionable approval without display input, never join a different
+  Turn or `toolCallId`, and do not use a timer to expose partial state. If no
+  matching detail frame arrives, normal Turn cancellation sends ACP
+  `session/cancel`, interrupts and removes the pending request, and emits no
+  `interaction.requested` or `interaction.superseded` for that hidden request.
   For Kimi Code 0.29.x's one-shot question bridge, require exactly one
   single-select question whose labels map one-to-one to the request's
   non-rejection permission options; mark it option-only and fail the provider
@@ -134,6 +142,11 @@ session-level child summaries.
   multi-question and multi-select inputs and assert no
   `interaction.requested` is published, plus submit an ambiguous canonical
   answer and assert the Interaction is superseded rather than completed.
+  For an ordinary approval, cover matching and mismatched Turn/tool identities,
+  preserve a Windows path in the joined input, and cancel a no-update request;
+  assert the provider receives `session/cancel`, the pending entry is removed,
+  its terminal disposition is interrupted, and neither requested nor
+  superseded Interaction is emitted.
   Repeat under the Go race detector.
 - References:
   [acp_pending.go](../../../packages/agent/daemon/runtime/acp_pending.go),

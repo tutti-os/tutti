@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerstatus"
+	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/singleflight"
 
@@ -308,6 +309,18 @@ type Service struct {
 	// CodexRemoteAuthProbe is the narrow test seam for the provider-usage
 	// strategy. Nil uses Codex app-server account/rateLimits/read.
 	CodexRemoteAuthProbe func(context.Context, []string, []string) providerstatus.AuthEvidence
+	// ProviderAccountUsageProbe is the provider-neutral test seam for native
+	// account usage. Nil resolves and invokes the production provider runtime.
+	ProviderAccountUsageProbe func(context.Context, string) ProviderAccountUsageResult
+	// ClaudeAccountUsageProbe is the runtime boundary test seam. Production
+	// uses the official Claude SDK sidecar control request.
+	ClaudeAccountUsageProbe func(context.Context, agentruntime.ClaudeSDKAccountUsageProbeInput) agentruntime.ClaudeSDKAccountUsageProbeResult
+	// ClaudeStartupGate serializes every operation that may read, refresh, or
+	// persist shared Claude credentials. Nil uses the process-wide gate.
+	ClaudeStartupGate interface {
+		Acquire(context.Context) error
+		Release()
+	}
 	// CodexRuntimeSelectionStore persists only an explicit Codex launcher
 	// choice. A missing selection permits only one uniquely ready candidate;
 	// multiple ready candidates require the user to choose one.

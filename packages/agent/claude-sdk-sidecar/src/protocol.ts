@@ -12,6 +12,7 @@ export type ClaudeSDKSidecarRequestType =
   | "inspect_fork_checkpoints"
   | "recover_turn_binding"
   | "fork_session"
+  | "probe_usage"
   | "close";
 
 export type ClaudeSDKSidecarRequest = {
@@ -87,6 +88,7 @@ const REQUEST_TYPES = new Set<ClaudeSDKSidecarRequestType>([
   "inspect_fork_checkpoints",
   "recover_turn_binding",
   "fork_session",
+  "probe_usage",
   "close"
 ]);
 

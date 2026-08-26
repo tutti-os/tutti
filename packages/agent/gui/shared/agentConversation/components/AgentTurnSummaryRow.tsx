@@ -74,35 +74,31 @@ export function AgentTurnSummaryRow({
     [row.files]
   );
   const patchBatches = useMemo(() => {
-    const fileFallbackBatches = row.files.flatMap((file) =>
-      fileCanBuildPatch(file)
-        ? [
-            {
-              changes: [
-                {
-                  path: file.path,
-                  changeType: file.changeType,
-                  unifiedDiff: file.unifiedDiff,
-                  oldString: file.oldString ?? null,
-                  newString: file.newString ?? null,
-                  content: file.content ?? null
-                }
-              ],
-              cwd: fallbackPatchFileCwd(file.path, workspaceRoot),
-              toolCallId: `${row.id}:${file.messageId}:unified-diff`
-            }
-          ]
-        : []
-    ) satisfies AgentTurnSummaryPatchBatchVM[];
-    const sourceBatches =
-      row.patchBatches && row.patchBatches.length > 0
-        ? row.patchBatches
-        : fileFallbackBatches;
-    const batches = buildExecutablePatchBatches(sourceBatches, workspaceRoot);
-    if (batches.length > 0 || sourceBatches === fileFallbackBatches) {
-      return batches;
+    const canBuildEveryFileFallback = row.files.every(fileCanBuildPatch);
+    const fileFallbackBatches: AgentTurnSummaryPatchBatchVM[] =
+      canBuildEveryFileFallback
+        ? row.files.map((file) => ({
+            changes: [
+              {
+                path: file.path,
+                changeType: file.changeType,
+                unifiedDiff: file.unifiedDiff,
+                oldString: file.oldString ?? null,
+                newString: file.newString ?? null,
+                content: file.content ?? null
+              }
+            ],
+            cwd: fallbackPatchFileCwd(file.path, workspaceRoot),
+            toolCallId: `${row.id}:${file.messageId}:unified-diff`
+          }))
+        : [];
+    const sourceBatches = row.patchBatches?.length
+      ? row.patchBatches
+      : fileFallbackBatches;
+    if (!hasCompletePatchCoverage(row.files, sourceBatches)) {
+      return [];
     }
-    return buildExecutablePatchBatches(fileFallbackBatches, workspaceRoot);
+    return buildExecutablePatchBatches(sourceBatches, workspaceRoot);
   }, [row.files, row.id, row.patchBatches, workspaceRoot]);
   const canRenderPatchButton = Boolean(
     agentHostApi?.workspace.applyGitPatch && row.files.length > 0
@@ -651,7 +647,20 @@ function buildExecutablePatchBatches(
   sourceBatches: readonly AgentTurnSummaryPatchBatchVM[],
   workspaceRoot?: string | null
 ): { cwd: string; diff: string }[] {
-  return sourceBatches.flatMap((batch) => {
+  const batches: { cwd: string; diff: string }[] = [];
+  for (const batch of sourceBatches) {
+    if (
+      batch.changes.length === 0 ||
+      batch.changes.some(
+        (change) =>
+          !buildAgentTurnSummaryPatchDiff({
+            ...batch,
+            changes: [change]
+          }).trim()
+      )
+    ) {
+      return [];
+    }
     const sourceCwd = patchBatchDirectoryCwd(
       batch.cwd ?? workspaceRoot ?? null,
       batch.changes,
@@ -667,8 +676,29 @@ function buildExecutablePatchBatches(
       ...batch,
       cwd: diffCwd
     });
-    return executionCwd && diff.trim() ? [{ cwd: executionCwd, diff }] : [];
-  });
+    if (!executionCwd || !diff.trim()) {
+      return [];
+    }
+    batches.push({ cwd: executionCwd, diff });
+  }
+  return batches;
+}
+
+function hasCompletePatchCoverage(
+  files: readonly AgentTurnSummaryFileVM[],
+  batches: readonly AgentTurnSummaryPatchBatchVM[]
+): boolean {
+  if (files.length === 0 || batches.length === 0) {
+    return false;
+  }
+  const visiblePaths = new Set(files.map((file) => file.path));
+  const patchPaths = batches.flatMap((batch) =>
+    batch.changes.map((change) => change.path)
+  );
+  return (
+    patchPaths.every((path) => visiblePaths.has(path)) &&
+    files.every((file) => patchPaths.includes(file.path))
+  );
 }
 
 function fallbackPatchFileCwd(

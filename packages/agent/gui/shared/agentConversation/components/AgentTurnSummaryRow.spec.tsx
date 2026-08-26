@@ -312,21 +312,8 @@ describe("AgentTurnSummaryRow", () => {
     expect(patchCalls[0]?.diff).toContain("+# Hello, world!");
   });
 
-  it("falls back to file unified diffs when recorded patch batches are not executable", async () => {
-    const patchCalls: AgentHostApplyWorkspaceGitPatchInput[] = [];
-    const applyGitPatch = vi.fn(
-      async (
-        input: AgentHostApplyWorkspaceGitPatchInput
-      ): Promise<AgentHostApplyWorkspaceGitPatchResult> => {
-        patchCalls.push(input);
-        return {
-          appliedPaths: ["hello_world.md"],
-          conflictedPaths: [],
-          skippedPaths: [],
-          status: "success"
-        };
-      }
-    );
+  it("disables undo when recorded patch batches are not executable", () => {
+    const applyGitPatch = vi.fn();
     window.agentHostApi = {
       ...(window.agentHostApi ?? {}),
       workspace: {
@@ -377,23 +364,17 @@ describe("AgentTurnSummaryRow", () => {
       />
     );
 
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "agentHost.agentGui.turnSummaryUndo"
-      })
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.turnSummaryUndo"
+    });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("tooltip").textContent).toContain(
+      "agentHost.agentGui.turnSummaryPatchUnavailable"
     );
 
-    await waitFor(() => {
-      expect(applyGitPatch).toHaveBeenCalledTimes(1);
-    });
-    expect(patchCalls[0]).toMatchObject({
-      cwd: "/Users/demo/02-git-clean",
-      revert: true
-    });
-    expect(patchCalls[0]?.diff).toContain(
-      "diff --git a/hello_world.md b/hello_world.md"
-    );
-    expect(patchCalls[0]?.diff).toContain("+# Hello, world!");
+    fireEvent.click(button);
+
+    expect(applyGitPatch).not.toHaveBeenCalled();
   });
 
   it("maps Codex /workspace patch cwd to the host workspace root before git calls", async () => {
@@ -811,6 +792,132 @@ describe("AgentTurnSummaryRow", () => {
     expect(screen.getByRole("tooltip")).toHaveTextContent(
       "agentHost.agentGui.turnSummaryPatchUnavailable"
     );
+
+    fireEvent.click(button);
+
+    expect(applyGitPatch).not.toHaveBeenCalled();
+  });
+
+  it("does not dispatch undo for a one-sided modified file", () => {
+    const applyGitPatch = vi.fn();
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:one-sided-modified",
+          turnId: "turn-1",
+          fileCount: 1,
+          modifiedCount: 1,
+          createdCount: 0,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "note.txt",
+              path: "/workspace/note.txt",
+              fileName: "note.txt",
+              directory: "/workspace",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:one-sided-modified",
+              newString: "after",
+              occurredAtUnixMs: 10
+            }
+          ]
+        }}
+        workspaceRoot="/workspace"
+        label="Changed files"
+      />
+    );
+
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.turnSummaryUndo"
+    });
+    expect(button.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("tooltip").textContent).toContain(
+      "agentHost.agentGui.turnSummaryPatchUnavailable"
+    );
+
+    fireEvent.click(button);
+
+    expect(applyGitPatch).not.toHaveBeenCalled();
+  });
+
+  it("does not partially undo a turn when patch batches miss a visible sibling", () => {
+    const applyGitPatch = vi.fn();
+    window.agentHostApi = {
+      ...(window.agentHostApi ?? {}),
+      workspace: {
+        ...(window.agentHostApi?.workspace ?? {}),
+        applyGitPatch
+      }
+    } as unknown as typeof window.agentHostApi;
+
+    render(
+      <AgentTurnSummaryRow
+        row={{
+          kind: "turn-summary",
+          id: "turn-summary:mixed-coverage",
+          turnId: "turn-1",
+          fileCount: 2,
+          modifiedCount: 1,
+          createdCount: 1,
+          occurredAtUnixMs: 10,
+          files: [
+            {
+              label: "created.txt",
+              path: "/workspace/created.txt",
+              fileName: "created.txt",
+              directory: "/workspace",
+              changeType: "created",
+              toolName: null,
+              messageId: "call:mixed-created",
+              newString: "created",
+              occurredAtUnixMs: 10
+            },
+            {
+              label: "incomplete.txt",
+              path: "/workspace/incomplete.txt",
+              fileName: "incomplete.txt",
+              directory: "/workspace",
+              changeType: "modified",
+              toolName: null,
+              messageId: "call:mixed-incomplete",
+              newString: "after",
+              occurredAtUnixMs: 10
+            }
+          ],
+          patchBatches: [
+            {
+              cwd: "/workspace",
+              toolCallId: "call:mixed-created",
+              changes: [
+                {
+                  path: "/workspace/created.txt",
+                  changeType: "created",
+                  oldString: "",
+                  newString: "created"
+                }
+              ]
+            }
+          ]
+        }}
+        workspaceRoot="/workspace"
+        label="Changed files"
+      />
+    );
+
+    const button = screen.getByRole("button", {
+      name: "agentHost.agentGui.turnSummaryUndo"
+    });
+    expect(button.hasAttribute("disabled")).toBe(true);
 
     fireEvent.click(button);
 

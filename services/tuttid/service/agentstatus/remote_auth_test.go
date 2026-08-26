@@ -91,6 +91,29 @@ func TestResolveRemoteAuthEvidenceUsesCodexProviderUsageProbe(t *testing.T) {
 	}
 }
 
+func TestResolveRemoteAuthEvidenceUsesClaudeSDKUsageWithoutDemotingUnavailable(t *testing.T) {
+	service := Service{
+		ProviderAccountUsageProbe: func(_ context.Context, provider string) ProviderAccountUsageResult {
+			if provider != providerregistry.ClaudeCodeProviderID {
+				t.Fatalf("provider = %q", provider)
+			}
+			return ProviderAccountUsageResult{
+				Outcome: "available", BillingMode: "provider_account", QuotaState: "unavailable",
+			}
+		},
+	}
+	evidence, attempted := service.resolveRemoteAuthEvidence(context.Background(), ProviderSpec{
+		Provider: providerregistry.ClaudeCodeProviderID,
+		Kind:     providerregistry.StatusKindClaudeCLI,
+		RemoteAuthProbe: providerregistry.RemoteAuthProbeDescriptor{
+			Kind: providerregistry.RemoteAuthProbeKindProviderUsage, TimeoutSeconds: 30,
+		},
+	}, "/usr/local/bin/claude", nil)
+	if attempted || evidence.Kind != "" {
+		t.Fatalf("evidence = %#v, attempted = %v", evidence, attempted)
+	}
+}
+
 func TestReduceProviderAuthRemoteEvidenceOutranksLocalStatus(t *testing.T) {
 	service := Service{RunOutcomes: NewRunOutcomeStore()}
 	spec := ProviderSpec{Provider: "claude-code"}
@@ -135,15 +158,16 @@ func TestReduceProviderAuthRemoteEvidenceOutranksLocalStatus(t *testing.T) {
 	}
 }
 
-func TestServiceListCodexRequiresProviderUsageEvidence(t *testing.T) {
+func TestServiceListCodexUsesProviderUsageOnlyAsPositiveEvidence(t *testing.T) {
 	tests := []struct {
-		name     string
-		evidence providerstatus.AuthEvidence
-		want     AuthStatus
+		name             string
+		evidence         providerstatus.AuthEvidence
+		wantAuth         AuthStatus
+		wantAvailability AvailabilityStatus
 	}{
-		{name: "accepted", evidence: providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteSuccess}, want: AuthAuthenticated},
-		{name: "revoked", evidence: providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteAuthFailure, Reason: providerstatus.AuthReasonSessionExpired}, want: AuthRequired},
-		{name: "transient failure", evidence: providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceProbeFailure, Reason: providerstatus.AuthReasonProbeFailed}, want: AuthConfigured},
+		{name: "accepted", evidence: providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteSuccess}, wantAuth: AuthAuthenticated, wantAvailability: AvailabilityReady},
+		{name: "usage unauthorized", evidence: providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceRemoteAuthFailure, Reason: providerstatus.AuthReasonSessionExpired}, wantAuth: AuthConfigured, wantAvailability: AvailabilityReady},
+		{name: "transient failure", evidence: providerstatus.AuthEvidence{Kind: providerstatus.AuthEvidenceProbeFailure, Reason: providerstatus.AuthReasonProbeFailed}, wantAuth: AuthConfigured, wantAvailability: AvailabilityReady},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
@@ -155,16 +179,17 @@ func TestServiceListCodexRequiresProviderUsageEvidence(t *testing.T) {
 					State: agentruntime.CodexAppServerAccountAuthenticated, AuthMethod: "chatgpt",
 				}
 			}
-			service.RemoteAuthProbe = func(context.Context, ProviderSpec) (providerstatus.AuthEvidence, bool) {
-				return test.evidence, true
+			service.CodexRemoteAuthProbe = func(context.Context, []string, []string) providerstatus.AuthEvidence {
+				return test.evidence
 			}
 
 			snapshot, err := service.List(context.Background(), ListInput{Providers: []string{"codex"}})
 			if err != nil {
 				t.Fatalf("List() error = %v", err)
 			}
-			if got := onlyStatus(t, snapshot).Auth.Status; got != test.want {
-				t.Fatalf("Auth.Status = %q, want %q", got, test.want)
+			status := onlyStatus(t, snapshot)
+			if status.Auth.Status != test.wantAuth || status.Availability.Status != test.wantAvailability {
+				t.Fatalf("status = %#v, want auth %q and availability %q", status, test.wantAuth, test.wantAvailability)
 			}
 		})
 	}

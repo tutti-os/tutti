@@ -42,6 +42,7 @@ func TestDeleteDoesNotRepeatTuttiModeCleanupAfterSessionStoreRemovedState(t *tes
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
 	configureTestApplicationHost(service)
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "session-1")
 
 	deleteResult, err := service.Delete(context.Background(), "workspace-1", "session-1")
 	if err != nil || !deleteResult.Removed {
@@ -50,6 +51,44 @@ func TestDeleteDoesNotRepeatTuttiModeCleanupAfterSessionStoreRemovedState(t *tes
 	if len(coordinator.deleteSessionIDs) != 0 {
 		t.Fatalf("duplicate cleanup calls = %#v", coordinator.deleteSessionIDs)
 	}
+	assertProviderRuntimeCredentialTrackingAbsent(t, service, "workspace-1", "session-1")
+}
+
+func TestDeleteHostFailureKeepsProviderRuntimeCredentialTracking(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("delete admission rejected")
+	reader := &fakeSessionReader{sessions: map[string]PersistedSession{
+		"workspace-1:session-1": {WorkspaceID: "workspace-1", ID: "session-1"},
+	}}
+	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
+	service.SessionReader = reader
+	service.SessionDeletionGuard = &conformanceDeletionGuard{admissionErr: wantErr}
+	configureTestApplicationHost(service)
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "session-1")
+
+	if _, err := service.Delete(context.Background(), "workspace-1", "session-1"); !errors.Is(err, wantErr) {
+		t.Fatalf("Delete() error = %v, want %v", err, wantErr)
+	}
+	assertProviderRuntimeCredentialTrackingPresent(t, service, "workspace-1", "session-1")
+}
+
+func TestDeleteTerminalNotFoundClearsProviderRuntimeCredentialTracking(t *testing.T) {
+	t.Parallel()
+	runtime := &fakeRuntime{
+		sessions: map[string]ProviderRuntimeSession{
+			"workspace-1:session-1": {WorkspaceID: "workspace-1", ID: "session-1"},
+		},
+		closeErr: ErrSessionNotFound,
+	}
+	service := NewService(runtime)
+	service.SessionReader = &fakeSessionReader{sessions: map[string]PersistedSession{}}
+	configureTestApplicationHost(service)
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "session-1")
+
+	if _, err := service.Delete(context.Background(), "workspace-1", "session-1"); !errors.Is(err, ErrSessionNotFound) {
+		t.Fatalf("Delete() error = %v, want %v", err, ErrSessionNotFound)
+	}
+	assertProviderRuntimeCredentialTrackingAbsent(t, service, "workspace-1", "session-1")
 }
 
 func TestDeleteSessionsBatchDoesNotRepeatCleanupForExpandedChildTree(t *testing.T) {
@@ -66,6 +105,9 @@ func TestDeleteSessionsBatchDoesNotRepeatCleanupForExpandedChildTree(t *testing.
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
 	configureTestApplicationHost(service)
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "root-1")
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "child-1")
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "unrelated-1")
 
 	if _, err := service.DeleteSessionsBatch(context.Background(), "workspace-1", DeleteSessionsBatchInput{SessionIDs: []string{"root-1"}}); err != nil {
 		t.Fatalf("DeleteSessionsBatch() error = %v", err)
@@ -73,6 +115,9 @@ func TestDeleteSessionsBatchDoesNotRepeatCleanupForExpandedChildTree(t *testing.
 	if len(coordinator.deleteSessionIDs) != 0 {
 		t.Fatalf("duplicate cleanup calls = %#v", coordinator.deleteSessionIDs)
 	}
+	assertProviderRuntimeCredentialTrackingAbsent(t, service, "workspace-1", "root-1")
+	assertProviderRuntimeCredentialTrackingAbsent(t, service, "workspace-1", "child-1")
+	assertProviderRuntimeCredentialTrackingPresent(t, service, "workspace-1", "unrelated-1")
 }
 
 func TestDeleteSessionsBatchCleansRuntimeOnlyOrphanState(t *testing.T) {
@@ -95,6 +140,24 @@ func TestDeleteSessionsBatchCleansRuntimeOnlyOrphanState(t *testing.T) {
 	}
 }
 
+func TestDeleteSessionsBatchFailureKeepsProviderRuntimeCredentialTracking(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("batch delete failed")
+	reader := &fakeSectionReader{
+		fakeSessionReader: fakeSessionReader{sessions: map[string]PersistedSession{}},
+		batchDeleteErr:    wantErr,
+	}
+	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
+	service.SessionReader = reader
+	configureTestApplicationHost(service)
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "session-1")
+
+	if _, err := service.DeleteSessionsBatch(context.Background(), "workspace-1", DeleteSessionsBatchInput{SessionIDs: []string{"session-1"}}); !errors.Is(err, wantErr) {
+		t.Fatalf("DeleteSessionsBatch() error = %v, want %v", err, wantErr)
+	}
+	assertProviderRuntimeCredentialTrackingPresent(t, service, "workspace-1", "session-1")
+}
+
 func TestClearDoesNotRepeatTuttiModeCleanupAfterSessionStoreClearedState(t *testing.T) {
 	t.Parallel()
 	wantErr := errors.New("duplicate activation cleanup must not run")
@@ -106,6 +169,7 @@ func TestClearDoesNotRepeatTuttiModeCleanupAfterSessionStoreClearedState(t *test
 	service.SessionReader = reader
 	service.TuttiModeActivations = coordinator
 	configureTestApplicationHost(service)
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "session-1")
 
 	result, err := service.Clear(context.Background(), "workspace-1")
 	if err != nil || result.RemovedSessions != 1 {
@@ -113,5 +177,66 @@ func TestClearDoesNotRepeatTuttiModeCleanupAfterSessionStoreClearedState(t *test
 	}
 	if len(coordinator.deleteSessionIDs) != 0 {
 		t.Fatalf("duplicate cleanup calls = %#v", coordinator.deleteSessionIDs)
+	}
+	assertProviderRuntimeCredentialTrackingAbsent(t, service, "workspace-1", "session-1")
+}
+
+func TestClearFailureKeepsProviderRuntimeCredentialTracking(t *testing.T) {
+	t.Parallel()
+	wantErr := errors.New("clear plan failed")
+	reader := &fakeSectionReader{
+		fakeSessionReader: fakeSessionReader{sessions: map[string]PersistedSession{}},
+		clearPlanErr:      wantErr,
+	}
+	service := NewService(&fakeRuntime{sessions: map[string]ProviderRuntimeSession{}})
+	service.SessionReader = reader
+	configureTestApplicationHost(service)
+	seedProviderRuntimeCredentialTracking(service, "workspace-1", "session-1")
+
+	if _, err := service.Clear(context.Background(), "workspace-1"); !errors.Is(err, wantErr) {
+		t.Fatalf("Clear() error = %v, want %v", err, wantErr)
+	}
+	assertProviderRuntimeCredentialTrackingPresent(t, service, "workspace-1", "session-1")
+}
+
+func seedProviderRuntimeCredentialTracking(service *Service, workspaceID, sessionID string) {
+	service.InvalidateProviderRuntimeCredentials("cursor")
+	service.markProviderRuntimeCredentialsApplied(
+		workspaceID,
+		sessionID,
+		"cursor",
+		service.providerRuntimeCredentialGeneration("cursor"),
+	)
+}
+
+func assertProviderRuntimeCredentialTrackingAbsent(
+	t *testing.T,
+	service *Service,
+	workspaceID string,
+	sessionID string,
+) {
+	t.Helper()
+	key := providerRuntimeSessionAuthKey{workspaceID: workspaceID, sessionID: sessionID}
+	service.providerRuntimeAuthMu.Lock()
+	_, ok := service.providerRuntimeSessionAuth[key]
+	service.providerRuntimeAuthMu.Unlock()
+	if ok {
+		t.Fatalf("provider credential tracking for %s/%s was not removed", workspaceID, sessionID)
+	}
+}
+
+func assertProviderRuntimeCredentialTrackingPresent(
+	t *testing.T,
+	service *Service,
+	workspaceID string,
+	sessionID string,
+) {
+	t.Helper()
+	key := providerRuntimeSessionAuthKey{workspaceID: workspaceID, sessionID: sessionID}
+	service.providerRuntimeAuthMu.Lock()
+	_, ok := service.providerRuntimeSessionAuth[key]
+	service.providerRuntimeAuthMu.Unlock()
+	if !ok {
+		t.Fatalf("provider credential tracking for %s/%s was unexpectedly removed", workspaceID, sessionID)
 	}
 }

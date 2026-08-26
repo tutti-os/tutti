@@ -33,18 +33,10 @@ func claudeCodeDescriptor() ProviderDescriptor {
 			BinaryNames:                     []string{"claude"},
 			AuthStatusCommand:               []string{"auth", "status"},
 			AuthStatusCommandTimeoutSeconds: 600,
-			RemoteAuthProbe: RemoteAuthProbeDescriptor{
-				Kind:           RemoteAuthProbeKindHTTPBearer,
-				CredentialKind: RemoteAuthCredentialKindClaudeOAuth,
-				Endpoint:       "https://api.anthropic.com/api/oauth/usage",
-				Method:         "GET",
-				Headers: map[string]string{
-					"Accept":         "application/json",
-					"anthropic-beta": "oauth-2025-04-20",
-					"User-Agent":     "claude-code/2.1.0",
-				},
-				TimeoutSeconds: 10,
-			},
+			// Claude authentication is owned by the SDK/CLI auth-status and real
+			// runtime outcomes. Account usage is an optional presentation
+			// capability and must never be used as remote auth evidence.
+			RemoteAuthProbe: RemoteAuthProbeDescriptor{},
 			AuthMarkerPaths: []string{"~/.claude.json", "~/.claude/auth.json"},
 			APIEndpoints:    []string{"https://api.anthropic.com/v1/messages"},
 			CustomConfigEnvVars: []string{

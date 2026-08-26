@@ -48,10 +48,11 @@ type AccountUsageQuota struct {
 }
 
 type AccountUsageService struct {
-	Manager *Manager
-	Targets AgentTargetLookup
-	Now     func() time.Time
-	run     func(context.Context, string, string, []string, *agentruntime.ExecutableIdentity, *agentruntime.ExecutableIdentity, int) ([]byte, error)
+	Manager    *Manager
+	Targets    AgentTargetLookup
+	Now        func() time.Time
+	ProbeLocal func(context.Context, string) AccountUsageResult
+	run        func(context.Context, string, string, []string, *agentruntime.ExecutableIdentity, *agentruntime.ExecutableIdentity, int) ([]byte, error)
 }
 
 func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string) (AccountUsageResult, error) {
@@ -59,14 +60,20 @@ func (service AccountUsageService) Probe(ctx context.Context, rawTargetID string
 	if targetID == "" {
 		return AccountUsageResult{}, ErrInvalidAccountUsageTarget
 	}
-	if service.Manager == nil || service.Targets == nil {
+	if service.Targets == nil {
 		return AccountUsageResult{}, errors.New("account usage service is not configured")
 	}
-	return service.Manager.accountUsageProbeResults().load(ctx, targetID, func() (AccountUsageResult, error) {
+	load := func() (AccountUsageResult, error) {
+		// The loader is shared by singleflight. Give it its own bounded lifetime so
+		// cancellation of the first waiter does not abort every joined waiter.
 		probeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), accountUsageProbeTimeout)
 		defer cancel()
 		return service.probe(probeCtx, targetID)
-	})
+	}
+	if service.Manager == nil {
+		return load()
+	}
+	return service.Manager.accountUsageProbeResults().load(ctx, targetID, load)
 }
 
 func (service AccountUsageService) probe(ctx context.Context, targetID string) (AccountUsageResult, error) {
@@ -88,7 +95,33 @@ func (service AccountUsageService) probe(ctx context.Context, targetID string) (
 		return base, nil
 	}
 	launchRef, err := agenttargetbiz.RuntimeProviderTargetRef(target)
-	if err != nil || launchRef["kind"] != agenttargetbiz.LaunchRefTypeAgentExtension {
+	if err != nil {
+		base.Outcome = "unsupported"
+		return base, nil
+	}
+	if launchRef["kind"] == agenttargetbiz.LaunchRefTypeBuiltinLocal {
+		if service.ProbeLocal == nil {
+			base.Outcome = "unsupported"
+			return base, nil
+		}
+		local := service.ProbeLocal(ctx, target.Provider)
+		local.SchemaVersion = AccountUsageSchemaVersion
+		local.AgentTargetID = target.ID
+		local.Provider = target.Provider
+		if local.CapturedAtUnixMS <= 0 {
+			local.CapturedAtUnixMS = capturedAtUnixMS
+		}
+		validated, err := validateNativeAccountUsageResult(local)
+		if err != nil {
+			base.Outcome = "error"
+			base.ErrorCode = "parse_failed"
+			return base, nil
+		}
+		validated.AgentTargetID = target.ID
+		validated.Provider = target.Provider
+		return validated, nil
+	}
+	if launchRef["kind"] != agenttargetbiz.LaunchRefTypeAgentExtension || service.Manager == nil {
 		base.Outcome = "unsupported"
 		return base, nil
 	}
@@ -182,6 +215,40 @@ func (service AccountUsageService) now() time.Time {
 		return service.Now().UTC()
 	}
 	return time.Now().UTC()
+}
+
+func validateNativeAccountUsageResult(input AccountUsageResult) (AccountUsageResult, error) {
+	quotas := make([]accountUsageQuotaPayload, 0, len(input.Quotas))
+	for _, quota := range input.Quotas {
+		percent := quota.PercentRemaining
+		quotas = append(quotas, accountUsageQuotaPayload{
+			QuotaType: quota.QuotaType, PercentRemaining: &percent,
+			AmountRemaining: quota.AmountRemaining, AmountLimit: quota.AmountLimit,
+			AmountUnit: quota.AmountUnit, ResetsAtUnixMS: quota.ResetsAtUnixMS,
+			ModelName: quota.ModelName,
+		})
+	}
+	wire := map[string]any{
+		"schemaVersion": AccountUsageSchemaVersion,
+		"outcome":       input.Outcome, "capturedAtUnixMs": input.CapturedAtUnixMS,
+	}
+	if input.BillingMode != "" {
+		wire["billingMode"] = input.BillingMode
+	}
+	if input.QuotaState != "" {
+		wire["quotaState"] = input.QuotaState
+	}
+	if input.Outcome == "available" || len(input.Quotas) > 0 {
+		wire["quotas"] = quotas
+	}
+	if input.ErrorCode != "" {
+		wire["errorCode"] = input.ErrorCode
+	}
+	encoded, err := json.Marshal(wire)
+	if err != nil {
+		return AccountUsageResult{}, err
+	}
+	return decodeAccountUsagePayload(encoded)
 }
 
 type accountUsagePayload struct {

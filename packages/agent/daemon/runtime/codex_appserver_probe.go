@@ -48,6 +48,7 @@ type CodexAppServerProbeResult struct {
 	AccountLabel       string
 	AuthMethod         string
 	RateLimitsRead     bool
+	RateLimits         map[string]any
 	CommandCategory    string
 	ProtocolCategory   string
 	AccountCategory    string
@@ -212,14 +213,27 @@ func ProbeCodexAppServer(ctx context.Context, input CodexAppServerProbeInput) (r
 		result.AuthMethod = account.AuthMethod
 	}
 	if input.ReadRateLimits {
-		if _, err := client.AccountRateLimitsRead(
+		response, err := client.AccountRateLimitsRead(
 			handshakeCtx,
 			handshakeTimeout,
 			func(context.Context, acpMessage) error { return nil },
-		); err != nil {
+		)
+		if err != nil {
 			result.RateLimitsCategory = codexProbeErrorCategory(handshakeCtx, err)
 			result.Category = result.RateLimitsCategory
 			result.Message = err.Error()
+			return result
+		}
+		if response == nil {
+			result.RateLimitsCategory = CodexProbeInvalidResponse
+			result.Category = result.RateLimitsCategory
+			result.Message = "account/rateLimits/read returned an empty response"
+			return result
+		}
+		if json.Unmarshal(response, &result.RateLimits) != nil || result.RateLimits == nil {
+			result.RateLimitsCategory = CodexProbeInvalidResponse
+			result.Category = result.RateLimitsCategory
+			result.Message = "account/rateLimits/read returned an invalid response"
 			return result
 		}
 		result.RateLimitsRead = true

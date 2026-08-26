@@ -406,6 +406,37 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [composer_live_model_discovery.go](../../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [composer_live_model_cache.go](../../../services/tuttid/service/agent/composer_live_model_cache.go)
 
+### Cursor keeps the previous account after login changes
+
+- Symptom:
+  A Cursor Agent session started under one account still reports that account's
+  entitlement after `cursor-agent login` switches `~/.cursor/cli-config.json`
+  to another account. A fresh session may use the new account while the
+  existing conversation does not.
+- Quick checks:
+  Compare the `cursor-agent` process start time with the login attempt and the
+  later prompt. If the same process accepts prompts both before and after the
+  credential file changed, provider status refresh alone did not replace the
+  credential-bearing ACP connection.
+- Root cause:
+  Provider readiness and model-cache invalidation do not mutate an already
+  running ACP process. Cursor reads its credentials at process startup, so the
+  live connection retains the previous account until it is reprepared.
+- Fix:
+  Watch the Cursor auth marker by full content fingerprint. Mark that provider's
+  live connections stale without interrupting active Turns; the next ordinary
+  idle send uses Host's atomic runtime reprepare-and-send operation, preserving
+  the canonical Session, provider session id, and history.
+- Validation:
+  Use a fake Cursor ACP process that records the auth generation at startup.
+  Replace the marker through a native-path rename, then prove the same canonical
+  session's next idle prompt runs in a new process. Also cover identical-content
+  replacement, another provider, an active Turn followed by idle retry, and a
+  second auth change racing with reprepare.
+- References:
+  [provider_auth_watcher.go](../../../services/tuttid/service/agent/provider_auth_watcher.go)
+  [provider_auth_runtime_rebind.go](../../../services/tuttid/service/agent/provider_auth_runtime_rebind.go)
+
 ### Claude SDK context window shows 200k for 1M models
 
 - Symptom:

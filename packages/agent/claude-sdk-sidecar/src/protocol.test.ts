@@ -75,6 +75,17 @@ test("sidecar protocol accepts stateless session fork requests", () => {
   }
 });
 
+test("sidecar protocol accepts stateless account usage requests", () => {
+  assert.equal(
+    parseClaudeSDKSidecarRequest({
+      version: CLAUDE_SDK_SIDECAR_PROTOCOL_VERSION,
+      type: "probe_usage",
+      payload: { cwd: "/workspace" }
+    }).type,
+    "probe_usage"
+  );
+});
+
 test("sidecar protocol rejects missing and unknown versions", () => {
   assert.throws(
     () => parseClaudeSDKSidecarRequest({ type: "exec" }),

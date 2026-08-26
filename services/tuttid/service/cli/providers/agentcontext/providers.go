@@ -100,6 +100,27 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 	preferredProvider := p.preferredAgentProvider(ctx)
 	defaultAgentTargetID := preferredAgentTargetID(targets, preferredProvider)
 
+	extensionTargets := extensionAgentTargets(targets)
+	if requestedTarget != nil {
+		if isExtensionAgentTarget(*requestedTarget) {
+			extensionTargets = []agenttargetbiz.Target{*requestedTarget}
+		} else {
+			extensionTargets = nil
+		}
+	}
+	extensionItems := agentCatalogItems(extensionTargets, nil)
+	probeCtx, cancelProbes := context.WithCancel(ctx)
+	defer cancelProbes()
+	extensionAvailabilityDone := make(chan struct{})
+	if len(extensionItems) == 0 {
+		close(extensionAvailabilityDone)
+	} else {
+		go func() {
+			defer close(extensionAvailabilityDone)
+			p.applyExtensionSetupAvailability(probeCtx, invoke.WorkspaceID, extensionItems, input.Refresh)
+		}()
+	}
+
 	availability := []agentservice.ProviderAvailability{}
 	builtinTargets := builtinAgentTargets(targets)
 	needsAvailability := len(builtinTargets) > 0
@@ -113,10 +134,22 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 		}
 		availability, err = p.sessions.ListProviderAvailability(ctx, availabilityInput)
 		if err != nil {
+			cancelProbes()
+			<-extensionAvailabilityDone
 			return nil, err
 		}
 	}
+	<-extensionAvailabilityDone
 	items := agentCatalogItems(targets, availability)
+	extensionAvailabilityByTargetID := make(map[string]agentservice.ProviderAvailability, len(extensionItems))
+	for _, item := range extensionItems {
+		extensionAvailabilityByTargetID[item.Target.ID] = item.Availability
+	}
+	for index := range items {
+		if extensionAvailability, ok := extensionAvailabilityByTargetID[items[index].Target.ID]; ok {
+			items[index].Availability = extensionAvailability
+		}
+	}
 	if defaultAgentTargetID == "" {
 		defaultAgentTargetID = fallbackDefaultAgentTargetID(items, preferredProvider)
 	}
@@ -130,7 +163,6 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 		}
 		items = filtered
 	}
-	p.applyExtensionSetupAvailability(ctx, invoke.WorkspaceID, items, input.Refresh)
 	return agentsResult{DefaultAgentTargetID: defaultAgentTargetID, Items: items}, nil
 }
 
@@ -307,6 +339,16 @@ func builtinAgentTargets(targets []agenttargetbiz.Target) []agenttargetbiz.Targe
 	result := make([]agenttargetbiz.Target, 0, len(targets))
 	for _, target := range targets {
 		if !isExtensionAgentTarget(target) {
+			result = append(result, target)
+		}
+	}
+	return result
+}
+
+func extensionAgentTargets(targets []agenttargetbiz.Target) []agenttargetbiz.Target {
+	result := make([]agenttargetbiz.Target, 0, len(targets))
+	for _, target := range targets {
+		if isExtensionAgentTarget(target) {
 			result = append(result, target)
 		}
 	}

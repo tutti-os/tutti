@@ -218,6 +218,7 @@ func TestAgentTargetSetupKeepsACPReadyWhenAccountUsageInstallFails(t *testing.T)
 	if retryRunner.callCount() != 1 {
 		t.Fatalf("account usage restart retry calls = %d, want 1", retryRunner.callCount())
 	}
+	deadline = time.Now().Add(5 * time.Second)
 	for {
 		persisted, readErr := restarted.AccountUsageFailures.Read(context.Background(), failureScope)
 		if readErr != nil {

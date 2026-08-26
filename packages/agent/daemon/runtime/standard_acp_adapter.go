@@ -105,6 +105,9 @@ type standardACPConfig struct {
 	// they become a durable interaction. Providers use it only when an option
 	// would conflict with live permission-tier semantics.
 	filterPermissionOptions func([]map[string]any) []map[string]any
+	// deferApprovalUntilToolInput holds ordinary approvals whose permission frame
+	// omits display input until the matching tool update supplies it.
+	deferApprovalUntilToolInput bool
 	// autoContinueRetriableTurnError resumes turns the agent ends "normally"
 	// right after streaming a transient network error as plain text (Cursor's
 	// "Error: RetriableError: ..." tail). See acp_auto_continue.go.

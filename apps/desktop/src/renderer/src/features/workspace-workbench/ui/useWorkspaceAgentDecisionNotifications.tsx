@@ -1,8 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AgentInteractivePromptSurface,
+  approvalOptionDisplayLabel,
   buildWorkspaceAgentInteractivePromptLabels,
+  dispatchAgentPlanPromptAction,
+  getPromptToolDetails,
   isWaitingMessageCenterItem,
+  isPromptRequestIdTitle,
+  managedAgentRoundedIconUrl,
   type WorkspaceAgentMessageCenterItem,
   type WorkspaceAgentMessageCenterModel
 } from "@tutti-os/agent-gui/agent-message-center";
@@ -17,8 +22,10 @@ import {
 import { useTranslation } from "@renderer/i18n";
 import {
   buildWorkspaceAgentDecisionNotification,
+  isWorkspaceAgentDecisionNotificationPresentable,
   type WorkspaceAgentDecisionSubmitInput
 } from "../services/workspaceAgentDecisionNotification";
+import { submitWorkspaceAgentDecision } from "../services/workspaceAgentDecisionSubmission";
 import { shouldShowWorkspaceAgentDecisionToast } from "../services/workspaceAgentDecisionToastVisibility";
 
 const WORKSPACE_AGENT_DECISION_TOAST_DURATION = Infinity;
@@ -100,10 +107,13 @@ export function useWorkspaceAgentDecisionNotifications(input: {
     );
     for (const [notificationKey, item] of newWaitingEntries) {
       const notification = buildWorkspaceAgentDecisionNotification(item, {
+        approvalOptionLabel: approvalOptionDisplayLabel,
         commandLabel: t(
           "workspace.agentMessageCenter.waitingNotificationCommand"
         ),
+        fallbackAgentIconUrl: managedAgentRoundedIconUrl(undefined),
         fallbackAgentName: t("workspace.agentGui.fallbackAgentLabel"),
+        isRequestIdTitle: isPromptRequestIdTitle,
         planModes: [
           {
             id: "acceptEdits",
@@ -123,9 +133,13 @@ export function useWorkspaceAgentDecisionNotifications(input: {
               "workspace.agentMessageCenter.waitingNotificationPlanAllowAll"
             )
           }
-        ]
+        ],
+        promptCommand: (promptInput) =>
+          getPromptToolDetails(promptInput).find(
+            (detail) => detail.kind === "command"
+          )?.value ?? null
       });
-      if (!notification || notification.options.length === 0) {
+      if (!isWorkspaceAgentDecisionNotificationPresentable(notification)) {
         continue;
       }
       if (sendBackgroundNotification) {
@@ -184,23 +198,18 @@ export function useWorkspaceAgentDecisionNotifications(input: {
               toast.dismiss(id);
             }}
             onSubmit={async (submitInput) => {
-              const target = item.pendingInteractionTarget;
-              if (!target || target.requestId !== submitInput.requestId) {
-                throw new Error("interaction_response_target_mismatch");
-              }
-              const accepted = sessionEngine.submitInteractionResponse({
-                agentSessionId: target.agentSessionId,
-                requestId: target.requestId,
-                turnId: target.turnId,
-                ...(submitInput.action ? { action: submitInput.action } : {}),
-                ...(submitInput.optionId
-                  ? { optionId: submitInput.optionId }
-                  : {}),
-                ...(submitInput.payload ? { payload: submitInput.payload } : {})
+              submitWorkspaceAgentDecision({
+                item,
+                submitInput,
+                dispatchPlanAction: (submission) =>
+                  dispatchAgentPlanPromptAction({
+                    ...submission,
+                    engine: sessionEngine,
+                    workspaceId
+                  }),
+                submitInteractionResponse: (submission) =>
+                  sessionEngine.submitInteractionResponse(submission)
               });
-              if (!accepted) {
-                throw new Error("interaction_response_not_accepted");
-              }
               activeWaitingNotificationToastIdsRef.current.delete(
                 notificationKey
               );

@@ -13,6 +13,12 @@ type workspaceAgentTargetResolverSetter interface {
 	SetWorkspaceAgentTargetResolver(agentservice.WorkspaceAgentTargetResolver)
 }
 
+type agentAuthInvalidationSessions interface {
+	InvalidateLiveComposerModels(provider string)
+	InvalidateProviderRuntimeCredentials(provider string)
+	SetLiveModelCatalogUpdated(func(provider string))
+}
+
 func configureWorkspaceAgentProjection(
 	activityProjection workspaceAgentTargetResolverSetter,
 	workspaceAgentTargets agentservice.WorkspaceAgentTargetResolver,
@@ -25,13 +31,13 @@ func configureWorkspaceAgentProjection(
 func startAgentModelInvalidationAuthWatcher(
 	replayComposition bool,
 	modelCatalog *agentservice.CachedAgentModelCatalog,
-	sessions *agentservice.Service,
+	sessions agentAuthInvalidationSessions,
 	events *eventstreamservice.Service,
 ) *agentservice.ProviderAuthWatcher {
 	// External credential switchers (for example cc-switch) rewrite provider
 	// auth/config files without notifying tuttid. Watch those files so model
-	// catalogs become stale, provider sessions are closed, and the GUI hears
-	// about it immediately.
+	// catalogs become stale, live provider connections are replaced at their
+	// next idle send boundary, and the GUI hears about it immediately.
 	publisher := eventstreamservice.AgentModelCatalogPublisher{Service: events}
 	publish := func(providers []string, event string, changes []agentservice.ProviderAuthChange) {
 		if len(providers) == 0 {
@@ -50,9 +56,9 @@ func startAgentModelInvalidationAuthWatcher(
 			"changed_files", providerAuthChangeDiagnostics(changes),
 		)
 	}
-	sessions.LiveModelCatalogUpdated = func(provider string) {
+	sessions.SetLiveModelCatalogUpdated(func(provider string) {
 		publish([]string{provider}, "agent.model_catalog.refreshed", nil)
-	}
+	})
 	watcher := startProviderAuthWatcher(
 		replayComposition,
 		nil,
@@ -61,6 +67,7 @@ func startAgentModelInvalidationAuthWatcher(
 			modelCatalog.Invalidate(providers...)
 			for _, provider := range providers {
 				sessions.InvalidateLiveComposerModels(provider)
+				sessions.InvalidateProviderRuntimeCredentials(provider)
 			}
 			publish(providers, "agent.model_catalog.invalidated", changes)
 		},

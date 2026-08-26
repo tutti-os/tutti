@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildAgentTurnSummaryPatchDiff } from "./agentTurnSummaryPatchDiff";
+import { isAgentUnifiedDiffText } from "./agentUnifiedDiffValidation";
 
 describe("buildAgentTurnSummaryPatchDiff", () => {
   it("wraps cwd-relative hunk diffs with git headers", () => {
@@ -84,6 +85,85 @@ describe("buildAgentTurnSummaryPatchDiff", () => {
     );
   });
 
+  it("builds a valid zero-old-count patch for the reported Kimi empty-file edit", () => {
+    const content =
+      "这是一个示例文本文件。\n\n当前时间：2026-08-20\n用途：测试文件创建\n\n你可以随时修改或删除此文件。";
+    const diff = buildAgentTurnSummaryPatchDiff({
+      cwd: "C:/Users/17940/Documents/tutti/test_git",
+      toolCallId: "kimi-create-note",
+      changes: [
+        {
+          path: "C:/Users/17940/Documents/tutti/test_git/note.txt",
+          changeType: "modified",
+          oldString: "",
+          newString: content
+        }
+      ]
+    });
+
+    expect(new TextEncoder().encode(content)).toHaveLength(132);
+    expect(new TextEncoder().encode(diff)).toHaveLength(218);
+    expect(diff).toContain("@@ -0,0 +1,6 @@");
+    expect(isAgentUnifiedDiffText(diff)).toBe(true);
+  });
+
+  it("normalizes CRLF while preserving a valid zero-new-count patch", () => {
+    const diff = buildAgentTurnSummaryPatchDiff({
+      cwd: "/workspace/project",
+      toolCallId: "clear-file",
+      changes: [
+        {
+          path: "/workspace/project/note.txt",
+          changeType: "modified",
+          oldString: "first\r\nsecond\r\n",
+          newString: ""
+        }
+      ]
+    });
+
+    expect(diff).toContain("@@ -1,2 +0,0 @@");
+    expect(diff).not.toContain("\r");
+    expect(isAgentUnifiedDiffText(diff)).toBe(true);
+  });
+
+  it("fails closed for binary content without an executable binary diff", () => {
+    const diff = buildAgentTurnSummaryPatchDiff({
+      cwd: "/workspace/project",
+      toolCallId: "binary-write",
+      changes: [
+        {
+          path: "/workspace/project/image.bin",
+          changeType: "modified",
+          oldString: "old\0bytes",
+          newString: "new\0bytes"
+        }
+      ]
+    });
+
+    expect(diff).toBe("");
+  });
+
+  it.each([
+    ["created", "0000000..e69de29"],
+    ["deleted", "e69de29..0000000"]
+  ] as const)("builds an exact %s empty-file patch", (changeType, index) => {
+    const diff = buildAgentTurnSummaryPatchDiff({
+      cwd: "/workspace/project",
+      toolCallId: `empty-${changeType}`,
+      changes: [
+        {
+          path: "/workspace/project/empty.txt",
+          changeType,
+          ...(changeType === "created"
+            ? { newString: "", content: "" }
+            : { oldString: "", content: "" })
+        }
+      ]
+    });
+
+    expect(diff).toContain(`index ${index}`);
+    expect(diff).not.toContain("@@");
+  });
   it.each([
     { oldString: "before\n", newString: undefined },
     { oldString: undefined, newString: "after\n" }
