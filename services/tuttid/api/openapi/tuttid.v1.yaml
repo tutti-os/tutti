@@ -32,6 +32,8 @@ tags:
   - name: app-factory
   - name: user-project
   - name: agent-quick-prompt
+  - name: global-agent-activity
+    description: Authenticated cross-room Agent Activity read model
 paths:
   /v1/health:
     get:
@@ -197,6 +199,97 @@ paths:
           $ref: "#/components/responses/UnauthorizedError"
         "405":
           $ref: "#/components/responses/MethodNotAllowedError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/global-agent-activity/filter-options:
+    get:
+      operationId: getGlobalAgentActivityFilterOptions
+      tags:
+        - global-agent-activity
+      summary: List global Agent Activity filter options
+      description: Returns rooms owned by the signed-in user plus session owner, Agent, and activity-time options. Account credentials remain daemon-owned.
+      responses:
+        "200":
+          description: Global Agent Activity filter options
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalAgentActivityFilterOptionsResponse"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailableError"
+  /v1/global-agent-activity/sessions:
+    get:
+      operationId: listGlobalAgentActivitySessions
+      tags:
+        - global-agent-activity
+      summary: List filtered global Agent Activity sessions
+      description: At least one room, session owner, Agent, or activity-time filter is required. Results are bounded by the control plane and expose truncation instead of pagination.
+      parameters:
+        - name: roomIds
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          style: form
+          explode: true
+        - name: sessionOwnerUserIds
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          style: form
+          explode: true
+        - name: agentKeys
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              minLength: 1
+          style: form
+          explode: true
+        - name: activityFromUnixMs
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+        - name: activityToUnixMs
+          in: query
+          required: false
+          schema:
+            type: integer
+            format: int64
+            minimum: 0
+      responses:
+        "200":
+          description: Filtered global Agent Activity sessions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GlobalAgentActivitySessionListResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequestError"
+        "401":
+          $ref: "#/components/responses/UnauthorizedError"
+        "405":
+          $ref: "#/components/responses/MethodNotAllowedError"
+        "502":
+          $ref: "#/components/responses/WorkspaceOperationError"
         "503":
           $ref: "#/components/responses/ServiceUnavailableError"
   /v1/account/user-presence/current-room:
@@ -7731,6 +7824,172 @@ components:
           allOf:
             - $ref: "#/components/schemas/AccountUserInfo"
           nullable: true
+    GlobalAgentActivityRoom:
+      type: object
+      additionalProperties: false
+      required:
+        - roomId
+        - name
+        - avatarUri
+      properties:
+        roomId:
+          type: string
+          minLength: 1
+        name:
+          type: string
+        avatarUri:
+          type: string
+    GlobalAgentActivitySessionOwner:
+      type: object
+      additionalProperties: false
+      required:
+        - userId
+        - displayName
+        - avatarUrl
+        - avatarFallbackUrl
+        - avatarClientTransform
+      properties:
+        userId:
+          type: string
+          minLength: 1
+        displayName:
+          type: string
+        avatarUrl:
+          type: string
+        avatarFallbackUrl:
+          type: string
+        avatarClientTransform:
+          type: boolean
+    GlobalAgentActivityAgent:
+      type: object
+      additionalProperties: false
+      required:
+        - agentKey
+        - agentTargetId
+        - provider
+        - name
+        - iconKey
+      properties:
+        agentKey:
+          type: string
+          minLength: 1
+        agentTargetId:
+          type: string
+        provider:
+          type: string
+        name:
+          type: string
+        iconKey:
+          type: string
+    GlobalAgentActivityTimeBounds:
+      type: object
+      additionalProperties: false
+      required:
+        - minActivityAtUnixMs
+        - maxActivityAtUnixMs
+        - serverNowUnixMs
+      properties:
+        minActivityAtUnixMs:
+          type: integer
+          format: int64
+        maxActivityAtUnixMs:
+          type: integer
+          format: int64
+        serverNowUnixMs:
+          type: integer
+          format: int64
+    GlobalAgentActivityFilterOptionsResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - rooms
+        - sessionOwners
+        - agents
+        - timeBounds
+      properties:
+        rooms:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivityRoom"
+        sessionOwners:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivitySessionOwner"
+        agents:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivityAgent"
+        timeBounds:
+          $ref: "#/components/schemas/GlobalAgentActivityTimeBounds"
+    GlobalAgentActivitySession:
+      type: object
+      additionalProperties: false
+      required:
+        - room
+        - workspaceId
+        - agentSessionId
+        - sessionOwner
+        - agent
+        - status
+        - title
+        - summary
+        - latestUserPrompt
+        - needsAttention
+        - activityAtUnixMs
+        - latestMessageAtUnixMs
+        - startedAtUnixMs
+        - endedAtUnixMs
+        - latestTurnId
+      properties:
+        room:
+          $ref: "#/components/schemas/GlobalAgentActivityRoom"
+        workspaceId:
+          type: string
+          minLength: 1
+        agentSessionId:
+          type: string
+          minLength: 1
+        sessionOwner:
+          $ref: "#/components/schemas/GlobalAgentActivitySessionOwner"
+        agent:
+          $ref: "#/components/schemas/GlobalAgentActivityAgent"
+        status:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        latestUserPrompt:
+          type: string
+        needsAttention:
+          type: boolean
+        activityAtUnixMs:
+          type: integer
+          format: int64
+        latestMessageAtUnixMs:
+          type: integer
+          format: int64
+        startedAtUnixMs:
+          type: integer
+          format: int64
+        endedAtUnixMs:
+          type: integer
+          format: int64
+        latestTurnId:
+          type: string
+    GlobalAgentActivitySessionListResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - items
+        - truncated
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GlobalAgentActivitySession"
+        truncated:
+          type: boolean
     AccountMembershipSummary:
       type: object
       additionalProperties: false

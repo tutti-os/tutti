@@ -89,6 +89,64 @@ export type AccountUserInfoResponse = {
   user: AccountUserInfo | null;
 };
 
+export type GlobalAgentActivityRoom = {
+  roomId: string;
+  name: string;
+  avatarUri: string;
+};
+
+export type GlobalAgentActivitySessionOwner = {
+  userId: string;
+  displayName: string;
+  avatarUrl: string;
+  avatarFallbackUrl: string;
+  avatarClientTransform: boolean;
+};
+
+export type GlobalAgentActivityAgent = {
+  agentKey: string;
+  agentTargetId: string;
+  provider: string;
+  name: string;
+  iconKey: string;
+};
+
+export type GlobalAgentActivityTimeBounds = {
+  minActivityAtUnixMs: number;
+  maxActivityAtUnixMs: number;
+  serverNowUnixMs: number;
+};
+
+export type GlobalAgentActivityFilterOptionsResponse = {
+  rooms: Array<GlobalAgentActivityRoom>;
+  sessionOwners: Array<GlobalAgentActivitySessionOwner>;
+  agents: Array<GlobalAgentActivityAgent>;
+  timeBounds: GlobalAgentActivityTimeBounds;
+};
+
+export type GlobalAgentActivitySession = {
+  room: GlobalAgentActivityRoom;
+  workspaceId: string;
+  agentSessionId: string;
+  sessionOwner: GlobalAgentActivitySessionOwner;
+  agent: GlobalAgentActivityAgent;
+  status: string;
+  title: string;
+  summary: string;
+  latestUserPrompt: string;
+  needsAttention: boolean;
+  activityAtUnixMs: number;
+  latestMessageAtUnixMs: number;
+  startedAtUnixMs: number;
+  endedAtUnixMs: number;
+  latestTurnId: string;
+};
+
+export type GlobalAgentActivitySessionListResponse = {
+  items: Array<GlobalAgentActivitySession>;
+  truncated: boolean;
+};
+
 export type AccountMembershipSummary = {
   tier_key: string;
   display_name: string;
@@ -5776,6 +5834,94 @@ export type LogoutAccountResponses = {
 
 export type LogoutAccountResponse =
   LogoutAccountResponses[keyof LogoutAccountResponses];
+
+export type GetGlobalAgentActivityFilterOptionsData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: "/v1/global-agent-activity/filter-options";
+};
+
+export type GetGlobalAgentActivityFilterOptionsErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetGlobalAgentActivityFilterOptionsError =
+  GetGlobalAgentActivityFilterOptionsErrors[keyof GetGlobalAgentActivityFilterOptionsErrors];
+
+export type GetGlobalAgentActivityFilterOptionsResponses = {
+  /**
+   * Global Agent Activity filter options
+   */
+  200: GlobalAgentActivityFilterOptionsResponse;
+};
+
+export type GetGlobalAgentActivityFilterOptionsResponse =
+  GetGlobalAgentActivityFilterOptionsResponses[keyof GetGlobalAgentActivityFilterOptionsResponses];
+
+export type ListGlobalAgentActivitySessionsData = {
+  body?: never;
+  path?: never;
+  query?: {
+    roomIds?: Array<string>;
+    sessionOwnerUserIds?: Array<string>;
+    agentKeys?: Array<string>;
+    activityFromUnixMs?: number;
+    activityToUnixMs?: number;
+  };
+  url: "/v1/global-agent-activity/sessions";
+};
+
+export type ListGlobalAgentActivitySessionsErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Workspace operation failed in an upstream adapter or command
+   */
+  502: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type ListGlobalAgentActivitySessionsError =
+  ListGlobalAgentActivitySessionsErrors[keyof ListGlobalAgentActivitySessionsErrors];
+
+export type ListGlobalAgentActivitySessionsResponses = {
+  /**
+   * Filtered global Agent Activity sessions
+   */
+  200: GlobalAgentActivitySessionListResponse;
+};
+
+export type ListGlobalAgentActivitySessionsResponse =
+  ListGlobalAgentActivitySessionsResponses[keyof ListGlobalAgentActivitySessionsResponses];
 
 export type PutAccountUserPresenceCurrentRoomData = {
   body: AccountUserPresenceCurrentRoomRequest;

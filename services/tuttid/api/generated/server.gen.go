@@ -158,6 +158,12 @@ type ServerInterface interface {
 	// Attach a WebSocket stream to daemon business events
 	// (GET /v1/events/ws)
 	AttachEventStream(w http.ResponseWriter, r *http.Request)
+	// List global Agent Activity filter options
+	// (GET /v1/global-agent-activity/filter-options)
+	GetGlobalAgentActivityFilterOptions(w http.ResponseWriter, r *http.Request)
+	// List filtered global Agent Activity sessions
+	// (GET /v1/global-agent-activity/sessions)
+	ListGlobalAgentActivitySessions(w http.ResponseWriter, r *http.Request, params ListGlobalAgentActivitySessionsParams)
 	// Get daemon health status
 	// (GET /v1/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -2243,6 +2249,117 @@ func (siw *ServerInterfaceWrapper) AttachEventStream(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AttachEventStream(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGlobalAgentActivityFilterOptions operation middleware
+func (siw *ServerInterfaceWrapper) GetGlobalAgentActivityFilterOptions(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGlobalAgentActivityFilterOptions(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGlobalAgentActivitySessions operation middleware
+func (siw *ServerInterfaceWrapper) ListGlobalAgentActivitySessions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListGlobalAgentActivitySessionsParams
+
+	// ------------- Optional query parameter "roomIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "roomIds", r.URL.Query(), &params.RoomIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "roomIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sessionOwnerUserIds" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sessionOwnerUserIds", r.URL.Query(), &params.SessionOwnerUserIds, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sessionOwnerUserIds"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sessionOwnerUserIds", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "agentKeys" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "agentKeys", r.URL.Query(), &params.AgentKeys, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "agentKeys"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "agentKeys", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "activityFromUnixMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "activityFromUnixMs", r.URL.Query(), &params.ActivityFromUnixMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "activityFromUnixMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "activityFromUnixMs", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "activityToUnixMs" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "activityToUnixMs", r.URL.Query(), &params.ActivityToUnixMs, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "activityToUnixMs"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "activityToUnixMs", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGlobalAgentActivitySessions(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11874,6 +11991,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/desktop-update-admission/refresh", wrapper.RefreshDesktopUpdateAdmission)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/desktop-update-admission/startup", wrapper.GetDesktopUpdateAdmissionStartup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/events/ws", wrapper.AttachEventStream)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/global-agent-activity/filter-options", wrapper.GetGlobalAgentActivityFilterOptions)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/global-agent-activity/sessions", wrapper.ListGlobalAgentActivitySessions)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/health", wrapper.GetHealth)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/mobile-remote-access/pairing-challenges", wrapper.StartMobileRemotePairing)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/mobile-remote-access/pairing-challenges/{challengeID}", wrapper.GetMobileRemotePairingChallenge)
@@ -16058,6 +16177,189 @@ type AttachEventStream503JSONResponse struct {
 }
 
 func (response AttachEventStream503JSONResponse) VisitAttachEventStreamResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptionsRequestObject struct {
+}
+
+type GetGlobalAgentActivityFilterOptionsResponseObject interface {
+	VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error
+}
+
+type GetGlobalAgentActivityFilterOptions200JSONResponse GlobalAgentActivityFilterOptionsResponse
+
+func (response GetGlobalAgentActivityFilterOptions200JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetGlobalAgentActivityFilterOptions401JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetGlobalAgentActivityFilterOptions405JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response GetGlobalAgentActivityFilterOptions502JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetGlobalAgentActivityFilterOptions503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetGlobalAgentActivityFilterOptions503JSONResponse) VisitGetGlobalAgentActivityFilterOptionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessionsRequestObject struct {
+	Params ListGlobalAgentActivitySessionsParams
+}
+
+type ListGlobalAgentActivitySessionsResponseObject interface {
+	VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error
+}
+
+type ListGlobalAgentActivitySessions200JSONResponse GlobalAgentActivitySessionListResponse
+
+func (response ListGlobalAgentActivitySessions200JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions400JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response ListGlobalAgentActivitySessions401JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions405JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions502JSONResponse struct {
+	WorkspaceOperationErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions502JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(502)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListGlobalAgentActivitySessions503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response ListGlobalAgentActivitySessions503JSONResponse) VisitListGlobalAgentActivitySessionsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -41324,6 +41626,12 @@ type StrictServerInterface interface {
 	// Attach a WebSocket stream to daemon business events
 	// (GET /v1/events/ws)
 	AttachEventStream(ctx context.Context, request AttachEventStreamRequestObject) (AttachEventStreamResponseObject, error)
+	// List global Agent Activity filter options
+	// (GET /v1/global-agent-activity/filter-options)
+	GetGlobalAgentActivityFilterOptions(ctx context.Context, request GetGlobalAgentActivityFilterOptionsRequestObject) (GetGlobalAgentActivityFilterOptionsResponseObject, error)
+	// List filtered global Agent Activity sessions
+	// (GET /v1/global-agent-activity/sessions)
+	ListGlobalAgentActivitySessions(ctx context.Context, request ListGlobalAgentActivitySessionsRequestObject) (ListGlobalAgentActivitySessionsResponseObject, error)
 	// Get daemon health status
 	// (GET /v1/health)
 	GetHealth(ctx context.Context, request GetHealthRequestObject) (GetHealthResponseObject, error)
@@ -43345,6 +43653,56 @@ func (sh *strictHandler) AttachEventStream(w http.ResponseWriter, r *http.Reques
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AttachEventStreamResponseObject); ok {
 		if err := validResponse.VisitAttachEventStreamResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetGlobalAgentActivityFilterOptions operation middleware
+func (sh *strictHandler) GetGlobalAgentActivityFilterOptions(w http.ResponseWriter, r *http.Request) {
+	var request GetGlobalAgentActivityFilterOptionsRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetGlobalAgentActivityFilterOptions(ctx, request.(GetGlobalAgentActivityFilterOptionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetGlobalAgentActivityFilterOptions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetGlobalAgentActivityFilterOptionsResponseObject); ok {
+		if err := validResponse.VisitGetGlobalAgentActivityFilterOptionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListGlobalAgentActivitySessions operation middleware
+func (sh *strictHandler) ListGlobalAgentActivitySessions(w http.ResponseWriter, r *http.Request, params ListGlobalAgentActivitySessionsParams) {
+	var request ListGlobalAgentActivitySessionsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListGlobalAgentActivitySessions(ctx, request.(ListGlobalAgentActivitySessionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListGlobalAgentActivitySessions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListGlobalAgentActivitySessionsResponseObject); ok {
+		if err := validResponse.VisitListGlobalAgentActivitySessionsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

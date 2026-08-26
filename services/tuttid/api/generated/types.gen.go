@@ -7775,6 +7775,71 @@ type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest struct {
 // GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection Independently loadable composer section.
 type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequestSection string
 
+// GlobalAgentActivityAgent defines model for GlobalAgentActivityAgent.
+type GlobalAgentActivityAgent struct {
+	AgentKey      string `json:"agentKey"`
+	AgentTargetId string `json:"agentTargetId"`
+	IconKey       string `json:"iconKey"`
+	Name          string `json:"name"`
+	Provider      string `json:"provider"`
+}
+
+// GlobalAgentActivityFilterOptionsResponse defines model for GlobalAgentActivityFilterOptionsResponse.
+type GlobalAgentActivityFilterOptionsResponse struct {
+	Agents        []GlobalAgentActivityAgent        `json:"agents"`
+	Rooms         []GlobalAgentActivityRoom         `json:"rooms"`
+	SessionOwners []GlobalAgentActivitySessionOwner `json:"sessionOwners"`
+	TimeBounds    GlobalAgentActivityTimeBounds     `json:"timeBounds"`
+}
+
+// GlobalAgentActivityRoom defines model for GlobalAgentActivityRoom.
+type GlobalAgentActivityRoom struct {
+	AvatarUri string `json:"avatarUri"`
+	Name      string `json:"name"`
+	RoomId    string `json:"roomId"`
+}
+
+// GlobalAgentActivitySession defines model for GlobalAgentActivitySession.
+type GlobalAgentActivitySession struct {
+	ActivityAtUnixMs      int64                           `json:"activityAtUnixMs"`
+	Agent                 GlobalAgentActivityAgent        `json:"agent"`
+	AgentSessionId        string                          `json:"agentSessionId"`
+	EndedAtUnixMs         int64                           `json:"endedAtUnixMs"`
+	LatestMessageAtUnixMs int64                           `json:"latestMessageAtUnixMs"`
+	LatestTurnId          string                          `json:"latestTurnId"`
+	LatestUserPrompt      string                          `json:"latestUserPrompt"`
+	NeedsAttention        bool                            `json:"needsAttention"`
+	Room                  GlobalAgentActivityRoom         `json:"room"`
+	SessionOwner          GlobalAgentActivitySessionOwner `json:"sessionOwner"`
+	StartedAtUnixMs       int64                           `json:"startedAtUnixMs"`
+	Status                string                          `json:"status"`
+	Summary               string                          `json:"summary"`
+	Title                 string                          `json:"title"`
+	WorkspaceId           string                          `json:"workspaceId"`
+}
+
+// GlobalAgentActivitySessionListResponse defines model for GlobalAgentActivitySessionListResponse.
+type GlobalAgentActivitySessionListResponse struct {
+	Items     []GlobalAgentActivitySession `json:"items"`
+	Truncated bool                         `json:"truncated"`
+}
+
+// GlobalAgentActivitySessionOwner defines model for GlobalAgentActivitySessionOwner.
+type GlobalAgentActivitySessionOwner struct {
+	AvatarClientTransform bool   `json:"avatarClientTransform"`
+	AvatarFallbackUrl     string `json:"avatarFallbackUrl"`
+	AvatarUrl             string `json:"avatarUrl"`
+	DisplayName           string `json:"displayName"`
+	UserId                string `json:"userId"`
+}
+
+// GlobalAgentActivityTimeBounds defines model for GlobalAgentActivityTimeBounds.
+type GlobalAgentActivityTimeBounds struct {
+	MaxActivityAtUnixMs int64 `json:"maxActivityAtUnixMs"`
+	MinActivityAtUnixMs int64 `json:"minActivityAtUnixMs"`
+	ServerNowUnixMs     int64 `json:"serverNowUnixMs"`
+}
+
 // HealthStatusResponse defines model for HealthStatusResponse.
 type HealthStatusResponse struct {
 	Service string                     `json:"service"`
@@ -10967,6 +11032,15 @@ type ListConnectorMarketCatalogParams struct {
 
 // ListConnectorMarketCatalogParamsInstallation defines parameters for ListConnectorMarketCatalog.
 type ListConnectorMarketCatalogParamsInstallation string
+
+// ListGlobalAgentActivitySessionsParams defines parameters for ListGlobalAgentActivitySessions.
+type ListGlobalAgentActivitySessionsParams struct {
+	RoomIds             *[]string `form:"roomIds,omitempty" json:"roomIds,omitempty"`
+	SessionOwnerUserIds *[]string `form:"sessionOwnerUserIds,omitempty" json:"sessionOwnerUserIds,omitempty"`
+	AgentKeys           *[]string `form:"agentKeys,omitempty" json:"agentKeys,omitempty"`
+	ActivityFromUnixMs  *int64    `form:"activityFromUnixMs,omitempty" json:"activityFromUnixMs,omitempty"`
+	ActivityToUnixMs    *int64    `form:"activityToUnixMs,omitempty" json:"activityToUnixMs,omitempty"`
+}
 
 // ListWorkspaceAgentGeneratedFilesParams defines parameters for ListWorkspaceAgentGeneratedFiles.
 type ListWorkspaceAgentGeneratedFilesParams struct {

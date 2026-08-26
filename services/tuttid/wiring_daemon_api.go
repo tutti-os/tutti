@@ -36,6 +36,7 @@ import (
 	collabrunservice "github.com/tutti-os/tutti/services/tuttid/service/collabrun"
 	computersvc "github.com/tutti-os/tutti/services/tuttid/service/computer"
 	eventstreamservice "github.com/tutti-os/tutti/services/tuttid/service/eventstream"
+	globalagentactivityservice "github.com/tutti-os/tutti/services/tuttid/service/globalagentactivity"
 	managedcredentialsservice "github.com/tutti-os/tutti/services/tuttid/service/managedcredentials"
 	managedruntime "github.com/tutti-os/tutti/services/tuttid/service/managedruntime"
 	modelbindingservice "github.com/tutti-os/tutti/services/tuttid/service/modelbinding"
@@ -219,6 +220,7 @@ func buildDaemonAPI(
 	// probe (List side) — see agentRunOutcomeReporter.
 	runOutcomes := agentStatusService.RunOutcomes
 	accountService := accountservice.NewService("")
+	globalAgentActivityService := globalagentactivityservice.NewService(accountService)
 	mobileRemoteService, err := buildMobileRemoteService(
 		agentExtensionStateDir,
 		accountService,
@@ -812,24 +814,25 @@ func buildDaemonAPI(
 	agentSessionReplayVerifier := composeAgentReplayVerifier(agentProcessComposition.replay, replaySemanticRuntime)
 
 	return tuttiapi.DaemonAPI{
-		AccountService:            accountService,
-		MobileRemoteService:       mobileRemoteService,
-		UserProjectService:        userProjectService,
-		AgentQuickPromptService:   agentQuickPromptService,
-		AgentTargetService:        agentTargets,
-		AgentTargetSetupService:   agentTargetSetup,
-		AgentTargetAccountUsage:   agentTargetAccountUsage,
-		PreferencesService:        preferences,
-		AgentMaintenanceService:   agentMaintenance,
-		ManagedCredentialsService: managedCredentials,
-		ModelPlanService:          modelPlans,
-		WorkspaceAgentService:     workspaceAgents,
-		AgentModelBindingService:  modelBindings,
-		ModelPolicyService:        modelPolicies,
-		CollaborationRunService:   collabRuns,
-		AutomationRuleService:     automationRules,
-		EventStreamService:        events,
-		WorkspaceService:          workspaceService,
+		AccountService:             accountService,
+		GlobalAgentActivityService: globalAgentActivityService,
+		MobileRemoteService:        mobileRemoteService,
+		UserProjectService:         userProjectService,
+		AgentQuickPromptService:    agentQuickPromptService,
+		AgentTargetService:         agentTargets,
+		AgentTargetSetupService:    agentTargetSetup,
+		AgentTargetAccountUsage:    agentTargetAccountUsage,
+		PreferencesService:         preferences,
+		AgentMaintenanceService:    agentMaintenance,
+		ManagedCredentialsService:  managedCredentials,
+		ModelPlanService:           modelPlans,
+		WorkspaceAgentService:      workspaceAgents,
+		AgentModelBindingService:   modelBindings,
+		ModelPolicyService:         modelPolicies,
+		CollaborationRunService:    collabRuns,
+		AutomationRuleService:      automationRules,
+		EventStreamService:         events,
+		WorkspaceService:           workspaceService,
 		WorkbenchService: workspaceservice.WorkbenchService{
 			Store: workspaceStore,
 			SnapshotReconciler: workspaceservice.TerminalWorkbenchSnapshotReconciler{
