@@ -6,6 +6,7 @@ import { agentActivityComposerOptionsFromTuttidResult } from "./composerOptions.
 test("maps daemon composer options into the canonical activity contract", () => {
   const options = agentActivityComposerOptionsFromTuttidResult("codex", {
     codexSaverModeSupported: true,
+    rtkSaverModeSupported: true,
     behavior: {
       collapseModelOptionsToLatest: false,
       modelOptionsAuthoritative: true,
@@ -13,7 +14,11 @@ test("maps daemon composer options into the canonical activity contract", () => 
       prewarmDraftSession: false,
       refreshModelOptionsAfterSettings: true
     },
-    effectiveSettings: { codexSaverMode: true, model: "gpt-5" },
+    effectiveSettings: {
+      codexSaverMode: true,
+      rtkSaverMode: true,
+      model: "gpt-5"
+    },
     modelConfig: {
       configurable: true,
       effectiveValue: "claude-haiku-4-5-20251001",
@@ -38,7 +43,9 @@ test("maps daemon composer options into the canonical activity contract", () => 
 
   assert.equal(options.provider, "codex");
   assert.equal(options.codexSaverModeSupported, true);
+  assert.equal(options.rtkSaverModeSupported, true);
   assert.equal(options.effectiveSettings?.codexSaverMode, true);
+  assert.equal(options.effectiveSettings?.rtkSaverMode, true);
   assert.equal(options.modelConfigurable, true);
   assert.equal(options.effectiveModel, "claude-haiku-4-5-20251001");
   assert.deepEqual(options.models, [

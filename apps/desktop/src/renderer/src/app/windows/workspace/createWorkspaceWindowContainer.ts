@@ -10,6 +10,7 @@ import {
 import { startPredefinePageviewAnalytics } from "@renderer/features/analytics/predefinePageviewAnalytics.ts";
 import { registerAppUpdateServices } from "@renderer/features/app-update/services/registerAppUpdateServices";
 import {
+  canRequestDesktopConnectorMarket,
   registerConnectorMarketModule,
   requestDesktopConnectorInstallAdmission
 } from "@renderer/features/connector";
@@ -229,7 +230,11 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     tuttidClient
   });
   const connectorMarketModule = registerConnectorMarketModule(registry, {
-    canRequest: () => accountService.store.user !== null,
+    canRequest: () =>
+      canRequestDesktopConnectorMarket(
+        accountService.store.user !== null,
+        desktopPreferencesService.store.featureFlags
+      ),
     client: tuttidClient,
     eventStreamClient: tuttidEventStreamClient,
     openAuthorizationUrl: (url) =>

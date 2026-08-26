@@ -443,6 +443,7 @@ export function sameComposerSettings(
 ): boolean {
   return (
     left?.codexSaverMode === right?.codexSaverMode &&
+    left?.rtkSaverMode === right?.rtkSaverMode &&
     (left?.model ?? null) === (right?.model ?? null) &&
     (left?.reasoningEffort ?? null) === (right?.reasoningEffort ?? null) &&
     (left?.speed ?? null) === (right?.speed ?? null) &&
@@ -465,6 +466,7 @@ export function buildNodeDefaultComposerSettings(
   const composerOverrides = nodeComposerOverridesForProvider(data) ?? {};
   return {
     codexSaverMode: composerOverrides.codexSaverMode === true,
+    rtkSaverMode: composerOverrides.rtkSaverMode === true,
     model: normalizeOptionalText(composerOverrides.model),
     reasoningEffort:
       (normalizeOptionalText(
@@ -522,6 +524,7 @@ export function nodeDataFromComposerSettings(
   // Generic cleanup only — provider-level clamping is owned by the daemon.
   const composerOverrides = {
     codexSaverMode: settings.codexSaverMode === true,
+    rtkSaverMode: settings.rtkSaverMode === true,
     model: normalizeOptionalText(settings.model),
     reasoningEffort: normalizeOptionalText(settings.reasoningEffort),
     speed: normalizeOptionalText(settings.speed),

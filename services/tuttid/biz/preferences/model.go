@@ -83,6 +83,7 @@ type DesktopPreferences struct {
 
 type AgentComposerDefaults struct {
 	CodexSaverMode   bool
+	RTKSaverMode     bool
 	Model            string
 	PermissionModeID string
 	ReasoningEffort  string
@@ -92,18 +93,19 @@ type AgentComposerDefaults struct {
 const (
 	AgentComposerDefaultsFieldModel            = "model"
 	AgentComposerDefaultsFieldCodexSaverMode   = "codexSaverMode"
+	AgentComposerDefaultsFieldRTKSaverMode     = "rtkSaverMode"
 	AgentComposerDefaultsFieldPermissionModeID = "permissionModeId"
 	AgentComposerDefaultsFieldReasoningEffort  = "reasoningEffort"
 	AgentComposerDefaultsFieldSpeed            = "speed"
 )
 
 // AgentComposerDefaultsPatch is a sparse field mutation. Text fields accept a
-// string or nil (clear); codexSaverMode accepts a boolean. An absent key is
+// string or nil (clear); saver mode fields accept booleans. An absent key is
 // left unchanged.
 type AgentComposerDefaultsPatch map[string]any
 
 func (d AgentComposerDefaults) IsZero() bool {
-	return !d.CodexSaverMode && d.Model == "" && d.PermissionModeID == "" && d.ReasoningEffort == "" && d.Speed == ""
+	return !d.CodexSaverMode && !d.RTKSaverMode && d.Model == "" && d.PermissionModeID == "" && d.ReasoningEffort == "" && d.Speed == ""
 }
 
 // LocalAgentTargetIDForProvider maps a provider to the id of its built-in

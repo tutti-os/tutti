@@ -28,6 +28,7 @@ export type DesktopAgentGUIHostProps = {
     | "sessionWorktreeEnabled"
     | "sessionLaunchModesByProjectSectionKey"
     | "codexSaverModeEntryEnabled"
+    | "rtkSaverModeEntryEnabled"
     | "capabilityMenuState"
     | "visibleErrorPresentationOverrides"
     | "comingSoonProviders"
@@ -121,6 +122,7 @@ export function useStableDesktopAgentGUIHostProps({
         nextHostCapabilities.sessionLaunchModesByProjectSectionKey,
       codexSaverModeEntryEnabled:
         nextHostCapabilities.codexSaverModeEntryEnabled,
+      rtkSaverModeEntryEnabled: nextHostCapabilities.rtkSaverModeEntryEnabled,
       capabilityMenuState: nextHostCapabilities.capabilityMenuState,
       visibleErrorPresentationOverrides:
         nextHostCapabilities.visibleErrorPresentationOverrides,

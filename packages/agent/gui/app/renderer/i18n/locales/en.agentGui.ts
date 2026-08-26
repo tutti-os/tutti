@@ -677,7 +677,7 @@ export const enAgentGui = {
     "Configure the browser the agent can use.",
   capabilityInlineSettingsLabel: "Settings",
   computerUseCapabilityLabel: "Computer",
-  computerUseCapabilityDescription: "Let the agent control the macOS desktop.",
+  computerUseCapabilityDescription: "Let the agent control your desktop.",
   computerUseCapabilitySetupRequiredDescription:
     "Not installed. Press Enter to open setup.",
   computerUseCapabilityAuthorizationRequiredDescription:

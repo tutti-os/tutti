@@ -3185,7 +3185,11 @@ describe("AgentTranscriptView", () => {
                   },
                   {
                     kind: "message",
-                    message: { id: "assistant-2", body: "0.0.0.0:4173`" }
+                    message: {
+                      id: "assistant-2",
+                      body: "0.0.0.0:4173`",
+                      statusKind: "working"
+                    }
                   }
                 ],
                 toolCalls: [],

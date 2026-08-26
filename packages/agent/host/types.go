@@ -94,6 +94,7 @@ type SessionTurnQuery struct {
 
 type ComposerSettings struct {
 	CodexSaverMode   bool
+	RTKSaverMode     bool
 	Model            string
 	ModelPlanID      string
 	PermissionModeID string
@@ -111,6 +112,7 @@ type ComposerSettings struct {
 
 type ComposerSettingsPatch struct {
 	CodexSaverMode   *bool
+	RTKSaverMode     *bool
 	Model            *string
 	PermissionModeID *string
 	PlanMode         *bool
@@ -301,6 +303,7 @@ type RuntimeStartInput struct {
 	BrowserUse              *bool
 	ComputerUse             *bool
 	CodexSaverMode          bool
+	RTKSaverMode            bool
 	ProviderTargetRef       map[string]any
 	RuntimeContext          map[string]any
 	ReasoningEffort         string
@@ -680,6 +683,7 @@ type CreateSessionInput struct {
 	BrowserUse             *bool
 	ComputerUse            *bool
 	CodexSaverMode         *bool
+	RTKSaverMode           *bool
 	ProviderTargetRef      map[string]any
 	ReasoningEffort        *string
 	RuntimeContext         map[string]any

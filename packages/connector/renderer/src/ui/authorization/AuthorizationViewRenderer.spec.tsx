@@ -11,6 +11,8 @@ afterEach(cleanup);
 const labels = {
   activate: "Continue",
   cancel: "Cancel",
+  copyDeviceCode: "Copy device code",
+  deviceCodeCopied: "Device code copied",
   qrCodeAlt: "Authorization QR code",
   refresh: "Refresh",
   retry: "Retry",

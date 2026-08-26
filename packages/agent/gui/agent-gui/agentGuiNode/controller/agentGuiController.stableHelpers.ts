@@ -435,6 +435,7 @@ export function areComposerSettingsDraftsEqual(
 ): boolean {
   return (
     left.codexSaverMode === right.codexSaverMode &&
+    left.rtkSaverMode === right.rtkSaverMode &&
     left.model === right.model &&
     left.reasoningEffort === right.reasoningEffort &&
     left.speed === right.speed &&

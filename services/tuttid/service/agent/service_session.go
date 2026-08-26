@@ -373,6 +373,9 @@ func composerSettingsWithRuntimeSnapshot(
 		if enabled, ok := snapshot.EffectiveConfig["codexSaverMode"].(bool); ok {
 			settings.CodexSaverMode = enabled
 		}
+		if enabled, ok := snapshot.EffectiveConfig["rtkSaverMode"].(bool); ok {
+			settings.RTKSaverMode = enabled
+		}
 	}
 	return settings
 }

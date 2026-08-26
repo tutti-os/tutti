@@ -39,6 +39,7 @@ export interface AgentHostAgentSessionPermissionConfig {
 
 export interface AgentHostAgentSessionComposerSettings {
   codexSaverMode?: boolean;
+  rtkSaverMode?: boolean;
   model?: string | null;
   modelPlanId?: string | null;
   reasoningEffort?: AgentHostAgentSessionReasoningEffort | null;

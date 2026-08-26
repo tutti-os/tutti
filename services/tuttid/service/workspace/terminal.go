@@ -120,8 +120,9 @@ func (s TerminalStream) Close() {
 }
 
 type TerminalService struct {
-	ProcessFactory TerminalProcessFactory
-	manager        *terminalSessionManager
+	ProcessFactory        TerminalProcessFactory
+	RTKExecutableResolver func(context.Context) (string, error)
+	manager               *terminalSessionManager
 }
 
 func NewTerminalService(factory TerminalProcessFactory) *TerminalService {
@@ -149,7 +150,6 @@ func (s *TerminalService) List(ctx context.Context, workspaceID string) ([]Termi
 }
 
 func (s *TerminalService) Create(ctx context.Context, workspaceID string, input CreateTerminalInput) (TerminalSession, error) {
-	_ = ctx
 	normalizedWorkspaceID, err := normalizeWorkspaceID(workspaceID)
 	if err != nil {
 		return TerminalSession{}, err
@@ -158,7 +158,21 @@ func (s *TerminalService) Create(ctx context.Context, workspaceID string, input 
 	if err != nil {
 		return TerminalSession{}, err
 	}
-	return s.ensureManager().create(normalizedWorkspaceID, cwd, input)
+	env := terminalProcessEnv(cwd)
+	if s.RTKExecutableResolver != nil {
+		rtkExecutable, resolveErr := s.RTKExecutableResolver(ctx)
+		if resolveErr != nil {
+			slog.WarnContext(ctx, "Tutti terminal RTK is unavailable; continuing without RTK", "error", resolveErr)
+		} else {
+			rtkEnv, pathErr := prependTerminalExecutablePath(env, rtkExecutable)
+			if pathErr != nil {
+				slog.WarnContext(ctx, "Tutti terminal RTK path is invalid; continuing without RTK", "error", pathErr)
+			} else {
+				env = rtkEnv
+			}
+		}
+	}
+	return s.ensureManager().create(normalizedWorkspaceID, cwd, input, env)
 }
 
 func (s *TerminalService) Get(ctx context.Context, workspaceID string, terminalID string) (TerminalSession, error) {
@@ -258,7 +272,7 @@ func (m *terminalSessionManager) list(workspaceID string) []TerminalSession {
 	return result
 }
 
-func (m *terminalSessionManager) create(workspaceID string, cwd string, input CreateTerminalInput) (TerminalSession, error) {
+func (m *terminalSessionManager) create(workspaceID string, cwd string, input CreateTerminalInput, env []string) (TerminalSession, error) {
 	cols := normalizeTerminalDimension(input.Cols, defaultTerminalCols)
 	rows := normalizeTerminalDimension(input.Rows, defaultTerminalRows)
 	shellSpec := m.processFactory.DefaultShell()
@@ -267,7 +281,7 @@ func (m *terminalSessionManager) create(workspaceID string, cwd string, input Cr
 	now := time.Now().UTC()
 	id := uuid.NewString()
 
-	process, err := m.processFactory.Start(shell, shellArgs, cwd, terminalProcessEnv(cwd), cols, rows)
+	process, err := m.processFactory.Start(shell, shellArgs, cwd, env, cols, rows)
 	if err != nil {
 		return TerminalSession{}, fmt.Errorf("start terminal pty: %w", err)
 	}

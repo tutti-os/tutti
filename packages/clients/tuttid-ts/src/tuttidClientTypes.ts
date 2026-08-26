@@ -11,6 +11,8 @@ import type {
   AccountLoginStatusResponse,
   AccountProductSummaryResponse,
   AccountUserInfo,
+  GlobalAgentActivityFilterOptionsResponse,
+  GlobalAgentActivitySessionListResponse,
   AgentProviderComposerOptionsResponse,
   AgentProviderRuntimeCatalogResponse,
   AgentProviderProbeResponse,
@@ -241,6 +243,10 @@ export interface TuttidClient
     CollaborationRunsClient,
     WorkspaceAgentConfigurationClient,
     WorkspaceIssueOrchestrationClient {
+  getGlobalAgentActivityFilterOptions(): Promise<GlobalAgentActivityFilterOptionsResponse>;
+  listGlobalAgentActivitySessions(
+    filters: GlobalAgentActivityFilters
+  ): Promise<GlobalAgentActivitySessionListResponse>;
   listAgentQuickPrompts(): Promise<AgentQuickPromptListResponse>;
   createAgentQuickPrompt(
     request: CreateAgentQuickPromptRequest
@@ -1130,6 +1136,14 @@ export interface TuttidClient
     workspaceID: string,
     terminalID: string
   ): Promise<WorkspaceTerminalSession>;
+}
+
+export interface GlobalAgentActivityFilters {
+  roomIds?: string[];
+  sessionOwnerUserIds?: string[];
+  agentKeys?: string[];
+  activityFromUnixMs?: number;
+  activityToUnixMs?: number;
 }
 
 export interface CreateTuttidClientInput {

@@ -23,6 +23,8 @@ uses: tutti-os/tutti/.github/workflows/publish-tutti-app-release.yml@main
 
 This reusable workflow builds, publishes, and verifies the app package. It can also create a release tag and publish the App Center catalog.
 
+Production callers should expose `prepare_only`. In this mode the reusable workflow builds the exact release version on the production runner, verifies it, and uploads `tutti-app-release` as a short-lived GitHub Actions artifact. It does not configure AWS, upload to the release bucket, update `latest.json` or `versions.json`, create a tag, publish the catalog, or invalidate CloudFront. Use the candidate `release.json` to show the target version and `artifactSha256` for release approval. The subsequent production dispatch must pass that candidate's Actions run ID, version, artifact SHA-256, and source Git SHA. The workflow downloads and publishes the same candidate without rebuilding it, then rejects any identity mismatch before configuring AWS.
+
 ## Version compatibility contract
 
 Declare one exact stable SemVer in `min_tutti_version` for every normal release. Choose the earliest Tutti version that contains every host API and runtime contract used by the app. Use `0.0.0` only when the app requires no minimum Tutti version. Publish a new app version when this minimum changes.
@@ -58,8 +60,34 @@ on:
         required: false
         type: boolean
         default: false
+      prepare_only:
+        description: Whether to build a production release candidate without publishing it.
+        required: false
+        type: boolean
+        default: false
+      candidate_run_id:
+        description: Actions run containing the approved production candidate.
+        required: false
+        type: string
+        default: ""
+      expected_version:
+        description: Approved production candidate version.
+        required: false
+        type: string
+        default: ""
+      expected_artifact_sha256:
+        description: Approved production candidate artifact SHA-256.
+        required: false
+        type: string
+        default: ""
+      expected_git_sha:
+        description: Approved production candidate source commit.
+        required: false
+        type: string
+        default: ""
 
 permissions:
+  actions: read
   contents: write
   id-token: write
 
@@ -74,9 +102,10 @@ jobs:
       icon_path: build/tutti-app/package/icon.png
       release_tag_prefix: <app-id>-v
       release_bump: ${{ inputs.release_bump }}
-      create_release_tag: ${{ !inputs.catalog_only }}
+      create_release_tag: ${{ !inputs.catalog_only && !inputs.prepare_only }}
       runner: ubuntu-latest
       pnpm_version: 10.26.2
+      release_tools_package: "@tutti-os/app-release-tools@<validated-version>"
       aws_region: ${{ vars.TUTTI_APP_RELEASES_PRODUCTION_AWS_REGION || vars.TUTTI_APP_RELEASES_AWS_REGION }}
       aws_role_arn: ${{ vars.TUTTI_APP_RELEASES_PRODUCTION_AWS_ROLE_ARN || vars.TUTTI_APP_RELEASES_AWS_ROLE_ARN }}
       s3_bucket: ${{ vars.TUTTI_APP_RELEASES_PRODUCTION_S3_BUCKET || vars.TUTTI_APP_RELEASES_S3_BUCKET }}
@@ -84,10 +113,17 @@ jobs:
       release_assets_base_url: ${{ vars.TUTTI_APP_RELEASES_PRODUCTION_BASE_URL || vars.TUTTI_APP_RELEASES_BASE_URL }}
       publish_catalog: ${{ inputs.publish_catalog }}
       catalog_only: ${{ inputs.catalog_only }}
+      prepare_only: ${{ inputs.prepare_only }}
+      candidate_run_id: ${{ inputs.candidate_run_id }}
+      expected_version: ${{ inputs.expected_version }}
+      expected_artifact_sha256: ${{ inputs.expected_artifact_sha256 }}
+      expected_git_sha: ${{ inputs.expected_git_sha }}
       catalog_cloudfront_distribution_id: ${{ vars.TUTTI_APP_RELEASES_PRODUCTION_CLOUDFRONT_DISTRIBUTION_ID || vars.TUTTI_APP_RELEASES_CLOUDFRONT_DISTRIBUTION_ID || '' }}
 ```
 
 Use `macos-latest` only when packaging depends on macOS-only tooling. Prefer `ubuntu-latest` for web/server-only apps.
+
+Pin `release_tools_package` to one exact published version. Candidate promotion reuses the already-built archive, while the pin keeps candidate verification reproducible. `catalog_only` and `prepare_only` are mutually exclusive; candidate identity inputs must be supplied together and are valid only on the mutating production dispatch.
 
 ## Staging Workflow Template
 
@@ -175,6 +211,7 @@ Before considering the release workflows ready:
 - Confirm `package_dir` contains `tutti.app.json`, `bootstrap.sh`, icon assets, built web assets, server bundle, and locales.
 - Confirm the app id in `tutti.app.json`, `app_id`, and `release_tag_prefix` are consistent.
 - Confirm the selected runner can build the app package.
+- Run production with `prepare_only: true`, download the candidate artifact, and verify its `release.json` version, `artifactSha256`, and `gitSha` before requesting approval. Confirm that this run created no release tag and changed no cloud metadata. After approval, dispatch production again with the candidate run ID and all three approved identity values; confirm the publishing run downloads the candidate and skips app installation, packaging, and archive rebuilding.
 - Confirm the organization or repository variables are visible to the app repository.
 - When `min_tutti_version` is greater than `0.0.0`, confirm a lower Tutti version does not select the release.
 - Confirm the declared minimum or a newer Tutti version selects the release. For `0.0.0`, also test the oldest supported Tutti version.

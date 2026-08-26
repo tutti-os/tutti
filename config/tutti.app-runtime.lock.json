@@ -1,6 +1,6 @@
 {
   "schemaVersion": "tutti.app.runtime-lock.v1",
-  "runtimeVersion": "2026.08.0",
+  "runtimeVersion": "2026.08.1",
   "uv": {
     "version": "0.11.19"
   },
@@ -18,6 +18,40 @@
   "node": {
     "version": "22.22.3",
     "releaseBaseUrl": "https://nodejs.org/download/release/v22.22.3"
+  },
+  "rtk": {
+    "version": "0.45.0",
+    "license": {
+      "url": "https://raw.githubusercontent.com/rtk-ai/rtk/v0.45.0/LICENSE",
+      "sha256": "4044ade9c21d8b084d3d16a03375cf3b7e166b946a327bb37a3fbbdb53287cfd",
+      "sizeBytes": 10767
+    },
+    "artifacts": {
+      "darwin-arm64": {
+        "url": "https://github.com/rtk-ai/rtk/releases/download/v0.45.0/rtk-aarch64-apple-darwin.tar.gz",
+        "sha256": "064151cfc2d50b24d810b06a0af2e41b9c945e83534e4c438c3d3eae607fc3f4",
+        "sizeBytes": 3849217,
+        "executable": "rtk"
+      },
+      "darwin-amd64": {
+        "url": "https://github.com/rtk-ai/rtk/releases/download/v0.45.0/rtk-x86_64-apple-darwin.tar.gz",
+        "sha256": "9ea02f889d5a2779e4fb700df4587824303c5a57cda22e903e30058079fca0ef",
+        "sizeBytes": 4218763,
+        "executable": "rtk"
+      },
+      "linux-amd64": {
+        "url": "https://github.com/rtk-ai/rtk/releases/download/v0.45.0/rtk-x86_64-unknown-linux-musl.tar.gz",
+        "sha256": "c4c036fbf181fc55ef329786c8c17e0d427972b053b825944d968a6aafef1ba4",
+        "sizeBytes": 4546484,
+        "executable": "rtk"
+      },
+      "windows-amd64": {
+        "url": "https://github.com/rtk-ai/rtk/releases/download/v0.45.0/rtk-x86_64-pc-windows-msvc.zip",
+        "sha256": "34cea9009a8099acdaf85147b971d95f65efabfa63fb3aea7d3e2b73e6f517c3",
+        "sizeBytes": 4041041,
+        "executable": "rtk.exe"
+      }
+    }
   },
   "platforms": {
     "darwin-arm64": {

@@ -23,6 +23,7 @@ func runtimeTuttiModeSnapshot(input *host.TuttiModeTurnSnapshot) *agentruntime.T
 func runtimeSettings(settings host.ComposerSettings) *agentruntime.SessionSettings {
 	return &agentruntime.SessionSettings{
 		CodexSaverMode: settings.CodexSaverMode,
+		RTKSaverMode:   settings.RTKSaverMode,
 		Model:          settings.Model, ReasoningEffort: settings.ReasoningEffort, Speed: settings.Speed,
 		PlanMode: settings.PlanMode, BrowserUse: settings.BrowserUse, ComputerUse: settings.ComputerUse,
 		PermissionModeID: settings.PermissionModeID, ConversationDetailMode: settings.ConversationDetailMode,
@@ -32,6 +33,7 @@ func runtimeSettings(settings host.ComposerSettings) *agentruntime.SessionSettin
 func hostSettings(settings agentruntime.SessionSettings) host.ComposerSettings {
 	return host.ComposerSettings{
 		CodexSaverMode: settings.CodexSaverMode,
+		RTKSaverMode:   settings.RTKSaverMode,
 		Model:          settings.Model, ReasoningEffort: settings.ReasoningEffort, Speed: settings.Speed,
 		PlanMode: settings.PlanMode, BrowserUse: settings.BrowserUse, ComputerUse: settings.ComputerUse,
 		PermissionModeID: settings.PermissionModeID, ConversationDetailMode: settings.ConversationDetailMode,

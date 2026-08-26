@@ -141,11 +141,11 @@ func (s *Service) UpdateSettings(ctx context.Context, workspaceID string, agentS
 	if workspaceID == "" || agentSessionID == "" {
 		return Session{}, ErrInvalidArgument
 	}
-	// Saver mode installs process-start configuration and cannot be changed on
+	// Saver modes install process-start configuration and cannot be changed on
 	// an already-created Session. A new Session is required for the toggle to
 	// take effect.
-	if settings.CodexSaverMode != nil {
-		return Session{}, fmt.Errorf("%w: Codex saver mode requires a new session", ErrInvalidArgument)
+	if settings.CodexSaverMode != nil || settings.RTKSaverMode != nil {
+		return Session{}, fmt.Errorf("%w: saver mode requires a new session", ErrInvalidArgument)
 	}
 	release, err := s.acquireSessionSettingsLock(ctx, workspaceID, agentSessionID)
 	if err != nil {
