@@ -1062,6 +1062,31 @@ cannot find the path specified`, while the same repository is searchable
   [cursor_acp_interactive.go](../../../packages/agent/daemon/runtime/cursor_acp_interactive.go)
   [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
 
+### Codex is installed but Tutti keeps asking to connect or install it
+
+- Symptom:
+  Tutti shows the Codex setup surface even though the Codex executable exists.
+  Provider diagnostics report `no_ready_candidate`, and an install action may
+  start repairing the existing npm package.
+- Quick checks:
+  Correlate `agent_session.acp.request.sent method=initialize` with a later
+  `agent_session.acp.response.unmatched` for the same request ID. A response
+  arriving after the former three- or five-second probe window proves a slow
+  cold start rather than a missing CLI.
+- Root cause:
+  Codex app-server startup may take longer than the generic fast health-probe
+  budget. Runtime and authentication probes could expire before a valid
+  initialize response, causing the discovered executable to be classified as
+  unavailable and routed into installation.
+- Fix:
+  Give only Codex runtime and authentication probes a ten-second cold-start
+  budget. Other providers retain their existing bounds, and a faster Codex
+  response still returns immediately.
+- Validation:
+  Cover the Codex-specific timeout policy, its descriptor-projected auth
+  timeout, and preservation of a longer explicit test/operator timeout. Run
+  `cd services/tuttid && go test ./service/agentstatus`.
+
 ### Codex provider appears logged in with an empty auth.json
 
 - Symptom:

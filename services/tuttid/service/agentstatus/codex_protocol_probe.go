@@ -4,10 +4,21 @@ import (
 	"context"
 	"runtime"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
+
+const codexColdStartProbeTimeout = 10 * time.Second
+
+func (s Service) codexProbeTimeout() time.Duration {
+	timeout := s.probeTimeout()
+	if timeout < codexColdStartProbeTimeout {
+		return codexColdStartProbeTimeout
+	}
+	return timeout
+}
 
 func (s Service) probeCodexAppServer(ctx context.Context, command, env []string) CodexProbeEvidence {
 	if s.CodexProtocolProbe != nil {
@@ -19,7 +30,7 @@ func (s Service) probeCodexAppServer(ctx context.Context, command, env []string)
 		Host: agentruntime.HostMetadata{ClientInfo: agentruntime.ClientInfo{
 			Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0",
 		}},
-		StartupTimeout: s.probeTimeout(), HandshakeTimeout: s.probeTimeout(), ShutdownTimeout: s.probeReadyAfter(),
+		StartupTimeout: s.codexProbeTimeout(), HandshakeTimeout: s.codexProbeTimeout(), ShutdownTimeout: s.probeReadyAfter(),
 	})
 	diagnosticMessage := joinCodexProbeMessages(result.Message, result.StderrTail)
 	commandCategory, commandPackage := codexProbeClassification(result.CommandCategory, diagnosticMessage)

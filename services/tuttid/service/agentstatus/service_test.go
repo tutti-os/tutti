@@ -839,6 +839,7 @@ func TestProbeTimeoutForSpecUsesProviderSpecificColdStartBounds(t *testing.T) {
 		provider string
 		want     time.Duration
 	}{
+		{name: "codex app-server", provider: "codex", want: 10 * time.Second},
 		{name: "opencode npm shim", provider: "opencode", want: 30 * time.Second},
 		{name: "cursor npm shim", provider: "cursor", want: 35 * time.Second},
 		{name: "other standard ACP", provider: "nexight", want: 15 * time.Second},
@@ -852,8 +853,10 @@ func TestProbeTimeoutForSpecUsesProviderSpecificColdStartBounds(t *testing.T) {
 	}
 
 	configured := Service{ProbeTimeout: 40 * time.Second}
-	if got := configured.probeTimeoutForSpec(ProviderSpec{Provider: "opencode"}); got != 40*time.Second {
-		t.Fatalf("configured probe timeout = %s, want 40s", got)
+	for _, provider := range []string{"codex", "opencode"} {
+		if got := configured.probeTimeoutForSpec(ProviderSpec{Provider: provider}); got != 40*time.Second {
+			t.Fatalf("configured %s probe timeout = %s, want 40s", provider, got)
+		}
 	}
 }
 

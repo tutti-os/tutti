@@ -425,6 +425,9 @@ func (s Service) probeReadyAfterForSpec(spec ProviderSpec) time.Duration {
 // cold-start shape as Cursor and needs its own explicit bound.
 func (s Service) probeTimeoutForSpec(spec ProviderSpec) time.Duration {
 	timeout := s.probeTimeout()
+	if isCodexStatusSpec(spec) {
+		return s.codexProbeTimeout()
+	}
 	if strings.EqualFold(strings.TrimSpace(spec.Provider), "cursor") && timeout < 35*time.Second {
 		return 35 * time.Second
 	}

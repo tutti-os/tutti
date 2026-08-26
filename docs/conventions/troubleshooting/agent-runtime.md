@@ -11,6 +11,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Hermes is ready but a new Windows session reports Agent failed to start](./agent-provider-setup.md#hermes-is-ready-but-a-new-windows-session-reports-agent-failed-to-start)
 - [An extension Agent is installed in the terminal but Tutti cannot detect it](./agent-provider-setup.md#an-extension-agent-is-installed-in-the-terminal-but-tutti-cannot-detect-it)
 - [Codex `/status` shows a 5h limit for a weekly-only account window](./agent-provider-setup.md#codex-status-shows-a-5h-limit-for-a-weekly-only-account-window)
+- [Codex is installed but Tutti keeps asking to connect or install it](./agent-provider-setup.md#codex-is-installed-but-tutti-keeps-asking-to-connect-or-install-it)
 - [Bun-installed Codex works in a terminal but Tutti cannot use it](./agent-provider-setup.md#bun-installed-codex-works-in-a-terminal-but-tutti-cannot-use-it)
 - [Agent provider picker shows only Claude Code and Codex](./agent-provider-setup.md#agent-provider-picker-shows-only-claude-code-and-codex)
 - [Claude composer model list stays stale after credential switch](./agent-provider-setup.md#claude-composer-model-list-stays-stale-after-credential-switch)
