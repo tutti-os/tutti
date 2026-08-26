@@ -101,6 +101,22 @@ func RegisterRoutes(mux *http.ServeMux, routes Routes) {
 		wrapper.LogoutAccount(w, r)
 	})
 
+	mux.HandleFunc("/v1/global-agent-activity/filter-options", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.GetGlobalAgentActivityFilterOptions(w, r)
+	})
+
+	mux.HandleFunc("/v1/global-agent-activity/sessions", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			tuttitypes.WriteMethodNotAllowed(w)
+			return
+		}
+		wrapper.ListGlobalAgentActivitySessions(w, r)
+	})
+
 	mux.HandleFunc("/v1/account/user-presence/current-room", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodPut {
 			tuttitypes.WriteMethodNotAllowed(w)

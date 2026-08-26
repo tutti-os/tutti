@@ -289,6 +289,9 @@ import type {
   GetDesktopUpdateAdmissionStartupData,
   GetDesktopUpdateAdmissionStartupErrors,
   GetDesktopUpdateAdmissionStartupResponses,
+  GetGlobalAgentActivityFilterOptionsData,
+  GetGlobalAgentActivityFilterOptionsErrors,
+  GetGlobalAgentActivityFilterOptionsResponses,
   GetHealthData,
   GetHealthErrors,
   GetHealthResponses,
@@ -424,6 +427,9 @@ import type {
   ListConnectorMarketCategoriesData,
   ListConnectorMarketCategoriesErrors,
   ListConnectorMarketCategoriesResponses,
+  ListGlobalAgentActivitySessionsData,
+  ListGlobalAgentActivitySessionsErrors,
+  ListGlobalAgentActivitySessionsResponses,
   ListMobileRemotePairingsData,
   ListMobileRemotePairingsErrors,
   ListMobileRemotePairingsResponses,
@@ -966,6 +972,46 @@ export const logoutAccount = <ThrowOnError extends boolean = false>(
   >({
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/account/logout",
+    ...options
+  });
+
+/**
+ * List global Agent Activity filter options
+ *
+ * Returns rooms owned by the signed-in user plus session owner, Agent, and activity-time options. Account credentials remain daemon-owned.
+ */
+export const getGlobalAgentActivityFilterOptions = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<GetGlobalAgentActivityFilterOptionsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    GetGlobalAgentActivityFilterOptionsResponses,
+    GetGlobalAgentActivityFilterOptionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/global-agent-activity/filter-options",
+    ...options
+  });
+
+/**
+ * List filtered global Agent Activity sessions
+ *
+ * At least one room, session owner, Agent, or activity-time filter is required. Results are bounded by the control plane and expose truncation instead of pagination.
+ */
+export const listGlobalAgentActivitySessions = <
+  ThrowOnError extends boolean = false
+>(
+  options?: Options<ListGlobalAgentActivitySessionsData, ThrowOnError>
+) =>
+  (options?.client ?? client).get<
+    ListGlobalAgentActivitySessionsResponses,
+    ListGlobalAgentActivitySessionsErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/global-agent-activity/sessions",
     ...options
   });
 
