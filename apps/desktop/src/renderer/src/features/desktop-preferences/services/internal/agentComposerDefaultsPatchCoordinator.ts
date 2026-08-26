@@ -307,6 +307,7 @@ function normalizePatch(
   if (input === null) {
     return {
       codexSaverMode: false,
+      rtkSaverMode: false,
       model: null,
       permissionModeId: null,
       reasoningEffort: null,
@@ -319,8 +320,8 @@ function normalizePatch(
       continue;
     }
     const value = input[field];
-    if (field === "codexSaverMode") {
-      result.codexSaverMode = value === true;
+    if (field === "codexSaverMode" || field === "rtkSaverMode") {
+      result[field] = value === true;
       continue;
     }
     Object.assign(result, {

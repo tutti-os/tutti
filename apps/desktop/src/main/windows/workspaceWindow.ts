@@ -2,10 +2,6 @@ import { BrowserWindow, app, screen, session, shell } from "electron";
 import type { DesktopAgentDirectorySnapshot } from "../../shared/contracts/agentDirectory.ts";
 import type { DesktopAgentProviderStatusSnapshot } from "../../shared/contracts/ipc";
 import { AGENT_GUI_COLLAPSED_MIN_WIDTH_PX } from "@tutti-os/agent-gui/layout";
-import {
-  installBrowserWebviewSecurity,
-  isBrowserNodeWebviewAttach
-} from "@tutti-os/browser-node/electron-main";
 import { registerBrowserGuestWebContents } from "../browser/browserGuestRegistry";
 import { registerTuttiAssetProtocolForSession } from "../host/tuttiAssetProtocol.ts";
 import { registerWorkspaceAppGuestWebContents } from "../ipc/workspaceAppContext";
@@ -43,8 +39,7 @@ import {
   syncWorkspaceWindowTitleBarOverlayTargets
 } from "./workspaceWindowChrome.ts";
 import { supportsWorkspaceWindowCloseGuard } from "./workspaceWindowCloseGuard.ts";
-
-export const workspaceAppBrowserPartitionPrefix = "persist:tutti-app:";
+import { installWorkspaceWindowWebviewSecurity } from "./workspaceWebviewSecurity.ts";
 
 export interface CreateWorkspaceWindowOptions {
   browserNodeGuestPreloadPath?: string;
@@ -191,59 +186,29 @@ export function createWorkspaceWindow(
     primaryWindowAnalyticsClaim.claim()
   );
 
-  const pendingWorkspaceAppGuestPartitions: (string | null | undefined)[] = [];
-  installBrowserWebviewSecurity({
-    allowedSessionPartitions: {
-      additionalAllowedPrefixes: [workspaceAppBrowserPartitionPrefix]
-    },
+  installWorkspaceWindowWebviewSecurity({
+    browserNodeGuestPreloadPath: options.browserNodeGuestPreloadPath,
     contents: workspaceWindow.webContents,
     logger,
-    onGuestAttached: (guestContents) => {
-      registerBrowserGuestWebContents(workspaceWindow, guestContents, logger);
-      const workspaceAppPartition = pendingWorkspaceAppGuestPartitions.shift();
-      if (workspaceAppPartition !== undefined) {
-        registerWorkspaceAppGuestWebContents(
-          workspaceWindow,
+    ownerWindow: workspaceWindow,
+    runtime: {
+      openExternal: (url) => shell.openExternal(url),
+      registerBrowserGuest(ownerWindow, guestContents) {
+        registerBrowserGuestWebContents(ownerWindow, guestContents, logger);
+      },
+      registerWorkspaceAppAssetProtocol(partition) {
+        registerTuttiAssetProtocolForSession(session.fromPartition(partition));
+      },
+      registerWorkspaceAppGuest(ownerWindow, guestContents, partition) {
+        return registerWorkspaceAppGuestWebContents(
+          ownerWindow,
           guestContents,
           logger,
-          workspaceAppPartition
+          partition
         );
       }
     },
-    openExternal: (url) => shell.openExternal(url),
-    resolvePreload({ params }) {
-      const workspaceAppPartition = params.partition;
-      if (
-        options.workspaceAppPreloadPath &&
-        isWorkspaceAppSessionPartition(workspaceAppPartition)
-      ) {
-        registerTuttiAssetProtocolForSession(
-          session.fromPartition(workspaceAppPartition)
-        );
-        pendingWorkspaceAppGuestPartitions.push(workspaceAppPartition);
-        logger.info("applying workspace app guest preload", {
-          partition: workspaceAppPartition,
-          preloadPath: options.workspaceAppPreloadPath,
-          src: params.src ?? null
-        });
-        return options.workspaceAppPreloadPath;
-      }
-      if (
-        options.browserNodeGuestPreloadPath &&
-        isBrowserNodeWebviewAttach(params, {
-          additionalAllowedPrefixes: [workspaceAppBrowserPartitionPrefix]
-        }) &&
-        !isWorkspaceAppSessionPartition(params.partition)
-      ) {
-        logger.info("applying browser node guest preload", {
-          partition: params.partition ?? null,
-          preloadPath: options.browserNodeGuestPreloadPath,
-          src: params.src ?? null
-        });
-        return options.browserNodeGuestPreloadPath;
-      }
-      return null;
-    }
+    workspaceAppPreloadPath: options.workspaceAppPreloadPath
   });
 
   installWorkspaceWindowDevelopmentReloadShortcut(workspaceWindow, {
@@ -532,10 +497,4 @@ function sendWorkspaceWindowCloseRequest(
     desktopIpcChannels.host.window.closeRequest,
     payload
   );
-}
-
-function isWorkspaceAppSessionPartition(
-  partition: string | undefined
-): partition is string {
-  return (partition ?? "").startsWith(workspaceAppBrowserPartitionPrefix);
 }

@@ -322,9 +322,29 @@ prepare_dev_gui_runtime() {
   DEV_GUI_PID_PATH="$(resolve_tuttid_pid_path)"
   DEV_GUI_INITIAL_TUTTID_PID="$(read_tuttid_pid_file "${DEV_GUI_PID_PATH}")"
   prepare_managed_posix_shell
+  prepare_bundled_rtk
   if [[ "$(uname -s)" == "Darwin" ]]; then
     node "${ROOT_DIR}/tools/scripts/prepare-dev-login-protocol.mjs"
   fi
+}
+
+prepare_bundled_rtk() {
+  if [[ -n "${TUTTI_BUNDLED_RTK_PATH:-}" ]]; then
+    [[ -f "${TUTTI_BUNDLED_RTK_PATH}" ]] || fail \
+      "TUTTI_BUNDLED_RTK_PATH does not point to a file: ${TUTTI_BUNDLED_RTK_PATH}"
+    return
+  fi
+  local platform
+  platform="$(node -e 'const os = process.platform === "win32" ? "windows" : process.platform === "darwin" ? "darwin" : "linux"; const arch = process.arch === "arm64" ? "arm64" : "amd64"; process.stdout.write(`${os}-${arch}`)')"
+  log "preparing bundled RTK for ${platform}"
+  node "${DESKTOP_APP_DIR}/scripts/vendor-rtk.mjs" --platform="${platform}"
+  if [[ "${platform}" == windows-* ]]; then
+    export TUTTI_BUNDLED_RTK_PATH="${DESKTOP_APP_DIR}/build/rtk/rtk.exe"
+  else
+    export TUTTI_BUNDLED_RTK_PATH="${DESKTOP_APP_DIR}/build/rtk/rtk"
+  fi
+  [[ -f "${TUTTI_BUNDLED_RTK_PATH}" ]] || fail \
+    "bundled RTK executable is missing after preparation: ${TUTTI_BUNDLED_RTK_PATH}"
 }
 
 prepare_managed_posix_shell() {

@@ -132,6 +132,8 @@ type standardACPConnection struct {
 	lastPromptParamsSnapshot      map[string]any
 	promptParamsSnapshots         []map[string]any
 	promptCallCount               int
+	cancelCalls                   int
+	lastCancelParams              map[string]any
 	// promptFinalContent attaches final assistant content blocks to the
 	// session/prompt result so tests can exercise final snapshot projection.
 	promptFinalContent []map[string]any

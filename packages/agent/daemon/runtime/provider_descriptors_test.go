@@ -168,6 +168,35 @@ func TestMigratedOpenCodeDescriptorBuildsStandardACPAdapter(t *testing.T) {
 	}
 }
 
+func TestNewStandardACPAdapterAppliesTrustedApprovalDeferralBehavior(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		provider string
+		want     bool
+	}{
+		{provider: "acp:kimi-code", want: true},
+		{provider: ProviderCursor, want: false},
+	}
+	for _, test := range tests {
+		t.Run(test.provider, func(t *testing.T) {
+			t.Parallel()
+			adapterValue, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+				Provider: test.provider,
+				Name:     "extension-acp",
+				Command:  []string{"extension", "acp"},
+			}, nil, LegacyHostMetadata())
+			if err != nil {
+				t.Fatalf("NewStandardACPAdapter: %v", err)
+			}
+			adapter := adapterValue.(*standardACPAdapter)
+			if got := adapter.config.deferApprovalUntilToolInput; got != test.want {
+				t.Fatalf("deferApprovalUntilToolInput=%v, want %v", got, test.want)
+			}
+		})
+	}
+}
+
 func TestDefaultControllerRegistersOpenCodeFromMigratedDescriptor(t *testing.T) {
 	controller := NewDefaultControllerWithProcessTransport(nil, nil)
 	adapter, ok := controller.adapters[ProviderOpenCode].(*standardACPAdapter)

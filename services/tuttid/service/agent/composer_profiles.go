@@ -173,6 +173,13 @@ func composerProviderSupportsSaverSubagentMode(provider string) bool {
 	return composerProfileFor(provider).SubagentSaverMode
 }
 
+// composerProviderSupportsRTKSaverMode intentionally does not branch on a
+// provider identity. RTK is installed and injected by the provider-neutral
+// runtime preparation layer, so every resolved provider target can use it.
+func composerProviderSupportsRTKSaverMode(provider string) bool {
+	return strings.TrimSpace(agentprovider.NormalizeOpen(provider)) != ""
+}
+
 func composerProfileHasCapability(provider string, capability string) bool {
 	for _, candidate := range composerProfileFor(provider).Capabilities {
 		if candidate == capability {

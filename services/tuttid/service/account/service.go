@@ -31,6 +31,9 @@ type Service struct {
 	// and the account auth.json is available. It must be best-effort: login status
 	// polling should not block on downstream provider credential bootstrap.
 	OnLoginCompleted func(context.Context)
+	// OnLogoutStarting runs synchronously while the authenticated cookie is
+	// still readable. Hooks must be bounded and best-effort.
+	OnLogoutStarting func(context.Context)
 	// OnLogoutCompleted runs after the desktop account auth state has been
 	// cleared. It should avoid long-running work; downstream providers should
 	// clear local readiness markers before starting background network cleanup.
@@ -155,6 +158,9 @@ func (s *Service) Logout(ctx context.Context) error {
 	client, err := s.authClient()
 	if err != nil {
 		return err
+	}
+	if s.OnLogoutStarting != nil {
+		s.OnLogoutStarting(ctx)
 	}
 	if err := client.Logout(ctx); err != nil {
 		return err

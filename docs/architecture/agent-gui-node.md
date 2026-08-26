@@ -279,6 +279,22 @@ daemon validates them against current product policy and resolved provider
 capability before runtime preparation; an active Session cannot reinterpret
 them through an in-place settings update.
 
+RTK saver mode follows this launch-only path for every resolved Agent provider.
+The remembered composer value is only an opt-in; provider-neutral runtime
+preparation resolves the pinned Tutti-bundled or managed-runtime `rtk`
+executable, copies it and the canonical `RTK.md` into the exact Session runtime,
+injects the RTK rule through
+the provider's existing instruction channel, and prepend only that private
+binary directory to the Session environment. Tutti never runs an RTK package
+manager or global installer. RTK usage data, tee output, and telemetry policy
+are also Session-scoped, so enabling the mode cannot change another Agent's
+instructions, executable search path, or tracking state. The independent
+`rtkSaverMode` property carries this provider-neutral setting, while the
+existing `codexSaverMode` property remains Codex-only and continues to control
+the Luna subagent workflow. Tutti terminals receive the bundled
+RTK directory in their child PATH for explicit use, while the user-global PATH
+and external Agent processes remain unchanged.
+
 ### 2.4 Ownership map
 
 | Layer                           | Owns                                                                                          | Must not own                                      |
@@ -1509,6 +1525,10 @@ The busy-session prompt queue is ephemeral durable-intent coordination in the wo
   newer Turn
 - otherwise send-now performs exact cancel-then-send
 - user Stop pauses the queue; cancellation must not leak the next prompt
+- a durable pending-submit record does not by itself make queued backlog
+  stoppable. A queued prompt without a Turn becomes a pending-submit Stop target
+  only while that exact queue prompt is in flight or has uncertain delivery;
+  visible or suspended backlog must not keep the Composer Stop spinner alive
 - a prompt settings precondition is an explicit preparation stage, not a nested
   host effect. It serializes with direct and post-activation settings writes,
   updates the canonical Session on success, starts send before releasing later
@@ -2137,7 +2157,9 @@ enabled, the same footer renders the Tutti Mode activation switch and the slash
 palette exposes `/tutti`, including when Connectors are also enabled. When the
 flag is off, both Tutti Mode entry points are omitted. The same footer serves
 both the home hero and existing-session dock, so the two AgentGUI contexts
-cannot drift.
+cannot drift. The one-time Desktop Preferences migration resets any persisted
+`lab.tuttiMode` value to `false`; its durable migration marker preserves later
+user opt-ins instead of resetting the preference on every launch.
 The menu, selection-chip, and Palette-item implementations plus their neutral
 item contracts belong to `@tutti-os/connector-renderer/ui`. AgentGUI owns only
 the React-free capability projection under `integrations/connector`, Composer

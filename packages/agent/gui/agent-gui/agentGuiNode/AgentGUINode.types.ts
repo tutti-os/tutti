@@ -144,6 +144,8 @@ export interface AgentGUINodeHostCapabilities {
   >;
   /** Host-owned experimental opt-in for the Codex saver-mode composer entry. */
   codexSaverModeEntryEnabled?: boolean;
+  /** Host-owned experimental opt-in for the provider-neutral RTK saver mode. */
+  rtkSaverModeEntryEnabled?: boolean;
   capabilityMenuState?: AgentComposerCapabilityMenuState;
   /**
    * Keeps owner-supported Browser/Computer capability entries visible while
@@ -322,6 +324,8 @@ function agentGuiStateEquals(
         (right.composerOverrides?.model ?? null) &&
       left.composerOverrides?.codexSaverMode ===
         right.composerOverrides?.codexSaverMode &&
+      left.composerOverrides?.rtkSaverMode ===
+        right.composerOverrides?.rtkSaverMode &&
       (left.composerOverrides?.reasoningEffort ?? null) ===
         (right.composerOverrides?.reasoningEffort ?? null) &&
       (left.composerOverrides?.planMode ?? null) ===
@@ -355,6 +359,7 @@ function composerOverridesByProviderEqual(
     const rightSettings = right?.[key] ?? null;
     if (
       leftSettings?.codexSaverMode !== rightSettings?.codexSaverMode ||
+      leftSettings?.rtkSaverMode !== rightSettings?.rtkSaverMode ||
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
@@ -381,6 +386,7 @@ function composerOverridesByAgentTargetIdEqual(
     const rightSettings = right?.[key] ?? null;
     if (
       leftSettings?.codexSaverMode !== rightSettings?.codexSaverMode ||
+      leftSettings?.rtkSaverMode !== rightSettings?.rtkSaverMode ||
       (leftSettings?.model ?? null) !== (rightSettings?.model ?? null) ||
       (leftSettings?.reasoningEffort ?? null) !==
         (rightSettings?.reasoningEffort ?? null) ||
@@ -461,6 +467,7 @@ export function areAgentGUINodePropsEqual(
     pc.sessionLaunchModesByProjectSectionKey ===
       nc.sessionLaunchModesByProjectSectionKey &&
     pc.codexSaverModeEntryEnabled === nc.codexSaverModeEntryEnabled &&
+    pc.rtkSaverModeEntryEnabled === nc.rtkSaverModeEntryEnabled &&
     agentGuiStateEquals(previous.state, next.state) &&
     pf.position.x === nf.position.x &&
     pf.position.y === nf.position.y &&

@@ -67,6 +67,7 @@ const (
 	appServerNotifyThreadSettingsUpdated         = "thread/settings/updated"
 	appServerNotifyItemStarted                   = "item/started"
 	appServerNotifyItemCompleted                 = "item/completed"
+	appServerNotifyFileChangePatchUpdated        = "item/fileChange/patchUpdated"
 	appServerNotifyTokenUsage                    = "thread/tokenUsage/updated"
 	appServerNotifyPlanUpdated                   = "turn/plan/updated"
 	appServerNotifyThreadNameUpdated             = "thread/name/updated"

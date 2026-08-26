@@ -52,7 +52,9 @@ type DaemonAPI struct {
 	CollaborationRunService       CollaborationRunService
 	AutomationRuleService         AutomationRuleService
 	AccountService                AccountService
+	GlobalAgentActivityService    GlobalAgentActivityService
 	MobileRemoteService           MobileRemoteService
+	UserPresenceService           UserPresenceService
 	EventStreamService            EventStreamService
 	WorkspaceService              workspaceapi.CatalogService
 	WorkbenchService              workspaceapi.WorkbenchService

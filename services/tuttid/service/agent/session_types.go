@@ -82,6 +82,7 @@ type Service struct {
 	ProviderAvailabilityCacheTTL   time.Duration
 	CapabilityCatalogCacheTTL      time.Duration
 	LiveModelCacheTTL              time.Duration
+	LiveModelCatalogUpdated        func(string)
 	liveModelDiscoveryWaitTimeout  time.Duration
 	GeneratedFilesClock            func() time.Time
 	LiveModelDiscoveryDeleteDelay  time.Duration
@@ -107,6 +108,9 @@ type Service struct {
 	worktreeIsolationLock          *sync.RWMutex
 	generatedFilesCacheMu          sync.Mutex
 	generatedFilesCache            map[string]generatedFilesCacheEntry
+	providerRuntimeAuthMu          sync.Mutex
+	providerRuntimeAuthGeneration  map[string]uint64
+	providerRuntimeSessionAuth     map[providerRuntimeSessionAuthKey]providerRuntimeSessionAuthGeneration
 	// liveModelPersistedScanMissAtUnixMS memoizes, per live-model cache key,
 	// when the persisted-session fallback scan last found nothing, so the
 	// full session scan is not repeated on every composer-options fetch.
@@ -738,6 +742,8 @@ type CreateSessionInput struct {
 	ComputerUse           *bool
 	CodexSaverMode        *bool
 	CodexSaverModeAllowed bool
+	RTKSaverMode          *bool
+	RTKSaverModeAllowed   bool
 	ProviderTargetRef     map[string]any
 	ReasoningEffort       *string
 	// ReasoningEffortExplicit has the same compatibility semantics as

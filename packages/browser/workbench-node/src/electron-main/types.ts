@@ -176,6 +176,7 @@ export interface BrowserGuestWebContents {
     callback: (success: boolean, failureReason: string) => void
   ): void;
   reload(): void;
+  reloadIgnoringCache?(): void;
   setUserAgent?(userAgent: string): void;
   setWindowOpenHandler?(
     handler: (details: { url: string }) => BrowserGuestWindowOpenHandlerResponse

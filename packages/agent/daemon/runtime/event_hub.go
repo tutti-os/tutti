@@ -1,8 +1,18 @@
 package agentruntime
 
 import (
+	"log/slog"
 	"strings"
 	"sync"
+	"time"
+)
+
+const (
+	eventHubSubscriberQueueLimit        = 512
+	eventHubQueuePressureThreshold      = 64
+	eventHubQueuePressureLogInterval    = time.Second
+	eventHubConsumerBlockedLogThreshold = 250 * time.Millisecond
+	eventHubConsumerBlockedLogInterval  = 5 * time.Second
 )
 
 type EventHub struct {
@@ -30,7 +40,7 @@ func (h *EventHub) SubscribeWithInitial(roomID, agentSessionID string, initial [
 		close(ch)
 		return ch, func() {}
 	}
-	subscriber := newEventSubscriber()
+	subscriber := newEventSubscriber(roomID, agentSessionID)
 	h.mu.Lock()
 	if h.subscribers[key] == nil {
 		h.subscribers[key] = make(map[*eventSubscriber]struct{})
@@ -76,20 +86,35 @@ func (h *EventHub) Publish(roomID, agentSessionID string, events []StreamEvent) 
 }
 
 type eventSubscriber struct {
-	ch     chan StreamEvent
-	done   chan struct{}
-	wake   chan struct{}
-	mu     sync.Mutex
-	queue  []StreamEvent
-	head   int
-	closed bool
+	ch                        chan StreamEvent
+	done                      chan struct{}
+	wake                      chan struct{}
+	mu                        sync.Mutex
+	queue                     []queuedStreamEvent
+	head                      int
+	roomID                    string
+	agentSessionID            string
+	closed                    bool
+	overflowed                bool
+	overflowCount             uint64
+	consumerBlockedCount      uint64
+	lastQueuePressureLogAt    time.Time
+	lastQueuePressureLogDepth int
+	lastConsumerBlockedLogAt  time.Time
 }
 
-func newEventSubscriber() *eventSubscriber {
+type queuedStreamEvent struct {
+	event      StreamEvent
+	enqueuedAt time.Time
+}
+
+func newEventSubscriber(roomID, agentSessionID string) *eventSubscriber {
 	subscriber := &eventSubscriber{
-		ch:   make(chan StreamEvent, 64),
-		done: make(chan struct{}),
-		wake: make(chan struct{}, 1),
+		ch:             make(chan StreamEvent, 64),
+		done:           make(chan struct{}),
+		wake:           make(chan struct{}, 1),
+		roomID:         roomID,
+		agentSessionID: agentSessionID,
 	}
 	go subscriber.run()
 	return subscriber
@@ -99,14 +124,59 @@ func (s *eventSubscriber) enqueue(event StreamEvent) {
 	if s == nil {
 		return
 	}
+	now := time.Now()
+	var pressureLog *eventHubQueueLog
+	var overflowLog *eventHubQueueLog
 	s.mu.Lock()
-	if s.closed {
+	if s.closed || s.overflowed {
 		s.mu.Unlock()
 		return
 	}
-	s.queue = append(s.queue, event)
+	s.queue = append(s.queue, queuedStreamEvent{event: event, enqueuedAt: now})
+	if len(s.queue)-s.head > eventHubSubscriberQueueLimit {
+		queuedEvents := len(s.queue) - s.head
+		oldestAge := now.Sub(s.queue[s.head].enqueuedAt)
+		s.overflowCount++
+		overflowLog = &eventHubQueueLog{
+			queueDepth:      queuedEvents,
+			oldestAge:       oldestAge,
+			overflowCount:   s.overflowCount,
+			consumerBlocked: 0,
+		}
+		s.queue = []queuedStreamEvent{{
+			event: StreamEvent{
+				EventType: StreamEventSessionReconcileRequired,
+				Data: map[string]any{
+					"agentSessionId": s.agentSessionID,
+					"eventType":      StreamEventSessionReconcileRequired,
+					"reason":         "event_hub_queue_overflow",
+				},
+			},
+			enqueuedAt: now,
+		}}
+		s.head = 0
+		s.overflowed = true
+	} else if queueDepth := len(s.queue) - s.head; queueDepth >= eventHubQueuePressureThreshold &&
+		(now.Sub(s.lastQueuePressureLogAt) >= eventHubQueuePressureLogInterval ||
+			queueDepth >= s.lastQueuePressureLogDepth+eventHubQueuePressureThreshold) {
+		oldestAge := now.Sub(s.queue[s.head].enqueuedAt)
+		s.lastQueuePressureLogAt = now
+		s.lastQueuePressureLogDepth = queueDepth
+		pressureLog = &eventHubQueueLog{
+			queueDepth:      queueDepth,
+			oldestAge:       oldestAge,
+			overflowCount:   s.overflowCount,
+			consumerBlocked: 0,
+		}
+	}
 	s.mu.Unlock()
 	s.notify()
+	if pressureLog != nil {
+		s.logQueuePressure(*pressureLog)
+	}
+	if overflowLog != nil {
+		s.logQueueOverflow(*overflowLog)
+	}
 }
 
 func (s *eventSubscriber) run() {
@@ -116,8 +186,12 @@ func (s *eventSubscriber) run() {
 		if !ok {
 			return
 		}
+		sendStartedAt := time.Now()
 		select {
 		case s.ch <- event:
+			if blockedFor := time.Since(sendStartedAt); blockedFor >= eventHubConsumerBlockedLogThreshold {
+				s.logConsumerBlocked(blockedFor)
+			}
 		case <-s.done:
 			return
 		}
@@ -128,14 +202,14 @@ func (s *eventSubscriber) next() (StreamEvent, bool) {
 	for {
 		s.mu.Lock()
 		if s.head < len(s.queue) {
-			event := s.queue[s.head]
-			s.queue[s.head] = StreamEvent{}
+			event := s.queue[s.head].event
+			s.queue[s.head] = queuedStreamEvent{}
 			s.head++
 			s.compactQueueLocked()
 			s.mu.Unlock()
 			return event, true
 		}
-		if s.closed {
+		if s.closed || s.overflowed {
 			s.mu.Unlock()
 			return StreamEvent{}, false
 		}
@@ -147,6 +221,73 @@ func (s *eventSubscriber) next() (StreamEvent, bool) {
 			return StreamEvent{}, false
 		}
 	}
+}
+
+type eventHubQueueLog struct {
+	queueDepth      int
+	oldestAge       time.Duration
+	overflowCount   uint64
+	consumerBlocked time.Duration
+}
+
+func (s *eventSubscriber) logQueuePressure(log eventHubQueueLog) {
+	slog.Warn("agent session event subscriber queue pressure",
+		"event", "agent_session.event_hub_queue_pressure",
+		"room_id", s.roomID,
+		"agent_session_id", s.agentSessionID,
+		"queue_depth", log.queueDepth,
+		"queue_limit", eventHubSubscriberQueueLimit,
+		"oldest_event_age_ms", log.oldestAge.Milliseconds(),
+		"overflow_count", log.overflowCount,
+	)
+}
+
+func (s *eventSubscriber) logQueueOverflow(log eventHubQueueLog) {
+	slog.Warn("agent session event subscriber queue overflowed",
+		"event", "agent_session.event_hub_queue_overflow",
+		"room_id", s.roomID,
+		"agent_session_id", s.agentSessionID,
+		"queue_depth", log.queueDepth,
+		"queue_limit", eventHubSubscriberQueueLimit,
+		"oldest_event_age_ms", log.oldestAge.Milliseconds(),
+		"overflow_count", log.overflowCount,
+	)
+}
+
+func (s *eventSubscriber) logConsumerBlocked(blockedFor time.Duration) {
+	now := time.Now()
+	s.mu.Lock()
+	s.consumerBlockedCount++
+	if now.Sub(s.lastConsumerBlockedLogAt) < eventHubConsumerBlockedLogInterval {
+		s.mu.Unlock()
+		return
+	}
+	s.lastConsumerBlockedLogAt = now
+	queueDepth := len(s.queue) - s.head
+	oldestAge := time.Duration(0)
+	if queueDepth > 0 {
+		oldestAge = now.Sub(s.queue[s.head].enqueuedAt)
+	}
+	log := eventHubQueueLog{
+		queueDepth:      queueDepth,
+		oldestAge:       oldestAge,
+		overflowCount:   s.overflowCount,
+		consumerBlocked: blockedFor,
+	}
+	blockedCount := s.consumerBlockedCount
+	s.mu.Unlock()
+
+	slog.Warn("agent session event subscriber consumer blocked",
+		"event", "agent_session.event_hub_consumer_blocked",
+		"room_id", s.roomID,
+		"agent_session_id", s.agentSessionID,
+		"queue_depth", log.queueDepth,
+		"queue_limit", eventHubSubscriberQueueLimit,
+		"oldest_event_age_ms", log.oldestAge.Milliseconds(),
+		"consumer_blocked_ms", log.consumerBlocked.Milliseconds(),
+		"consumer_blocked_count", blockedCount,
+		"overflow_count", log.overflowCount,
+	)
 }
 
 func (s *eventSubscriber) compactQueueLocked() {

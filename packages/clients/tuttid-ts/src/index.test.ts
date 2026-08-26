@@ -103,6 +103,60 @@ test("shared tuttid client purges deleted Agent conversations", async () => {
   });
 });
 
+test("shared tuttid client reads global Agent Activity through the daemon", async () => {
+  const filterOptions = {
+    rooms: [{ roomId: "room-1", name: "Room 1", avatarUri: "" }],
+    sessionOwners: [],
+    agents: [],
+    timeBounds: {
+      minActivityAtUnixMs: 10,
+      maxActivityAtUnixMs: 20,
+      serverNowUnixMs: 30
+    }
+  };
+  const sessions = { items: [], truncated: true };
+  const { client, requests } = captureClient((request) =>
+    jsonResponse(
+      request.path.endsWith("filter-options") ? filterOptions : sessions
+    )
+  );
+
+  assert.deepEqual(
+    await client.getGlobalAgentActivityFilterOptions(),
+    filterOptions
+  );
+  assert.deepEqual(
+    await client.listGlobalAgentActivitySessions({
+      roomIds: ["room-1"],
+      sessionOwnerUserIds: ["owner-1"],
+      agentKeys: ["target:codex"],
+      activityFromUnixMs: 10,
+      activityToUnixMs: 20
+    }),
+    sessions
+  );
+  assertRequest(requests[0]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/global-agent-activity/filter-options",
+    query: {}
+  });
+  assertRequest(requests[1]!, {
+    authorization: null,
+    body: null,
+    method: "GET",
+    path: "/v1/global-agent-activity/sessions",
+    query: {
+      roomIds: "room-1",
+      sessionOwnerUserIds: "owner-1",
+      agentKeys: "target:codex",
+      activityFromUnixMs: "10",
+      activityToUnixMs: "20"
+    }
+  });
+});
+
 test("shared tuttid client manages workspace deleted Agent sessions", async () => {
   const listResponse = {
     workspaceId: "workspace-1",

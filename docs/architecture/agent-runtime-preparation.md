@@ -13,35 +13,31 @@ RPC service is only a transport/path/security adapter and must call the same
 `runtimeprep.DefaultPreparer`; it must not maintain separate Claude or Codex
 preparers.
 
-For a Codex Session launched with saver mode enabled, runtime preparation keeps
-the selected main-thread model unchanged and materializes a session-scoped
-default subagent role backed by `agents/luna_worker.toml`, plus a short managed
-`AGENTS.md` routing rule. The role pins only delegated work to the Luna model and reasoning
-effort. The routing rule is intentionally advisory and bounded: it favors
-self-contained work that would otherwise consume meaningful main-thread
-reasoning, context, tool calls, or waiting time and must replace rather than add
-main-thread work. One complete independent unit defaults to one worker. More
-workers are used only when multiple genuinely independent, non-trivial,
-non-overlapping units exist; implementation, tests, and compatibility are not
-automatically treated as separate units. Independent read-only or
-isolated-worktree units may run in parallel. Workers start before the main
-thread inspects their assigned questions or files, and the main thread verifies
-returned evidence narrowly instead of repeating the investigation. Write scopes
-that cannot be isolated remain sequential. A mechanical workflow stays in the
-main thread when one bounded blocking or event-driven command can complete it.
-A single worker owns the end-to-end flow only when it would otherwise require
-multiple model-driven tool turns. Delegations declare non-goals, allowed state
-changes, acceptance criteria, evidence, and retry limits. Workers use the
-minimum analysis and tools needed. Each delegation has a concrete tool-call
-budget; unless justified otherwise, read-only analysis is capped at 8 calls and
-implementation at 20. Read-only analysis does not run tests, repair an
-environment, or write files unless explicitly requested. Workers return when
-the criteria or budget are reached, and the main thread interrupts a worker if
-an intermediate message already supplies sufficient evidence instead of
-waiting for further exploration. Workers do not delegate recursively unless
-their parent task explicitly authorizes nested delegation and sets a total
-nested-worker and tool-call budget. The policy does not create an unbounded
-automatic retry loop.
+For any Agent Session launched with RTK saver mode enabled, provider-neutral
+runtime preparation keeps the selected model unchanged and resolves the pinned
+Tutti-owned `rtk` executable. Packaged Desktop supplies it from app resources;
+other hosts resolve the SHA-256-verified `rtk-saver` managed-runtime component.
+
+RTK saver mode is independent from the existing Codex saver mode. The latter
+remains Codex-only and installs the session-scoped Luna worker role and Codex
+routing policy; enabling either mode does not implicitly enable or disable the
+other.
+Preparation copies that executable and the canonical `RTK.md`
+into the exact Session runtime and prepends only the private binary directory to
+that Session's `PATH`. The common Tutti Runtime policy carries the same RTK
+instructions through each provider's native instruction channel (for example,
+Codex or OpenCode `AGENTS.md`, Claude's system-prompt file, and Cursor's plugin
+context). New providers and extensions therefore inherit the mode without a
+provider-name branch. RTK's database, tee output, and telemetry policy are also
+isolated under the Session runtime.
+
+Runtime preparation deliberately does not inspect the user PATH or install RTK
+through Homebrew, Cargo, an upstream shell script, or any other global
+toolchain. A missing or invalid bundled/managed artifact fails closed. Disabled
+Sessions receive no RTK files or environment overlay, and cleanup removes only
+the enabled Session's recorded runtime paths. The Tutti integrated terminal
+also prepends the Tutti-owned RTK directory to its child environment, but Tutti
+never mutates the operating-system or user-global PATH.
 
 Deployment differences are expressed with `DeploymentProfile` and
 `CapabilityPack`. A pack resolves policy, skills, and environment together.

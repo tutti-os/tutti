@@ -1,6 +1,9 @@
 import type { Connector } from "../../contracts/index.ts";
 import type { AuthorizationViewEnvelopeV1 } from "@tutti-os/connector-contracts/authorization/v1";
-import type { ConnectorMarketStoreState } from "../connectorMarketService.interface.ts";
+import type {
+  ConnectorMarketStoreState,
+  ConnectorMutationPhase
+} from "../connectorMarketService.interface.ts";
 import type { ConnectorMarketUiState } from "../ui-state/connectorMarketUiStateService.interface.ts";
 import type {
   ConnectorCardView,
@@ -51,7 +54,7 @@ export function buildConnectorMarketView(
       buildConnectorCardView(
         connector,
         market.operationsByConnectorKey[connector.key]?.stage ?? null,
-        market.pendingInstallationsByConnectorKey[connector.key] === true
+        connectorMutationPhase(market, connector)
       )
     ])
   );
@@ -65,15 +68,13 @@ export function buildConnectorMarketView(
         : undefined,
       uiState.dialog?.kind ?? null,
       uiState.dialog
-        ? Boolean(market.authorizingConnectorKeys[uiState.dialog.connectorKey])
-        : false,
+        ? connectorMutationPhase(
+            market,
+            market.connectorsByKey[uiState.dialog.connectorKey]
+          )
+        : null,
       uiState.dialog
         ? market.pendingAuthorizationsByConnectorKey[
-            uiState.dialog.connectorKey
-          ] === true
-        : false,
-      uiState.dialog
-        ? market.pendingInstallationsByConnectorKey[
             uiState.dialog.connectorKey
           ] === true
         : false,
@@ -130,19 +131,17 @@ function buildCatalogErrorView(
 function buildConnectorCardView(
   connector: Connector,
   operationStage: ConnectorCardView["operationStage"],
-  pendingInstallation: boolean
+  mutationPhase: ConnectorMutationPhase | null
 ): ConnectorCardView {
-  const busy = connectorMutationBusy(
-    connector,
-    operationStage,
-    pendingInstallation
-  );
+  const busy = connectorMutationBusy(connector, operationStage, mutationPhase);
   const installed = connectorHasInstalledArtifact(connector);
   const currentReleaseInstalled =
     connectorHasCurrentReleaseInstalled(connector);
   const updating =
-    connector.installation.state === "updating" ||
-    (installed && !currentReleaseInstalled && pendingInstallation);
+    connector.installation.state === "updating" || mutationPhase === "updating";
+  const installing =
+    connector.installation.state === "installing" ||
+    mutationPhase === "installing";
   const unavailable = connector.compatibility.state !== "supported";
   const connected = connector.authorization.state === "connected";
   const requiresAuthorization = !["connected", "not_required"].includes(
@@ -171,30 +170,30 @@ function buildConnectorCardView(
     iconUrl: connector.release.manifest.iconUrl,
     implementationTags: implementationTags(connector),
     installationState: connector.installation.state,
+    mutationPhase,
     operationStage,
     canUninstall: connectorCanUninstall(connector, busy),
     status: unavailable
       ? "unavailable"
-      : busy
-        ? updating
-          ? "updating"
-          : "installing"
-        : !installed
-          ? "not_installed"
-          : !currentReleaseInstalled
-            ? "update_available"
-            : requiresAuthorization
-              ? "authorization_required"
-              : "connected"
+      : updating
+        ? "updating"
+        : installing
+          ? "installing"
+          : !installed
+            ? "not_installed"
+            : !currentReleaseInstalled
+              ? "update_available"
+              : requiresAuthorization
+                ? "authorization_required"
+                : "connected"
   };
 }
 
 function buildConnectorDialogView(
   connector: Connector | undefined,
   requestKind: NonNullable<ConnectorMarketUiState["dialog"]>["kind"] | null,
-  authorizing: boolean,
+  mutationPhase: ConnectorMutationPhase | null,
   pendingAuthorization: boolean,
-  pendingInstallation: boolean,
   operationStage: ConnectorCardView["operationStage"],
   authorizationView?: AuthorizationViewEnvelopeV1
 ): ConnectorDialogView | null {
@@ -214,7 +213,7 @@ function buildConnectorDialogView(
   const mutationBusy = connectorMutationBusy(
     connector,
     operationStage,
-    pendingInstallation
+    mutationPhase
   );
   const canUninstall = connectorCanUninstall(connector, mutationBusy);
   if (requestKind === "uninstall_confirmation") {
@@ -234,20 +233,25 @@ function buildConnectorDialogView(
     return {
       ...base,
       installing:
-        pendingInstallation ||
+        mutationPhase === "installing" ||
+        mutationPhase === "updating" ||
         ["installing", "updating"].includes(connector.installation.state),
       kind: "installation",
-      updating: installed
+      updating: installed || mutationPhase === "updating"
     };
   }
-  if (!["connected", "not_required"].includes(connector.authorization.state)) {
+  if (
+    mutationPhase === "authorizing" ||
+    pendingAuthorization ||
+    !["connected", "not_required"].includes(connector.authorization.state)
+  ) {
     return {
       ...base,
       authorizationInteraction:
         connector.release.manifest.authorizationInteraction,
       authorizationKind: connector.release.manifest.authorizationKind,
       authorizationView,
-      authorizing,
+      authorizing: mutationPhase === "authorizing",
       brokeredAuthorization:
         connector.release.manifest.authorizationInteractionMode === "managed",
       kind: "authorization",
@@ -257,7 +261,8 @@ function buildConnectorDialogView(
   }
   return {
     ...base,
-    canAuthorize: connector.release.manifest.authorizationKind !== "none",
+    canAuthorize:
+      connector.release.manifest.authorizationKind !== "none" && !mutationBusy,
     canUninstall,
     details: buildDetailFields(connector),
     kind: "management"
@@ -267,10 +272,10 @@ function buildConnectorDialogView(
 function connectorMutationBusy(
   connector: Connector,
   operationStage: ConnectorCardView["operationStage"],
-  pendingInstallation: boolean
+  mutationPhase: ConnectorMutationPhase | null
 ): boolean {
   return (
-    pendingInstallation ||
+    mutationPhase !== null ||
     ["installing", "updating", "uninstalling"].includes(
       connector.installation.state
     ) ||
@@ -282,6 +287,26 @@ function connectorMutationBusy(
       "disconnecting"
     ].includes(operationStage ?? "")
   );
+}
+
+function connectorMutationPhase(
+  market: ConnectorMarketStoreState,
+  connector: Connector | undefined
+): ConnectorMutationPhase | null {
+  if (!connector) {
+    return null;
+  }
+  const projected = market.mutationPhasesByConnectorKey[connector.key];
+  if (projected) {
+    return projected;
+  }
+  if (market.authorizingConnectorKeys[connector.key]) {
+    return "authorizing";
+  }
+  if (market.pendingInstallationsByConnectorKey[connector.key]) {
+    return connectorHasInstalledArtifact(connector) ? "updating" : "installing";
+  }
+  return null;
 }
 
 function connectorCanUninstall(

@@ -1,5 +1,89 @@
 # Connector Market Troubleshooting
 
+### Authorization reports failure after the provider connected
+
+**Symptoms**
+
+- the provider login or CLI device flow completes successfully
+- the Connector projection and matching `start_authorization` operation are
+  already `connected` and `completed`
+- the renderer still shows an authorization-start failure because a later
+  continuation request returned a retryable error
+
+**Check**
+
+Separate the durable authorization receipt from runtime convergence. Match the
+snapshot operation by `clientRequestId`, Connector key, and operation kind. If
+that operation completed and the same snapshot projects the Connector as
+connected, the first bad state is the rejected continuation response, not the
+provider login. Inspect whether runtime convergence returned a revision or
+transport error after authorization state was committed.
+
+**Rule**
+
+Provider authorization completion persists its projection and durable runtime
+Desired, then returns without waiting for the runtime Observed receipt. The
+background convergence worker owns runtime retries. A renderer that loses a
+continuation response reconciles the authoritative snapshot and accepts success
+only when the matching authorization receipt and connected projection agree;
+it must not treat an unrelated connected operation as success. Keep the same
+`clientRequestId` for every continuation and retain the overall authorization
+deadline.
+
+### Disconnect fails immediately after authorization succeeds
+
+**Symptoms**
+
+- the Connector card changes to connected and exposes Disconnect while the
+  authorization success transition is still settling
+- clicking Disconnect shows a generic failure, but no
+  `disconnect_authorization` operation appears in SQLite and the credential
+  broker never receives a logout command
+- the connector projection and authorization operation are healthy, and the
+  renderer has no backend request failure
+
+**Check**
+
+Inspect the renderer Market store at the first bad frame. If the daemon
+projection is `connected` while the same Connector still has the local
+`authorizing` mutation phase, the failure is renderer command admission rather
+than GitHub CLI, the credential broker, or the daemon. Confirm that the rejected
+call is `ConnectorMarketBusyError` before backend dispatch.
+
+**Rule**
+
+Daemon projection and renderer command admission are separate inputs to one
+view state. Keep the per-Connector mutation phase reactive and derive every
+card and dialog action from it; do not expose Disconnect until the authorization
+phase is released. Keep the renderer token and daemon operation lane as the
+serialization fences. A Disconnect submitted while authorization is settling
+must wait for that action, reread authorization state, and execute at most once
+if the Connector is still connected. Do not solve this with a blind timeout or
+UI-only retry.
+
+### Device code is missed when authorization moves focus to the browser
+
+**Symptoms**
+
+- the Connector authorization dialog enters a pending state, but the user does
+  not see the device code before the browser gains focus
+- reopening the desktop makes the code visible in the existing dialog
+- the authorization operation and broker session are healthy
+
+**Check**
+
+Confirm the broker result contains a `device_code` Authorization View and the
+renderer stores that View under the current Connector dialog. Then distinguish
+the View transition from its explicit `activate` event: receiving the View must
+not invoke the host's external-navigation callback.
+
+**Rule**
+
+Keep device-code authorization in the existing dialog. Receiving the View only
+renders its code; the user-owned `activate` action opens the verification URL.
+Continue to auto-open ordinary `external_link` Views, whose URL is itself the
+next authorization step.
+
 ### A second authorize click starts another OAuth session
 
 **Symptoms**
@@ -19,8 +103,8 @@ Trace the renderer Promise separately from the Host Start. While
 `beginAuthorization` must return that Promise and must not increment Host
 starts. The dialog Authorize control stays disabled on
 `actionWaitingAuthorization`; browser OAuth must not swap that control for
-Continue when Start returns a synthesized `external_link` view. Only Cancel
-ends the round. After Cancel, the
+Continue when Start returns a synthesized `external_link` view. Cancel and the
+authorization dialog's close button both end the round. After either action, the
 next Authorize may send `replacementPolicy=replace_active` with a new
 `clientRequestId`. Continuation polling inside the same action still reuses one
 identity. Do not re-relay a provider `code` after Complete.

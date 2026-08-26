@@ -14,6 +14,7 @@ export const LAB_CONVERSATION_ACTIVITY_VIEW_FLAG =
   "lab.conversationActivityView";
 export const LAB_AGENT_SIDE_CONVERSATION_FLAG = "lab.agentSideConversation";
 export const LAB_CODEX_SAVER_MODE_FLAG = "lab.codexSaverMode";
+export const LAB_RTK_SAVER_MODE_FLAG = "lab.rtkSaverMode";
 // Keep the durable key for existing profiles while naming the product concept
 // after Tutti's integration maturity rather than the upstream Agent maturity.
 export const EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG = "lab.previewAgents";
@@ -201,6 +202,13 @@ export const FEATURE_FLAG_DEFINITIONS: readonly FeatureFlagDefinition[] = [
     group: "developer",
     labelKey: "workspace.settings.developer.codexSaverModeLabel",
     descriptionKey: "workspace.settings.developer.codexSaverModeDescription"
+  },
+  {
+    key: LAB_RTK_SAVER_MODE_FLAG,
+    default: false,
+    group: "developer",
+    labelKey: "workspace.settings.developer.rtkSaverModeLabel",
+    descriptionKey: "workspace.settings.developer.rtkSaverModeDescription"
   },
   {
     key: EARLY_ACCESS_AGENT_INTEGRATIONS_FLAG,

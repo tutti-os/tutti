@@ -51,6 +51,7 @@ type fakeRuntime struct {
 	goalRecoveryPolicyHook  func(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
 	goalGenerationFences    []RuntimeGoalGenerationFenceInput
 	goalGenerationFenceHook func(context.Context, RuntimeGoalGenerationFenceInput) error
+	resumeErr               error
 	resumeCalls             []RuntimeResumeInput
 	sessions                map[string]ProviderRuntimeSession
 	disconnectedSessions    map[string]bool
@@ -411,6 +412,7 @@ type fakeSectionReader struct {
 	lastBatchDeleteInput        agentactivitybiz.DeleteSessionsBatchInput
 	batchDeleteResult           agentactivitybiz.DeleteSessionsBatchResult
 	batchDeleteErr              error
+	clearPlanErr                error
 	batchDeleteCalls            int
 	sectionBatchCalls           int
 	singleSectionCalls          int
@@ -485,7 +487,10 @@ func (*fakeSectionReader) PlanDeleteSessions(_ context.Context, input agentactiv
 	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: input.WorkspaceID, SessionIDs: input.SessionIDs}, nil
 }
 
-func (*fakeSectionReader) PlanClearSessions(_ context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+func (f *fakeSectionReader) PlanClearSessions(_ context.Context, workspaceID string) (agentactivitybiz.DeleteSessionsPlan, error) {
+	if f.clearPlanErr != nil {
+		return agentactivitybiz.DeleteSessionsPlan{}, f.clearPlanErr
+	}
 	return agentactivitybiz.DeleteSessionsPlan{WorkspaceID: workspaceID}, nil
 }
 
@@ -749,6 +754,9 @@ func (f *fakeRuntime) UpdateSettings(_ context.Context, input RuntimeUpdateSetti
 
 func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (ProviderRuntimeSession, error) {
 	f.resumeCalls = append(f.resumeCalls, input)
+	if f.resumeErr != nil {
+		return ProviderRuntimeSession{}, f.resumeErr
+	}
 	session := ProviderRuntimeSession{
 		ID:                input.AgentSessionID,
 		AgentTargetID:     input.AgentTargetID,

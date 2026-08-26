@@ -7,6 +7,12 @@ import (
 	"time"
 )
 
+// SetLiveModelCatalogUpdated configures the callback invoked after a live
+// provider model catalog refresh completes.
+func (s *Service) SetLiveModelCatalogUpdated(callback func(provider string)) {
+	s.LiveModelCatalogUpdated = callback
+}
+
 var errLiveModelDiscoveryPending = errors.New("live model discovery continues in background")
 var errLiveModelDiscoverySuperseded = errors.New("live model discovery auth scope was invalidated")
 
@@ -71,6 +77,9 @@ func (s *Service) discoverLiveComposerModels(
 			return nil, errLiveModelDiscoverySuperseded
 		}
 		s.setLiveComposerModelOptionsForScope(scope, time.Now().UTC(), discovered)
+		if s.LiveModelCatalogUpdated != nil {
+			s.LiveModelCatalogUpdated(scope.provider)
+		}
 		return discovered, nil
 	})
 	waitTimeout := liveModelDiscoveryTimeout

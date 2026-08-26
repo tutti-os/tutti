@@ -35,6 +35,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
@@ -58,6 +59,7 @@ const cursorPluginDirEnv = "TUTTI_CURSOR_PLUGIN_DIR"
 const cursorPromptContextFileEnv = "TUTTI_CURSOR_PROMPT_CONTEXT_FILE"
 
 const cursorACPSessionNewRetryLimit = 1
+const cursorACPStartupTimeout = 75 * time.Second
 
 func cursorACPShouldRetrySessionNew(err error) bool {
 	var callErr *acpCallError
@@ -160,6 +162,12 @@ func newCursorAdapterFromProviderDescriptor(
 	adapter.config.commandWithSettings = cursorACPCommandWithPluginDir
 	adapter.config.initialPromptContext = cursorACPInitialPromptContext
 	adapter.config.automaticPermissionDecision = cursorAutoApprovePermissionDecision
+	adapter.config.providerPermissionRequestDecision = cursorACPQuestionMCPPermissionDecision
+	adapter.config.localToolBridge = newCursorACPQuestionMCPBridge(adapter)
+	// Cursor 2026.08 can spend about a minute initializing session-scoped HTTP
+	// MCP clients, beyond the generic 30-second ACP budget. Keep the wider bound local
+	// to Cursor so other providers retain the shared fail-fast behavior.
+	adapter.config.startupTimeout = cursorACPStartupTimeout
 	adapter.config.autoContinueRetriableTurnError = true
 	adapter.config.retrySessionNewError = cursorACPShouldRetrySessionNew
 	adapter.config.sessionNewRetryLimit = cursorACPSessionNewRetryLimit

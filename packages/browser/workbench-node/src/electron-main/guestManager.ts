@@ -48,6 +48,7 @@ import {
   resolveOptionalBrowserNodeDesiredUrl,
   resolveBrowserNodeUrlError
 } from "./guestNavigation.ts";
+import { registerBrowserGuestWindowOpenRoute } from "./guestWindowOpenRouter.ts";
 
 interface BrowserGuestSession {
   appliedColorScheme: BrowserPreferredColorScheme | null;
@@ -63,12 +64,14 @@ interface BrowserGuestSession {
     listener: (...args: unknown[]) => void;
   }>;
   navigationFailureSequence: number;
+  navigationFailed: boolean;
   navigationPolicy: BrowserNodeNavigationPolicy | null;
   nodeId: string;
   profileId: string | null;
   sessionMode: BrowserNodeSessionMode;
   sessionPartition: string | null;
   webContentsId: number | null;
+  windowOpenRouteCleanup: (() => void) | null;
 }
 
 async function applyPreferredColorSchemeToGuest(
@@ -177,18 +180,23 @@ export function createBrowserGuestManager({
       lifecycle: "cold",
       listeners: [],
       navigationFailureSequence: 0,
+      navigationFailed: false,
       navigationPolicy: input?.navigationPolicy ?? null,
       nodeId,
       profileId: input?.profileId ?? null,
       sessionMode: input?.sessionMode ?? "shared",
       sessionPartition: input?.sessionPartition ?? null,
-      webContentsId: null
+      webContentsId: null,
+      windowOpenRouteCleanup: null
     };
     sessions.set(nodeId, session);
     return session;
   };
 
-  const publishState = (session: BrowserGuestSession): void => {
+  const publishState = (
+    session: BrowserGuestSession,
+    navigationStatusCode?: number
+  ): void => {
     const contents =
       session.contents && !session.contents.isDestroyed()
         ? session.contents
@@ -200,6 +208,7 @@ export function createBrowserGuestManager({
       isLoading: contents ? contents.isLoading() : false,
       isOccluded: session.lifecycle === "cold",
       lifecycle: session.lifecycle,
+      ...(navigationStatusCode !== undefined ? { navigationStatusCode } : {}),
       nodeId: session.nodeId,
       title: contents ? session.committedTitle : null,
       type: "state",
@@ -219,6 +228,8 @@ export function createBrowserGuestManager({
       }
     }
     session.listeners = [];
+    session.windowOpenRouteCleanup?.();
+    session.windowOpenRouteCleanup = null;
     automationRegistry?.unregister(session.nodeId, contents);
     session.contents = null;
     session.appliedColorScheme = null;
@@ -270,8 +281,17 @@ export function createBrowserGuestManager({
       if (url !== undefined) {
         session.committedUrl = url || null;
       }
-      publishState(session);
-      if (!isHttpErrorStatusCode(statusCode)) {
+      const navigationFailed = isHttpErrorStatusCode(statusCode);
+      if (navigationFailed) {
+        session.navigationFailed = true;
+      } else if (
+        statusCode === -1 ||
+        (statusCode !== undefined && statusCode >= 200 && statusCode < 400)
+      ) {
+        session.navigationFailed = false;
+      }
+      publishState(session, statusCode);
+      if (!navigationFailed) {
         return;
       }
 
@@ -305,6 +325,18 @@ export function createBrowserGuestManager({
         publishState(session);
         return;
       }
+      if (isMainFrame === false) {
+        logger?.debug?.("Browser Node guest subframe navigation failed", {
+          errorCode,
+          errorDescription,
+          nodeId: session.nodeId,
+          validatedUrl,
+          webContentsId: session.webContentsId
+        });
+        publishState(session);
+        return;
+      }
+      session.navigationFailed = true;
       logger?.warn?.("Browser Node guest navigation failed", {
         currentUrl: contents.getURL(),
         desiredUrl: session.desiredUrl,
@@ -447,6 +479,7 @@ export function createBrowserGuestManager({
       if (session.navigationFailureSequence !== failureSequenceBeforeLoad) {
         return;
       }
+      session.navigationFailed = true;
       publishState(session);
       emitBrowserNavigationFailed({
         emit,
@@ -829,17 +862,20 @@ export function createBrowserGuestManager({
           session.automationTarget
         );
       }
-      contents.setWindowOpenHandler?.(({ url }) => {
-        if (isGoogleGisOAuthPopupUrl(url)) {
-          logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
-            nodeId: session.nodeId,
-            webContentsId: session.webContentsId
-          });
-          return { action: "allow" };
-        }
+      session.windowOpenRouteCleanup = registerBrowserGuestWindowOpenRoute(
+        contents,
+        ({ url }) => {
+          if (isGoogleGisOAuthPopupUrl(url)) {
+            logger?.info?.("Browser Node allowing Google GIS OAuth popup", {
+              nodeId: session.nodeId,
+              webContentsId: session.webContentsId
+            });
+            return { action: "allow" };
+          }
 
-        return emitOpenUrlFromGuest(session, url);
-      });
+          return emitOpenUrlFromGuest(session, url);
+        }
+      );
       attachGuestListeners(session);
       await applyPreferredColorSchemeToGuest(
         session,
@@ -850,9 +886,14 @@ export function createBrowserGuestManager({
       await loadDesiredUrl(session);
     },
     reload(input) {
-      const contents = sessions.get(input.nodeId)?.contents;
+      const browserSession = sessions.get(input.nodeId);
+      const contents = browserSession?.contents;
       if (contents && !contents.isDestroyed()) {
-        contents.reload();
+        if (browserSession?.navigationFailed && contents.reloadIgnoringCache) {
+          contents.reloadIgnoringCache();
+        } else {
+          contents.reload();
+        }
       }
       return Promise.resolve();
     },

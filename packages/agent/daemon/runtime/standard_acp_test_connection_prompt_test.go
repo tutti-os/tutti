@@ -174,6 +174,11 @@ func (c *standardACPConnection) promptRequest() (map[string]any, []map[string]an
 				{"optionId": "q0_opt_2", "name": "不太好", "kind": "allow_once"},
 				{"optionId": "q0_skip", "name": "Skip", "kind": "reject_once"},
 			}
+	case "approval-after-permission":
+		return map[string]any{"toolCallId": "read-file-1", "title": "Read file", "kind": "read"}, []map[string]any{
+			{"optionId": "allow", "label": "Allow", "kind": "allow_once"},
+			{"optionId": "reject", "label": "Reject", "kind": "reject_once"},
+		}
 	case "exit-plan":
 		return map[string]any{
 			"toolCallId": "interactive-plan-1",

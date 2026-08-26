@@ -18,6 +18,7 @@ func TestExtensionComposerModelValidationDegradesWhileLiveCatalogDiscoveryIsPend
 	started := make(chan struct{})
 	release := make(chan struct{})
 	closed := make(chan struct{})
+	refreshed := make(chan string, 1)
 	runtime.startHook = func(input RuntimeStartInput, session ProviderRuntimeSession) ProviderRuntimeSession {
 		if input.Visible != nil && !*input.Visible {
 			close(started)
@@ -32,6 +33,9 @@ func TestExtensionComposerModelValidationDegradesWhileLiveCatalogDiscoveryIsPend
 	}
 	runtime.closeHook = func(RuntimeCloseInput) { close(closed) }
 	service := newIsolatedAgentService(runtime)
+	service.LiveModelCatalogUpdated = func(provider string) {
+		refreshed <- provider
+	}
 	service.liveModelDiscoveryWaitTimeout = 10 * time.Millisecond
 	input := extensionComposerDiscoveryInput(t.TempDir())
 	input.Settings.Model = "gemini-pro"
@@ -75,6 +79,14 @@ func TestExtensionComposerModelValidationDegradesWhileLiveCatalogDiscoveryIsPend
 	case <-closed:
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for hidden discovery cleanup")
+	}
+	select {
+	case provider := <-refreshed:
+		if provider != input.Provider {
+			t.Fatalf("refreshed provider = %q, want %q", provider, input.Provider)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for live model catalog refresh notification")
 	}
 }
 

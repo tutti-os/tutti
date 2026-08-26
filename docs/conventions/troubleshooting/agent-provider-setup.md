@@ -406,6 +406,37 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [composer_live_model_discovery.go](../../../services/tuttid/service/agent/composer_live_model_discovery.go)
   [composer_live_model_cache.go](../../../services/tuttid/service/agent/composer_live_model_cache.go)
 
+### Cursor keeps the previous account after login changes
+
+- Symptom:
+  A Cursor Agent session started under one account still reports that account's
+  entitlement after `cursor-agent login` switches `~/.cursor/cli-config.json`
+  to another account. A fresh session may use the new account while the
+  existing conversation does not.
+- Quick checks:
+  Compare the `cursor-agent` process start time with the login attempt and the
+  later prompt. If the same process accepts prompts both before and after the
+  credential file changed, provider status refresh alone did not replace the
+  credential-bearing ACP connection.
+- Root cause:
+  Provider readiness and model-cache invalidation do not mutate an already
+  running ACP process. Cursor reads its credentials at process startup, so the
+  live connection retains the previous account until it is reprepared.
+- Fix:
+  Watch the Cursor auth marker by full content fingerprint. Mark that provider's
+  live connections stale without interrupting active Turns; the next ordinary
+  idle send uses Host's atomic runtime reprepare-and-send operation, preserving
+  the canonical Session, provider session id, and history.
+- Validation:
+  Use a fake Cursor ACP process that records the auth generation at startup.
+  Replace the marker through a native-path rename, then prove the same canonical
+  session's next idle prompt runs in a new process. Also cover identical-content
+  replacement, another provider, an active Turn followed by idle retry, and a
+  second auth change racing with reprepare.
+- References:
+  [provider_auth_watcher.go](../../../services/tuttid/service/agent/provider_auth_watcher.go)
+  [provider_auth_runtime_rebind.go](../../../services/tuttid/service/agent/provider_auth_runtime_rebind.go)
+
 ### Claude SDK context window shows 200k for 1M models
 
 - Symptom:
@@ -937,6 +968,48 @@ cannot find the path specified`, while the same repository is searchable
   [providers.go](../../../packages/agent/daemon/providerregistry/providers.go)
   [acp_provider_cursor.go](../../../packages/agent/daemon/runtime/acp_provider_cursor.go)
   [standard_acp_adapter_test.go](../../../packages/agent/daemon/runtime/standard_acp_adapter_test.go)
+
+### Cursor CLI can ask questions but Cursor ACP cannot
+
+- Symptom:
+  `cursor-agent` in its interactive CLI can pause and ask the user a structured
+  question, while the same prompt through `cursor-agent acp` either continues
+  without asking or reports that no question tool is available.
+- Quick checks:
+  Probe the raw ACP `initialize` and `session/new` exchange before changing
+  Tutti's interaction projection. Changing ACP `clientInfo`, advertising extra
+  client capabilities, or passing a root `-H x-cursor-client-type: cli` header
+  does not add the tool. If an injected HTTP MCP exposes `AskUserQuestion`,
+  confirm Cursor emits `session/request_permission` with kind `other`, then a
+  Tutti question interaction whose metadata reports
+  `providerMethod=mcp/tools/call`.
+- Root cause:
+  Cursor's ACP transport identifies itself internally as client type `acp` and
+  currently omits the interactive CLI's built-in question tool. The ACP bridge
+  contains a native `cursor/ask_question` request path, but changing initialize
+  metadata does not enable it; the transport middleware also overwrites a
+  caller-supplied client-type header.
+- Fix:
+  Preserve the native `cursor/ask_question` handler for Cursor versions that
+  expose it. For affected versions, bind Tutti's `AskUserQuestion` through the
+  session-scoped HTTP MCP capability advertised by ACP. Keep the bridge on a
+  loopback listener with a per-session bearer token, activate it only for the
+  exact running turn, and route the blocking call through the existing Tutti
+  interactive state machine. Auto-approve only Cursor's exact non-mutating
+  permission titles for this Tutti-owned tool; all other tool permissions must
+  continue through the configured permission tier.
+- Validation:
+  First assert `session/new` contains the HTTP MCP binding and that a real HTTP
+  `tools/call` blocks until `SubmitInteractive` supplies structured answers.
+  Keep native question and normal permission-tier regression coverage. Finally,
+  run a real Cursor ACP turn: require the model to call `AskUserQuestion`,
+  answer the emitted Tutti interaction, and verify the provider turn completes.
+  On Windows, this also verifies the loopback listener and local process
+  transport; retain POSIX coverage for the same platform-neutral socket path.
+- References:
+  [cursor_acp_question_mcp.go](../../../packages/agent/daemon/runtime/cursor_acp_question_mcp.go)
+  [cursor_acp_interactive.go](../../../packages/agent/daemon/runtime/cursor_acp_interactive.go)
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
 
 ### Codex provider appears logged in with an empty auth.json
 
@@ -2725,24 +2798,30 @@ invalid_grant`. Search `tuttid.log` for
 
 - Symptom:
   Cursor ACP sometimes reports `Cursor failed to start` even though
-  `initialize` succeeded. A file-read tool can also appear completed while its
-  result is `Error: Aborted` and the raw diagnostic reports a disconnected TLS
-  socket.
+  `initialize` succeeded. Newer Cursor releases can instead reach the generic
+  30-second `session/new` deadline while attaching a session-scoped HTTP MCP
+  server. A file-read tool can also appear completed while its result is
+  `Error: Aborted` and the raw diagnostic reports a disconnected TLS socket.
 - Quick checks:
   Correlate the same `agent_session` in the daemon log. The startup signature is
   `session/new` returning JSON-RPC `-32603` with
   `Failed to initialize session services`. For the read signature, inspect the
   ACP tool update's `result` and `rawErrorMessages`; do not rely only on
-  `isError`/`is_error`.
+  `isError`/`is_error`. A timeout exactly 30 seconds after `session/new` with no
+  provider response is the slower MCP-client initialization signature.
 - Root cause:
   Cursor can transiently fail its session services after the ACP initialize
   handshake. Standard ACP startup previously returned that first failure
-  immediately. Cursor can also return a successful-looking tool envelope with
-  the failure text in provider-specific fields, which the status and error
-  projection did not inspect or preserve.
+  immediately. Cursor 2026.08 can also take longer than the generic ACP startup
+  budget while it establishes the supplied HTTP MCP transport. Cursor can
+  return a successful-looking tool envelope with the failure text in
+  provider-specific fields, which the status and error projection did not
+  inspect or preserve.
 - Fix:
   Retry only the matching Cursor `session/new` error once on the same
   initialized connection, before a provider session id or user Turn exists.
+  Give Cursor a provider-scoped 75-second initialize/session-new window; do not
+  increase the shared ACP timeout for every provider.
   Normalize known aborted/socket-disconnect markers in output/error envelopes
   as `call.failed`, and promote both the result and raw transport diagnostics
   into the failed payload. Do not automatically replay an arbitrary file tool
@@ -2750,7 +2829,8 @@ invalid_grant`. Search `tuttid.log` for
 - Validation:
   Cover a transient Cursor session-service error followed by success, assert
   one process and two `session/new` calls, and reject retries for authentication,
-  unrelated internal errors, and other methods. Cover aborted/TLS tool output,
+  unrelated internal errors, and other methods. Assert the Cursor-only startup
+  bound without changing the generic ACP bound. Cover aborted/TLS tool output,
   preserve its diagnostic text, and keep normal output and input-side error
   strings from changing the status. Run the native Windows runtime lane for
   process/ACP behavior.

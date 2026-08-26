@@ -54,6 +54,12 @@ func (a *standardACPAdapter) Exec(
 		defer eventsMu.Unlock()
 		return append([]activityshared.Event(nil), events...)
 	}
+	if a.config.localToolBridge != nil {
+		deactivate := a.config.localToolBridge.ActivateTurn(session, turnID, emitEvents)
+		if deactivate != nil {
+			defer deactivate()
+		}
+	}
 
 	startEvents := []activityshared.Event{
 		newUserPromptActivityEvent(ctx, session, content, explicitDisplayPrompt, visibleText, turnID, nil),

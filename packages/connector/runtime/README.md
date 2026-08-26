@@ -16,11 +16,14 @@ rescan a mutable installation directory. MCP calls use `MCPRegistry`. Product-
 owned CLI brokers use `ImplementationHost.StartCLI`, binding each launch to the
 exact connection, Connector version, release digest, host generation, and
 derived CLI contract hash published by `RouteRegistry`. Callers provide only
-user arguments; the host resolves the verified executable, working directory,
-environment, state root, and artifact identities. Stable per-Connector shims
-remain the same-machine compatibility surface and are not an authorization
-boundary. There is no generic `connector.invoke` or arbitrary-command
-transport in the public runtime.
+the absolute per-invocation working directory and user arguments; the host
+resolves the verified executable, environment, state root, user home, and
+artifact identities from the exact current route. Product brokers that accept
+a logical or remote working directory must validate its allowed workspace
+scope and map it to a local absolute path before calling `StartCLI`. Stable
+per-Connector shims remain the same-machine compatibility surface and are not
+an authorization boundary. There is no generic `connector.invoke` or
+arbitrary-command transport in the public runtime.
 
 Every successful enabled `Reconcile` returns the bounded discovery summary for
 the exact committed connection, release digest, and host generation. This

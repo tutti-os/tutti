@@ -116,6 +116,7 @@ export interface QueuedComposerSettingsUpdate {
 
 export interface AgentGUIComposerDefaults {
   codexSaverMode?: boolean;
+  rtkSaverMode?: boolean;
   model?: string | null;
   permissionModeId?: string | null;
   reasoningEffort?: string | null;
@@ -130,6 +131,7 @@ export interface AgentGUIRememberComposerDefaultsInput {
 
 export const rememberComposerDefaultsFields = [
   "codexSaverMode",
+  "rtkSaverMode",
   "model",
   "permissionModeId",
   "reasoningEffort",
@@ -151,8 +153,8 @@ export function composerDefaultsPatchFromSettings(
   const patch: AgentGUIComposerDefaults = {};
   for (const field of rememberComposerDefaultsFields) {
     if (touched[field] === undefined) continue;
-    if (field === "codexSaverMode") {
-      patch.codexSaverMode = touched.codexSaverMode === true;
+    if (field === "codexSaverMode" || field === "rtkSaverMode") {
+      patch[field] = touched[field] === true;
       continue;
     }
     const touchedValue = normalizeOptionalText(touched[field]);
@@ -171,9 +173,9 @@ export function overlayComposerDefaults(
   if (!optimistic) return base;
   const result = { ...base };
   for (const field of rememberComposerDefaultsFields) {
-    if (field === "codexSaverMode") {
-      if (typeof optimistic.codexSaverMode === "boolean") {
-        result.codexSaverMode = optimistic.codexSaverMode;
+    if (field === "codexSaverMode" || field === "rtkSaverMode") {
+      if (typeof optimistic[field] === "boolean") {
+        result[field] = optimistic[field];
       }
       continue;
     }
@@ -191,12 +193,12 @@ export function withoutAcknowledgedComposerDefaults(
 ): AgentSessionComposerSettings {
   const result = { ...settings };
   for (const field of rememberComposerDefaultsFields) {
-    if (field === "codexSaverMode") {
+    if (field === "codexSaverMode" || field === "rtkSaverMode") {
       if (
-        typeof acknowledged.codexSaverMode === "boolean" &&
-        result.codexSaverMode === acknowledged.codexSaverMode
+        typeof acknowledged[field] === "boolean" &&
+        result[field] === acknowledged[field]
       ) {
-        delete result.codexSaverMode;
+        delete result[field];
       }
       continue;
     }
@@ -215,9 +217,9 @@ export function normalizedComposerDefaultValue(
   settings: AgentSessionComposerSettings | AgentGUIComposerDefaults,
   field: AgentGUIComposerDefaultsField
 ): string | null {
-  if (field === "codexSaverMode") {
-    return typeof settings.codexSaverMode === "boolean"
-      ? String(settings.codexSaverMode)
+  if (field === "codexSaverMode" || field === "rtkSaverMode") {
+    return typeof settings[field] === "boolean"
+      ? String(settings[field])
       : null;
   }
   return normalizeOptionalText(settings[field]);

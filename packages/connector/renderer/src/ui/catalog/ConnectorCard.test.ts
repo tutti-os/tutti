@@ -18,9 +18,23 @@ test("labels an active connector update as updating", () => {
     connectorCardBusyActionLabelKey({
       authorizationState: "failed",
       installationState: "installed",
+      mutationPhase: null,
       operationStage: null,
       status: "updating"
     }),
     "actionUpdating"
+  );
+});
+
+test("labels a settling authorization from the local mutation phase", () => {
+  assert.equal(
+    connectorCardBusyActionLabelKey({
+      authorizationState: "connected",
+      installationState: "installed",
+      mutationPhase: "authorizing",
+      operationStage: "completed",
+      status: "connected"
+    }),
+    "actionWaitingAuthorization"
   );
 });

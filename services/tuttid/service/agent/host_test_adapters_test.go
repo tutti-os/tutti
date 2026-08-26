@@ -406,6 +406,16 @@ func (a serviceHostRuntime) Resume(ctx context.Context, input RuntimeResumeInput
 	session, err := a.service.controller().Resume(ctx, input)
 	return session, normalizeRuntimeError(err)
 }
+func (a serviceHostRuntime) Reprepare(ctx context.Context, input RuntimeResumeInput) (ProviderRuntimeSession, error) {
+	repreparer, ok := a.service.controller().(interface {
+		Reprepare(context.Context, RuntimeResumeInput) (ProviderRuntimeSession, error)
+	})
+	if !ok {
+		return ProviderRuntimeSession{}, agenthost.ErrRuntimeSessionReprepareUnavailable
+	}
+	session, err := repreparer.Reprepare(ctx, input)
+	return session, normalizeRuntimeError(err)
+}
 func (a serviceHostRuntime) Session(workspaceID, sessionID string) (ProviderRuntimeSession, bool) {
 	return a.service.controller().Session(workspaceID, sessionID)
 }

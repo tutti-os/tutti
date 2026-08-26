@@ -3,6 +3,7 @@ package implementationhost
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"sync"
@@ -35,11 +36,14 @@ type CLIExecutionRequest struct {
 	ReleaseDigest    string
 	Generation       market.HostGeneration
 	CLIContractHash  string
+	WorkingDirectory string
 	Arguments        []string
 }
 
-// StartCLI launches one current managed CLI route. It never accepts an
-// executable, working directory, environment, or state path from the caller.
+// StartCLI launches one current managed CLI route. The caller supplies only
+// the per-invocation working directory and argv. The executable, environment,
+// state path, user home, and artifact identities remain owned by the exact
+// current Connector route.
 func (host *Host) StartCLI(ctx context.Context, request CLIExecutionRequest) (agentruntime.ProcessConnection, error) {
 	if err := validateCLIExecutionRequest(ctx, request); err != nil {
 		return nil, err
@@ -58,7 +62,7 @@ func (host *Host) StartCLI(ctx context.Context, request CLIExecutionRequest) (ag
 	launch := route.cliLaunch
 	arguments := append(append([]string(nil), launch.arguments...), request.Arguments...)
 	spec := connectorruntime.ConnectorProcessSpec(route.connectionID, route.connectorKey, launch.language,
-		launch.executable, launch.cwd, arguments, launch.stateDir, route.userHome, launch.artifactTrees)
+		launch.executable, request.WorkingDirectory, arguments, launch.stateDir, route.userHome, launch.artifactTrees)
 	startCtx := ctx
 	var executionDeadline time.Time
 	var cancel context.CancelFunc
@@ -78,7 +82,8 @@ func validateCLIExecutionRequest(ctx context.Context, request CLIExecutionReques
 	if ctx == nil || !hostIdentityPattern.MatchString(request.ConnectionID) || !hostIdentityPattern.MatchString(request.ConnectorKey) ||
 		strings.TrimSpace(request.ConnectorVersion) == "" || strings.TrimSpace(request.ReleaseDigest) == "" ||
 		request.Generation.BootEpoch == "" || request.Generation.Generation == 0 ||
-		!cliContractHashPattern.MatchString(request.CLIContractHash) || len(request.Arguments) > maxCLIExecutionArguments {
+		!cliContractHashPattern.MatchString(request.CLIContractHash) || !filepath.IsAbs(request.WorkingDirectory) ||
+		strings.ContainsRune(request.WorkingDirectory, '\x00') || len(request.Arguments) > maxCLIExecutionArguments {
 		return ErrCLIExecutionInvalid
 	}
 	totalBytes := 0

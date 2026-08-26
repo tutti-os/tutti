@@ -211,6 +211,7 @@ func sessionSettingsPayload(settings *SessionSettings) map[string]any {
 	}
 	payload := map[string]any{
 		"codexSaverMode":   settings.CodexSaverMode,
+		"rtkSaverMode":     settings.RTKSaverMode,
 		"model":            strings.TrimSpace(settings.Model),
 		"permissionModeId": strings.TrimSpace(settings.PermissionModeID),
 		"planMode":         settings.PlanMode,
@@ -231,6 +232,7 @@ func sessionSettingsFromPayload(payload map[string]any) *SessionSettings {
 	}
 	settings := &SessionSettings{
 		CodexSaverMode:   payloadBoolValue(payload, "codexSaverMode"),
+		RTKSaverMode:     payloadBoolValue(payload, "rtkSaverMode"),
 		Model:            strings.TrimSpace(payloadStringValue(payload, "model")),
 		PermissionModeID: strings.TrimSpace(payloadStringValue(payload, "permissionModeId")),
 		PlanMode:         payloadBoolValue(payload, "planMode"),
@@ -246,6 +248,7 @@ func sessionSettingsFromPayload(payload map[string]any) *SessionSettings {
 		strings.TrimSpace(settings.PermissionModeID) == "" &&
 		strings.TrimSpace(settings.ReasoningEffort) == "" &&
 		!settings.CodexSaverMode &&
+		!settings.RTKSaverMode &&
 		!settings.PlanMode &&
 		settings.BrowserUse == nil &&
 		settings.ComputerUse == nil {
