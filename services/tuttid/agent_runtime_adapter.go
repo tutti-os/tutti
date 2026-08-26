@@ -9,6 +9,7 @@ import (
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -663,6 +664,7 @@ func (a agentRuntimeAdapter) runtimeSessionWithState(session agentruntime.Sessio
 	if state.Settings != nil {
 		result.Settings = agentRuntimeComposerSettings(state.Settings)
 	}
+	result.Capabilities = canonical.CloneCapabilitySnapshot(state.Capabilities)
 	result.RuntimeContext = cloneRuntimeContext(state.RuntimeContext)
 	if state.UpdatedAtUnixMS > 0 {
 		result.UpdatedAtUnixMS = state.UpdatedAtUnixMS

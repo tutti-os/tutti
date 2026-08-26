@@ -68,6 +68,74 @@ func TestComposerRuntimeContextProjectsExactPersistedCapabilities(t *testing.T) 
 	}
 }
 
+func TestComposerRuntimeContextProjectsExactLiveCapabilities(t *testing.T) {
+	project := t.TempDir()
+	settings := ComposerSettings{ReasoningEffort: "high"}
+	ref := map[string]any{"kind": "agent_extension", "extensionInstallationId": "example@1.0.0"}
+	scope := newComposerLiveModelScopeForInput(ComposerOptionsInput{
+		Provider:          "acp:example",
+		WorkspaceID:       "workspace-1",
+		Cwd:               project,
+		AgentTargetID:     "extension:example",
+		providerTargetRef: ref,
+	}, settings)
+	runtime := newFakeRuntime()
+	runtime.sessions["workspace-1:exact"] = ProviderRuntimeSession{
+		ID: "exact", WorkspaceID: "workspace-1", Provider: "acp:example", AgentTargetID: "extension:example",
+		Capabilities: canonical.NewCapabilitySnapshot([]string{"imageInput", "interrupt"}),
+		RuntimeContext: stampAgentExtensionComposerScope(
+			map[string]any{},
+			ref,
+			project,
+			settings,
+		),
+		UpdatedAtUnixMS: 100,
+	}
+
+	context := newIsolatedAgentService(runtime).composerRuntimeContextFromSession(scope)
+	if got := stringSliceFromAny(context["capabilities"]); !slices.Equal(got, []string{"imageInput", "interrupt"}) {
+		t.Fatalf("live capabilities = %#v, want typed capabilities projected", got)
+	}
+}
+
+func TestLiveCapabilitySnapshotOverridesStaleRuntimeContextCapabilities(t *testing.T) {
+	session := ProviderRuntimeSession{
+		Capabilities: canonical.NewCapabilitySnapshot(nil),
+		RuntimeContext: map[string]any{
+			"capabilities": []any{"imageInput"},
+		},
+	}
+
+	context := composerRuntimeContextFromProviderSession(session)
+	if got := stringSliceFromAny(context["capabilities"]); len(got) != 0 {
+		t.Fatalf("live capabilities = %#v, want explicit empty typed snapshot to override stale context", got)
+	}
+}
+
+func TestPollComposerModelOptionsReturnsTypedLiveCapabilities(t *testing.T) {
+	session := ProviderRuntimeSession{
+		ID:           "live",
+		Capabilities: canonical.NewCapabilitySnapshot([]string{"imageInput"}),
+		RuntimeContext: map[string]any{
+			"hiddenLiveModelDiscovery": true,
+		},
+	}
+
+	_, context, err := newIsolatedAgentService(newFakeRuntime()).pollComposerModelOptions(
+		t.Context(),
+		"workspace-1",
+		session,
+		true,
+		"model",
+	)
+	if err != nil {
+		t.Fatalf("pollComposerModelOptions error = %v", err)
+	}
+	if got := stringSliceFromAny(context["capabilities"]); !slices.Equal(got, []string{"imageInput"}) {
+		t.Fatalf("cached capabilities = %#v, want typed live capabilities", got)
+	}
+}
+
 func TestMergeRuntimeComposerContextFailsClosedWithoutExactCapabilityEvidence(t *testing.T) {
 	sessionProject := t.TempDir()
 	sessionSettings := ComposerSettings{PermissionModeID: "ask-before-write"}

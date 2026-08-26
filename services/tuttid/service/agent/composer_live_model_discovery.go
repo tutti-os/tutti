@@ -436,18 +436,19 @@ func (s *Service) pollComposerModelOptions(
 	defer ticker.Stop()
 	current := session
 	for {
-		if options := extractModelOptionsFromRuntimeContext(current.RuntimeContext, modelConfigOptionID); len(options) > 0 {
-			return options, clonePayload(current.RuntimeContext), nil
+		runtimeContext := composerRuntimeContextFromProviderSession(current)
+		if options := extractModelOptionsFromRuntimeContext(runtimeContext, modelConfigOptionID); len(options) > 0 {
+			return options, runtimeContext, nil
 		}
-		if acceptComposerData && composerRuntimeContextHasComposerData(current.RuntimeContext) {
-			return nil, clonePayload(current.RuntimeContext), nil
+		if acceptComposerData && composerRuntimeContextHasComposerData(runtimeContext) {
+			return nil, runtimeContext, nil
 		}
 		if err := liveModelDiscoverySessionFailureError(current); err != nil {
-			return nil, clonePayload(current.RuntimeContext), err
+			return nil, runtimeContext, err
 		}
 		select {
 		case <-ctx.Done():
-			return nil, clonePayload(current.RuntimeContext), ctx.Err()
+			return nil, runtimeContext, ctx.Err()
 		case <-ticker.C:
 			refreshed, ok := s.controller().Session(workspaceID, current.ID)
 			if ok {

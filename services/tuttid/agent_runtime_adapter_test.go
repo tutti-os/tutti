@@ -11,6 +11,7 @@ import (
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	"github.com/tutti-os/tutti/packages/agent/store-sqlite/canonical"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 )
 
@@ -37,6 +38,15 @@ func (submitProvenanceAdapterTestProvider) Exec(context.Context, agentruntime.Se
 }
 func (submitProvenanceAdapterTestProvider) Cancel(context.Context, agentruntime.Session, string) ([]activityshared.Event, error) {
 	return nil, nil
+}
+
+func (submitProvenanceAdapterTestProvider) SessionState(session agentruntime.Session) agentruntime.SessionStateSnapshot {
+	return agentruntime.SessionStateSnapshot{
+		RoomID:         session.RoomID,
+		AgentSessionID: session.AgentSessionID,
+		Provider:       session.Provider,
+		Capabilities:   canonical.NewCapabilitySnapshot([]string{"imageInput", "interrupt"}),
+	}
 }
 
 type providerAcceptanceMappingTestAdapter struct {
@@ -385,6 +395,29 @@ func TestAgentRuntimeAdapterDelegatesTypedDurableSubmitProvenance(t *testing.T) 
 	if message.TurnID != "turn-1" || message.Seq != 1_234 || message.OccurredAtUnixMS != 1_234 ||
 		message.Payload["clientSubmitId"] != "submit-1" || message.Payload["displayPrompt"] != "Visible hello" {
 		t.Fatalf("provenance message = %#v", message)
+	}
+}
+
+func TestAgentRuntimeAdapterPreservesProviderCapabilities(t *testing.T) {
+	controller := agentruntime.NewController(
+		[]agentruntime.Adapter{submitProvenanceAdapterTestProvider{}},
+		nil,
+	)
+	adapter := newAgentRuntimeAdapter(controller)
+
+	result, err := adapter.Start(t.Context(), agentservice.RuntimeStartInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-capabilities",
+		Provider:       submitProvenanceAdapterTestProvider{}.Provider(),
+	})
+	if err != nil {
+		t.Fatalf("Start() error = %v", err)
+	}
+	if result.Session.Capabilities == nil ||
+		len(result.Session.Capabilities.Values) != 2 ||
+		result.Session.Capabilities.Values[0] != "imageInput" ||
+		result.Session.Capabilities.Values[1] != "interrupt" {
+		t.Fatalf("capabilities = %#v, want provider state capabilities", result.Session.Capabilities)
 	}
 }
 

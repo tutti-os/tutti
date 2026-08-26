@@ -1360,6 +1360,47 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   [controller.go](../../../packages/agent/daemon/runtime/controller.go)
   [service_send_input.go](../../../services/tuttid/service/agent/service_send_input.go)
 
+### New extension conversation renders a pasted image as a file
+
+- Symptom:
+  A new Agent Extension conversation renders a pasted PNG, JPEG, or WebP as a
+  file mention instead of an image preview, while an existing conversation may
+  render the same image correctly. Direct ACP initialization still advertises
+  image prompt support, but target-scoped Composer Options returns
+  `imageInput = false`.
+- Quick checks:
+  Compare the ACP `initialize` response, the daemon runtime
+  `SessionStateSnapshot.Capabilities`, the service-facing Session, and the exact
+  target-scoped Composer Options response. If ACP advertises
+  `promptCapabilities.image = true` but the service-facing Session has an
+  unknown capability snapshot, inspect the daemon-to-service runtime adapter
+  before changing the renderer paste path.
+- Root cause:
+  ACP negotiation correctly stored capabilities in the daemon runtime's typed
+  Session state, but the tuttid runtime adapter copied settings and untyped
+  runtime context without copying `Capabilities`. New extension conversations
+  use that adapter result for hidden Composer discovery, so image support was
+  lost before the signed extension capability intersection. Existing
+  conversations could appear healthy because their persisted activity
+  projection supplied the typed snapshot through a different path.
+- Fix:
+  Preserve the daemon runtime's typed capability snapshot at the tuttid runtime
+  adapter boundary, then project the exact live Session snapshot into Composer
+  runtime evidence before reading or caching it. Treat a non-nil snapshot as
+  authoritative even when empty, while retaining exact Target, installation,
+  project, and settings matching and the signed-profile intersection.
+- Validation:
+  Cover adapter preservation, live and persisted capability projection,
+  explicit empty snapshots overriding stale untyped values, and mismatched
+  extension identities remaining fail-closed. Confirm repeated `core`,
+  `capabilities`, and `full` target-scoped Composer Options requests return
+  `imageInput = true` for both Kimi Code and Hermes when their ACP runtimes and
+  signed profiles advertise it.
+- References:
+  [agent_runtime_adapter.go](../../../services/tuttid/agent_runtime_adapter.go)
+  [composer_runtime_context.go](../../../services/tuttid/service/agent/composer_runtime_context.go)
+  [composer_live_model_discovery.go](../../../services/tuttid/service/agent/composer_live_model_discovery.go)
+
 ### Historical Standard ACP session cannot send after its process was released
 
 - Symptom:

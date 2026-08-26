@@ -66,6 +66,7 @@ Turn state, loading, cancel, restore, rail projection, event updates, imports, a
 - [AgentGUI Stop reports no active turn after cancel succeeds](./agent-session-lifecycle.md#agentgui-stop-reports-no-active-turn-after-cancel-succeeds)
 - [AgentGUI send blocked by active_turn after settled snapshot](./agent-session-lifecycle.md#agentgui-send-blocked-by-activeturn-after-settled-snapshot)
 - [AgentGUI rejects a pasted image as unsupported before send](./agent-session-lifecycle.md#agentgui-rejects-a-pasted-image-as-unsupported-before-send)
+- [New extension conversation renders a pasted image as a file](./agent-session-lifecycle.md#new-extension-conversation-renders-a-pasted-image-as-a-file)
 - [Remote Agent image reaches the provider as an unsupported URL](./agent-session-lifecycle.md#remote-agent-image-reaches-the-provider-as-an-unsupported-url)
 - [Goal banner shows Delete but no Restart action](./agent-session-lifecycle.md#goal-banner-shows-delete-but-no-restart-action)
 - [AgentGUI loading disappears before active turn settles](./agent-session-lifecycle.md#agentgui-loading-disappears-before-active-turn-settles)
