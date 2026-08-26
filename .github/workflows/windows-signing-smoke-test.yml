@@ -4,6 +4,9 @@ name: Windows signing smoke test
 # throwaway executable and never builds or publishes Tutti.
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - codex/certum-windows-signing
 
 permissions:
   contents: read
@@ -44,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           apt-get update
-          apt-get install -y --no-install-recommends file gcc-mingw-w64-x86-64 osslsigncode
+          apt-get install -y --no-install-recommends file gcc-mingw-w64-x86-64 nodejs osslsigncode
           rm -rf /var/lib/apt/lists/*
 
       - name: Build throwaway Windows executable

@@ -125,7 +125,7 @@ pkcs11_config="${RUNNER_TEMP}/certum-sunpkcs11.conf"
 } > "${pkcs11_config}"
 
 certificate_visible() {
-  timeout 60 keytool -list -keystore NONE -storetype PKCS11 \
+  timeout 15 keytool -list -keystore NONE -storetype PKCS11 \
     -providerClass sun.security.pkcs11.SunPKCS11 \
     -providerArg "${pkcs11_config}" -storepass '' 2>/dev/null | grep -q PrivateKeyEntry
 }
@@ -155,11 +155,12 @@ drive_login_form() {
   xdotool windowactivate --sync "${wid}" || true
   xdotool mousemove $((bx + bw / 2)) $((by + bh * 94 / 100)) click 1
   sleep 3
-  for poll in $(seq 1 20); do
+  for poll in $(seq 1 6); do
     if certificate_visible; then
       echo "SimplySign certificate is available (poll ${poll})."
       return 0
     fi
+    echo "SimplySign certificate is not available yet (poll ${poll}/6)."
     sleep 3
   done
   return 1
