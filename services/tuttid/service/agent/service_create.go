@@ -333,7 +333,11 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		}
 	}
 	logAgentSubmitTrace("service.create.runtime_start_requested", workspaceID, input.AgentSessionID, input.ClientSubmitID, input.Metadata, nil)
+	authGeneration := s.providerRuntimeCredentialGeneration(provider)
 	hostResult, err := s.ApplicationHost().CreateSession(ctx, workspaceID, hostInput)
+	if hostResult.SessionStatus == agenthost.CreateSessionStatusCreated {
+		s.markProviderRuntimeCredentialsApplied(workspaceID, input.AgentSessionID, provider, authGeneration)
+	}
 	if err != nil {
 		// Host can durably create the Session before the typed initial Goal
 		// fails. Preserve that result (and its worktree) so callers can render a

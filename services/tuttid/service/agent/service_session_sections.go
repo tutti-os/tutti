@@ -360,6 +360,7 @@ func (s *Service) DeleteSessionsBatch(
 	if err != nil {
 		return DeleteSessionsBatchResult{}, err
 	}
+	s.forgetProviderRuntimeSessionCredentials(workspaceID, hostResult.RemovedSessionIDs...)
 	return DeleteSessionsBatchResult{
 		RemovedMessages:         hostResult.RemovedMessages,
 		RemovedSessions:         hostResult.RemovedSessions,

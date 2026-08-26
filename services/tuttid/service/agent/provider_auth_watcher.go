@@ -295,6 +295,9 @@ type ProviderAuthWatcher struct {
 	closeHookOnce sync.Once
 	stop          chan struct{}
 	done          chan struct{}
+	// scanRequests is an internal synchronization seam for deterministic tests.
+	// Production leaves it nil, so polling remains ticker-driven.
+	scanRequests chan chan struct{}
 }
 
 type providerAuthFileFingerprint struct {
@@ -359,6 +362,7 @@ func (w *ProviderAuthWatcher) coalesceDelay() time.Duration {
 func (w *ProviderAuthWatcher) run() {
 	defer close(w.done)
 	fingerprints := w.collectFingerprints(nil)
+	reportedFingerprints := fingerprints
 	ticker := time.NewTicker(w.interval())
 	defer ticker.Stop()
 	pendingProviders := make(map[string]struct{})
@@ -382,11 +386,20 @@ func (w *ProviderAuthWatcher) run() {
 		if len(pendingProviders) == 0 && len(pendingChanges) == 0 {
 			return
 		}
-		providers := providerAuthPendingProviders(w.Entries, pendingProviders)
-		changes := make([]ProviderAuthChange, 0, len(pendingChanges))
-		for _, change := range pendingChanges {
-			changes = append(changes, change)
+		// Atomic credential rewrites can be observed as exists -> missing ->
+		// exists on Windows, where replacing an existing file may require a
+		// remove-then-rename fallback. Decide from the net state at the fixed
+		// coalesce deadline instead of publishing an intermediate missing scan.
+		// The timer is intentionally not reset by later scans, so a real delete
+		// or content change is still reported after one bounded delay.
+		changes := changedProviderAuthFiles(w.Entries, reportedFingerprints, fingerprints)
+		providers := make(map[string]struct{}, len(changes))
+		for _, change := range changes {
+			if provider := agentprovider.Normalize(change.Provider); provider != "" {
+				providers[provider] = struct{}{}
+			}
 		}
+		reportedFingerprints = fingerprints
 		sort.Slice(changes, func(i, j int) bool {
 			if changes[i].Provider != changes[j].Provider {
 				return changes[i].Provider < changes[j].Provider
@@ -395,8 +408,9 @@ func (w *ProviderAuthWatcher) run() {
 		})
 		pendingProviders = make(map[string]struct{})
 		pendingChanges = make(map[string]ProviderAuthChange)
-		if len(providers) > 0 && w.OnChange != nil {
-			w.OnChange(providers)
+		orderedProviders := providerAuthPendingProviders(w.Entries, providers)
+		if len(orderedProviders) > 0 && w.OnChange != nil {
+			w.OnChange(orderedProviders)
 		}
 		if len(changes) > 0 && w.OnChangeDetailed != nil {
 			w.OnChangeDetailed(changes)
@@ -424,18 +438,24 @@ func (w *ProviderAuthWatcher) run() {
 			coalesceTimerC = coalesceTimer.C
 		}
 	}
+	scan := func() {
+		next := w.collectFingerprints(fingerprints)
+		changed := changedProviderAuthFiles(w.Entries, fingerprints, next)
+		fingerprints = next
+		if len(changed) > 0 {
+			scheduleProviderChanges(changed)
+		}
+	}
 	for {
 		select {
 		case <-w.stop:
 			stopCoalesceTimer()
 			return
 		case <-ticker.C:
-			next := w.collectFingerprints(fingerprints)
-			changed := changedProviderAuthFiles(w.Entries, fingerprints, next)
-			fingerprints = next
-			if len(changed) > 0 {
-				scheduleProviderChanges(changed)
-			}
+			scan()
+		case done := <-w.scanRequests:
+			scan()
+			close(done)
 		case <-coalesceTimerC:
 			coalesceTimer = nil
 			coalesceTimerC = nil

@@ -171,6 +171,102 @@ func TestDefaultProviderAuthWatcherReportsTuttiAgentLogin(t *testing.T) {
 	}
 }
 
+func TestDefaultProviderAuthWatcherReportsCursorAtomicReplacementButIgnoresSameContent(t *testing.T) {
+	home := t.TempDir()
+	authPath := filepath.Join(home, ".cursor", "cli-config.json")
+	if err := os.MkdirAll(filepath.Dir(authPath), 0o700); err != nil {
+		t.Fatalf("create Cursor auth directory: %v", err)
+	}
+	if err := os.WriteFile(authPath, []byte(`{"account":"free"}`), 0o600); err != nil {
+		t.Fatalf("write baseline Cursor auth: %v", err)
+	}
+
+	descriptor, ok := providerregistry.Find(agentprovider.Cursor)
+	if !ok {
+		t.Fatal("Cursor provider descriptor missing")
+	}
+	cursorEntry, ok := providerAuthWatchEntryFromDescriptor(descriptor, home)
+	if !ok || cursorEntry.ContentFingerprint == nil {
+		t.Fatal("default auth watcher is missing content-aware Cursor entry")
+	}
+
+	changes := make(chan []string, 2)
+	scanRequests := make(chan chan struct{})
+	watcher := &ProviderAuthWatcher{
+		Entries:       []ProviderAuthWatchEntry{cursorEntry},
+		Interval:      time.Hour,
+		CoalesceDelay: 250 * time.Millisecond,
+		scanRequests:  scanRequests,
+		OnChange: func(providers []string) {
+			changes <- providers
+		},
+	}
+	watcher.Start()
+	defer watcher.Close()
+	scanProviderAuthWatcher(t, scanRequests)
+
+	replaceCursorAuthFileWithWindowsFallback(t, scanRequests, authPath, []byte(`{"account":"free"}`))
+	select {
+	case providers := <-changes:
+		t.Fatalf("watcher reported identical Cursor credentials: %v", providers)
+	case <-time.After(400 * time.Millisecond):
+	}
+
+	replaceCursorAuthFileWithWindowsFallback(t, scanRequests, authPath, []byte(`{"account":"pro"}`))
+	select {
+	case providers := <-changes:
+		if len(providers) != 1 || providers[0] != agentprovider.Cursor {
+			t.Fatalf("OnChange providers = %v, want [cursor]", providers)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("watcher did not report Cursor credential replacement")
+	}
+	select {
+	case providers := <-changes:
+		t.Fatalf("watcher reported Cursor credential replacement more than once: %v", providers)
+	case <-time.After(500 * time.Millisecond):
+	}
+}
+
+func replaceCursorAuthFileWithWindowsFallback(
+	t *testing.T,
+	scanRequests chan chan struct{},
+	path string,
+	content []byte,
+) {
+	t.Helper()
+	staged := path + ".next"
+	if err := os.WriteFile(staged, content, 0o600); err != nil {
+		t.Fatalf("write staged Cursor auth file: %v", err)
+	}
+	// Windows does not guarantee replace-existing behavior for Rename. Exercise
+	// its remove-then-rename fallback and synchronously prove that the watcher
+	// observed the transient missing state before restoring the file.
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove previous Cursor auth file: %v", err)
+	}
+	scanProviderAuthWatcher(t, scanRequests)
+	if err := os.Rename(staged, path); err != nil {
+		t.Fatalf("rename staged Cursor auth file: %v", err)
+	}
+	scanProviderAuthWatcher(t, scanRequests)
+}
+
+func scanProviderAuthWatcher(t *testing.T, scanRequests chan chan struct{}) {
+	t.Helper()
+	done := make(chan struct{})
+	select {
+	case scanRequests <- done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider auth watcher did not accept scan request")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("provider auth watcher did not complete scan request")
+	}
+}
+
 func TestProviderAuthWatcherStartWithoutCallbackIsInert(_ *testing.T) {
 	watcher := &ProviderAuthWatcher{
 		Entries: []ProviderAuthWatchEntry{
