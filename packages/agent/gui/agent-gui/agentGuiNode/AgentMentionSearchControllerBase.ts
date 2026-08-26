@@ -21,6 +21,7 @@ import {
   DEFAULT_ISSUE_LIMIT,
   DEFAULT_PROVIDER_TIMEOUT_MS,
   type AgentMentionFilterId,
+  type AgentMentionBrowseCategory,
   type AgentMentionGroup,
   type AgentMentionGroupId,
   type AgentMentionIssueTopicGroup,
@@ -80,6 +81,7 @@ export class AgentMentionSearchControllerBase {
   ) => void;
   protected readonly diagnosticNow: () => number;
   protected readonly diagnosticSlowThresholdMs: number;
+  protected readonly hiddenFilterIds: readonly string[];
   protected readonly listeners = new Set<AgentMentionSearchListener>();
   protected readonly expandedCounts: Partial<
     Record<AgentMentionGroupId, number>
@@ -111,7 +113,7 @@ export class AgentMentionSearchControllerBase {
     query: "",
     mode: "browse",
     filter: DEFAULT_AGENT_MENTION_FILTER,
-    categories: buildBrowseCategories(),
+    categories: [],
     groups: [],
     error: null
   };
@@ -135,8 +137,14 @@ export class AgentMentionSearchControllerBase {
     this.diagnosticNow = options.diagnosticNow ?? Date.now;
     this.diagnosticSlowThresholdMs =
       options.diagnosticSlowThresholdMs ?? DEFAULT_DIAGNOSTIC_SLOW_THRESHOLD_MS;
+    this.hiddenFilterIds = [...(options.hiddenFilterIds ?? [])];
     this.currentFileSearchLimit = this.fileLimit;
     this.currentIssueSearchLimit = this.issueLimit;
+    this.state.categories = this.buildBrowseCategories();
+  }
+
+  protected buildBrowseCategories(): AgentMentionBrowseCategory[] {
+    return buildBrowseCategories(this.hiddenFilterIds);
   }
 
   protected startBrowseModeFetch(filter: AgentMentionFilterId): void {
@@ -678,9 +686,12 @@ export class AgentMentionSearchControllerBase {
   }
 
   protected setState(state: AgentMentionSearchState): void {
-    this.state = state;
+    this.state = {
+      ...state,
+      categories: this.buildBrowseCategories()
+    };
     for (const listener of this.listeners) {
-      listener(state);
+      listener(this.state);
     }
   }
 

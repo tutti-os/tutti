@@ -51,6 +51,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   operations,
   homeTargetProjection,
   referenceProvenanceFilters = null,
+  hiddenMentionFilterIds = [],
   sessionInputHistoryEnabled = false,
   sideConversationEnabled = false,
   sideConversationPresentation = null,
@@ -393,6 +394,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         agentSessionId: viewModel.rail.activeConversationId
       }),
       ...composerInputHistoryProps,
+      hiddenMentionFilterIds,
       availableCommands: sideConversation.commands,
       hasCompactableContext: viewModel.detail.hasSentUserMessage,
       compactSupported: viewModel.composer.compactSupported,

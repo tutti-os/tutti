@@ -166,10 +166,6 @@ func CoreSkillsPack() CapabilityPack {
 		if err != nil {
 			return CapabilityContribution{}, err
 		}
-		issueManager, err := issueManagerSkill(input)
-		if err != nil {
-			return CapabilityContribution{}, err
-		}
 		workspaceApp, err := workspaceAppSkill(input)
 		if err != nil {
 			return CapabilityContribution{}, err
@@ -182,14 +178,25 @@ func CoreSkillsPack() CapabilityPack {
 		if err != nil {
 			return CapabilityContribution{}, err
 		}
-		return CapabilityContribution{Enabled: true, Skills: []SkillSpec{
+		skills := []SkillSpec{
 			{ID: "tutti/tutti-cli", Name: tuttiSkillName, Files: map[string]string{"SKILL.md": tuttiCLI, commandGuideReferencePath: commandGuide}},
 			{ID: "tutti/tutti-handoff", Name: tuttiHandoffSkillName, Files: map[string]string{"SKILL.md": handoff}},
 			{ID: "tutti/tutti-model-allocation", Name: tuttiModelAllocationSkillName, Files: map[string]string{"SKILL.md": modelAllocation, tuttiModelAllocationReferencePath: modelTiers}},
-			{ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManager}},
-			{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceApp}},
-			{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": reference}},
-		}}, nil
+		}
+		if input.commandCapabilities != nil && input.commandCapabilities.HasFamily("issue") {
+			issueManager, err := issueManagerSkill(input)
+			if err != nil {
+				return CapabilityContribution{}, err
+			}
+			skills = append(skills, SkillSpec{
+				ID: "tutti/issue-manager", Name: issueManagerSkillName, Files: map[string]string{"SKILL.md": issueManager},
+			})
+		}
+		skills = append(skills,
+			SkillSpec{ID: "tutti/workspace-app", Name: workspaceAppSkillName, Files: map[string]string{"SKILL.md": workspaceApp}},
+			SkillSpec{ID: "tutti/reference", Name: referenceSkillName, Files: map[string]string{"SKILL.md": reference}},
+		)
+		return CapabilityContribution{Enabled: true, Skills: skills}, nil
 	}}
 }
 

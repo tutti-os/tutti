@@ -79,6 +79,51 @@ func TestRenderSkillBundleUsesOneHostCommandSnapshot(t *testing.T) {
 	}
 }
 
+func TestRenderSkillBundleOmitsTaskCenterSkillAndPromptWithoutIssueFamily(t *testing.T) {
+	capabilities := testCommandCapabilities()
+	filtered := make([]CommandCapability, 0, len(capabilities))
+	for _, capability := range capabilities {
+		if strings.HasPrefix(capability.ID, "issue-manager.") {
+			continue
+		}
+		filtered = append(filtered, capability)
+	}
+	preparer := NewDefaultPreparer(t.TempDir())
+	preparer.CommandCatalog = &countingCommandCatalog{capabilities: filtered}
+	preparer.CLICommand = "tutti-dev"
+
+	bundle, err := preparer.RenderSkillBundle(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundleHasSkill(bundle, "tutti/issue-manager") {
+		t.Fatal("task-center skill was materialized without an issue command family")
+	}
+
+	contents := make([]string, 0, len(bundle.Skills)+1)
+	for _, skill := range bundle.Skills {
+		contents = append(contents, skill.Content)
+		for _, file := range skill.Files {
+			contents = append(contents, file.Content)
+		}
+	}
+	if bundle.RecommendedSystemPrompt != nil {
+		contents = append(contents, bundle.RecommendedSystemPrompt.Content)
+	}
+	for _, content := range contents {
+		for _, forbidden := range []string{"issue-manager", "workspace-issue", "Issue Manager", "Task Manager", "issue task"} {
+			if strings.Contains(content, forbidden) {
+				t.Fatalf("task-center prompt leaked %q without an issue command family: %s", forbidden, content)
+			}
+		}
+	}
+}
+
 func TestRenderSkillBundleOmitsConnectorPolicyWhenCLICommandIsNotRegistered(t *testing.T) {
 	capabilities := testCommandCapabilities()
 	filtered := make([]CommandCapability, 0, len(capabilities))

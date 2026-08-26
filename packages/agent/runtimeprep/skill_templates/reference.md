@@ -56,6 +56,6 @@ already flattened. Then read the paths you need with your normal file tools.
 - This is a passive reference: list and read only.
 - Do NOT open/complete issue runs, do NOT break down issues, do NOT mutate Tutti state, and do
   NOT invoke app commands — even when `source=task`. If the user separately asks to execute or
-  break down an issue, switch to `$issue-manager`.
+  {{if hasFamily "issue"}}break down an issue, switch to `$issue-manager`.{{end}}
 - If the result has zero items, say the reference currently has no artifacts instead of guessing.
 - Read only the files relevant to the request; do not dump every file.

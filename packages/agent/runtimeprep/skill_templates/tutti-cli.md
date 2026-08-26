@@ -11,12 +11,12 @@ Use this skill as the routing and operating contract for the local Tutti CLI. It
 
 Classify the request before invoking any Tutti CLI command:
 
-1. Workspace issue work uses the Host-advertised `issue ...` commands. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
-2. Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
-   {{if hasFamily "agent"}}3. Agent work uses the Host-advertised `agent ...` commands. Handoff decisions belong to `$tutti-handoff`; use this skill only as its CLI reference.
-   {{end}}{{if hasFamily "browser"}}4. Browser automation uses the Host-advertised `browser ...` commands.
-   {{end}}{{if hasFamily "computer"}}5. Desktop automation uses the Host-advertised `computer ...` commands.
-   {{end}}6. If none match, read `command-guide.md` before guessing.
+{{if hasFamily "issue"}}- Workspace issue work uses the Host-advertised `issue ...` commands. If the request is inspection, breakdown, execution, or run reporting for an issue, invoke `$issue-manager` and use this skill only as its CLI reference.
+{{end}}- Workspace app work uses app scopes from the command guide. If the request comes from `mention://workspace-app/<appId>?workspaceId=...`, invoke `$workspace-app` and use this skill as its command reference.
+{{if hasFamily "agent"}}- Agent work uses the Host-advertised `agent ...` commands. Handoff decisions belong to `$tutti-handoff`; use this skill only as its CLI reference.
+{{end}}{{if hasFamily "browser"}}- Browser automation uses the Host-advertised `browser ...` commands.
+{{end}}{{if hasFamily "computer"}}- Desktop automation uses the Host-advertised `computer ...` commands.
+{{end}}- If none match, read `command-guide.md` before guessing.
 
 Completion criterion: every Tutti CLI call must be traceable to a routed family, a mention URI, prior command output, current CLI help, or a command-guide entry.
 
@@ -24,12 +24,12 @@ Completion criterion: every Tutti CLI call must be traceable to a routed family,
 
 Tutti mention links are internal handoffs. Parse them as data; do not open them with a browser, WebFetch, or web search.
 
-- `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
-- `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
-  {{if has "agent-context.agent.session-summary"}}- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Recover its conversation with `{{command "agent-context.agent.session-summary"}}`.
-  {{else if has "agent-context.agent.get"}}- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Recover the context exposed by this Host with `{{command "agent-context.agent.get"}}`.
-  {{end}}{{if has "agent-context.agent.list"}}- `mention://agent-target/<targetId>?workspaceId=...`: behavior per `$tutti-handoff`. Verify the id with `{{if hasInput "agent-context.agent.list" "agent-id"}}{{command "agent-context.agent.list" (args "agent-id" "<targetId>")}}{{else}}{{command "agent-context.agent.list"}}{{end}}`, then use the generic agent workflow. An instruction for the mentioned agent is handed off, not absorbed.
-  {{end}}- Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
+{{if hasFamily "issue"}}- `mention://workspace-issue/<issueId>?workspaceId=...`: use `$issue-manager`.
+{{end}}- `mention://workspace-app/<appId>?workspaceId=...`: use `$workspace-app`.
+{{if has "agent-context.agent.session-summary"}}- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Recover its conversation with `{{command "agent-context.agent.session-summary"}}`.
+{{else if has "agent-context.agent.get"}}- `mention://agent-session/<sessionId>?workspaceId=...`: a context reference to an existing session, not a work order. Recover the context exposed by this Host with `{{command "agent-context.agent.get"}}`.
+{{end}}{{if has "agent-context.agent.list"}}- `mention://agent-target/<targetId>?workspaceId=...`: behavior per `$tutti-handoff`. Verify the id with `{{if hasInput "agent-context.agent.list" "agent-id"}}{{command "agent-context.agent.list" (args "agent-id" "<targetId>")}}{{else}}{{command "agent-context.agent.list"}}{{end}}`, then use the generic agent workflow. An instruction for the mentioned agent is handed off, not absorbed.
+{{end}}- Unknown `mention://...`: parse the URI and ask for clarification if no command family or skill matches.
 
 {{if and (has "agent-context.agent.get") (hasInput "agent-context.agent.get" "view")}}
 Agent get JSON is progressive. Use `{{command "agent-context.agent.get"}}` for recent conversation context, `{{command "agent-context.agent.get" (args "view" "turns")}}` for Turn discovery, and add an exact `turn-id` with the Host-advertised trace view only when tool-call detail is needed.
@@ -134,6 +134,8 @@ If a user mentions a workspace app or asks for app-specific work and the expecte
 
 Workspace app scopes are discovered from command-guide entries carrying `App id:` metadata. Use `$workspace-app` for mention interpretation and command selection; `$workspace-app` is a skill and mention kind, not a CLI scope.
 
+{{if hasFamily "issue"}}
+
 ## Issue Guardrails
 
 Issue execution sequencing belongs to `$issue-manager`. Do not use this command reference alone to decide whether an issue-level execution should create an issue run or iterate child tasks.
@@ -160,6 +162,8 @@ When completing issue runs, include the advertised outputs input whenever execut
 {{end}}
 
 If execution produced no artifact, complete the run with a clear summary when the command schema accepts one.
+
+{{end}}
 
 ## Execution Environment
 
