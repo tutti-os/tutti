@@ -195,6 +195,7 @@ func SessionForkScenarios() []SessionForkScenario {
 		{Name: "settled through-turn binding can fork while source is active", run: runActiveSourceFork},
 		{Name: "through-turn fork replay does not redispatch provider", run: runThroughTurnForkReplay},
 		{Name: "provider-accepted fork recovers local commit", run: runProviderAcceptedForkRecovery},
+		{Name: "permanently inconsistent provider-accepted fork is quarantined", run: runPermanentlyInconsistentForkRecovery},
 	}
 }
 

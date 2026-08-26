@@ -694,7 +694,7 @@ export const zhCNAgentGui = {
   browserUseCapabilitySettingsDescription: "配置 Agent 使用的浏览器。",
   capabilityInlineSettingsLabel: "设置",
   computerUseCapabilityLabel: "电脑控制",
-  computerUseCapabilityDescription: "让 Agent 控制 macOS 桌面。",
+  computerUseCapabilityDescription: "让 Agent 控制你的电脑桌面",
   computerUseCapabilitySetupRequiredDescription: "未安装。按 Enter 打开设置。",
   computerUseCapabilityAuthorizationRequiredDescription:
     "需要授权。按 Enter 打开设置。",

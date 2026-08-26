@@ -101,6 +101,7 @@ type SessionForkStore interface {
 	GetSessionForkOperationByRequest(context.Context, string, string) (storesqlite.SessionForkOperation, bool, error)
 	MarkSessionForkDispatching(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
 	FailPreparedSessionFork(context.Context, string, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
+	FailAcceptedSessionFork(context.Context, string, string, string, int64) (storesqlite.SessionForkOperation, bool, error)
 	RecordSessionForkProviderResult(context.Context, storesqlite.SessionForkProviderResult) (storesqlite.SessionForkOperation, bool, error)
 	CommitSessionFork(context.Context, string, string, int64) (storesqlite.SessionForkCommitResult, error)
 	AcknowledgeSessionForkOperation(context.Context, string, string, int64) (storesqlite.SessionForkOperation, bool, bool, error)

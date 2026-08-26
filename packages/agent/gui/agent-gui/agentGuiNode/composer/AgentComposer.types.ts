@@ -291,6 +291,10 @@ export interface AgentComposerProps {
     slashPaletteConnectorNotConnected: string;
     slashPaletteConnectorUnsupported: string;
     slashPaletteMcpGroup: string;
+    slashCommandPresentation?: (commandName: string) => {
+      description?: string;
+      label?: string;
+    };
     slashCommandCompactLabel: string;
     slashCommandContextLabel: string;
     slashCommandFastLabel: string;

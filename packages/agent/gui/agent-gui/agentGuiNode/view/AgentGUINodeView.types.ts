@@ -351,6 +351,10 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   slashPaletteConnectorNotConnected: string;
   slashPaletteConnectorUnsupported: string;
   slashPaletteMcpGroup: string;
+  slashCommandPresentation?: (commandName: string) => {
+    description?: string;
+    label?: string;
+  };
   slashCommandCompactLabel: string;
   slashCommandContextLabel: string;
   slashCommandFastLabel: string;

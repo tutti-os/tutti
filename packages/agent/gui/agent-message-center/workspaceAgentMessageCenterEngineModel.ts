@@ -2,7 +2,6 @@ import type {
   AgentActivityInteraction,
   AgentActivityMessage,
   AgentActivityNeedsAttentionItem,
-  AgentActivitySnapshot,
   AgentSessionEngineState,
   WorkspaceAgentConsumerSession
 } from "@tutti-os/agent-activity-core";
@@ -40,7 +39,7 @@ import { workspaceAgentMessageCenterItemEqual } from "./workspaceAgentMessageCen
  */
 export function buildWorkspaceAgentMessageCenterModelFromEngine(
   presentation: WorkspaceAgentMessageCenterPresentation,
-  snapshot: Pick<AgentActivitySnapshot, "sessionMessagesById" | "workspaceId">,
+  snapshot: WorkspaceAgentMessageCenterMessageSnapshot,
   options: BuildWorkspaceAgentMessageCenterOptions = {}
 ): WorkspaceAgentMessageCenterModel {
   const includeHiddenSessionIds = new Set(
@@ -77,6 +76,13 @@ export function buildWorkspaceAgentMessageCenterModelFromEngine(
     items,
     options.itemCutoffUnixMs
   );
+}
+
+interface WorkspaceAgentMessageCenterMessageSnapshot {
+  readonly sessionMessagesById: Readonly<
+    Record<string, readonly AgentActivityMessage[]>
+  >;
+  readonly workspaceId: string;
 }
 
 export interface WorkspaceAgentMessageCenterPresentation {
@@ -205,7 +211,7 @@ export interface WorkspaceAgentAttentionItem {
  */
 export function selectWorkspaceAgentAttentionItems(
   presentation: WorkspaceAgentMessageCenterPresentation,
-  snapshot: Pick<AgentActivitySnapshot, "sessionMessagesById" | "workspaceId">,
+  snapshot: WorkspaceAgentMessageCenterMessageSnapshot,
   options: BuildWorkspaceAgentMessageCenterOptions = {}
 ): WorkspaceAgentAttentionItem[] {
   const result: WorkspaceAgentAttentionItem[] = [];
@@ -419,7 +425,9 @@ function booleanMapsEqual(
 }
 
 function sessionMessages(
-  sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>,
+  sessionMessagesById: Readonly<
+    Record<string, readonly AgentActivityMessage[]>
+  >,
   consumer: WorkspaceAgentConsumerSession
 ): readonly AgentActivityMessage[] {
   for (const id of [

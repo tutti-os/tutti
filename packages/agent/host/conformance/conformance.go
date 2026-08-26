@@ -328,9 +328,10 @@ type DeletedSessionLifecycleScenario struct {
 // boundary. Implementations may seed those states using their own test-only
 // canonical/runtime adapters.
 type SessionForkFixture struct {
-	FailFirstLocalCommit    bool
-	RecoverProviderAccepted bool
-	KeepSourceActive        bool
+	FailFirstLocalCommit           bool
+	RecoverProviderAccepted        bool
+	RecoverPermanentlyInconsistent bool
+	KeepSourceActive               bool
 }
 
 type SessionForkMetrics struct {

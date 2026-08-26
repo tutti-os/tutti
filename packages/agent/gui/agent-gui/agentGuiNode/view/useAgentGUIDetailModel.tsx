@@ -3,7 +3,6 @@ import { isAgentGUIAgentTargetComingSoon } from "../../../agentTargets";
 import { UnavailableChatIcon } from "../../../app/renderer/components/icons/UnavailableChatIcon";
 import { useProjectedAgentConversation } from "../../../shared/agentConversation/projection/useProjectedAgentConversation";
 import type { AgentComposerSlashStatusLimit } from "../AgentComposer";
-import type { AgentGoalBannerLabels } from "../AgentGoalBanner";
 import type {
   AgentGUIInlineNotice,
   AgentGUINodeViewModel,
@@ -13,12 +12,12 @@ import type { AgentGUIViewLabels } from "../AgentGUINodeView";
 import {
   isContextCanceledMessage,
   isAgentGUIHomeStatusNoticeVisible,
-  resolveAgentGUIConversationReturn,
   resolveAgentGUIHomeNoticeChrome,
   resolveAgentGUIStopControl,
   resolveSlashStatus,
   useStableSlashStatus
 } from "./agentGUIDetailModelHelpers";
+import { useAgentGUIDetailLabels } from "./useAgentGUIDetailLabels";
 import { useAgentGUITimelineTransition } from "./useAgentGUITimelineTransition";
 import { useBottomDockPromptDismissal } from "./useBottomDockPromptDismissal";
 import styles from "../AgentGUINode.styles";
@@ -246,22 +245,17 @@ export function useAgentGUIDetailModel(input: Input) {
   });
   const showStopButton = stopControl.visible;
   const stopDisabled = stopControl.disabled;
-  const conversationFlowLabels = useMemo(
-    () => ({
-      thinkingLabel: labels.thinkingLabel,
-      toolCallsLabel: labels.toolCallsLabel,
-      processing: labels.processing,
-      turnSummary: labels.turnSummary,
-      userMessageLocator: labels.userMessageLocator
-    }),
-    [
-      labels.processing,
-      labels.thinkingLabel,
-      labels.toolCallsLabel,
-      labels.turnSummary,
-      labels.userMessageLocator
-    ]
-  );
+  const {
+    chromeLabels,
+    conversationFlowLabels,
+    goalBannerLabels,
+    interactivePromptLabels
+  } = useAgentGUIDetailLabels({
+    canAnswerPendingInteractivePromptFromComposer:
+      viewModel.interaction.canAnswerPendingInteractivePromptFromComposer,
+    isCancelPending: viewModel.composer.isCancelPending,
+    labels
+  });
   const conversationFlowEmpty = useMemo(
     () =>
       showUnavailableChatEmpty ? (
@@ -278,106 +272,6 @@ export function useAgentGUIDetailModel(input: Input) {
         <></>
       ),
     [labels.conversationUnavailable, showUnavailableChatEmpty]
-  );
-  const chromeLabels = useMemo(
-    () => ({
-      approvalRequired: labels.approvalRequired,
-      authRequired: labels.authRequired,
-      authLogin: labels.authLogin,
-      // A pending cancel takes precedence over the connecting label.
-      activatingSession: viewModel.composer.isCancelPending
-        ? labels.cancellingSession
-        : labels.activatingSession,
-      retryActivation: labels.retryActivation,
-      continueInNewConversation: labels.continueInNewConversation
-    }),
-    [
-      labels.activatingSession,
-      labels.cancellingSession,
-      labels.approvalRequired,
-      labels.authRequired,
-      labels.continueInNewConversation,
-      labels.retryActivation,
-      viewModel.composer.isCancelPending
-    ]
-  );
-  const goalBannerLabels = useMemo<AgentGoalBannerLabels>(
-    () => ({
-      titleActive: labels.goalTitleActive,
-      titlePaused: labels.goalTitlePaused,
-      titleBlocked: labels.goalTitleBlocked,
-      titleUsageLimited: labels.goalTitleUsageLimited,
-      titleBudgetLimited: labels.goalTitleBudgetLimited,
-      titleComplete: labels.goalTitleComplete,
-      budgetUsage: labels.goalBudgetUsage,
-      clearHint: labels.goalClearHint,
-      editAction: labels.goalEditAction,
-      pauseAction: labels.goalPauseAction,
-      resumeAction: labels.goalResumeAction,
-      clearAction: labels.goalClearAction
-    }),
-    [
-      labels.goalTitleActive,
-      labels.goalTitlePaused,
-      labels.goalTitleBlocked,
-      labels.goalTitleUsageLimited,
-      labels.goalTitleBudgetLimited,
-      labels.goalTitleComplete,
-      labels.goalBudgetUsage,
-      labels.goalClearHint,
-      labels.goalEditAction,
-      labels.goalPauseAction,
-      labels.goalResumeAction,
-      labels.goalClearAction
-    ]
-  );
-  const interactivePromptLabels = useMemo(
-    () => ({
-      approvalLead: labels.approvalRequired,
-      fileChangeApprovalLead: labels.fileChangeApprovalRequired,
-      planLead: labels.planLead,
-      planModes: labels.planModes,
-      stayInPlan: labels.stayInPlan,
-      sendFeedback: labels.sendFeedback,
-      feedbackPlaceholder: labels.feedbackPlaceholder,
-      previousQuestion: labels.previousQuestion,
-      nextQuestion: labels.nextQuestion,
-      submitAnswers: labels.submitAnswers,
-      answerPlaceholder: labels.answerPlaceholder,
-      waitingForAnswer: labels.waitingForAnswer,
-      conversationReturn: resolveAgentGUIConversationReturn(
-        labels,
-        viewModel.interaction.canAnswerPendingInteractivePromptFromComposer
-      ),
-      planImplementationLead: labels.planImplementationLead,
-      planImplementationConfirm: labels.planImplementationConfirm,
-      planImplementationFeedbackPlaceholder:
-        labels.planImplementationFeedbackPlaceholder,
-      planImplementationSend: labels.planImplementationSend,
-      planImplementationSkip: labels.planImplementationSkip
-    }),
-    [
-      labels.answerPlaceholder,
-      labels.approvalRequired,
-      labels.continueAnswering,
-      labels.fileChangeApprovalRequired,
-      labels.feedbackPlaceholder,
-      labels.nextQuestion,
-      labels.planLead,
-      labels.planModes,
-      labels.previousQuestion,
-      labels.returnToConversation,
-      labels.sendFeedback,
-      labels.stayInPlan,
-      labels.submitAnswers,
-      labels.waitingForAnswer,
-      viewModel.interaction.canAnswerPendingInteractivePromptFromComposer,
-      labels.planImplementationLead,
-      labels.planImplementationConfirm,
-      labels.planImplementationFeedbackPlaceholder,
-      labels.planImplementationSend,
-      labels.planImplementationSkip
-    ]
   );
   const composerLabels = useMemo(
     () => ({
@@ -472,6 +366,7 @@ export function useAgentGUIDetailModel(input: Input) {
         labels.slashPaletteConnectorNotConnected,
       slashPaletteConnectorUnsupported: labels.slashPaletteConnectorUnsupported,
       slashPaletteMcpGroup: labels.slashPaletteMcpGroup,
+      slashCommandPresentation: labels.slashCommandPresentation,
       slashCommandCompactLabel: labels.slashCommandCompactLabel,
       slashCommandContextLabel: labels.slashCommandContextLabel,
       slashCommandFastLabel: labels.slashCommandFastLabel,
@@ -752,6 +647,7 @@ export function useAgentGUIDetailModel(input: Input) {
       labels.slashStatusUsageError,
       labels.slashStatusSession,
       labels.slashStatusTitle,
+      labels.slashCommandPresentation,
       labels.usageChipLabel,
       labels.usageContextWindowLabel,
       labels.usageLimitsLabel,

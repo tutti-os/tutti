@@ -4,53 +4,17 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"strings"
 
 	workspacefiles "github.com/tutti-os/tutti/packages/workspace/files"
 )
 
-// testFilesystemSearchProvider intentionally preserves the old temporary-tree
-// traversal semantics for deterministic unit tests. Production code cannot
-// select it because this file is compiled only into tests.
-type testFilesystemSearchProvider struct{}
+type filesystemSearchProvider struct{}
 
-type emptyLocalFileSearchProvider struct{}
-
-type failingLocalFileSearchProvider struct {
-	err error
+func (filesystemSearchProvider) Name() string {
+	return "filesystem"
 }
 
-func (emptyLocalFileSearchProvider) Name() string {
-	return "empty-index"
-}
-
-func (emptyLocalFileSearchProvider) Search(
-	context.Context,
-	localFileSearchRequest,
-) ([]string, error) {
-	return nil, nil
-}
-
-func (failingLocalFileSearchProvider) Name() string {
-	return "failing-index"
-}
-
-func (f failingLocalFileSearchProvider) Search(
-	context.Context,
-	localFileSearchRequest,
-) ([]string, error) {
-	return nil, f.err
-}
-
-// testFilesystemSearchProvider intentionally preserves the old temporary-tree
-// traversal semantics for deterministic unit tests. Production code cannot
-// select it because this file is compiled only into tests.
-
-func (testFilesystemSearchProvider) Name() string {
-	return "test-filesystem"
-}
-
-func (testFilesystemSearchProvider) Search(
+func (filesystemSearchProvider) Search(
 	ctx context.Context,
 	request localFileSearchRequest,
 ) ([]string, error) {
@@ -58,8 +22,8 @@ func (testFilesystemSearchProvider) Search(
 	for _, kind := range request.IncludeKinds {
 		includeKinds[kind] = true
 	}
-	queue := []string{request.SearchRootPath}
 	paths := make([]string, 0, request.CandidateLimit)
+	queue := []string{request.SearchRootPath}
 	for len(queue) > 0 {
 		directoryPath := queue[0]
 		queue = queue[1:]
@@ -79,15 +43,13 @@ func (testFilesystemSearchProvider) Search(
 			if kind != workspacefiles.EntryKindFile && kind != workspacefiles.EntryKindDirectory {
 				continue
 			}
-			hidden := strings.HasPrefix(entry.Name(), ".")
 			if entry.IsDir() {
-				if !request.IncludeHidden &&
-					(hidden || localSearchPathIsIgnored(entry.Name())) {
+				if !request.IncludeHidden && localSearchPathIsIgnored(entry.Name()) {
 					continue
 				}
 				queue = append(queue, physicalPath)
 			}
-			if !request.IncludeHidden && hidden {
+			if !request.IncludeHidden && localSearchPathIsHidden(entry.Name()) {
 				continue
 			}
 			if len(includeKinds) > 0 && !includeKinds[kind] {

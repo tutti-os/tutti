@@ -213,7 +213,9 @@ function issueManagerRunTimestampToUnixMs(
 }
 
 export function hasCachedWorkspaceAgentSessionMessages(
-  sessionMessagesById: Readonly<Record<string, AgentActivityMessage[]>>,
+  sessionMessagesById: Readonly<
+    Record<string, readonly AgentActivityMessage[]>
+  >,
   session: MessageCenterAgentSession
 ): boolean {
   return workspaceAgentSessionMessageAliases(session).some(

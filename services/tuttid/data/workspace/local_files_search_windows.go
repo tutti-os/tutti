@@ -92,22 +92,8 @@ func windowsSearchSQL(request localFileSearchRequest) string {
 	if filterClause := windowsSearchFilterClause(request.Filters); filterClause != "" {
 		clauses = append(clauses, filterClause)
 	}
-	if ignoredClause := windowsSearchIgnoredDirectoriesClause(request); ignoredClause != "" {
-		clauses = append(clauses, ignoredClause)
-	}
 	return "SELECT TOP " + strconv.Itoa(limit) +
 		" System.ItemUrl FROM SYSTEMINDEX WHERE " + strings.Join(clauses, " AND ")
-}
-
-func windowsSearchIgnoredDirectoriesClause(request localFileSearchRequest) string {
-	if request.IncludeHidden {
-		return ""
-	}
-	terms := make([]string, 0, len(nativeSearchIgnoredDirectoryNames))
-	for _, name := range nativeSearchIgnoredDirectoryNames {
-		terms = append(terms, `"`+windowsSearchSQLEscape(name)+`"`)
-	}
-	return "NOT CONTAINS(System.ItemFolderPathDisplay, '" + strings.Join(terms, " OR ") + "')"
 }
 
 func windowsSearchKindClause(request localFileSearchRequest) string {
