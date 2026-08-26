@@ -22,7 +22,7 @@ func (s *recordingAgentAuthInvalidationSessions) InvalidateProviderRuntimeCreden
 	s.runtimeCredentials = append(s.runtimeCredentials, provider)
 }
 
-func (s *recordingAgentAuthInvalidationSessions) SetLiveModelCatalogUpdated(func(string)) {}
+func (_ *recordingAgentAuthInvalidationSessions) SetLiveModelCatalogUpdated(func(string)) {}
 
 func TestStartAgentModelInvalidationAuthWatcherInvalidatesRuntimeCredentials(t *testing.T) {
 	sessions := &recordingAgentAuthInvalidationSessions{}
