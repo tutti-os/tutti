@@ -25,10 +25,16 @@ import (
 )
 
 const (
-	daemonStartTimeout = 15 * time.Second
 	requestTimeout     = 5 * time.Second
 	healthPollInterval = 25 * time.Millisecond
 )
+
+func daemonStartTimeout() time.Duration {
+	if runtime.GOOS == "windows" {
+		return 45 * time.Second
+	}
+	return 15 * time.Second
+}
 
 var (
 	buildBinaryOnce sync.Once
@@ -446,7 +452,7 @@ func mustBuildDaemonBinary(t *testing.T) string {
 func waitForHealth(t *testing.T, daemon *testDaemon) {
 	t.Helper()
 
-	deadline := time.Now().Add(daemonStartTimeout)
+	deadline := time.Now().Add(daemonStartTimeout())
 	var lastErr error
 
 	for time.Now().Before(deadline) {
@@ -468,7 +474,7 @@ func waitForHealth(t *testing.T, daemon *testDaemon) {
 func waitForListenerInfo(t *testing.T, daemon *testDaemon) string {
 	t.Helper()
 
-	deadline := time.Now().Add(daemonStartTimeout)
+	deadline := time.Now().Add(daemonStartTimeout())
 	listenerInfoPath := filepath.Join(daemon.stateDir, "run", "tuttid.listener.json")
 	var lastErr error
 
