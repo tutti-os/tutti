@@ -52,6 +52,10 @@ const managedUVVendorScriptPath = new URL(
   "../../apps/desktop/scripts/vendor-managed-uv.mjs",
   import.meta.url
 );
+const rtkVendorScriptPath = new URL(
+  "../../apps/desktop/scripts/vendor-rtk.mjs",
+  import.meta.url
+);
 const tuttidManagerPath = new URL(
   "../../apps/desktop/src/main/daemon/tuttidManager.ts",
   import.meta.url
@@ -1505,11 +1509,16 @@ test("desktop packages and daemon agree on the bundled uv archive root", async (
   const tuttidManager = await readFile(tuttidManagerPath, "utf8");
 
   await access(managedUVVendorScriptPath);
-  assert.deepEqual(packageJson.build.extraResources.at(-1), {
-    from: "build/managed-uv",
-    to: "bin/managed-uv",
-    filter: ["**/*"]
-  });
+  assert.deepEqual(
+    packageJson.build.extraResources.find(
+      (entry) => entry.to === "bin/managed-uv"
+    ),
+    {
+      from: "build/managed-uv",
+      to: "bin/managed-uv",
+      filter: ["**/*"]
+    }
+  );
   assert.match(buildScript, /vendor-managed-uv\.mjs/);
   assert.match(buildScript, /windows-amd64/);
   assert.match(
@@ -1521,4 +1530,37 @@ test("desktop packages and daemon agree on the bundled uv archive root", async (
   assert.match(tuttidManager, /TUTTI_BUNDLED_UV_ROOT/);
   assert.equal(defaults.agentRuntimeTools.uv.version, "0.11.31");
   assert.ok(defaults.agentRuntimeTools.uv.artifacts.length >= 5);
+});
+
+test("desktop packages and daemon agree on the bundled RTK executable", async () => {
+  const packageJson = JSON.parse(await readFile(desktopPackagePath, "utf8"));
+  const lock = JSON.parse(
+    await readFile(
+      new URL("../../config/tutti.app-runtime.lock.json", import.meta.url),
+      "utf8"
+    )
+  );
+  const buildScript = await readFile(buildScriptPath, "utf8");
+  const tuttidManager = await readFile(tuttidManagerPath, "utf8");
+
+  await access(rtkVendorScriptPath);
+  assert.deepEqual(packageJson.build.extraResources.at(-1), {
+    from: "build/rtk",
+    to: "bin/rtk",
+    filter: ["**/*"]
+  });
+  assert.ok(
+    packageJson.build.mac.binaries.includes("Contents/Resources/bin/rtk/rtk")
+  );
+  assert.match(buildScript, /vendor-rtk\.mjs/);
+  assert.match(buildScript, /darwin-arm64 darwin-amd64/);
+  assert.match(await readFile(rtkVendorScriptPath, "utf8"), /Expand-Archive/);
+  assert.match(tuttidManager, /TUTTI_BUNDLED_RTK_PATH/);
+  assert.equal(lock.rtk.version, "0.45.0");
+  assert.deepEqual(Object.keys(lock.rtk.artifacts).sort(), [
+    "darwin-amd64",
+    "darwin-arm64",
+    "linux-amd64",
+    "windows-amd64"
+  ]);
 });

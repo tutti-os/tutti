@@ -164,6 +164,7 @@ function resolveActionLabel(
       | "action"
       | "authorizationState"
       | "installationState"
+      | "mutationPhase"
       | "operationStage"
       | "status"
     >

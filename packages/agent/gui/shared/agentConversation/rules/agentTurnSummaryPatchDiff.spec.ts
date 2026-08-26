@@ -164,4 +164,25 @@ describe("buildAgentTurnSummaryPatchDiff", () => {
     expect(diff).toContain(`index ${index}`);
     expect(diff).not.toContain("@@");
   });
+  it.each([
+    { oldString: "before\n", newString: undefined },
+    { oldString: undefined, newString: "after\n" }
+  ])(
+    "does not invent a modified-file patch from one-sided content",
+    (change) => {
+      const diff = buildAgentTurnSummaryPatchDiff({
+        cwd: "/workspace/project",
+        toolCallId: "call-1",
+        changes: [
+          {
+            path: "/workspace/project/src/app.ts",
+            changeType: "modified",
+            ...change
+          }
+        ]
+      });
+
+      expect(diff).toBe("");
+    }
+  );
 });

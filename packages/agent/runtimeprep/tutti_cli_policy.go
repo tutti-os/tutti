@@ -37,7 +37,10 @@ func hostAppContextPolicy(input PrepareInput) (string, error) {
 			"{{VERIFIED_ENDPOINT_OUTPUT_POLICY}}": verifiedEndpointOutput,
 		},
 	)
-	return strings.TrimSpace(rendered), err
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(rendered), nil
 }
 
 func verifiedEndpointOutputPolicy(input PrepareInput) (string, error) {
@@ -64,7 +67,13 @@ func tuttiRuntimePolicy(input PrepareInput) (string, error) {
 			"{{SPECIALIZED_POLICY_SECTIONS}}":             renderPolicySections(input, PolicyAnchorSpecialized, PolicyDeliveryProviderRuntime),
 		},
 	)
-	return strings.TrimSpace(rendered), err
+	if err != nil {
+		return "", err
+	}
+	if input.RTKSaverMode {
+		rendered = joinPromptSections(rendered, rtkInstructionsMarkdown)
+	}
+	return strings.TrimSpace(rendered), nil
 }
 
 func resolvedProfileTitle(input PrepareInput) string {

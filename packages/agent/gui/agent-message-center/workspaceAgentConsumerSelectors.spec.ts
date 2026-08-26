@@ -644,6 +644,231 @@ describe("workspaceAgentConsumerSelectors", () => {
     expect(model.waitingCount).toBe(0);
   });
 
+  it("keeps the session title for a continued historical session", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ title: "Original request" })]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-old",
+              version: 1,
+              turnId: "turn-old",
+              role: "user",
+              kind: "message",
+              payload: { text: "Original request" },
+              occurredAtUnixMs: 10
+            },
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-latest",
+              version: 2,
+              turnId: "turn-latest",
+              role: "user",
+              kind: "message",
+              payload: { text: "Continue with the latest request" },
+              occurredAtUnixMs: 20
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]?.title).toBe("Original request");
+  });
+
+  it("keeps the session title and waiting plan prompt", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [
+        session({
+          title: "Original request",
+          activeTurnId: "turn-plan",
+          activeTurn: {
+            turnId: "turn-plan",
+            agentSessionId: "session-1",
+            origin: "user_prompt",
+            phase: "waiting",
+            startedAtUnixMs: 10,
+            updatedAtUnixMs: 20
+          },
+          pendingInteractions: [
+            {
+              requestId: "request-exit-plan",
+              agentSessionId: "session-1",
+              turnId: "turn-plan",
+              kind: "approval",
+              status: "pending",
+              toolName: "ExitPlanMode",
+              input: {
+                toolCall: { kind: "switch_mode" },
+                options: [{ optionId: "acceptEdits", label: "Accept edits" }]
+              },
+              createdAtUnixMs: 20,
+              updatedAtUnixMs: 20
+            }
+          ]
+        })
+      ]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "user-plan",
+              version: 1,
+              turnId: "turn-plan",
+              role: "user",
+              kind: "message",
+              payload: { text: "Implement the revised plan" },
+              occurredAtUnixMs: 19
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]).toMatchObject({
+      title: "Original request",
+      status: "waiting",
+      pendingPrompt: {
+        kind: "exit-plan",
+        requestId: "request-exit-plan"
+      }
+    });
+  });
+
+  it("uses message version to select the latest reply when timestamps match", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ title: "Original request" })]
+    });
+
+    const model = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "assistant-latest",
+              version: 2,
+              turnId: "turn-latest",
+              role: "assistant",
+              kind: "message",
+              payload: { text: "Current reply" },
+              occurredAtUnixMs: 20
+            },
+            {
+              workspaceId: "workspace-1",
+              agentSessionId: "session-1",
+              messageId: "assistant-previous",
+              version: 1,
+              turnId: "turn-previous",
+              role: "assistant",
+              kind: "message",
+              payload: { text: "Previous reply" },
+              occurredAtUnixMs: 20
+            }
+          ]
+        }
+      }
+    );
+
+    expect(model.items[0]).toMatchObject({
+      title: "Original request",
+      lastAgentMessageSummary: "Current reply",
+      digest: {
+        primary: {
+          summary: "Current reply"
+        }
+      }
+    });
+  });
+
+  it("updates the recent summary only when a realtime reply becomes durable", () => {
+    const engine = createEngine();
+    engine.dispatch({
+      type: "session/snapshotReceived",
+      sessions: [session({ title: "Original request" })]
+    });
+    const previousReply = {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "assistant-previous",
+      version: 1,
+      sequence: 1,
+      turnId: "turn-previous",
+      role: "assistant",
+      kind: "message",
+      payload: { text: "Previous reply" },
+      occurredAtUnixMs: 10
+    } as const;
+    const streamingReply = {
+      workspaceId: "workspace-1",
+      agentSessionId: "session-1",
+      messageId: "assistant-current",
+      version: 0,
+      turnId: "turn-current",
+      role: "assistant",
+      kind: "message",
+      status: "streaming",
+      payload: { text: "Current reply in progress" },
+      occurredAtUnixMs: 20
+    } as const;
+
+    const streamingModel = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [previousReply, streamingReply]
+        }
+      }
+    );
+    expect(streamingModel.items[0]?.lastAgentMessageSummary).toBe(
+      "Previous reply"
+    );
+
+    const completedModel = buildWorkspaceAgentMessageCenterModelFromEngine(
+      selectWorkspaceAgentMessageCenterPresentation(engine.getSnapshot()),
+      {
+        workspaceId: "workspace-1",
+        sessionMessagesById: {
+          "session-1": [
+            previousReply,
+            { ...streamingReply, sequence: 2, status: "completed", version: 2 }
+          ]
+        }
+      }
+    );
+    expect(completedModel.items[0]).toMatchObject({
+      title: "Original request",
+      lastAgentMessageSummary: "Current reply in progress",
+      digest: { primary: { summary: "Current reply in progress" } }
+    });
+  });
+
   it("omits hidden sessions from the message center model by default", () => {
     const engine = createEngine();
     engine.dispatch({

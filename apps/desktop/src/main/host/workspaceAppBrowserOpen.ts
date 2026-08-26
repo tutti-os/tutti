@@ -2,64 +2,40 @@ import {
   resolveBrowserNavigationUrl,
   type BrowserNodeOpenUrlEvent
 } from "@tutti-os/browser-node";
-import { desktopIpcChannels } from "../../shared/contracts/ipc.ts";
+import {
+  desktopIpcChannels,
+  type DesktopWorkspaceAppPopupRejectedEvent
+} from "../../shared/contracts/ipc.ts";
 
-interface WorkspaceAppWindowOpenContents {
+export interface WorkspaceAppBrowserOpenContents {
   id: number;
-  setWindowOpenHandler?(
-    handler: (details: { url: string }) => { action: "allow" | "deny" }
-  ): void;
 }
 
-interface WorkspaceAppWindowOpenOwnerWindow {
+export interface WorkspaceAppBrowserOpenOwnerWindow {
   isDestroyed?(): boolean;
   webContents: {
     isDestroyed?(): boolean;
-    send(channel: string, payload: BrowserNodeOpenUrlEvent): void;
+    send(
+      channel: string,
+      payload: BrowserNodeOpenUrlEvent | DesktopWorkspaceAppPopupRejectedEvent
+    ): void;
   };
 }
 
-interface WorkspaceAppWindowOpenLogger {
+export interface WorkspaceAppBrowserOpenLogger {
+  debug?(message: string, details?: Record<string, unknown>): void;
   info?(message: string, details?: Record<string, unknown>): void;
   warn?(message: string, details?: Record<string, unknown>): void;
 }
 
-interface WorkspaceAppWindowOpenHandlerInput {
-  contents: WorkspaceAppWindowOpenContents;
-  logger?: WorkspaceAppWindowOpenLogger;
-  ownerWindow: WorkspaceAppWindowOpenOwnerWindow;
-}
-
-interface WorkspaceAppOpenUrlInput extends WorkspaceAppWindowOpenHandlerInput {
+export function dispatchWorkspaceAppOpenUrl(input: {
+  contents: WorkspaceAppBrowserOpenContents;
+  logger?: WorkspaceAppBrowserOpenLogger;
+  ownerWindow: WorkspaceAppBrowserOpenOwnerWindow;
+  producer: "external-browser-api" | "window-open-handler";
   url: string;
-}
-
-export function installWorkspaceAppWindowOpenHandler({
-  contents,
-  logger,
-  ownerWindow
-}: WorkspaceAppWindowOpenHandlerInput): void {
-  const hasSetWindowOpenHandler =
-    typeof contents.setWindowOpenHandler === "function";
-  if (!hasSetWindowOpenHandler) {
-    logger?.warn?.("workspace app guest window-open handler unavailable", {
-      webContentsId: contents.id
-    });
-    return;
-  }
-
-  contents.setWindowOpenHandler?.(({ url }) => {
-    dispatchWorkspaceAppOpenUrl({ contents, logger, ownerWindow, url });
-    return { action: "deny" };
-  });
-}
-
-export function dispatchWorkspaceAppOpenUrl({
-  contents,
-  logger,
-  ownerWindow,
-  url
-}: WorkspaceAppOpenUrlInput): boolean {
+}): boolean {
+  const { contents, logger, ownerWindow, producer, url } = input;
   const resolved = resolveBrowserNavigationUrl(url);
   if (!resolved.url) {
     logger?.warn?.("workspace app guest ignored unsupported open-url", {
@@ -90,6 +66,7 @@ export function dispatchWorkspaceAppOpenUrl({
     url: resolved.url
   };
   logger?.info?.("workspace app emitted open-url", {
+    producer,
     sourceNodeId: payload.sourceNodeId,
     url: payload.url,
     webContentsId: contents.id

@@ -123,6 +123,8 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   planModeLabel: string;
   codexSaverModeLabel: string;
   codexSaverModeDescription: string;
+  rtkSaverModeLabel: string;
+  rtkSaverModeDescription: string;
   normalModeLabel?: string;
   normalModeDescription?: string;
   tuttiModeLabel: string;
@@ -349,6 +351,10 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   slashPaletteConnectorNotConnected: string;
   slashPaletteConnectorUnsupported: string;
   slashPaletteMcpGroup: string;
+  slashCommandPresentation?: (commandName: string) => {
+    description?: string;
+    label?: string;
+  };
   slashCommandCompactLabel: string;
   slashCommandContextLabel: string;
   slashCommandFastLabel: string;

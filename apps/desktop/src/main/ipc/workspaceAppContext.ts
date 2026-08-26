@@ -21,8 +21,8 @@ export function registerWorkspaceAppGuestWebContents(
   contents: WebContents,
   logger?: DesktopLogger,
   partition?: string | null
-): void {
-  registerWorkspaceAppGuestContext({
+) {
+  return registerWorkspaceAppGuestContext({
     contents,
     logger,
     onDestroyed: (webContentsId) => {

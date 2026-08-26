@@ -15,9 +15,6 @@ func prepareClaudePersonalSkillDirectory(runtimeRoot string, personalSkillRoot s
 	if !filepath.IsAbs(personalSkillRoot) || personalSkillRoot == string(filepath.Separator) {
 		return "", fmt.Errorf("claude personal skill root must be an absolute non-root path")
 	}
-	if err := os.MkdirAll(personalSkillRoot, 0o700); err != nil {
-		return "", fmt.Errorf("create Claude personal skill root: %w", err)
-	}
 	personalInfo, err := os.Lstat(personalSkillRoot)
 	if err != nil {
 		return "", fmt.Errorf("inspect Claude personal skill root: %w", err)

@@ -81,3 +81,52 @@ func TestEventHubQueuesSubscriberBackpressureWithoutDropping(t *testing.T) {
 		}
 	}
 }
+
+func TestEventHubReconcilesAndClosesOverflowedSubscriber(t *testing.T) {
+	t.Parallel()
+
+	hub := NewEventHub()
+	events, unsubscribe := hub.Subscribe("room-a", "session-1")
+	defer unsubscribe()
+
+	published := make([]StreamEvent, 0, eventHubSubscriberQueueLimit+128)
+	for i := 0; i < eventHubSubscriberQueueLimit+128; i++ {
+		published = append(published, StreamEvent{
+			EventType: StreamEventMessageDelta,
+			Data:      map[string]any{"index": i},
+		})
+	}
+	hub.Publish("room-a", "session-1", published)
+
+	for {
+		select {
+		case event, ok := <-events:
+			if !ok {
+				t.Fatal("overflowed subscriber closed before reconcile event")
+			}
+			if event.EventType != StreamEventSessionReconcileRequired {
+				continue
+			}
+			data, ok := event.Data.(map[string]any)
+			if !ok || data["reason"] != "event_hub_queue_overflow" {
+				t.Fatalf("reconcile event data = %#v", event.Data)
+			}
+			if data["agentSessionId"] != "session-1" {
+				t.Fatalf("reconcile event session = %#v", data["agentSessionId"])
+			}
+			goto reconciled
+		case <-time.After(time.Second):
+			t.Fatal("timed out waiting for reconcile event")
+		}
+	}
+
+reconciled:
+	select {
+	case _, ok := <-events:
+		if ok {
+			t.Fatal("overflowed subscriber emitted events after reconcile")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("overflowed subscriber did not close")
+	}
+}

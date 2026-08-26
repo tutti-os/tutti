@@ -31,6 +31,7 @@ func (a *standardACPAdapter) closeOrRetainSession(session Session, acpSession *s
 	}
 	// Once ownership is being retired, no late provider frame may be attributed
 	// to a replacement session or its recent Turn.
+	acpSession.releaseLocalTools()
 	acpSession.client.SetMessageHandler(nil)
 	if err := acpSession.client.Close(); err != nil {
 		a.retainRetiredSession(session.AgentSessionID, acpSession)
@@ -161,6 +162,7 @@ func (a *standardACPAdapter) ReleaseLiveSession(_ context.Context, session Sessi
 		a.logACPCloseDiagnostics("live_release.transport_close.failed", session, acpSession, err)
 		return err
 	}
+	acpSession.releaseLocalTools()
 	a.mu.Lock()
 	if a.sessions[agentSessionID] == acpSession {
 		delete(a.sessions, agentSessionID)
@@ -201,6 +203,7 @@ func (a *standardACPAdapter) DisconnectLiveSession(_ context.Context, session Se
 			a.logACPCloseDiagnostics("workspace_disconnect.transport_close.failed", session, current, err)
 			return err
 		}
+		current.releaseLocalTools()
 		a.mu.Lock()
 		if a.sessions[agentSessionID] == current {
 			delete(a.sessions, agentSessionID)
@@ -232,6 +235,7 @@ func (a *standardACPAdapter) Close(ctx context.Context, session Session) error {
 	delete(a.sessions, agentSessionID)
 	a.mu.Unlock()
 	if acpSession != nil && acpSession.client != nil {
+		acpSession.releaseLocalTools()
 		a.closeProviderSession(ctx, session, acpSession)
 		acpSession.client.SetMessageHandler(nil)
 		closeErr := acpSession.client.Close()
@@ -268,6 +272,7 @@ func (a *standardACPAdapter) closeReplacedSession(agentSessionID string, previou
 	if previousSession == nil || previousSession.client == nil || previousSession.client == currentClient {
 		return
 	}
+	previousSession.releaseLocalTools()
 	previousSession.client.SetMessageHandler(nil)
 	if err := previousSession.client.Close(); err != nil {
 		a.retainRetiredSession(agentSessionID, previousSession)
@@ -325,6 +330,7 @@ func (a *standardACPAdapter) retryOneTrackedSessionLocked(agentSessionID string)
 			a.mu.Unlock()
 			return true, err
 		}
+		current.releaseLocalTools()
 		a.mu.Lock()
 		if a.sessions[agentSessionID] == current {
 			delete(a.sessions, agentSessionID)
@@ -359,6 +365,7 @@ func (a *standardACPAdapter) retryOneTrackedSessionLocked(agentSessionID string)
 		a.mu.Unlock()
 		return true, err
 	}
+	session.releaseLocalTools()
 	a.removeRetiredSession(agentSessionID, session)
 	return true, nil
 }

@@ -125,7 +125,8 @@ export const AgentGUINode = memo(function AgentGUINode({
     sideConversationPresentation = null,
     sessionWorktreeEnabled = false,
     sessionLaunchModesByProjectSectionKey,
-    codexSaverModeEntryEnabled = false
+    codexSaverModeEntryEnabled = false,
+    rtkSaverModeEntryEnabled = false
   } = hostCapabilities;
   const referenceProvenanceFilters = useAgentMentionProvenanceFilters({
     agentTargets,
@@ -298,6 +299,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     openSessionRequest,
     prefillPromptRequest,
     codexSaverModeEntryEnabled,
+    rtkSaverModeEntryEnabled,
     agentTargets,
     agentTargetsLoading,
     handoffAgentTargets,

@@ -1,4 +1,18 @@
 export const zhCNAgentGuiSlashPalette = {
+  slashCommands: {
+    help: {
+      label: "帮助",
+      description: "查看可用命令和帮助"
+    },
+    mcp: {
+      label: "MCP 服务",
+      description: "管理 MCP 服务"
+    },
+    tasks: {
+      label: "任务",
+      description: "查看和管理后台任务"
+    }
+  },
   slashCommandPalette: "斜杠菜单",
   skillPickerPalette: "技能",
   slashPaletteCommandsGroup: "命令",

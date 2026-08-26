@@ -51,6 +51,7 @@ type fakeRuntime struct {
 	goalRecoveryPolicyHook  func(context.Context, RuntimeGoalControlInput) (RuntimeGoalRecoveryPolicy, error)
 	goalGenerationFences    []RuntimeGoalGenerationFenceInput
 	goalGenerationFenceHook func(context.Context, RuntimeGoalGenerationFenceInput) error
+	resumeErr               error
 	resumeCalls             []RuntimeResumeInput
 	sessions                map[string]ProviderRuntimeSession
 	disconnectedSessions    map[string]bool
@@ -749,6 +750,9 @@ func (f *fakeRuntime) UpdateSettings(_ context.Context, input RuntimeUpdateSetti
 
 func (f *fakeRuntime) Resume(_ context.Context, input RuntimeResumeInput) (ProviderRuntimeSession, error) {
 	f.resumeCalls = append(f.resumeCalls, input)
+	if f.resumeErr != nil {
+		return ProviderRuntimeSession{}, f.resumeErr
+	}
 	session := ProviderRuntimeSession{
 		ID:                input.AgentSessionID,
 		AgentTargetID:     input.AgentTargetID,

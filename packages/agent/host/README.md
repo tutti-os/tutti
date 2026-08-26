@@ -558,6 +558,14 @@ not compared with Tutti's canonical prefix. Provider acceptance, including the
 child provider Session id, is persisted before any host-copy binding or
 canonical materialization. A `provider_accepted` retry therefore performs only
 idempotent local binding and commit and never invokes the provider again.
+If provider-owned acceptance evidence cannot cover every provider-bound Turn
+in the frozen canonical snapshot, Host treats that evidence as permanently
+inconsistent rather than inventing provider identities. It atomically marks
+the operation `failed`, preserves the provider acceptance evidence and source
+history, removes any incomplete target, and releases the target reservation
+and source-boundary barrier so startup and later operations can continue.
+Failure to persist that quarantine remains a startup recovery error; transient
+SQLite failures are never reclassified as permanent inconsistency.
 
 `prepared` is safe to continue during startup recovery because provider
 dispatch has not begun. A crash in `dispatching` becomes `unknown` and is never

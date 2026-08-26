@@ -2783,7 +2783,9 @@ inline data URL instead`. Claude or standard ACP may instead receive no
 - Symptom:
   Clicking Undo on a changed-files summary shows a failure even though the
   target directory is a Git repository and the file appears unchanged since
-  the agent edit.
+  the agent edit. The same loss can appear earlier as a missing changed-files
+  card, missing or incorrect line counts, or a "missing reversible patch data"
+  error after a provider overwrites a file.
 - Quick checks:
   Search desktop and daemon logs for the `agent-git-patch` diagnostic family.
   Inspect `errorCode`, Git `stderr`, the diff byte count and hash, and the
@@ -2795,7 +2797,11 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   If only one side of a modified file was persisted, Undo must be unavailable
   instead of guessing that the file was created. For
   `patch-does-not-apply`, compare the recorded after-state with the current
-  file rather than assuming the original turn is still the latest writer.
+  file rather than assuming the original turn is still the latest writer. For
+  missing patch data, check whether Standard ACP logged an unsupported
+  `fs/write_text_file` request, whether Codex emitted
+  `item/fileChange/patchUpdated`, and whether a modified canonical file entry
+  contains only one of `oldString` and `newString`.
 - Root cause:
   Provider display diffs can contain syntax that a viewer tolerates but
   `git apply` rejects. Treating that display payload as executable patch data
@@ -2808,6 +2814,12 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   `fileChanges` classification. Giving that raw payload priority can turn a
   created file into a one-sided modified edit; forcing an empty side to count
   as one then produces a syntactically corrupt patch.
+  created file does not exist in the index. Patch data is also lost when a
+  Standard ACP host advertises file writes as unsupported and therefore cannot
+  snapshot the old content, or when an app-server adapter ignores the
+  authoritative incremental file-change patch notification. Synthesizing the
+  missing side of a modified file as empty then produces a plausible-looking
+  but non-reversible patch.
 - Fix:
   Canonicalize provider file-change metadata at the runtime adapter boundary
   before persistence, and canonicalize historical no-newline markers on read.
@@ -2819,6 +2831,12 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   executable patch, otherwise the whole action stays unavailable. When both
   modified-file sides are known, hunk counts use the actual line counts,
   including zero, and text synthesis rejects NUL-containing binary content.
+  Standard ACP hosts that advertise `writeTextFile` must implement the matching
+  `fs/write_text_file` request, capture the exact old and new content, and emit
+  canonical turn file changes. App-server adapters must preserve authoritative
+  incremental patch notifications in the same canonical turn state. AgentGUI
+  must fail closed instead of synthesizing a modified-file patch when either
+  side is absent.
   The daemon must preflight with `git apply --check` using the same execution
   options, return `invalid-patch` for syntax failures and
   `patch-does-not-apply` for state mismatch, and avoid mutating the worktree on
@@ -2829,9 +2847,14 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   application, cwd-relative Windows drive paths for synthesized and complete
   diffs, zero-sided whole-file edits with LF and CRLF input, binary fail-closed
   behavior, canonical-versus-raw conflicts, and the existing
+  diffs, Standard ACP overwrite capture and relative-path rejection, Codex
+  incremental patch projection, one-sided modified metadata, and the existing
   untracked-created-file behavior.
 - References:
   [claude_sdk_activity.go](../../../packages/agent/daemon/runtime/claude_sdk_activity.go)
+  [standard_acp_filesystem.go](../../../packages/agent/daemon/runtime/standard_acp_filesystem.go)
+  [codex_appserver_reducer.go](../../../packages/agent/daemon/runtime/codex_appserver_reducer.go)
+  [agentTurnSummaryPatchDiff.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentTurnSummaryPatchDiff.ts)
   [agentPatchMetadata.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentPatchMetadata.ts)
   [agentTurnSummaryProjection.ts](../../../packages/agent/gui/shared/agentConversation/projection/agentTurnSummaryProjection.ts)
   [agentTurnSummaryPatchDiff.ts](../../../packages/agent/gui/shared/agentConversation/rules/agentTurnSummaryPatchDiff.ts)
@@ -3068,6 +3091,52 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [sessionFork.test.ts](../../../packages/agent/claude-sdk-sidecar/src/sessionFork.test.ts)
   [claude_sdk_fork.go](../../../packages/agent/daemon/runtime/claude_sdk_fork.go)
   [session_fork.go](../../../packages/agent/host/session_fork.go)
+
+### A provider-accepted Session Fork prevents Tutti from starting
+
+- Symptom:
+  Tutti exits during cold startup with `materialize accepted session fork` and
+  a provider-owned binding count that differs from the frozen canonical
+  provider-bound Turn count. The source Session and its history still exist,
+  while the operation remains `provider_accepted`.
+- Root cause:
+  Claude transcripts represent tool results as top-level `user` messages even
+  though they continue the current canonical Turn. Treating every top-level
+  Claude `user` message as a root Turn creates extra provider bindings. More
+  generally, after any provider accepts a Fork, recovery correctly refuses to
+  dispatch it again. Canonical materialization also correctly refuses to invent
+  missing provider Turn bindings, but the deterministic mismatch was returned
+  as an ordinary recovery error. One unrecoverable operation therefore poisoned
+  Host recovery and daemon construction on every restart.
+- Fix:
+  Keep Claude `tool_result` messages inside the preceding root Turn checkpoint
+  instead of creating independent bindings. As a separate final safety net,
+  classify only deterministic provider-owned materialization evidence
+  mismatches as permanent. Atomically fail that accepted operation, retain its
+  provider acceptance evidence and the complete source history, remove any
+  incomplete target, and release its reservation and boundary barrier. Do not
+  re-dispatch the provider. Keep transient SQLite errors and failures to persist
+  the quarantine startup-fatal. After quarantine persists, emit a content-free
+  `agent_session.fork.materialization_quarantined` warning to `tuttid.log` with
+  operation identities, driver kind, returned binding count, and the mismatch.
+- Validation:
+  Feed the Claude Fork adapter a real transcript shape containing root prompts,
+  assistant tool calls, and top-level tool-result messages. Require one binding
+  per root prompt and require the tool result to extend the preceding Turn's
+  checkpoint. Separately, seed a real temporary SQLite database with 29
+  provider-bound canonical Turns, three returned bindings, and a
+  `provider_accepted` operation. Recover through
+  `Host.Recover`, verify the source still has 29 Turns, the target is absent,
+  provider evidence remains, isolation rows are gone, no provider Fork call was
+  made, and a later valid operation commits. Inject quarantine persistence
+  failure as the negative control. Start the real `tuttidd` binary from a
+  poisoned state directory and require listener publication plus healthy
+  `/v1/health`.
+- References:
+  [session_fork.go](../../../packages/agent/host/session_fork.go)
+  [session_fork_operations.go](../../../packages/agent/store-sqlite/session_fork_operations.go)
+  [session_fork_conformance_test.go](../../../packages/agent/host/session_fork_conformance_test.go)
+  [blackbox_test.go](../../../services/tuttid/integration/blackbox_test.go)
 
 ### Fork reports only `agent_session_fork_conflict`
 
