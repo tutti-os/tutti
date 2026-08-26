@@ -37,15 +37,46 @@ export function parseAgentCapabilityUseInvocation(
   if (!match) {
     return null;
   }
-  const commandName = (match[2] ?? "").trim().toLowerCase();
   const config = AGENT_CAPABILITY_USE_CONFIG[capability];
-  if (!config.aliases.includes(commandName)) {
+  const commandToken = (match[2] ?? "").trim();
+  const parsedToken = parseCapabilityCommandToken(commandToken, config.aliases);
+  if (!parsedToken) {
     return null;
   }
+  const trailingArgs = match[3] ?? "";
+  const args = [parsedToken.adjacentArgs, trailingArgs]
+    .filter((part) => part !== "")
+    .join(" ");
   return {
-    commandName,
-    args: match[3] ?? ""
+    commandName: parsedToken.commandName,
+    args
   };
+}
+
+function parseCapabilityCommandToken(
+  token: string,
+  aliases: readonly string[]
+): { adjacentArgs: string; commandName: string } | null {
+  const normalizedToken = token.toLowerCase();
+  for (const alias of aliases) {
+    const normalizedAlias = alias.toLowerCase();
+    if (normalizedToken === normalizedAlias) {
+      return { adjacentArgs: "", commandName: normalizedAlias };
+    }
+    if (!normalizedToken.startsWith(normalizedAlias)) {
+      continue;
+    }
+    const adjacentArgs = token.slice(alias.length);
+    if (isAdjacentCapabilityArgument(adjacentArgs)) {
+      return { adjacentArgs, commandName: normalizedAlias };
+    }
+  }
+  return null;
+}
+
+function isAdjacentCapabilityArgument(value: string): boolean {
+  const firstCharacter = Array.from(value)[0];
+  return Boolean(firstCharacter && !/[a-z0-9_-]/i.test(firstCharacter));
 }
 
 export function buildAgentCapabilityUseSubmitPrompt(

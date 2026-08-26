@@ -537,6 +537,41 @@ delimited by ---`, and the composer skill picker may show partial or
   [workspaceSurfacePreload.ts](../../../apps/desktop/src/preload/entries/workspaceSurfacePreload.ts)
   [StandaloneAgentToolSidebar.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/StandaloneAgentToolSidebar.tsx)
 
+### `/browser` with adjacent CJK text reaches the provider as an unknown ACP command
+
+- Symptom:
+  Typing `/browser打开百度` or `/computer点击确认` returns a provider error such
+  as `Unknown ACP command`, while the equivalent command with a space works.
+  The behavior can appear intermittent because selecting the Composer palette
+  entry inserts a canonical command token with a trailing space, whereas
+  directly typed text may not contain that boundary.
+- Quick checks:
+  Compare the submitted user prompt with the provider's `session/prompt` input.
+  If the raw slash text reaches ACP unchanged and its byte length matches the
+  exact no-space draft, the local capability rewrite did not run. This is
+  distinct from Browser Node launch, attachment, and authorization failures.
+- Root cause:
+  The local browser/computer capability parser previously treated the complete
+  non-whitespace token as the command name. Adjacent CJK arguments therefore
+  changed `browser` into the unknown name `browser打开百度`, bypassing the
+  browser-use handoff and exposing the raw text to providers with native slash
+  command parsing.
+- Fix:
+  Recognize an adjacent suffix as capability arguments when it begins outside
+  the ASCII command-name character set. Preserve exact matching for ASCII
+  command continuations so strings such as `/browsering` and `/computer2` do
+  not become local capability commands. Keep this logic provider-neutral and
+  normalize the visible prompt to include the canonical separating space.
+- Validation:
+  Cover English and localized browser/computer aliases with both spaced and
+  adjacent CJK arguments, plus negative ASCII-prefix cases. At the Composer
+  policy boundary, verify the draft is rewritten to the injected skill prompt
+  and carries the required capability settings patch instead of reaching ACP
+  as a raw slash command.
+- References:
+  [agentCapabilityUseSubmit.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentCapabilityUseSubmit.ts)
+  [agentSlashCommandProviderPolicy.ts](../../../packages/agent/gui/agent-gui/agentGuiNode/model/agentSlashCommandProviderPolicy.ts)
+
 ### In-app Browser new-page fails to attach for every provider
 
 - Symptom:

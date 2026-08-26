@@ -176,8 +176,8 @@ type StandardACPAdapterConfig struct {
 	InstallationID               string
 	ExecutableIdentity           *ExecutableIdentity
 	Env                          []string
-	// StartupTimeout bounds initialize/session-new calls for setup probes.
-	// Zero keeps the normal ACP timeout.
+	// StartupTimeout bounds initialize/session-new calls for callers that own a
+	// provider-specific cold-start policy. Zero keeps the normal ACP timeout.
 	StartupTimeout time.Duration
 }
 

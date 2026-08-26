@@ -12,6 +12,12 @@ import (
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 )
 
+// Agent Extension runtimes may need to initialize a managed language runtime,
+// load provider configuration, and discover models before session/new can
+// return. Keep that cold start bounded without applying the larger budget to
+// unrelated standard ACP providers or retrying an outcome-unknown request.
+const agentExtensionStartupTimeout = 60 * time.Second
+
 type RuntimeResolver struct {
 	Manager   *Manager
 	Transport agentruntime.ProcessTransport
@@ -102,6 +108,7 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		InstallationID:               binding.Installation.ID,
 		ExecutableIdentity:           binding.ExecutableIdentity,
 		Env:                          append([]string(nil), binding.Env...),
+		StartupTimeout:               agentExtensionStartupTimeout,
 	}
 }
 

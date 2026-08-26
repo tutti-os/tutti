@@ -4,6 +4,44 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### A cold Agent Extension handoff fails at `acp session/new timed out after 30s`
+
+- Symptom:
+  A handoff from another Agent reaches an enabled Agent Extension, but the
+  destination conversation fails before its first Turn with
+  `acp session/new timed out after 30s`. This was observed with Hermes on a
+  busy Windows machine even though the same installation starts successfully
+  on a later attempt.
+- Quick checks:
+  Correlate the destination session with any hidden live-model discovery
+  session for the same provider. If `initialize` succeeds, `session/new` is
+  written, provider stderr continues showing cold-start work, and there is no
+  JSON-RPC response before the exact 30-second boundary, treat it as a startup
+  budget failure rather than a malformed handoff payload. Check separately for
+  authentication, runtime exit, and invalid-path errors.
+- Root cause:
+  Interactive Agent Extension sessions inherited the generic standard-ACP
+  30-second initialize/session-new bound. A cold managed runtime can still be
+  loading provider configuration and discovering models at that boundary,
+  especially when model discovery and other Agent sessions contend for host
+  resources. The handoff only exposed that slow cold start; it did not corrupt
+  the destination prompt.
+- Fix:
+  Give adapters resolved through the Agent Extension boundary a bounded
+  60-second initialize/session-new budget. Keep generic ACP providers on their
+  existing default, keep foreground composer discovery bounded independently,
+  and do not retry a timed-out `session/new`: the provider may have created a
+  session even when its response was not observed. Apply the policy to Agent
+  Extensions declaratively rather than checking a Hermes provider ID.
+- Validation:
+  Verify the Agent Extension resolver projects the larger startup budget, then
+  repeat a cold handoff on Windows and confirm the destination session reaches
+  its first Turn without a 30-second timeout. Confirm unrelated standard ACP
+  adapters retain their default and no duplicate `session/new` is sent.
+- References:
+  [runtime_resolver.go](../../../services/tuttid/service/agentextension/runtime_resolver.go)
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
+
 ### A fresh Hermes session waits on its first terminal or browser command
 
 - Symptom:

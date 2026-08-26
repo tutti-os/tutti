@@ -227,6 +227,19 @@ describe("agentSlashCommandProviderPolicy", () => {
     });
     expect(
       resolveSlashCommandSubmitEffect({
+        provider: "extension-provider",
+        browserSupported: true,
+        commands,
+        draft: "/browser打开百度"
+      })
+    ).toEqual({
+      kind: "submitPrompt",
+      prompt: expect.stringMatching(/browser-use[\s\S]*打开百度/),
+      displayPrompt: "/browser 打开百度",
+      requiredSettingsPatch: { browserUse: true }
+    });
+    expect(
+      resolveSlashCommandSubmitEffect({
         provider: "codex",
         policy: CODEX_POLICY,
         browserSupported: true,

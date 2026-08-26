@@ -9,9 +9,12 @@ describe("agentCapabilityUseSubmit", () => {
   it.each([
     ["browserUse", "/browser", "browser", ""],
     ["browserUse", "/browser open google.com", "browser", "open google.com"],
+    ["browserUse", "/browser打开百度", "browser", "打开百度"],
     ["browserUse", "$浏览器 打开百度", "浏览器", "打开百度"],
+    ["browserUse", "$浏览器打开百度", "浏览器", "打开百度"],
     ["computerUse", "/computer", "computer", ""],
     ["computerUse", "$computer open Settings", "computer", "open Settings"],
+    ["computerUse", "/computer点击确认", "computer", "点击确认"],
     ["computerUse", "/电脑 点击确认", "电脑", "点击确认"]
   ] as const)(
     "parses the %s invocation %s",
@@ -29,6 +32,12 @@ describe("agentCapabilityUseSubmit", () => {
     ).toBeNull();
     expect(
       parseAgentCapabilityUseInvocation("/browser test", "computerUse")
+    ).toBeNull();
+    expect(
+      parseAgentCapabilityUseInvocation("/browsering", "browserUse")
+    ).toBeNull();
+    expect(
+      parseAgentCapabilityUseInvocation("/computer2", "computerUse")
     ).toBeNull();
   });
 
