@@ -16,6 +16,7 @@ type workspaceAgentTargetResolverSetter interface {
 type agentAuthInvalidationSessions interface {
 	InvalidateLiveComposerModels(provider string)
 	InvalidateProviderRuntimeCredentials(provider string)
+	SetLiveModelCatalogUpdated(func(provider string))
 }
 
 func configureWorkspaceAgentProjection(
@@ -55,9 +56,9 @@ func startAgentModelInvalidationAuthWatcher(
 			"changed_files", providerAuthChangeDiagnostics(changes),
 		)
 	}
-	sessions.LiveModelCatalogUpdated = func(provider string) {
+	sessions.SetLiveModelCatalogUpdated(func(provider string) {
 		publish([]string{provider}, "agent.model_catalog.refreshed", nil)
-	}
+	})
 	watcher := startProviderAuthWatcher(
 		replayComposition,
 		nil,
