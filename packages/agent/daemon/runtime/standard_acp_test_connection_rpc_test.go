@@ -473,6 +473,12 @@ func (c *standardACPConnection) Send(data []byte) error {
 							},
 						},
 					})
+				} else if c.promptKind == "approval-after-permission" {
+					c.sendJSON(map[string]any{"jsonrpc": "2.0", "method": acpMethodUpdate, "params": map[string]any{"sessionId": c.sessionID, "update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "wrong-read-file", "title": "Wrong file", "kind": "read", "status": "pending", "rawInput": map[string]any{"path": `C:\Users\anonymous\workspace\wrong.txt`}}}})
+					if c.pauseBeforeAskUserToolUpdate != nil {
+						<-c.pauseBeforeAskUserToolUpdate
+					}
+					c.sendJSON(map[string]any{"jsonrpc": "2.0", "method": acpMethodUpdate, "params": map[string]any{"sessionId": c.sessionID, "update": map[string]any{"sessionUpdate": "tool_call", "toolCallId": "read-file-1", "title": "Read file", "kind": "read", "status": "pending", "rawInput": map[string]any{"path": `C:\Users\anonymous\workspace\secret.txt`}}}})
 				}
 				return nil
 			}
@@ -489,7 +495,13 @@ func (c *standardACPConnection) Send(data []byte) error {
 			}
 			c.streamPromptResult(message.ID)
 		case acpMethodCancel:
+			var request struct {
+				Params map[string]any `json:"params"`
+			}
+			_ = json.Unmarshal([]byte(line), &request)
 			c.mu.Lock()
+			c.cancelCalls++
+			c.lastCancelParams = maps.Clone(request.Params)
 			pendingPromptID := append(json.RawMessage(nil), c.pendingPromptID...)
 			c.pendingPromptID = nil
 			returnRetriableTail := c.canceledDeferredPromptRetriableTail

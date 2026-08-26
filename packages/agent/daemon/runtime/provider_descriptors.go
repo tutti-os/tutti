@@ -217,6 +217,7 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 	adapter := &standardACPAdapter{
 		config: standardACPConfig{
 			provider:                     provider,
+			deferApprovalUntilToolInput:  standardACPProviderBehaviorFor(provider).deferApprovalUntilToolInput,
 			adapterName:                  strings.TrimSpace(config.Name),
 			command:                      append([]string(nil), config.Command...),
 			defaultTitle:                 strings.TrimSpace(config.DisplayName),
@@ -252,6 +253,22 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 		adapter.config.automaticPermissionDecision = decisions
 	}
 	return adapter, nil
+}
+
+type standardACPProviderBehavior struct {
+	deferApprovalUntilToolInput bool
+}
+
+// standardACPProviderBehaviorFor owns trusted protocol differences for
+// externalized Agent Extensions. Extension manifests cannot opt into these
+// behaviors themselves.
+func standardACPProviderBehaviorFor(provider string) standardACPProviderBehavior {
+	switch strings.TrimSpace(provider) {
+	case "acp:kimi-code":
+		return standardACPProviderBehavior{deferApprovalUntilToolInput: true}
+	default:
+		return standardACPProviderBehavior{}
+	}
 }
 
 func automaticPermissionDecisionFromMap(input map[string]string) func(string) string {

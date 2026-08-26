@@ -144,6 +144,8 @@ type standardACPConnection struct {
 	canceledDeferredPromptRetriableTail bool
 	promptStarted                       chan struct{}
 	pendingPromptID                     json.RawMessage
+	cancelCalls                         int
+	lastCancelParams                    map[string]any
 	// promptFinalContent attaches final assistant content blocks to the
 	// session/prompt result so tests can exercise final snapshot projection.
 	promptFinalContent []map[string]any
