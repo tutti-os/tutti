@@ -45,14 +45,15 @@ test("desktop Agent Session launch mode is remembered per workspace and project"
   );
 });
 
-test("Codex saver mode is remembered per agent target without clobbering model defaults", () => {
+test("independent saver modes are remembered per agent target without clobbering model defaults", () => {
   const enabled = mergeDesktopAgentComposerDefaultsByAgentTarget(
     { "local:codex": { model: "gpt-5.6-sol" } },
     "local:codex",
-    { codexSaverMode: true }
+    { codexSaverMode: true, rtkSaverMode: true }
   );
   assert.deepEqual(enabled["local:codex"], {
     codexSaverMode: true,
+    rtkSaverMode: true,
     model: "gpt-5.6-sol"
   });
   const disabled = mergeDesktopAgentComposerDefaultsByAgentTarget(
@@ -60,7 +61,10 @@ test("Codex saver mode is remembered per agent target without clobbering model d
     "local:codex",
     { codexSaverMode: false }
   );
-  assert.deepEqual(disabled["local:codex"], { model: "gpt-5.6-sol" });
+  assert.deepEqual(disabled["local:codex"], {
+    rtkSaverMode: true,
+    model: "gpt-5.6-sol"
+  });
 });
 
 test("desktop agent conversation detail mode defaults to coding", () => {

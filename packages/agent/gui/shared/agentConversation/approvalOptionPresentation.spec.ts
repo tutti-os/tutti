@@ -66,6 +66,45 @@ describe("approvalOptionDisplayLabel", () => {
         { feedback: true }
       )
     ).toBe("拒绝，然后发送新的指令");
+    expect(
+      approvalOptionDisplayLabel({
+        id: "abort",
+        kind: "reject_always",
+        label: "Deny and stop the turn"
+      })
+    ).toBe("拒绝并停止当前回复");
+
+    setAgentGuiI18nTestLocale("en");
+    expect(
+      approvalOptionDisplayLabel({
+        id: "abort",
+        kind: "reject_always",
+        label: "Deny and stop the turn"
+      })
+    ).toBe("Deny and stop the current response");
+  });
+
+  it("does not infer stop semantics from an opaque abort option id", () => {
+    expect(
+      approvalOptionDisplayLabel(
+        {
+          id: "abort",
+          kind: "reject_once",
+          label: "No, and tell Codex what to do differently"
+        },
+        { feedback: true }
+      )
+    ).toBe("拒绝，然后发送新的指令");
+    expect(
+      approvalOptionDisplayLabel(
+        {
+          id: "abort",
+          kind: "reject_always",
+          label: "Deny and stop the turn"
+        },
+        { feedback: true }
+      )
+    ).toBe("拒绝，然后发送新的指令");
   });
 
   it("falls back to provider labels for ambiguous option ids", () => {

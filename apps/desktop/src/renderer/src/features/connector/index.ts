@@ -1,2 +1,5 @@
 export { registerConnectorMarketModule } from "./registration/registerConnectorModule.ts";
-export { requestDesktopConnectorInstallAdmission } from "./adapters/desktopConnectorAdmission.ts";
+export {
+  canRequestDesktopConnectorMarket,
+  requestDesktopConnectorInstallAdmission
+} from "./adapters/desktopConnectorAdmission.ts";

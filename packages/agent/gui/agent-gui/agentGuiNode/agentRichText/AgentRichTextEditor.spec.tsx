@@ -1,6 +1,7 @@
 import { act, fireEvent, render, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { EditorView } from "@tiptap/pm/view";
 import { RichTextMentionServiceProvider } from "@tutti-os/ui-rich-text/editor";
 import {
   createRichTextMentionService,
@@ -653,6 +654,106 @@ function createWorkspaceAppMentionProvider(
 }
 
 describe("AgentRichTextEditor prompt insertion", () => {
+  it("keeps a middle newline visible without jumping to earlier content", async () => {
+    const animationFrames: FrameRequestCallback[] = [];
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        animationFrames.push(callback);
+        return animationFrames.length;
+      });
+    const cancelAnimationFrameSpy = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation(() => {});
+    const coordsAtPosSpy = vi
+      .spyOn(EditorView.prototype, "coordsAtPos")
+      .mockReturnValue({ bottom: 148, left: 0, right: 0, top: 124 });
+    const rangeRectDescriptor = Object.getOwnPropertyDescriptor(
+      Range.prototype,
+      "getBoundingClientRect"
+    );
+    Object.defineProperty(Range.prototype, "getBoundingClientRect", {
+      configurable: true,
+      value: () => createRect({ bottom: 0, top: 0 })
+    });
+    const onChange = vi.fn();
+
+    try {
+      const rendered = render(
+        <AgentRichTextEditor
+          value={"one\ntwo\nthree\nfour\nfive\nsix"}
+          disabled={false}
+          placeholder="Prompt"
+          onChange={onChange}
+          onSubmit={vi.fn()}
+        />
+      );
+      const editor = await waitFor(() => {
+        const element = rendered.container.querySelector<HTMLElement>(
+          '[contenteditable="true"]'
+        );
+        expect(element).not.toBeNull();
+        return element!;
+      });
+      Object.defineProperties(editor, {
+        clientHeight: { configurable: true, value: 72 },
+        scrollHeight: { configurable: true, value: 240 }
+      });
+      editor.scrollTop = 96;
+      vi.spyOn(editor, "getBoundingClientRect").mockReturnValue(
+        createRect({ bottom: 172, top: 100 })
+      );
+
+      const textNode = Array.from(
+        editor.querySelector("p")?.childNodes ?? []
+      ).find(
+        (node) =>
+          node.nodeType === Node.TEXT_NODE && node.textContent === "three"
+      );
+      expect(textNode).not.toBeNull();
+      act(() => {
+        editor.focus();
+        const selection = window.getSelection();
+        if (selection && textNode) {
+          const range = document.createRange();
+          range.setStart(textNode, textNode.textContent?.length ?? 0);
+          range.collapse(true);
+          selection.removeAllRanges();
+          selection.addRange(range);
+          document.dispatchEvent(
+            new Event("selectionchange", { bubbles: true })
+          );
+        }
+      });
+
+      fireEvent.keyDown(editor, { key: "Enter", shiftKey: true });
+      await waitFor(() =>
+        expect(onChange).toHaveBeenLastCalledWith(
+          "one\ntwo\nthree\n\nfour\nfive\nsix"
+        )
+      );
+      act(() => {
+        animationFrames.splice(0).forEach((callback) => callback(0));
+      });
+
+      expect(coordsAtPosSpy).toHaveBeenCalled();
+      expect(editor.scrollTop).toBe(96);
+    } finally {
+      if (rangeRectDescriptor) {
+        Object.defineProperty(
+          Range.prototype,
+          "getBoundingClientRect",
+          rangeRectDescriptor
+        );
+      } else {
+        Reflect.deleteProperty(Range.prototype, "getBoundingClientRect");
+      }
+      coordsAtPosSpy.mockRestore();
+      cancelAnimationFrameSpy.mockRestore();
+      requestAnimationFrameSpy.mockRestore();
+    }
+  });
+
   it("drops a late mention resolution after the controlled draft is replaced", async () => {
     let resolveOldMention: ((value: RichTextMentionResolved) => void) | null =
       null;
@@ -1023,6 +1124,20 @@ describe("AgentRichTextEditor prompt insertion", () => {
     expect(onChange).toHaveBeenLastCalledWith("hello Tutti");
   });
 });
+
+function createRect({ bottom, top }: { bottom: number; top: number }): DOMRect {
+  return {
+    bottom,
+    height: bottom - top,
+    left: 0,
+    right: 100,
+    top,
+    width: 100,
+    x: 0,
+    y: top,
+    toJSON: () => ({})
+  };
+}
 
 describe("AgentRichTextEditor mention clipboard", () => {
   it("round-trips a built-in mention through text/plain and text/html", async () => {

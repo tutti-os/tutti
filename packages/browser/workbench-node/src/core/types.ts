@@ -50,6 +50,7 @@ export interface BrowserNodeStateEvent {
   url: string | null;
   title: string | null;
   isLoading: boolean;
+  navigationStatusCode?: number;
   canGoBack: boolean;
   canGoForward: boolean;
   zoomFactor?: number;

@@ -643,6 +643,9 @@ export function AgentComposerView(
             codexSaverModeDisabled={
               settingsControlsDisabled || Boolean(input.props.agentSessionId)
             }
+            rtkSaverModeDisabled={
+              settingsControlsDisabled || Boolean(input.props.agentSessionId)
+            }
             permissionModeControlsDisabled={permissionModeControlsDisabled}
             isSendingTurn={input.props.isSendingTurn}
             showComposerAction={showComposerActionInFooter}

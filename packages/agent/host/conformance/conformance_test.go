@@ -12,8 +12,8 @@ func TestPublishedScenarioCatalogsHaveUniqueNames(t *testing.T) {
 		scenarios []Scenario
 		wantCount int
 	}{
-		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 34},
-		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 29},
+		{name: "adapter lifecycle", scenarios: Scenarios(), wantCount: 35},
+		{name: "application core", scenarios: ApplicationCoreScenarios(), wantCount: 30},
 		{name: "guidance", scenarios: GuidanceScenarios(), wantCount: 3},
 		{name: "resume policy", scenarios: ResumePolicyScenarios(), wantCount: 5},
 		{name: "submission fence", scenarios: SubmissionFenceScenarios(), wantCount: 1},
@@ -120,6 +120,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create with explicit rail placement",
 		"create with authoritative rail placement outside local project registry",
 		"resume persisted session",
+		"failed resume preserves recoverable provider state",
 		"send input",
 		"send connector-only input",
 		"guidance requires exact target before dispatch",
@@ -156,6 +157,7 @@ func TestScenarioOwnershipIsExplicit(t *testing.T) {
 		"create with explicit rail placement",
 		"create with authoritative rail placement outside local project registry",
 		"resume persisted session",
+		"failed resume preserves recoverable provider state",
 		"send input",
 		"send connector-only input",
 		"guidance requires exact target before dispatch",

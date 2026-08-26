@@ -93,6 +93,7 @@ import {
   isFeatureEnabled,
   LAB_AGENT_SIDE_CONVERSATION_FLAG,
   LAB_CODEX_SAVER_MODE_FLAG,
+  LAB_RTK_SAVER_MODE_FLAG,
   LAB_CONNECTORS_FLAG,
   LAB_TUTTI_MODE_FLAG,
   resolveDesktopWorkspaceUiMode
@@ -605,6 +606,10 @@ function DesktopAgentGUISurfaceImpl({
     desktopPreferencesState.featureFlags,
     LAB_CODEX_SAVER_MODE_FLAG
   );
+  const rtkSaverModeEntryEnabled = isFeatureEnabled(
+    desktopPreferencesState.featureFlags,
+    LAB_RTK_SAVER_MODE_FLAG
+  );
   const providerAuthAccountLabels = useDesktopAgentGUIProviderAuthAccountLabels(
     providerStatusSnapshot.statuses
   );
@@ -687,6 +692,7 @@ function DesktopAgentGUISurfaceImpl({
       sessionWorktreeEnabled: true,
       sessionLaunchModesByProjectSectionKey,
       codexSaverModeEntryEnabled,
+      rtkSaverModeEntryEnabled,
       capabilityMenuState,
       visibleErrorPresentationOverrides,
       comingSoonProviders: comingSoonAgentProviders,

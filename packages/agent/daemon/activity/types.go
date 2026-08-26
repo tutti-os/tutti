@@ -34,6 +34,109 @@ type Client struct {
 	httpClient *http.Client
 }
 
+type GlobalAgentActivityRoomOption struct {
+	RoomID    string `json:"roomId"`
+	Name      string `json:"name"`
+	AvatarURI string `json:"avatarUri"`
+}
+
+type GlobalAgentActivitySessionOwnerOption struct {
+	UserID                string `json:"userId"`
+	DisplayName           string `json:"displayName"`
+	AvatarURL             string `json:"avatarUrl"`
+	AvatarFallbackURL     string `json:"avatarFallbackUrl"`
+	AvatarClientTransform bool   `json:"avatarClientTransform"`
+}
+
+type GlobalAgentActivityAgentOption struct {
+	AgentKey      string `json:"agentKey"`
+	AgentTargetID string `json:"agentTargetId"`
+	Provider      string `json:"provider"`
+	Name          string `json:"name"`
+	IconKey       string `json:"iconKey"`
+}
+
+type GlobalAgentActivityTimeBounds struct {
+	MinActivityAtUnixMS int64 `json:"minActivityAtUnixMs"`
+	MaxActivityAtUnixMS int64 `json:"maxActivityAtUnixMs"`
+	ServerNowUnixMS     int64 `json:"serverNowUnixMs"`
+}
+
+func (b *GlobalAgentActivityTimeBounds) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		MinActivityAtUnixMS flexibleInt64 `json:"minActivityAtUnixMs"`
+		MaxActivityAtUnixMS flexibleInt64 `json:"maxActivityAtUnixMs"`
+		ServerNowUnixMS     flexibleInt64 `json:"serverNowUnixMs"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*b = GlobalAgentActivityTimeBounds{
+		MinActivityAtUnixMS: int64(raw.MinActivityAtUnixMS),
+		MaxActivityAtUnixMS: int64(raw.MaxActivityAtUnixMS),
+		ServerNowUnixMS:     int64(raw.ServerNowUnixMS),
+	}
+	return nil
+}
+
+type GlobalAgentActivityFilterOptions struct {
+	Rooms         []GlobalAgentActivityRoomOption         `json:"rooms"`
+	SessionOwners []GlobalAgentActivitySessionOwnerOption `json:"sessionOwners"`
+	Agents        []GlobalAgentActivityAgentOption        `json:"agents"`
+	TimeBounds    GlobalAgentActivityTimeBounds           `json:"timeBounds"`
+}
+
+type ListGlobalAgentActivitySessionsInput struct {
+	RoomIDs             []string
+	SessionOwnerUserIDs []string
+	AgentKeys           []string
+	ActivityFromUnixMS  int64
+	ActivityToUnixMS    int64
+}
+
+type GlobalAgentActivitySession struct {
+	Room                  GlobalAgentActivityRoomOption         `json:"room"`
+	WorkspaceID           string                                `json:"workspaceId"`
+	AgentSessionID        string                                `json:"agentSessionId"`
+	SessionOwner          GlobalAgentActivitySessionOwnerOption `json:"sessionOwner"`
+	Agent                 GlobalAgentActivityAgentOption        `json:"agent"`
+	Status                string                                `json:"status"`
+	Title                 string                                `json:"title"`
+	Summary               string                                `json:"summary"`
+	LatestUserPrompt      string                                `json:"latestUserPrompt"`
+	NeedsAttention        bool                                  `json:"needsAttention"`
+	ActivityAtUnixMS      int64                                 `json:"activityAtUnixMs"`
+	LatestMessageAtUnixMS int64                                 `json:"latestMessageAtUnixMs"`
+	StartedAtUnixMS       int64                                 `json:"startedAtUnixMs"`
+	EndedAtUnixMS         int64                                 `json:"endedAtUnixMs"`
+	LatestTurnID          string                                `json:"latestTurnId"`
+}
+
+func (s *GlobalAgentActivitySession) UnmarshalJSON(data []byte) error {
+	type sessionAlias GlobalAgentActivitySession
+	var raw struct {
+		*sessionAlias
+		ActivityAtUnixMS      flexibleInt64 `json:"activityAtUnixMs"`
+		LatestMessageAtUnixMS flexibleInt64 `json:"latestMessageAtUnixMs"`
+		StartedAtUnixMS       flexibleInt64 `json:"startedAtUnixMs"`
+		EndedAtUnixMS         flexibleInt64 `json:"endedAtUnixMs"`
+	}
+	raw.sessionAlias = (*sessionAlias)(s)
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	s.ActivityAtUnixMS = int64(raw.ActivityAtUnixMS)
+	s.LatestMessageAtUnixMS = int64(raw.LatestMessageAtUnixMS)
+	s.StartedAtUnixMS = int64(raw.StartedAtUnixMS)
+	s.EndedAtUnixMS = int64(raw.EndedAtUnixMS)
+	return nil
+}
+
+type ListGlobalAgentActivitySessionsReply struct {
+	Items     []GlobalAgentActivitySession `json:"items"`
+	Truncated bool                         `json:"truncated"`
+}
+
 type ReportActivityInput struct {
 	WorkspaceID           string
 	Connector             *ConnectorInfo

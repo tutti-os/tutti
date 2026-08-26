@@ -83,6 +83,7 @@ jobs:
             platform === "windows-amd64"
               ? lock.python?.windows?.version
               : lock.python?.version;
+          const rtkArtifact = lock.rtk?.artifacts?.[platform];
           for (const [name, value] of [
             ["runtime_version", lock.runtimeVersion],
             ["uv_version", lock.uv?.version],
@@ -92,6 +93,14 @@ jobs:
             ["python_windows_archive_root", lock.python?.windows?.archiveRoot],
             ["node_version", lock.node?.version],
             ["node_release_base_url", lock.node?.releaseBaseUrl],
+            ["rtk_version", lock.rtk?.version],
+            ["rtk_archive_url", rtkArtifact?.url],
+            ["rtk_archive_sha256", rtkArtifact?.sha256],
+            ["rtk_archive_size", rtkArtifact?.sizeBytes],
+            ["rtk_archive_executable", rtkArtifact?.executable],
+            ["rtk_license_url", lock.rtk?.license?.url],
+            ["rtk_license_sha256", lock.rtk?.license?.sha256],
+            ["rtk_license_size", lock.rtk?.license?.sizeBytes],
             ["configured_node_distribution", lock.platforms[platform].nodeDistribution],
             ["configured_runner", lock.platforms[platform].runner]
           ]) {
@@ -167,6 +176,39 @@ jobs:
             exit 1
           fi
 
+      - name: Download RTK
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          RTK_ARCHIVE_EXECUTABLE: ${{ steps.lock.outputs.rtk_archive_executable }}
+          RTK_ARCHIVE_SHA256: ${{ steps.lock.outputs.rtk_archive_sha256 }}
+          RTK_ARCHIVE_SIZE: ${{ steps.lock.outputs.rtk_archive_size }}
+          RTK_ARCHIVE_URL: ${{ steps.lock.outputs.rtk_archive_url }}
+          RTK_LICENSE_SHA256: ${{ steps.lock.outputs.rtk_license_sha256 }}
+          RTK_LICENSE_SIZE: ${{ steps.lock.outputs.rtk_license_size }}
+          RTK_LICENSE_URL: ${{ steps.lock.outputs.rtk_license_url }}
+          RTK_VERSION: ${{ steps.lock.outputs.rtk_version }}
+        run: |
+          archive="${RUNNER_TEMP}/$(basename "${RTK_ARCHIVE_URL}")"
+          license="${RUNNER_TEMP}/rtk-LICENSE"
+          expanded="${RUNNER_TEMP}/tutti-runtime-rtk-expanded"
+          target="${RUNNER_TEMP}/tutti-runtime-rtk/rtk"
+          curl --retry 3 --retry-delay 2 -fsSLo "${archive}" "${RTK_ARCHIVE_URL}"
+          test "$(wc -c < "${archive}" | tr -d ' ')" = "${RTK_ARCHIVE_SIZE}"
+          printf '%s  %s\n' "${RTK_ARCHIVE_SHA256}" "${archive}" | shasum -a 256 -c -
+          rm -rf "${expanded}" "${target}"
+          mkdir -p "${expanded}" "${target}/bin"
+          tar -xf "${archive}" -C "${expanded}"
+          executable="$(find "${expanded}" -type f -name "${RTK_ARCHIVE_EXECUTABLE}" | head -n 1)"
+          test -n "${executable}"
+          cp "${executable}" "${target}/bin/rtk"
+          chmod 0755 "${target}/bin/rtk"
+          curl --retry 3 --retry-delay 2 -fsSLo "${license}" "${RTK_LICENSE_URL}"
+          test "$(wc -c < "${license}" | tr -d ' ')" = "${RTK_LICENSE_SIZE}"
+          printf '%s  %s\n' "${RTK_LICENSE_SHA256}" "${license}" | shasum -a 256 -c -
+          cp "${license}" "${target}/LICENSE"
+          "${target}/bin/rtk" --version | grep -Fx "rtk ${RTK_VERSION}"
+
       - name: Assemble runtime artifacts
         if: runner.os != 'Windows'
         shell: bash
@@ -174,16 +216,20 @@ jobs:
           NODE_VERSION: ${{ steps.lock.outputs.node_version }}
           PLATFORM: ${{ matrix.platform }}
           PYTHON_VERSION: ${{ steps.lock.outputs.python_version }}
+          RTK_VERSION: ${{ steps.lock.outputs.rtk_version }}
           RUNTIME_VERSION: ${{ steps.lock.outputs.runtime_version }}
         run: |
           artifact_dir="${GITHUB_WORKSPACE}/tutti-app-runtime/${RUNTIME_VERSION}/${PLATFORM}"
           python_staging="${RUNNER_TEMP}/tutti-app-runtime-python"
           node_staging="${RUNNER_TEMP}/tutti-app-runtime-node-artifact"
+          rtk_staging="${RUNNER_TEMP}/tutti-runtime-rtk"
           python_artifact_dir="${artifact_dir}/python"
           node_artifact_dir="${artifact_dir}/node"
+          rtk_artifact_dir="${artifact_dir}/rtk"
           python_artifact_file="tutti-app-runtime-python-${PLATFORM}-${RUNTIME_VERSION}.zip"
           node_artifact_file="tutti-app-runtime-node-${PLATFORM}-${RUNTIME_VERSION}.zip"
-          mkdir -p "${python_staging}/python" "${node_staging}/node" "${python_artifact_dir}" "${node_artifact_dir}"
+          rtk_artifact_file="tutti-app-runtime-rtk-${PLATFORM}-${RUNTIME_VERSION}.zip"
+          mkdir -p "${python_staging}/python" "${node_staging}/node" "${python_artifact_dir}" "${node_artifact_dir}" "${rtk_artifact_dir}"
           rsync -aL "${PYTHON_ROOT}/" "${python_staging}/python/"
           rsync -aL "${RUNNER_TEMP}/tutti-runtime-node/" "${node_staging}/node/"
           if [ ! -x "${python_staging}/python/bin/python3" ]; then
@@ -214,16 +260,21 @@ jobs:
           test -x "${node_staging}/node/bin/npm"
           test -x "${node_staging}/node/bin/npx"
           test -x "${node_staging}/node/bin/corepack"
+          test -x "${rtk_staging}/rtk/bin/rtk"
           PATH="${node_staging}/node/bin:${PATH}" "${node_staging}/node/bin/npm" --version
           PATH="${node_staging}/node/bin:${PATH}" "${node_staging}/node/bin/npx" --version
           PATH="${node_staging}/node/bin:${PATH}" "${node_staging}/node/bin/corepack" --version
-          find "${python_staging}" "${node_staging}" -exec touch -h -t 202606010000 {} +
+          "${rtk_staging}/rtk/bin/rtk" --version | grep -Fx "rtk ${RTK_VERSION}"
+          find "${python_staging}" "${node_staging}" "${rtk_staging}" -exec touch -h -t 202606010000 {} +
           (cd "${python_staging}" && zip -X -qry "${python_artifact_dir}/${python_artifact_file}" .)
           (cd "${node_staging}" && zip -X -qry "${node_artifact_dir}/${node_artifact_file}" .)
+          (cd "${rtk_staging}" && zip -X -qry "${rtk_artifact_dir}/${rtk_artifact_file}" .)
           python_artifact_sha256="$(shasum -a 256 "${python_artifact_dir}/${python_artifact_file}" | awk '{print $1}')"
           node_artifact_sha256="$(shasum -a 256 "${node_artifact_dir}/${node_artifact_file}" | awk '{print $1}')"
+          rtk_artifact_sha256="$(shasum -a 256 "${rtk_artifact_dir}/${rtk_artifact_file}" | awk '{print $1}')"
           python_artifact_size="$(wc -c < "${python_artifact_dir}/${python_artifact_file}" | tr -d ' ')"
           node_artifact_size="$(wc -c < "${node_artifact_dir}/${node_artifact_file}" | tr -d ' ')"
+          rtk_artifact_size="$(wc -c < "${rtk_artifact_dir}/${rtk_artifact_file}" | tr -d ' ')"
           cat > "${artifact_dir}/metadata.json" <<JSON
           {
             "schemaVersion": "tutti.app.runtime-platform.v2",
@@ -243,11 +294,18 @@ jobs:
                 "artifactPath": "${RUNTIME_VERSION}/${PLATFORM}/node/${node_artifact_file}",
                 "artifactSha256": "${node_artifact_sha256}",
                 "artifactSizeBytes": ${node_artifact_size}
+              },
+              "rtk": {
+                "version": "${RTK_VERSION}",
+                "artifactPath": "${RUNTIME_VERSION}/${PLATFORM}/rtk/${rtk_artifact_file}",
+                "artifactSha256": "${rtk_artifact_sha256}",
+                "artifactSizeBytes": ${rtk_artifact_size}
               }
             },
             "profiles": {
               "baseline": ["python", "node"],
-              "node-static": ["node"]
+              "node-static": ["node"],
+              "rtk-saver": ["rtk"]
             }
           }
           JSON
@@ -334,40 +392,93 @@ jobs:
           }
           & $python --version
 
+      - name: Download RTK on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          RTK_ARCHIVE_EXECUTABLE: ${{ steps.lock.outputs.rtk_archive_executable }}
+          RTK_ARCHIVE_SHA256: ${{ steps.lock.outputs.rtk_archive_sha256 }}
+          RTK_ARCHIVE_SIZE: ${{ steps.lock.outputs.rtk_archive_size }}
+          RTK_ARCHIVE_URL: ${{ steps.lock.outputs.rtk_archive_url }}
+          RTK_LICENSE_SHA256: ${{ steps.lock.outputs.rtk_license_sha256 }}
+          RTK_LICENSE_SIZE: ${{ steps.lock.outputs.rtk_license_size }}
+          RTK_LICENSE_URL: ${{ steps.lock.outputs.rtk_license_url }}
+          RTK_VERSION: ${{ steps.lock.outputs.rtk_version }}
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP ([System.IO.Path]::GetFileName($env:RTK_ARCHIVE_URL))
+          $license = Join-Path $env:RUNNER_TEMP 'rtk-LICENSE'
+          $expanded = Join-Path $env:RUNNER_TEMP 'tutti-runtime-rtk-expanded'
+          $target = Join-Path $env:RUNNER_TEMP 'tutti-runtime-rtk/rtk'
+          Invoke-WebRequest -Uri $env:RTK_ARCHIVE_URL -OutFile $archive
+          if ((Get-Item $archive).Length -ne [int64]$env:RTK_ARCHIVE_SIZE) {
+            throw 'RTK archive size mismatch'
+          }
+          if ((Get-FileHash -Algorithm SHA256 $archive).Hash.ToLowerInvariant() -ne $env:RTK_ARCHIVE_SHA256) {
+            throw 'RTK archive checksum mismatch'
+          }
+          Remove-Item $expanded, $target -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $archive -DestinationPath $expanded
+          New-Item -ItemType Directory -Path (Join-Path $target 'bin') -Force | Out-Null
+          $source = Get-ChildItem -LiteralPath $expanded -Recurse -File -Filter $env:RTK_ARCHIVE_EXECUTABLE | Select-Object -First 1
+          if (-not $source) { throw "RTK archive does not contain $env:RTK_ARCHIVE_EXECUTABLE" }
+          Copy-Item $source.FullName (Join-Path $target 'bin/rtk.exe')
+          Invoke-WebRequest -Uri $env:RTK_LICENSE_URL -OutFile $license
+          if ((Get-Item $license).Length -ne [int64]$env:RTK_LICENSE_SIZE) {
+            throw 'RTK license size mismatch'
+          }
+          if ((Get-FileHash -Algorithm SHA256 $license).Hash.ToLowerInvariant() -ne $env:RTK_LICENSE_SHA256) {
+            throw 'RTK license checksum mismatch'
+          }
+          Copy-Item $license (Join-Path $target 'LICENSE')
+          if ((& (Join-Path $target 'bin/rtk.exe') --version) -ne "rtk $env:RTK_VERSION") {
+            throw 'RTK executable version mismatch'
+          }
+
       - name: Assemble Windows runtime artifacts
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           NODE_VERSION: ${{ steps.lock.outputs.node_version }}
           PYTHON_VERSION: ${{ steps.lock.outputs.python_version }}
+          RTK_VERSION: ${{ steps.lock.outputs.rtk_version }}
           PLATFORM: ${{ matrix.platform }}
           RUNTIME_VERSION: ${{ steps.lock.outputs.runtime_version }}
         run: |
           $artifactDir = Join-Path $env:GITHUB_WORKSPACE "tutti-app-runtime/$env:RUNTIME_VERSION/$env:PLATFORM"
           $pythonArtifactDir = Join-Path $artifactDir 'python'
           $nodeArtifactDir = Join-Path $artifactDir "node"
+          $rtkArtifactDir = Join-Path $artifactDir 'rtk'
           $pythonStaging = Join-Path $env:RUNNER_TEMP 'tutti-runtime-python-artifact'
           $nodeStaging = Join-Path $env:RUNNER_TEMP "tutti-app-runtime-node-artifact"
+          $rtkStaging = Join-Path $env:RUNNER_TEMP 'tutti-runtime-rtk'
           $pythonRoot = Join-Path $pythonStaging 'python/bin'
           $nodeRoot = Join-Path $nodeStaging "node/bin"
           $pythonArtifactFile = "tutti-app-runtime-python-$env:PLATFORM-$env:RUNTIME_VERSION.zip"
           $artifactFile = "tutti-app-runtime-node-$env:PLATFORM-$env:RUNTIME_VERSION.zip"
+          $rtkArtifactFile = "tutti-app-runtime-rtk-$env:PLATFORM-$env:RUNTIME_VERSION.zip"
           $pythonArtifactPath = Join-Path $pythonArtifactDir $pythonArtifactFile
           $artifactPath = Join-Path $nodeArtifactDir $artifactFile
+          $rtkArtifactPath = Join-Path $rtkArtifactDir $rtkArtifactFile
           Remove-Item $pythonStaging, $nodeStaging -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path $pythonRoot, $pythonArtifactDir, $nodeRoot, $nodeArtifactDir -Force | Out-Null
+          New-Item -ItemType Directory -Path $pythonRoot, $pythonArtifactDir, $nodeRoot, $nodeArtifactDir, $rtkArtifactDir -Force | Out-Null
           Copy-Item (Join-Path $env:RUNNER_TEMP 'tutti-runtime-python/python/bin/*') $pythonRoot -Recurse
           Copy-Item (Join-Path $env:RUNNER_TEMP 'tutti-runtime-node/*') $nodeRoot -Recurse
           & (Join-Path $pythonRoot 'python.exe') --version
           & (Join-Path $nodeRoot 'node.exe') --version
           & (Join-Path $nodeRoot 'npm.cmd') --version
           & (Join-Path $nodeRoot 'corepack.cmd') --version
+          if ((& (Join-Path $rtkStaging 'rtk/bin/rtk.exe') --version) -ne "rtk $env:RTK_VERSION") {
+            throw 'RTK executable version mismatch during artifact assembly'
+          }
           Compress-Archive -Path (Join-Path $pythonStaging '*') -DestinationPath $pythonArtifactPath -Force
           Compress-Archive -Path (Join-Path $nodeStaging '*') -DestinationPath $artifactPath -Force
+          Compress-Archive -Path (Join-Path $rtkStaging '*') -DestinationPath $rtkArtifactPath -Force
           $pythonSha256 = (Get-FileHash -Algorithm SHA256 $pythonArtifactPath).Hash.ToLowerInvariant()
           $pythonSize = (Get-Item $pythonArtifactPath).Length
           $sha256 = (Get-FileHash -Algorithm SHA256 $artifactPath).Hash.ToLowerInvariant()
           $size = (Get-Item $artifactPath).Length
+          $rtkSha256 = (Get-FileHash -Algorithm SHA256 $rtkArtifactPath).Hash.ToLowerInvariant()
+          $rtkSize = (Get-Item $rtkArtifactPath).Length
           $metadata = [ordered]@{
             schemaVersion = 'tutti.app.runtime-platform.v2'
             runtimeVersion = $env:RUNTIME_VERSION
@@ -387,10 +498,17 @@ jobs:
                 artifactSha256 = $sha256
                 artifactSizeBytes = $size
               }
+              rtk = [ordered]@{
+                version = $env:RTK_VERSION
+                artifactPath = "$env:RUNTIME_VERSION/$env:PLATFORM/rtk/$rtkArtifactFile"
+                artifactSha256 = $rtkSha256
+                artifactSizeBytes = $rtkSize
+              }
             }
             profiles = [ordered]@{
               baseline = @('python', 'node')
               'node-static' = @('node')
+              'rtk-saver' = @('rtk')
             }
           }
           $metadata | ConvertTo-Json -Depth 8 | Set-Content (Join-Path $artifactDir 'metadata.json') -Encoding utf8

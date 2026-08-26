@@ -505,7 +505,8 @@ function isRootUserMessage(message: SDKMessage): boolean {
   if (
     message?.type !== "user" ||
     message?.parent_tool_use_id ||
-    message?.isSynthetic === true
+    message?.isSynthetic === true ||
+    hasToolResultBlock(message)
   ) {
     return false;
   }
@@ -519,6 +520,23 @@ function isRootUserMessage(message: SDKMessage): boolean {
   return !readUserMessageNotificationText(
     message as { message?: { content?: unknown } }
   ).includes("<task-notification>");
+}
+
+function hasToolResultBlock(message: SDKMessage): boolean {
+  const providerMessage =
+    message.message && typeof message.message === "object"
+      ? (message.message as { content?: unknown })
+      : undefined;
+  return (
+    Array.isArray(providerMessage?.content) &&
+    providerMessage.content.some(
+      (block) =>
+        block !== null &&
+        typeof block === "object" &&
+        "type" in block &&
+        block.type === "tool_result"
+    )
+  );
 }
 
 function sdkOptions(cwd: string): { dir?: string } {

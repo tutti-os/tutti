@@ -287,6 +287,72 @@ func (c *Client) ListAgentsWithFilter(ctx context.Context, input ListAgentsInput
 	return &snapshot, nil
 }
 
+func (c *Client) GetGlobalAgentActivityFilterOptions(ctx context.Context) (*GlobalAgentActivityFilterOptions, error) {
+	var options GlobalAgentActivityFilterOptions
+	if err := c.doJSONWithTransientRemoteRetry(ctx, http.MethodGet, "/v2/agent-activity/filter-options", nil, &options); err != nil {
+		return nil, err
+	}
+	return &options, nil
+}
+
+func (c *Client) ListGlobalAgentActivitySessions(ctx context.Context, input ListGlobalAgentActivitySessionsInput) (*ListGlobalAgentActivitySessionsReply, error) {
+	roomIDs := normalizeGlobalAgentActivityFilterValues(input.RoomIDs)
+	ownerUserIDs := normalizeGlobalAgentActivityFilterValues(input.SessionOwnerUserIDs)
+	agentKeys := normalizeGlobalAgentActivityFilterValues(input.AgentKeys)
+	if input.ActivityFromUnixMS < 0 || input.ActivityToUnixMS < 0 {
+		return nil, errors.New("global agent activity time filters must be non-negative")
+	}
+	if input.ActivityFromUnixMS > 0 && input.ActivityToUnixMS > 0 && input.ActivityFromUnixMS >= input.ActivityToUnixMS {
+		return nil, errors.New("global agent activity start time must be before end time")
+	}
+	if len(roomIDs) == 0 && len(ownerUserIDs) == 0 && len(agentKeys) == 0 && input.ActivityFromUnixMS == 0 && input.ActivityToUnixMS == 0 {
+		return nil, errors.New("at least one global agent activity filter is required")
+	}
+
+	query := url.Values{}
+	for _, roomID := range roomIDs {
+		query.Add("roomIds", roomID)
+	}
+	for _, userID := range ownerUserIDs {
+		query.Add("sessionOwnerUserIds", userID)
+	}
+	for _, agentKey := range agentKeys {
+		query.Add("agentKeys", agentKey)
+	}
+	if input.ActivityFromUnixMS > 0 {
+		query.Set("activityFromUnixMs", strconv.FormatInt(input.ActivityFromUnixMS, 10))
+	}
+	if input.ActivityToUnixMS > 0 {
+		query.Set("activityToUnixMs", strconv.FormatInt(input.ActivityToUnixMS, 10))
+	}
+	endpoint := "/v2/agent-activity/sessions"
+	if encoded := query.Encode(); encoded != "" {
+		endpoint += "?" + encoded
+	}
+	var reply ListGlobalAgentActivitySessionsReply
+	if err := c.doJSONWithTransientRemoteRetry(ctx, http.MethodGet, endpoint, nil, &reply); err != nil {
+		return nil, err
+	}
+	return &reply, nil
+}
+
+func normalizeGlobalAgentActivityFilterValues(values []string) []string {
+	normalized := make([]string, 0, len(values))
+	seen := make(map[string]struct{}, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		normalized = append(normalized, value)
+	}
+	return normalized
+}
+
 type DeleteAgentSessionInput struct {
 	WorkspaceID    string
 	AgentSessionID string

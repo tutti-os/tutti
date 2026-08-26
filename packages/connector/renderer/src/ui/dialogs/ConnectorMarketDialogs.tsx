@@ -48,6 +48,7 @@ export function ConnectorMarketDialogs() {
         .beginAuthorization(connectorKey, secret)
         .then(() => {
           setShowSuccessToast("authorize");
+          uiState.closeDialog();
         })
         .catch((error: unknown) => {
           if (
@@ -70,7 +71,7 @@ export function ConnectorMarketDialogs() {
           }
         });
     },
-    [i18n, market, onError]
+    [i18n, market, onError, uiState]
   );
 
   useEffect(() => {
@@ -111,7 +112,7 @@ export function ConnectorMarketDialogs() {
   // Hide management dialog when showing success toast
   const shouldHideDialog =
     dialog?.kind === "management" &&
-    (showSuccessToast === "install" || Boolean(uninstallSuccess));
+    Boolean(showSuccessToast || uninstallSuccess);
 
   const cancelAuthorizationDialog = () => {
     if (dialog?.kind !== "authorization") {
@@ -172,11 +173,11 @@ export function ConnectorMarketDialogs() {
         <Dialog
           open
           onOpenChange={(open) => {
-            if (
-              open ||
-              (dialog.kind === "installation" && dialog.installing) ||
-              (dialog.kind === "authorization" && dialog.authorizing)
-            ) {
+            if (open || (dialog.kind === "installation" && dialog.installing)) {
+              return;
+            }
+            if (dialog.kind === "authorization") {
+              cancelAuthorizationDialog();
               return;
             }
             uiState.closeDialog();
@@ -233,7 +234,7 @@ export function ConnectorMarketDialogs() {
               onAuthorize={(secret) =>
                 authorizeConnector(dialog.connectorKey, secret)
               }
-              onClose={() => uiState.closeDialog()}
+              onClose={cancelAuthorizationDialog}
               onOpenAuthorizationUrl={(url) => market.openAuthorizationUrl(url)}
             />
           ) : dialog.kind === "management" ? (

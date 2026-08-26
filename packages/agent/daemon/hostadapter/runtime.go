@@ -155,6 +155,7 @@ func (a *RuntimeController) Start(ctx context.Context, input host.RuntimeStartIn
 		PermissionModeID:        input.PermissionModeID,
 		Settings: runtimeSettings(host.ComposerSettings{
 			CodexSaverMode:         input.CodexSaverMode,
+			RTKSaverMode:           input.RTKSaverMode,
 			Model:                  input.Model,
 			PermissionModeID:       input.PermissionModeID,
 			PlanMode:               input.PlanMode,

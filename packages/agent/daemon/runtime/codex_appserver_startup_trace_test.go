@@ -1,7 +1,9 @@
 package agentruntime
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +30,12 @@ func TestCodexAppServerStartupTraceRecordsStructuredSpanClose(t *testing.T) {
 
 	trace.LogStderr(firstChunk)
 	trace.LogStderr(secondChunk)
+	if got, want := trace.stderrChunks.Load(), int64(2); got != want {
+		t.Fatalf("stderr chunks = %d, want %d", got, want)
+	}
+	if got, want := trace.stderrBytes.Load(), int64(len(firstChunk)+len(secondChunk)); got != want {
+		t.Fatalf("stderr bytes = %d, want %d", got, want)
+	}
 
 	data, err := os.ReadFile(trace.path)
 	if err != nil {
@@ -87,6 +95,54 @@ func TestCodexAppServerStartupTraceRecordsStructuredSpanClose(t *testing.T) {
 	}
 	if closeObservation.SpanBusy != "120ms" || closeObservation.SpanIdle != "5ms" {
 		t.Fatalf("close observation timing = %#v, want busy/idle values", closeObservation)
+	}
+}
+
+func TestCodexAppServerStartupTraceBoundsStderrDiagnostics(t *testing.T) {
+	trace := &codexAppServerStartupTrace{
+		startedAt: time.Now(),
+		session:   Session{Provider: ProviderCodex, RoomID: "room-1", AgentSessionID: "session-1"},
+		path:      filepath.Join(t.TempDir(), "trace.jsonl"),
+		openSpans: make(map[string][]codexAppServerOpenSpan),
+	}
+	firstChunk := bytes.Repeat([]byte("x"), codexAppServerStderrTailLimit+100)
+	secondChunk := []byte("\nstartup timeout details")
+	trace.LogStderr(firstChunk)
+	trace.LogStderr(secondChunk)
+	trace.Finish(errors.New("startup timeout"))
+
+	data, err := os.ReadFile(trace.path)
+	if err != nil {
+		t.Fatalf("read trace: %v", err)
+	}
+	var failedRecord map[string]any
+	for _, line := range splitJSONLines(data) {
+		var record map[string]any
+		if err := json.Unmarshal(line, &record); err != nil {
+			t.Fatalf("decode trace line %q: %v", line, err)
+		}
+		if record["event"] == "process.stderr" {
+			t.Fatal("trace contains per-chunk process.stderr record")
+		}
+		if record["event"] == "start.failed" {
+			failedRecord = record
+		}
+	}
+	if failedRecord == nil {
+		t.Fatal("missing start.failed record")
+	}
+	if failedRecord["stderr_chunks"] != float64(2) {
+		t.Fatalf("stderr_chunks = %#v, want 2", failedRecord["stderr_chunks"])
+	}
+	if failedRecord["stderr_bytes"] != float64(len(firstChunk)+len(secondChunk)) {
+		t.Fatalf("stderr_bytes = %#v, want %d", failedRecord["stderr_bytes"], len(firstChunk)+len(secondChunk))
+	}
+	tail, ok := failedRecord["stderr_tail"].(string)
+	if !ok || !strings.Contains(tail, "startup timeout details") {
+		t.Fatalf("stderr_tail = %#v, want bounded failure tail", failedRecord["stderr_tail"])
+	}
+	if len(tail) > codexAppServerStderrTailLimit {
+		t.Fatalf("stderr_tail length = %d, want <= %d", len(tail), codexAppServerStderrTailLimit)
 	}
 }
 

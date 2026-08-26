@@ -31,6 +31,7 @@ func (s *SQLiteStore) applyDesktopPreferencesMigrations(ctx context.Context) err
 		s.applyDesktopPreferencesShowAppDeveloperSourcesV1,
 		s.applyDesktopPreferencesAgentConversationDetailModeV1,
 		s.applyDesktopPreferencesFeatureFlagsV1,
+		s.applyDesktopPreferencesTuttiModeDefaultOffV1,
 		s.applyDesktopPreferencesDeletedAgentRetentionV1,
 		s.applyDesktopPreferencesAgentCLIUpdateCheckV1,
 	}

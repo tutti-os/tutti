@@ -313,10 +313,11 @@ func normalizeAgentComposerDefaultsPatch(
 	result := make(preferencesbiz.AgentComposerDefaultsPatch, len(input))
 	for field, value := range input {
 		switch field {
-		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode:
+		case preferencesbiz.AgentComposerDefaultsFieldCodexSaverMode,
+			preferencesbiz.AgentComposerDefaultsFieldRTKSaverMode:
 			enabled, ok := value.(bool)
 			if !ok {
-				return nil, errors.New("agent composer defaults codexSaverMode must be boolean")
+				return nil, errors.New("agent composer defaults saver mode must be boolean")
 			}
 			result[field] = enabled
 			continue

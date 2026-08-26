@@ -104,6 +104,7 @@ export interface DesktopCaptureRememberComposerDefaultsInput {
   agentTargetId: string;
   defaults: {
     codexSaverMode?: boolean;
+    rtkSaverMode?: boolean;
     model?: string | null;
     permissionModeId?: string | null;
     reasoningEffort?: string | null;

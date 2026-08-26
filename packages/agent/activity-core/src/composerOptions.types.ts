@@ -73,6 +73,7 @@ export interface AgentActivityComposerPermissionConfig {
 
 export interface AgentActivityComposerSettings {
   codexSaverMode?: boolean | null;
+  rtkSaverMode?: boolean | null;
   model?: string | null;
   reasoningEffort?: string | null;
   speed?: string | null;
@@ -107,6 +108,7 @@ export interface AgentActivityComposerBehavior {
 
 export interface AgentActivityComposerOptions {
   codexSaverModeSupported?: boolean;
+  rtkSaverModeSupported?: boolean;
   provider: string;
   /** Typed capabilities available before a session exists. */
   capabilities: AgentActivitySessionCapabilities | null;

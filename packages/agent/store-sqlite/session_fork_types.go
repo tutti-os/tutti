@@ -43,12 +43,13 @@ const (
 )
 
 var (
-	ErrSessionForkRequestConflict = errors.New("agent session fork request conflicts with an existing operation")
-	ErrSessionForkSourceState     = errors.New("agent session cannot be forked in its current state")
-	ErrSessionForkInProgress      = errors.New("agent session has a fork operation in progress")
-	ErrSessionForkTurnState       = errors.New("agent session fork turn does not have a usable provider binding")
-	ErrSessionForkTargetReserved  = errors.New("agent session fork target is reserved")
-	ErrSessionForkTransition      = errors.New("agent session fork operation transition is invalid")
+	ErrSessionForkRequestConflict             = errors.New("agent session fork request conflicts with an existing operation")
+	ErrSessionForkSourceState                 = errors.New("agent session cannot be forked in its current state")
+	ErrSessionForkInProgress                  = errors.New("agent session has a fork operation in progress")
+	ErrSessionForkTurnState                   = errors.New("agent session fork turn does not have a usable provider binding")
+	ErrSessionForkMaterializationInconsistent = errors.New("agent session fork materialization evidence is permanently inconsistent")
+	ErrSessionForkTargetReserved              = errors.New("agent session fork target is reserved")
+	ErrSessionForkTransition                  = errors.New("agent session fork operation transition is invalid")
 )
 
 // SessionForkBoundaryError preserves the exact failed boundary invariant while

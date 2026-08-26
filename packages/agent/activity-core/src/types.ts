@@ -401,6 +401,7 @@ export interface AgentActivityCreateSessionInput {
   submitDiagnostics?: AgentActivitySubmitDiagnostics;
   browserUse?: boolean | null;
   codexSaverMode?: boolean | null;
+  rtkSaverMode?: boolean | null;
   model?: string | null;
   modelExplicit?: boolean;
   planMode?: boolean | null;
@@ -629,6 +630,7 @@ export interface AgentActivityInteraction {
 
 export type AgentActivitySessionSettings = {
   codexSaverMode?: boolean | null;
+  rtkSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;

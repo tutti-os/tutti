@@ -510,6 +510,7 @@ export const enAgentGui = {
     manualApproval: "Yes, and manually approve edits",
     rejectOnce: "No, don't run",
     rejectAlways: "No, and don't ask again",
+    rejectAndStopTurn: "Deny and stop the current response",
     rejectWithFollowUp: "No, then send new instructions"
   },
   authRequired: "Authentication required",
@@ -677,7 +678,7 @@ export const enAgentGui = {
     "Configure the browser the agent can use.",
   capabilityInlineSettingsLabel: "Settings",
   computerUseCapabilityLabel: "Computer",
-  computerUseCapabilityDescription: "Let the agent control the macOS desktop.",
+  computerUseCapabilityDescription: "Let the agent control your desktop.",
   computerUseCapabilitySetupRequiredDescription:
     "Not installed. Press Enter to open setup.",
   computerUseCapabilityAuthorizationRequiredDescription:

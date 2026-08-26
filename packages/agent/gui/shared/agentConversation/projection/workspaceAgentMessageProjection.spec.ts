@@ -895,7 +895,7 @@ describe("projectWorkspaceAgentMessagesToConversationVM", () => {
         > => row.kind === "message"
       )
       .flatMap((row) => row.messages.map((item) => item.body));
-    expect(bodies).toEqual(["I'll check the repo.Distinct message."]);
+    expect(bodies).toEqual(["I'll check the repo.\nDistinct message."]);
   });
 
   it("projects only the latest reasoning snapshot for a stable message id", () => {

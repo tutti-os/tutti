@@ -8,7 +8,7 @@ import {
   rm,
   stat,
   utimes,
-  writeFile,
+  writeFile
 } from "node:fs/promises";
 import { constants } from "node:fs";
 import { tmpdir } from "node:os";
@@ -23,6 +23,7 @@ import {
   isRetryableManagedTuttidStartupError,
   managedTuttidStartupError,
   resolveBrowserMcpDaemonEnv,
+  resolveBundledRTKDaemonEnv,
   resolveComputerMcpDaemonEnv,
   resolveClaudeSDKSidecarDaemonEnv,
   resolveLaunchSpec,
@@ -30,8 +31,41 @@ import {
   resolveManagedPosixShellDaemonEnv,
   resolveManagedUVDaemonEnv,
   resolveMutagenDaemonEnv,
-  shouldScheduleManagedTuttidRestart,
+  shouldScheduleManagedTuttidRestart
 } from "./tuttidManager.ts";
+
+test("resolveBundledRTKDaemonEnv points the daemon at packaged RTK", async () => {
+  const previousEnv = { ...process.env };
+  const resourcesPath = await mkdtemp(join(tmpdir(), "tutti-rtk-"));
+  try {
+    delete process.env.TUTTI_BUNDLED_RTK_PATH;
+    const executable = join(
+      resourcesPath,
+      "bin",
+      "rtk",
+      process.platform === "win32" ? "rtk.exe" : "rtk"
+    );
+    await mkdir(dirname(executable), { recursive: true });
+    await writeFile(executable, "stub");
+    assert.deepEqual(
+      resolveBundledRTKDaemonEnv({ isPackaged: true, resourcesPath }),
+      { TUTTI_BUNDLED_RTK_PATH: executable }
+    );
+  } finally {
+    restoreEnv(previousEnv);
+    await rm(resourcesPath, { recursive: true, force: true });
+  }
+});
+
+test("resolveBundledRTKDaemonEnv preserves a shell environment override", () => {
+  assert.deepEqual(
+    resolveBundledRTKDaemonEnv(
+      { isPackaged: true, resourcesPath: "/packaged/resources" },
+      { inheritedEnv: { TUTTI_BUNDLED_RTK_PATH: "/operator/rtk" } }
+    ),
+    {}
+  );
+});
 
 test("resolveManagedUVDaemonEnv points the daemon at packaged archives", async () => {
   const previousEnv = { ...process.env };
@@ -42,7 +76,7 @@ test("resolveManagedUVDaemonEnv points the daemon at packaged archives", async (
     await mkdir(runtimeRoot, { recursive: true });
     assert.deepEqual(
       resolveManagedUVDaemonEnv({ isPackaged: true, resourcesPath }),
-      { TUTTI_BUNDLED_UV_ROOT: runtimeRoot },
+      { TUTTI_BUNDLED_UV_ROOT: runtimeRoot }
     );
   } finally {
     restoreEnv(previousEnv);
@@ -57,9 +91,9 @@ test("resolveManagedUVDaemonEnv preserves an explicit override", () => {
     assert.deepEqual(
       resolveManagedUVDaemonEnv({
         isPackaged: true,
-        resourcesPath: "C:\\resources",
+        resourcesPath: "C:\\resources"
       }),
-      {},
+      {}
     );
   } finally {
     restoreEnv(previousEnv);
@@ -73,9 +107,9 @@ test("resolveManagedUVDaemonEnv preserves a shell environment override", () => {
     assert.deepEqual(
       resolveManagedUVDaemonEnv(
         { isPackaged: true, resourcesPath: "C:\\resources" },
-        { inheritedEnv: { TUTTI_BUNDLED_UV_ROOT: "C:\\shell-uv" } },
+        { inheritedEnv: { TUTTI_BUNDLED_UV_ROOT: "C:\\shell-uv" } }
       ),
-      {},
+      {}
     );
   } finally {
     restoreEnv(previousEnv);
@@ -83,7 +117,7 @@ test("resolveManagedUVDaemonEnv preserves a shell environment override", () => {
 });
 
 const repoRoot = resolve(
-  fileURLToPath(new URL("../../../../..", import.meta.url)),
+  fileURLToPath(new URL("../../../../..", import.meta.url))
 );
 
 test("rejects startup when the managed tuttid binary cannot be spawned", async () => {
@@ -94,12 +128,12 @@ test("rejects startup when the managed tuttid binary cannot be spawned", async (
     boundAddr: null,
     listenerInfoPath: join(runtimeDirectory, "listener.json"),
     pidPath: join(runtimeDirectory, "tuttid.pid"),
-    requestedAddr: "127.0.0.1:0",
+    requestedAddr: "127.0.0.1:0"
   };
   const tuttidClient = {
     async getHealth() {
       throw new Error("health must not run when spawn fails");
-    },
+    }
   } as unknown as TuttidClient;
   let manager: ReturnType<typeof createTuttidManager> | undefined;
 
@@ -125,7 +159,7 @@ test("stop wins while a managed tuttid start is still preparing", async (t) => {
 
   const previousEnv = { ...process.env };
   const runtimeDirectory = await mkdtemp(
-    join(tmpdir(), "tutti-tuttid-stop-start-"),
+    join(tmpdir(), "tutti-tuttid-stop-start-")
   );
   const fixturePath = join(runtimeDirectory, "tuttid-fixture.mjs");
   const spawnedPath = join(runtimeDirectory, "spawned.txt");
@@ -134,12 +168,12 @@ test("stop wins while a managed tuttid start is still preparing", async (t) => {
     boundAddr: null,
     listenerInfoPath: join(runtimeDirectory, "listener.json"),
     pidPath: join(runtimeDirectory, "tuttid.pid"),
-    requestedAddr: "127.0.0.1:0",
+    requestedAddr: "127.0.0.1:0"
   };
   const tuttidClient = {
     async getHealth() {
       throw new Error("a canceled start must not reach health polling");
-    },
+    }
   } as unknown as TuttidClient;
   let manager: ReturnType<typeof createTuttidManager> | undefined;
 
@@ -150,7 +184,7 @@ test("stop wins while a managed tuttid start is still preparing", async (t) => {
 import { writeFile } from "node:fs/promises";
 await writeFile(process.env.TUTTI_TEST_SPAWNED_PATH, "spawned");
 setInterval(() => {}, 1_000);
-`,
+`
     );
     await chmod(fixturePath, 0o755);
     process.env.TUTTID_BIN = fixturePath;
@@ -185,13 +219,13 @@ test("keeps the original startup alive while recovering a transient SQLite failu
     boundAddr: null,
     listenerInfoPath: join(runtimeDirectory, "listener.json"),
     pidPath: join(runtimeDirectory, "tuttid.pid"),
-    requestedAddr: "127.0.0.1:0",
+    requestedAddr: "127.0.0.1:0"
   };
   const tuttidClient = {
     async getHealth() {
       assert.equal(endpoint.boundAddr, "127.0.0.1:4545");
       return {};
-    },
+    }
   } as unknown as TuttidClient;
   let manager: ReturnType<typeof createTuttidManager> | undefined;
 
@@ -215,7 +249,7 @@ await mkdir(dirname(listenerInfoPath), { recursive: true });
 await writeFile(fixturePIDPath, String(process.pid));
 await writeFile(listenerInfoPath, JSON.stringify({ addr: "127.0.0.1:4545" }));
 setInterval(() => {}, 1_000);
-`,
+`
     );
     await chmod(fixturePath, 0o755);
     process.env.TUTTID_BIN = fixturePath;
@@ -237,7 +271,7 @@ setInterval(() => {}, 1_000);
     assert.equal(
       await readFile(attemptsPath, "utf8"),
       "3",
-      "background recovery and an explicit start must share one spawn attempt",
+      "background recovery and an explicit start must share one spawn attempt"
     );
     await manager.stop();
   } finally {
@@ -250,16 +284,16 @@ setInterval(() => {}, 1_000);
 test("preserves managed tuttid stderr as a structured startup cause", () => {
   const failure = managedTuttidStartupError(
     new Error("tuttid exited before it published its listener info."),
-    "unsupported process cassette schema version 2\n",
+    "unsupported process cassette schema version 2\n"
   );
 
   assert.equal(
     failure.message,
-    "tuttid exited before it published its listener info.",
+    "tuttid exited before it published its listener info."
   );
   assert.deepEqual(failure.cause, {
     code: "managed_process_stderr",
-    message: "unsupported process cassette schema version 2",
+    message: "unsupported process cassette schema version 2"
   });
 });
 
@@ -269,22 +303,22 @@ test("classifies startup errors without daemon diagnostics", () => {
   assert.equal(failure.message, original.message);
   assert.equal(
     (failure as NodeJS.ErrnoException).code,
-    "managed_process_error",
+    "managed_process_error"
   );
 });
 
 test("retries only the transient SQLite truncate startup failure", () => {
   const transient = managedTuttidStartupError(
     new Error("tuttid exited before it published its listener info."),
-    "enable sqlite wal mode: disk I/O error (1546)",
+    "enable sqlite wal mode: disk I/O error (1546)"
   );
   const named = managedTuttidStartupError(
     new Error("tuttid exited before it published its listener info."),
-    "SQLITE_IOERR_TRUNCATE",
+    "SQLITE_IOERR_TRUNCATE"
   );
   const permanent = managedTuttidStartupError(
     new Error("tuttid exited before it published its listener info."),
-    "permission denied",
+    "permission denied"
   );
 
   assert.equal(isRetryableManagedTuttidStartupError(transient), true);
@@ -319,7 +353,7 @@ test("resolveLaunchSpec prefers the development tuttid binary when present", asy
 
     const got = resolveLaunchSpec({
       isPackaged: false,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
 
     assert.equal(got.command, binaryPath);
@@ -335,7 +369,7 @@ test("resolveBrowserMcpDaemonEnv is a no-op in development (daemon uses npx)", (
     delete process.env.TUTTI_BROWSER_MCP_COMMAND;
     const got = resolveBrowserMcpDaemonEnv({
       isPackaged: false,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -363,7 +397,7 @@ test("resolveBrowserMcpDaemonEnv respects an explicit operator override", () => 
     process.env.TUTTI_BROWSER_MCP_COMMAND = "/custom/mcp";
     const got = resolveBrowserMcpDaemonEnv({
       isPackaged: true,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -379,7 +413,7 @@ test("resolveBrowserMcpDaemonEnv respects an explicit args override", () => {
       '["--browserUrl","http://127.0.0.1:9222"]';
     const got = resolveBrowserMcpDaemonEnv({
       isPackaged: true,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -393,7 +427,7 @@ test("resolveBrowserMcpDaemonEnv falls back to npx when the vendored bundle is a
     delete process.env.TUTTI_BROWSER_MCP_COMMAND;
     const got = resolveBrowserMcpDaemonEnv({
       isPackaged: true,
-      resourcesPath: join(tmpdir(), "tutti-resources-missing"),
+      resourcesPath: join(tmpdir(), "tutti-resources-missing")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -415,14 +449,14 @@ test("resolveBrowserMcpDaemonEnv points the daemon at a vendored bundle when pre
       "build",
       "src",
       "bin",
-      "chrome-devtools-mcp.js",
+      "chrome-devtools-mcp.js"
     );
     await mkdir(dirname(entry), { recursive: true });
     await writeFile(entry, "// stub\n");
 
     const got = resolveBrowserMcpDaemonEnv({ isPackaged: true, resourcesPath });
     assert.deepEqual(got, {
-      TUTTI_BROWSER_MCP_ENTRY_PATH: entry,
+      TUTTI_BROWSER_MCP_ENTRY_PATH: entry
     });
   } finally {
     restoreEnv(previousEnv);
@@ -436,7 +470,7 @@ test("resolveClaudeSDKSidecarDaemonEnv is a no-op in development", () => {
     delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
     const got = resolveClaudeSDKSidecarDaemonEnv({
       isPackaged: false,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -451,7 +485,7 @@ test("resolveClaudeSDKSidecarDaemonEnv respects an explicit operator override", 
     delete process.env.TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH;
     const got = resolveClaudeSDKSidecarDaemonEnv({
       isPackaged: true,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -470,17 +504,17 @@ test("resolveClaudeSDKSidecarDaemonEnv points the daemon at a vendored bundle wh
       "bin",
       "claude-sdk-sidecar",
       "src",
-      "main.ts",
+      "main.ts"
     );
     await mkdir(dirname(entry), { recursive: true });
     await writeFile(entry, "// stub\n");
 
     const got = resolveClaudeSDKSidecarDaemonEnv({
       isPackaged: true,
-      resourcesPath,
+      resourcesPath
     });
     assert.deepEqual(got, {
-      TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH: entry,
+      TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH: entry
     });
   } finally {
     restoreEnv(previousEnv);
@@ -493,7 +527,7 @@ test("resolveManagedPosixShellDaemonEnv respects an explicit operator override",
     process.env.TUTTI_MANAGED_POSIX_SHELL = "C:\\custom\\bash.exe";
     const got = resolveManagedPosixShellDaemonEnv({
       isPackaged: true,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -512,7 +546,7 @@ test("resolveManagedPosixShellDaemonEnv points the daemon at the packaged shell"
       "managed-posix-shell",
       "usr",
       "bin",
-      "bash.exe",
+      "bash.exe"
     );
     await mkdir(dirname(shell), { recursive: true });
     await writeFile(shell, "stub\n");
@@ -520,16 +554,16 @@ test("resolveManagedPosixShellDaemonEnv points the daemon at the packaged shell"
       join(resourcesPath, "bin", "managed-posix-shell", "runtime.json"),
       JSON.stringify({
         schemaVersion: "tutti.managed-posix-shell.v1",
-        executable: "usr/bin/bash.exe",
-      }),
+        executable: "usr/bin/bash.exe"
+      })
     );
 
     const got = resolveManagedPosixShellDaemonEnv({
       isPackaged: true,
-      resourcesPath,
+      resourcesPath
     });
     assert.deepEqual(got, {
-      TUTTI_MANAGED_POSIX_SHELL: shell,
+      TUTTI_MANAGED_POSIX_SHELL: shell
     });
   } finally {
     restoreEnv(previousEnv);
@@ -542,7 +576,7 @@ test("resolveMutagenDaemonEnv respects an explicit operator override", () => {
     process.env.TUTTI_MUTAGEN_BIN = "C:\\custom\\mutagen.exe";
     const got = resolveMutagenDaemonEnv({
       isPackaged: true,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
     assert.deepEqual(got, {});
   } finally {
@@ -557,9 +591,9 @@ test("resolveMutagenDaemonEnv respects a shell environment override", () => {
     const got = resolveMutagenDaemonEnv(
       {
         isPackaged: true,
-        resourcesPath: join(tmpdir(), "tutti-resources"),
+        resourcesPath: join(tmpdir(), "tutti-resources")
       },
-      { inheritedEnv: { TUTTI_MUTAGEN_BIN: "C:\\custom\\mutagen.exe" } },
+      { inheritedEnv: { TUTTI_MUTAGEN_BIN: "C:\\custom\\mutagen.exe" } }
     );
     assert.deepEqual(got, {});
   } finally {
@@ -580,13 +614,13 @@ test("resolveMutagenDaemonEnv points the daemon at packaged Mutagen", async () =
       join(runtimeRoot, "runtime.json"),
       JSON.stringify({
         schemaVersion: "tutti.mutagen.v1",
-        executable: "mutagen.exe",
-      }),
+        executable: "mutagen.exe"
+      })
     );
 
     const got = resolveMutagenDaemonEnv({
       isPackaged: true,
-      resourcesPath,
+      resourcesPath
     });
     assert.deepEqual(got, { TUTTI_MUTAGEN_BIN: executable });
   } finally {
@@ -604,7 +638,7 @@ test("resolveManagedPosixShellDaemonEnv points direct dev at the prepared shell"
       "apps",
       "desktop",
       "build",
-      "managed-posix-shell",
+      "managed-posix-shell"
     );
     const shell = join(runtimeRoot, "usr", "bin", "bash.exe");
     await mkdir(dirname(shell), { recursive: true });
@@ -613,19 +647,19 @@ test("resolveManagedPosixShellDaemonEnv points direct dev at the prepared shell"
       join(runtimeRoot, "runtime.json"),
       JSON.stringify({
         schemaVersion: "tutti.managed-posix-shell.v1",
-        executable: "usr/bin/bash.exe",
-      }),
+        executable: "usr/bin/bash.exe"
+      })
     );
 
     const got = resolveManagedPosixShellDaemonEnv(
       {
         isPackaged: false,
-        resourcesPath: join(tmpdir(), "electron-resources"),
+        resourcesPath: join(tmpdir(), "electron-resources")
       },
-      { repoRoot },
+      { repoRoot }
     );
     assert.deepEqual(got, {
-      TUTTI_MANAGED_POSIX_SHELL: shell,
+      TUTTI_MANAGED_POSIX_SHELL: shell
     });
   } finally {
     restoreEnv(previousEnv);
@@ -646,13 +680,13 @@ test("resolveManagedPosixShellDaemonEnv rejects an executable outside its runtim
       join(runtimeRoot, "runtime.json"),
       JSON.stringify({
         schemaVersion: "tutti.managed-posix-shell.v1",
-        executable: "../outside/bash.exe",
-      }),
+        executable: "../outside/bash.exe"
+      })
     );
 
     const got = resolveManagedPosixShellDaemonEnv({
       isPackaged: true,
-      resourcesPath,
+      resourcesPath
     });
     assert.deepEqual(got, {});
   } finally {
@@ -670,7 +704,7 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
       boundAddr: null,
       listenerInfoPath: "/tmp/listener.json",
       pidPath: "/tmp/tuttid.pid",
-      requestedAddr: "127.0.0.1:0",
+      requestedAddr: "127.0.0.1:0"
     };
     const got = resolveManagedDaemonProcessEnv({
       endpoint,
@@ -679,19 +713,18 @@ test("resolveManagedDaemonProcessEnv seeds the managed runtime cache root", () =
       logDir: "/tmp/logs",
       parentPID: 123,
       sessionID: "session-1",
-      workspaceAppCliPath:
-        "C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe",
+      workspaceAppCliPath: "C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe"
     });
     assert.equal(
       basename(got.TUTTI_APP_RUNTIME_CACHE_ROOT ?? ""),
-      "app-runtimes",
+      "app-runtimes"
     );
     const browserListenerInfo = got.TUTTI_BROWSER_NODE_LISTENER_INFO ?? "";
     assert.equal(basename(browserListenerInfo), "browser-node-automation.json");
     assert.equal(basename(dirname(browserListenerInfo)), "run");
     assert.equal(
       got.TUTTI_WORKSPACE_APP_CLI_PATH,
-      "C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe",
+      "C:\\Program Files\\Tutti\\resources\\bin\\tutti.exe"
     );
   } finally {
     restoreEnv(previousEnv);
@@ -712,7 +745,7 @@ test("resolveLaunchSpec falls back to go run when no development binary exists",
 
     const got = resolveLaunchSpec({
       isPackaged: false,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
 
     assert.equal(got.command, "go");
@@ -730,11 +763,11 @@ test("resolveLaunchSpec ignores a stale development binary when tuttid sources c
   const binaryPath = join(
     tempRepoRoot,
     "apps/desktop/build/tuttid",
-    binaryName,
+    binaryName
   );
   const sourcePath = join(
     tempRepoRoot,
-    "services/tuttid/api/events/generated/protocol.gen.go",
+    "services/tuttid/api/events/generated/protocol.gen.go"
   );
 
   try {
@@ -750,9 +783,9 @@ test("resolveLaunchSpec ignores a stale development binary when tuttid sources c
     const got = resolveLaunchSpec(
       {
         isPackaged: false,
-        resourcesPath: join(tmpdir(), "tutti-resources"),
+        resourcesPath: join(tmpdir(), "tutti-resources")
       },
-      { repoRoot: tempRepoRoot },
+      { repoRoot: tempRepoRoot }
     );
 
     assert.equal(got.command, "go");
@@ -771,7 +804,7 @@ test("resolveLaunchSpec honors TUTTID_BIN override", () => {
 
     const got = resolveLaunchSpec({
       isPackaged: false,
-      resourcesPath: join(tmpdir(), "tutti-resources"),
+      resourcesPath: join(tmpdir(), "tutti-resources")
     });
 
     assert.equal(got.command, "/tmp/custom-tuttid");
@@ -785,11 +818,11 @@ test("isLikelyTuttidProcess only matches tuttid executables", () => {
   assert.equal(isLikelyTuttidProcess("/tmp/tuttid"), true);
   assert.equal(
     isLikelyTuttidProcess("C:\\Program Files\\Tutti\\tuttid.exe"),
-    true,
+    true
   );
   assert.equal(
     isLikelyTuttidProcess(join(repoRoot, "apps/desktop/build/tuttid/tuttid")),
-    true,
+    true
   );
   assert.equal(isLikelyTuttidProcess("node tuttidManager.js"), false);
   assert.equal(isLikelyTuttidProcess("/tmp/not-tuttid"), false);
@@ -809,15 +842,15 @@ test("resolveManagedDaemonProcessEnv passes the shared desktop app version", () 
         boundAddr: null,
         listenerInfoPath: "/tmp/tuttid.listener.json",
         pidPath: "/tmp/tuttid.pid",
-        requestedAddr: "127.0.0.1:4545",
+        requestedAddr: "127.0.0.1:4545"
       },
       logDir: "/tmp/tutti-logs",
       logOutput: "file",
       parentPID: 123,
       sessionID: "session-1",
       userShellEnv: {
-        TUTTI_APP_VERSION: "0.0.1",
-      },
+        TUTTI_APP_VERSION: "0.0.1"
+      }
     });
 
     assert.equal(got.TUTTI_APP_VERSION, "1.2.3");
@@ -836,19 +869,19 @@ test("resolveManagedDaemonProcessEnv injects one desktop admission identity", ()
       currentVersion: "1.2.3",
       managed: true,
       packaged: true,
-      platform: "macos",
+      platform: "macos"
     },
     endpoint: {
       accessToken: "token",
       boundAddr: null,
       listenerInfoPath: "/tmp/tuttid.listener.json",
       pidPath: "/tmp/tuttid.pid",
-      requestedAddr: "127.0.0.1:4545",
+      requestedAddr: "127.0.0.1:4545"
     },
     logDir: "/tmp/tutti-logs",
     logOutput: "file",
     parentPID: 123,
-    sessionID: "session-1",
+    sessionID: "session-1"
   });
 
   assert.equal(got.TUTTI_DESKTOP_UPDATE_ADMISSION_MANAGED, "1");
@@ -890,7 +923,7 @@ async function fileIsExecutable(path: string): Promise<boolean> {
 async function developmentBinaryIsFresh(binaryPath: string): Promise<boolean> {
   const sentinelPath = join(
     repoRoot,
-    "services/tuttid/api/events/generated/protocol.gen.go",
+    "services/tuttid/api/events/generated/protocol.gen.go"
   );
 
   let binaryModifiedAt: number;

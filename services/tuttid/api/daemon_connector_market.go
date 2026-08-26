@@ -462,7 +462,8 @@ func connectorMarketAuthorizationMutation(
 	body *tuttigenerated.ConnectorMarketAuthorizationRequest,
 ) (market.ConnectorMutation, []byte, error) {
 	if body == nil || body.ExpectedRevision < 0 ||
-		(body.ExpectedConnectorRevision != nil && *body.ExpectedConnectorRevision < 0) {
+		(body.ExpectedConnectorRevision != nil && *body.ExpectedConnectorRevision < 0) ||
+		(body.AfterAuthorizationStepRevision != nil && *body.AfterAuthorizationStepRevision < 0) {
 		return market.ConnectorMutation{}, nil, invalidConnectorMarketRequest()
 	}
 	var secret []byte
@@ -483,6 +484,9 @@ func connectorMarketAuthorizationMutation(
 	if body.ExpectedConnectorRevision != nil {
 		revision := uint64(*body.ExpectedConnectorRevision)
 		result.ExpectedConnectorRevision = &revision
+	}
+	if body.AfterAuthorizationStepRevision != nil {
+		result.AfterAuthorizationStepRevision = uint64(*body.AfterAuthorizationStepRevision)
 	}
 	return result, secret, nil
 }
