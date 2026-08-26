@@ -1387,12 +1387,16 @@ catalog revision mismatch`, fully restart `dev:desktop`; renderer HMR cannot
   Preserve the daemon runtime's typed capability snapshot at the tuttid runtime
   adapter boundary, then project the exact live Session snapshot into Composer
   runtime evidence before reading or caching it. Treat a non-nil snapshot as
-  authoritative even when empty, while retaining exact Target, installation,
-  project, and settings matching and the signed-profile intersection.
+  authoritative even when empty: an explicit empty live or persisted snapshot
+  must stop cache fallback, and an empty discovery snapshot is already a ready
+  result rather than a reason to poll until timeout. Retain exact Target,
+  installation, project, and settings matching and the signed-profile
+  intersection.
 - Validation:
   Cover adapter preservation, live and persisted capability projection,
-  explicit empty snapshots overriding stale untyped values, and mismatched
-  extension identities remaining fail-closed. Confirm repeated `core`,
+  explicit empty live and persisted snapshots overriding stale untyped/cache
+  values, empty discovery returning without polling, and mismatched extension
+  identities remaining fail-closed. Confirm repeated `core`,
   `capabilities`, and `full` target-scoped Composer Options requests return
   `imageInput = true` for both Kimi Code and Hermes when their ACP runtimes and
   signed profiles advertise it.
@@ -1852,17 +1856,22 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   fence immediately after writing the notification lets another prompt enter
   the same provider process while its internal running state is still true.
 - Fix:
-  Keep a per-Session active-prompt drain barrier. Mark cancellation before
-  sending `session/cancel`, then wait for the outstanding prompt result before
-  accepting another turn. If the provider does not settle within the bounded
-  drain window, close only the transport and let the next command resume the
-  provider Session in a fresh process. Do not call destructive
-  `session/close` during this recovery.
+  Keep a per-Session active-prompt drain barrier. Capture the exact active
+  prompt, deliver `session/cancel`, and mark that same prompt canceled only
+  after delivery succeeds; a failed notification must leave the prompt's
+  eventual result authoritative. Once cancellation is accepted, check it
+  before any retriable-error auto-continue branch and wait for the outstanding
+  prompt result before accepting another turn. If the provider does not settle
+  within the bounded drain window, close only the transport and let the next
+  command resume the provider Session in a fresh process. Do not call
+  destructive `session/close` during this recovery.
 - Validation:
   Use a deterministic ACP transport fixture whose first prompt returns only
   after `session/cancel`. Assert that `Cancel` cannot return before that prompt
   drains, that the first turn settles as canceled, and that a second prompt on
-  the Session completes. Run the focused test under Go's race detector.
+  the Session completes. Also inject notification failure and prove the active
+  prompt remains uncanceled; race cancellation with a retriable tail and prove
+  no second prompt is sent. Run the focused test under Go's race detector.
 - References:
   [standard_acp_turn.go](../../../packages/agent/daemon/runtime/standard_acp_turn.go)
   [standard_acp_turn_test.go](../../../packages/agent/daemon/runtime/standard_acp_turn_test.go)

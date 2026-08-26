@@ -440,7 +440,7 @@ func (s *Service) pollComposerModelOptions(
 		if options := extractModelOptionsFromRuntimeContext(runtimeContext, modelConfigOptionID); len(options) > 0 {
 			return options, runtimeContext, nil
 		}
-		if acceptComposerData && composerRuntimeContextHasComposerData(runtimeContext) {
+		if acceptComposerData && (current.Capabilities != nil || composerRuntimeContextHasComposerData(runtimeContext)) {
 			return nil, runtimeContext, nil
 		}
 		if err := liveModelDiscoverySessionFailureError(current); err != nil {

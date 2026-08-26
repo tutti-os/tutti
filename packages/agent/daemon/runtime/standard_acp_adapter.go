@@ -213,8 +213,9 @@ type standardACPSession struct {
 }
 
 type standardACPActivePrompt struct {
-	done            chan struct{}
-	cancelRequested bool
+	done               chan struct{}
+	cancelDeliveryDone chan struct{}
+	cancelRequested    bool
 }
 
 func (session *standardACPSession) releaseLocalTools() {

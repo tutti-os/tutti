@@ -492,12 +492,33 @@ func (c *standardACPConnection) Send(data []byte) error {
 			c.mu.Lock()
 			pendingPromptID := append(json.RawMessage(nil), c.pendingPromptID...)
 			c.pendingPromptID = nil
+			returnRetriableTail := c.canceledDeferredPromptRetriableTail
 			c.mu.Unlock()
 			if len(pendingPromptID) > 0 {
+				if returnRetriableTail {
+					c.sendJSON(map[string]any{
+						"jsonrpc": "2.0",
+						"method":  acpMethodUpdate,
+						"params": map[string]any{
+							"sessionId": c.sessionID,
+							"update": map[string]any{
+								"sessionUpdate": "agent_message_chunk",
+								"content": map[string]any{
+									"type": "text",
+									"text": "\n\nError: RetriableError: [canceled] cancel raced with provider completion",
+								},
+							},
+						},
+					})
+				}
+				stopReason := "canceled"
+				if returnRetriableTail {
+					stopReason = "end_turn"
+				}
 				c.sendJSON(map[string]any{
 					"jsonrpc": "2.0",
 					"id":      pendingPromptID,
-					"result":  map[string]any{"stopReason": "canceled"},
+					"result":  map[string]any{"stopReason": stopReason},
 				})
 			}
 		default:

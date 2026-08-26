@@ -308,13 +308,68 @@ func TestStandardACPCancelPropagatesNotifyFailure(t *testing.T) {
 	wantErr := errors.New("cancel transport unavailable")
 	adapter := newCursorAdapterWithHostMetadata(nil, LegacyHostMetadata(), nil)
 	session := standardTestSession(ProviderCursor)
-	adapter.storeSession(session.AgentSessionID, &standardACPSession{
+	activePrompt := &standardACPActivePrompt{done: make(chan struct{})}
+	adapterSession := &standardACPSession{
 		client:            &acpClient{conn: standardACPFailingSendConnection{err: wantErr}},
 		providerSessionID: "cursor-session-cancel",
-	})
+		activePrompt:      activePrompt,
+	}
+	adapter.storeSession(session.AgentSessionID, adapterSession)
 
 	if _, err := adapter.Cancel(context.Background(), session, "user canceled"); !errors.Is(err, wantErr) {
 		t.Fatalf("Cancel error = %v, want %v", err, wantErr)
+	}
+	if adapter.standardACPPromptCancelRequested(adapterSession, activePrompt) {
+		t.Fatal("failed session/cancel marked the active prompt as canceled")
+	}
+}
+
+func TestStandardACPCancelWinsOverRetriableAutoContinue(t *testing.T) {
+	t.Parallel()
+
+	transport := newStandardACPTransport("Cursor Agent", "cursor-session-cancel-retry-race")
+	transport.conn.deferFirstPromptUntilCancel = true
+	transport.conn.canceledDeferredPromptRetriableTail = true
+	transport.conn.promptStarted = make(chan struct{}, 1)
+	adapter := newCursorAdapterWithHostMetadata(transport, LegacyHostMetadata(), nil)
+	session := standardTestSession(ProviderCursor)
+	if _, err := adapter.Start(t.Context(), session); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	session.ProviderSessionID = "cursor-session-cancel-retry-race"
+
+	execDone := make(chan []activityshared.Event, 1)
+	go func() {
+		events, _ := adapter.Exec(
+			context.Background(),
+			session,
+			textPrompt("inspect the workspace"),
+			"inspect the workspace",
+			"turn-cancel-retry-race",
+			nil,
+			nil,
+		)
+		execDone <- events
+	}()
+	select {
+	case <-transport.conn.promptStarted:
+	case <-t.Context().Done():
+		t.Fatal("session/prompt did not start")
+	}
+
+	if _, err := adapter.Cancel(t.Context(), session, "user canceled"); err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	events := <-execDone
+	transport.conn.mu.Lock()
+	promptCalls := transport.conn.promptCallCount
+	transport.conn.mu.Unlock()
+	if promptCalls != 1 {
+		t.Fatalf("prompt calls = %d, want cancellation to prevent auto-continue", promptCalls)
+	}
+	completed := eventsOfType(events, activityshared.EventRootProviderTurnCompleted)
+	if len(completed) != 1 || completed[0].Payload.TurnOutcome != string(activityshared.TurnOutcomeCanceled) {
+		t.Fatalf("provider completion = %#v, want canceled", completed)
 	}
 }
 

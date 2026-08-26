@@ -155,6 +155,16 @@ independent reconciler persists a diagnostic-light failure record and its next
 bounded retry time, so daemon restart preserves backoff. Recovery deletes the
 record.
 
+`runtime.install` may optionally give the companion its own installer when the
+Agent runtime itself is not managed by npm or pnpm. The installer is a closed
+declaration: `runner` is exactly `npm` or `pnpm`; `args` contains 1–8 bounded,
+shell-free argv elements, names the exact scoped package declared by
+`runtime.package`, and may use only the complete `${installRoot}` and
+`${platform}` placeholders. Without this declaration, the companion inherits
+the Agent runtime installer and that installer must already be npm-compatible.
+The independent installer changes only companion preparation; it does not
+change the Agent runtime's install, activation, command, or provider identity.
+
 Before every probe, tuttid verifies the fixed host Node interpreter and the
 ordinary in-root CommonJS script independently. The script is supplied to Node
 as the already verified bytes instead of executing an npm `.cmd`/shell shim or
@@ -173,6 +183,14 @@ must be an absolute, ordinary, non-symlinked, fingerprint-stable JavaScript
 file. The Node interpreter is still resolved and verified separately.
 Production ignores the override and continues to require the exact companion
 package pinned by the signed profile.
+
+Every managed probe receives `TUTTI_AGENT_RUNTIME_INSTALL_ROOT` with the
+verified install root of the corresponding Agent runtime. This is a narrow
+Provider-facing bridge for companions that need to delegate usage lookup to
+their Agent package; it is not a general credential or endpoint channel. The
+value follows the host's native path syntax, so companions must consume the
+environment value directly rather than constructing a user-home path or
+assuming POSIX separators.
 
 The companion owns all Provider-private behavior, including config and
 credential lookup, OAuth issuer-to-usage-origin binding, endpoint paths,

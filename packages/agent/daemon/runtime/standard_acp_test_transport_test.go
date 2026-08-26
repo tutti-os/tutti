@@ -138,8 +138,12 @@ type standardACPConnection struct {
 	// deferFirstPromptUntilCancel emulates an ACP provider that accepts
 	// session/cancel asynchronously and only then settles session/prompt.
 	deferFirstPromptUntilCancel bool
-	promptStarted               chan struct{}
-	pendingPromptID             json.RawMessage
+	// canceledDeferredPromptRetriableTail makes the deferred prompt settle with
+	// Cursor's retriable-tail shape when session/cancel arrives. It exercises
+	// the race where cancellation and auto-continue become observable together.
+	canceledDeferredPromptRetriableTail bool
+	promptStarted                       chan struct{}
+	pendingPromptID                     json.RawMessage
 	// promptFinalContent attaches final assistant content blocks to the
 	// session/prompt result so tests can exercise final snapshot projection.
 	promptFinalContent []map[string]any

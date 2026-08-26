@@ -256,6 +256,14 @@ execLoop:
 			"emitted_event_count", len(emittedEvents),
 			"emitted_event_type_counts", activityEventTypeCounts(emittedEvents),
 		)
+		if cancelRequested {
+			terminalEvents := normalizer.FinishInterrupted(session, turnID, "canceled")
+			terminalEvents = append(terminalEvents, standardACPRootProviderTurnCompletedEvent(session, turnID, activityshared.TurnOutcomeCanceled, map[string]any{
+				"stopReason": firstNonEmpty(stopReason, "canceled"),
+			}))
+			emitEvents(terminalEvents)
+			break execLoop
+		}
 		if a.config.autoContinueRetriableTurnError && acpStopReasonEndsTurnNormally(stopReason) {
 			assistantText := normalizer.CurrentAssistantText()
 			if errLine, ok := acpRetriableTurnTailError(assistantText); ok {
@@ -305,14 +313,6 @@ execLoop:
 				)
 				break execLoop
 			}
-		}
-		if cancelRequested {
-			terminalEvents := normalizer.FinishInterrupted(session, turnID, "canceled")
-			terminalEvents = append(terminalEvents, standardACPRootProviderTurnCompletedEvent(session, turnID, activityshared.TurnOutcomeCanceled, map[string]any{
-				"stopReason": firstNonEmpty(stopReason, "canceled"),
-			}))
-			emitEvents(terminalEvents)
-			break execLoop
 		}
 		switch stopReason {
 		case "canceled":
@@ -376,12 +376,14 @@ func (a *standardACPAdapter) Cancel(ctx context.Context, session Session, _ stri
 	if acpSession == nil || acpSession.client == nil {
 		return nil, ErrSessionNoActiveTurn
 	}
-	activePrompt := a.markStandardACPPromptCanceled(acpSession)
+	activePrompt := a.beginStandardACPPromptCancelDelivery(acpSession)
 	if err := acpSession.client.Notify(ctx, acpMethodCancel, map[string]any{
 		"sessionId": acpSession.providerSessionID,
 	}); err != nil {
+		a.finishStandardACPPromptCancelDelivery(acpSession, activePrompt, false)
 		return nil, err
 	}
+	a.finishStandardACPPromptCancelDelivery(acpSession, activePrompt, true)
 	a.rejectPendingApprovals(session.AgentSessionID, errPermissionRequestCanceled)
 	if activePrompt == nil {
 		return nil, nil
@@ -424,20 +426,51 @@ func (a *standardACPAdapter) finishStandardACPPrompt(session *standardACPSession
 	a.mu.Unlock()
 }
 
-func (a *standardACPAdapter) markStandardACPPromptCanceled(session *standardACPSession) *standardACPActivePrompt {
+func (a *standardACPAdapter) beginStandardACPPromptCancelDelivery(session *standardACPSession) *standardACPActivePrompt {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if session == nil || session.activePrompt == nil {
 		return nil
 	}
-	session.activePrompt.cancelRequested = true
-	return session.activePrompt
+	active := session.activePrompt
+	if active.cancelDeliveryDone == nil {
+		active.cancelDeliveryDone = make(chan struct{})
+	}
+	return active
+}
+
+func (a *standardACPAdapter) finishStandardACPPromptCancelDelivery(
+	session *standardACPSession,
+	active *standardACPActivePrompt,
+	accepted bool,
+) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if session == nil || active == nil || session.activePrompt != active {
+		return
+	}
+	active.cancelRequested = accepted
+	if active.cancelDeliveryDone != nil {
+		close(active.cancelDeliveryDone)
+		active.cancelDeliveryDone = nil
+	}
 }
 
 func (a *standardACPAdapter) standardACPPromptCancelRequested(session *standardACPSession, active *standardACPActivePrompt) bool {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	return session != nil && session.activePrompt == active && active != nil && active.cancelRequested
+	for {
+		a.mu.Lock()
+		if session == nil || session.activePrompt != active || active == nil {
+			a.mu.Unlock()
+			return false
+		}
+		deliveryDone := active.cancelDeliveryDone
+		cancelRequested := active.cancelRequested
+		a.mu.Unlock()
+		if deliveryDone == nil {
+			return cancelRequested
+		}
+		<-deliveryDone
+	}
 }
 
 func (*standardACPAdapter) waitForStandardACPPromptDrain(ctx context.Context, active *standardACPActivePrompt, timeout time.Duration) bool {
