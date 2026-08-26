@@ -15,6 +15,12 @@ func ComposerSettingsToMap(settings ComposerSettings) map[string]any {
 // composerSettingsToPayload is the internal alias for round-trip helpers in this package.
 func composerSettingsToPayload(settings ComposerSettings) map[string]any {
 	payload := map[string]any{}
+	if settings.CodexSaverMode {
+		payload["codexSaverMode"] = true
+	}
+	if settings.RTKSaverMode {
+		payload["rtkSaverMode"] = true
+	}
 	if model := strings.TrimSpace(settings.Model); model != "" {
 		payload["model"] = model
 	}
@@ -56,6 +62,8 @@ func composerSettingsToStatePayload(settings ComposerSettings) map[string]any {
 
 func composerSettingsFromPayload(payload map[string]any) ComposerSettings {
 	settings := ComposerSettings{
+		CodexSaverMode:   payloadBool(payload, "codexSaverMode"),
+		RTKSaverMode:     payloadBool(payload, "rtkSaverMode"),
 		Model:            payloadString(payload, "model"),
 		PermissionModeID: payloadString(payload, "permissionModeId"),
 		PlanMode:         payloadBool(payload, "planMode"),
@@ -77,6 +85,8 @@ func composerSettingsIsEmpty(settings ComposerSettings) bool {
 		strings.TrimSpace(settings.Speed) == "" &&
 		strings.TrimSpace(settings.ConversationDetailMode) == "" &&
 		!settings.PlanMode &&
+		!settings.CodexSaverMode &&
+		!settings.RTKSaverMode &&
 		settings.BrowserUse == nil &&
 		settings.ComputerUse == nil
 }
@@ -104,6 +114,10 @@ func createSessionInputFromPersisted(session PersistedSession) CreateSessionInpu
 	if settings.CodexSaverMode {
 		input.CodexSaverMode = boolPointer(true)
 		input.CodexSaverModeAllowed = true
+	}
+	if settings.RTKSaverMode {
+		input.RTKSaverMode = boolPointer(true)
+		input.RTKSaverModeAllowed = true
 	}
 	if model := strings.TrimSpace(settings.Model); model != "" {
 		input.Model = &model

@@ -192,6 +192,32 @@ test("keeps Browser Node load errors until a new load starts", () => {
   assert.equal(store.getNodeState("browser-1").error, null);
 });
 
+test("clears Browser Node load errors when the main document succeeds", () => {
+  const store = createBrowserNodeRuntimeStore();
+
+  store.applyEvent({
+    code: "navigation-failed",
+    diagnosticMessage: "Bad Gateway",
+    nodeId: "browser-1",
+    params: { statusCode: 502 },
+    type: "error"
+  });
+  store.applyEvent({
+    canGoBack: false,
+    canGoForward: false,
+    isLoading: false,
+    isOccluded: false,
+    lifecycle: "active",
+    navigationStatusCode: 200,
+    nodeId: "browser-1",
+    title: "Recovered",
+    type: "state",
+    url: "http://127.0.0.1:3000/"
+  });
+
+  assert.equal(store.getNodeState("browser-1").error, null);
+});
+
 test("keeps Browser Node load errors through Chromium error page loading", () => {
   const store = createBrowserNodeRuntimeStore();
 
@@ -218,6 +244,7 @@ test("keeps Browser Node load errors through Chromium error page loading", () =>
     isLoading: true,
     isOccluded: false,
     lifecycle: "active",
+    navigationStatusCode: 200,
     nodeId: "browser-1",
     title: null,
     type: "state",

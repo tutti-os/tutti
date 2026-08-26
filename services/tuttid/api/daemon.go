@@ -53,6 +53,7 @@ type DaemonAPI struct {
 	AutomationRuleService         AutomationRuleService
 	AccountService                AccountService
 	MobileRemoteService           MobileRemoteService
+	UserPresenceService           UserPresenceService
 	EventStreamService            EventStreamService
 	WorkspaceService              workspaceapi.CatalogService
 	WorkbenchService              workspaceapi.WorkbenchService

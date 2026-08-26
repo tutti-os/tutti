@@ -35,6 +35,15 @@ type ServerInterface interface {
 	// Mark the current registration credits reward toast as shown
 	// (POST /v1/account/registration_credits_reward/dismiss)
 	DismissAccountRegistrationCreditsReward(w http.ResponseWriter, r *http.Request)
+	// Visit or refresh the currently displayed room presence projection
+	// (PUT /v1/account/user-presence/current-room)
+	PutAccountUserPresenceCurrentRoom(w http.ResponseWriter, r *http.Request)
+	// Update whether foreground snapshot reconciliation is active
+	// (PUT /v1/account/user-presence/foreground)
+	PutAccountUserPresenceForeground(w http.ResponseWriter, r *http.Request)
+	// Read the cached presence projection for one recently visited room
+	// (GET /v1/account/user-presence/rooms/{roomID})
+	GetAccountUserPresenceRoom(w http.ResponseWriter, r *http.Request, roomID string)
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(w http.ResponseWriter, r *http.Request)
@@ -933,6 +942,78 @@ func (siw *ServerInterfaceWrapper) DismissAccountRegistrationCreditsReward(w htt
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.DismissAccountRegistrationCreditsReward(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutAccountUserPresenceCurrentRoom operation middleware
+func (siw *ServerInterfaceWrapper) PutAccountUserPresenceCurrentRoom(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutAccountUserPresenceCurrentRoom(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PutAccountUserPresenceForeground operation middleware
+func (siw *ServerInterfaceWrapper) PutAccountUserPresenceForeground(w http.ResponseWriter, r *http.Request) {
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PutAccountUserPresenceForeground(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetAccountUserPresenceRoom operation middleware
+func (siw *ServerInterfaceWrapper) GetAccountUserPresenceRoom(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "roomID" -------------
+	var roomID string
+
+	err = runtime.BindStyledParameterWithOptions("simple", "roomID", r.PathValue("roomID"), &roomID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "roomID", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, BearerAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAccountUserPresenceRoom(w, r, roomID)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11752,6 +11833,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/logout", wrapper.LogoutAccount)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/product_summary", wrapper.GetAccountProductSummary)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/account/registration_credits_reward/dismiss", wrapper.DismissAccountRegistrationCreditsReward)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/account/user-presence/current-room", wrapper.PutAccountUserPresenceCurrentRoom)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/v1/account/user-presence/foreground", wrapper.PutAccountUserPresenceForeground)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user-presence/rooms/{roomID}", wrapper.GetAccountUserPresenceRoom)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/account/user_info", wrapper.GetAccountUserInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/v1/agent-maintenance/deleted-conversations/purge", wrapper.PurgeDeletedAgentConversations)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/v1/agent-providers/status", wrapper.GetAgentProviderStatuses)
@@ -12421,6 +12505,236 @@ type DismissAccountRegistrationCreditsReward503JSONResponse struct {
 }
 
 func (response DismissAccountRegistrationCreditsReward503JSONResponse) VisitDismissAccountRegistrationCreditsRewardResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoomRequestObject struct {
+	Body *PutAccountUserPresenceCurrentRoomJSONRequestBody
+}
+
+type PutAccountUserPresenceCurrentRoomResponseObject interface {
+	VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error
+}
+
+type PutAccountUserPresenceCurrentRoom200JSONResponse AccountUserPresenceRoomResponse
+
+func (response PutAccountUserPresenceCurrentRoom200JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceCurrentRoom400JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response PutAccountUserPresenceCurrentRoom401JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceCurrentRoom405JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceCurrentRoom503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceCurrentRoom503JSONResponse) VisitPutAccountUserPresenceCurrentRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForegroundRequestObject struct {
+	Body *PutAccountUserPresenceForegroundJSONRequestBody
+}
+
+type PutAccountUserPresenceForegroundResponseObject interface {
+	VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error
+}
+
+type PutAccountUserPresenceForeground204Response struct {
+}
+
+func (response PutAccountUserPresenceForeground204Response) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type PutAccountUserPresenceForeground400JSONResponse struct {
+	InvalidRequestErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceForeground400JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForeground401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response PutAccountUserPresenceForeground401JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForeground405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceForeground405JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PutAccountUserPresenceForeground503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response PutAccountUserPresenceForeground503JSONResponse) VisitPutAccountUserPresenceForegroundResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoomRequestObject struct {
+	RoomID string `json:"roomID"`
+}
+
+type GetAccountUserPresenceRoomResponseObject interface {
+	VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error
+}
+
+type GetAccountUserPresenceRoom200JSONResponse AccountUserPresenceRoomResponse
+
+func (response GetAccountUserPresenceRoom200JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoom401JSONResponse struct{ UnauthorizedErrorJSONResponse }
+
+func (response GetAccountUserPresenceRoom401JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoom405JSONResponse struct {
+	MethodNotAllowedErrorJSONResponse
+}
+
+func (response GetAccountUserPresenceRoom405JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(405)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetAccountUserPresenceRoom503JSONResponse struct {
+	ServiceUnavailableErrorJSONResponse
+}
+
+func (response GetAccountUserPresenceRoom503JSONResponse) VisitGetAccountUserPresenceRoomResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -40887,6 +41201,15 @@ type StrictServerInterface interface {
 	// Mark the current registration credits reward toast as shown
 	// (POST /v1/account/registration_credits_reward/dismiss)
 	DismissAccountRegistrationCreditsReward(ctx context.Context, request DismissAccountRegistrationCreditsRewardRequestObject) (DismissAccountRegistrationCreditsRewardResponseObject, error)
+	// Visit or refresh the currently displayed room presence projection
+	// (PUT /v1/account/user-presence/current-room)
+	PutAccountUserPresenceCurrentRoom(ctx context.Context, request PutAccountUserPresenceCurrentRoomRequestObject) (PutAccountUserPresenceCurrentRoomResponseObject, error)
+	// Update whether foreground snapshot reconciliation is active
+	// (PUT /v1/account/user-presence/foreground)
+	PutAccountUserPresenceForeground(ctx context.Context, request PutAccountUserPresenceForegroundRequestObject) (PutAccountUserPresenceForegroundResponseObject, error)
+	// Read the cached presence projection for one recently visited room
+	// (GET /v1/account/user-presence/rooms/{roomID})
+	GetAccountUserPresenceRoom(ctx context.Context, request GetAccountUserPresenceRoomRequestObject) (GetAccountUserPresenceRoomResponseObject, error)
 	// Get current desktop account user
 	// (GET /v1/account/user_info)
 	GetAccountUserInfo(ctx context.Context, request GetAccountUserInfoRequestObject) (GetAccountUserInfoResponseObject, error)
@@ -41819,6 +42142,98 @@ func (sh *strictHandler) DismissAccountRegistrationCreditsReward(w http.Response
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(DismissAccountRegistrationCreditsRewardResponseObject); ok {
 		if err := validResponse.VisitDismissAccountRegistrationCreditsRewardResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutAccountUserPresenceCurrentRoom operation middleware
+func (sh *strictHandler) PutAccountUserPresenceCurrentRoom(w http.ResponseWriter, r *http.Request) {
+	var request PutAccountUserPresenceCurrentRoomRequestObject
+
+	var body PutAccountUserPresenceCurrentRoomJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutAccountUserPresenceCurrentRoom(ctx, request.(PutAccountUserPresenceCurrentRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutAccountUserPresenceCurrentRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutAccountUserPresenceCurrentRoomResponseObject); ok {
+		if err := validResponse.VisitPutAccountUserPresenceCurrentRoomResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PutAccountUserPresenceForeground operation middleware
+func (sh *strictHandler) PutAccountUserPresenceForeground(w http.ResponseWriter, r *http.Request) {
+	var request PutAccountUserPresenceForegroundRequestObject
+
+	var body PutAccountUserPresenceForegroundJSONRequestBody
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.PutAccountUserPresenceForeground(ctx, request.(PutAccountUserPresenceForegroundRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PutAccountUserPresenceForeground")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(PutAccountUserPresenceForegroundResponseObject); ok {
+		if err := validResponse.VisitPutAccountUserPresenceForegroundResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetAccountUserPresenceRoom operation middleware
+func (sh *strictHandler) GetAccountUserPresenceRoom(w http.ResponseWriter, r *http.Request, roomID string) {
+	var request GetAccountUserPresenceRoomRequestObject
+
+	request.RoomID = roomID
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetAccountUserPresenceRoom(ctx, request.(GetAccountUserPresenceRoomRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetAccountUserPresenceRoom")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetAccountUserPresenceRoomResponseObject); ok {
+		if err := validResponse.VisitGetAccountUserPresenceRoomResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

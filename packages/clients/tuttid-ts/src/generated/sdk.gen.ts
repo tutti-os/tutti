@@ -238,6 +238,9 @@ import type {
   GetAccountUserInfoData,
   GetAccountUserInfoErrors,
   GetAccountUserInfoResponses,
+  GetAccountUserPresenceRoomData,
+  GetAccountUserPresenceRoomErrors,
+  GetAccountUserPresenceRoomResponses,
   GetAgentProviderComposerOptionsData,
   GetAgentProviderComposerOptionsErrors,
   GetAgentProviderComposerOptionsResponses,
@@ -568,6 +571,12 @@ import type {
   PurgeWorkspaceDeletedAgentSessionsData,
   PurgeWorkspaceDeletedAgentSessionsErrors,
   PurgeWorkspaceDeletedAgentSessionsResponses,
+  PutAccountUserPresenceCurrentRoomData,
+  PutAccountUserPresenceCurrentRoomErrors,
+  PutAccountUserPresenceCurrentRoomResponses,
+  PutAccountUserPresenceForegroundData,
+  PutAccountUserPresenceForegroundErrors,
+  PutAccountUserPresenceForegroundResponses,
   PutDesktopPreferencesData,
   PutDesktopPreferencesErrors,
   PutDesktopPreferencesResponses,
@@ -958,6 +967,70 @@ export const logoutAccount = <ThrowOnError extends boolean = false>(
     security: [{ scheme: "bearer", type: "http" }],
     url: "/v1/account/logout",
     ...options
+  });
+
+/**
+ * Visit or refresh the currently displayed room presence projection
+ *
+ * Moves the room to the head of the daemon process-local ten-room LRU, atomically replaces its eligible member source, waits for the exact WebSocket subscription ACK, and then obtains an authoritative presence snapshot. The LRU and presence cache are never persisted.
+ */
+export const putAccountUserPresenceCurrentRoom = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PutAccountUserPresenceCurrentRoomData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    PutAccountUserPresenceCurrentRoomResponses,
+    PutAccountUserPresenceCurrentRoomErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/user-presence/current-room",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+
+/**
+ * Read the cached presence projection for one recently visited room
+ */
+export const getAccountUserPresenceRoom = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<GetAccountUserPresenceRoomData, ThrowOnError>
+) =>
+  (options.client ?? client).get<
+    GetAccountUserPresenceRoomResponses,
+    GetAccountUserPresenceRoomErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/user-presence/rooms/{roomID}",
+    ...options
+  });
+
+/**
+ * Update whether foreground snapshot reconciliation is active
+ */
+export const putAccountUserPresenceForeground = <
+  ThrowOnError extends boolean = false
+>(
+  options: Options<PutAccountUserPresenceForegroundData, ThrowOnError>
+) =>
+  (options.client ?? client).put<
+    PutAccountUserPresenceForegroundResponses,
+    PutAccountUserPresenceForegroundErrors,
+    ThrowOnError
+  >({
+    security: [{ scheme: "bearer", type: "http" }],
+    url: "/v1/account/user-presence/foreground",
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...options.headers
+    }
   });
 
 /**

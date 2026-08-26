@@ -123,6 +123,8 @@ export interface AgentGUIViewLabels extends AgentGUIProviderReadinessLabels {
   planModeLabel: string;
   codexSaverModeLabel: string;
   codexSaverModeDescription: string;
+  rtkSaverModeLabel: string;
+  rtkSaverModeDescription: string;
   normalModeLabel?: string;
   normalModeDescription?: string;
   tuttiModeLabel: string;

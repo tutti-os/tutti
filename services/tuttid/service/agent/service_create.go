@@ -58,10 +58,16 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		return createSessionFailureResult(input, fmt.Errorf("%w: worktree isolation requires project rail placement", ErrInvalidArgument))
 	}
 	if valueBool(input.CodexSaverMode) && (!input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider)) {
-		return createSessionFailureResult(input, fmt.Errorf("%w: Codex saver mode is unavailable", ErrInvalidArgument))
+		return createSessionFailureResult(input, fmt.Errorf("%w: codex saver mode is unavailable", ErrInvalidArgument))
 	}
 	if !input.CodexSaverModeAllowed || !composerProviderSupportsSaverSubagentMode(provider) {
 		input.CodexSaverMode = nil
+	}
+	if valueBool(input.RTKSaverMode) && (!input.RTKSaverModeAllowed || !composerProviderSupportsRTKSaverMode(provider)) {
+		return createSessionFailureResult(input, fmt.Errorf("%w: rtk saver mode is unavailable", ErrInvalidArgument))
+	}
+	if !input.RTKSaverModeAllowed || !composerProviderSupportsRTKSaverMode(provider) {
+		input.RTKSaverMode = nil
 	}
 	modelExplicit := explicitSettingValue(input.ModelExplicit, input.Model)
 	permissionModeExplicit := strings.TrimSpace(value(input.PermissionModeID)) != ""
@@ -269,6 +275,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 	ctx = withServicePreparedRuntime(ctx, s, prepared)
 	runtimeSettings := ComposerSettings{
 		CodexSaverMode:   valueBool(input.CodexSaverMode),
+		RTKSaverMode:     valueBool(input.RTKSaverMode),
 		Model:            clampComposerModelForLaunch(provider, input.ProviderTargetRef, value(input.Model)),
 		PermissionModeID: value(input.PermissionModeID),
 		PlanMode:         clampComposerPlanModeForLaunch(provider, input.ProviderTargetRef, valueBool(input.PlanMode)),
@@ -285,7 +292,7 @@ func (s *Service) CreateWithResult(ctx context.Context, workspaceID string, inpu
 		PermissionModeID: input.PermissionModeID,
 		Model:            stringPointer(runtimeSettings.Model),
 		PlanMode:         boolPointer(runtimeSettings.PlanMode),
-		BrowserUse:       input.BrowserUse, ComputerUse: input.ComputerUse, CodexSaverMode: input.CodexSaverMode,
+		BrowserUse:       input.BrowserUse, ComputerUse: input.ComputerUse, CodexSaverMode: input.CodexSaverMode, RTKSaverMode: input.RTKSaverMode,
 		ProviderTargetRef:      input.ProviderTargetRef,
 		ReasoningEffort:        stringPointer(runtimeSettings.ReasoningEffort),
 		RuntimeContext:         stampAgentExtensionComposerScope(input.RuntimeContext, input.ProviderTargetRef, cwd, runtimeSettings),
@@ -501,6 +508,9 @@ func (s *Service) applyCreateSessionComposerDefaults(ctx context.Context, input 
 	if input.CodexSaverMode == nil && input.CodexSaverModeAllowed && composerProviderSupportsSaverSubagentMode(input.Provider) {
 		input.CodexSaverMode = boolPointer(defaults.CodexSaverMode)
 	}
+	if input.RTKSaverMode == nil && input.RTKSaverModeAllowed && composerProviderSupportsRTKSaverMode(input.Provider) {
+		input.RTKSaverMode = boolPointer(defaults.RTKSaverMode)
+	}
 	return nil
 }
 
@@ -677,6 +687,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 		BrowserUse:                effectiveBrowserUse,
 		ComputerUse:               effectiveComputerUse,
 		CodexSaverMode:            valueBool(input.CodexSaverMode),
+		RTKSaverMode:              valueBool(input.RTKSaverMode),
 		ProviderTargetRef:         clonePayload(input.ProviderTargetRef),
 		ExtensionSkillRoots:       s.resolveExtensionSkillRoots(ctx, input.ProviderTargetRef),
 		ExtensionRuntimePrep:      s.resolveExtensionRuntimePrep(ctx, input.ProviderTargetRef),
@@ -720,7 +731,7 @@ func (s *Service) prepareRuntimeWithModelEndpoint(
 				Model: value(input.Model), ReasoningEffort: value(input.ReasoningEffort),
 				PlanMode: valueBool(input.PlanMode), BrowserUse: effectiveCapabilitySetting(input.BrowserUse, effectiveBrowserUse),
 				ComputerUse:    effectiveCapabilitySetting(input.ComputerUse, effectiveComputerUse),
-				CodexSaverMode: valueBool(input.CodexSaverMode), ConversationDetailMode: input.ConversationDetailMode,
+				CodexSaverMode: valueBool(input.CodexSaverMode), RTKSaverMode: valueBool(input.RTKSaverMode), ConversationDetailMode: input.ConversationDetailMode,
 			},
 		})
 		if capabilityErr != nil {

@@ -739,6 +739,8 @@ type CreateSessionInput struct {
 	ComputerUse           *bool
 	CodexSaverMode        *bool
 	CodexSaverModeAllowed bool
+	RTKSaverMode          *bool
+	RTKSaverModeAllowed   bool
 	ProviderTargetRef     map[string]any
 	ReasoningEffort       *string
 	// ReasoningEffortExplicit has the same compatibility semantics as

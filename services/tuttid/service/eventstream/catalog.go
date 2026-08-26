@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	TopicAccountUserPresenceUpdated                      = "account.userpresence.updated"
 	TopicAnalyticsDebugReported                          = "analytics.debug.reported"
 	TopicAgentActivityUpdated                            = "agent.activity.updated"
 	TopicAgentSideUpdated                                = "agent.side.updated"
@@ -93,6 +94,7 @@ func NewStaticCatalog(definitions []TopicDefinition) StaticCatalog {
 
 func DefaultCatalog() StaticCatalog {
 	definitions := []TopicDefinition{
+		accountUserPresenceTopicDefinition(),
 		{
 			Name:               TopicConnectorMarketChanged,
 			ClientCanPublish:   false,

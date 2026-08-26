@@ -21,6 +21,7 @@
         "minProperties": 1,
         "properties": {
           "codexSaverMode": { "type": "boolean" },
+          "rtkSaverMode": { "type": "boolean" },
           "model": { "type": ["string", "null"] },
           "permissionModeId": { "type": ["string", "null"] },
           "reasoningEffort": { "type": ["string", "null"] },

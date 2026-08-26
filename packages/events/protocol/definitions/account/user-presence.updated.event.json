@@ -1,0 +1,40 @@
+{
+  "$schema": "../../schemas/core/event-definition.schema.json",
+  "topic": "account.userpresence.updated",
+  "version": 1,
+  "direction": "server->client",
+  "owner": "core",
+  "scope": "global",
+  "payloadSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "userId",
+      "status",
+      "availability",
+      "authoritative",
+      "authorityGeneration",
+      "presenceRevision"
+    ],
+    "properties": {
+      "userId": { "type": "string", "minLength": 1 },
+      "status": { "type": "string", "enum": ["ONLINE", "OFFLINE"] },
+      "availability": {
+        "type": "string",
+        "enum": [
+          "NOT_WATCHED",
+          "SUBSCRIBING",
+          "SYNCING",
+          "READY",
+          "STALE",
+          "UNKNOWN",
+          "DEGRADED"
+        ]
+      },
+      "authoritative": { "type": "boolean" },
+      "authorityGeneration": { "type": "string" },
+      "presenceRevision": { "type": "string", "pattern": "^[0-9]*$" },
+      "observedAt": { "type": "string", "format": "date-time" }
+    }
+  }
+}

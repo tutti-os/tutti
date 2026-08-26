@@ -151,6 +151,7 @@ export function formatClassificationOutputs(classification) {
 export function isWindowsDesktopInstallerRelevant(file) {
   return (
     ["package.json", "pnpm-lock.yaml"].includes(file) ||
+    file === "config/tutti.app-runtime.lock.json" ||
     file === "apps/desktop/package.json" ||
     file.startsWith("apps/desktop/build/") ||
     file.startsWith("apps/desktop/scripts/") ||

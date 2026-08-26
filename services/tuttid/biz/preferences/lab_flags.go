@@ -9,6 +9,7 @@ const (
 	LabFlagAutomationRules       = "lab.automationRules"
 	LabFlagAgentSideConversation = "lab.agentSideConversation"
 	LabFlagCodexSaverMode        = "lab.codexSaverMode"
+	LabFlagRTKSaverMode          = "lab.rtkSaverMode"
 	LabFlagConnectors            = "lab.connectors"
 	// Durable key for Early Access agent-integration visibility (Agents directory).
 	LabFlagPreviewAgents = "lab.previewAgents"
@@ -19,6 +20,7 @@ var labFlagDefaults = map[string]bool{
 	LabFlagAutomationRules:       false,
 	LabFlagAgentSideConversation: false,
 	LabFlagCodexSaverMode:        false,
+	LabFlagRTKSaverMode:          false,
 	LabFlagConnectors:            false,
 	LabFlagPreviewAgents:         false,
 }

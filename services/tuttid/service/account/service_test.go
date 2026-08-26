@@ -582,7 +582,14 @@ func TestLogoutTriggersCallbackAfterAuthCleared(t *testing.T) {
 	service := NewService(authPath)
 	service.AccountBaseURL = account.URL
 	var callbackCount atomic.Int32
+	var startingCount atomic.Int32
 	done := make(chan struct{}, 1)
+	service.OnLogoutStarting = func(context.Context) {
+		if _, err := os.Stat(authPath); err != nil {
+			t.Errorf("auth state was cleared before OnLogoutStarting: %v", err)
+		}
+		startingCount.Add(1)
+	}
 	service.OnLogoutCompleted = func(context.Context) {
 		callbackCount.Add(1)
 		done <- struct{}{}
@@ -601,6 +608,9 @@ func TestLogoutTriggersCallbackAfterAuthCleared(t *testing.T) {
 	}
 	if got := callbackCount.Load(); got != 1 {
 		t.Fatalf("callback count = %d, want 1", got)
+	}
+	if got := startingCount.Load(); got != 1 {
+		t.Fatalf("starting callback count = %d, want 1", got)
 	}
 }
 

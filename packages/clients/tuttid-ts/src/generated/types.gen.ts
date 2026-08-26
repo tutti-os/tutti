@@ -4,6 +4,49 @@ export type ClientOptions = {
   baseUrl: "http://127.0.0.1:4545" | (string & {});
 };
 
+export type AccountUserPresenceCurrentRoomRequest = {
+  roomId: string;
+  members: Array<AccountUserPresenceRoomMember>;
+};
+
+export type AccountUserPresenceRoomMember = {
+  userId: string;
+  /**
+   * True only for a currently joined, non-deleted membership.
+   */
+  membershipActive: boolean;
+  /**
+   * False for system identities without Account Device Presence semantics.
+   */
+  accountPresenceCapable: boolean;
+};
+
+export type AccountUserPresenceForegroundRequest = {
+  foreground: boolean;
+};
+
+export type AccountUserPresenceRoomResponse = {
+  roomId: string;
+  members: Array<AccountUserPresenceUser>;
+};
+
+export type AccountUserPresenceUser = {
+  userId: string;
+  status: "ONLINE" | "OFFLINE";
+  availability:
+    | "NOT_WATCHED"
+    | "SUBSCRIBING"
+    | "SYNCING"
+    | "READY"
+    | "STALE"
+    | "UNKNOWN"
+    | "DEGRADED";
+  authoritative: boolean;
+  authorityGeneration: string;
+  presenceRevision: string;
+  observedAt?: string | null;
+};
+
 export type SwitchTuttiModeGoalReviewToSelfRequest = {
   checkpointId: string;
   expectedGraphRevision: number;
@@ -545,7 +588,14 @@ export type DesktopWorkbenchWindowSnappingShortcutPreset =
   | "commandShiftArrows";
 
 export type DesktopAgentComposerDefaults = {
+  /**
+   * Enables the Codex-specific saver subagent mode
+   */
   codexSaverMode?: boolean;
+  /**
+   * Enables provider-neutral RTK saver mode
+   */
+  rtkSaverMode?: boolean;
   model?: string;
   permissionModeId?: string;
   reasoningEffort?: string;
@@ -1948,7 +1998,14 @@ export type WorkspaceAgentSource = "user" | "legacy_binding";
 export type WorkspaceAgentProvider = string;
 
 export type AgentSessionComposerSettings = {
+  /**
+   * Enables the Codex-specific saver subagent mode
+   */
   codexSaverMode?: boolean | null;
+  /**
+   * Enables provider-neutral RTK saver mode
+   */
+  rtkSaverMode?: boolean | null;
   model?: string | null;
   permissionModeId?: string | null;
   planMode?: boolean | null;
@@ -2042,9 +2099,13 @@ export type GetWorkspaceAppFactoryAgentTargetComposerOptionsRequest = {
 
 export type AgentProviderComposerOptionsResponse = {
   /**
-   * Whether this resolved provider target supports the Codex Luna subagent saver mode; product entry policy is reported separately by the host
+   * Whether this resolved provider target supports the Codex-specific saver subagent mode
    */
   codexSaverModeSupported?: boolean;
+  /**
+   * Whether this resolved provider target supports provider-neutral, session-scoped RTK saver mode
+   */
+  rtkSaverModeSupported?: boolean;
   provider: WorkspaceAgentProvider;
   modelConfig: AgentProviderComposerConfig;
   permissionConfig: PermissionConfig;
@@ -3349,9 +3410,13 @@ export type WorkspaceAgentInitialGoalControl = {
 
 export type CreateWorkspaceAgentSessionRequest = {
   /**
-   * Enables the Codex Luna subagent saver mode for this session without changing the main model
+   * Enables the Codex-specific saver subagent mode for this Agent Session
    */
   codexSaverMode?: boolean | null;
+  /**
+   * Enables provider-neutral, session-scoped RTK executable and RTK.md injection for this Agent Session without changing the selected model
+   */
+  rtkSaverMode?: boolean | null;
   agentSessionId: string;
   /**
    * Required target-first session launch authority. The daemon derives provider and providerTargetRef from the stored agent target launchRef and rejects mismatched provider values.
@@ -5711,6 +5776,121 @@ export type LogoutAccountResponses = {
 
 export type LogoutAccountResponse =
   LogoutAccountResponses[keyof LogoutAccountResponses];
+
+export type PutAccountUserPresenceCurrentRoomData = {
+  body: AccountUserPresenceCurrentRoomRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/account/user-presence/current-room";
+};
+
+export type PutAccountUserPresenceCurrentRoomErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PutAccountUserPresenceCurrentRoomError =
+  PutAccountUserPresenceCurrentRoomErrors[keyof PutAccountUserPresenceCurrentRoomErrors];
+
+export type PutAccountUserPresenceCurrentRoomResponses = {
+  /**
+   * Current room presence projection
+   */
+  200: AccountUserPresenceRoomResponse;
+};
+
+export type PutAccountUserPresenceCurrentRoomResponse =
+  PutAccountUserPresenceCurrentRoomResponses[keyof PutAccountUserPresenceCurrentRoomResponses];
+
+export type GetAccountUserPresenceRoomData = {
+  body?: never;
+  path: {
+    roomID: string;
+  };
+  query?: never;
+  url: "/v1/account/user-presence/rooms/{roomID}";
+};
+
+export type GetAccountUserPresenceRoomErrors = {
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type GetAccountUserPresenceRoomError =
+  GetAccountUserPresenceRoomErrors[keyof GetAccountUserPresenceRoomErrors];
+
+export type GetAccountUserPresenceRoomResponses = {
+  /**
+   * Cached room presence projection, or an empty projection when the room is not in the LRU
+   */
+  200: AccountUserPresenceRoomResponse;
+};
+
+export type GetAccountUserPresenceRoomResponse =
+  GetAccountUserPresenceRoomResponses[keyof GetAccountUserPresenceRoomResponses];
+
+export type PutAccountUserPresenceForegroundData = {
+  body: AccountUserPresenceForegroundRequest;
+  path?: never;
+  query?: never;
+  url: "/v1/account/user-presence/foreground";
+};
+
+export type PutAccountUserPresenceForegroundErrors = {
+  /**
+   * Request payload or parameters are invalid
+   */
+  400: ApiErrorResponse;
+  /**
+   * Bearer token is missing or invalid
+   */
+  401: ApiErrorResponse;
+  /**
+   * HTTP method is not supported on this route
+   */
+  405: ApiErrorResponse;
+  /**
+   * Required daemon service dependency is unavailable
+   */
+  503: ApiErrorResponse;
+};
+
+export type PutAccountUserPresenceForegroundError =
+  PutAccountUserPresenceForegroundErrors[keyof PutAccountUserPresenceForegroundErrors];
+
+export type PutAccountUserPresenceForegroundResponses = {
+  /**
+   * Foreground state accepted
+   */
+  204: void;
+};
+
+export type PutAccountUserPresenceForegroundResponse =
+  PutAccountUserPresenceForegroundResponses[keyof PutAccountUserPresenceForegroundResponses];
 
 export type ListCliCapabilitiesData = {
   body?: never;

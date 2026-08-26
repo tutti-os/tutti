@@ -1,6 +1,7 @@
 package runtimeprep
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -153,7 +154,8 @@ func TestDefaultPreparerCodexWritesInstructionsSkillManifestAndEnv(t *testing.T)
 		t.Fatal(err)
 	}
 
-	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+	preparer := newTestPreparer(stateDir)
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
 		AgentSessionID: "session-1",
 		AgentTargetID:  "local:codex",
@@ -550,27 +552,12 @@ func TestDefaultPreparerExpandsConnectorAgentContext(t *testing.T) {
 	}
 }
 
-func TestDefaultPreparerCodexSaverModeInstallsLunaWorkerAndRoutingPolicy(t *testing.T) {
+func TestDefaultPreparerCodexSaverModeKeepsLunaWorkerIndependentFromRTK(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
-	if err := os.MkdirAll(filepath.Join(home, ".codex"), 0o700); err != nil {
-		t.Fatalf("create user Codex home: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(home, ".codex", "config.toml"), []byte(`[agents.default]
-description = """
-User default multiline description
-"""
-config_file = "/tmp/user-default.toml"
-nickname_candidates = ["User Worker"]
-
-[agents.reviewer]
-description = "Keep reviewer"
-`), 0o600); err != nil {
-		t.Fatalf("write user Codex config: %v", err)
-	}
 	prepared, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
 		WorkspaceID:    "workspace-1",
-		AgentSessionID: "session-1",
+		AgentSessionID: "session-codex-saver",
 		AgentTargetID:  "local:codex",
 		Provider:       "codex",
 		Cwd:            t.TempDir(),
@@ -584,208 +571,132 @@ description = "Keep reviewer"
 	if err != nil {
 		t.Fatalf("read Luna worker role: %v", err)
 	}
-	for _, expected := range []string{
-		`name = "default"`,
-		`description = "Luna worker`,
-		`model = "gpt-5.6-luna"`,
-		`model_reasoning_effort = "max"`,
-		`developer_instructions = "Complete only the delegated task using the minimum analysis and tools needed.`,
-		`Do not spawn or delegate to another worker unless the parent task explicitly authorizes nested delegation`,
-		`supplies a total nested-worker and tool-call budget`,
-		`For read-only analysis, do not modify files, run tests, or repair environments unless explicitly asked.`,
-		`Do not inspect unrelated repository history or use external research unless requested.`,
-	} {
+	for _, expected := range []string{`model = "gpt-5.6-luna"`, `model_reasoning_effort = "max"`} {
 		if !strings.Contains(string(role), expected) {
 			t.Fatalf("role = %q, want %q", role, expected)
 		}
-	}
-	config, err := os.ReadFile(filepath.Join(codexHome, "config.toml"))
-	if err != nil {
-		t.Fatalf("read session Codex config: %v", err)
-	}
-	for _, expected := range []string{
-		"[agents.default]",
-		`description = "Luna worker`,
-		`config_file = "./agents/luna_worker.toml"`,
-		"[agents.reviewer]",
-		`description = "Keep reviewer"`,
-	} {
-		if !strings.Contains(string(config), expected) {
-			t.Fatalf("config = %q, want %q", config, expected)
-		}
-	}
-	if strings.Contains(string(config), "/tmp/user-default.toml") ||
-		strings.Contains(string(config), "User default multiline description") ||
-		strings.Contains(string(config), "User Worker") {
-		t.Fatalf("session config retained conflicting user default role: %q", config)
 	}
 	instructions, err := os.ReadFile(filepath.Join(codexHome, "AGENTS.md"))
 	if err != nil {
 		t.Fatalf("read Codex instructions: %v", err)
 	}
-	for _, expected := range []string{
-		"default subagent as the Luna worker",
-		"will replace meaningful main-thread reasoning",
-		"merely because a task is complex",
-		"mechanical workflow in the main thread",
-		"require multiple model-driven tool turns",
-		"default to one Luna worker",
-		"multiple genuinely independent, non-trivial units",
-		"Do not split one cohesive investigation",
-		"without forking the main conversation history",
-		"isolated-worktree units in parallel",
-		"Continue only with non-overlapping work",
-		"do not inspect or implement",
-		"minimum analysis and tools needed",
-		"concrete tool-call budget",
-		"8 tool calls and implementation at 20",
-		"does not run tests, repair environments, or modify files",
-		"return the best available evidence immediately",
-		"Workers must not spawn or delegate to additional workers",
-		"total nested-worker and tool-call budget",
-		"interrupt the worker",
-		"hour-long wait",
-		"do not repeat the delegated investigation",
-		"allowed state changes",
-		"blocking or event-driven waits",
-		"acceptance criteria",
+	if !strings.Contains(string(instructions), "default subagent as the Luna worker") {
+		t.Fatalf("Codex saver instructions = %q", instructions)
+	}
+	if strings.Contains(string(instructions), "Always prefix supported shell commands with `rtk`.") {
+		t.Fatalf("Codex-only saver mode unexpectedly enabled RTK: %q", instructions)
+	}
+}
+
+func TestDefaultPreparerRTKSaverModeInstallsProviderNeutralSessionRuntime(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the fake RTK fixture is a POSIX script")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	binDir := t.TempDir()
+	sourceRTK := filepath.Join(binDir, rtkExecutableName())
+	writeSidecarTestFile(t, sourceRTK, "#!/bin/sh\nexit 0\n")
+	if err := os.Chmod(sourceRTK, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	stateDir := t.TempDir()
+	preparer := newTestPreparer(stateDir)
+	preparer.RTKExecutableResolver = func(context.Context) (string, error) {
+		return sourceRTK, nil
+	}
+	prepared, err := preparer.Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:opencode",
+		Provider:       "opencode",
+		Cwd:            t.TempDir(),
+		RTKSaverMode:   true,
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	runtimeRoot, err := LocalStore{StateDir: stateDir}.RuntimeRoot("workspace-1", "session-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	sessionRTK := filepath.Join(runtimeRoot, "rtk", "bin", rtkExecutableName())
+	if sessionRTK == sourceRTK {
+		t.Fatal("RTK executable was not isolated")
+	}
+	if info, err := os.Stat(sessionRTK); err != nil || info.Mode()&0o100 == 0 {
+		t.Fatalf("Session RTK executable is unavailable: info=%v err=%v", info, err)
+	}
+	pathValue := envValue(prepared.Env, "PATH")
+	pathEntries := filepath.SplitList(pathValue)
+	if len(pathEntries) == 0 || filepath.Clean(pathEntries[0]) != filepath.Dir(sessionRTK) {
+		t.Fatalf("PATH = %q, want Session RTK first", pathValue)
+	}
+	for key, wantPrefix := range map[string]string{
+		"RTK_DB_PATH": filepath.Join(runtimeRoot, "rtk", "data"),
+		"RTK_TEE_DIR": filepath.Join(runtimeRoot, "rtk", "tee"),
 	} {
-		if !strings.Contains(string(instructions), expected) {
-			t.Fatalf("Codex saver instructions = %q, want %q", instructions, expected)
+		if got := envValue(prepared.Env, key); !strings.HasPrefix(got, wantPrefix) {
+			t.Fatalf("%s = %q, want Session runtime prefix %q", key, got, wantPrefix)
 		}
 	}
-	if strings.Contains(string(instructions), "fork_turns") ||
-		strings.Contains(string(instructions), "fork_context") ||
-		strings.Contains(string(instructions), "max_concurrent_threads") ||
-		strings.Contains(string(instructions), "default to at least two") {
-		t.Fatalf("Codex saver instructions are not lightweight: %q", instructions)
+	if got := envValue(prepared.Env, "RTK_TELEMETRY_DISABLED"); got != "1" {
+		t.Fatalf("RTK_TELEMETRY_DISABLED = %q, want 1", got)
+	}
+	instructions, err := os.ReadFile(filepath.Join(runtimeRoot, "rtk", "RTK.md"))
+	if err != nil {
+		t.Fatalf("read Session RTK.md: %v", err)
+	}
+	if !strings.Contains(string(instructions), "Always prefix supported shell commands with `rtk`.") {
+		t.Fatalf("RTK.md = %q", instructions)
+	}
+	openCodeHome := envValue(prepared.Env, "OPENCODE_CONFIG_DIR")
+	agentInstructions, err := os.ReadFile(filepath.Join(openCodeHome, "AGENTS.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(agentInstructions), "Always prefix supported shell commands with `rtk`.") {
+		t.Fatalf("AGENTS.md = %q, want inline RTK instruction injection", agentInstructions)
+	}
+
+	// Resume reuses the Session copy even when RTK is no longer available from
+	// the daemon's process PATH, preserving the launch-time tool version.
+	t.Setenv("PATH", t.TempDir())
+	if _, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:opencode",
+		Provider:       "opencode",
+		Cwd:            t.TempDir(),
+		RTKSaverMode:   true,
+	}); err != nil {
+		t.Fatalf("resumed Prepare() error = %v", err)
 	}
 }
 
-func TestCodexConfigWithSaverDefaultRoleReplacesEquivalentTOMLForms(t *testing.T) {
-	tests := map[string]string{
-		"quoted section": `[agents."default"] # replace this role
-description = "User default"
-config_file = "/tmp/user.toml"
-`,
-		"single quoted section": `[agents.'default']
-description = "User default"
-config_file = "/tmp/user.toml"
-`,
-		"fully quoted section": `["agents"."default"]
-description = "User default"
-config_file = "/tmp/user.toml"
-`,
-		"inline in agents section": `[agents]
-max_threads = 4
-default = {
-  description = "User default",
-  config_file = "/tmp/user.toml",
-}
-`,
-		"root dotted keys": `agents.default.description = """
-User default
-"""
-agents.default.config_file = "/tmp/user.toml"
-model = "gpt-5.6-sol"
-`,
+func TestDefaultPreparerRTKSaverModeFailsWhenRTKIsUnavailable(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("PATH", t.TempDir())
+	_, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-1",
+		AgentTargetID:  "local:claude-code",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+		RTKSaverMode:   true,
+	})
+	if err == nil || !strings.Contains(err.Error(), "requires a Tutti-managed rtk executable resolver") {
+		t.Fatalf("Prepare() error = %v", err)
 	}
-	for name, input := range tests {
-		t.Run(name, func(t *testing.T) {
-			next, changed := codexConfigWithSaverDefaultRole(input)
-			if !changed {
-				t.Fatal("codexConfigWithSaverDefaultRole() changed = false, want true")
-			}
-			for _, unexpected := range []string{"User default", "/tmp/user.toml"} {
-				if strings.Contains(next, unexpected) {
-					t.Fatalf("config = %q, retained %q", next, unexpected)
-				}
-			}
-			for _, expected := range []string{
-				"[agents.default]",
-				`config_file = "./agents/luna_worker.toml"`,
-			} {
-				if !strings.Contains(next, expected) {
-					t.Fatalf("config = %q, want %q", next, expected)
-				}
-			}
-			if name == "inline in agents section" && !strings.Contains(next, "max_threads = 4") {
-				t.Fatalf("config = %q, lost unrelated agents setting", next)
-			}
-			if name == "root dotted keys" && !strings.Contains(next, `model = "gpt-5.6-sol"`) {
-				t.Fatalf("config = %q, lost unrelated root setting", next)
-			}
-		})
-	}
-}
-
-func TestCodexConfigWithSaverDefaultRoleIgnoresSectionTextInsideMultilineString(t *testing.T) {
-	input := `developer_instructions = """
-Example only:
-[agents]
-default = { description = "text only" }
-[agents.default]
-description = "also text only"
-"""
-model = "gpt-5.6-sol"
-`
-	next, changed := codexConfigWithSaverDefaultRole(input)
-	if !changed {
-		t.Fatal("codexConfigWithSaverDefaultRole() changed = false, want true")
-	}
-	for _, expected := range []string{
-		"Example only:",
-		`default = { description = "text only" }`,
-		`description = "also text only"`,
-		`model = "gpt-5.6-sol"`,
-		`config_file = "./agents/luna_worker.toml"`,
-	} {
-		if !strings.Contains(next, expected) {
-			t.Fatalf("config = %q, want %q", next, expected)
-		}
-	}
-	if strings.Count(next, `"""`) != 2 {
-		t.Fatalf("config = %q, multiline string delimiters changed", next)
-	}
-}
-
-func TestCodexConfigWithSaverDefaultRolePreservesUnrelatedTOMLKeysAndArrayTables(t *testing.T) {
-	input := `[agents.default]
-description = "replace me"
-config_file = "/tmp/user.toml"
-
-[[other.items]]
-default = "keep array-table field"
-
-["agents.default"]
-value = "single dotted key"
-
-[agents."de fault"]
-value = "different role"
-
-[agents]
-"default.foo" = { description = "different dotted role" }
-`
-	next, changed := codexConfigWithSaverDefaultRole(input)
-	if !changed {
-		t.Fatal("codexConfigWithSaverDefaultRole() changed = false, want true")
-	}
-	for _, expected := range []string{
-		"[[other.items]]",
-		`default = "keep array-table field"`,
-		`["agents.default"]`,
-		`value = "single dotted key"`,
-		`[agents."de fault"]`,
-		`value = "different role"`,
-		`"default.foo" = { description = "different dotted role" }`,
-		`config_file = "./agents/luna_worker.toml"`,
-	} {
-		if !strings.Contains(next, expected) {
-			t.Fatalf("config = %q, want %q", next, expected)
-		}
-	}
-	if strings.Contains(next, "replace me") || strings.Contains(next, "/tmp/user.toml") {
-		t.Fatalf("config = %q, retained replaced default role", next)
+	if _, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-disabled",
+		AgentTargetID:  "local:claude-code",
+		Provider:       "claude-code",
+		Cwd:            t.TempDir(),
+		RTKSaverMode:   false,
+	}); err != nil {
+		t.Fatalf("disabled Prepare() must not require RTK: %v", err)
 	}
 }
 
