@@ -18,7 +18,11 @@ var (
 		Name: "create with authoritative rail placement outside local project registry",
 		run:  runCreateWithAuthoritativeRailPlacement,
 	}
-	resumePersistedSessionScenario = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	resumePersistedSessionScenario                = Scenario{Name: "resume persisted session", run: runResumePersistedSession}
+	failedResumePreservesRecoverableStateScenario = Scenario{
+		Name: "failed resume preserves recoverable provider state",
+		run:  runFailedResumePreservesRecoverableState,
+	}
 	sendInputScenario              = Scenario{Name: "send input", run: runSendInput}
 	sendConnectorOnlyInputScenario = Scenario{Name: "send connector-only input", run: runSendConnectorOnlyInput}
 	providerAcceptanceScenario     = Scenario{
@@ -81,6 +85,7 @@ func Scenarios() []Scenario {
 		createWithRailPlacementScenario,
 		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
+		failedResumePreservesRecoverableStateScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,
@@ -245,6 +250,7 @@ func ApplicationCoreScenarios() []Scenario {
 		createWithRailPlacementScenario,
 		createWithAuthoritativeRailPlacementScenario,
 		resumePersistedSessionScenario,
+		failedResumePreservesRecoverableStateScenario,
 		sendInputScenario,
 		sendConnectorOnlyInputScenario,
 		guidanceTargetRequiredScenario,

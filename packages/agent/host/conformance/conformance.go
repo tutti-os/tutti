@@ -79,6 +79,7 @@ type Fixture struct {
 	// first fence delivery, modeling a Host restart with accepted durable intent
 	// but no in-memory provider Session.
 	DisconnectGoalFenceDelivery bool
+	ResumeErr                   error
 	FailCommitObserver          bool
 	RejectInitialExec           bool
 	RailProjectPaths            []string
@@ -157,32 +158,34 @@ type Metrics struct {
 	LastResumeEnv []string
 	// GuidanceProviderCalls counts guidance dispatches that passed the
 	// runtime's exact-target gate. ExecCalls includes the rejected gate check.
-	GuidanceProviderCalls              int
-	CancelCalls                        int
-	InteractiveCalls                   int
-	UpdateSettingsCalls                int
-	CloseCalls                         int
-	GoalControlCalls                   int
-	GoalReconcileCalls                 int
-	RuntimeSessionPublishCalls         int
-	RuntimeStartReportWrites           int
-	RuntimeOperationCommits            int
-	GoalOperationCommits               int
-	RootTurnSettlements                int
-	LastCancelTargets                  []agenthost.RuntimeCancelTarget
-	LastInteractiveTurnID              string
-	LastInteractiveRequestID           string
-	LastExecClientSubmitID             string
-	LastInitialTitle                   string
-	LastExecRequiresProviderAcceptance bool
-	LastClosePreservedCanonicalState   bool
-	LastResumeRecreate                 bool
-	LastResumeGoalGenerationFences     []agenthost.RuntimeGoalGenerationFenceInput
-	RecoverySteps                      []string
-	DeleteAdmissionPlans               []agenthost.DeleteSessionsPlan
-	DeleteReports                      []agenthost.DeleteSessionsReport
-	CanonicalDeleteCalls               int
-	DeletionEvents                     []string
+	GuidanceProviderCalls                int
+	CancelCalls                          int
+	InteractiveCalls                     int
+	UpdateSettingsCalls                  int
+	CloseCalls                           int
+	GoalControlCalls                     int
+	GoalReconcileCalls                   int
+	RuntimeSessionPublishCalls           int
+	RuntimeStartReportWrites             int
+	RuntimeOperationCommits              int
+	GoalOperationCommits                 int
+	RootTurnSettlements                  int
+	LastCancelTargets                    []agenthost.RuntimeCancelTarget
+	LastInteractiveTurnID                string
+	LastInteractiveRequestID             string
+	LastExecClientSubmitID               string
+	LastInitialTitle                     string
+	LastExecRequiresProviderAcceptance   bool
+	LastClosePreservedCanonicalState     bool
+	RuntimePreparationCleanupCalls       int
+	LastCleanupPreservedRecoverableState bool
+	LastResumeRecreate                   bool
+	LastResumeGoalGenerationFences       []agenthost.RuntimeGoalGenerationFenceInput
+	RecoverySteps                        []string
+	DeleteAdmissionPlans                 []agenthost.DeleteSessionsPlan
+	DeleteReports                        []agenthost.DeleteSessionsReport
+	CanonicalDeleteCalls                 int
+	DeletionEvents                       []string
 }
 
 // Driver adapts one host implementation to the shared lifecycle scenarios.
