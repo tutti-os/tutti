@@ -264,23 +264,4 @@ func TestKimiRTKPluginIsSessionScoped(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(kimiHome, "config.toml")); err != nil {
 		t.Fatalf("Kimi session config: %v", err)
 	}
-	shim := filepath.Join(filepath.Dir(envValue(prepared.Env, "RTK_DB_PATH")), "..", "shims", "ls")
-	shim = filepath.Clean(shim)
-	shimContent, err := os.ReadFile(shim)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(shimContent), "exec ") || !strings.Contains(string(shimContent), " 'ls' \"$@\"") {
-		t.Fatalf("Kimi ls RTK shim = %q", shimContent)
-	}
-	pathValue := ""
-	for i := len(prepared.Env) - 1; i >= 0; i-- {
-		if strings.HasPrefix(prepared.Env[i], "PATH=") {
-			pathValue = strings.TrimPrefix(prepared.Env[i], "PATH=")
-			break
-		}
-	}
-	if !strings.HasPrefix(pathValue, filepath.Dir(shim)+string(os.PathListSeparator)) {
-		t.Fatalf("Kimi PATH = %q, want RTK shim directory first", pathValue)
-	}
 }

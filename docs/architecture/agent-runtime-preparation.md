@@ -23,10 +23,8 @@ remains Codex-only and installs the session-scoped Luna worker role and Codex
 routing policy; enabling either mode does not implicitly enable or disable the
 other.
 Preparation copies that executable and the canonical `RTK.md`
-into the exact Session runtime and prepends its private command-shim and binary
-directories only to that Session's `PATH`. The shims route supported bare
-commands through RTK as a provider-neutral fallback when a model does not obey
-the instruction. Session-private Codex, Tutti Agent, and OpenCode
+into the exact Session runtime and prepends only the private binary directory to
+that Session's `PATH`. Session-private Codex, Tutti Agent, and OpenCode
 `AGENTS.md` files start with an absolute `@<runtime>/rtk/RTK.md` reference,
 matching RTK's native Codex integration. The common Tutti Runtime policy also
 carries the same RTK instructions inline through every provider's native
@@ -34,9 +32,9 @@ instruction channel as a compatibility fallback (for example, Claude's
 system-prompt file and Cursor's plugin context). Claude and Cursor install
 native pre-tool hooks, OpenCode installs a command-rewrite plugin, and Hermes
 installs a session-home plugin. Kimi receives a session-home plugin system
-prompt in addition to the common command-shim fallback because its pre-tool
-hooks can block but cannot mutate tool input. RTK's database, tee output, and
-telemetry policy are also isolated under the Session runtime.
+prompt because its pre-tool hooks can block but cannot mutate tool input. RTK's
+database, tee output, and telemetry policy are also isolated under the Session
+runtime.
 
 Runtime preparation deliberately does not inspect the user PATH or install RTK
 through Homebrew, Cargo, an upstream shell script, or any other global
