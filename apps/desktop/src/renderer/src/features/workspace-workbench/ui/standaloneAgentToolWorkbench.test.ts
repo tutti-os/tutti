@@ -7,6 +7,7 @@ import type {
   WorkbenchHostLaunchRequest
 } from "@tutti-os/workbench-surface";
 import {
+  attachStandaloneAgentWindowCloseGuard,
   createStandaloneAgentDirectToolHost,
   createStandaloneAgentToolHostGroup,
   createStandaloneAgentToolSnapshotRepository,
@@ -148,6 +149,53 @@ test("standalone Agent tool host group aggregates terminal close effects and rou
   group.host.closeNode("terminal-node");
   assert.deepEqual(closedNodeIds, ["terminal-node"]);
   assert.equal(group.host.getSnapshot().nodes.length, 1);
+});
+
+test("standalone Agent window close guard forwards the active session through the Agent contribution", async () => {
+  let activeAgentSessionId: string | null = "session-running";
+  const group = createStandaloneAgentToolHostGroup();
+  const contribution: WorkbenchContribution = {
+    id: "workspace-agent-gui",
+    nodes: [
+      {
+        frame: { height: 500, width: 800, x: 0, y: 0 },
+        getWindowCloseEffect: ({ externalNodeState, node }) =>
+          (externalNodeState as { lastActiveAgentSessionId?: string | null })
+            .lastActiveAgentSessionId === "session-running"
+            ? {
+                nodeId: node.id,
+                title: node.title,
+                typeId: node.data.typeId
+              }
+            : null,
+        renderBody: () => null,
+        title: "Agent",
+        typeId: "agent-gui"
+      }
+    ]
+  };
+
+  const dispose = attachStandaloneAgentWindowCloseGuard({
+    contributions: [contribution],
+    getActiveAgentSessionId: () => activeAgentSessionId,
+    hostGroup: group,
+    title: "Agent",
+    workspaceId: "workspace-1"
+  });
+
+  assert.deepEqual(await group.host.collectWindowCloseEffects(), [
+    {
+      nodeId: "standalone-agent-window-node",
+      title: "Agent",
+      typeId: "agent-gui"
+    }
+  ]);
+
+  activeAgentSessionId = null;
+  assert.deepEqual(await group.host.collectWindowCloseEffects(), []);
+
+  dispose();
+  assert.deepEqual(await group.host.collectWindowCloseEffects(), []);
 });
 
 test("standalone Agent direct terminal host exposes the mounted session to close guards", async () => {

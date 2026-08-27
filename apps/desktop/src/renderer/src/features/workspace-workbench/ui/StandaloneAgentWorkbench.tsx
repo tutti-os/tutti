@@ -133,7 +133,8 @@ function StandaloneAgentWindowWithToolRuntime({
       appI18n: runtime.appI18n,
       contributions: runtime.hostInput.contributions,
       onHostReady: runtime.onWorkbenchCloseGuardHostReady,
-      requestWindowClose: runtime.requestWindowClose
+      requestWindowClose: () =>
+        runtime.requestWindowClose({ reason: "native-window-close" })
     }),
     [
       runtime.appI18n,
