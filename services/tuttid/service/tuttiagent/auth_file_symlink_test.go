@@ -121,7 +121,10 @@ func TestBootstrapRestoresRemovedAuthSymlinkAfterLoginFailure(t *testing.T) {
 	writeHostAccountAuth(t, "session_id=session_test")
 	binaryPath := writeTuttiAgentTestBinary(t, "exit 9\n")
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, binaryPath)
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{
+		BinaryPath: binaryPath,
+		Env:        os.Environ(),
+	})
 
 	info, err := os.Lstat(link)
 	if err != nil || info.Mode()&os.ModeSymlink == 0 {

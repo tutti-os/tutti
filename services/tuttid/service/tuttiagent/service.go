@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -42,13 +43,16 @@ const (
 
 // NewPreparer returns the shared runtime preparer with Tutti account bootstrap
 // and the daemon-owned stable Skill bundle store injected at the product boundary.
-func NewPreparer(stateDir string) runtimeprep.TuttiAgentPreparer {
+func NewPreparer(
+	stateDir string,
+	bootstrap func(context.Context, runtimeprep.PrepareInput),
+) runtimeprep.TuttiAgentPreparer {
 	stableRoot := filepath.Join(
 		filepath.Clean(strings.TrimSpace(stateDir)),
 		"agent",
 	)
 	return runtimeprep.TuttiAgentPreparer{
-		BeforePrepare: bootstrapTuttiAgentUserAuthForPrepare,
+		BeforePrepare: bootstrap,
 		AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: stateDir},
 		StableSkillBundleRoot: filepath.Join(
 			stableRoot,
@@ -82,13 +86,16 @@ func tuttiAgentAccountBase() string {
 // failures leave the session in the auth-required state that the provider
 // status service already reports.
 func BootstrapTuttiAgentUserAuth(ctx context.Context) {
-	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, "")
+	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{})
 }
 
 // BootstrapTuttiAgentUserAuthWithBinary reconciles auth with the exact managed
 // runtime that passed provider readiness probing.
 func BootstrapTuttiAgentUserAuthWithBinary(ctx context.Context, binaryPath string) {
-	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, binaryPath)
+	bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{
+		BinaryPath: binaryPath,
+		Env:        os.Environ(),
+	})
 }
 
 // LogoutTuttiAgentUserAuth removes the local auth marker synchronously so
@@ -132,13 +139,11 @@ func logoutTuttiAgentUserAuth(ctx context.Context) error {
 	return unlockErr
 }
 
-// bootstrapTuttiAgentUserAuth is the provider-prepare variant that preserves
-// runtime prepare trace context when a real Tutti Agent session is starting.
-func bootstrapTuttiAgentUserAuthForPrepare(ctx context.Context, input runtimeprep.PrepareInput) {
-	bootstrapTuttiAgentUserAuth(ctx, input, "")
-}
-
-func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareInput, binaryPath string) {
+func bootstrapTuttiAgentUserAuth(
+	ctx context.Context,
+	input runtimeprep.PrepareInput,
+	command tuttiAgentLoginCommand,
+) {
 	cookie, state := tuttiAgentAccountSessionCookie()
 	if state != tuttiAgentAccountSessionPresent {
 		reason := "host_auth_absent"
@@ -170,7 +175,7 @@ func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareI
 		ctx,
 		tuttiAgentSessionAuthorizer{cookie: cookie},
 		tuttiAgentUserCredentialStore{},
-		tuttiAgentLoginRunner{BinaryPath: binaryPath},
+		tuttiAgentLoginRunner{Command: command},
 		time.Now().UTC(),
 	)
 	if err != nil {
@@ -369,11 +374,11 @@ func (tuttiAgentUserCredentialStore) Remove(context.Context) error {
 }
 
 type tuttiAgentLoginRunner struct {
-	BinaryPath string
+	Command tuttiAgentLoginCommand
 }
 
 func (r tuttiAgentLoginRunner) Login(ctx context.Context, bundle tuttiagentauth.TokenBundle) error {
-	return runTuttiAgentTokenLogin(ctx, r.BinaryPath, bundle)
+	return runTuttiAgentTokenLogin(ctx, r.Command, bundle)
 }
 
 type tuttiAgentLLMTokenIssueRejectedError struct {
@@ -515,8 +520,13 @@ func revokeTuttiAgentLLMToken(ctx context.Context, accountBaseURL string, refres
 	return nil
 }
 
-func runTuttiAgentTokenLogin(ctx context.Context, binaryPath string, bundle tuttiAgentLLMTokenBundle) error {
-	binary := strings.TrimSpace(binaryPath)
+type tuttiAgentLoginCommand struct {
+	BinaryPath string
+	Env        []string
+}
+
+func runTuttiAgentTokenLogin(ctx context.Context, command tuttiAgentLoginCommand, bundle tuttiAgentLLMTokenBundle) error {
+	binary := strings.TrimSpace(command.BinaryPath)
 	if binary == "" {
 		var err error
 		binary, err = resolveTuttiAgentBinary()
@@ -531,6 +541,10 @@ func runTuttiAgentTokenLogin(ctx context.Context, binaryPath string, bundle tutt
 	loginCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(loginCtx, binary, "login", "--with-tutti-llm-tokens")
+	baseEnv := command.Env
+	if len(baseEnv) == 0 {
+		baseEnv = os.Environ()
+	}
 	if authPath, ok := userTuttiAgentAuthPath(); ok {
 		// The daemon may inherit TUTTI_AGENT_HOME/CODEX_HOME from a parent
 		// process or an earlier provider session.  The login command must write
@@ -548,17 +562,36 @@ func runTuttiAgentTokenLogin(ctx context.Context, binaryPath string, bundle tutt
 				"reason", "missing_directory",
 			)
 		}
-		cmd.Env = tuttiAgentLoginEnvironment(os.Environ(), authPath)
+		cmd.Env = tuttiAgentLoginEnvironment(baseEnv, authPath)
 	}
+	startedAt := time.Now()
+	slog.Info("tutti-agent auth login process started",
+		"event", "tutti_agent.auth_login.process_started",
+		"binary", binary,
+		"managed_node_configured", tuttiAgentEnvironmentValue(cmd.Env, "TUTTI_APP_NODE") != "",
+		"managed_node_on_path", environmentPathContainsFileDir(cmd.Env, tuttiAgentEnvironmentValue(cmd.Env, "TUTTI_APP_NODE")),
+	)
 	cmd.Stdin = bytes.NewReader(stdin)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		detail := sanitizeTuttiAgentLoginOutput(string(output), bundle)
+		slog.Warn("tutti-agent auth login process failed",
+			"event", "tutti_agent.auth_login.process_failed",
+			"binary", binary,
+			"duration_ms", time.Since(startedAt).Milliseconds(),
+			"error", err,
+			"detail", detail,
+		)
 		if detail == "" {
 			return fmt.Errorf("tutti-agent login failed: %w", err)
 		}
 		return fmt.Errorf("tutti-agent login failed: %w: %s", err, detail)
 	}
+	slog.Info("tutti-agent auth login process completed",
+		"event", "tutti_agent.auth_login.process_completed",
+		"binary", binary,
+		"duration_ms", time.Since(startedAt).Milliseconds(),
+	)
 	return nil
 }
 
@@ -626,6 +659,38 @@ func replaceEnvironmentValue(env []string, key, value string) []string {
 		result = append(result, prefix+value)
 	}
 	return result
+}
+
+func environmentPathContainsFileDir(env []string, filePath string) bool {
+	dir := filepath.Dir(strings.TrimSpace(filePath))
+	if filePath == "" || dir == "." {
+		return false
+	}
+	for _, candidate := range filepath.SplitList(tuttiAgentEnvironmentValue(env, "PATH")) {
+		if samePath(candidate, dir) {
+			return true
+		}
+	}
+	return false
+}
+
+func tuttiAgentEnvironmentValue(env []string, key string) string {
+	for index := len(env) - 1; index >= 0; index-- {
+		candidateKey, value, ok := strings.Cut(env[index], "=")
+		if ok && strings.EqualFold(candidateKey, key) {
+			return value
+		}
+	}
+	return ""
+}
+
+func samePath(left, right string) bool {
+	left = filepath.Clean(strings.TrimSpace(left))
+	right = filepath.Clean(strings.TrimSpace(right))
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(left, right)
+	}
+	return left == right
 }
 
 func resolveTuttiAgentBinary() (string, error) {

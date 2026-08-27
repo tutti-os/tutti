@@ -28,16 +28,20 @@ type TargetService interface {
 type ReadinessCoordinator struct {
 	Runtime       RuntimeService
 	Targets       TargetService
-	BootstrapAuth func(context.Context, string)
+	BootstrapAuth func(context.Context)
 
 	mu sync.Mutex
 }
 
-func NewReadinessCoordinator(runtime RuntimeService, targets TargetService) *ReadinessCoordinator {
+func NewReadinessCoordinator(
+	runtime RuntimeService,
+	targets TargetService,
+	bootstrapAuth func(context.Context),
+) *ReadinessCoordinator {
 	return &ReadinessCoordinator{
 		Runtime:       runtime,
 		Targets:       targets,
-		BootstrapAuth: BootstrapTuttiAgentUserAuthWithBinary,
+		BootstrapAuth: bootstrapAuth,
 	}
 }
 
@@ -90,7 +94,6 @@ func (c *ReadinessCoordinator) Reconcile(ctx context.Context) error {
 	if !ok {
 		return errors.New("tutti-agent provider status is missing")
 	}
-	binaryPath := status.CLI.BinaryPath
 	if !tuttiAgentRuntimeReady(status.Availability.Status) {
 		if status.ActiveAction != nil &&
 			status.ActiveAction.ID == agentstatusservice.ActionInstall &&
@@ -121,7 +124,6 @@ func (c *ReadinessCoordinator) Reconcile(ctx context.Context) error {
 				result.Message,
 			)
 		}
-		binaryPath = result.Probe.BinaryPath
 	}
 
 	enabled, err := c.targetEnabled(ctx)
@@ -131,7 +133,7 @@ func (c *ReadinessCoordinator) Reconcile(ctx context.Context) error {
 	if !enabled || c.BootstrapAuth == nil {
 		return nil
 	}
-	c.BootstrapAuth(ctx, binaryPath)
+	c.BootstrapAuth(ctx)
 	return nil
 }
 
