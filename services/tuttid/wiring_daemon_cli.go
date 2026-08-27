@@ -25,6 +25,7 @@ import (
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 	tuttimodeplanservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeplan"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
+	workspaceagentservice "github.com/tutti-os/tutti/services/tuttid/service/workspaceagent"
 )
 
 type daemonCLIRegistryInput struct {
@@ -36,6 +37,7 @@ type daemonCLIRegistryInput struct {
 	AgentSessions        *agentservice.Service
 	AgentTargets         agenttargetservice.Service
 	AgentTargetSetup     *agentextensionservice.SetupService
+	WorkspaceAgents      *workspaceagentservice.Service
 	Preferences          *preferencesservice.Service
 	TuttiModePlans       *tuttimodeplanservice.Service
 	TuttiModeExecutions  *tuttimodeexecutionservice.Service
@@ -68,7 +70,7 @@ func buildDaemonCLIRegistry(
 			},
 			input.AgentTargets,
 			input.Preferences,
-		).WithAgentTargetSetup(input.AgentTargetSetup),
+		).WithAgentTargetSetup(input.AgentTargetSetup).WithWorkspaceAgents(input.WorkspaceAgents),
 		tuttimodeplancli.NewProviderWithExecutionSnapshot(
 			input.Workspaces,
 			input.TuttiModePlans,

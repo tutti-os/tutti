@@ -9,6 +9,7 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -46,6 +47,10 @@ type AgentTargetLister interface {
 	List(context.Context) ([]agenttargetbiz.Target, error)
 }
 
+type WorkspaceAgentLister interface {
+	List(context.Context, string) ([]workspaceagentbiz.View, error)
+}
+
 type AgentTargetSetupReader interface {
 	GetSetup(context.Context, agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error)
 }
@@ -56,11 +61,17 @@ type Provider struct {
 	launchPublisher            AgentGUILaunchPublisher
 	preferences                DesktopPreferencesReader
 	agentTargets               AgentTargetLister
+	workspaceAgents            WorkspaceAgentLister
 	extensionAvailabilityCache *extensionAvailabilityCache
 }
 
 func (p Provider) WithAgentTargetSetup(setup AgentTargetSetupReader) Provider {
 	p.extensionAvailabilityCache = newExtensionAvailabilityCache(setup)
+	return p
+}
+
+func (p Provider) WithWorkspaceAgents(agents WorkspaceAgentLister) Provider {
+	p.workspaceAgents = agents
 	return p
 }
 
@@ -139,7 +150,7 @@ func (p Provider) enabledAgentTargets(ctx context.Context) ([]agenttargetbiz.Tar
 	return agenttargetbiz.EnabledTargets(targets), nil
 }
 
-func (p Provider) resolveEnabledAgentTarget(ctx context.Context, agentID string) (agenttargetbiz.Target, error) {
+func (p Provider) resolveEnabledAgentTarget(ctx context.Context, workspaceID string, agentID string) (agenttargetbiz.Target, error) {
 	agentID = strings.TrimSpace(agentID)
 	if agentID == "" {
 		return agenttargetbiz.Target{}, fmt.Errorf("%w: agent id is required; run agent list --json", cliservice.ErrInvalidInput)
@@ -151,6 +162,17 @@ func (p Provider) resolveEnabledAgentTarget(ctx context.Context, agentID string)
 	for _, target := range targets {
 		if target.ID == agentID {
 			return target, nil
+		}
+	}
+	if p.workspaceAgents != nil && strings.TrimSpace(workspaceID) != "" {
+		agents, err := p.workspaceAgents.List(ctx, strings.TrimSpace(workspaceID))
+		if err != nil {
+			return agenttargetbiz.Target{}, err
+		}
+		for _, view := range agents {
+			if view.Agent.ID == agentID {
+				return agenttargetbiz.Target{ID: view.Agent.ID, Provider: view.Harness.Provider, Name: view.Agent.Name, Enabled: view.Harness.Enabled, Source: agenttargetbiz.SourceUser}, nil
+			}
 		}
 	}
 	return agenttargetbiz.Target{}, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, agentID)

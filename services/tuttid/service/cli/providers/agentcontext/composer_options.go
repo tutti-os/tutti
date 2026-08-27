@@ -51,7 +51,7 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	target, legacy, err := p.resolveAgentSelector(ctx, input.AgentID, input.Provider)
+	target, legacy, err := p.resolveAgentSelector(ctx, invoke.WorkspaceID, input.AgentID, input.Provider)
 	if err != nil {
 		return nil, err
 	}

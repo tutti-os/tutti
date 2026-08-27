@@ -9,6 +9,7 @@ import (
 	agentproviderbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentprovider"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -33,6 +34,8 @@ type agentsInput struct {
 type agentCatalogItem struct {
 	Target       agenttargetbiz.Target
 	Availability agentservice.ProviderAvailability
+	Kind         string
+	HarnessID    string
 }
 
 type agentsResult struct {
@@ -93,9 +96,6 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 				break
 			}
 		}
-		if requestedTarget == nil {
-			return nil, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, requestedAgentID)
-		}
 	}
 	preferredProvider := p.preferredAgentProvider(ctx)
 	defaultAgentTargetID := preferredAgentTargetID(targets, preferredProvider)
@@ -117,6 +117,25 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 		}
 	}
 	items := agentCatalogItems(targets, availability)
+	if p.workspaceAgents != nil && strings.TrimSpace(invoke.WorkspaceID) != "" {
+		agents, err := p.workspaceAgents.List(ctx, strings.TrimSpace(invoke.WorkspaceID))
+		if err != nil {
+			return nil, err
+		}
+		items = append(items, workspaceAgentCatalogItems(agents)...)
+		if requestedAgentID != "" && requestedTarget == nil {
+			for _, item := range items {
+				if item.Target.ID == requestedAgentID {
+					target := item.Target
+					requestedTarget = &target
+					break
+				}
+			}
+		}
+	}
+	if requestedAgentID != "" && requestedTarget == nil {
+		return nil, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, requestedAgentID)
+	}
 	if defaultAgentTargetID == "" {
 		defaultAgentTargetID = fallbackDefaultAgentTargetID(items, preferredProvider)
 	}
@@ -132,6 +151,26 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 	}
 	p.applyExtensionSetupAvailability(ctx, invoke.WorkspaceID, items, input.Refresh)
 	return agentsResult{DefaultAgentTargetID: defaultAgentTargetID, Items: items}, nil
+}
+
+func workspaceAgentCatalogItems(agents []workspaceagentbiz.View) []agentCatalogItem {
+	items := make([]agentCatalogItem, 0, len(agents))
+	for _, view := range agents {
+		provider := strings.TrimSpace(view.Harness.Provider)
+		status := agentservice.ProviderAvailabilityUnavailable
+		if view.Harness.Available && view.Harness.Enabled {
+			status = agentservice.ProviderAvailabilityAvailable
+		}
+		availability := agentservice.ProviderAvailability{Provider: provider, Status: status}
+		items = append(items, agentCatalogItem{
+			Target: agenttargetbiz.Target{
+				ID: view.Agent.ID, Provider: provider, Name: view.Agent.Name,
+				Enabled: view.Harness.Enabled, Source: agenttargetbiz.SourceUser,
+			}, Availability: availability,
+			Kind: "workspace-agent", HarnessID: strings.TrimSpace(view.Agent.HarnessAgentTargetID),
+		})
+	}
+	return items
 }
 
 func (p Provider) applyExtensionSetupAvailability(
@@ -363,6 +402,12 @@ func agentCatalogValues(items []agentCatalogItem) []any {
 				"reasonCode": providerAvailabilityReasonCode(item.Availability),
 				"detail":     providerAvailabilityDetail(item.Availability),
 			},
+		}
+		if item.Kind != "" {
+			value["kind"] = item.Kind
+		}
+		if item.HarnessID != "" {
+			value["harnessAgentTargetId"] = item.HarnessID
 		}
 		if executablePath := strings.TrimSpace(item.Availability.ExecutablePath); executablePath != "" {
 			value["executablePath"] = executablePath

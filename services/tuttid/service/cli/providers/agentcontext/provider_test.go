@@ -17,6 +17,7 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
@@ -46,6 +47,18 @@ func (fakeAgentTargetLister) List(context.Context) ([]agenttargetbiz.Target, err
 
 type fakeAgentTargetList struct {
 	targets []agenttargetbiz.Target
+}
+
+type fakeWorkspaceAgentList struct {
+	workspaceID string
+	views       []workspaceagentbiz.View
+}
+
+func (f fakeWorkspaceAgentList) List(_ context.Context, workspaceID string) ([]workspaceagentbiz.View, error) {
+	if f.workspaceID != workspaceID {
+		return nil, fmt.Errorf("unexpected workspace %q", workspaceID)
+	}
+	return f.views, nil
 }
 
 func (f fakeAgentTargetList) List(context.Context) ([]agenttargetbiz.Target, error) {
@@ -1830,6 +1843,82 @@ func TestAgentListKeepsMultipleAgentsForOneProvider(t *testing.T) {
 	}
 	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalTuttiAgent {
 		t.Fatalf("defaultAgentTargetId = %#v, want exact built-in target %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalTuttiAgent)
+	}
+}
+
+func TestAgentListIncludesWorkspaceCustomAgentWithWorkspaceContext(t *testing.T) {
+	custom := workspaceagentbiz.View{Agent: workspaceagentbiz.Agent{
+		ID: "workspace-agent:reviewer", WorkspaceID: "workspace-1", Name: "Reviewer",
+		HarnessAgentTargetID: agenttargetbiz.IDLocalCodex,
+	}, Harness: workspaceagentbiz.Harness{
+		AgentTargetID: agenttargetbiz.IDLocalCodex, Provider: "codex", Name: "Codex",
+		Enabled: true, Available: true,
+	}}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{}, nil, fakeAgentTargetLister{},
+	).WithWorkspaceAgents(fakeWorkspaceAgentList{workspaceID: "workspace-1", views: []workspaceagentbiz.View{custom}})
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		OutputMode: cliservice.OutputModeJSON,
+		Context:    cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	for _, value := range output.Value["agents"].([]any) {
+		agent := value.(map[string]any)
+		if agent["id"] == custom.Agent.ID {
+			if agent["kind"] != "workspace-agent" || agent["harnessAgentTargetId"] != agenttargetbiz.IDLocalCodex {
+				t.Fatalf("custom metadata = %#v", agent)
+			}
+			return
+		}
+	}
+	t.Fatalf("custom agent %q missing from %#v", custom.Agent.ID, output.Value["agents"])
+}
+
+func TestAgentListFiltersWorkspaceCustomAgentByExactID(t *testing.T) {
+	custom := workspaceagentbiz.View{Agent: workspaceagentbiz.Agent{
+		ID: "workspace-agent:reviewer", WorkspaceID: "workspace-1", Name: "Reviewer",
+	}, Harness: workspaceagentbiz.Harness{Provider: "codex", Enabled: true, Available: true}}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{}, nil, fakeAgentTargetList{},
+	).WithWorkspaceAgents(fakeWorkspaceAgentList{workspaceID: "workspace-1", views: []workspaceagentbiz.View{custom}})
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": custom.Agent.ID}, OutputMode: cliservice.OutputModeJSON,
+		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	agents := output.Value["agents"].([]any)
+	if len(agents) != 1 || agents[0].(map[string]any)["id"] != custom.Agent.ID {
+		t.Fatalf("agents = %#v", agents)
+	}
+}
+
+func TestCustomAgentSelectorsPreserveWorkspaceAndExactID(t *testing.T) {
+	customID := "workspace-agent:reviewer"
+	custom := workspaceagentbiz.View{Agent: workspaceagentbiz.Agent{ID: customID, WorkspaceID: "workspace-1", Name: "Reviewer"}, Harness: workspaceagentbiz.Harness{Provider: "codex", Enabled: true, Available: true}}
+	sessions := &fakeAgentSessions{}
+	provider := NewProviderWithAgentTargets(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions, nil, fakeAgentTargetList{}).
+		WithWorkspaceAgents(fakeWorkspaceAgentList{workspaceID: "workspace-1", views: []workspaceagentbiz.View{custom}})
+	_, err := provider.newStartCommand().Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"agent-id": customID, "prompt": "review"}, Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}})
+	if err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if sessions.workspaceID != "workspace-1" || sessions.createInput.AgentTargetID != customID {
+		t.Fatalf("start routing = workspace %q, input %#v", sessions.workspaceID, sessions.createInput)
+	}
+	sessions = &fakeAgentSessions{}
+	provider.sessions = sessions
+	_, err = provider.newComposerOptionsCommand().Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"agent-id": customID}, Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}})
+	if err != nil {
+		t.Fatalf("composer options: %v", err)
+	}
+	if sessions.composerInput.WorkspaceID != "workspace-1" || sessions.composerInput.AgentTargetID != customID {
+		t.Fatalf("composer routing = %#v", sessions.composerInput)
 	}
 }
 

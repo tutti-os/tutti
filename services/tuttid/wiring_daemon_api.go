@@ -782,6 +782,7 @@ func buildDaemonAPI(
 		ManagedCredentials: managedCredentials,
 		AgentSessions:      agentSessionService, AgentTargets: agentTargets,
 		AgentTargetSetup: agentTargetSetup,
+		WorkspaceAgents:  workspaceAgents,
 		Preferences:      preferences, TuttiModePlans: tuttiModePlans,
 		TuttiModeExecutions:  tuttiModeExecutions,
 		TuttiModeActivations: tuttiModeActivations,

@@ -97,7 +97,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 		Inputs:      framework.FromStruct[startInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
-			target, _, err := p.resolveAgentSelector(ctx, input.AgentID, input.Provider)
+			target, _, err := p.resolveAgentSelector(ctx, invoke.WorkspaceID, input.AgentID, input.Provider)
 			if err != nil {
 				return nil, err
 			}

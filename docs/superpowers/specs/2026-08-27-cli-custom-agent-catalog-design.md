@@ -35,6 +35,24 @@ metadata from `tuttid` and never opens the SQLite database or interprets the
 - The explicit desktop default remains authoritative and is not replaced by a
   custom Agent inferred from provider or list order.
 
+## Workspace Context Propagation
+
+The CLI framework already places the resolved workspace identifier on
+`framework.InvokeContext.WorkspaceID` when a caller supplies one. Agent
+discovery and selection must pass that value explicitly through the CLI
+provider; they must not attempt to recover it from `context.Context` or from a
+database path.
+
+- `agent list` remains workspace-optional. With an explicit workspace context,
+  it includes that workspace's custom Agents. Without one, it returns only the
+  global Agent Target catalog.
+- `agent composer-options`, `agent start`, and `agent skill-bundle` must use the
+  same explicit workspace value when resolving a `workspace-agent:<uuid>`.
+- A custom-Agent ID without a workspace context fails with an invalid-input
+  error and recovery guidance instead of selecting the startup workspace.
+- Issue and Plan commands must preserve the exact discovered ID and workspace
+  together when writing or dispatching `agentTargetId`.
+
 ## Data Flow
 
 ```text
@@ -53,6 +71,28 @@ workspace custom Agents in stable order and preserves the global default ID.
 The Issue and Plan orchestration paths must be able to take an ID returned by
 discovery and pass it as `agentTargetId` without manually inlining the custom
 Agent's role instructions.
+
+The preferred discovery response keeps the existing `agent list --json` shape:
+
+```json
+{
+  "schemaVersion": 2,
+  "defaultAgentTargetId": "local:codex",
+  "agents": [
+    {
+      "id": "workspace-agent:abc123",
+      "name": "代码审查",
+      "provider": "codex",
+      "kind": "workspace",
+      "harnessAgentTargetId": "local:codex",
+      "availability": { "status": "available" }
+    }
+  ]
+}
+```
+
+The `kind` and `harnessAgentTargetId` fields are diagnostic metadata; callers
+must persist and pass `id` as `agentTargetId`.
 
 ## Error Handling
 

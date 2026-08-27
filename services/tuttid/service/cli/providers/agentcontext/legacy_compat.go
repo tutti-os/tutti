@@ -217,14 +217,14 @@ func normalizeLegacyProvider(provider string) string {
 	return agentproviderbiz.NormalizeOpen(provider)
 }
 
-func (p Provider) resolveAgentSelector(ctx context.Context, agentID string, provider string) (agenttargetbiz.Target, bool, error) {
+func (p Provider) resolveAgentSelector(ctx context.Context, workspaceID string, agentID string, provider string) (agenttargetbiz.Target, bool, error) {
 	agentID = strings.TrimSpace(agentID)
 	provider = strings.TrimSpace(provider)
 	if (agentID == "") == (provider == "") {
 		return agenttargetbiz.Target{}, false, fmt.Errorf("%w: provide exactly one of --agent-id or deprecated --provider; run agent list --json", cliservice.ErrInvalidInput)
 	}
 	if agentID != "" {
-		target, err := p.resolveEnabledAgentTarget(ctx, agentID)
+		target, err := p.resolveEnabledAgentTarget(ctx, workspaceID, agentID)
 		return target, false, err
 	}
 	target, err := p.resolveLegacyProviderTarget(ctx, provider)
@@ -294,7 +294,7 @@ func (p Provider) newLegacyStartCommand(name string, targetID string) cliservice
 		Inputs:      framework.FromStruct[legacyStartInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input legacyStartInput) (any, error) {
-			target, err := p.resolveEnabledAgentTarget(ctx, targetID)
+			target, err := p.resolveEnabledAgentTarget(ctx, "", targetID)
 			if err != nil {
 				return nil, err
 			}
