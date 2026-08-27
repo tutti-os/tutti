@@ -87,9 +87,12 @@ export const generatedDefaults = {
       },
       {
         key: "hermes",
-        pinnedVersion: "1.0.10",
+        pinnedVersion: "1.0.11",
         releaseIndexUrl:
-          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json",
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/account-usage-v1/versions.json",
+        fallbackReleaseIndexUrls: [
+          "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json"
+        ],
         signingKeyId: "tutti-hermes-release-v1",
         signingPublicKey:
           "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAIeel8ddNiN3b4qOq0KucF3BRxfi3zourM0BVyGuP8eY=\n-----END PUBLIC KEY-----\n",

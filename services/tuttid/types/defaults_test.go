@@ -92,7 +92,7 @@ func TestResolveAgentExtensionSourcesUsesGeneratedActivationDefaults(t *testing.
 	}
 	wantPinnedVersions := map[string]string{
 		"gemini": "2.0.4", "codebuddy": "2.0.6", "copilot": "2.0.4", "kilo": "2.0.4",
-		"qwen": "2.0.4", "hermes": "1.0.10", "kimi-code": "1.0.12", "grok": "0.1.2",
+		"qwen": "2.0.4", "hermes": "1.0.11", "kimi-code": "1.0.12", "grok": "0.1.2",
 	}
 	for key, wantVersion := range wantPinnedVersions {
 		if got := agentExtensionSourceByKey(t, sources, key).PinnedVersion; got != wantVersion {
@@ -136,6 +136,18 @@ func TestGrokAgentExtensionSourcePinsApprovedSigningIdentity(t *testing.T) {
 	digest := sha256.Sum256(block.Bytes)
 	if got := hex.EncodeToString(digest[:]); got != "1d9c96185b82d9ad0a2102374365a958e6f10d2c9bbdb4a6ab0f7effc503745b" {
 		t.Fatalf("grok signing public key SPKI digest = %s", got)
+	}
+}
+
+func TestHermesAgentExtensionSourceUsesAccountUsageCompatibleIndex(t *testing.T) {
+	source := agentExtensionSourceByKey(t, ResolveAgentExtensionSources(), "hermes")
+	if !source.Enabled || source.SigningKeyID != "tutti-hermes-release-v1" ||
+		source.ReleaseIndexURL != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/account-usage-v1/versions.json" {
+		t.Fatalf("hermes source activation/key identity = %#v", source)
+	}
+	if len(source.FallbackReleaseIndexURLs) != 1 ||
+		source.FallbackReleaseIndexURLs[0] != "https://d1x7gb6wqsqmnm.cloudfront.net/tutti-agent-releases/agents/hermes/versions.json" {
+		t.Fatalf("hermes fallback release indexes = %#v", source.FallbackReleaseIndexURLs)
 	}
 }
 
