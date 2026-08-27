@@ -280,6 +280,7 @@ jobs:
     name: Build macOS (${{ matrix.arch }})
     needs: resolve
     runs-on: macos-latest
+    environment: pr-2624-mac-e2e
     strategy:
       fail-fast: false
       matrix:
@@ -413,6 +414,43 @@ jobs:
             pnpm --filter @tutti-os/desktop build:mac:signed
           fi
 
+      - name: Smoke-install unsigned macOS DMG
+        if: env.TUTTI_DESKTOP_DRY_RUN == 'true'
+        shell: bash
+        run: |
+          shopt -s nullglob
+          dmg_files=(apps/desktop/dist/*.dmg)
+          if [[ "${#dmg_files[@]}" -ne 1 ]]; then
+            echo "Expected exactly one macOS DMG, found ${#dmg_files[@]}" >&2
+            exit 1
+          fi
+
+          mount_dir="${RUNNER_TEMP}/tutti-dmg"
+          install_dir="${RUNNER_TEMP}/Applications"
+          mkdir -p "${mount_dir}" "${install_dir}"
+          hdiutil attach -nobrowse -readonly -mountpoint "${mount_dir}" "${dmg_files[0]}"
+          trap 'hdiutil detach "${mount_dir}"' EXIT
+
+          app_bundles=("${mount_dir}"/*.app)
+          if [[ "${#app_bundles[@]}" -ne 1 ]]; then
+            echo "Expected exactly one app bundle in DMG, found ${#app_bundles[@]}" >&2
+            exit 1
+          fi
+          installed_app="${install_dir}/Tutti.app"
+          ditto "${app_bundles[0]}" "${installed_app}"
+
+          test -x "${installed_app}/Contents/Resources/bin/tuttid"
+          test -x "${installed_app}/Contents/Resources/bin/tutti"
+          test -x "${installed_app}/Contents/Resources/bin/rtk/rtk"
+          file "${installed_app}/Contents/Resources/bin/tuttid"
+          file "${installed_app}/Contents/Resources/bin/tutti"
+
+      - name: Run real Tutti Agent install, login, and prompt E2E
+        if: matrix.arch == 'universal' && env.TUTTI_DESKTOP_DRY_RUN == 'true'
+        env:
+          TUTTI_E2E_SESSION_ID: ${{ secrets.TUTTI_E2E_SESSION_ID }}
+        run: tools/scripts/macos-tutti-agent-full-e2e.sh
+
       - name: Verify prerelease updater metadata
         if: ${{ needs.resolve.outputs.release_channel != 'stable' }}
         run: |
@@ -440,6 +478,7 @@ jobs:
   build-windows:
     name: Prepare Windows application
     needs: resolve
+    if: ${{ false }}
     runs-on: windows-latest
     timeout-minutes: 60
     env:
