@@ -636,63 +636,6 @@ func (h *Host) completeInterruptedCancelRuntimeOperation(
 	return completion.Operation, nil
 }
 
-func runtimeCancelTargetOutcomes(targets, confirmed []RuntimeCancelTarget) []storesqlite.CancelRuntimeOperationTargetOutcome {
-	confirmedSet := make(map[string]struct{}, len(confirmed))
-	for _, target := range confirmed {
-		confirmedSet[runtimeCancelTargetKey(target)] = struct{}{}
-	}
-	result := make([]storesqlite.CancelRuntimeOperationTargetOutcome, 0, len(targets))
-	for _, target := range targets {
-		outcome := storesqlite.TurnOutcomeInterrupted
-		if _, ok := confirmedSet[runtimeCancelTargetKey(target)]; ok {
-			outcome = storesqlite.TurnOutcomeCanceled
-		}
-		result = append(result, storesqlite.CancelRuntimeOperationTargetOutcome{AgentSessionID: strings.TrimSpace(target.AgentSessionID), TurnID: strings.TrimSpace(target.TurnID), Outcome: outcome})
-	}
-	return result
-}
-
-func runtimeCancelTargetUnknownOutcomes(targets []RuntimeCancelTarget) []storesqlite.CancelRuntimeOperationTargetOutcome {
-	const errorCode = "execution_status_unknown"
-	const errorMessage = "provider final status was unavailable after the provider turn state was lost"
-	result := make([]storesqlite.CancelRuntimeOperationTargetOutcome, 0, len(targets))
-	for _, target := range targets {
-		result = append(result, storesqlite.CancelRuntimeOperationTargetOutcome{
-			AgentSessionID: strings.TrimSpace(target.AgentSessionID),
-			TurnID:         strings.TrimSpace(target.TurnID),
-			Outcome:        storesqlite.TurnOutcomeFailed,
-			ErrorCode:      errorCode,
-			ErrorMessage:   errorMessage,
-		})
-	}
-	return result
-}
-
-func runtimeCancelTargetKey(target RuntimeCancelTarget) string {
-	return strings.TrimSpace(target.AgentSessionID) + "\x00" + strings.TrimSpace(target.TurnID)
-}
-
-func runtimeCancelTargetsPayload(targets []RuntimeCancelTarget) []any {
-	result := make([]any, 0, len(targets))
-	for _, target := range targets {
-		result = append(result, map[string]any{"agentSessionId": strings.TrimSpace(target.AgentSessionID), "turnId": strings.TrimSpace(target.TurnID)})
-	}
-	return result
-}
-
-func runtimeCancelTargetsFromPayload(payload map[string]any) []RuntimeCancelTarget {
-	raw, _ := payload["targets"].([]any)
-	result := make([]RuntimeCancelTarget, 0, len(raw))
-	for _, item := range raw {
-		value, _ := item.(map[string]any)
-		target := RuntimeCancelTarget{AgentSessionID: runtimeOperationPayloadText(value, "agentSessionId"), TurnID: runtimeOperationPayloadText(value, "turnId")}
-		if target.AgentSessionID != "" && target.TurnID != "" {
-			result = append(result, target)
-		}
-	}
-	return result
-}
-
 func (h *Host) releaseRuntimeOperation(ctx context.Context, operation storesqlite.RuntimeOperation, owner string, cause error, fail bool) (storesqlite.RuntimeOperation, error) {
 	released, _, releaseErr := h.operations.ReleaseOrFailRuntimeOperation(ctx, storesqlite.ReleaseOrFailRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
