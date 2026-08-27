@@ -456,6 +456,33 @@ test("desktop promotion requires the managed app runtime release first", async (
   );
 });
 
+test("desktop release checks the managed app runtime before reserving a tag or building", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+  const runtimeGateIndex = workflow.indexOf(
+    "name: Verify managed app runtime is published before release build"
+  );
+  const releaseTagIndex = workflow.indexOf("name: Resolve release tag");
+  const buildIndex = workflow.indexOf("build-macos:");
+
+  assert.ok(
+    runtimeGateIndex >= 0,
+    "release should include an early runtime gate"
+  );
+  assert.ok(
+    runtimeGateIndex < releaseTagIndex,
+    "runtime gate should pass before reserving a release tag"
+  );
+  assert.ok(
+    runtimeGateIndex < buildIndex,
+    "runtime gate should pass before desktop builds start"
+  );
+  assert.match(workflow, /if: steps\.mode\.outputs\.dry_run != 'true'/);
+  assert.match(
+    workflow,
+    /node tools\/scripts\/verify-tutti-app-runtime-release\.mjs/
+  );
+});
+
 test("desktop release workflow schedules a daily Beijing 4:16am rc release", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 

@@ -110,6 +110,13 @@ test("Tutti app runtime workflow publishes immutable artifacts and mutable catal
   const workflow = await readFile(runtimeWorkflowPath, "utf8");
 
   assert.match(workflow, /workflow_dispatch:/);
+  assert.match(workflow, /push:\s*\n\s*branches:\s*\n\s*- main/);
+  assert.match(
+    workflow,
+    /paths:\s*\n\s*- config\/tutti\.app-runtime\.lock\.json/
+  );
+  assert.match(workflow, /group: tutti-app-runtime-production/);
+  assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /config\/tutti\.app-runtime\.lock\.json/);
   assert.match(workflow, /platform === "windows-amd64"/);
   assert.match(workflow, /lock\.python\?\.windows\?\.version/);
