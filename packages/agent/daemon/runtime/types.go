@@ -656,10 +656,11 @@ type TurnLifecycle struct {
 }
 
 type CancelResult struct {
-	AgentSessionID   string         `json:"agentSessionId"`
-	Canceled         bool           `json:"canceled"`
-	TargetAbsent     bool           `json:"targetAbsent,omitempty"`
-	ConfirmedTargets []CancelTarget `json:"confirmedTargets,omitempty"`
+	AgentSessionID    string         `json:"agentSessionId"`
+	Canceled          bool           `json:"canceled"`
+	TargetAbsent      bool           `json:"targetAbsent,omitempty"`
+	ProviderStateLost bool           `json:"providerStateLost,omitempty"`
+	ConfirmedTargets  []CancelTarget `json:"confirmedTargets,omitempty"`
 }
 
 type SubmitInteractiveResult struct {

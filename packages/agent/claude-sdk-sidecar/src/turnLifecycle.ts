@@ -51,6 +51,7 @@ export class TurnLifecycle {
   private readonly emit: ClaudeSDKSidecarEventEmitter;
   private readonly onActivate: () => void;
   private readonly onSyntheticActivate: (turnId: string) => void;
+  private readonly onProviderTurnIdentityBound: (turnId: string) => void;
   private readonly onSettled: (turnId: string) => void;
   private readonly onContinuationStartTimeout: () => void;
   private readonly continuationStartTimeoutMs: number;
@@ -68,6 +69,7 @@ export class TurnLifecycle {
     emit: ClaudeSDKSidecarEventEmitter;
     onActivate: () => void;
     onSyntheticActivate?: (turnId: string) => void;
+    onProviderTurnIdentityBound?: (turnId: string) => void;
     onSettled: (turnId: string) => void;
     onContinuationStartTimeout?: () => void;
     continuationStartTimeoutMs?: number;
@@ -75,6 +77,8 @@ export class TurnLifecycle {
     this.emit = options.emit;
     this.onActivate = options.onActivate;
     this.onSyntheticActivate = options.onSyntheticActivate ?? (() => {});
+    this.onProviderTurnIdentityBound =
+      options.onProviderTurnIdentityBound ?? (() => {});
     this.onSettled = options.onSettled;
     this.onContinuationStartTimeout =
       options.onContinuationStartTimeout ?? (() => {});
@@ -657,6 +661,7 @@ export class TurnLifecycle {
     }
     turn.awaitingProviderTurnIdentity = false;
     turn.providerTurnStarted = true;
+    this.onProviderTurnIdentityBound(turn.turnId);
     this.emit({
       type: "provider_turn_identity_resolved",
       payload: {

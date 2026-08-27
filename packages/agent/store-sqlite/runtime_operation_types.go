@@ -138,6 +138,8 @@ type CancelRuntimeOperationTargetOutcome struct {
 	AgentSessionID string
 	TurnID         string
 	Outcome        string
+	ErrorMessage   string
+	ErrorCode      string
 }
 
 type CompletePlanDecisionRuntimeOperationInput struct {

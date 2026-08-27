@@ -196,6 +196,12 @@ does not infer either `canceled` or `failed` from the response. If the canonical
 Turn reaches a terminal state first, the operation completes as a no-op and
 preserves that existing outcome.
 
+If the runtime reports `provider_state_lost`, or reports an absent provider
+target while the canonical Turn is still unsettled, Host performs the same
+canonical-terminal check once. Without authoritative terminal evidence it
+settles the target as `failed` with `execution_status_unknown`; it never
+fabricates `completed`, `canceled`, or `interrupted` from provider absence.
+
 `AdoptProviderGoal` is the narrow
 reverse boundary for a Goal created by a provider tool during an already
 accepted Turn. It atomically records the active provider generation as a

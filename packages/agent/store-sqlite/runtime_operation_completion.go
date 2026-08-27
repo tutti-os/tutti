@@ -85,9 +85,14 @@ func (s *Store) CompleteCancelRuntimeOperation(ctx context.Context, input Comple
 					return "", "", nil, ErrRuntimeOperationSubjectState
 				}
 				outcome := turn.Outcome
+				errorMessage := turn.ErrorMessage
+				errorCode := turn.ErrorCode
 				settledByCompletion := turn.Phase != TurnPhaseSettled
 				if settledByCompletion {
-					outcome = requestedOutcomes[cancelTargetKey(target.AgentSessionID, target.TurnID)]
+					requested := requestedOutcomes[cancelTargetKey(target.AgentSessionID, target.TurnID)]
+					outcome = requested.Outcome
+					errorMessage = requested.ErrorMessage
+					errorCode = requested.ErrorCode
 					var activeTurnID sql.NullString
 					if err := tx.QueryRowContext(ctx, `
 SELECT active_turn_id FROM workspace_agent_sessions
@@ -100,9 +105,9 @@ WHERE workspace_id = ? AND agent_session_id = ?
 					}
 					if _, err := tx.ExecContext(ctx, `
 UPDATE workspace_agent_turns
-SET phase = ?, outcome = ?, settled_at_unix_ms = ?, updated_at_unix_ms = ?
+SET phase = ?, outcome = ?, error_json = ?, settled_at_unix_ms = ?, updated_at_unix_ms = ?
 WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND phase != ?
-`, TurnPhaseSettled, outcome, input.NowUnixMS, input.NowUnixMS,
+	`, TurnPhaseSettled, outcome, encodeTurnErrorJSON(errorMessage, errorCode), input.NowUnixMS, input.NowUnixMS,
 						op.WorkspaceID, target.AgentSessionID, target.TurnID, TurnPhaseSettled); err != nil {
 						return "", "", nil, fmt.Errorf("settle cancel runtime operation target: %w", err)
 					}
@@ -114,6 +119,8 @@ WHERE workspace_id = ? AND agent_session_id = ? AND active_turn_id = ?
 					}
 					turn.Phase = TurnPhaseSettled
 					turn.Outcome = outcome
+					turn.ErrorMessage = errorMessage
+					turn.ErrorCode = errorCode
 					turn.SettledAtUnixMS = input.NowUnixMS
 					turn.UpdatedAtUnixMS = input.NowUnixMS
 					if !rootTargeted {
@@ -128,6 +135,9 @@ WHERE workspace_id = ? AND agent_session_id = ? AND active_turn_id = ?
 				}
 				if target.AgentSessionID == op.AgentSessionID && target.TurnID == op.TurnID && outcome == TurnOutcomeCanceled {
 					result = RuntimeOperationResultCanceled
+				}
+				if target.AgentSessionID == op.AgentSessionID && target.TurnID == op.TurnID && outcome == TurnOutcomeFailed {
+					result = RuntimeOperationResultFailed
 				}
 				if outcome == TurnOutcomeCanceled {
 					if _, err := tx.ExecContext(ctx, `
@@ -154,6 +164,12 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND status = ?
 					"turnId":         target.TurnID,
 					"outcome":        outcome,
 				}
+				if errorCode != "" {
+					eventTarget["errorCode"] = errorCode
+				}
+				if errorMessage != "" {
+					eventTarget["errorMessage"] = errorMessage
+				}
 				eventTargets = append(eventTargets, eventTarget)
 				if settledByCompletion {
 					settledTargets = append(settledTargets, eventTarget)
@@ -177,7 +193,7 @@ WHERE workspace_id = ? AND agent_session_id = ? AND turn_id = ? AND status = ?
 func cancelTargetOutcomeMap(
 	targets []runtimeCancelTarget,
 	values []CancelRuntimeOperationTargetOutcome,
-) (map[string]string, error) {
+) (map[string]CancelRuntimeOperationTargetOutcome, error) {
 	if len(values) != len(targets) {
 		return nil, errors.New("cancel completion outcomes must cover every target")
 	}
@@ -185,11 +201,13 @@ func cancelTargetOutcomeMap(
 	for _, target := range targets {
 		allowed[cancelTargetKey(target.AgentSessionID, target.TurnID)] = struct{}{}
 	}
-	result := make(map[string]string, len(values))
+	result := make(map[string]CancelRuntimeOperationTargetOutcome, len(values))
 	for _, value := range values {
 		value.AgentSessionID = strings.TrimSpace(value.AgentSessionID)
 		value.TurnID = strings.TrimSpace(value.TurnID)
 		value.Outcome = strings.TrimSpace(value.Outcome)
+		value.ErrorMessage = strings.TrimSpace(value.ErrorMessage)
+		value.ErrorCode = strings.TrimSpace(value.ErrorCode)
 		key := cancelTargetKey(value.AgentSessionID, value.TurnID)
 		if _, ok := allowed[key]; !ok {
 			return nil, errors.New("cancel completion outcome does not match an operation target")
@@ -197,10 +215,10 @@ func cancelTargetOutcomeMap(
 		if _, duplicate := result[key]; duplicate {
 			return nil, errors.New("cancel completion outcomes must be unique")
 		}
-		if value.Outcome != TurnOutcomeCanceled && value.Outcome != TurnOutcomeInterrupted {
-			return nil, errors.New("cancel completion outcome must be canceled or interrupted")
+		if value.Outcome != TurnOutcomeCanceled && value.Outcome != TurnOutcomeInterrupted && value.Outcome != TurnOutcomeFailed {
+			return nil, errors.New("cancel completion outcome must be canceled, interrupted, or failed")
 		}
-		result[key] = value.Outcome
+		result[key] = value
 	}
 	return result, nil
 }

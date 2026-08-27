@@ -73,6 +73,12 @@ func (c *Controller) Cancel(ctx context.Context, input CancelInput) (CancelResul
 		active.cancel()
 	}
 	if err != nil {
+		if errors.Is(err, ErrProviderStateLost) {
+			return CancelResult{
+				AgentSessionID:    session.AgentSessionID,
+				ProviderStateLost: true,
+			}, nil
+		}
 		if errors.Is(err, ErrSessionNoActiveTurn) {
 			if ok {
 				c.clearActiveTurnIfMatches(session.RoomID, session.AgentSessionID, active.turnID)

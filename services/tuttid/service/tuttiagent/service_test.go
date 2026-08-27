@@ -111,6 +111,61 @@ func TestTuttiAgentLoginEnvironmentUsesCanonicalAuthHome(t *testing.T) {
 	}
 }
 
+func TestRunTuttiAgentTokenLoginPreparesCanonicalAuthHomeBeforeLaunch(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	authHome := filepath.Join(home, ".tutti-agent")
+
+	err := runTuttiAgentTokenLogin(
+		t.Context(),
+		filepath.Join(t.TempDir(), "missing-tutti-agent"),
+		tuttiAgentLLMTokenBundle{},
+	)
+	if err == nil {
+		t.Fatal("runTuttiAgentTokenLogin() succeeded with a missing binary")
+	}
+	info, statErr := os.Stat(authHome)
+	if statErr != nil {
+		t.Fatalf("stat prepared auth home: %v", statErr)
+	}
+	if !info.IsDir() {
+		t.Fatalf("prepared auth home mode = %v, want directory", info.Mode())
+	}
+}
+
+func TestPrepareTuttiAgentAuthHomeRejectsFile(t *testing.T) {
+	authHome := filepath.Join(t.TempDir(), ".tutti-agent")
+	if err := os.WriteFile(authHome, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := prepareTuttiAgentAuthHome(filepath.Join(authHome, "auth.json"))
+	if err == nil || !strings.Contains(err.Error(), "is not a directory") {
+		t.Fatalf("prepareTuttiAgentAuthHome() error = %v, want not-a-directory detail", err)
+	}
+}
+
+func TestSanitizeTuttiAgentLoginOutputRedactsTokensAndTruncates(t *testing.T) {
+	bundle := tuttiAgentLLMTokenBundle{
+		AccessToken:  "access-secret",
+		RefreshToken: "refresh-secret",
+	}
+	detail := sanitizeTuttiAgentLoginOutput(
+		"login failed access-secret refresh-secret "+strings.Repeat("x", 2100),
+		bundle,
+	)
+	if strings.Contains(detail, "access-secret") || strings.Contains(detail, "refresh-secret") {
+		t.Fatalf("sanitizeTuttiAgentLoginOutput() leaked a token: %q", detail)
+	}
+	if !strings.Contains(detail, "[REDACTED]") {
+		t.Fatalf("sanitizeTuttiAgentLoginOutput() = %q, want redaction marker", detail)
+	}
+	if !strings.HasSuffix(detail, "…") {
+		t.Fatalf("sanitizeTuttiAgentLoginOutput() was not truncated: %q", detail)
+	}
+}
+
 func TestTuttiAgentUserAuthReadyRejectsExpiredAccessToken(t *testing.T) {
 	expiresAt := time.Now().Add(-time.Hour).UTC().Format(time.RFC3339)
 	writeTuttiAgentUserAuth(t, t.TempDir(), `{"tutti_llm":{"access_token":"lat_test","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_test"}}`)

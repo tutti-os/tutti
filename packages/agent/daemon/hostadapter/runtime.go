@@ -338,10 +338,11 @@ func (a *RuntimeController) Cancel(ctx context.Context, input host.RuntimeCancel
 		confirmed = append(confirmed, host.RuntimeCancelTarget{AgentSessionID: target.AgentSessionID, TurnID: target.TurnID})
 	}
 	hostResult := host.RuntimeCancelResult{
-		AgentSessionID:   result.AgentSessionID,
-		Canceled:         result.Canceled,
-		TargetAbsent:     result.TargetAbsent,
-		ConfirmedTargets: confirmed,
+		AgentSessionID:    result.AgentSessionID,
+		Canceled:          result.Canceled,
+		TargetAbsent:      result.TargetAbsent,
+		ProviderStateLost: result.ProviderStateLost,
+		ConfirmedTargets:  confirmed,
 	}
 	if errors.Is(err, agentruntime.ErrCancelTargetMismatch) {
 		return hostResult, host.ErrRuntimeCancelDeliveryUnconfirmed

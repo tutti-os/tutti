@@ -181,6 +181,9 @@ func bootstrapTuttiAgentUserAuth(ctx context.Context, input runtimeprep.PrepareI
 		if stage := tuttiAgentAuthFailureStage(err); stage != "" {
 			logArgs = append(logArgs, "stage", stage)
 		}
+		if detail := tuttiAgentAuthFailureDetail(err); detail != "" {
+			logArgs = append(logArgs, "detail", detail)
+		}
 		slog.Warn("tutti-agent auth reconcile failed", logArgs...)
 		if tuttiAgentLLMTokenIssueRejectedWithCode(err, http.StatusUnauthorized) {
 			slog.Info("tutti-agent auth retained after token issue rejection",
@@ -395,6 +398,14 @@ func tuttiAgentAuthFailureStage(err error) string {
 	return strings.TrimSpace(stageErr.Stage)
 }
 
+func tuttiAgentAuthFailureDetail(err error) string {
+	var stageErr tuttiagentauth.StageError
+	if !errors.As(err, &stageErr) || strings.TrimSpace(stageErr.Stage) != "login" || stageErr.Err == nil {
+		return ""
+	}
+	return truncateTuttiAgentDiagnostic(strings.TrimSpace(stageErr.Err.Error()), 2048)
+}
+
 func issueTuttiAgentLLMToken(ctx context.Context, cookie string) (tuttiAgentLLMTokenBundle, error) {
 	requestBody, err := json.Marshal(map[string]any{
 		"requested_app_id": tuttiAgentLLMAppID(),
@@ -526,14 +537,68 @@ func runTuttiAgentTokenLogin(ctx context.Context, binaryPath string, bundle tutt
 		// the same canonical user auth file inspected by the reconciler; leaving
 		// either override in place can make a successful login invisible to the
 		// verifier (or write the bundle into another session home).
+		created, prepareErr := prepareTuttiAgentAuthHome(authPath)
+		if prepareErr != nil {
+			return prepareErr
+		}
+		if created {
+			slog.Info("tutti-agent auth home prepared",
+				"event", "tutti_agent.auth_home.prepared",
+				"action", "create",
+				"reason", "missing_directory",
+			)
+		}
 		cmd.Env = tuttiAgentLoginEnvironment(os.Environ(), authPath)
 	}
 	cmd.Stdin = bytes.NewReader(stdin)
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("tutti-agent login failed: %w: %s", err, strings.TrimSpace(string(output)))
+		detail := sanitizeTuttiAgentLoginOutput(string(output), bundle)
+		if detail == "" {
+			return fmt.Errorf("tutti-agent login failed: %w", err)
+		}
+		return fmt.Errorf("tutti-agent login failed: %w: %s", err, detail)
 	}
 	return nil
+}
+
+func prepareTuttiAgentAuthHome(authPath string) (bool, error) {
+	authHome := filepath.Dir(filepath.Clean(authPath))
+	info, err := os.Stat(authHome)
+	if err == nil {
+		if !info.IsDir() {
+			return false, fmt.Errorf("prepare tutti-agent auth home: %s is not a directory", authHome)
+		}
+		return false, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return false, fmt.Errorf("inspect tutti-agent auth home: %w", err)
+	}
+	if err := os.MkdirAll(authHome, 0o700); err != nil {
+		return false, fmt.Errorf("prepare tutti-agent auth home: %w", err)
+	}
+	return true, nil
+}
+
+func sanitizeTuttiAgentLoginOutput(output string, bundle tuttiAgentLLMTokenBundle) string {
+	detail := strings.TrimSpace(output)
+	for _, secret := range []string{bundle.AccessToken, bundle.RefreshToken} {
+		if secret = strings.TrimSpace(secret); secret != "" {
+			detail = strings.ReplaceAll(detail, secret, "[REDACTED]")
+		}
+	}
+	return truncateTuttiAgentDiagnostic(detail, 2048)
+}
+
+func truncateTuttiAgentDiagnostic(value string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	runes := []rune(value)
+	if len(runes) <= limit {
+		return value
+	}
+	return string(runes[:limit]) + "…"
 }
 
 func tuttiAgentLoginEnvironment(base []string, authPath string) []string {

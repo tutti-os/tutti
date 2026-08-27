@@ -74,6 +74,7 @@ type ClaudeQueryFactory = (input: {
 export type SessionCancelDisposition =
   | "pre_accept"
   | "provider_active"
+  | "provider_state_lost"
   | "absent"
   | "mismatch";
 
@@ -143,6 +144,7 @@ export class SessionRuntime {
   private readonly providerTurnAcceptance: ProviderTurnAcceptanceCoordinator;
   private readonly diagnostics: ClaudeSessionDiagnostics;
   private readonly emittedProviderCheckpoints = new Set<string>();
+  private readonly acceptedProviderTurnIds = new Set<string>();
 
   get query(): ClaudeQueryRuntime | undefined {
     return this.queryGeneration?.query;
@@ -174,8 +176,23 @@ export class SessionRuntime {
       onSyntheticActivate: (turnId) =>
         this.queryGeneration?.registerTurn(turnId),
       onSettled: (turnId) => {
+        this.acceptedProviderTurnIds.delete(turnId.trim());
         this.providerTurnAcceptance.terminal(turnId);
         this.emitSessionState();
+      },
+      onProviderTurnIdentityBound: (turnId) => {
+        const normalizedTurnId = turnId.trim();
+        if (!normalizedTurnId) {
+          return;
+        }
+        this.acceptedProviderTurnIds.add(normalizedTurnId);
+        while (this.acceptedProviderTurnIds.size > 64) {
+          const oldest = this.acceptedProviderTurnIds.values().next().value;
+          if (typeof oldest !== "string") {
+            break;
+          }
+          this.acceptedProviderTurnIds.delete(oldest);
+        }
       },
       continuationStartTimeoutMs,
       onContinuationStartTimeout: () => {
@@ -676,7 +693,27 @@ export class SessionRuntime {
     // Generation ownership is the narrow proof that permits retiring that
     // Query; it never retargets a stop request to an unrelated newer Query.
     const ownsExpectedTurn = generation?.ownsTurn(expectedTurnId) === true;
+    const phase =
+      this.providerTurnAcceptance.phase(expectedTurnId) ?? "unknown";
+    const providerStateWasAccepted =
+      preparation.providerTurnId.trim() !== "" ||
+      this.acceptedProviderTurnIds.has(expectedTurnId) ||
+      (phase !== "queued" &&
+        phase !== "dispatched" &&
+        phase !== "provider_observed" &&
+        phase !== "resolving_identity" &&
+        phase !== "terminal" &&
+        phase !== "unknown");
     if (preparation.disposition === "absent" && !ownsExpectedTurn) {
+      if (providerStateWasAccepted) {
+        return cancelResult(
+          false,
+          "provider_state_lost",
+          expectedTurnId,
+          preparation.providerTurnId,
+          phase
+        );
+      }
       return cancelResult(false, "absent", expectedTurnId);
     }
     if (preparation.disposition === "mismatch" && !ownsExpectedTurn) {
@@ -688,8 +725,6 @@ export class SessionRuntime {
       );
     }
 
-    const phase =
-      this.providerTurnAcceptance.phase(expectedTurnId) ?? "unknown";
     if (
       preparation.differentActiveTurn &&
       phase !== "queued" &&
@@ -709,6 +744,17 @@ export class SessionRuntime {
     }
 
     if (!generation) {
+      if (providerStateWasAccepted) {
+        this.turns.releaseExactCancellation(expectedTurnId);
+        this.turns.clearCancelled();
+        return cancelResult(
+          false,
+          "provider_state_lost",
+          expectedTurnId,
+          preparation.providerTurnId,
+          phase
+        );
+      }
       this.turns.discardExactAbsent(expectedTurnId);
       this.turns.clearCancelled();
       return cancelResult(false, "absent", expectedTurnId, "", phase);
