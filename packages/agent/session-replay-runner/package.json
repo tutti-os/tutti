@@ -1,6 +1,6 @@
 {
   "name": "@tutti-os/agent-session-replay-runner",
-  "version": "0.1.0",
+  "version": "0.0.426",
   "private": false,
   "type": "module",
   "description": "Product-neutral Agent Session Replay JS runner kernel.",
