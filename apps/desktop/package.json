@@ -85,6 +85,9 @@
       "writeUpdateInfo": false
     },
     "win": {
+      "signExts": [
+        ".exe"
+      ],
       "target": [
         "nsis"
       ],
@@ -146,6 +149,8 @@
     "build:mac:unsigned": "bash ../../tools/scripts/build-desktop-package.sh mac-unsigned",
     "build:unpack": "bash ../../tools/scripts/build-desktop-package.sh unpack",
     "build:win": "bash ../../tools/scripts/build-desktop-package.sh win",
+    "build:win:unpacked": "bash ../../tools/scripts/build-desktop-package.sh win-unpacked",
+    "build:win:prepackaged": "bash ../../tools/scripts/build-desktop-package.sh win-prepackaged",
     "predev": "node scripts/prepare-managed-posix-shell-dev.mjs",
     "build:win:prepared": "bash ../../tools/scripts/build-desktop-package.sh win --prepared-builtin-apps",
     "build:win:store": "bash ../../tools/scripts/build-desktop-package.sh win-store",

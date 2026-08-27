@@ -343,7 +343,7 @@ test("desktop Store packaging reuses the Windows payload and emits AppX only", a
       schemes: ["tutti"]
     }
   ]);
-  assert.match(buildScript, /win\|win-store/);
+  assert.match(buildScript, /win\|win-unpacked\|win-store/);
   assert.match(buildScript, /electron-builder --win appx --x64/);
   assert.match(buildScript, /TUTTI_STORE_IDENTITY_NAME/);
   assert.match(buildScript, /TUTTI_STORE_PUBLISHER/);
@@ -1101,7 +1101,7 @@ test("desktop release workflow refreshes the stable alias without taking Latest"
   assert.ok(releaseDeleteIndex < releaseCreateIndex);
 });
 
-test("desktop release workflow always builds Windows and stages unsigned assets", async () => {
+test("desktop release signs Windows before staging release assets", async () => {
   const workflow = await readFile(workflowPath, "utf8");
   const stageJobMatch = workflow.match(
     /stage:[\s\S]*?(?=\n\s{2}[a-z][a-z0-9_-]+:\n|$)/
@@ -1114,6 +1114,8 @@ test("desktop release workflow always builds Windows and stages unsigned assets"
   assert.ok(notifyJobMatch, "candidate notify job should exist");
   assert.doesNotMatch(workflow, /include_windows/);
   assert.match(workflow, /\r?\n\s{2}build-windows:\r?\n/);
+  assert.match(workflow, /\r?\n\s{2}sign-windows:\r?\n/);
+  assert.match(workflow, /\r?\n\s{2}verify-signed-windows:\r?\n/);
   assert.doesNotMatch(workflow, /\r?\n\s{2}build-linux:\r?\n/);
   assert.match(
     workflow,
@@ -1121,12 +1123,20 @@ test("desktop release workflow always builds Windows and stages unsigned assets"
   );
   assert.match(
     stageJobMatch[0],
-    /needs:\s+\[resolve, build-macos, build-windows\]/
+    /needs:\s+\[resolve, build-macos, build-windows, sign-windows, verify-signed-windows\]/
   );
   assert.match(stageJobMatch[0], /always\(\)/);
   assert.match(
     stageJobMatch[0],
     /needs\.build-windows\.result\s*==\s*'success'/
+  );
+  assert.match(
+    stageJobMatch[0],
+    /needs\.sign-windows\.result\s*==\s*'success'/
+  );
+  assert.match(
+    stageJobMatch[0],
+    /needs\.verify-signed-windows\.result\s*==\s*'success'/
   );
   assert.doesNotMatch(
     stageJobMatch[0],
@@ -1145,6 +1155,26 @@ test("desktop release workflow always builds Windows and stages unsigned assets"
     stageJobMatch[0],
     /validate-windows-release-artifacts\.mjs release-assets/
   );
+  assert.match(workflow, /group:\s+certum-simplysign-signing/);
+  assert.match(
+    workflow,
+    /CERTUM_USER_ID:\s+\$\{\{ secrets\.CERTUM_USER_ID \}\}/
+  );
+  assert.match(
+    workflow,
+    /CERTUM_OTP_URI:\s+\$\{\{ secrets\.CERTUM_OTP_URI \}\}/
+  );
+  assert.match(
+    workflow,
+    /CERTUM_CERT_FINGERPRINT:\s+\$\{\{ vars\.CERTUM_CERT_FINGERPRINT \}\}/
+  );
+  assert.match(
+    workflow,
+    /TSH_WINDOWS_EXPECTED_PUBLISHER:\s+\$\{\{ vars\.TSH_WINDOWS_EXPECTED_PUBLISHER \}\}/
+  );
+  assert.match(workflow, /build:win:unpacked/);
+  assert.match(workflow, /build:win:prepackaged/);
+  assert.match(workflow, /verify-certum-windows-package\.ps1/);
   assert.match(
     stageJobMatch[0],
     /upsert-release-download-links\.mjs[\s\S]*?release-assets[\s\S]*?updated-release-body\.md/

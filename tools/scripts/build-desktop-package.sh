@@ -78,6 +78,10 @@ has_signing_identity() {
     security find-identity -p codesigning -v 2>/dev/null | grep -q "Developer ID Application"
 }
 
+is_windows_package_variant() {
+  [[ "${VARIANT}" == "win" || "${VARIANT}" == "win-unpacked" || "${VARIANT}" == "win-store" ]]
+}
+
 is_macos_package_variant() {
   [[ "${VARIANT}" == "mac" || "${VARIANT}" == "mac-unsigned" || "${VARIANT}" == "mac-signed" ]]
 }
@@ -156,7 +160,7 @@ prepare_packaged_daemon() {
 
   local daemon_output_name="tuttid"
   local cli_output_name="tutti"
-  if [[ "${VARIANT}" == "win" || "${VARIANT}" == "win-store" ]]; then
+  if is_windows_package_variant; then
     daemon_output_name="tuttid.exe"
     cli_output_name="tutti.exe"
   fi
@@ -176,7 +180,7 @@ prepare_packaged_daemon() {
     return
   fi
 
-  if [[ "${VARIANT}" == "win" || "${VARIANT}" == "win-store" ]]; then
+  if is_windows_package_variant; then
     (
       cd "${ROOT_DIR}/services/tuttid"
       env CGO_ENABLED=0 GOOS=windows GOARCH=amd64 \
@@ -232,14 +236,14 @@ prepare_claude_sdk_sidecar() {
 }
 
 prepare_managed_posix_shell() {
-  if [[ "${VARIANT}" != "win" && "${VARIANT}" != "win-store" ]]; then
+  if ! is_windows_package_variant; then
     return
   fi
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-managed-posix-shell.mjs" --platform=windows-amd64
 }
 
 prepare_mutagen() {
-  if [[ "${VARIANT}" != "win" && "${VARIANT}" != "win-store" ]]; then
+  if ! is_windows_package_variant; then
     return
   fi
   node "${ROOT_DIR}/apps/desktop/scripts/vendor-mutagen.mjs" --platform=windows-amd64
@@ -248,7 +252,7 @@ prepare_mutagen() {
 prepare_managed_uv() {
   local platforms=()
   case "${VARIANT}" in
-    win|win-store)
+    win|win-unpacked|win-store)
       platforms=(windows-amd64)
       ;;
     linux)
@@ -280,7 +284,7 @@ prepare_managed_uv() {
 prepare_rtk() {
   local platforms=()
   case "${VARIANT}" in
-    win|win-store)
+    win|win-unpacked|win-store)
       platforms=(windows-amd64)
       ;;
     linux)
@@ -369,6 +373,57 @@ run_electron_builder_win() {
     pnpm exec electron-builder --win --publish never "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
 }
 
+run_electron_builder_win_unpack() {
+  env \
+    -u CSC_LINK \
+    -u CSC_KEY_PASSWORD \
+    -u CSC_NAME \
+    npm_package_json="${ROOT_DIR}/package.json" \
+    INIT_CWD="${ROOT_DIR}" \
+    CSC_IDENTITY_AUTO_DISCOVERY=false \
+    pnpm exec electron-builder --win --x64 --dir --publish never \
+      "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
+}
+
+run_electron_builder_win_prepackaged() {
+  local prepackaged_dir="${TSH_WINDOWS_PREPACKAGED_DIR:-}"
+  local signer="${TSH_CERTUM_ELECTRON_BUILDER_SIGNER:-}"
+  local publisher="${TSH_WINDOWS_EXPECTED_PUBLISHER:-}"
+  local certum_config="${APP_DIR}/scripts/electron-builder-certum-options.cjs"
+  local wine_runtime_dir="${TSH_WINDOWS_WINE_RUNTIME_DIR:-}"
+
+  [[ -d "${prepackaged_dir}" ]] || {
+    echo "TSH_WINDOWS_PREPACKAGED_DIR must point to the signed unpacked Windows application." >&2
+    return 1
+  }
+  [[ -f "${signer}" ]] || {
+    echo "TSH_CERTUM_ELECTRON_BUILDER_SIGNER must point to the Certum signing hook." >&2
+    return 1
+  }
+  [[ -n "${publisher}" ]] || {
+    echo "TSH_WINDOWS_EXPECTED_PUBLISHER is required for signed Windows packaging." >&2
+    return 1
+  }
+
+  wine_runtime_dir="${wine_runtime_dir:-${RUNNER_TEMP:?RUNNER_TEMP is required}/windows-signing-wine}"
+  mkdir -p "${wine_runtime_dir}/home" "${wine_runtime_dir}/prefix"
+  env \
+    -u CSC_LINK \
+    -u CSC_KEY_PASSWORD \
+    -u CSC_NAME \
+    HOME="${wine_runtime_dir}/home" \
+    WINEPREFIX="${wine_runtime_dir}/prefix" \
+    npm_package_json="${ROOT_DIR}/package.json" \
+    INIT_CWD="${ROOT_DIR}" \
+    CSC_IDENTITY_AUTO_DISCOVERY=false \
+    pnpm exec electron-builder \
+      --win --x64 \
+      --prepackaged "${prepackaged_dir}" \
+      --publish never \
+      --config "${certum_config}" \
+      "-c.extraMetadata.version=${DESKTOP_BUILD_VERSION}"
+}
+
 require_store_value() {
   local name="$1"
   if ! has_env "${name}"; then
@@ -421,7 +476,14 @@ run_electron_builder_linux() {
 }
 
 case "${VARIANT}" in
-  unpack|mac|mac-unsigned|mac-signed|win|win-store|linux)
+  win-prepackaged)
+    (
+      cd "${APP_DIR}"
+      run_timed_phase "resolve_desktop_build_version" resolve_desktop_build_version
+      run_timed_phase "electron_builder_win_prepackaged" run_electron_builder_win_prepackaged
+    )
+    ;;
+  unpack|mac|mac-unsigned|mac-signed|win|win-unpacked|win-store|linux)
     release_timing_log "variant=${VARIANT} status=start"
     run_timed_phase "prepare_builtin_apps" prepare_builtin_apps
     run_timed_phase "prepare_packaged_daemon" prepare_packaged_daemon
@@ -449,6 +511,9 @@ case "${VARIANT}" in
         win)
           run_timed_phase "electron_builder_win" run_electron_builder_win
           ;;
+        win-unpacked)
+          run_timed_phase "electron_builder_win_unpack" run_electron_builder_win_unpack
+          ;;
         win-store)
           run_timed_phase "electron_builder_win_store" run_electron_builder_win_store
           ;;
@@ -460,7 +525,7 @@ case "${VARIANT}" in
     release_timing_log "variant=${VARIANT} status=done"
     ;;
   *)
-    echo "Usage: $0 <unpack|mac|mac-unsigned|mac-signed|win|linux>" >&2
+    echo "Usage: $0 <unpack|mac|mac-unsigned|mac-signed|win|win-unpacked|win-prepackaged|win-store|linux>" >&2
     exit 1
     ;;
 esac

@@ -1,0 +1,93 @@
+name: Windows signing smoke test
+
+# Manual validation of the shared Certum SimplySign path. This signs only a
+# throwaway executable and never builds or publishes Tutti.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: certum-simplysign-signing
+  cancel-in-progress: false
+
+jobs:
+  sign-test-executable:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: ghcr.io/reactiveui/certum-signer@sha256:fb03892c379b6703bee9bfd7a2f66df3a5696de149d6d6240e1897ae15afc3e4
+    env:
+      CERTUM_USER_ID: ${{ secrets.CERTUM_USER_ID }}
+      CERTUM_OTP_URI: ${{ secrets.CERTUM_OTP_URI }}
+      CERTUM_CERT_FINGERPRINT: ${{ vars.CERTUM_CERT_FINGERPRINT }}
+      TSH_CERTUM_LOGIN_MAX_ATTEMPTS: "3"
+      TSH_CERTUM_SIGN_MAX_ATTEMPTS: "3"
+    steps:
+      - name: Validate signing configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${CERTUM_USER_ID:?CERTUM_USER_ID organization secret is required}"
+          : "${CERTUM_OTP_URI:?CERTUM_OTP_URI organization secret is required}"
+          : "${CERTUM_CERT_FINGERPRINT:?CERTUM_CERT_FINGERPRINT organization variable is required}"
+          [[ "${CERTUM_CERT_FINGERPRINT}" =~ ^[[:xdigit:]]{64}$ ]]
+
+      - name: Checkout signing tooling
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install smoke-test build and verification tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          apt-get update
+          apt-get install -y --no-install-recommends file gcc-mingw-w64-x86-64 nodejs osslsigncode
+          rm -rf /var/lib/apt/lists/*
+
+      - name: Build throwaway Windows executable
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p signing
+          printf '%s\n' \
+            '#include <windows.h>' \
+            'int WINAPI WinMain(HINSTANCE instance, HINSTANCE previous, LPSTR command, int show) {' \
+            '  (void)instance; (void)previous; (void)command; (void)show;' \
+            '  return 0;' \
+            '}' > "${RUNNER_TEMP}/signing-smoke-test.c"
+          x86_64-w64-mingw32-gcc -Os -s -mwindows \
+            -o signing/tutti-signing-smoke-test.exe \
+            "${RUNNER_TEMP}/signing-smoke-test.c"
+          file signing/tutti-signing-smoke-test.exe | grep -q 'PE32+'
+
+      - name: Connect SimplySign with bounded retries
+        shell: bash
+        run: bash tools/scripts/windows/connect-simplysign-linux.sh
+
+      - name: Sign with Certum SimplySign
+        shell: bash
+        run: node tools/scripts/windows/certum-sign-windows.cjs --root signing
+
+      - name: Independently verify Authenticode and timestamp
+        shell: bash
+        run: |
+          set -euo pipefail
+          verification="${RUNNER_TEMP}/osslsigncode-verification.txt"
+          osslsigncode verify \
+            -CAfile /etc/ssl/certs/ca-certificates.crt \
+            -TSA-CAfile /etc/ssl/certs/ca-certificates.crt \
+            -in signing/tutti-signing-smoke-test.exe \
+            2>&1 | tee "${verification}"
+          grep -q 'Signature verification: ok' "${verification}"
+          grep -q 'Timestamp Server Signature verification: ok' "${verification}"
+
+      - name: Upload signed smoke-test executable
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-signing-smoke-test-${{ github.run_id }}
+          path: signing/tutti-signing-smoke-test.exe
+          if-no-files-found: error
+          retention-days: 3

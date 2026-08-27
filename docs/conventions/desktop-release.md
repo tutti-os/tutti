@@ -14,7 +14,7 @@ The formal desktop release flow currently includes:
 
 - GitHub Release publishing
 - macOS desktop artifacts
-- default unsigned Windows RC/stable artifacts
+- Certum Authenticode-signed Windows RC/stable artifacts
 - Electron auto-update metadata
 - release candidate (`rc`) prereleases
 - beta prereleases for development-branch packaging
@@ -34,13 +34,24 @@ packaging-input changes build and smoke-test the unsigned NSIS installer.
 Manual Alpha runs always build the installer. The workflow generates builtin
 apps once and then uses `build:win:prepared`; that command requires
 `pnpm generate:builtin-apps` to have completed first. The formal
-`.github/workflows/desktop-release.yml` workflow always builds Windows. It
-builds an unsigned Windows NSIS
-installer and stages its `.exe`, `.blockmap`, and updater `.yml` beside the
+`.github/workflows/desktop-release.yml` workflow always builds Windows. A
+Windows runner creates `win-unpacked`; a fixed-digest Linux signer container
+logs in to Certum SimplySign, signs every internal EXE through PKCS#11 and
+`jsign`, then uses the same custom signer for the NSIS uninstaller and
+installer. An independent Windows runner validates Publisher, Authenticode,
+RFC3161 timestamps, and every executable extracted from NSIS before staging
+its `.exe`, `.blockmap`, and updater `.yml` beside the
 macOS draft assets. Scheduled RC builds, pushed RC/stable tags, and manual
 RC/stable releases therefore all require Windows to succeed. See
 [Windows Platform Support](../architecture/windows-platform-support.md) for the
 promotion gates.
+
+The release signer and manual `Windows signing smoke test` share the
+`certum-simplysign-signing` concurrency group so one SimplySign account is
+never logged in concurrently. Organization Actions configuration supplies
+`CERTUM_USER_ID`, `CERTUM_OTP_URI`, `CERTUM_CERT_FINGERPRINT`, and
+`TSH_WINDOWS_EXPECTED_PUBLISHER`. `unsigned_dry_run` remains unsigned and does
+not enter the formal staging boundary.
 
 ## Workflow Status
 
@@ -81,9 +92,9 @@ always stop as a candidate and require the separate Promotion workflow and its
 protected Environment approval before publication. There is no manual
 publication-mode switch.
 
-Windows is included by default and is intentionally unsigned for now. A
-Windows build or artifact validation failure blocks staging so an RC or stable
-release cannot silently publish only macOS assets.
+Windows is included by default and signed for every non-dry-run release. A
+Windows build, signing, or independent signature-validation failure blocks
+staging so an RC or stable release cannot silently publish only macOS assets.
 
 Manual RC and stable release modes (`patch_rc_release`, `patch_release`, `minor_release`, and `major_release`) are branch-gated before tag resolution or artifact builds:
 

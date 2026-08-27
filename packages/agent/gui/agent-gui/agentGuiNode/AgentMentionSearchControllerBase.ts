@@ -80,6 +80,7 @@ export class AgentMentionSearchControllerBase {
   ) => void;
   protected readonly diagnosticNow: () => number;
   protected readonly diagnosticSlowThresholdMs: number;
+  protected readonly hiddenFilterIds: readonly string[];
   protected readonly listeners = new Set<AgentMentionSearchListener>();
   protected readonly expandedCounts: Partial<
     Record<AgentMentionGroupId, number>
@@ -111,11 +112,10 @@ export class AgentMentionSearchControllerBase {
     query: "",
     mode: "browse",
     filter: DEFAULT_AGENT_MENTION_FILTER,
-    categories: buildBrowseCategories(),
+    categories: [],
     groups: [],
     error: null
   };
-
   constructor(options: AgentMentionSearchControllerOptions) {
     this.contextMentionProviders = new Map(
       (options.contextMentionProviders ?? []).map((provider) => [
@@ -135,8 +135,10 @@ export class AgentMentionSearchControllerBase {
     this.diagnosticNow = options.diagnosticNow ?? Date.now;
     this.diagnosticSlowThresholdMs =
       options.diagnosticSlowThresholdMs ?? DEFAULT_DIAGNOSTIC_SLOW_THRESHOLD_MS;
+    this.hiddenFilterIds = [...(options.hiddenFilterIds ?? [])];
     this.currentFileSearchLimit = this.fileLimit;
     this.currentIssueSearchLimit = this.issueLimit;
+    this.state.categories = buildBrowseCategories(this.hiddenFilterIds);
   }
 
   protected startBrowseModeFetch(filter: AgentMentionFilterId): void {
@@ -176,7 +178,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: this.groupsFromRawGroups(),
         error: null
       });
@@ -248,7 +250,7 @@ export class AgentMentionSearchControllerBase {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups,
         error: null
       });
@@ -279,7 +281,7 @@ export class AgentMentionSearchControllerBase {
         query: input.query,
         mode: "results",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -357,7 +359,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups,
         error: null
       });
@@ -383,7 +385,7 @@ export class AgentMentionSearchControllerBase {
         query: "",
         mode: "browse",
         filter: this.currentFilter,
-        categories: buildBrowseCategories(),
+        categories: buildBrowseCategories(this.hiddenFilterIds),
         groups: [],
         error: error instanceof Error ? error.message : String(error)
       });
@@ -594,7 +596,7 @@ export class AgentMentionSearchControllerBase {
       query: "",
       mode: "browse",
       filter: this.currentFilter,
-      categories: buildBrowseCategories(),
+      categories: buildBrowseCategories(this.hiddenFilterIds),
       groups: [],
       error: null
     });

@@ -51,7 +51,7 @@ function resolveDesktopDownloadLinks(
       pattern: /-mac-universal\.dmg$/i
     },
     {
-      label: "Windows (x64, unsigned)",
+      label: "Windows (x64, signed)",
       pattern: /-win-x64\.exe$/i
     }
   ];
