@@ -117,6 +117,7 @@ export const AgentGUINode = memo(function AgentGUINode({
     providerAuthAccountLabels,
     mentionService,
     workspaceAppIcons,
+    hiddenMentionFilterIds,
     disabledHomeSuggestions,
     referenceProvenanceFilterCatalog: injectedReferenceProvenanceFilterCatalog,
     referenceProvenanceFilterEnabled = false,
@@ -489,6 +490,7 @@ export const AgentGUINode = memo(function AgentGUINode({
             <AgentGUINodeView
               viewModel={viewModel}
               mentionAgentTargets={mentionAgentTargets}
+              hiddenMentionFilterIds={hiddenMentionFilterIds}
               renderAgentTargetInfo={renderAgentTargetInfo}
               renderSidebarFooter={renderSidebarFooter}
               renderProviderRailEmpty={renderProviderRailEmpty}

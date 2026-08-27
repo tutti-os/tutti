@@ -11,9 +11,11 @@ import type { AgentComposerReferenceProvenanceFilters } from "./AgentComposer.ty
 
 const EMPTY_AGENT_CONTEXT_MENTION_PROVIDERS: readonly AgentContextMentionProvider[] =
   [];
+const EMPTY_HIDDEN_FILTER_IDS: readonly string[] = [];
 
 export function useAgentMentionSearchController(
-  referenceProvenanceFilters: AgentComposerReferenceProvenanceFilters | null
+  referenceProvenanceFilters: AgentComposerReferenceProvenanceFilters | null,
+  hiddenFilterIds: readonly string[] = EMPTY_HIDDEN_FILTER_IDS
 ): {
   mentionControllerRef: React.RefObject<AgentMentionSearchController | null>;
   mentionSearchState: AgentMentionSearchState;
@@ -45,7 +47,8 @@ export function useAgentMentionSearchController(
 
   useEffect(() => {
     const controller = new AgentMentionSearchController({
-      contextMentionProviders
+      contextMentionProviders,
+      hiddenFilterIds
     });
     controller.setProvenanceCatalog(provenanceCatalog);
     controller.setProvenanceFilters({
@@ -62,7 +65,7 @@ export function useAgentMentionSearchController(
       controller.dispose();
       mentionControllerRef.current = null;
     };
-  }, [contextMentionProviders]);
+  }, [contextMentionProviders, hiddenFilterIds]);
 
   useEffect(() => {
     mentionControllerRef.current?.setProvenanceCatalog(provenanceCatalog);

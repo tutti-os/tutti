@@ -27,7 +27,7 @@ Current implementation and evidence:
 | Browser                  | browser service contract                                | focused Windows executable/profile path behavior                              | focused Windows tests exist; full browser E2E remains a promotion gate                          |
 | Computer use             | computer service contract                               | Cua Driver 0.18.0 doctor/MCP boundary and owned daemon                        | focused Windows tests and opt-in MCP smoke exist; screenshot/input E2E remains a promotion gate |
 | Files                    | workspace file APIs and portable Go filesystem behavior | add a narrow adapter only where Windows semantics differ                      | full Windows Files E2E remains a promotion gate                                                 |
-| Release                  | desktop release policy                                  | unsigned NSIS plus a separately gated Store AppX artifact                     | Store build/submission automation exists; production certification is not yet validated         |
+| Release                  | desktop release policy                                  | Certum Authenticode-signed NSIS plus a separately gated Store AppX artifact   | signed Direct release automation exists; real-machine acceptance remains a promotion gate       |
 
 Passing `windows-latest` CI proves the build and automated paths above. It does
 not by itself prove the supported Windows 10 floor, installer UX, upgrade, or
@@ -342,7 +342,10 @@ The Alpha workflow is intentionally separate from the formal desktop release:
   installer;
 - the workflow does not publish a GitHub Release or mutate stable/prerelease
   update metadata;
-- `.github/workflows/desktop-release.yml` currently stages only macOS assets.
+- `.github/workflows/desktop-release.yml` signs every non-dry-run Windows
+  package with Certum SimplySign, independently verifies the installer,
+  embedded uninstaller, and internal EXEs on Windows, then stages Windows
+  beside macOS assets.
 
 Windows may enter a formal Beta/RC or stable channel only after all applicable
 gates below pass:
@@ -350,16 +353,17 @@ gates below pass:
 - Windows 10 and Windows 11 x64 install, launch, upgrade, rollback, and uninstall
   verification on real or cloud machines;
 - Onboarding, Browser, Files, Terminal, and AgentGUI end-to-end verification;
-- Authenticode signing for the installer and required executables, with signing
-  identity and secret ownership decided;
+- successful Authenticode smoke and formal-package runs using the organization-
+  owned Certum SimplySign configuration;
 - managed Bash license, notice, and corresponding-source distribution review;
 - crash/log collection and release-asset traceability;
 - formal release staging, updater metadata, mirror, notification, and rollback
   tests.
 
-Until those gates pass, Windows artifacts must not be added to `latest.json`,
-the floating stable release, public stable downloads, or formal release
-notifications.
+Automated signing is one release boundary, not proof of the remaining
+real-machine gates. Public channel enablement must continue to follow the
+release policy and its protected stable-candidate approval rather than treating
+a successful signing job as complete Windows support evidence.
 
 The stable Microsoft Store path is a separate, opt-in release surface:
 
@@ -430,7 +434,6 @@ These items are not established by the current code and must not be presented
 as completed support:
 
 - the exact minimum supported Windows 10 release;
-- the Authenticode provider and certificate/secret ownership;
 - whether Browser and Files are mandatory for the first externally distributed
   Alpha, rather than later preview promotion gates;
 - Windows ARM64 schedule;

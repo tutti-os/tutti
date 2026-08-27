@@ -317,6 +317,12 @@ func visibleFailureCode(detail string) string {
 	case strings.Contains(normalized, "session/set_config_option") &&
 		strings.Contains(normalized, "timed out"):
 		return "provider_config_timeout"
+	case strings.Contains(normalized, "stream disconnected before completion") &&
+		strings.Contains(normalized, "modelcode") && strings.Contains(normalized, "不存在"):
+		return "provider_model_not_found"
+	case strings.Contains(normalized, "configured-routes/") &&
+		strings.Contains(normalized, "404 page not found"):
+		return "configured_route_not_found"
 	case strings.Contains(normalized, "stream disconnected before completion") ||
 		strings.Contains(normalized, "stream closed before response.completed"):
 		return "provider_stream_disconnected"
@@ -381,7 +387,7 @@ func structuredRuntimeTransportFailureCode(normalized string) string {
 		end++
 	}
 	code := remainder[:end]
-	if strings.HasPrefix(code, "egress_") || strings.HasPrefix(code, "provider_process_exit_") {
+	if strings.HasPrefix(code, "egress_") || strings.HasPrefix(code, "provider_process_") {
 		return code
 	}
 	return ""
@@ -551,6 +557,10 @@ func visibleFailureContent(provider string, phase string, code string) string {
 			return fmt.Sprintf("%s could not apply session settings before startup timed out. Try again in a moment.", name)
 		case "provider_stream_disconnected":
 			return fmt.Sprintf("%s could not start because the response was interrupted. Try again in a moment.", name)
+		case "provider_model_not_found":
+			return fmt.Sprintf("%s could not start because the selected model was not found. Check the model setting and try again.", name)
+		case "configured_route_not_found":
+			return fmt.Sprintf("%s could not start because its runtime route was not available. Try again in a moment.", name)
 		case "session_interrupted":
 			return fmt.Sprintf("%s stopped unexpectedly before it finished starting. Try again.", name)
 		case "request_timed_out":
@@ -588,6 +598,10 @@ func visibleFailureContent(provider string, phase string, code string) string {
 		return fmt.Sprintf("%s could not apply session settings before the request timed out. Try again in a moment.", name)
 	case "provider_stream_disconnected":
 		return fmt.Sprintf("%s response was interrupted before it completed. Try again in a moment.", name)
+	case "provider_model_not_found":
+		return fmt.Sprintf("%s could not use the selected model because it was not found. Check the model setting and try again.", name)
+	case "configured_route_not_found":
+		return fmt.Sprintf("%s could not reach its runtime route. Try again in a moment.", name)
 	case "provider_empty_response":
 		return fmt.Sprintf("%s returned no response. Check the provider settings or try again.", name)
 	case "session_interrupted":

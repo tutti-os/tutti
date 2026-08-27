@@ -51,6 +51,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
   operations,
   homeTargetProjection,
   referenceProvenanceFilters = null,
+  hiddenMentionFilterIds = [],
   sessionInputHistoryEnabled = false,
   sideConversationEnabled = false,
   sideConversationPresentation = null,
@@ -392,7 +393,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
       draftScopeKey: resolveAgentComposerDraftScopeKey({
         agentSessionId: viewModel.rail.activeConversationId
       }),
-      ...composerInputHistoryProps,
+      ...{ ...composerInputHistoryProps, hiddenMentionFilterIds },
       availableCommands: sideConversation.commands,
       hasCompactableContext: viewModel.detail.hasSentUserMessage,
       compactSupported: viewModel.composer.compactSupported,
@@ -454,8 +455,7 @@ export const AgentGUIDetailPane = memo(function AgentGUIDetailPane({
         timelineInteractionLocked ||
         tuttiWorkflowComposer.tuttiExecutionStopping,
       workspaceReferencePickerOpen,
-      referenceProvenanceFilters,
-      activePrompt: composerActivePrompt,
+      ...{ referenceProvenanceFilters, activePrompt: composerActivePrompt },
       activePromptKeyboardShortcutsEnabled: isActive && !sideComposerFocused,
       activePromptDisabledReason: composerActivePromptDisabledReason,
       promptTips: labels.promptTips,

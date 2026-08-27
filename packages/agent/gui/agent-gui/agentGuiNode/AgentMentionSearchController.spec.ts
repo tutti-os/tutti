@@ -89,6 +89,7 @@ interface TestContextMentionProviderOptions {
   browseCacheTtlMs?: number;
   issueLimit?: number;
   providerTimeoutMs?: number;
+  hiddenFilterIds?: readonly string[];
 }
 
 class AgentMentionSearchController extends BaseAgentMentionSearchController {
@@ -102,6 +103,7 @@ class AgentMentionSearchController extends BaseAgentMentionSearchController {
       browseCacheTtlMs: options.browseCacheTtlMs,
       issueLimit: options.issueLimit,
       providerTimeoutMs: options.providerTimeoutMs,
+      hiddenFilterIds: options.hiddenFilterIds,
       contextMentionProviders:
         options.contextMentionProviders ??
         createTestContextMentionProviders(options)
@@ -522,6 +524,20 @@ describe("AgentMentionSearchController", () => {
     expect(labelById.get("session")).toBe("会话");
     expect(labelById.get("issue")).toBe("任务");
     expect(labelById.get("agent")).toBe("智能体");
+  });
+
+  it("omits host-disabled mention filters from browse categories", () => {
+    const controller = new AgentMentionSearchController({
+      hiddenFilterIds: ["issue", " file "]
+    });
+    const states: AgentMentionSearchState[] = [];
+    controller.subscribe((state) => states.push(state));
+
+    expect(states.at(-1)?.categories.map((category) => category.id)).toEqual([
+      "session",
+      "agent",
+      "app"
+    ]);
   });
 
   it("uses Tasks for the English issue browse category label", () => {
