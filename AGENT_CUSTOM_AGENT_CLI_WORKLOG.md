@@ -78,6 +78,10 @@ Validation completed so far:
 - Existing unrelated worktree modifications remain untouched.
 - No commit was created.
 
+- Added workspace isolation and unavailable-harness regression coverage.
+- Custom Agent selector resolution now fails closed when the harness is disabled
+  or unavailable, before session creation.
+
 Additional checkpoint:
 
 - Fixed exact-ID filtering in `agent list` so workspace custom IDs are resolved

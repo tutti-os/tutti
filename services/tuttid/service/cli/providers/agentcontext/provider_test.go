@@ -1922,6 +1922,31 @@ func TestCustomAgentSelectorsPreserveWorkspaceAndExactID(t *testing.T) {
 	}
 }
 
+func TestCustomAgentRequiresMatchingWorkspaceContext(t *testing.T) {
+	custom := workspaceagentbiz.View{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:reviewer", WorkspaceID: "workspace-1"}, Harness: workspaceagentbiz.Harness{Provider: "codex", Enabled: true, Available: true}}
+	provider := NewProviderWithAgentTargets(fakeWorkspaceCatalog{}, &fakeAgentSessions{}, nil, fakeAgentTargetList{}).
+		WithWorkspaceAgents(fakeWorkspaceAgentList{workspaceID: "workspace-2"})
+	_, err := provider.newStartCommand().Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"agent-id": custom.Agent.ID, "prompt": "review"}, Context: cliservice.InvokeContext{WorkspaceID: "workspace-2"}})
+	if !errors.Is(err, cliservice.ErrInvalidInput) {
+		t.Fatalf("cross-workspace error = %v", err)
+	}
+	_, err = provider.newStartCommand().Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"agent-id": custom.Agent.ID, "prompt": "review"}})
+	if err == nil {
+		t.Fatalf("missing-workspace error = %v", err)
+	}
+}
+
+func TestUnavailableCustomAgentCannotStart(t *testing.T) {
+	custom := workspaceagentbiz.View{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:offline", WorkspaceID: "workspace-1"}, Harness: workspaceagentbiz.Harness{Provider: "codex", Enabled: true, Available: false}}
+	sessions := &fakeAgentSessions{}
+	provider := NewProviderWithAgentTargets(fakeWorkspaceCatalog{}, sessions, nil, fakeAgentTargetList{}).
+		WithWorkspaceAgents(fakeWorkspaceAgentList{workspaceID: "workspace-1", views: []workspaceagentbiz.View{custom}})
+	_, err := provider.newStartCommand().Handler(context.Background(), cliservice.InvokeRequest{Input: map[string]any{"agent-id": custom.Agent.ID, "prompt": "review"}, Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || sessions.createCallCount != 0 {
+		t.Fatalf("start error = %v, create calls = %d", err, sessions.createCallCount)
+	}
+}
+
 func TestDisabledAgentIsExcludedFromListAndCannotStart(t *testing.T) {
 	targets := agenttargetbiz.DefaultSystemTargets(1)
 	for index := range targets {

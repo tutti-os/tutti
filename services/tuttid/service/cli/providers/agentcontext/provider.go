@@ -171,6 +171,9 @@ func (p Provider) resolveEnabledAgentTarget(ctx context.Context, workspaceID str
 		}
 		for _, view := range agents {
 			if view.Agent.ID == agentID {
+				if !view.Harness.Enabled || !view.Harness.Available {
+					return agenttargetbiz.Target{}, fmt.Errorf("%w: agent %q harness is unavailable; run agent list --json", cliservice.ErrInvalidInput, agentID)
+				}
 				return agenttargetbiz.Target{ID: view.Agent.ID, Provider: view.Harness.Provider, Name: view.Agent.Name, Enabled: view.Harness.Enabled, Source: agenttargetbiz.SourceUser}, nil
 			}
 		}
