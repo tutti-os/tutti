@@ -119,7 +119,7 @@ func TestRunTuttiAgentTokenLoginPreparesCanonicalAuthHomeBeforeLaunch(t *testing
 
 	err := runTuttiAgentTokenLogin(
 		t.Context(),
-		filepath.Join(t.TempDir(), "missing-tutti-agent"),
+		tuttiAgentLoginCommand{BinaryPath: filepath.Join(t.TempDir(), "missing-tutti-agent")},
 		tuttiAgentLLMTokenBundle{},
 	)
 	if err == nil {
@@ -238,7 +238,7 @@ func TestBootstrapTuttiAgentUserAuthIssuesTokenWhenExistingAccessTokenExpired(t 
 	t.Setenv("TUTTI_AGENT_LOGIN_CAPTURE", capturePath)
 	installFakeTuttiAgentBinary(t)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{})
 
 	select {
 	case <-issueRequests:
@@ -279,7 +279,7 @@ func TestBootstrapTuttiAgentUserAuthRetainsAuthWithoutHostSession(t *testing.T) 
 	)
 	t.Setenv("TUTTI_STATE_DIR", t.TempDir())
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{})
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	assertTuttiAgentAuthUnchanged(t, authPath, []byte(`{"tutti_llm":{"account_base_url":`+strconv.Quote(account.URL)+`,"access_token":"lat_old","access_token_expires_at":`+strconv.Quote(expiresAt)+`,"refresh_token":"lrt_old"}}`))
@@ -312,7 +312,7 @@ func TestBootstrapTuttiAgentUserAuthRetainsAuthWhenHostAuthIsInvalidJSON(t *test
 	}
 	t.Setenv("TUTTI_STATE_DIR", stateDir)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{})
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	assertTuttiAgentAuthUnchanged(t, authPath, []byte(authJSON))
@@ -345,7 +345,7 @@ func TestBootstrapTuttiAgentUserAuthRetainsAuthWhenHostAuthIsUnreadable(t *testi
 	}
 	t.Setenv("TUTTI_STATE_DIR", stateDir)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{})
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	assertTuttiAgentAuthUnchanged(t, authPath, []byte(authJSON))
@@ -387,7 +387,7 @@ func TestBootstrapTuttiAgentUserAuthRetainsAuthAfterUnauthorizedTokenIssue(t *te
 	authJSON := `{"tutti_llm":{"account_base_url":` + strconv.Quote(account.URL) + `,"access_token":"lat_old","access_token_expires_at":` + strconv.Quote(expiredAt) + `,"refresh_token":"lrt_old"}}`
 	writeTuttiAgentUserAuth(t, home, authJSON)
 
-	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, "")
+	bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{})
 
 	authPath := filepath.Join(home, ".tutti-agent", "auth.json")
 	assertTuttiAgentAuthUnchanged(t, authPath, []byte(authJSON))
@@ -443,7 +443,10 @@ func TestBootstrapTuttiAgentUserAuthRestoresPreviousAuthAfterReconcileFailures(t
 			writeHostAccountAuth(t, "session_id=session_test")
 			binaryPath := writeTuttiAgentTestBinary(t, test.loginScript)
 
-			bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, binaryPath)
+			bootstrapTuttiAgentUserAuth(t.Context(), runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{
+				BinaryPath: binaryPath,
+				Env:        os.Environ(),
+			})
 
 			assertTuttiAgentAuthUnchanged(t, filepath.Join(home, ".tutti-agent", "auth.json"), oldAuth)
 		})
@@ -479,7 +482,7 @@ func TestBootstrapTuttiAgentUserAuthWaitsForAgentRefreshLock(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, "")
+		bootstrapTuttiAgentUserAuth(ctx, runtimeprep.PrepareInput{}, tuttiAgentLoginCommand{})
 	}()
 	select {
 	case <-done:

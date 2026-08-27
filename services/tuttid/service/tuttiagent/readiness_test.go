@@ -43,7 +43,7 @@ func TestReadinessCoordinatorInstallsRuntimeWhenTargetDisabled(t *testing.T) {
 	coordinator := ReadinessCoordinator{
 		Runtime: runtime,
 		Targets: readinessTargetsStub{enabled: false},
-		BootstrapAuth: func(context.Context, string) {
+		BootstrapAuth: func(context.Context) {
 			authCalls.Add(1)
 		},
 	}
@@ -65,10 +65,7 @@ func TestReadinessCoordinatorAuthenticatesAfterRuntimeInstallWhenTargetEnabled(t
 	coordinator := ReadinessCoordinator{
 		Runtime: runtime,
 		Targets: readinessTargetsStub{enabled: true},
-		BootstrapAuth: func(_ context.Context, binaryPath string) {
-			if binaryPath != "/managed/bin/tutti-agent" {
-				t.Errorf("binary path = %q, want managed probe path", binaryPath)
-			}
+		BootstrapAuth: func(context.Context) {
 			authCalls.Add(1)
 		},
 	}
@@ -94,7 +91,7 @@ func TestReadinessCoordinatorSkipsInstallForReadyRuntimeButStillAuthenticates(t 
 	coordinator := ReadinessCoordinator{
 		Runtime: runtime,
 		Targets: readinessTargetsStub{enabled: true},
-		BootstrapAuth: func(context.Context, string) {
+		BootstrapAuth: func(context.Context) {
 			authCalls.Add(1)
 		},
 	}
@@ -121,10 +118,7 @@ func TestReadinessCoordinatorTreatsAuthRequiredAsInstalledRuntime(t *testing.T) 
 	coordinator := ReadinessCoordinator{
 		Runtime: runtime,
 		Targets: readinessTargetsStub{enabled: true},
-		BootstrapAuth: func(_ context.Context, binaryPath string) {
-			if binaryPath != "/managed/bin/tutti-agent" {
-				t.Errorf("binary path = %q, want managed status path", binaryPath)
-			}
+		BootstrapAuth: func(context.Context) {
 			authCalls.Add(1)
 		},
 	}
@@ -147,7 +141,7 @@ func TestReadinessCoordinatorWaitsForExistingInstallAction(t *testing.T) {
 	coordinator := ReadinessCoordinator{
 		Runtime: runtime,
 		Targets: readinessTargetsStub{enabled: true},
-		BootstrapAuth: func(context.Context, string) {
+		BootstrapAuth: func(context.Context) {
 			authCalls.Add(1)
 		},
 	}

@@ -216,6 +216,7 @@ func buildDaemonAPI(
 		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
 		UserPathAdapter:            agentstatusservice.NewUserPathAdapter(),
 	})
+	tuttiAgentAuth := tuttiagentservice.NewAuthBootstrapper(&agentStatusService)
 	// Shared so a runtime auth failure (reporter side) surfaces in the status
 	// probe (List side) — see agentRunOutcomeReporter.
 	runOutcomes := agentStatusService.RunOutcomes
@@ -266,7 +267,10 @@ func buildDaemonAPI(
 	}
 	agentRuntimePreparer := runtimeprep.NewDefaultPreparer(tuttitypes.DefaultStateDir())
 	agentRuntimePreparer.RegisterProvider(runtimeprep.CodexPreparer{AuthProjector: runtimeprep.MutagenAuthFileProjector{StateDir: tuttitypes.DefaultStateDir()}})
-	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
+	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(
+		tuttitypes.DefaultStateDir(),
+		tuttiAgentAuth.Bootstrap,
+	))
 	configureAgentRuntimeAvailability(agentRuntimePreparer, browserService, computerService)
 	userProjectService := userprojectservice.Service{
 		Store:     userProjectStore,
@@ -287,6 +291,7 @@ func buildDaemonAPI(
 	)
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentModelCatalog.ProviderCommands = &agentStatusService
+	agentModelCatalog.TuttiAgentAuthBootstrap = tuttiAgentAuth.BootstrapUserAuth
 	agentSessionPurgeStore, ok := agentActivityRepo.(agenthost.SessionPurgeStore)
 	if !ok {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent session purge store is unavailable")
@@ -778,6 +783,7 @@ func buildDaemonAPI(
 	terminalService := workspaceservice.NewTerminalService(workspaceservice.NewPlatformTerminalProcessFactory())
 	tuttiAgentReadiness := configureReplayAwareTuttiAgentReadiness(
 		replayComposition, accountService, &agentStatusService, agentTargets,
+		tuttiAgentAuth.BootstrapUserAuth,
 	)
 
 	providerAuthWatcher := startAgentModelInvalidationAuthWatcher(

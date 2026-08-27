@@ -257,8 +257,9 @@ func configureReplayAwareTuttiAgentReadiness(
 	account *accountservice.Service,
 	status *agentstatusservice.Service,
 	targets agenttargetservice.Service,
+	bootstrapAuth func(context.Context),
 ) *tuttiagentservice.ReadinessCoordinator {
-	readiness := tuttiagentservice.NewReadinessCoordinator(status, targets)
+	readiness := tuttiagentservice.NewReadinessCoordinator(status, targets, bootstrapAuth)
 	if replay {
 		return readiness
 	}
