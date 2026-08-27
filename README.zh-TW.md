@@ -31,7 +31,7 @@
 
 [下載 Tutti · Local macOS 版](https://tutti.sh/desktop/download?platform=macos&arch=universal&format=dmg)
 
-Windows 版本即將推出。
+[下載 Tutti · Local Windows x64 版](https://tutti.sh/desktop/download?platform=windows&arch=x64&format=exe)
 
 <!-- TODO: Tutti · VM 等候名單連結 -->
 
