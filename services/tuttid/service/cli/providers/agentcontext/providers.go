@@ -86,6 +86,12 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 	if err != nil {
 		return nil, err
 	}
+	workspaceID := strings.TrimSpace(invoke.WorkspaceID)
+	if workspaceID == "" && p.workspaceAgents != nil {
+		if resolved, resolveErr := cliservice.ResolveWorkspaceID(ctx, p.workspaces, ""); resolveErr == nil {
+			workspaceID = resolved
+		}
+	}
 	requestedAgentID := strings.TrimSpace(input.AgentID)
 	var requestedTarget *agenttargetbiz.Target
 	if requestedAgentID != "" {
@@ -117,8 +123,8 @@ func (p Provider) runAgents(ctx context.Context, invoke framework.InvokeContext,
 		}
 	}
 	items := agentCatalogItems(targets, availability)
-	if p.workspaceAgents != nil && strings.TrimSpace(invoke.WorkspaceID) != "" {
-		agents, err := p.workspaceAgents.List(ctx, strings.TrimSpace(invoke.WorkspaceID))
+	if p.workspaceAgents != nil && workspaceID != "" {
+		agents, err := p.workspaceAgents.List(ctx, workspaceID)
 		if err != nil {
 			return nil, err
 		}

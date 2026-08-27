@@ -1877,6 +1877,22 @@ func TestAgentListIncludesWorkspaceCustomAgentWithWorkspaceContext(t *testing.T)
 	t.Fatalf("custom agent %q missing from %#v", custom.Agent.ID, output.Value["agents"])
 }
 
+func TestAgentListUsesStartupWorkspaceForCustomAgents(t *testing.T) {
+	custom := workspaceagentbiz.View{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:reviewer", WorkspaceID: "workspace-1", Name: "Reviewer"}, Harness: workspaceagentbiz.Harness{Provider: "codex", Enabled: true, Available: true}}
+	provider := NewProviderWithAgentTargets(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, &fakeAgentSessions{}, nil, fakeAgentTargetList{}).
+		WithWorkspaceAgents(fakeWorkspaceAgentList{workspaceID: "workspace-1", views: []workspaceagentbiz.View{custom}})
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{OutputMode: cliservice.OutputModeJSON})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	for _, raw := range output.Value["agents"].([]any) {
+		if raw.(map[string]any)["id"] == custom.Agent.ID {
+			return
+		}
+	}
+	t.Fatalf("startup custom agent %q missing", custom.Agent.ID)
+}
+
 func TestAgentListFiltersWorkspaceCustomAgentByExactID(t *testing.T) {
 	custom := workspaceagentbiz.View{Agent: workspaceagentbiz.Agent{
 		ID: "workspace-agent:reviewer", WorkspaceID: "workspace-1", Name: "Reviewer",

@@ -44,12 +44,12 @@ provider; they must not attempt to recover it from `context.Context` or from a
 database path.
 
 - `agent list` remains workspace-optional. With an explicit workspace context,
-  it includes that workspace's custom Agents. Without one, it returns only the
-  global Agent Target catalog.
+  it includes that workspace's custom Agents; without one, it uses the daemon
+  startup workspace.
 - `agent composer-options`, `agent start`, and `agent skill-bundle` must use the
   same explicit workspace value when resolving a `workspace-agent:<uuid>`.
-- A custom-Agent ID without a workspace context fails with an invalid-input
-  error and recovery guidance instead of selecting the startup workspace.
+- A custom-Agent ID requires a resolved workspace; CLI commands resolve the
+  daemon startup workspace when the caller does not provide an override.
 - Issue and Plan commands must preserve the exact discovered ID and workspace
   together when writing or dispatching `agentTargetId`.
 
@@ -83,7 +83,7 @@ The preferred discovery response keeps the existing `agent list --json` shape:
       "id": "workspace-agent:abc123",
       "name": "代码审查",
       "provider": "codex",
-      "kind": "workspace",
+      "kind": "workspace-agent",
       "harnessAgentTargetId": "local:codex",
       "availability": { "status": "available" }
     }
