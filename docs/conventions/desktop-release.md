@@ -458,10 +458,11 @@ Promotion performs these checks before changing public state:
 - the reviewed bilingual notes still produce the approval digest captured before the Environment gate
 - the target version does not move the selected public channel backwards
 
-When `config/tutti.app-runtime.lock.json` changes, run `Publish Tutti App
-Runtime` and verify the production catalog before promoting the desktop release.
-The promotion gate reads the lock from the exact release target, so a later
-manual promotion cannot bypass this ordering.
+Merging a change to `config/tutti.app-runtime.lock.json` on `main` automatically
+runs `Publish Tutti App Runtime`; its manual trigger remains available for
+recovery. Desktop release resolution checks the catalog before reserving a tag
+or starting platform builds. The promotion gate repeats the check against the
+exact release target, so a later manual promotion cannot bypass this ordering.
 
 It then extracts the human-reviewed summary, copies stable candidate objects from `candidates/<candidate-id>/` to the immutable `<tag>/` path, creates the formal stable tag, updates release notes and assets, publishes the GitHub Release, writes the channel pointer and changelog, refreshes the stable alias, verifies the public pointer, and sends the published card. Promotion never rebuilds installers or calls the summary model. Editing notes or replacing assets after submission changes the approval digest and forces a new approval run. Promotion is serialized because channel pointers are shared mutable state.
 

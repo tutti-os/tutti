@@ -141,8 +141,11 @@ release is promoted. Runtime versions use an ordered `YYYY.MM.PATCH` format and
 newer runtime releases remain compatible with older desktop releases because
 tuttid always resolves the mutable catalog's current entry. The promotion
 workflow enforces this ordering with
-`tools/scripts/verify-tutti-app-runtime-release.mjs`; publish the managed runtime
-first when the lock version changes.
+`tools/scripts/verify-tutti-app-runtime-release.mjs`. Merging a change to
+`config/tutti.app-runtime.lock.json` on `main` automatically runs `Publish Tutti
+App Runtime`; the manual trigger remains available for recovery. Desktop
+releases check the production catalog before reserving a tag or starting builds,
+and promotion repeats the check as a final safety gate.
 
 ## Catalog Shape
 

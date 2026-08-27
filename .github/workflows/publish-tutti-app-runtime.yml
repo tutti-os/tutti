@@ -1,6 +1,11 @@
 name: Publish Tutti App Runtime
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - config/tutti.app-runtime.lock.json
   workflow_dispatch:
     inputs:
       aws_region:
@@ -31,6 +36,10 @@ on:
 permissions:
   contents: read
   id-token: write
+
+concurrency:
+  group: tutti-app-runtime-production
+  cancel-in-progress: false
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true

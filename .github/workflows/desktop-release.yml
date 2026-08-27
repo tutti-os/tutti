@@ -214,6 +214,10 @@ jobs:
           echo "dry_run=${dry_run}" >> "$GITHUB_OUTPUT"
           echo "strategy=${strategy}" >> "$GITHUB_OUTPUT"
 
+      - name: Verify managed app runtime is published before release build
+        if: steps.mode.outputs.dry_run != 'true'
+        run: node tools/scripts/verify-tutti-app-runtime-release.mjs
+
       - name: Resolve release tag
         id: release
         shell: bash
