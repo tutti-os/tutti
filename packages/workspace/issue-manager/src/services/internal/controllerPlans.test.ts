@@ -72,6 +72,26 @@ test("controllerPlans create run-task plans from detail and agent target intent"
   );
 });
 
+test("controllerPlans preserve workspace custom agent target ids", () => {
+  const agentTargetId = "workspace-agent:reviewer";
+  assert.deepEqual(
+    createIssueManagerRunTaskPlan({
+      agentTargetOptions: [
+        { agentTargetId, label: "Reviewer", provider: "codex" }
+      ],
+      issueDetail: createIssueDetail(),
+      selectedAgentTargetId: agentTargetId,
+      taskDetail: createTaskDetail()
+    }),
+    {
+      agentTargetId,
+      kind: "ready",
+      provider: "codex",
+      shouldUpdateSelectedAgentTargetId: false
+    }
+  );
+});
+
 test("controllerPlans block run-task plans when the selected agent target is unavailable", () => {
   assert.deepEqual(
     createIssueManagerRunTaskPlan({
