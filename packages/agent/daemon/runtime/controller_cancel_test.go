@@ -142,9 +142,38 @@ func TestControllerExactCancelReportsTargetAbsentWithoutTurnRegistryRecord(t *te
 	}
 }
 
+func TestControllerCancelPreservesActiveTurnWhenProviderStateIsLost(t *testing.T) {
+	t.Parallel()
+
+	adapter := &cancelReconcileAdapter{err: ErrProviderStateLost}
+	controller := NewController([]Adapter{adapter}, nil)
+	started, err := controller.Start(context.Background(), StartInput{
+		RoomID: "room-1", AgentSessionID: "agent-session-1", Provider: ProviderCodex, Title: "Test",
+	})
+	if err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	_, cancel := context.WithCancel(context.Background())
+	if _, err := controller.beginTurn(started.Session, "turn-1", cancel); err != nil {
+		t.Fatalf("beginTurn: %v", err)
+	}
+
+	result, err := controller.Cancel(context.Background(), rootCancelInput("room-1", started.Session.AgentSessionID, "turn-1", "user requested"))
+	if err != nil {
+		t.Fatalf("Cancel: %v", err)
+	}
+	if !result.ProviderStateLost || result.Canceled || result.TargetAbsent {
+		t.Fatalf("result = %#v, want provider state loss without cancellation", result)
+	}
+	if _, ok := controller.activeTurn("room-1", started.Session.AgentSessionID); !ok {
+		t.Fatal("active turn was cleared after provider state loss")
+	}
+}
+
 type cancelReconcileAdapter struct {
 	cancelCalls atomic.Int64
 	empty       bool
+	err         error
 }
 
 func (*cancelReconcileAdapter) Provider() string { return ProviderCodex }
@@ -163,6 +192,9 @@ func (*cancelReconcileAdapter) Exec(context.Context, Session, []PromptContentBlo
 
 func (a *cancelReconcileAdapter) Cancel(_ context.Context, session Session, _ string) ([]activityshared.Event, error) {
 	a.cancelCalls.Add(1)
+	if a.err != nil {
+		return nil, a.err
+	}
 	if a.empty {
 		return nil, ErrSessionNoActiveTurn
 	}

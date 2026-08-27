@@ -669,6 +669,11 @@ func (a *ClaudeCodeSDKAdapter) cancelClaudeSDKTurn(
 			return nil, errors.New("claude SDK returned inconsistent absent cancellation")
 		}
 		return nil, ErrSessionNoActiveTurn
+	case "provider_state_lost":
+		if canceled {
+			return nil, errors.New("claude SDK returned inconsistent provider state loss cancellation")
+		}
+		return nil, ErrProviderStateLost
 	case "mismatch":
 		if canceled || providerTurnID != "" {
 			return nil, errors.New("claude SDK returned inconsistent mismatched cancellation")

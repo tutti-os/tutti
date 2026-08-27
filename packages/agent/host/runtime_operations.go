@@ -420,6 +420,9 @@ func (h *Host) executeCancelRuntimeOperation(
 		Targets: targets, Reason: runtimeOperationPayloadText(operation.Payload, "reason"),
 	})
 	if err != nil {
+		if errors.Is(err, ErrRuntimeProviderStateLost) {
+			return h.completeProviderStateLostCancelRuntimeOperation(ctx, operation, owner, targets)
+		}
 		if errors.Is(err, ErrRuntimeCancelDeliveryUnconfirmed) {
 			checkpointed, checkpointErr := h.checkpointCancelRuntimeOperationDeliveryUnconfirmed(ctx, operation, owner)
 			if checkpointErr != nil {
@@ -443,6 +446,9 @@ func (h *Host) executeCancelRuntimeOperation(
 		}
 		return h.releaseRuntimeOperation(ctx, operation, owner, err, !isRetryableRuntimeOperationError(err))
 	}
+	if result.ProviderStateLost {
+		return h.completeProviderStateLostCancelRuntimeOperation(ctx, operation, owner, targets)
+	}
 	if result.TargetAbsent && runtimeOperationPayloadBool(operation.Payload, storesqlite.CancelRuntimeOperationDeliveryUnconfirmedPayloadKey) {
 		settled, settledErr := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
 		if settledErr != nil {
@@ -460,7 +466,32 @@ func (h *Host) executeCancelRuntimeOperation(
 		)
 		return h.releaseRuntimeOperation(ctx, operation, owner, ErrRuntimeCancelDeliveryUnconfirmed, false)
 	}
+	if result.TargetAbsent {
+		return h.completeProviderStateLostCancelRuntimeOperation(ctx, operation, owner, targets)
+	}
 	return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, result.ConfirmedTargets)
+}
+
+func (h *Host) completeProviderStateLostCancelRuntimeOperation(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+	targets []RuntimeCancelTarget,
+) (storesqlite.RuntimeOperation, error) {
+	settled, settledErr := h.cancelRuntimeOperationTargetsSettled(ctx, operation.WorkspaceID, targets)
+	if settledErr != nil {
+		return h.releaseRuntimeOperation(ctx, operation, owner, settledErr, !isRetryableRuntimeOperationError(settledErr))
+	}
+	if settled {
+		return h.completeCancelRuntimeOperation(ctx, operation, owner, targets, nil)
+	}
+	return h.completeCancelRuntimeOperationWithOutcomes(
+		ctx,
+		operation,
+		owner,
+		runtimeCancelTargetUnknownOutcomes(targets),
+		false,
+	)
 }
 
 func (h *Host) checkpointCancelRuntimeOperationDeliveryUnconfirmed(
@@ -487,16 +518,32 @@ func (h *Host) completeCancelRuntimeOperation(
 	targets []RuntimeCancelTarget,
 	confirmed []RuntimeCancelTarget,
 ) (storesqlite.RuntimeOperation, error) {
+	return h.completeCancelRuntimeOperationWithOutcomes(
+		ctx,
+		operation,
+		owner,
+		runtimeCancelTargetOutcomes(targets, confirmed),
+		len(confirmed) > 0,
+	)
+}
+
+func (h *Host) completeCancelRuntimeOperationWithOutcomes(
+	ctx context.Context,
+	operation storesqlite.RuntimeOperation,
+	owner string,
+	outcomes []storesqlite.CancelRuntimeOperationTargetOutcome,
+	providerConfirmed bool,
+) (storesqlite.RuntimeOperation, error) {
 	completion, _, err := h.operations.CompleteCancelRuntimeOperation(ctx, storesqlite.CompleteCancelRuntimeOperationInput{
 		WorkspaceID: operation.WorkspaceID, OperationID: operation.OperationID, LeaseOwner: owner,
-		TargetOutcomes: runtimeCancelTargetOutcomes(runtimeOperationPayloadText(operation.Payload, "rootAgentSessionId"), targets, confirmed),
+		TargetOutcomes: outcomes,
 		NowUnixMS:      h.now().UnixMilli(),
 	})
 	if err != nil {
 		return operation, err
 	}
 	completion.Operation.Payload = cloneMap(completion.Operation.Payload)
-	completion.Operation.Payload["providerConfirmed"] = len(confirmed) > 0
+	completion.Operation.Payload["providerConfirmed"] = providerConfirmed
 	if err := h.publishRuntimeOperationEvents(ctx, operation.WorkspaceID); err != nil {
 		logRuntimeOperationFailure(completion.Operation, fmt.Errorf("publish completed cancel runtime operation: %w", err))
 	}
@@ -589,21 +636,34 @@ func (h *Host) completeInterruptedCancelRuntimeOperation(
 	return completion.Operation, nil
 }
 
-func runtimeCancelTargetOutcomes(rootAgentSessionID string, targets, confirmed []RuntimeCancelTarget) []storesqlite.CancelRuntimeOperationTargetOutcome {
+func runtimeCancelTargetOutcomes(targets, confirmed []RuntimeCancelTarget) []storesqlite.CancelRuntimeOperationTargetOutcome {
 	confirmedSet := make(map[string]struct{}, len(confirmed))
 	for _, target := range confirmed {
 		confirmedSet[runtimeCancelTargetKey(target)] = struct{}{}
 	}
-	rootAgentSessionID = strings.TrimSpace(rootAgentSessionID)
 	result := make([]storesqlite.CancelRuntimeOperationTargetOutcome, 0, len(targets))
 	for _, target := range targets {
 		outcome := storesqlite.TurnOutcomeInterrupted
-		if strings.TrimSpace(target.AgentSessionID) == rootAgentSessionID {
-			outcome = storesqlite.TurnOutcomeCanceled
-		} else if _, ok := confirmedSet[runtimeCancelTargetKey(target)]; ok {
+		if _, ok := confirmedSet[runtimeCancelTargetKey(target)]; ok {
 			outcome = storesqlite.TurnOutcomeCanceled
 		}
 		result = append(result, storesqlite.CancelRuntimeOperationTargetOutcome{AgentSessionID: strings.TrimSpace(target.AgentSessionID), TurnID: strings.TrimSpace(target.TurnID), Outcome: outcome})
+	}
+	return result
+}
+
+func runtimeCancelTargetUnknownOutcomes(targets []RuntimeCancelTarget) []storesqlite.CancelRuntimeOperationTargetOutcome {
+	const errorCode = "execution_status_unknown"
+	const errorMessage = "provider final status was unavailable after the provider turn state was lost"
+	result := make([]storesqlite.CancelRuntimeOperationTargetOutcome, 0, len(targets))
+	for _, target := range targets {
+		result = append(result, storesqlite.CancelRuntimeOperationTargetOutcome{
+			AgentSessionID: strings.TrimSpace(target.AgentSessionID),
+			TurnID:         strings.TrimSpace(target.TurnID),
+			Outcome:        storesqlite.TurnOutcomeFailed,
+			ErrorCode:      errorCode,
+			ErrorMessage:   errorMessage,
+		})
 	}
 	return result
 }

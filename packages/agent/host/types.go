@@ -549,10 +549,11 @@ type RuntimeCancelTarget struct {
 }
 
 type RuntimeCancelResult struct {
-	AgentSessionID   string
-	Canceled         bool
-	TargetAbsent     bool
-	ConfirmedTargets []RuntimeCancelTarget
+	AgentSessionID    string
+	Canceled          bool
+	TargetAbsent      bool
+	ProviderStateLost bool
+	ConfirmedTargets  []RuntimeCancelTarget
 }
 
 type RuntimeCloseInput struct {

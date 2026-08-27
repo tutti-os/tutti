@@ -179,3 +179,43 @@ func TestCancelDeliveryUnconfirmedDoesNotTreatLaterTargetAbsentAsCanceled(t *tes
 		t.Fatalf("runtime cancel calls=%d, want no third cancellation", runtime.cancelCalls())
 	}
 }
+
+func TestCancelProviderStateLostFailsClosedWithUnknownExecutionStatus(t *testing.T) {
+	store := openGoalFenceHostStore(t)
+	if _, accepted, err := store.RecordTurnTransition(t.Context(), storesqlite.TurnTransition{
+		WorkspaceID: "workspace", AgentSessionID: "session", TurnID: "turn-1",
+		Phase: storesqlite.TurnPhaseRunning, OccurredAtUnixMS: 2,
+	}); err != nil || !accepted {
+		t.Fatalf("seed running turn: accepted=%v err=%v", accepted, err)
+	}
+
+	runtime := &unconfirmedCancelRuntime{
+		session: storesqliteProviderRuntimeSession("workspace", "session"),
+		responses: []cancelRuntimeResponse{{result: agenthost.RuntimeCancelResult{
+			AgentSessionID: "session", ProviderStateLost: true,
+		}}},
+	}
+	host := agenthost.New(agenthost.Config{
+		CanonicalStore: sqliteCanonicalStore{Store: store}, Runtime: runtime,
+		RuntimeOperations: store, OperationOwner: "cancel-provider-state-lost-test",
+	})
+
+	result, err := host.CancelTurn(t.Context(), agenthost.CancelTurnInput{
+		WorkspaceID: "workspace", AgentSessionID: "session", TurnID: "turn-1", Reason: "user_requested",
+	})
+	if err != nil || !result.Settled || result.Outcome != storesqlite.TurnOutcomeFailed {
+		t.Fatalf("cancel result=%#v err=%v, want settled failed turn", result, err)
+	}
+	turn, found, err := store.GetTurn(t.Context(), "workspace", "session", "turn-1")
+	if err != nil || !found || turn.Phase != storesqlite.TurnPhaseSettled ||
+		turn.Outcome != storesqlite.TurnOutcomeFailed || turn.ErrorCode != "execution_status_unknown" {
+		t.Fatalf("canonical turn=%#v found=%v err=%v", turn, found, err)
+	}
+}
+
+func storesqliteProviderRuntimeSession(workspaceID, sessionID string) agenthost.ProviderRuntimeSession {
+	return agenthost.ProviderRuntimeSession{
+		ID: sessionID, WorkspaceID: workspaceID, Provider: "claude-code",
+		ProviderSessionID: "provider-session-1",
+	}
+}

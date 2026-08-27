@@ -21,6 +21,7 @@ var (
 	ErrInteractiveAlreadyAnswered    = errors.New("interactive request has already been answered")
 	ErrInteractiveResponseInvalid    = errors.New("interactive response is invalid")
 	ErrSessionNoActiveTurn           = errors.New("agent session has no active turn")
+	ErrProviderStateLost             = errors.New("agent provider state was lost")
 	ErrCancelTargetMismatch          = errors.New("agent cancellation target is no longer active")
 	ErrActiveTurnTargetRequired      = errors.New("active-turn guidance requires an exact target turn")
 	ErrActiveTurnTargetMismatch      = errors.New("active-turn guidance target is no longer active")

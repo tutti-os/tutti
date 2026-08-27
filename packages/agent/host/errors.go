@@ -24,6 +24,7 @@ var (
 	// the one it stopped. Host keeps the durable cancel operation retryable and
 	// waits for canonical terminal evidence instead of fabricating a terminal.
 	ErrRuntimeCancelDeliveryUnconfirmed   = errors.New("agent runtime cancellation delivery is unconfirmed")
+	ErrRuntimeProviderStateLost           = errors.New("agent provider state was lost")
 	ErrRuntimeSessionActive               = errors.New("agent runtime session has an active turn")
 	ErrRuntimeSessionReprepareUnavailable = errors.New("agent runtime session reprepare is unavailable")
 	ErrRuntimeContextConflict             = errors.New("agent runtime context changed before rebind commit")
