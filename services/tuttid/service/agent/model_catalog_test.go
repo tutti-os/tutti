@@ -14,6 +14,7 @@ import (
 
 	"github.com/gofrs/flock"
 	agentstatusservice "github.com/tutti-os/tutti/services/tuttid/service/agentstatus"
+	tuttiagentservice "github.com/tutti-os/tutti/services/tuttid/service/tuttiagent"
 )
 
 func writeCodexModelCatalogConfig(t *testing.T, contents string) {
@@ -470,7 +471,11 @@ func TestDefaultTuttiAgentModelListerUsesTuttiHomeAndClearsCodexHome(t *testing.
 		t.Fatal(err)
 	}
 
-	lister := defaultTuttiAgentModelLister("tutti-agent", nil)
+	lister := defaultTuttiAgentModelLister(
+		"tutti-agent",
+		nil,
+		nil,
+	)
 	env, err := lister.PrepareEnv(t.Context(), []string{
 		"TUTTI_AGENT_HOME=" + filepath.Join(home, "ignored-agent-home"),
 		"CODEX_HOME=" + filepath.Join(home, "codex-home"),
@@ -574,7 +579,11 @@ func TestDefaultTuttiAgentModelListerBootstrapsExpiredTuttiAgentAuth(t *testing.
 	t.Setenv("TUTTI_AGENT_LOGIN_CAPTURE", capturePath)
 	installFakeTuttiAgentModelListBinary(t)
 
-	lister := defaultTuttiAgentModelLister("tutti-agent", nil)
+	lister := defaultTuttiAgentModelLister(
+		"tutti-agent",
+		nil,
+		tuttiagentservice.BootstrapTuttiAgentUserAuth,
+	)
 	if _, err := lister.PrepareEnv(t.Context(), nil); err != nil {
 		t.Fatalf("PrepareEnv() error = %v", err)
 	}
@@ -618,7 +627,7 @@ func TestPrepareTuttiAgentModelListEnvRefreshesStaleCatalogAuth(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := prepareTuttiAgentModelListEnv(t.Context(), nil); err != nil {
+	if _, err := prepareTuttiAgentModelListEnv(t.Context(), nil, nil); err != nil {
 		t.Fatalf("prepareTuttiAgentModelListEnv() error = %v", err)
 	}
 	got, err := os.ReadFile(filepath.Join(catalogHome, "auth.json"))
@@ -682,7 +691,7 @@ done
 			Env:     []string{"PATH=" + nodeBinDir + string(os.PathListSeparator) + binDir},
 		},
 	}
-	lister := defaultTuttiAgentModelLister("tutti-agent", resolver)
+	lister := defaultTuttiAgentModelLister("tutti-agent", resolver, nil)
 	lister.Environ = func() []string {
 		// The daemon environment deliberately finds the npm launcher but not
 		// Node. The provider resolver must inject Tutti's managed Node runtime.
@@ -736,7 +745,11 @@ func TestPrepareTuttiAgentModelListEnvHonorsCancellationWhileAuthLocked(t *testi
 	ctx, cancel := context.WithTimeout(t.Context(), 100*time.Millisecond)
 	defer cancel()
 	startedAt := time.Now()
-	if _, err := prepareTuttiAgentModelListEnv(ctx, nil); err != nil {
+	if _, err := prepareTuttiAgentModelListEnv(
+		ctx,
+		nil,
+		tuttiagentservice.BootstrapTuttiAgentUserAuth,
+	); err != nil {
 		t.Fatalf("prepareTuttiAgentModelListEnv() error = %v", err)
 	}
 	if !errors.Is(ctx.Err(), context.DeadlineExceeded) {

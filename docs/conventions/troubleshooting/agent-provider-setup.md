@@ -4,6 +4,47 @@
 
 Provider discovery, installation, authentication, models, configuration, and runtime reachability.
 
+### Tutti Agent browser login succeeds but the desktop remains on the login screen
+
+- Symptom:
+  Tutti account state is already visible in the desktop header and the browser
+  login flow returns successfully, but the Tutti Agent surface does not react.
+  Daemon logs show the token issue request succeeding, followed by
+  `tutti-agent login --with-tutti-llm-tokens` failing because `node` cannot be
+  found.
+- Quick checks:
+  Compare the auth subprocess logs with the provider command resolution. A
+  packaged npm launcher commonly starts with `#!/usr/bin/env node`; therefore
+  finding the launcher binary is not enough. Check the resolved auth-command
+  event for `managed_node_configured=true` and `managed_node_on_path=true`, then
+  correlate it with the login process start and completion events. Never print
+  token payloads while diagnosing this path.
+- Root cause:
+  Tutti Agent sessions, status probes, and model discovery resolve the provider
+  command through Tutti's managed-runtime resolver, which adds the bundled Node
+  directory to the child environment. The dedicated auth bootstrap previously
+  reused only a binary path and launched it with the daemon's ambient
+  environment. On machines without a compatible system Node, `/usr/bin/env`
+  could not execute the npm launcher even though the Rust program behind that
+  launcher and the browser login itself were healthy.
+- Fix:
+  Resolve the provider command and full managed-runtime environment at each
+  auth entrypoint, then pass that same environment to the login subprocess.
+  Keep the canonical Tutti Agent auth-home overrides authoritative. Do not
+  special-case a guessed Node path or copy only `TUTTI_APP_NODE`: npm launchers
+  consume `PATH`, and the shared resolver owns its construction.
+- Validation:
+  Remove system Node from `PATH`, retain only Tutti's managed Node in the
+  provider resolution, and execute an npm-style `/usr/bin/env node` launcher.
+  Verify browser callback, model discovery, and session preparation all create
+  ready auth material and leave the UI. Repeat provider command/environment
+  resolution tests on Windows; on macOS/Linux retain an executable shebang
+  integration test.
+- References:
+  [auth_bootstrapper.go](../../../services/tuttid/service/tuttiagent/auth_bootstrapper.go)
+  [service.go](../../../services/tuttid/service/tuttiagent/service.go)
+  [wiring_daemon_api.go](../../../services/tuttid/wiring_daemon_api.go)
+
 ### A cold Agent Extension handoff fails at `acp session/new timed out after 30s`
 
 - Symptom:

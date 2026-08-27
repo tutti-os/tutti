@@ -216,6 +216,7 @@ func buildDaemonAPI(
 		CodexRuntimeSelectionStore: agentProviderRuntimeSelectionStore,
 		UserPathAdapter:            agentstatusservice.NewUserPathAdapter(),
 	})
+	tuttiAgentAuth := tuttiagentservice.NewAuthBootstrapper(&agentStatusService)
 	agentTargetAccountUsage.ProbeLocal = func(ctx context.Context, provider string) agentextensionservice.AccountUsageResult {
 		probed := agentStatusService.ProbeProviderAccountUsage(ctx, provider)
 		result := agentextensionservice.AccountUsageResult{
@@ -301,7 +302,10 @@ func buildDaemonAPI(
 	if err := registerDaemonCodexPreparer(agentRuntimePreparer, tuttitypes.DefaultStateDir(), userHome); err != nil {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, err
 	}
-	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(tuttitypes.DefaultStateDir()))
+	agentRuntimePreparer.RegisterProvider(tuttiagentservice.NewPreparer(
+		tuttitypes.DefaultStateDir(),
+		tuttiAgentAuth.Bootstrap,
+	))
 	configureAgentRuntimeAvailability(agentRuntimePreparer, browserService, computerService)
 	userProjectService := userprojectservice.Service{
 		Store:     userProjectStore,
@@ -320,6 +324,7 @@ func buildDaemonAPI(
 	)
 	agentModelCatalog.ModelCapabilities = agentModelCapabilities
 	agentModelCatalog.ProviderCommands = &agentStatusService
+	agentModelCatalog.TuttiAgentAuthBootstrap = tuttiAgentAuth.BootstrapUserAuth
 	agentSessionPurgeStore, ok := agentActivityRepo.(agenthost.SessionPurgeStore)
 	if !ok {
 		return tuttiapi.DaemonAPI{}, nil, nil, nil, fmt.Errorf("agent session purge store is unavailable")
@@ -813,6 +818,7 @@ func buildDaemonAPI(
 	terminalService.RTKExecutableResolver = rtkExecutableResolver
 	tuttiAgentReadiness := configureReplayAwareTuttiAgentReadiness(
 		replayComposition, accountService, &agentStatusService, agentTargets,
+		tuttiAgentAuth.BootstrapUserAuth,
 	)
 
 	providerAuthWatcher := startAgentModelInvalidationAuthWatcher(

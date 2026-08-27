@@ -137,7 +137,11 @@ func agentModelCatalogSpecFromDescriptor(descriptor providerregistry.ProviderDes
 				if c.TuttiAgent != nil {
 					return c.TuttiAgent
 				}
-				lister := defaultTuttiAgentModelLister(descriptor.Identity.ID, c.ProviderCommands)
+				lister := defaultTuttiAgentModelLister(
+					descriptor.Identity.ID,
+					c.ProviderCommands,
+					c.TuttiAgentAuthBootstrap,
+				)
 				lister.Session = c.codexSession(descriptor.Identity.ID, lister)
 				return lister
 			},

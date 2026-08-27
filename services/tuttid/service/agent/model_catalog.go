@@ -59,12 +59,13 @@ type AgentModelLister interface {
 }
 
 type CachedAgentModelCatalog struct {
-	Codex             AgentModelLister
-	TuttiAgent        AgentModelLister
-	OpenCode          AgentModelLister
-	ModelCapabilities ModelCapabilitiesResolver
-	ProviderCommands  ProviderCommandResolver
-	Now               func() time.Time
+	Codex                   AgentModelLister
+	TuttiAgent              AgentModelLister
+	OpenCode                AgentModelLister
+	ModelCapabilities       ModelCapabilitiesResolver
+	ProviderCommands        ProviderCommandResolver
+	TuttiAgentAuthBootstrap func(context.Context)
+	Now                     func() time.Time
 	// PersistentPath is configured by the daemon composition root. Keeping the
 	// path injectable leaves unit tests in-memory and avoids coupling them to a
 	// developer's real provider cache.
@@ -425,21 +426,33 @@ func modelCatalogFetchTimeoutForSpec(spec agentModelCatalogSpec) time.Duration {
 	return modelCatalogFetchTimeout
 }
 
-func defaultTuttiAgentModelLister(provider string, providerCommands ProviderCommandResolver) CodexCLIModelLister {
+func defaultTuttiAgentModelLister(
+	provider string,
+	providerCommands ProviderCommandResolver,
+	bootstrapAuth func(context.Context),
+) CodexCLIModelLister {
 	return CodexCLIModelLister{
 		Command:          "tutti-agent",
 		ClientName:       "tutti_agent",
 		Provider:         provider,
 		ProviderCommands: providerCommands,
-		PrepareEnv:       prepareTuttiAgentModelListEnv,
+		PrepareEnv: func(ctx context.Context, env []string) ([]string, error) {
+			return prepareTuttiAgentModelListEnv(ctx, env, bootstrapAuth)
+		},
 	}
 }
 
-func prepareTuttiAgentModelListEnv(ctx context.Context, env []string) ([]string, error) {
+func prepareTuttiAgentModelListEnv(
+	ctx context.Context,
+	env []string,
+	bootstrapAuth func(context.Context),
+) ([]string, error) {
 	env = append([]string(nil), env...)
 	env = withoutEnvKeys(env, "TUTTI_AGENT_HOME", "CODEX_HOME")
 	tuttiAgentHome := filepath.Join(tuttitypes.DefaultStateDir(), "agent-model-catalog", "tutti-agent-home")
-	tuttiagentservice.BootstrapTuttiAgentUserAuth(ctx)
+	if bootstrapAuth != nil {
+		bootstrapAuth(ctx)
+	}
 	if err := refreshTuttiAgentModelCatalogAuth(tuttiAgentHome); err != nil {
 		return nil, err
 	}
