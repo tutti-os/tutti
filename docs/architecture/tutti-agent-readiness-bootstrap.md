@@ -98,6 +98,14 @@ Desktop account auth and provider auth are related but distinct:
 - the daemon exchanges that session for a `tutti_llm` token bundle;
 - `tutti-agent login --with-tutti-llm-tokens` writes the provider auth marker.
 
+Before launching the login command, the daemon creates the canonical provider
+auth home when it is missing, then sets `TUTTI_AGENT_HOME` to that existing
+directory and clears an inherited `CODEX_HOME`. This ordering is required
+because Tutti Agent accepts an absent default home but requires an explicitly
+configured home to exist before configuration loading. Auth-home creation logs
+only the structured action and reason; login failures may include bounded CLI
+diagnostics after access and refresh tokens are redacted.
+
 The daemon wires account lifecycle callbacks at startup:
 
 ```text
@@ -187,6 +195,8 @@ The durable test surface covers:
   reconciliation, shared refresh-lock serialization, and explicit logout
   cleanup and revocation;
 - desktop routing of Tutti Agent login actions to the account service.
+- canonical auth-home preparation before an explicitly scoped login command,
+  including Windows and POSIX path handling and token-redacted diagnostics.
 
 Related documents:
 

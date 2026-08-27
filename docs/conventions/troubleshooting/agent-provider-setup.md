@@ -709,6 +709,37 @@ file or directory`. A failed `codex app-server` probe is diagnostic evidence,
   [service.go](../../../services/tuttid/service/tuttiagent/service.go)
   [tutti-agent-readiness-bootstrap.md](../../architecture/tutti-agent-readiness-bootstrap.md)
 
+### Tutti Agent stays on login while the desktop account is signed in
+
+- Symptom:
+  The desktop account avatar is present, but Tutti Agent remains
+  `auth_required`. Repeated bootstrap attempts log
+  `stage=login`, while the Account service successfully issues and then
+  compensates the short-lived LLM token.
+- Root cause:
+  Desktop Account auth and provider auth are separate. The daemon scopes the
+  provider login subprocess to the canonical user `TUTTI_AGENT_HOME`. Tutti
+  Agent requires an explicitly configured home to exist during configuration
+  loading, even though its later credential writer can create the default home.
+  Passing a missing explicit directory therefore used to fail before the
+  writer ran.
+- Fix:
+  Create the canonical provider auth home before launching
+  `tutti-agent login --with-tutti-llm-tokens`. Keep the explicit environment
+  override so session-scoped homes cannot capture durable user credentials.
+  Log auth-home creation without the local path, and include only bounded,
+  access-token- and refresh-token-redacted CLI diagnostics on login failure.
+- Validation:
+  Run the `service/tuttiagent` tests covering
+  `RunTuttiAgentTokenLoginPreparesCanonicalAuthHomeBeforeLaunch`,
+  `PrepareTuttiAgentAuthHomeRejectsFile`, and
+  `SanitizeTuttiAgentLoginOutputRedactsTokensAndTruncates`. Confirm a clean user
+  home gains `.tutti-agent/auth.json`, provider status changes from
+  `auth_required` to `ready`, and no token value appears in daemon logs.
+- References:
+  [service.go](../../../services/tuttid/service/tuttiagent/service.go)
+  [tutti-agent-readiness-bootstrap.md](../../architecture/tutti-agent-readiness-bootstrap.md)
+
 ### Agent sandbox cannot reach local daemon
 
 - Symptom:

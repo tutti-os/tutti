@@ -19,6 +19,7 @@ Provider discovery, installation, authentication, models, configuration, and run
 - [Tutti Agent npm install misses the platform package](./agent-provider-setup.md#tutti-agent-npm-install-misses-the-platform-package)
 - [Managed npm install fails before reaching every registry](./agent-provider-setup.md#managed-npm-install-fails-before-reaching-every-registry)
 - [Tutti Agent unexpectedly loses login after a host auth read failure](./agent-provider-setup.md#tutti-agent-unexpectedly-loses-login-after-a-host-auth-read-failure)
+- [Tutti Agent stays on login while the desktop account is signed in](./agent-provider-setup.md#tutti-agent-stays-on-login-while-the-desktop-account-is-signed-in)
 - [Agent sandbox cannot reach local daemon](./agent-provider-setup.md#agent-sandbox-cannot-reach-local-daemon)
 - [Codex provider install fails with missing npm](./agent-provider-setup.md#codex-provider-install-fails-with-missing-npm)
 - [Codex ACP warns about user-level config as project-local config](./agent-provider-setup.md#codex-acp-warns-about-user-level-config-as-project-local-config)
