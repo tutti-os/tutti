@@ -1,7 +1,7 @@
 <div align="center">
 
 <a href="https://tutti.sh/zh?tc=25q">
-  <img src="docs/assets/tutti-vm-website.jpg" alt="Tutti VM 官网——多人、多 Agent 实时协作空间" width="100%" />
+  <img src="docs/assets/zh/tutti-vm-website.png" alt="Tutti VM 官网——多人、多 Agent 实时协作空间" width="100%" />
 </a>
 
 **[前往官网了解 Tutti · VM →](https://tutti.sh/zh?tc=25q)**
