@@ -463,13 +463,19 @@ func TestMigratedClaudeCodeDescriptorIsComplete(t *testing.T) {
 		descriptor.Status.AuthStatusCommandTimeoutSeconds != 600 {
 		t.Fatalf("target/status = %#v / %#v", descriptor.Target, descriptor.Status)
 	}
-	if descriptor.Status.RemoteAuthProbe.Kind != "" ||
-		descriptor.Status.RemoteAuthProbe.CredentialKind != "" ||
-		descriptor.Status.RemoteAuthProbe.Endpoint != "" ||
-		descriptor.Status.RemoteAuthProbe.Method != "" ||
-		len(descriptor.Status.RemoteAuthProbe.Headers) != 0 ||
-		descriptor.Status.RemoteAuthProbe.TimeoutSeconds != 0 {
-		t.Fatalf("remote auth probe = %#v", descriptor.Status.RemoteAuthProbe)
+	probe := descriptor.Status.RemoteAuthProbe
+	if probe.Kind != RemoteAuthProbeKindHTTPBearer ||
+		probe.CredentialKind != RemoteAuthCredentialKindClaudeOAuth ||
+		probe.Endpoint != "https://api.anthropic.com/api/oauth/usage" ||
+		probe.Method != "GET" ||
+		probe.TimeoutSeconds != 10 ||
+		probe.Headers["Accept"] != "application/json" ||
+		probe.Headers["anthropic-beta"] != "oauth-2025-04-20" ||
+		probe.Headers["User-Agent"] != "claude-code/2.1.0" {
+		t.Fatalf("remote auth probe = %#v", probe)
+	}
+	if !descriptor.Desktop.AuthProbeAfterCredentialSync {
+		t.Fatal("Claude auth probe must run after credential synchronization")
 	}
 	if !descriptor.ComposerProfile.Behavior.ModelOptionsAuthoritative ||
 		!descriptor.ComposerProfile.Behavior.RefreshModelOptionsAfterSettings ||
