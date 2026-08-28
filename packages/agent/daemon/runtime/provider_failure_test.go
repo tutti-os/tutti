@@ -28,10 +28,13 @@ func TestClaudeProviderFailureClassification(t *testing.T) {
 		name       string
 		code       string
 		status     int64
+		message    string
 		wantCode   string
 		wantImpact string
 	}{
 		{name: "auth", code: "authentication_failed", status: 401, wantCode: "auth_required", wantImpact: providerFailureAuthRequired},
+		{name: "insufficient account balance", code: "authentication_failed", status: 403, message: "Failed to authenticate. API Error: 403 Insufficient account balance", wantCode: FailureCodeInsufficientCredits, wantImpact: providerFailureAuthNone},
+		{name: "forbidden authentication error", code: "authentication_failed", status: 403, message: "Failed to authenticate. API Error: 403 Forbidden", wantCode: "provider_error", wantImpact: providerFailureAuthNone},
 		{name: "org", code: "oauth_org_not_allowed", status: 403, wantCode: "account_not_allowed", wantImpact: providerFailureAuthNone},
 		{name: "specific org beats status", code: "oauth_org_not_allowed", status: 401, wantCode: "account_not_allowed", wantImpact: providerFailureAuthNone},
 		{name: "billing", code: "billing_error", status: 402, wantCode: "billing_error", wantImpact: providerFailureAuthNone},
@@ -43,7 +46,7 @@ func TestClaudeProviderFailureClassification(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			payload := map[string]any{"code": test.code, "error": "upstream detail"}
+			payload := map[string]any{"code": test.code, "error": firstNonEmptyString(test.message, "upstream detail")}
 			if test.status != 0 {
 				payload["apiErrorStatus"] = test.status
 			}

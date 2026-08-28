@@ -78,7 +78,13 @@ func claudeProviderFailure(payload map[string]any) ProviderFailure {
 	}
 	switch providerCode {
 	case "authentication_failed":
-		failure.Code, failure.AuthImpact, failure.AuthReason = "auth_required", providerFailureAuthRequired, "authentication_failed"
+		// Claude's SDK also uses this code for some HTTP 403 account failures;
+		// only a real 401 (or a missing status) is an authentication gate.
+		if claudeProviderInsufficientAccountBalance(message) {
+			failure.Code = FailureCodeInsufficientCredits
+		} else if status == nil || *status == 401 {
+			failure.Code, failure.AuthImpact, failure.AuthReason = "auth_required", providerFailureAuthRequired, "authentication_failed"
+		}
 	case "oauth_org_not_allowed":
 		failure.Code = "account_not_allowed"
 	case "billing_error":
@@ -114,6 +120,10 @@ func claudeProviderFailure(payload map[string]any) ProviderFailure {
 		}
 	}
 	return failure
+}
+
+func claudeProviderInsufficientAccountBalance(message string) bool {
+	return strings.Contains(strings.ToLower(message), "insufficient account balance")
 }
 
 func failureFromACPCall(err *acpCallError) ProviderFailure {
