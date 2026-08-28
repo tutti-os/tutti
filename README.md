@@ -1,10 +1,16 @@
 <div align="center">
 
-<img src="docs/assets/banner.jpg" alt="Tutti" width="100%" />
+<a href="https://tutti.sh/en?tc=25q">
+  <img src="docs/assets/tutti-vm-website.jpg" alt="Tutti VM official website — a multi-user, multi-agent, real-time collaboration space" width="100%" />
+</a>
+
+**[Explore Tutti · VM on the official website →](https://tutti.sh/en?tc=25q)**
 
 **Where people and agents build in tune.**
 
-[Tutti · VM Website](https://tutti.sh/en?tc=25q) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+The first multi-user, multi-agent, real-time collaboration space.
+
+[Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
@@ -14,18 +20,6 @@
 </div>
 
 ---
-
-<a href="https://tutti.sh/en?tc=25q">
-  <img src="docs/assets/tutti-vm-website.jpg" alt="Tutti VM official website — a multi-user, multi-agent, real-time collaboration space" width="100%" />
-</a>
-
-<div align="center">
-
-**[Explore Tutti · VM on the official website →](https://tutti.sh/en?tc=25q)**
-
-The first multi-user, multi-agent, real-time collaboration space.
-
-</div>
 
 ## Two Versions of Tutti
 

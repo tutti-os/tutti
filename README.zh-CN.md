@@ -1,10 +1,16 @@
 <div align="center">
 
-<img src="docs/assets/banner.jpg" alt="Tutti" width="100%" />
+<a href="https://tutti.sh/zh?tc=25q">
+  <img src="docs/assets/tutti-vm-website.jpg" alt="Tutti VM 官网——多人、多 Agent 实时协作空间" width="100%" />
+</a>
+
+**[前往官网了解 Tutti · VM →](https://tutti.sh/zh?tc=25q)**
 
 **人与 Agent「同频」协作的地方。**
 
-[Tutti · VM 官网](https://tutti.sh/zh?tc=25q) · [文档](docs/README.md) · [参与贡献](CONTRIBUTING.zh-CN.md)
+行业首个「实况级」多人、多 Agent 并行协作空间
+
+[文档](docs/README.md) · [参与贡献](CONTRIBUTING.zh-CN.md)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
@@ -14,18 +20,6 @@
 </div>
 
 ---
-
-<a href="https://tutti.sh/zh?tc=25q">
-  <img src="docs/assets/tutti-vm-website.jpg" alt="Tutti VM 官网——多人、多 Agent 实时协作空间" width="100%" />
-</a>
-
-<div align="center">
-
-**[前往官网了解 Tutti · VM →](https://tutti.sh/zh?tc=25q)**
-
-行业首个「实况级」多人、多 Agent 并行协作空间
-
-</div>
 
 ## Tutti 的两个版本
 
