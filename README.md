@@ -4,16 +4,37 @@
 
 **Where people and agents build in tune.**
 
-[Website](https://tutti.sh/?tc=25q) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
+[Tutti · VM Website](https://tutti.sh/en?tc=25q) · [Documentation](docs/README.md) · [Contributing](CONTRIBUTING.md)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/website-tutti.sh-black.svg)](https://tutti.sh/?tc=25q)
+[![Website](https://img.shields.io/badge/website-tutti.sh-black.svg)](https://tutti.sh/en?tc=25q)
 
 </div>
 
 ---
+
+<a href="https://tutti.sh/en?tc=25q">
+  <img src="docs/assets/tutti-vm-website.jpg" alt="Tutti VM official website — a multi-user, multi-agent, real-time collaboration space" width="100%" />
+</a>
+
+<div align="center">
+
+**[Explore Tutti · VM on the official website →](https://tutti.sh/en?tc=25q)**
+
+The first multi-user, multi-agent, real-time collaboration space.
+
+</div>
+
+## Two versions of Tutti
+
+|                   | Tutti · Open-source                                             | Tutti · VM                                                                                                                              |
+| ----------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| **Best for**      | You and your own agents                                         | Multiple people, devices, and agents                                                                                                    |
+| **Working state** | Stays on your local machine                                     | Your agents stay local while the Room shares working state in real time                                                                 |
+| **Collaboration** | Context, apps, outputs, and tasks shared across your own agents | Everything in the open-source version, plus group chat, simultaneous editing, agent borrowing, cross-device work, and no-deploy sharing |
+| **Access**        | Free and open source                                            | Free during Early Access; only creating a Room requires an invite code                                                                  |
 
 If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send a PR.
 
@@ -21,9 +42,9 @@ Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6
 
 **Tutti is now open-source.**
 
-**Tutti · VM is on the way. If you're interested, join the waitlist on our site:**
+**Tutti · VM is available during Early Access. Only creating a Room requires an invite code:**
 
-**[tutti.sh →](https://tutti.sh/?tc=25q)**
+**[Explore and download Tutti · VM →](https://tutti.sh/en?tc=25q#versions)**
 
 ## Quick Start
 
@@ -31,9 +52,9 @@ Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6
 
 [Download Tutti · Local for Windows (x64)](https://tutti.sh/desktop/download?platform=windows&arch=x64&format=exe)
 
-<!-- TODO: waitlist link for Tutti · VM -->
+[Download Tutti · VM for macOS or Windows](https://tutti.sh/en?tc=25q#versions)
 
-Join the [Tutti · VM waitlist](https://tutti.sh/waitlist).
+Creating a Room requires an [invite code](https://tutti.sh/en/waitlist); downloading Tutti · VM or joining someone else's Room does not.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
@@ -162,12 +183,12 @@ Connect the agent subscriptions you already have. Every app and agent runs on to
 
 ## Tutti vs Tutti · VM
 
-|                   | Tutti (open source)                                                                                                        | Tutti · VM (coming soon)                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Best for**      | One person, multiple agents                                                                                                | One person, multiple agents<br>One person, multiple devices<br>Two or more people, each with their own agents                                                                                                                                                                                                                                                                       |
-| **Runs on**       | Agents run locally, and the working state stays local                                                                      | Multi-layer virtualization virtualizes your local agent into a real-time shared cloud workspace.<br><br>The agent still runs locally while its working state lives in the cloud in real time: what's being discussed, what's running, and what's already been created. This enables cross-device, multi-user collaboration among agents, with no context loss, like a shared brain. |
-| **Shares**        | Context, apps, outputs, tasks, and running state across multiple agents                                                    | Everything in the local version, plus sharing across multiple people and devices                                                                                                                                                                                                                                                                                                    |
-| **Subscriptions** | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code, Codex, and Hermes; OpenClaw is in development.) | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code, Codex, and Hermes; OpenClaw is in development.)                                                                                                                                                                                                                                                          |
+|                   | Tutti (open source)                                                                                                        | Tutti · VM (Early Access)                                                                                                                                                                                                                                                                                           |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Best for**      | One person, multiple agents                                                                                                | One person, multiple agents<br>One person, multiple devices<br>Two or more people, each with their own agents                                                                                                                                                                                                       |
+| **Runs on**       | Agents run locally, and the working state stays local                                                                      | Each agent runs on your own machine inside a managed local VM, while the Room shares working state in the cloud in real time: what's being discussed, what's running, and what's already been created. This enables cross-device, multi-user collaboration among agents, with no context loss, like a shared brain. |
+| **Shares**        | Context, apps, outputs, tasks, and running state across multiple agents                                                    | Everything in the local version, plus sharing across multiple people and devices                                                                                                                                                                                                                                    |
+| **Subscriptions** | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code, Codex, and Hermes; OpenClaw is in development.) | Your own Claude, Codex, and other subscriptions<br>(Currently Claude Code, Codex, and Hermes; OpenClaw is in development.)                                                                                                                                                                                          |
 
 ### What can you do with Tutti?
 
@@ -205,7 +226,7 @@ Tutti first solves collaboration between you and your agents.
 
 Tutti · VM solves the next layer: when work moves outward, how different people, different devices, and each person's agents can stay in the same real-time shared space. In other words, multi-user agent-to-agent collaboration.
 
-Using multi-layer virtualization technology, Tutti · VM virtualizes your local agent into a real-time shared cloud workspace.
+Tutti · VM runs each agent on its owner's machine inside a managed local VM and connects it to a real-time shared cloud workspace.
 
 Here, the agent still runs locally, using your own subscriptions and configurations. But its working state lives in the cloud: what is being discussed, what is being worked on, and what has already been created all stay in the same Room. Websites, images, documents, and decks no longer need to be uploaded or downloaded. Just share them with a link.
 
