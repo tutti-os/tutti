@@ -1,7 +1,7 @@
 <div align="center">
 
 <a href="https://tutti.sh/en?tc=25q">
-  <img src="docs/assets/tutti-vm-website.jpg" alt="Tutti VM official website — a multi-user, multi-agent, real-time collaboration space" width="100%" />
+  <img src="docs/assets/en/tutti-vm-website.png" alt="Tutti VM official website — a multi-user, multi-agent, real-time collaboration space" width="100%" />
 </a>
 
 **[Explore Tutti · VM on the official website →](https://tutti.sh/en?tc=25q)**
