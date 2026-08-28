@@ -27,9 +27,23 @@ The first multi-user, multi-agent, real-time collaboration space.
 
 </div>
 
-<a href="https://tutti.sh/en?tc=25q#versions">
-  <img src="docs/assets/en/tutti-versions.png" alt="Two versions of Tutti: Tutti Open-source and Tutti VM" width="100%" />
-</a>
+## Two Versions of Tutti
+
+| Capability                        | Tutti · Open-source                                                 | Tutti · VM                                                             |
+| --------------------------------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Connect existing agents           | ✅                                                                  | ✅                                                                     |
+| Use existing subscription credits | ✅                                                                  | ✅                                                                     |
+| Built-in Apps                     | ✅                                                                  | ✅                                                                     |
+| Group chat                        | —                                                                   | ✅                                                                     |
+| Work with others                  | —                                                                   | ✅                                                                     |
+| Work with others' agents          | —                                                                   | ✅                                                                     |
+| Simultaneous editing              | —                                                                   | ✅                                                                     |
+| Agent borrowing                   | —                                                                   | ✅                                                                     |
+| Across devices                    | —                                                                   | ✅                                                                     |
+| No-deploy sharing                 | —                                                                   | ✅                                                                     |
+| Big @                             | Across your own agents                                              | Across others' agents                                                  |
+| Download                          | [Download Tutti · Open-source](https://tutti.sh/en?tc=25q#versions) | [Download Tutti · VM](https://tutti.sh/en?tc=25q#versions)             |
+| Entry                             | [Straight to GitHub →](https://github.com/tutti-os/tutti)           | [Creating a Room takes an invite code →](https://tutti.sh/en/waitlist) |
 
 If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send a PR.
 

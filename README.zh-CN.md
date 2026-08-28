@@ -27,9 +27,23 @@
 
 </div>
 
-<a href="https://tutti.sh/zh?tc=25q#versions">
-  <img src="docs/assets/zh/tutti-versions.jpg" alt="Tutti 的两个版本：Tutti 开源版与 Tutti VM" width="100%" />
-</a>
+## Tutti 的两个版本
+
+| 功能                | Tutti · 开源版                                             | Tutti · VM                                             |
+| ------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
+| 连接已有的 Agent    | ✅                                                         | ✅                                                     |
+| 使用已有订阅额度    | ✅                                                         | ✅                                                     |
+| 内置应用            | ✅                                                         | ✅                                                     |
+| 群聊                | —                                                          | ✅                                                     |
+| 与他人协作          | —                                                          | ✅                                                     |
+| 与他人的 Agent 协作 | —                                                          | ✅                                                     |
+| 同时编辑            | —                                                          | ✅                                                     |
+| 借用 Agent          | —                                                          | ✅                                                     |
+| 跨设备              | —                                                          | ✅                                                     |
+| 免部署分享          | —                                                          | ✅                                                     |
+| Big @               | 跨自己的 Agent                                             | 跨他人的 Agent                                         |
+| 下载                | [下载 Tutti · 开源版](https://tutti.sh/zh?tc=25q#versions) | [下载 Tutti · VM](https://tutti.sh/zh?tc=25q#versions) |
+| 入口                | [直接前往 GitHub →](https://github.com/tutti-os/tutti)     | [创建房间需要邀请码 →](https://tutti.sh/zh/waitlist)   |
 
 如果你喜欢 Tutti，欢迎给我们一个 Star，或者 Fork 仓库、提交 Issue、发起 PR。
 
