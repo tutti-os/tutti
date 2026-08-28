@@ -27,14 +27,9 @@ The first multi-user, multi-agent, real-time collaboration space.
 
 </div>
 
-## Two versions of Tutti
-
-|                   | Tutti · Open-source                                             | Tutti · VM                                                                                                                              |
-| ----------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| **Best for**      | You and your own agents                                         | Multiple people, devices, and agents                                                                                                    |
-| **Working state** | Stays on your local machine                                     | Your agents stay local while the Room shares working state in real time                                                                 |
-| **Collaboration** | Context, apps, outputs, and tasks shared across your own agents | Everything in the open-source version, plus group chat, simultaneous editing, agent borrowing, cross-device work, and no-deploy sharing |
-| **Access**        | Free and open source                                            | Free during Early Access; only creating a Room requires an invite code                                                                  |
+<a href="https://tutti.sh/en?tc=25q#versions">
+  <img src="docs/assets/en/tutti-versions.png" alt="Two versions of Tutti: Tutti Open-source and Tutti VM" width="100%" />
+</a>
 
 If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send a PR.
 
