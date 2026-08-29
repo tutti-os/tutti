@@ -58,6 +58,7 @@ type ProviderTapeDescriptor struct {
 	GeneratedRequestFields  []ProviderGeneratedRequestField
 	GeneratedIdentityFields []string
 	MatchOnlyIdentityFields []string
+	DefaultReplayCWDMethods []string
 	ExcludeEnvironment      bool
 }
 
@@ -100,6 +101,7 @@ var providerReplayDescriptors = []ProviderReplayDescriptor{
 			GeneratedIdentityFields: []string{
 				"clientUserMessageId",
 			},
+			DefaultReplayCWDMethods: []string{"turn/start"},
 		},
 		PortableRuntime: ProviderPortableRuntimeDescriptor{
 			HomeEnvVars:          []string{"CODEX_HOME"},
@@ -212,6 +214,12 @@ func (d ProviderReplayDescriptor) IsMatchedIdentityField(name string) bool {
 		containsProviderReplayValue(d.Tape.MatchOnlyIdentityFields, name)
 }
 
+// UsesDefaultReplayCWD reports whether a newer Provider client may add the
+// replay workspace as an explicit cwd when an older recording omitted it.
+func (d ProviderReplayDescriptor) UsesDefaultReplayCWD(method string) bool {
+	return containsProviderReplayValue(d.Tape.DefaultReplayCWDMethods, method)
+}
+
 func containsProviderReplayValue(values []string, value string) bool {
 	want := normalizeProviderReplayIdentity(value)
 	for _, candidate := range values {
@@ -241,6 +249,10 @@ func cloneProviderReplayDescriptor(source ProviderReplayDescriptor) ProviderRepl
 	cloned.Tape.MatchOnlyIdentityFields = append(
 		[]string(nil),
 		source.Tape.MatchOnlyIdentityFields...,
+	)
+	cloned.Tape.DefaultReplayCWDMethods = append(
+		[]string(nil),
+		source.Tape.DefaultReplayCWDMethods...,
 	)
 	cloned.PortableRuntime.HomeEnvVars = append(
 		[]string(nil),

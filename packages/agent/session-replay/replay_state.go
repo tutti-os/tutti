@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	pathpkg "path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -362,8 +363,11 @@ func ResolvePortableAgentState(
 	agent TuttiReplayAgent,
 	replayCWD string,
 ) (TuttiReplayAgent, error) {
-	replayCWD = filepath.Clean(strings.TrimSpace(replayCWD))
-	if replayCWD == "." || !filepath.IsAbs(replayCWD) {
+	// replayCWD belongs to the VM's logical POSIX namespace even when the
+	// product daemon runs on Windows. Host filepath semantics would reject
+	// /workspace/... there and would materialize portable paths with backslashes.
+	replayCWD = pathpkg.Clean(strings.TrimSpace(replayCWD))
+	if replayCWD == "." || !pathpkg.IsAbs(replayCWD) {
 		return TuttiReplayAgent{}, errors.New("replay cwd must be absolute")
 	}
 	resolved := agent
@@ -504,12 +508,10 @@ func resolvePortableReplayPath(path, replayCWD string) (string, error) {
 	if !strings.HasPrefix(path, prefix) {
 		return path, nil
 	}
-	relative := filepath.FromSlash(strings.TrimPrefix(path, prefix))
-	resolved := filepath.Clean(filepath.Join(replayCWD, relative))
-	within, err := filepath.Rel(replayCWD, resolved)
-	if err != nil || within == ".." ||
-		strings.HasPrefix(within, ".."+string(filepath.Separator)) ||
-		filepath.IsAbs(within) {
+	relative := strings.TrimPrefix(path, prefix)
+	resolved := pathpkg.Clean(pathpkg.Join(replayCWD, relative))
+	if replayCWD != "/" && resolved != replayCWD &&
+		!strings.HasPrefix(resolved, replayCWD+"/") {
 		return "", errors.New("portable replay path escapes replay cwd")
 	}
 	return resolved, nil
@@ -661,7 +663,7 @@ func projectPortableCommandField(input map[string]any, key string) {
 	}
 	command = strings.TrimSpace(command)
 	executable, arguments, hasArguments := strings.Cut(command, " ")
-	if !filepath.IsAbs(executable) {
+	if !isCrossPlatformAbsolutePath(executable) {
 		return
 	}
 	projected := filepath.Base(executable)
@@ -669,6 +671,25 @@ func projectPortableCommandField(input map[string]any, key string) {
 		projected += " " + arguments
 	}
 	input[key] = projected
+}
+
+// Recorded paths belong to the provider guest and can use POSIX semantics even
+// when cassette validation or projection runs on a Windows host. Also retain
+// host-native recognition for imported Windows recordings.
+func isCrossPlatformAbsolutePath(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	if filepath.IsAbs(value) || pathpkg.IsAbs(strings.ReplaceAll(value, `\`, "/")) {
+		return true
+	}
+	if len(value) >= 3 && ((value[0] >= 'A' && value[0] <= 'Z') ||
+		(value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':' &&
+		(value[2] == '\\' || value[2] == '/') {
+		return true
+	}
+	return strings.HasPrefix(value, `\\`)
 }
 
 func cloneReplayMap(source map[string]any) map[string]any {
@@ -742,7 +763,7 @@ func validateReplayPortableValue(path, key string, value any) error {
 	case string:
 		lowerKey := strings.ToLower(key)
 		if (strings.Contains(lowerKey, "path") || lowerKey == "cwd") &&
-			(filepath.IsAbs(value) || strings.HasPrefix(value, "file://")) {
+			(isCrossPlatformAbsolutePath(value) || strings.HasPrefix(value, "file://")) {
 			return fmt.Errorf("tutti replay state contains absolute path at %s", path)
 		}
 	}

@@ -2,7 +2,6 @@ package sessionreplay
 
 import (
 	"context"
-	"path/filepath"
 	"testing"
 
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
@@ -380,10 +379,7 @@ func TestProjectBindingMatchesNormalizesRailSectionKeySymlinks(t *testing.T) {
 }
 
 func TestProjectBindingReadinessResolvesPortableExpectedState(t *testing.T) {
-	replayCWD, err := filepath.EvalSymlinks(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
-	}
+	replayCWD := "/workspace/agent-session-replay"
 	actual := storesqlite.Session{
 		AgentTargetID:   "local:codex",
 		Provider:        "codex",

@@ -20,6 +20,7 @@ func TestCodexProviderReplayDescriptorDeclaresCompleteAdapter(t *testing.T) {
 		!descriptor.MethodCarriesCredentials("account/login/start") ||
 		!descriptor.IsOptionalProbeMethod("thread/read") ||
 		!descriptor.IsGeneratedIdentityField("clientUserMessageId") ||
+		!descriptor.UsesDefaultReplayCWD("turn/start") ||
 		!descriptor.IsHomeEnvVar("codex_home") ||
 		descriptor.PortableRuntime.SessionHomeDirectory != "codex-home" {
 		t.Fatalf("Codex replay descriptor = %#v", descriptor)
@@ -72,10 +73,12 @@ func TestProviderReplayRegistryReturnsClones(t *testing.T) {
 		t.Fatal("Codex replay descriptor is missing")
 	}
 	descriptor.Tape.CredentialMethods[0] = "changed"
+	descriptor.Tape.DefaultReplayCWDMethods[0] = "changed"
 	descriptor.PortableRuntime.HomeEnvVars[0] = "CHANGED_HOME"
 
 	again, ok := FindProviderReplayByProvider("codex")
 	if !ok || !again.MethodCarriesCredentials("account/login/start") ||
+		!again.UsesDefaultReplayCWD("turn/start") ||
 		!again.IsHomeEnvVar("CODEX_HOME") {
 		t.Fatalf("registry descriptor was mutated: %#v", again)
 	}
