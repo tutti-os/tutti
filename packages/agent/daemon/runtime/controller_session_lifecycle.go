@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	activityshared "github.com/tutti-os/tutti/packages/agent/daemon/activity/events"
@@ -305,10 +306,24 @@ func (c *Controller) Resume(ctx context.Context, input ResumeInput) (Session, er
 		return Session{}, err
 	}
 	session.Status = SessionStatusReady
+	recoveredRuntimeContext := false
+	if stateAdapter, ok := adapter.(StateAdapter); ok {
+		override := stateAdapter.SessionState(session)
+		if override.RuntimeContext != nil {
+			merged := mergeRuntimeContextPatch(session.RuntimeContext, override.RuntimeContext)
+			if !reflect.DeepEqual(merged, session.RuntimeContext) {
+				session.RuntimeContext = merged
+				recoveredRuntimeContext = true
+			}
+		}
+	}
 	c.store(session)
 	c.publishPendingConfigOptionsUpdates(session)
 	if !c.publishPendingCommandSnapshot(session) {
 		c.publishAdapterCommandSnapshot(session, adapter)
+	}
+	if recoveredRuntimeContext {
+		c.enqueueSessionSnapshotReport(ctx, session)
 	}
 	return session, nil
 }

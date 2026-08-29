@@ -4240,7 +4240,9 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   several tools, the used-token count may also jump from the latest iteration's
   value to nearly the sum of every iteration in that turn. A related lifecycle
   symptom is that Claude has rendered its final answer but Agent GUI remains in
-  the working state until a delayed context-usage control request returns.
+  the working state until a delayed context-usage control request returns. The
+  usage footer may also be correct before closing Agent GUI, then disappear
+  after reopening and resuming the same provider Session.
 - Quick checks:
   Trace the provider update first: use
   `agent_session.claude_sdk.usage_update` for Claude SDK and
@@ -4262,7 +4264,11 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   context occupancy. For a stuck working indicator, compare the Claude SDK
   `result` lifecycle timestamp with the later `context_window` usage update and
   `turn_completed`; a long result-to-completion gap isolates telemetry on the
-  terminal path rather than unfinished provider work.
+  terminal path rather than unfinished provider work. For a resume-only loss,
+  inspect the provider `SessionState.RuntimeContext` immediately after
+  `Adapter.Resume`, then inspect the report queued by `Controller.Resume`. If
+  provider state contains usage but the report has no
+  `WorkspaceAgentStatePatch`, the recovered observation was never made durable.
 - Root cause:
   Protocol v2 intentionally removed raw `runtimeContext` from the public
   session model. If the refactor removes that legacy field without adding a
@@ -4282,7 +4288,12 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   visible as a false context spike. Conversely, awaiting a correctly bound
   `getContextUsage()` call before emitting `turn_completed` makes optional
   telemetry a lifecycle dependency and leaves the GUI working for the duration
-  of a slow control response.
+  of a slow control response. On resume, a provider may rebuild usage from its
+  own history after the controller Session has been restored. If the controller
+  stores only its pre-resume input and emits no explicit snapshot, the live
+  adapter can briefly expose the right usage while persistence remains stale.
+  Calling the event-report path with an empty event list does not fix this:
+  metadata enrichment updates existing state patches but does not create one.
 - Fix:
   Define usage in the protocol-v2 OpenAPI contract and carry it as typed durable
   session metadata through the generated client, desktop adapter, canonical
@@ -4297,6 +4308,9 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   fallback in an asynchronous telemetry path, and invalidate a delayed snapshot
   when a newer snapshot request starts or a later root user prompt begins so
   older usage cannot overwrite newer work.
+  After a successful provider resume, merge any changed provider runtime context
+  into the controller Session and enqueue an explicit session-snapshot report.
+  Do not use an empty event report for this recovery path.
 - Validation:
   Cover runtime-context splitting and metadata persistence, generated API
   projection, desktop canonical-session adaptation, activity-core usage
@@ -4309,7 +4323,10 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   context snapshot is emitted. Also cover a context query that remains pending:
   `turn_completed` must be emitted first, and a delayed snapshot must be dropped
   after a newer snapshot request or the next root user prompt. Then run the
-  Claude SDK sidecar tests, daemon Go tests, AgentGUI tests, and typechecks.
+  Claude SDK sidecar tests, daemon Go tests, AgentGUI tests, and typechecks. For
+  resume recovery, cover a state adapter that restores usage during `Resume` and
+  assert both the returned controller Session and the queued snapshot state
+  patch contain that usage.
 - References:
   [agent-activity-packages.md](../architecture/agent-activity-packages.md)
   [session_metadata.go](../../packages/agent/store-sqlite/session_metadata.go)

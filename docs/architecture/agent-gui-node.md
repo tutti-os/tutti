@@ -3297,6 +3297,14 @@ select/open existing Session
 
 If resume is unavailable, return an explicit state. Do not create a shadow Session.
 
+After the provider reattaches, the daemon compares its live
+`SessionState.RuntimeContext` with the restored controller Session. Any newly
+recovered provider context, such as context-window usage replayed from provider
+history, is merged into the controller Session and emitted through an explicit
+session-snapshot report so persistence and AgentGUI hydration observe the same
+state. A report prepared from an empty event list is not a substitute: without
+an event-derived state patch there is nothing for metadata enrichment to update.
+
 ### 7.5 Conversation actions and copy
 
 ```text
