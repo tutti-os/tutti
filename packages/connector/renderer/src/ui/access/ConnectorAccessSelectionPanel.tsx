@@ -1,7 +1,6 @@
-import type { JSX } from "react";
+import { useState, type JSX } from "react";
 import {
   ArrowLeftIcon,
-  Avatar,
   Button,
   Checkbox,
   Spinner,
@@ -45,6 +44,38 @@ export interface ConnectorAccessSelectionPanelProps {
   onSubmit(): void;
   selectedConnectorKeys: readonly string[];
   state: ConnectorAccessSelectionState;
+}
+
+function ConnectorAccessIcon({
+  iconUrl,
+  name
+}: {
+  iconUrl?: string;
+  name: string;
+}): JSX.Element {
+  const normalizedIconUrl = iconUrl?.trim() ?? "";
+  const [failedIconUrl, setFailedIconUrl] = useState<string | null>(null);
+
+  if (normalizedIconUrl && failedIconUrl !== normalizedIconUrl) {
+    return (
+      <img
+        alt=""
+        aria-hidden="true"
+        className="size-5 shrink-0 object-contain"
+        src={normalizedIconUrl}
+        onError={() => setFailedIconUrl(normalizedIconUrl)}
+      />
+    );
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-5 shrink-0 items-center justify-center text-[11px] font-medium text-[var(--text-secondary)]"
+    >
+      {name.trim().charAt(0).toLocaleUpperCase() || "?"}
+    </span>
+  );
 }
 
 /**
@@ -141,12 +172,9 @@ export function ConnectorAccessSelectionPanel({
                   )}
                   key={item.connectorKey}
                 >
-                  <Avatar
-                    aria-hidden="true"
-                    className="text-[10px]"
-                    label={item.name}
-                    size={28}
-                    src={item.iconUrl}
+                  <ConnectorAccessIcon
+                    iconUrl={item.iconUrl}
+                    name={item.name}
                   />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-[13px] font-medium text-[var(--text-primary)]">
