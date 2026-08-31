@@ -25,6 +25,7 @@ import {
   normalizeTuttiExternalUserProjectRememberDefaultSelectionInput,
   normalizeTuttiExternalUserProjectSelectionPreparationInput,
   normalizeTuttiExternalWorkspaceOpenFeatureInput,
+  isTuttiExternalManagedAiModelProviderId,
   tuttiExternalAtDefaultMaxResults,
   tuttiExternalAtMaxResultsLimit
 } from "./index.ts";
@@ -456,6 +457,31 @@ test("normalizes managed AI model permission requests", () => {
       scopes: ["model:invoke"],
       state: "state-1"
     }
+  );
+  assert.deepEqual(
+    normalizeTuttiExternalPermissionRequestInput({
+      nonce: "nonce-2",
+      permission: "managed-ai-models",
+      providers: ["orcarouter", "agnes"],
+      scopes: ["model:invoke"],
+      state: "state-2"
+    }),
+    {
+      nonce: "nonce-2",
+      permission: "managed-ai-models",
+      providers: ["orcarouter", "agnes"],
+      scopes: ["model:invoke"],
+      state: "state-2"
+    }
+  );
+});
+
+test("recognizes orcarouter as a managed AI model provider", () => {
+  assert.equal(isTuttiExternalManagedAiModelProviderId("orcarouter"), true);
+  assert.equal(isTuttiExternalManagedAiModelProviderId("agnes"), true);
+  assert.equal(
+    isTuttiExternalManagedAiModelProviderId("not-a-provider"),
+    false
   );
 });
 

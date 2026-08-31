@@ -541,3 +541,70 @@ func (s *managedCredentialsMemoryStore) RevokeManagedModelGrant(_ context.Contex
 	s.grants[workspaceID+":"+appID+":"+grantRef] = grant
 	return nil
 }
+
+func TestDefaultProviderBaseURLIncludesOrcaRouter(t *testing.T) {
+	if got := defaultProviderBaseURL(managedcredentialsbiz.ProviderOrcaRouter); got != "https://api.orcarouter.ai/v1" {
+		t.Fatalf("defaultProviderBaseURL(orcarouter) = %q, want https://api.orcarouter.ai/v1", got)
+	}
+}
+
+func TestServiceAcceptsOrcaRouterProvider(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
+	store := newManagedCredentialsMemoryStore()
+	service := &Service{
+		Store: store,
+		Now: func() time.Time {
+			return now
+		},
+	}
+	apiKey := "orca-secret"
+	if _, err := service.PutProvider(ctx, PutProviderInput{
+		WorkspaceID: "workspace-1",
+		Provider:    "orcarouter",
+		Enabled:     true,
+		APIKey:      &apiKey,
+		BaseURL:     "https://api.orcarouter.ai/v1",
+		Models: []managedcredentialsbiz.Model{{
+			ID:       "anthropic/claude-opus-4.8",
+			Name:     "Claude Opus 4.8",
+			Provider: managedcredentialsbiz.ProviderOrcaRouter,
+		}},
+	}); err != nil {
+		t.Fatalf("PutProvider: %v", err)
+	}
+	config, err := store.GetManagedModelProviderConfig(ctx, "workspace-1", managedcredentialsbiz.ProviderOrcaRouter)
+	if err != nil {
+		t.Fatalf("GetManagedModelProviderConfig: %v", err)
+	}
+	if config.BaseURL != "https://api.orcarouter.ai/v1" {
+		t.Fatalf("saved base URL = %q, want https://api.orcarouter.ai/v1", config.BaseURL)
+	}
+
+	grant, err := service.CreateGrant(ctx, CreateGrantInput{
+		ContextToken: "context-token",
+		WorkspaceID:  "workspace-1",
+		AppID:        "app-1",
+		Nonce:        "nonce-1",
+		ProviderIDs:  []string{"orcarouter"},
+		Scopes:       []string{"models:use"},
+		State:        "state-1",
+	})
+	if err != nil {
+		t.Fatalf("CreateGrant: %v", err)
+	}
+	credential, err := service.Credential(ctx, CredentialInput{
+		WorkspaceID: "workspace-1",
+		AppID:       "app-1",
+		GrantRef:    grant.Grant.GrantRef,
+		Provider:    "orcarouter",
+		Model:       "anthropic/claude-opus-4.8",
+		Capability:  "agent",
+	})
+	if err != nil {
+		t.Fatalf("Credential: %v", err)
+	}
+	if got := credential.Credential.APIKey; got != "orca-secret" {
+		t.Fatalf("Credential API key = %q, want orca-secret", got)
+	}
+}

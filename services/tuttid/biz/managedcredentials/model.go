@@ -5,14 +5,15 @@ import "time"
 type ProviderID string
 
 const (
-	ProviderAgnes     ProviderID = "agnes"
-	ProviderOpenAI    ProviderID = "openai"
-	ProviderAnthropic ProviderID = "anthropic"
+	ProviderAgnes      ProviderID = "agnes"
+	ProviderOpenAI     ProviderID = "openai"
+	ProviderAnthropic  ProviderID = "anthropic"
+	ProviderOrcaRouter ProviderID = "orcarouter"
 )
 
 func IsProviderID(value string) bool {
 	switch ProviderID(value) {
-	case ProviderAgnes, ProviderOpenAI, ProviderAnthropic:
+	case ProviderAgnes, ProviderOpenAI, ProviderAnthropic, ProviderOrcaRouter:
 		return true
 	default:
 		return false
