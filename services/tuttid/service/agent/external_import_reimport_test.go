@@ -119,7 +119,7 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if scan.ScannedSessions != 3 || scan.ScannedMessages != 7 || len(scan.Projects) != 2 {
 		t.Fatalf("scan = %#v, want 3 sessions, 7 messages, 2 projects", scan)
 	}
-	codexAID := externalImportedSessionID("codex", "codex-a")
+	codexAID := externalImportedSessionID("codex", "codex-a", filepath.Join(codexHome, "sessions", "2026", "codex-a.jsonl"))
 	if !slices.ContainsFunc(scan.Sessions, func(session ExternalImportSession) bool {
 		return session.ID == codexAID && session.ProjectPath == projectA && session.Provider == "codex"
 	}) {
@@ -212,7 +212,7 @@ func TestServiceImportsExternalAgentSessionsByProject(t *testing.T) {
 	if rerun.ImportedSessions != 2 || rerun.ImportedMessages != 3 {
 		t.Fatalf("second import = %#v, want remaining project sessions and messages", rerun)
 	}
-	claudeSession, err := service.Get(ctx, "ws-1", externalImportedSessionID("claude-code", "claude-a"))
+	claudeSession, err := service.Get(ctx, "ws-1", externalImportedSessionID("claude-code", "claude-a", filepath.Join(claudeHome, "projects", "project-a", "claude-a.jsonl")))
 	if err != nil {
 		t.Fatalf("Get imported Claude Code session error = %v", err)
 	}
@@ -331,7 +331,7 @@ func TestServiceReimportRepairsLegacyTurnlessExternalMessages(t *testing.T) {
 	if err != nil || !ok {
 		t.Fatalf("parseCodexJSONL ok=%v error=%v", ok, err)
 	}
-	agentSessionID := externalImportedSessionID(parsed.Provider, parsed.ProviderSessionID)
+	agentSessionID := externalImportedSessionID(parsed.Provider, parsed.ProviderSessionID, parsed.SourcePath)
 	legacyUpdates := make([]agentactivitybiz.MessageUpdate, 0, len(parsed.Messages))
 	for index, message := range parsed.Messages {
 		legacyUpdates = append(legacyUpdates, agentactivitybiz.MessageUpdate{
