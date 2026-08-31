@@ -465,7 +465,7 @@ func (s *Service) importExternalSession(
 	session externalImportedSession,
 	projectPath string,
 ) (int, bool, error) {
-	agentSessionID := externalImportedSessionID(session.Provider, session.ProviderSessionID)
+	agentSessionID := externalImportedSessionID(session.Provider, session.ProviderSessionID, session.SourcePath)
 	existingTurnIDs, sessionExists, err := s.existingExternalImportMessageTurnIDs(ctx, workspaceID, agentSessionID)
 	if err != nil {
 		return 0, false, err
@@ -583,8 +583,16 @@ func (s *Service) existingExternalImportMessageTurnIDs(ctx context.Context, work
 	}
 }
 
-func externalImportedSessionID(provider string, providerSessionID string) string {
-	return "imported-" + externalImportProviderSlug(provider) + "-" + externalStableHash(providerSessionID)[:24]
+// externalImportedSessionID derives the stable imported-session identity.
+// SourcePath joins providerSessionID in the hash input because distinct
+// transcript files are not guaranteed to carry distinct provider session ids:
+// Claude Code subagent transcripts inherit the parent conversation sessionId,
+// which collapsed many transcripts into one imported session (issue #2199).
+// The provider-qualified source path already backs the identity fallback in
+// normalizeExternalParsedSession when the provider session id is empty, so
+// hashing both keeps one identity rule for every import source.
+func externalImportedSessionID(provider string, providerSessionID string, sourcePath string) string {
+	return "imported-" + externalImportProviderSlug(provider) + "-" + externalStableHash(providerSessionID + "\x00" + sourcePath)[:24]
 }
 
 // externalImportProviderSlug resolves a stable, filesystem-safe provider slug
