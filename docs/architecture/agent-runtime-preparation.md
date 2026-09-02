@@ -44,6 +44,18 @@ the enabled Session's recorded runtime paths. The Tutti integrated terminal
 also prepends the Tutti-owned RTK directory to its child environment, but Tutti
 never mutates the operating-system or user-global PATH.
 
+Claude Code follows a separate SDK compatibility contract. The daemon keeps the
+SDK-paired executable under the private Agent runtime root, and runtime
+preparation passes its absolute path to the Claude SDK. A user-level `claude`
+command is published only when the complete effective command search contains no
+independently installed Claude executable. If a later reconciliation finds an
+external command, the daemon removes only a user entry that is still provably
+Tutti-owned: it atomically quarantines the current entry, inspects the moved
+object, and restores it without replacement if ownership changed concurrently.
+The private stable hop stays active. This prevents the managed runtime from
+shadowing or deleting a user's CLI while preserving Tutti's existing managed
+runtime selection inside Claude Sessions.
+
 Deployment differences are expressed with `DeploymentProfile` and
 `CapabilityPack`. A pack resolves policy, skills, and environment together.
 Dynamic host skills use `SkillSource`; per-session skills use `ExtraSkills`.

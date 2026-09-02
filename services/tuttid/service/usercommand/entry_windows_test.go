@@ -154,6 +154,76 @@ func TestWindowsEntryVerifyRejectsMissingFinalExecutable(t *testing.T) {
 	}
 }
 
+func TestWindowsEntryUnpublishesOnlyManagedUserCommand(t *testing.T) {
+	root := t.TempDir()
+	userBinDir := t.TempDir()
+	target := writeWindowsTestCommand(t, root, "runtime", 0)
+	entry, err := NewEntry(root, userBinDir, "sample", target)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Publish(); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := entry.Unpublish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removed {
+		t.Fatal("Unpublish() did not remove the managed user launcher")
+	}
+	if _, err := os.Stat(entry.UserPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("managed user launcher still exists: %v", err)
+	}
+	if _, err := os.Stat(entry.StablePath); err != nil {
+		t.Fatalf("private stable launcher was removed: %v", err)
+	}
+
+	foreignContent := []byte("@echo foreign\r\n")
+	if err := os.WriteFile(entry.UserPath, foreignContent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	removed, err = entry.Unpublish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("Unpublish() removed a foreign user launcher")
+	}
+	content, err := os.ReadFile(entry.UserPath)
+	if err != nil || string(content) != string(foreignContent) {
+		t.Fatalf("foreign user launcher changed: content=%q err=%v", content, err)
+	}
+}
+
+func TestWindowsRemovePlatformEntryRestoresConcurrentForeignReplacement(t *testing.T) {
+	root := t.TempDir()
+	entry, err := NewEntry(root, t.TempDir(), "sample", writeWindowsTestCommand(t, root, "runtime", 0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Publish(); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate an external installer replacing the launcher after Unpublish has
+	// classified the old entry but before the platform removal step runs.
+	foreignContent := []byte("@echo foreign replacement\r\n")
+	if err := os.WriteFile(entry.UserPath, foreignContent, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := removePlatformEntry(entry.UserPath, entry.StablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("concurrent foreign replacement was reported as removed")
+	}
+	content, err := os.ReadFile(entry.UserPath)
+	if err != nil || string(content) != string(foreignContent) {
+		t.Fatalf("concurrent foreign replacement was not restored: content=%q err=%v", content, err)
+	}
+}
+
 func writeWindowsTestCommand(t *testing.T, root, version string, exitCode int) string {
 	t.Helper()
 	dir := filepath.Join(root, version, "path with spaces")

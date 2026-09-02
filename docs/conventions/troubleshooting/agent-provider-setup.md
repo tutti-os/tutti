@@ -1638,6 +1638,39 @@ cannot find the path specified`, while the same repository is searchable
   [acp_live_state.go](../../../packages/agent/daemon/runtime/acp_live_state.go)
   [service_helpers.go](../../../services/tuttid/service/agentstatus/service_helpers.go)
 
+### Installing Tutti changes the terminal's Claude version
+
+- Symptom:
+  `claude --version` reports a newer independently installed release before
+  Tutti starts, then resolves to the SDK-paired Tutti release afterward.
+- Quick checks:
+  Enumerate every `claude` candidate in effective PATH order and resolve links
+  or Windows launchers. Compare `~/.local/bin/claude` (or
+  `%USERPROFILE%\.local\bin\claude.cmd`) with the private
+  `agent-runtimes/claude-code/bin` hop. Do not infer ownership from the public
+  pathname alone.
+- Root cause:
+  Older releases checked only whether the intended public pathname was occupied.
+  When an external Claude command existed later in PATH, Tutti could fill the
+  earlier user-bin slot and shadow it even though no file was overwritten.
+- Fix:
+  Keep the SDK-paired Claude executable private and pass it to the SDK by
+  absolute path. Publish a user command only when the complete effective search
+  has no external Claude candidate. During reconciliation, atomically quarantine
+  the current public entry and inspect the moved Tutti symlink or Windows
+  launcher before deletion. If ownership changed concurrently, restore it with
+  no-replace semantics; never delete or overwrite a foreign file or launcher.
+- Validation:
+  Cover an external command later in PATH, migration from an older managed
+  public entry, preservation of a foreign occupant at the publication path, and
+  private stable-hop activation after publication is skipped. Run the native
+  Windows launcher tests as well as the POSIX symlink tests.
+- References:
+  [claude_binary.go](../../../services/tuttid/service/agentstatus/claude_binary.go)
+  [entry.go](../../../services/tuttid/service/usercommand/entry.go)
+  [entry_unix.go](../../../services/tuttid/service/usercommand/entry_unix.go)
+  [entry_windows.go](../../../services/tuttid/service/usercommand/entry_windows.go)
+
 ### Claude SDK model aliases resolve to configured Anthropic defaults
 
 - Symptom:
