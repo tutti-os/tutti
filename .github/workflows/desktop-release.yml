@@ -9,8 +9,6 @@ on:
   push:
     tags:
       - "v*"
-  schedule:
-    - cron: "16 20 * * *"
   workflow_dispatch:
     inputs:
       release_mode:
@@ -163,15 +161,11 @@ jobs:
         id: mode
         shell: bash
         env:
-          RELEASE_EVENT_NAME: ${{ github.event_name }}
           RELEASE_MODE: ${{ inputs.release_mode }}
         run: |
           dry_run=false
           strategy=patch
 
-          if [[ "${RELEASE_EVENT_NAME}" == "schedule" ]]; then
-            strategy=patch_rc
-          else
           case "${RELEASE_MODE:-}" in
             "")
               strategy=explicit_tag
@@ -209,7 +203,6 @@ jobs:
               exit 1
               ;;
           esac
-          fi
 
           echo "dry_run=${dry_run}" >> "$GITHUB_OUTPUT"
           echo "strategy=${strategy}" >> "$GITHUB_OUTPUT"
