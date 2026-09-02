@@ -1576,6 +1576,45 @@ func TestApplicationResolvedAuthorizationReplayDoesNotRestartProvider(t *testing
 	}
 }
 
+func TestApplicationResolvedFailedAuthorizationReplayOverridesStalePendingProjection(t *testing.T) {
+	connector := testManagedAuthorizedConnector("lark-cli")
+	connector.Authorization = Authorization{State: AuthorizationStateDisconnected}
+	repository := newMemoryRepository(connector)
+	projections := &recordingAuthorizationProjectionStore{}
+	provider := &continuingAuthorizationProviderStub{}
+	application := newTestApplication(t, repository, &memoryScheduler{}, &memoryInstallRuntime{}, CatalogSnapshot{})
+	application.config.Authorization = provider
+	application.config.AuthorizationProjections = projections
+	mutation := ConnectorMutation{
+		Mutation:     Mutation{ClientRequestID: "failed-authorization-request", ExpectedRevision: 0},
+		ConnectorKey: connector.Key,
+		AccountID:    "account-1",
+	}
+
+	first, err := application.BeginAuthorization(context.Background(), mutation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	operation := repository.operations[first.Operation.OperationID]
+	operation.Execution.AuthorizationSession.Resolution = AuthorizationSessionResolutionProviderFailed
+	repository.operations[operation.OperationID] = operation
+	projections.projection = AuthorizationProjection{
+		AccountID: "account-1", ConnectorKey: connector.Key,
+		ConnectionID: "account-1", State: AuthorizationStatePending,
+	}
+
+	replayed, err := application.BeginAuthorization(context.Background(), mutation, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if provider.begins != 1 {
+		t.Fatalf("provider begins = %d, want 1", provider.begins)
+	}
+	if replayed.AuthorizationURL != "" || replayed.Connector.Authorization.State != AuthorizationStateFailed {
+		t.Fatalf("replayed result = %#v", replayed)
+	}
+}
+
 func TestApplicationConnectedProjectionConvergesReceiptWithoutProviderPolling(t *testing.T) {
 	connector := testConnector("tencent-docs")
 	connector.Release.Manifest.AuthorizationKind = "oauth2"

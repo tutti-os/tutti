@@ -84,6 +84,36 @@ renders its code; the user-owned `activate` action opens the verification URL.
 Continue to auto-open ordinary `external_link` Views, whose URL is itself the
 next authorization step.
 
+### Browser authorization finishes but the dialog remains Authorizing
+
+**Symptoms**
+
+- the provider page reports success, but the Connector dialog remains on its
+  waiting view
+- the matching `start_authorization` receipt is resolved as `provider_failed`
+  while the account projection still reads `pending`
+- repeated continuation requests may launch another credential broker for the
+  same operation and publish another pending observation
+
+**Check**
+
+Match the renderer continuation, private authorization receipt, projection,
+and credential-broker process by `clientRequestId`, operation ID, account, and
+Connector key. If one broker emitted an authorization URL and then failed,
+verify that a later Begin with the same operation returns that cached failure
+instead of creating another process. Treat browser completion and local
+credential persistence as separate steps; a provider page can succeed before
+the CLI stores and verifies its local credential.
+
+**Rule**
+
+A broker failure is terminal for one operation. Automatic continuation polling
+must never clear it or restart the broker; an explicit retry uses a new
+operation ID. A resolved receipt overrides stale pending presentation so the
+renderer exits loading while projection repair converges. Preserve only a
+bounded connector failure code and a redacted diagnostic reason—never persist
+device codes, tokens, or raw provider output.
+
 ### A second authorize click starts another OAuth session
 
 **Symptoms**

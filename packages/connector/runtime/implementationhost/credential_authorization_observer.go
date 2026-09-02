@@ -40,7 +40,7 @@ func (provider *managedCredentialAuthorizationProvider) Observe(
 		}
 		if sessionErr != nil {
 			observationState = market.AuthorizationObservationFailed
-			failureCode = "credential_broker_failed"
+			failureCode = credentialBrokerFailureCode(sessionErr)
 			reason = boundedBrokerMessage(sessionErr.Error())
 		}
 		return market.AuthorizationObservation{
