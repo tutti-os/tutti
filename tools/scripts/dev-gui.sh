@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DESKTOP_APP_DIR="${ROOT_DIR}/apps/desktop"
 TUTTID_DIR="${ROOT_DIR}/services/tuttid"
 TUTTID_BIN_DIR="${DESKTOP_APP_DIR}/build/tuttid"
+CLAUDE_SDK_SIDECAR_DIR="${DESKTOP_APP_DIR}/build/claude-sdk-sidecar"
+CLAUDE_SDK_SIDECAR_ENTRY_PATH="${CLAUDE_SDK_SIDECAR_DIR}/src/main.ts"
+CLAUDE_SDK_SIDECAR_PACKAGE_JSON="${ROOT_DIR}/packages/agent/claude-sdk-sidecar/package.json"
+CLAUDE_SDK_SIDECAR_SOURCE_DIR="${ROOT_DIR}/packages/agent/claude-sdk-sidecar/src"
 NODE_VERSION_FILE="${ROOT_DIR}/.node-version"
 GO_MOD_FILE="${TUTTID_DIR}/go.mod"
 PACKAGE_JSON_FILE="${ROOT_DIR}/package.json"
@@ -321,11 +325,129 @@ NODE
 prepare_dev_gui_runtime() {
   DEV_GUI_PID_PATH="$(resolve_tuttid_pid_path)"
   DEV_GUI_INITIAL_TUTTID_PID="$(read_tuttid_pid_file "${DEV_GUI_PID_PATH}")"
+  prepare_claude_sdk_sidecar
   prepare_managed_posix_shell
   prepare_bundled_rtk
   if [[ "$(uname -s)" == "Darwin" ]]; then
     node "${ROOT_DIR}/tools/scripts/prepare-dev-login-protocol.mjs"
   fi
+}
+
+claude_sdk_sidecar_is_current() {
+  [[ -f "${CLAUDE_SDK_SIDECAR_ENTRY_PATH}" ]] || return 1
+  diff -qr \
+    "${CLAUDE_SDK_SIDECAR_SOURCE_DIR}" \
+    "${CLAUDE_SDK_SIDECAR_DIR}/src" >/dev/null 2>&1 || return 1
+
+  node - \
+    "${CLAUDE_SDK_SIDECAR_PACKAGE_JSON}" \
+    "${CLAUDE_SDK_SIDECAR_DIR}" <<'NODE'
+const fs = require("node:fs");
+const path = require("node:path");
+
+const [, , sourcePackagePath, bundleDir] = process.argv;
+const sdkDir = path.join(
+  bundleDir,
+  "node_modules",
+  "@anthropic-ai",
+  "claude-agent-sdk"
+);
+
+try {
+  const sourcePackage = JSON.parse(fs.readFileSync(sourcePackagePath, "utf8"));
+  const bundlePackage = JSON.parse(
+    fs.readFileSync(path.join(bundleDir, "package.json"), "utf8")
+  );
+  const expectedVersion =
+    sourcePackage.dependencies?.["@anthropic-ai/claude-agent-sdk"];
+  const installedPackage = JSON.parse(
+    fs.readFileSync(path.join(sdkDir, "package.json"), "utf8")
+  );
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(sdkDir, "manifest.json"), "utf8")
+  );
+  let hasNativeOptionalPackage = false;
+  const pendingDirectories = [path.join(bundleDir, "node_modules")];
+  while (pendingDirectories.length > 0 && !hasNativeOptionalPackage) {
+    const directory = pendingDirectories.pop();
+    for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      const child = path.join(directory, entry.name);
+      const packagePath = path.join(child, "package.json");
+      if (fs.existsSync(packagePath)) {
+        const packageMetadata = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+        if (
+          typeof packageMetadata.name === "string" &&
+          packageMetadata.name.startsWith("@anthropic-ai/claude-agent-sdk-")
+        ) {
+          hasNativeOptionalPackage = true;
+          break;
+        }
+      }
+      pendingDirectories.push(child);
+    }
+  }
+
+  if (
+    typeof expectedVersion !== "string" ||
+    expectedVersion.length === 0 ||
+    JSON.stringify(bundlePackage.dependencies ?? {}) !==
+      JSON.stringify(sourcePackage.dependencies ?? {}) ||
+    installedPackage.version !== expectedVersion ||
+    typeof manifest.version !== "string" ||
+    manifest.version.length === 0 ||
+    hasNativeOptionalPackage
+  ) {
+    process.exit(1);
+  }
+} catch {
+  process.exit(1);
+}
+NODE
+
+  npm --prefix "${CLAUDE_SDK_SIDECAR_DIR}" \
+    ls --omit=optional --all --json >/dev/null 2>&1
+  node "${DESKTOP_APP_DIR}/scripts/smoke-claude-sdk-sidecar.mjs" \
+    "${CLAUDE_SDK_SIDECAR_DIR}" >/dev/null 2>&1
+}
+
+prepare_claude_sdk_sidecar() {
+  local entry_override="${DEV_GUI_CLAUDE_SDK_SIDECAR_ENTRY_PATH:-}"
+  local command_override="${DEV_GUI_CLAUDE_SDK_SIDECAR_COMMAND:-}"
+  local test_driver_override="${DEV_GUI_CLAUDE_SDK_SIDECAR_TEST_DRIVER:-}"
+
+  # make dev-gui may itself be launched from a Tutti Agent Session. Do not let
+  # that host application's packaged sidecar path leak into this worktree's
+  # daemon: provisioning must read the SDK manifest being developed here.
+  unset TUTTI_CLAUDE_SDK_SIDECAR_COMMAND
+  unset TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH
+  unset TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER
+
+  if [[ -n "${entry_override}" ]]; then
+    [[ -f "${entry_override}" ]] || fail \
+      "DEV_GUI_CLAUDE_SDK_SIDECAR_ENTRY_PATH does not point to a file: ${entry_override}"
+    export TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH="${entry_override}"
+  else
+    if claude_sdk_sidecar_is_current; then
+      log "reusing current vendored Claude SDK sidecar"
+    else
+      log "preparing vendored Claude SDK sidecar"
+      node "${DESKTOP_APP_DIR}/scripts/vendor-claude-sdk-sidecar.mjs"
+    fi
+    [[ -f "${CLAUDE_SDK_SIDECAR_ENTRY_PATH}" ]] || fail \
+      "vendored Claude SDK sidecar entry is missing: ${CLAUDE_SDK_SIDECAR_ENTRY_PATH}"
+    export TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH="${CLAUDE_SDK_SIDECAR_ENTRY_PATH}"
+  fi
+
+  if [[ -n "${command_override}" ]]; then
+    export TUTTI_CLAUDE_SDK_SIDECAR_COMMAND="${command_override}"
+  fi
+  if [[ -n "${test_driver_override}" ]]; then
+    export TUTTI_CLAUDE_SDK_SIDECAR_TEST_DRIVER="${test_driver_override}"
+  fi
+  log "using Claude SDK sidecar at ${TUTTI_CLAUDE_SDK_SIDECAR_ENTRY_PATH}"
 }
 
 prepare_bundled_rtk() {

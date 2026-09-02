@@ -277,6 +277,16 @@ func TestManagedClaudeCodeInstallerUsesProvisionedRuntime(t *testing.T) {
 
 func TestResolveProviderRuntimeUsesManagedClaudeCodePointer(t *testing.T) {
 	fixture := newClaudeBinaryFixture(t)
+	externalPath := filepath.Join(t.TempDir(), testClaudeBinaryName())
+	if err := os.WriteFile(externalPath, []byte("external claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture.service.LookPath = func(name string) (string, error) {
+		if name == "claude" || name == "claude.exe" {
+			return externalPath, nil
+		}
+		return "", os.ErrNotExist
+	}
 	installedPath := fixture.installedBinaryPath()
 	if err := os.MkdirAll(filepath.Dir(installedPath), 0o755); err != nil {
 		t.Fatal(err)
@@ -296,7 +306,7 @@ func TestResolveProviderRuntimeUsesManagedClaudeCodePointer(t *testing.T) {
 	}
 	runtimeResolution := fixture.service.resolveProviderRuntime(context.Background(), specs[0])
 	if runtimeResolution.CLIPath != installedPath {
-		t.Fatalf("CLIPath = %q, want managed Claude binary %q", runtimeResolution.CLIPath, installedPath)
+		t.Fatalf("CLIPath = %q, want managed Claude binary %q instead of external %q", runtimeResolution.CLIPath, installedPath, externalPath)
 	}
 }
 
