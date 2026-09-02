@@ -35,6 +35,8 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { pnpmPackageIntegrity } from "./claude-code-lockfile.mjs";
+
 const DEFAULT_PLATFORMS = [
   "darwin-arm64",
   "darwin-x64",
@@ -72,22 +74,13 @@ function sha256File(path) {
 // would otherwise both come from the same unpinned registry source.
 function verifyTarballAgainstLockfile(tarballPath, packageName, version) {
   const lockfile = readFileSync(join(repoRoot, "pnpm-lock.yaml"), "utf8");
-  const escaped = `${packageName}@${version}`.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&"
-  );
-  const match = lockfile.match(
-    new RegExp(
-      `"${escaped}":\\s*\\n\\s*resolution:[\\s\\S]{0,200}?integrity: (sha512-[A-Za-z0-9+/=]+)`
-    )
-  );
-  if (!match) {
+  const expected = pnpmPackageIntegrity(lockfile, packageName, version);
+  if (!expected) {
     throw new Error(
       `pnpm-lock.yaml has no integrity entry for ${packageName}@${version}; ` +
         `refusing to publish unpinned bytes`
     );
   }
-  const expected = match[1];
   const actual =
     "sha512-" +
     createHash("sha512").update(readFileSync(tarballPath)).digest("base64");
