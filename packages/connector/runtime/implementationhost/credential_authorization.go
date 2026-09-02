@@ -279,13 +279,12 @@ func (provider *managedCredentialAuthorizationProvider) authorizationSessionOrSt
 			provider.mu.Unlock()
 			return session, nil
 		}
-		// A broker can fail after emitting its first authorization URL. Do not
-		// make the next user action consume that terminal error merely to clear
-		// the cache; replace it with a fresh broker in this same request.
-		delete(provider.sessions, operationID)
-		if provider.activeByRoute[route.id] == operationID {
-			delete(provider.activeByRoute, route.id)
-		}
+		// Continuation polls reuse the same durable operation. Preserve its
+		// terminal error so an automatic poll cannot silently start a new broker
+		// and regress the account projection from failed back to pending. An
+		// explicit retry has a new operation ID and is admitted below.
+		provider.mu.Unlock()
+		return nil, sessionErr
 	}
 	if activeOperationID := provider.activeByRoute[route.id]; activeOperationID != "" {
 		active := provider.sessions[activeOperationID]
@@ -704,17 +703,6 @@ func safeCredentialBrokerURL(value string, allowedHosts map[string]struct{}) boo
 	}
 	_, allowed := allowedHosts[strings.ToLower(parsed.Hostname())]
 	return allowed
-}
-
-func credentialBrokerEventError(event credentialBrokerEvent, operation string) error {
-	message := boundedBrokerMessage(event.Message)
-	if message == "" {
-		message = "connector credential broker reported an error"
-	}
-	if code := strings.TrimSpace(event.Code); code != "" {
-		return fmt.Errorf("%s connector authorization (%s): %s", operation, code, message)
-	}
-	return fmt.Errorf("%s connector authorization: %s", operation, message)
 }
 
 func boundedBrokerMessage(message string) string {

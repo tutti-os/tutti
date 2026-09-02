@@ -516,6 +516,83 @@ func TestManagedCredentialAuthorizationRestartsFailedBrokerOnFirstRetry(t *testi
 	}
 }
 
+func TestManagedCredentialAuthorizationPreservesFailedBrokerForSameOperation(t *testing.T) {
+	connection := newCredentialBrokerConnection()
+	route := &connectorRoute{
+		id: "account-1\x00lark-cli", connectorKey: "lark-cli", connectionID: "account-1",
+		releaseDigest: strings.Repeat("a", 64), credentialBrokerLaunch: &managedCredentialBrokerLaunch{
+			timeout: 5 * time.Minute, allowedHosts: map[string]struct{}{"accounts.feishu.cn": {}},
+		},
+	}
+	host := &credentialAuthorizationHostStub{
+		route: route, connections: []agentruntime.ProcessConnection{connection},
+	}
+	provider := newManagedCredentialAuthorizationProvider(host)
+	connector := market.Connector{Key: "lark-cli", Release: market.Release{ReleaseDigest: route.releaseDigest}}
+	request := market.AuthorizationStartRequest{
+		OperationID: "authorize-lark", Scope: market.OperationScope{AccountID: "user-1"}, Connector: connector,
+	}
+
+	beginResult := make(chan market.AuthorizationSession, 1)
+	beginError := make(chan error, 1)
+	go func() {
+		session, err := provider.Begin(context.Background(), request)
+		beginResult <- session
+		beginError <- err
+	}()
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"authorization_url","url":"https://accounts.feishu.cn/device"}` + "\n")}
+	if err := <-beginError; err != nil {
+		t.Fatal(err)
+	}
+	session := <-beginResult
+
+	exitCode := 1
+	connection.frames <- agentruntime.ProcessFrame{Stdout: []byte(`{"type":"error","code":"lark_cli_device_authorization_denied","message":"Lark CLI user authorization was denied"}` + "\n"), ExitCode: &exitCode}
+	awaitCachedAuthorizationFailure(t, provider, request.OperationID)
+
+	observation, err := provider.Observe(context.Background(), market.AuthorizationObserveRequest{
+		Scope: request.Scope, Connector: connector, Release: connector.Release, Session: session,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if observation.State != market.AuthorizationObservationFailed ||
+		observation.FailureCode != "lark_cli_device_authorization_denied" {
+		t.Fatalf("failed authorization observation = %#v", observation)
+	}
+
+	_, err = provider.Begin(context.Background(), request)
+	if err == nil || !strings.Contains(err.Error(), "Lark CLI user authorization was denied") {
+		t.Fatalf("same-operation continuation error = %v", err)
+	}
+	if len(host.requests) != 1 {
+		t.Fatalf("same operation restarted credential broker %d times", len(host.requests))
+	}
+}
+
+func TestCredentialBrokerFailureCodeRejectsUnboundedConnectorValues(t *testing.T) {
+	tests := []struct {
+		name string
+		code string
+		want string
+	}{
+		{name: "valid", code: "lark_cli_device_authorization_denied", want: "lark_cli_device_authorization_denied"},
+		{name: "starts with digit", code: "1_invalid", want: "credential_broker_failed"},
+		{name: "contains whitespace", code: "invalid code", want: "credential_broker_failed"},
+		{name: "oversized", code: "a" + strings.Repeat("b", 128), want: "credential_broker_failed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := credentialBrokerEventError(credentialBrokerEvent{
+				Type: "error", Code: test.code, Message: "safe failure",
+			}, "authorize")
+			if got := credentialBrokerFailureCode(err); got != test.want {
+				t.Fatalf("credentialBrokerFailureCode() = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestManagedCredentialAuthorizationCancelTerminatesAndWaitsForBrokerExit(t *testing.T) {
 	connection := newCredentialBrokerConnection()
 	route := &connectorRoute{id: "default\x00dingtalk-cli", credentialBrokerLaunch: &managedCredentialBrokerLaunch{
