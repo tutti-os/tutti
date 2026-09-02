@@ -34,9 +34,11 @@ func (m *Manager) isManagedRuntimeExecutable(executable string) bool {
 
 func validateManagedRuntimeEntry(entry managedRuntimeEntry) error { return entry.Validate() }
 
-func verifyManagedRuntimeEntry(entry managedRuntimeEntry) error { return entry.Verify() }
+func verifyManagedRuntimeEntry(entry managedRuntimeEntry) error { return entry.VerifyPublished() }
 
-func publishManagedRuntimeEntry(entry managedRuntimeEntry) error { return entry.Publish() }
+func publishManagedRuntimeEntry(entry managedRuntimeEntry) error {
+	return entry.PublishRequired()
+}
 
 func (m *Manager) ensureUserCommandPath(ctx context.Context) error {
 	if m.UserPathAdapter == nil {

@@ -34,25 +34,25 @@ func validatePlatformEntry(path, runtimeRoot, label string) error {
 	return nil
 }
 
-func validateExactPlatformEntry(path, expectedTarget, label string) error {
-	info, err := os.Lstat(path)
+func (e Entry) classifyUserEntry() (userEntryKind, error) {
+	info, err := os.Lstat(e.UserPath)
 	if errors.Is(err, os.ErrNotExist) {
-		return nil
+		return userEntryAbsent, nil
 	}
 	if err != nil {
-		return err
+		return 0, err
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		return fmt.Errorf("%s is already occupied: %s", label, path)
+		return userEntryForeign, nil
 	}
-	target, err := resolvedSymlinkTarget(path)
+	target, err := resolvedSymlinkTarget(e.UserPath)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	if !samePath(target, expectedTarget) {
-		return fmt.Errorf("%s is not owned by Tutti: %s", label, path)
+	if samePath(target, e.StablePath) {
+		return userEntryManaged, nil
 	}
-	return nil
+	return userEntryForeign, nil
 }
 
 func ensurePlatformEntry(path, target string) (bool, error) {
@@ -96,6 +96,33 @@ func replacePlatformEntry(path, target string) error {
 		return err
 	}
 	return replaceFile(path, temporaryPath)
+}
+
+func removePlatformEntry(path, target string) (bool, error) {
+	quarantinePath, err := newEntryQuarantinePath(path)
+	if err != nil {
+		return false, err
+	}
+	if err := os.Rename(path, quarantinePath); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	info, err := os.Lstat(quarantinePath)
+	if err != nil {
+		return false, errors.Join(err, restoreQuarantinedEntry(path, quarantinePath))
+	}
+	currentTarget, err := resolvedSymlinkTarget(quarantinePath)
+	if err != nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return false, errors.Join(err, restoreQuarantinedEntry(path, quarantinePath))
+		}
+		return false, restoreQuarantinedEntry(path, quarantinePath)
+	}
+	if info.Mode()&os.ModeSymlink == 0 || !samePath(currentTarget, target) {
+		return false, restoreQuarantinedEntry(path, quarantinePath)
+	}
+	return removeQuarantinedManagedEntry(path, quarantinePath)
 }
 
 func resolvePlatformEntry(path string) (string, error) {

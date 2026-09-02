@@ -43,16 +43,59 @@ func NewEntry(runtimeRoot, userBinDir, commandName, finalExecutable string) (Ent
 	}, nil
 }
 
+// userEntryKind classifies the state of the user-command hop.
+type userEntryKind uint8
+
+const (
+	// userEntryAbsent: no command with this name exists in the user bin dir.
+	userEntryAbsent userEntryKind = iota
+	// userEntryManaged: the entry is Tutti's and points at the stable path.
+	userEntryManaged
+	// userEntryForeign: the user owns a command with the same name (e.g. a
+	// locally installed CLI). It is preserved untouched, and user-command
+	// publication is skipped instead of failing the managed runtime.
+	userEntryForeign
+)
+
+func (e Entry) validateStablePath() error {
+	return validatePlatformEntry(e.StablePath, e.RuntimeRoot, "managed runtime entry")
+}
+
 func (e Entry) Validate() error {
-	if err := validatePlatformEntry(e.StablePath, e.RuntimeRoot, "managed runtime entry"); err != nil {
+	if err := e.validateStablePath(); err != nil {
 		return err
 	}
-	return validateExactPlatformEntry(e.UserPath, e.StablePath, "user executable entry")
+	_, err := e.classifyUserEntry()
+	return err
 }
 
 func (e Entry) Verify() error {
+	return e.verify(false)
+}
+
+// VerifyPublished requires the user-level command to be owned by Tutti. It is
+// used by release-era Agent Extension callers whose readiness contract still
+// requires a published command, while Verify allows Claude's private runtime
+// to remain valid when an external command owns the PATH namespace.
+func (e Entry) VerifyPublished() error {
+	return e.verify(true)
+}
+
+func (e Entry) verify(requirePublished bool) error {
 	if err := e.Validate(); err != nil {
 		return err
+	}
+	kind, err := e.classifyUserEntry()
+	if err != nil {
+		return err
+	}
+	if kind != userEntryManaged {
+		if requirePublished {
+			return fmt.Errorf("user executable entry is not published by Tutti: %s", e.UserPath)
+		}
+		// No Tutti user command is installed (absent or foreign). The managed
+		// runtime is still usable; there is nothing to verify on the user hop.
+		return nil
 	}
 	for label, path := range map[string]string{
 		"managed runtime entry": e.StablePath,
@@ -76,21 +119,76 @@ func (e Entry) Verify() error {
 	return nil
 }
 
-func (e Entry) Publish() error {
-	if err := e.Validate(); err != nil {
+// ActivateRuntime refreshes the private stable command hop without publishing
+// or changing the user-level command. Callers use this when an independently
+// installed command already owns the effective PATH namespace.
+func (e Entry) ActivateRuntime() error {
+	if err := e.validateStablePath(); err != nil {
 		return err
 	}
-	createdUserEntry, err := ensurePlatformEntry(e.UserPath, e.StablePath)
+	return replacePlatformEntry(e.StablePath, e.FinalExecutable)
+}
+
+// Unpublish removes the user-level command only when it is still provably
+// owned by this entry. Foreign or already-absent commands are preserved.
+func (e Entry) Unpublish() (bool, error) {
+	kind, err := e.classifyUserEntry()
 	if err != nil {
-		return err
+		return false, err
 	}
-	if err := replacePlatformEntry(e.StablePath, e.FinalExecutable); err != nil {
+	if kind != userEntryManaged {
+		return false, nil
+	}
+	return removePlatformEntry(e.UserPath, e.StablePath)
+}
+
+// Publish installs the managed command hops. It returns whether the
+// user-command entry is owned by Tutti. A foreign occupant is preserved
+// untouched: publication is then skipped (the internal stable hop is still
+// refreshed) and the caller should treat the runtime as activated.
+func (e Entry) Publish() (bool, error) {
+	return e.publish(false)
+}
+
+// PublishRequired preserves the strict release-era Agent Extension contract:
+// a foreign user command fails before the private stable hop is changed.
+func (e Entry) PublishRequired() error {
+	_, err := e.publish(true)
+	return err
+}
+
+func (e Entry) publish(requirePublished bool) (bool, error) {
+	if err := e.validateStablePath(); err != nil {
+		return false, err
+	}
+	kind, err := e.classifyUserEntry()
+	if err != nil {
+		return false, err
+	}
+	if kind == userEntryForeign {
+		if requirePublished {
+			return false, fmt.Errorf("user executable entry is already occupied: %s", e.UserPath)
+		}
+		if err := e.ActivateRuntime(); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	createdUserEntry := false
+	if kind == userEntryAbsent {
+		created, err := ensurePlatformEntry(e.UserPath, e.StablePath)
+		if err != nil {
+			return false, err
+		}
+		createdUserEntry = created
+	}
+	if err := e.ActivateRuntime(); err != nil {
 		if createdUserEntry {
 			_ = os.Remove(e.UserPath)
 		}
-		return err
+		return false, err
 	}
-	return nil
+	return true, nil
 }
 
 func IsManagedExecutable(executable, runtimeRoot string) bool {
@@ -109,4 +207,50 @@ func pathWithin(path, root string) bool {
 
 func samePath(left, right string) bool {
 	return platformSamePath(filepath.Clean(left), filepath.Clean(right))
+}
+
+func newEntryQuarantinePath(path string) (string, error) {
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tutti-unpublish-*")
+	if err != nil {
+		return "", err
+	}
+	temporaryPath := temporary.Name()
+	if err := errors.Join(temporary.Close(), os.Remove(temporaryPath)); err != nil {
+		return "", err
+	}
+	return temporaryPath, nil
+}
+
+func restoreQuarantinedEntry(path, quarantinePath string) error {
+	// Creating the restored name is atomic and no-replace. A concurrent
+	// installer that has already recreated path therefore wins; its entry is
+	// never overwritten, and the quarantined command remains recoverable.
+	info, err := os.Lstat(quarantinePath)
+	if err != nil {
+		return err
+	}
+	var restoreErr error
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(quarantinePath)
+		if err != nil {
+			return err
+		}
+		restoreErr = os.Symlink(target, path)
+	} else {
+		restoreErr = os.Link(quarantinePath, path)
+	}
+	if restoreErr != nil {
+		return fmt.Errorf("restore changed user command; preserved at %s: %w", quarantinePath, restoreErr)
+	}
+	if err := os.Remove(quarantinePath); err != nil {
+		return fmt.Errorf("remove restored command quarantine %s: %w", quarantinePath, err)
+	}
+	return nil
+}
+
+func removeQuarantinedManagedEntry(path, quarantinePath string) (bool, error) {
+	if err := os.Remove(quarantinePath); err != nil {
+		return false, errors.Join(err, restoreQuarantinedEntry(path, quarantinePath))
+	}
+	return true, nil
 }

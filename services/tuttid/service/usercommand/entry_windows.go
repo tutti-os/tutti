@@ -36,21 +36,21 @@ func validatePlatformEntry(path, runtimeRoot, label string) error {
 	return nil
 }
 
-func validateExactPlatformEntry(path, expectedTarget, label string) error {
-	if err := validateWindowsCommandNamespace(path); err != nil {
-		return fmt.Errorf("%s is shadowed: %w", label, err)
-	}
-	target, exists, err := readWindowsLauncher(path)
+func (e Entry) classifyUserEntry() (userEntryKind, error) {
+	target, exists, err := readWindowsLauncher(e.UserPath)
 	if err != nil {
-		return fmt.Errorf("%s is already occupied: %s", label, path)
+		return userEntryForeign, nil
 	}
-	if !exists {
-		return nil
+	if exists {
+		if samePath(target, e.StablePath) {
+			return userEntryManaged, nil
+		}
+		return userEntryForeign, nil
 	}
-	if !samePath(target, expectedTarget) {
-		return fmt.Errorf("%s is not owned by Tutti: %s", label, path)
+	if err := validateWindowsCommandNamespace(e.UserPath); err != nil {
+		return userEntryForeign, nil
 	}
-	return nil
+	return userEntryAbsent, nil
 }
 
 func ensurePlatformEntry(path, target string) (bool, error) {
@@ -72,6 +72,24 @@ func ensurePlatformEntry(path, target string) (bool, error) {
 
 func replacePlatformEntry(path, target string) error {
 	return writeWindowsLauncherAtomic(path, target)
+}
+
+func removePlatformEntry(path, target string) (bool, error) {
+	quarantinePath, err := newEntryQuarantinePath(path)
+	if err != nil {
+		return false, err
+	}
+	if err := os.Rename(path, quarantinePath); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	currentTarget, exists, err := readWindowsLauncher(quarantinePath)
+	if err != nil || !exists || !samePath(currentTarget, target) {
+		// A malformed or different launcher is user-owned and must be restored.
+		return false, restoreQuarantinedEntry(path, quarantinePath)
+	}
+	return removeQuarantinedManagedEntry(path, quarantinePath)
 }
 
 func resolvePlatformEntry(path string) (string, error) {
