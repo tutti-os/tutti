@@ -9,7 +9,7 @@ import (
 )
 
 type composerOptionsInput struct {
-	AgentID         string `cli:"agent-id" advertise-required:"true" hint:"Use agent list --json to discover available agents."`
+	AgentID         string `cli:"agent-id" advertise-required:"true" advertise-alt:"provider" hint:"Use agent list --json to discover available agents."`
 	Cwd             string `cli:"cwd"`
 	Locale          string `cli:"locale"`
 	Model           string `cli:"model"`

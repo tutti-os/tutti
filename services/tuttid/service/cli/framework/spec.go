@@ -58,12 +58,17 @@ type FieldSpec struct {
 	// AdvertisedRequired keeps the canonical capability contract strict while
 	// allowing a hidden compatibility selector to satisfy runtime validation.
 	AdvertisedRequired bool
-	Required           bool
-	Hint               string
-	Min                *int64
-	Max                *int64
-	Enum               []string
-	Default            any
+	// AdvertiseAlternates names hidden input fields that can satisfy an
+	// AdvertisedRequired field at runtime (e.g. the deprecated --provider
+	// selector standing in for --agent-id). Schema() expresses this as an
+	// anyOf branch so invocation validation accepts either spelling.
+	AdvertiseAlternates []string
+	Required            bool
+	Hint                string
+	Min                 *int64
+	Max                 *int64
+	Enum                []string
+	Default             any
 }
 
 type InputSpec struct {
