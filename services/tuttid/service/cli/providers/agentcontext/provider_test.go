@@ -17,19 +17,29 @@ import (
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 )
 
 type fakeWorkspaceCatalog struct {
-	startup workspacebiz.Summary
+	startup    workspacebiz.Summary
+	startupErr error
+	getErr     error
 }
 
 func (f fakeWorkspaceCatalog) Startup(context.Context) (*workspacebiz.Summary, error) {
+	if f.startupErr != nil {
+		return nil, f.startupErr
+	}
 	return &f.startup, nil
 }
 
-func (fakeWorkspaceCatalog) Get(_ context.Context, workspaceID string) (workspacebiz.Summary, error) {
+func (f fakeWorkspaceCatalog) Get(_ context.Context, workspaceID string) (workspacebiz.Summary, error) {
+	if f.getErr != nil {
+		return workspacebiz.Summary{}, f.getErr
+	}
 	return workspacebiz.Summary{ID: workspaceID}, nil
 }
 
@@ -46,6 +56,36 @@ func (fakeAgentTargetLister) List(context.Context) ([]agenttargetbiz.Target, err
 
 type fakeAgentTargetList struct {
 	targets []agenttargetbiz.Target
+}
+
+type fakeWorkspaceAgentDirectory struct {
+	views              map[string][]workspaceagentbiz.View
+	listErr            map[string]error
+	listedWorkspaceIDs []string
+	getKeys            []string
+}
+
+func (f *fakeWorkspaceAgentDirectory) Get(_ context.Context, workspaceID string, agentID string) (workspaceagentbiz.View, error) {
+	key := workspaceID + "\x00" + agentID
+	f.getKeys = append(f.getKeys, key)
+	for _, view := range f.views[workspaceID] {
+		if view.Agent.ID == agentID {
+			return view, nil
+		}
+	}
+	return workspaceagentbiz.View{}, workspacedata.ErrWorkspaceAgentNotFound
+}
+
+func (f *fakeWorkspaceAgentDirectory) List(_ context.Context, workspaceID string) ([]workspaceagentbiz.View, error) {
+	f.listedWorkspaceIDs = append(f.listedWorkspaceIDs, workspaceID)
+	if err, ok := f.listErr[workspaceID]; ok {
+		return nil, err
+	}
+	views, ok := f.views[workspaceID]
+	if !ok {
+		panic(fmt.Sprintf("unexpected workspace agent list for workspace %q", workspaceID))
+	}
+	return views, nil
 }
 
 func (f fakeAgentTargetList) List(context.Context) ([]agenttargetbiz.Target, error) {
@@ -1830,6 +1870,339 @@ func TestAgentListKeepsMultipleAgentsForOneProvider(t *testing.T) {
 	}
 	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalTuttiAgent {
 		t.Fatalf("defaultAgentTargetId = %#v, want exact built-in target %q", output.Value["defaultAgentTargetId"], agenttargetbiz.IDLocalTuttiAgent)
+	}
+}
+
+func TestAgentListIncludesWorkspaceAgentsWithoutCollapsingSharedHarness(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	var codexTarget agenttargetbiz.Target
+	for _, target := range targets {
+		if target.ID == agenttargetbiz.IDLocalCodex {
+			codexTarget = target
+			break
+		}
+	}
+	directory := &fakeWorkspaceAgentDirectory{
+		views: map[string][]workspaceagentbiz.View{"workspace-1": {
+			{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:reviewer", Name: "Reviewer"}, Harness: workspaceagentbiz.Harness{AgentTargetID: codexTarget.ID, Available: true, Enabled: true, Provider: "codex"}},
+			{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:writer", Name: "Writer"}, Harness: workspaceagentbiz.Harness{AgentTargetID: codexTarget.ID, Available: true, Enabled: true, Provider: "codex"}},
+		}, "workspace-2": {{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:other", Name: "Other"}}}},
+	}
+	sessions := &fakeAgentSessions{availability: []agentservice.ProviderAvailability{{Provider: "codex", Status: agentservice.ProviderAvailabilityAvailable}}}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions, nil,
+		fakeAgentTargetList{targets: targets},
+	).WithWorkspaceAgents(directory)
+
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"}, OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("Handler: %v", err)
+	}
+	agents := output.Value["agents"].([]any)
+	gotIDs := make([]string, 0, len(agents))
+	for _, value := range agents {
+		gotIDs = append(gotIDs, value.(map[string]any)["id"].(string))
+	}
+	expectedIDs := make([]string, 0, len(agenttargetbiz.EnabledTargets(targets))+2)
+	for _, target := range agenttargetbiz.EnabledTargets(targets) {
+		expectedIDs = append(expectedIDs, target.ID)
+	}
+	expectedIDs = append(expectedIDs, "workspace-agent:reviewer", "workspace-agent:writer")
+	if !equalStrings(gotIDs, expectedIDs) {
+		t.Fatalf("agent ids = %#v, want %v", gotIDs, expectedIDs)
+	}
+	for index, id := range []string{"workspace-agent:reviewer", "workspace-agent:writer"} {
+		agent := agents[len(agents)-2+index].(map[string]any)
+		availability := agent["availability"].(map[string]any)
+		if agent["id"] != id || agent["name"] != []string{"Reviewer", "Writer"}[index] ||
+			agent["provider"] != "codex" || availability["status"] != agentservice.ProviderAvailabilityAvailable {
+			t.Fatalf("workspace agent %q = %#v", id, agent)
+		}
+	}
+	if output.Value["defaultAgentTargetId"] != agenttargetbiz.IDLocalTuttiAgent {
+		t.Fatalf("defaultAgentTargetId = %#v, want global default", output.Value["defaultAgentTargetId"])
+	}
+	if !equalStrings(directory.listedWorkspaceIDs, []string{"workspace-1"}) {
+		t.Fatalf("listed workspaces = %#v", directory.listedWorkspaceIDs)
+	}
+}
+
+func TestAgentListExactWorkspaceAgentDoesNotResolveUnrelatedAgents(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	var codexTarget agenttargetbiz.Target
+	for _, target := range targets {
+		if target.ID == agenttargetbiz.IDLocalCodex {
+			codexTarget = target
+			break
+		}
+	}
+	const selectedID = "workspace-agent:selected"
+	directory := &fakeWorkspaceAgentDirectory{
+		views: map[string][]workspaceagentbiz.View{"workspace-1": {
+			{Agent: workspaceagentbiz.Agent{ID: selectedID, Name: "Selected"}, Harness: workspaceagentbiz.Harness{AgentTargetID: codexTarget.ID, Available: true, Enabled: true, Provider: "codex"}},
+			{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:unrelated", Name: "Unrelated"}},
+		}},
+	}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}},
+		&fakeAgentSessions{availability: []agentservice.ProviderAvailability{{
+			Provider: "codex", Status: agentservice.ProviderAvailabilityAvailable,
+		}}}, nil, fakeAgentTargetList{targets: targets},
+	).WithWorkspaceAgents(directory)
+
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Context:    cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+		Input:      map[string]any{"agent-id": selectedID},
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("agent list: %v", err)
+	}
+	agents := output.Value["agents"].([]any)
+	if len(agents) != 1 {
+		t.Fatalf("agents = %#v", agents)
+	}
+	selected := agents[0].(map[string]any)
+	availability := selected["availability"].(map[string]any)
+	if selected["id"] != selectedID || selected["name"] != "Selected" || selected["provider"] != "codex" ||
+		availability["status"] != agentservice.ProviderAvailabilityAvailable {
+		t.Fatalf("selected agent = %#v", selected)
+	}
+	if !equalStrings(directory.getKeys, []string{"workspace-1\x00" + selectedID}) || len(directory.listedWorkspaceIDs) != 0 {
+		t.Fatalf("workspace agent calls = get=%#v list=%#v", directory.getKeys, directory.listedWorkspaceIDs)
+	}
+}
+
+func TestDeprecatedProviderSelectorIgnoresWorkspaceAgents(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	directory := &fakeWorkspaceAgentDirectory{
+		views: map[string][]workspaceagentbiz.View{"workspace-1": {{Agent: workspaceagentbiz.Agent{ID: "workspace-agent:reviewer", Name: "Reviewer"}}}},
+	}
+	sessions := &fakeAgentSessions{}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions, nil,
+		fakeAgentTargetList{targets: targets},
+	).WithWorkspaceAgents(directory)
+
+	if _, err := provider.newStartCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "codex", "prompt": "review"},
+	}); err != nil {
+		t.Fatalf("legacy provider start: %v", err)
+	}
+	if sessions.createInput.AgentTargetID != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("agent target id = %q, want global legacy target", sessions.createInput.AgentTargetID)
+	}
+	if len(directory.listedWorkspaceIDs) != 0 || len(directory.getKeys) != 0 {
+		t.Fatalf("legacy selector touched workspace-agent directory: listed=%#v get=%#v", directory.listedWorkspaceIDs, directory.getKeys)
+	}
+}
+
+func TestWorkspaceAgentExactIDFlowsThroughAgentCommands(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	var codexTarget agenttargetbiz.Target
+	for _, target := range targets {
+		if target.ID == agenttargetbiz.IDLocalCodex {
+			codexTarget = target
+		}
+	}
+	const customID = "workspace-agent:reviewer"
+	directory := &fakeWorkspaceAgentDirectory{
+		views: map[string][]workspaceagentbiz.View{"workspace-1": {{
+			Agent:   workspaceagentbiz.Agent{ID: customID, Name: "Reviewer"},
+			Harness: workspaceagentbiz.Harness{AgentTargetID: codexTarget.ID, Available: true, Enabled: true, Provider: "codex"},
+		}}},
+	}
+	sessions := &fakeAgentSessions{}
+	provider := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-1"}}, sessions).WithWorkspaceAgents(directory)
+
+	if _, err := provider.newComposerOptionsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+		Input:   map[string]any{"agent-id": customID},
+	}); err != nil {
+		t.Fatalf("composer-options: %v", err)
+	}
+	if sessions.composerInput.AgentTargetID != customID || sessions.composerInput.Provider != "codex" || sessions.composerInput.WorkspaceID != "workspace-1" {
+		t.Fatalf("composer input = %#v", sessions.composerInput)
+	}
+	if _, err := provider.newStartCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+		Input:   map[string]any{"agent-id": customID, "prompt": "review"},
+	}); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	if sessions.createInput.AgentTargetID != customID || sessions.createInput.Provider != "codex" || sessions.workspaceID != "workspace-1" {
+		t.Fatalf("create input = %#v workspace=%q", sessions.createInput, sessions.workspaceID)
+	}
+	if _, err := provider.newSkillBundleCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{WorkspaceID: "workspace-1"},
+		Input:   map[string]any{"agent-id": customID},
+	}); err != nil {
+		t.Fatalf("skill-bundle: %v", err)
+	}
+	if sessions.skillBundleIn.AgentTargetID != customID || sessions.workspaceID != "workspace-1" {
+		t.Fatalf("skill bundle input = %#v workspace=%q", sessions.skillBundleIn, sessions.workspaceID)
+	}
+}
+
+func TestLegacyComposerOptionsDoesNotRequireStartupWorkspaceOrWorkspaceAgents(t *testing.T) {
+	directory := &fakeWorkspaceAgentDirectory{}
+	sessions := &fakeAgentSessions{}
+	provider := newTestProvider(fakeWorkspaceCatalog{
+		startupErr: errors.New("startup workspace unavailable"),
+	}, sessions).WithWorkspaceAgents(directory)
+
+	output, err := provider.newComposerOptionsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"provider": "codex"}, OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("legacy composer-options: %v", err)
+	}
+	if output.Value["schemaVersion"] != 1 || output.Value["provider"] != "codex" {
+		t.Fatalf("output = %#v", output.Value)
+	}
+	if len(directory.listedWorkspaceIDs) != 0 || len(directory.getKeys) != 0 {
+		t.Fatalf("legacy selector touched workspace-agent directory: listed=%#v get=%#v", directory.listedWorkspaceIDs, directory.getKeys)
+	}
+}
+
+func TestGlobalAgentListDoesNotRequireStartupWorkspace(t *testing.T) {
+	directory := &fakeWorkspaceAgentDirectory{}
+	sessions := &fakeAgentSessions{}
+	provider := newTestProvider(fakeWorkspaceCatalog{
+		startupErr: errors.New("startup workspace unavailable"),
+	}, sessions).WithWorkspaceAgents(directory)
+
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": agenttargetbiz.IDLocalCodex}, OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("global agent list: %v", err)
+	}
+	agents := output.Value["agents"].([]any)
+	if len(agents) != 1 || agents[0].(map[string]any)["id"] != agenttargetbiz.IDLocalCodex {
+		t.Fatalf("agents = %#v", agents)
+	}
+	if len(directory.listedWorkspaceIDs) != 0 || len(directory.getKeys) != 0 {
+		t.Fatalf("global selector touched workspace-agent directory: listed=%#v get=%#v", directory.listedWorkspaceIDs, directory.getKeys)
+	}
+}
+
+func TestAgentListWithoutWorkspaceReturnsGlobalAgentsOnly(t *testing.T) {
+	directory := &fakeWorkspaceAgentDirectory{}
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startupErr: errors.New("startup workspace must not be consulted")},
+		&fakeAgentSessions{}, nil, fakeAgentTargetList{targets: targets},
+	).WithWorkspaceAgents(directory)
+
+	output, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		OutputMode: cliservice.OutputModeJSON,
+	})
+	if err != nil {
+		t.Fatalf("agent list: %v", err)
+	}
+	agents := output.Value["agents"].([]any)
+	expectedTargets := agenttargetbiz.EnabledTargets(targets)
+	if len(agents) != len(expectedTargets) {
+		t.Fatalf("agent count = %d, want %d", len(agents), len(expectedTargets))
+	}
+	gotIDs := make([]string, 0, len(agents))
+	for _, value := range agents {
+		gotIDs = append(gotIDs, value.(map[string]any)["id"].(string))
+	}
+	expectedIDs := make([]string, 0, len(expectedTargets))
+	for _, target := range expectedTargets {
+		expectedIDs = append(expectedIDs, target.ID)
+	}
+	if !equalStrings(gotIDs, expectedIDs) {
+		t.Fatalf("agent ids without workspace = %#v, want %v", gotIDs, expectedIDs)
+	}
+	if len(directory.listedWorkspaceIDs) != 0 || len(directory.getKeys) != 0 {
+		t.Fatalf("workspace agent directory calls = listed=%#v get=%#v", directory.listedWorkspaceIDs, directory.getKeys)
+	}
+}
+
+func TestAgentListWorkspaceAgentRequiresExplicitWorkspace(t *testing.T) {
+	const customID = "workspace-agent:startup-only"
+	directory := &fakeWorkspaceAgentDirectory{
+		views: map[string][]workspaceagentbiz.View{
+			"workspace-startup": {{Agent: workspaceagentbiz.Agent{ID: customID, Name: "Startup only"}}},
+		},
+	}
+	provider := newTestProvider(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-startup"}},
+		&fakeAgentSessions{},
+	).WithWorkspaceAgents(directory)
+
+	_, err := provider.newAgentsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": customID},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "workspace id is required") {
+		t.Fatalf("workspace agent list error = %v, want explicit workspace validation", err)
+	}
+	if len(directory.listedWorkspaceIDs) != 0 || len(directory.getKeys) != 0 {
+		t.Fatalf("agent list consulted workspace-agent directory without workspace: listed=%#v get=%#v", directory.listedWorkspaceIDs, directory.getKeys)
+	}
+}
+
+func TestWorkspaceAgentSelectorUsesExplicitWorkspaceOverStartupWorkspace(t *testing.T) {
+	targets := agenttargetbiz.DefaultSystemTargets(1)
+	var codexTarget agenttargetbiz.Target
+	for _, target := range targets {
+		if target.ID == agenttargetbiz.IDLocalCodex {
+			codexTarget = target
+			break
+		}
+	}
+	const customID = "workspace-agent:explicit"
+	directory := &fakeWorkspaceAgentDirectory{
+		views: map[string][]workspaceagentbiz.View{
+			"workspace-explicit": {{
+				Agent:   workspaceagentbiz.Agent{ID: customID, Name: "Explicit"},
+				Harness: workspaceagentbiz.Harness{AgentTargetID: codexTarget.ID, Available: true, Enabled: true, Provider: "codex"},
+			}},
+		},
+	}
+	sessions := &fakeAgentSessions{}
+	provider := NewProviderWithAgentTargets(
+		fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-startup"}},
+		sessions, nil, fakeAgentTargetList{targets: targets},
+	).WithWorkspaceAgents(directory)
+
+	if _, err := provider.newComposerOptionsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Context: cliservice.InvokeContext{WorkspaceID: "workspace-explicit"},
+		Input:   map[string]any{"agent-id": customID},
+	}); err != nil {
+		t.Fatalf("composer-options: %v", err)
+	}
+	if sessions.composerInput.WorkspaceID != "workspace-explicit" {
+		t.Fatalf("composer workspace = %q, want explicit workspace", sessions.composerInput.WorkspaceID)
+	}
+	if !equalStrings(directory.listedWorkspaceIDs, []string{}) || !equalStrings(directory.getKeys, []string{"workspace-explicit\x00" + customID}) {
+		t.Fatalf("directory calls = listed=%#v get=%#v", directory.listedWorkspaceIDs, directory.getKeys)
+	}
+}
+
+func TestWorkspaceAgentSelectorRequiresExplicitWorkspace(t *testing.T) {
+	const customID = "workspace-agent:startup-only"
+	directory := &fakeWorkspaceAgentDirectory{
+		views: map[string][]workspaceagentbiz.View{
+			"workspace-startup": {{Agent: workspaceagentbiz.Agent{ID: customID, Name: "Startup only"}}},
+		},
+	}
+	sessions := &fakeAgentSessions{}
+	provider := newTestProvider(fakeWorkspaceCatalog{startup: workspacebiz.Summary{ID: "workspace-startup"}}, sessions).WithWorkspaceAgents(directory)
+
+	_, err := provider.newComposerOptionsCommand().Handler(context.Background(), cliservice.InvokeRequest{
+		Input: map[string]any{"agent-id": customID},
+	})
+	if !errors.Is(err, cliservice.ErrInvalidInput) || !strings.Contains(err.Error(), "workspace id is required") {
+		t.Fatalf("workspace agent selection error = %v, want explicit workspace validation", err)
+	}
+	if len(directory.listedWorkspaceIDs) != 0 || len(directory.getKeys) != 0 {
+		t.Fatalf("selector consulted workspace-agent directory without workspace: listed=%#v get=%#v", directory.listedWorkspaceIDs, directory.getKeys)
 	}
 }
 

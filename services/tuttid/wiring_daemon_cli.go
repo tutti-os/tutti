@@ -25,6 +25,7 @@ import (
 	tuttimodeexecutionservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeexecution"
 	tuttimodeplanservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeplan"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
+	workspaceagentservice "github.com/tutti-os/tutti/services/tuttid/service/workspaceagent"
 )
 
 type daemonCLIRegistryInput struct {
@@ -35,6 +36,7 @@ type daemonCLIRegistryInput struct {
 	ManagedCredentials   *managedcredentialsservice.Service
 	AgentSessions        *agentservice.Service
 	AgentTargets         agenttargetservice.Service
+	WorkspaceAgents      *workspaceagentservice.Service
 	AgentTargetSetup     *agentextensionservice.SetupService
 	Preferences          *preferencesservice.Service
 	TuttiModePlans       *tuttimodeplanservice.Service
@@ -48,6 +50,16 @@ type daemonCLIRegistryInput struct {
 func buildDaemonCLIRegistry(
 	input daemonCLIRegistryInput,
 ) (*cliservice.Registry, error) {
+	agentContextProvider := agentcontextcli.NewProviderWithAgentTargets(
+		input.Workspaces,
+		input.AgentSessions,
+		eventstreamservice.AgentGUILaunchPublisher{Service: input.Events},
+		input.AgentTargets,
+		input.Preferences,
+	).WithAgentTargetSetup(input.AgentTargetSetup)
+	if input.WorkspaceAgents != nil {
+		agentContextProvider = agentContextProvider.WithWorkspaceAgents(input.WorkspaceAgents)
+	}
 	providers := []cliservice.Provider{
 		diagnosticscli.NewProvider(),
 		managedmodelscli.NewProvider(input.ManagedCredentials),
@@ -60,15 +72,7 @@ func buildDaemonCLIRegistry(
 				Service: input.Events,
 			},
 		),
-		agentcontextcli.NewProviderWithAgentTargets(
-			input.Workspaces,
-			input.AgentSessions,
-			eventstreamservice.AgentGUILaunchPublisher{
-				Service: input.Events,
-			},
-			input.AgentTargets,
-			input.Preferences,
-		).WithAgentTargetSetup(input.AgentTargetSetup),
+		agentContextProvider,
 		tuttimodeplancli.NewProviderWithExecutionSnapshot(
 			input.Workspaces,
 			input.TuttiModePlans,

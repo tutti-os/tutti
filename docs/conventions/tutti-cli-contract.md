@@ -606,9 +606,19 @@ grouped under their source message. Do not flatten images across turns in this
 command; the calling agent decides which turns to inspect and which returned
 `localPath` values to pass to provider launchers as `--image`.
 
-Agent discovery and launch are target-first. `agent list --json` returns every
-enabled Agent Target in stable target order, including its exact agent id,
-display name, provider metadata, current runtime availability, and an explicit
+Agent discovery and launch are target-first with an explicit workspace policy.
+When the invocation supplies an explicit workspace, `agent list --json`
+validates that workspace and returns every enabled global Agent Target in stable
+target order followed by that workspace's configured WorkspaceAgents. Without a
+workspace context, an unfiltered `agent list --json` returns the global Agent
+Targets only; it does not enumerate WorkspaceAgents or infer a workspace for
+WorkspaceAgent discovery. An exact `--agent-id workspace-agent:<uuid>` selector
+also requires an explicit workspace and resolves the opaque id only within that
+scope. This does not remove the existing runtime setup probe for global Agent
+Extension targets: when no workspace is supplied, that probe may use the
+startup workspace only to report global target availability; it never enumerates
+or selects a WorkspaceAgent. Each entry includes its exact agent id, display
+name, provider metadata, current runtime availability, and an explicit
 `defaultAgentTargetId` resolved from the current desktop preference. The
 JSON entry may also include `executablePath`, the host-resolved executable for
 that exact Agent Target. App-owned runtimes must treat it as opaque launch
@@ -628,6 +638,21 @@ probe rather than their sum. Tutti coalesces broad and exact-target probes
 across app callers and keeps a short-lived daemon result; `--refresh` bypasses
 that result. New callers may still use `agent list --agent-id <agent-id>` when
 they only need one target.
+WorkspaceAgent ids are opaque `workspace-agent:<uuid>` launch identities. The
+daemon lists them through the repair-friendly WorkspaceAgent View and derives
+provider and Harness runtime metadata without validating the optional model
+Plan for every list entry. CLI callers pass the WorkspaceAgent id unchanged to
+`composer-options`, `start`, and `skill-bundle`; they do not reconstruct a
+Harness id or infer provider from the opaque id. Composer options use the same
+policy: a legacy provider or global Agent Target does not require a workspace,
+while an exact WorkspaceAgent selector requires an explicit workspace. `start`
+and `skill-bundle` retain their workspace-required operation contract. A broken
+WorkspaceAgent remains listable with unavailable or unknown configuration
+status so it can be diagnosed. The Agent service performs the final strict
+Harness, model-plan, and runtime validation for exact composer, skill-bundle,
+and start operations before creating a session. WorkspaceAgents do not replace
+the global desktop default and do not participate in deprecated provider
+selection.
 The command must not collapse several agents that share one provider or make
 callers guess a default from list order. Callers select an exact id and start it with
 `agent start --agent-id <agent-id> ...`; provider-specific command

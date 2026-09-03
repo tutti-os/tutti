@@ -801,6 +801,7 @@ func buildDaemonAPI(
 		Apps: appCenterService, Events: events,
 		ManagedCredentials: managedCredentials,
 		AgentSessions:      agentSessionService, AgentTargets: agentTargets,
+		WorkspaceAgents:  workspaceAgents,
 		AgentTargetSetup: agentTargetSetup,
 		Preferences:      preferences, TuttiModePlans: tuttiModePlans,
 		TuttiModeExecutions:  tuttiModeExecutions,

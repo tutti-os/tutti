@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"context"
+	"strings"
 
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -32,6 +33,7 @@ func (p Provider) newComposerOptionsCommand() cliservice.Command {
 		Description: "Get model, reasoning, and permission options for one agent without starting a session. Some runtimes may spin up a hidden discovery session.",
 		Kind:        framework.KindGet,
 		Workspace:   framework.WorkspaceOptional,
+		Workspaces:  p.workspaces,
 		Inputs:      framework.FromStruct[composerOptionsInput](),
 		Output: framework.OutputSpec{
 			DefaultMode: cliservice.OutputModeJSON,
@@ -51,9 +53,13 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}
-	target, legacy, err := p.resolveAgentSelector(ctx, input.AgentID, input.Provider)
+	target, legacy, err := p.resolveAgentSelector(ctx, invoke.WorkspaceID, input.AgentID, input.Provider)
 	if err != nil {
 		return nil, err
+	}
+	workspaceID := strings.TrimSpace(invoke.WorkspaceID)
+	if target.WorkspaceAgent {
+		workspaceID = target.WorkspaceID
 	}
 	canonicalProvider := target.Provider
 	locale := input.Locale
@@ -68,7 +74,7 @@ func (p Provider) runComposerOptions(ctx context.Context, invoke framework.Invok
 		Cwd:                      input.Cwd,
 		Locale:                   locale,
 		Provider:                 canonicalProvider,
-		WorkspaceID:              invoke.WorkspaceID,
+		WorkspaceID:              workspaceID,
 		IncludeCapabilityCatalog: &includeCapabilityCatalog,
 		Settings: agentservice.ComposerSettings{
 			Model:            input.Model,

@@ -14,7 +14,6 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
-	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
 	"github.com/tutti-os/tutti/services/tuttid/service/cli/framework"
@@ -97,7 +96,7 @@ func (p Provider) newStartCommand() cliservice.Command {
 		Inputs:      framework.FromStruct[startInput](),
 		Output:      sessionActionOutputSpec(),
 		Run: func(ctx context.Context, invoke framework.InvokeContext, input startInput) (any, error) {
-			target, _, err := p.resolveAgentSelector(ctx, input.AgentID, input.Provider)
+			target, _, err := p.resolveAgentSelector(ctx, invoke.WorkspaceID, input.AgentID, input.Provider)
 			if err != nil {
 				return nil, err
 			}
@@ -134,7 +133,7 @@ type startFields struct {
 	Title           string
 }
 
-func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, target agenttargetbiz.Target, input startFields) (any, error) {
+func (p Provider) runStart(ctx context.Context, invoke framework.InvokeContext, target selectedAgent, input startFields) (any, error) {
 	if err := p.requireSessions(); err != nil {
 		return nil, err
 	}

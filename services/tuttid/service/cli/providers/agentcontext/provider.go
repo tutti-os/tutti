@@ -2,6 +2,7 @@ package agentcontext
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -9,6 +10,8 @@ import (
 	"github.com/tutti-os/tutti/services/tuttid/biz/agentgui"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
 	preferencesbiz "github.com/tutti-os/tutti/services/tuttid/biz/preferences"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
+	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
 	agentextensionservice "github.com/tutti-os/tutti/services/tuttid/service/agentextension"
 	cliservice "github.com/tutti-os/tutti/services/tuttid/service/cli"
@@ -50,13 +53,31 @@ type AgentTargetSetupReader interface {
 	GetSetup(context.Context, agentextensionservice.InstallPlanInput) (agentextensionservice.SetupSnapshot, error)
 }
 
+type WorkspaceAgentDirectory interface {
+	Get(context.Context, string, string) (workspaceagentbiz.View, error)
+	List(context.Context, string) ([]workspaceagentbiz.View, error)
+}
+
+type selectedAgent struct {
+	ID             string
+	Provider       string
+	WorkspaceID    string
+	WorkspaceAgent bool
+}
+
 type Provider struct {
 	workspaces                 cliservice.WorkspaceCatalog
 	sessions                   AgentSessions
 	launchPublisher            AgentGUILaunchPublisher
 	preferences                DesktopPreferencesReader
 	agentTargets               AgentTargetLister
+	workspaceAgents            WorkspaceAgentDirectory
 	extensionAvailabilityCache *extensionAvailabilityCache
+}
+
+func (p Provider) WithWorkspaceAgents(workspaceAgents WorkspaceAgentDirectory) Provider {
+	p.workspaceAgents = workspaceAgents
+	return p
 }
 
 func (p Provider) WithAgentTargetSetup(setup AgentTargetSetupReader) Provider {
@@ -154,4 +175,35 @@ func (p Provider) resolveEnabledAgentTarget(ctx context.Context, agentID string)
 		}
 	}
 	return agenttargetbiz.Target{}, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, agentID)
+}
+
+func (p Provider) resolveSelectedAgent(ctx context.Context, workspaceID string, agentID string) (selectedAgent, error) {
+	agentID = strings.TrimSpace(agentID)
+	if strings.HasPrefix(agentID, workspaceagentbiz.IDPrefix) {
+		workspaceID = strings.TrimSpace(workspaceID)
+		if workspaceID == "" {
+			return selectedAgent{}, fmt.Errorf("%w: workspace id is required for WorkspaceAgent selection", cliservice.ErrInvalidInput)
+		}
+		if p.workspaceAgents == nil {
+			return selectedAgent{}, errors.New("workspace agent directory is not configured")
+		}
+		view, err := p.workspaceAgents.Get(ctx, workspaceID, agentID)
+		if err != nil {
+			if errors.Is(err, workspacedata.ErrWorkspaceAgentNotFound) {
+				return selectedAgent{}, fmt.Errorf("%w: enabled agent %q was not found; run agent list --json", cliservice.ErrInvalidInput, agentID)
+			}
+			return selectedAgent{}, err
+		}
+		return selectedAgent{
+			ID:             agentID,
+			Provider:       strings.TrimSpace(view.Harness.Provider),
+			WorkspaceID:    workspaceID,
+			WorkspaceAgent: true,
+		}, nil
+	}
+	target, err := p.resolveEnabledAgentTarget(ctx, agentID)
+	if err != nil {
+		return selectedAgent{}, err
+	}
+	return selectedAgent{ID: target.ID, Provider: target.Provider}, nil
 }
