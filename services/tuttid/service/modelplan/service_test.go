@@ -13,11 +13,14 @@ import (
 
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type memoryPlanStore struct {
-	mu    sync.Mutex
-	plans map[string]modelplanbiz.Plan
+	mu        sync.Mutex
+	plans     map[string]modelplanbiz.Plan
+	putErr    error
+	deleteErr error
 }
 
 func newMemoryPlanStore() *memoryPlanStore {
@@ -53,6 +56,9 @@ func (s *memoryPlanStore) GetModelPlan(_ context.Context, workspaceID string, pl
 func (s *memoryPlanStore) PutModelPlan(_ context.Context, plan modelplanbiz.Plan) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.putErr != nil {
+		return s.putErr
+	}
 	s.plans[s.key(plan.WorkspaceID, plan.ID)] = plan
 	return nil
 }
@@ -60,6 +66,9 @@ func (s *memoryPlanStore) PutModelPlan(_ context.Context, plan modelplanbiz.Plan
 func (s *memoryPlanStore) DeleteModelPlan(_ context.Context, workspaceID string, planID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.deleteErr != nil {
+		return s.deleteErr
+	}
 	key := s.key(workspaceID, planID)
 	if _, ok := s.plans[key]; !ok {
 		return workspacedata.ErrModelPlanNotFound
@@ -71,6 +80,16 @@ func (s *memoryPlanStore) DeleteModelPlan(_ context.Context, workspaceID string,
 type staticReferences struct {
 	references []modelplanbiz.Reference
 }
+
+type recordingAnalyticsReporter struct {
+	events []reporterservice.Event
+}
+
+func (r *recordingAnalyticsReporter) Track(_ context.Context, events ...reporterservice.Event) {
+	r.events = append(r.events, events...)
+}
+
+func (*recordingAnalyticsReporter) Close() error { return nil }
 
 func (s staticReferences) ListModelPlanReferences(context.Context, string, string) ([]modelplanbiz.Reference, error) {
 	return s.references, nil
@@ -243,6 +262,75 @@ func TestDeletePlanBlockedWhileReferenced(t *testing.T) {
 	}
 }
 
+func TestServiceReportsCommittedModelPlanConfigurationChanges(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store := newMemoryPlanStore()
+	service := newTestService(store)
+	reporter := &recordingAnalyticsReporter{}
+	service.AnalyticsReporter = reporter
+	apiKey := "do-not-report"
+	created, err := service.CreatePlan(ctx, PutPlanInput{
+		WorkspaceID: "ws", Name: "Relay", TemplateKind: "relay", Protocol: "openai",
+		APIKey: &apiKey, BaseURL: "https://relay.example/v1", Enabled: true,
+	})
+	if err != nil {
+		t.Fatalf("CreatePlan() error = %v", err)
+	}
+	if _, err := service.UpdatePlan(ctx, PutPlanInput{
+		WorkspaceID: "ws", PlanID: created.ID, Name: "Relay 2", TemplateKind: "relay",
+		Protocol: "openai", BaseURL: "https://relay.example/v1", Enabled: true,
+	}); err != nil {
+		t.Fatalf("UpdatePlan() error = %v", err)
+	}
+	duplicate, err := service.DuplicatePlan(ctx, "ws", created.ID, "Relay copy")
+	if err != nil {
+		t.Fatalf("DuplicatePlan() error = %v", err)
+	}
+	if _, err := service.SetPlanEnabled(ctx, "ws", duplicate.ID, true); err != nil {
+		t.Fatalf("SetPlanEnabled() error = %v", err)
+	}
+	if _, err := service.SetPlanEnabled(ctx, "ws", duplicate.ID, true); err != nil {
+		t.Fatalf("SetPlanEnabled(no-op) error = %v", err)
+	}
+	if err := service.DeletePlan(ctx, "ws", created.ID); err != nil {
+		t.Fatalf("DeletePlan() error = %v", err)
+	}
+
+	wantActions := []string{"created", "updated", "duplicated", "enabled", "deleted"}
+	if len(reporter.events) != len(wantActions) {
+		t.Fatalf("analytics events = %#v, want actions %#v", reporter.events, wantActions)
+	}
+	for index, action := range wantActions {
+		event := reporter.events[index]
+		if event.Name != "model_plan.configuration_changed" || event.Params["action"] != action ||
+			event.Params["template_kind"] != "relay" || event.Params["protocol"] != "openai" {
+			t.Fatalf("event[%d] = %#v, want bounded %q relay/openai", index, event, action)
+		}
+		for _, forbidden := range []string{"model_plan_id", "name", "base_url", "api_key"} {
+			if _, exists := event.Params[forbidden]; exists {
+				t.Fatalf("event[%d] leaked %s: %#v", index, forbidden, event)
+			}
+		}
+	}
+	service.References = staticReferences{references: []modelplanbiz.Reference{{
+		Kind: modelplanbiz.ReferenceWorkspaceAgent, ID: "private", Role: "default",
+	}}}
+	if err := service.DeletePlan(ctx, "ws", duplicate.ID); !errors.Is(err, ErrPlanReferenced) {
+		t.Fatalf("DeletePlan(referenced) error = %v, want ErrPlanReferenced", err)
+	}
+	store.putErr = errors.New("store write failed")
+	if _, err := service.CreatePlan(ctx, PutPlanInput{
+		WorkspaceID: "ws", Name: "Not persisted", Protocol: "openai",
+	}); err == nil {
+		t.Fatal("CreatePlan(store failure) error = nil")
+	}
+	if len(reporter.events) != len(wantActions) {
+		t.Fatalf("failed mutations emitted analytics: %#v", reporter.events)
+	}
+}
+
 func TestPlanReferencesReturnsNotFoundForMissingPlan(t *testing.T) {
 	t.Parallel()
 
@@ -299,6 +387,8 @@ func TestDetectStagesAgainstFakeOpenAIProvider(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreatePlan() error = %v", err)
 	}
+	reporter := &recordingAnalyticsReporter{}
+	service.AnalyticsReporter = reporter
 
 	result, err := service.Detect(ctx, DetectInput{WorkspaceID: "ws", PlanID: created.ID})
 	if err != nil {
@@ -333,6 +423,75 @@ func TestDetectStagesAgainstFakeOpenAIProvider(t *testing.T) {
 	authStage, _ := badResult.Detection.StageOutcome(modelplanbiz.StageAuth)
 	if authStage.FailureReason != FailureUnauthorized || authStage.Remedy != RemedyCheckAPIKey {
 		t.Fatalf("auth stage = %#v, want unauthorized/check_api_key", authStage)
+	}
+	if len(reporter.events) != 2 || reporter.events[0].Params["scope"] != "saved" ||
+		reporter.events[0].Params["result"] != "passed" ||
+		reporter.events[1].Params["scope"] != "saved" || reporter.events[1].Params["result"] != "failed" {
+		t.Fatalf("saved detection analytics = %#v", reporter.events)
+	}
+}
+
+func TestDetectReportsBoundedCompletedOutcomes(t *testing.T) {
+	t.Parallel()
+
+	fake := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer sk-good" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/v1/models":
+			_, _ = w.Write([]byte(`{"data":[{"id":"fake-mini"}]}`))
+		case "/v1/chat/completions":
+			_, _ = w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer fake.Close()
+
+	service := newTestService(newMemoryPlanStore())
+	service.HTTPClient = fake.Client()
+	reporter := &recordingAnalyticsReporter{}
+	service.AnalyticsReporter = reporter
+	goodKey := "sk-good"
+	badKey := "sk-secret"
+	input := DetectInput{
+		WorkspaceID: "ws", TemplateKind: "relay", Protocol: "openai",
+		BaseURL: fake.URL + "/v1", Models: []modelplanbiz.Model{{ID: "fake-mini"}}, Model: "fake-mini",
+	}
+	input.APIKey = &goodKey
+	if _, err := service.Detect(context.Background(), input); err != nil {
+		t.Fatalf("Detect(success) error = %v", err)
+	}
+	input.APIKey = &badKey
+	if _, err := service.Detect(context.Background(), input); err != nil {
+		t.Fatalf("Detect(failure) error = %v", err)
+	}
+	if _, err := service.Detect(context.Background(), DetectInput{Protocol: "unsupported"}); !errors.Is(err, ErrDetectionInput) {
+		t.Fatalf("Detect(invalid) error = %v", err)
+	}
+
+	if len(reporter.events) != 2 {
+		t.Fatalf("analytics events = %#v, want successful and failed attempts", reporter.events)
+	}
+	if event := reporter.events[0]; event.Name != "model_plan.detection_completed" ||
+		event.Params["scope"] != "draft" || event.Params["result"] != "passed" ||
+		event.Params["protocol"] != "openai" || event.Params["template_kind"] != "relay" {
+		t.Fatalf("success event = %#v", event)
+	}
+	if event := reporter.events[1]; event.Name != "model_plan.detection_completed" ||
+		event.Params["scope"] != "draft" || event.Params["result"] != "failed" ||
+		event.Params["failure_stage"] != "auth" || event.Params["failure_reason"] != "unauthorized" {
+		t.Fatalf("failure event = %#v", event)
+	}
+	for _, event := range reporter.events {
+		for _, forbidden := range []string{"workspace_id", "model_plan_id", "base_url", "api_key", "model"} {
+			if _, exists := event.Params[forbidden]; exists {
+				t.Fatalf("event leaked %s: %#v", forbidden, event)
+			}
+		}
 	}
 }
 

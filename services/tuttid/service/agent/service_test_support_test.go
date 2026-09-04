@@ -8,6 +8,7 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
@@ -25,26 +26,33 @@ func (f fakeAgentTargetLookup) GetAgentTarget(_ context.Context, id string) (age
 }
 
 type activityProjectionRepoStub struct {
-	clearResult     agentactivitybiz.ClearSessionsResult
-	settleStaleErr  error
-	settlements     []agentactivitybiz.StaleTurnSettlement
-	stateResult     agentactivitybiz.StateReportResult
-	stateInput      agentactivitybiz.SessionStateReport
-	messageInput    agentactivitybiz.SessionMessageReport
-	messageResult   agentactivitybiz.MessageReportResult
-	messagePage     agentactivitybiz.MessagePage
-	messagePageOK   bool
-	messagePageErr  error
-	turnResult      agentactivitybiz.Turn
-	turnResults     map[string]agentactivitybiz.Turn
-	turnFound       bool
-	turnErr         error
-	sectionsPage    agentactivitybiz.SessionSectionsPage
-	sectionsOK      bool
-	sectionsErr     error
-	submission      agentactivitybiz.TurnSubmission
-	submissionFound bool
-	submissionErr   error
+	clearResult                   agentactivitybiz.ClearSessionsResult
+	session                       agentactivitybiz.Session
+	sessionFound                  bool
+	sessionErr                    error
+	settleStaleErr                error
+	settlements                   []agentactivitybiz.StaleTurnSettlement
+	stateResult                   agentactivitybiz.StateReportResult
+	stateInput                    agentactivitybiz.SessionStateReport
+	messageInput                  agentactivitybiz.SessionMessageReport
+	messageResult                 agentactivitybiz.MessageReportResult
+	messagePage                   agentactivitybiz.MessagePage
+	messagePageOK                 bool
+	messagePageErr                error
+	turnResult                    agentactivitybiz.Turn
+	turnResults                   map[string]agentactivitybiz.Turn
+	turnFound                     bool
+	turnErr                       error
+	sectionsPage                  agentactivitybiz.SessionSectionsPage
+	sectionsOK                    bool
+	sectionsErr                   error
+	submission                    agentactivitybiz.TurnSubmission
+	submissionFound               bool
+	submissionErr                 error
+	tuttiModeTurnSnapshot         tuttimodeactivationbiz.TurnSnapshot
+	tuttiModeTurnSnapshotFound    bool
+	tuttiModeTurnSnapshotAccepted bool
+	tuttiModeTurnSnapshotErr      error
 }
 
 func (r *activityProjectionRepoStub) ClearSessions(context.Context, string) (agentactivitybiz.ClearSessionsResult, error) {
@@ -67,8 +75,16 @@ func (*activityProjectionRepoStub) ListRecoverableDeletedSessionResources(contex
 	return []agentactivitybiz.DeletedSessionResource{}, nil
 }
 
-func (*activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
-	return agentactivitybiz.Session{}, false, nil
+func (r *activityProjectionRepoStub) GetSession(context.Context, string, string) (agentactivitybiz.Session, bool, error) {
+	return r.session, r.sessionFound, r.sessionErr
+}
+
+func (r *activityProjectionRepoStub) GetTuttiModeTurnSnapshot(context.Context, string, string, string) (tuttimodeactivationbiz.TurnSnapshot, bool, error) {
+	return r.tuttiModeTurnSnapshot, r.tuttiModeTurnSnapshotFound, r.tuttiModeTurnSnapshotErr
+}
+
+func (r *activityProjectionRepoStub) IsTuttiModeTurnSnapshotAccepted(context.Context, string, string, string) (bool, error) {
+	return r.tuttiModeTurnSnapshotAccepted, r.tuttiModeTurnSnapshotErr
 }
 
 func (*activityProjectionRepoStub) ListChildSessions(context.Context, string, string) ([]agentactivitybiz.Session, error) {

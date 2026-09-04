@@ -19,6 +19,7 @@ import (
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 var (
@@ -58,13 +59,14 @@ type ConfigurationChangePublisher interface {
 // strict runtime boundary, while List/Get remain repair-friendly when a
 // referenced Harness target has disappeared.
 type Service struct {
-	Store      Store
-	Targets    TargetResolver
-	Plans      PlanResolver
-	Workspaces WorkspaceResolver
-	Publisher  ConfigurationChangePublisher
-	Now        func() time.Time
-	NewID      func() string
+	Store             Store
+	Targets           TargetResolver
+	Plans             PlanResolver
+	Workspaces        WorkspaceResolver
+	Publisher         ConfigurationChangePublisher
+	AnalyticsReporter reporterservice.Reporter
+	Now               func() time.Time
+	NewID             func() string
 }
 
 type PutInput struct {
@@ -155,6 +157,7 @@ func (s *Service) Create(ctx context.Context, input PutInput) (workspaceagentbiz
 		return workspaceagentbiz.View{}, err
 	}
 	logWorkspaceAgentLifecycle("created", normalized)
+	s.reportConfigurationChanged(ctx, "created", normalized)
 	s.publishConfigurationChanged(ctx, normalized, s.configurationDefaultModel(ctx, normalized), true)
 	return s.view(ctx, normalized)
 }
@@ -188,6 +191,7 @@ func (s *Service) Update(ctx context.Context, input PutInput) (workspaceagentbiz
 		return workspaceagentbiz.View{}, err
 	}
 	logWorkspaceAgentLifecycle("updated", normalized)
+	s.reportConfigurationChanged(ctx, "updated", normalized)
 	resetComposerModel := existing.HarnessAgentTargetID != normalized.HarnessAgentTargetID ||
 		existing.ModelPlanID != normalized.ModelPlanID ||
 		existing.DefaultModel != normalized.DefaultModel ||
@@ -231,6 +235,7 @@ func (s *Service) Delete(ctx context.Context, workspaceID string, agentID string
 	// "agent_target_id.dropped" ingestion warnings back to a user action, so
 	// it logs the full pre-delete configuration rather than a zero-value row.
 	logWorkspaceAgentLifecycle("deleted", existing)
+	s.reportConfigurationChanged(ctx, "deleted", existing)
 	s.publishConfigurationChanged(ctx, existing, "", true)
 	return nil
 }

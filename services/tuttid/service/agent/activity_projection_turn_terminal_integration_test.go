@@ -10,16 +10,33 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentturnanalyticsbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentturnanalytics"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workspacebiz "github.com/tutti-os/tutti/services/tuttid/biz/workspace"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	agentturnterminal "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/turn_terminal"
 )
 
 func TestSettleStaleTurnsOnStartupDeliversDurableTerminalAnalyticsOnce(t *testing.T) {
 	ctx := context.Background()
 	store := openTerminalAnalyticsIntegrationStore(t, "ws-startup")
-	seedTerminalAnalyticsIntegrationSession(t, store, "ws-startup", "root")
+	seedTerminalAnalyticsIntegrationConfiguredSession(t, store, "ws-startup", "root")
 	seedTerminalAnalyticsIntegrationTurn(t, store, "ws-startup", "root", "turn-startup", 100)
+	activeSnapshot := tuttimodeactivationbiz.TurnSnapshot{
+		ActivationID: "activation-private", RevisionID: "revision-private", Revision: 1,
+		State: tuttimodeactivationbiz.StateActive, Source: tuttimodeactivationbiz.SourceSlashCommand,
+		Effect: 75, Speed: 25,
+	}
+	if _, created, err := store.PutTuttiModeTurnSnapshot(
+		ctx, "ws-startup", "root", "turn-startup", activeSnapshot, time.UnixMilli(105),
+	); err != nil || !created {
+		t.Fatalf("PutTuttiModeTurnSnapshot() created=%v err=%v", created, err)
+	}
+	if accepted, err := store.AcceptTuttiModeTurnSnapshot(
+		ctx, "ws-startup", "root", "turn-startup", time.UnixMilli(106),
+	); err != nil || !accepted {
+		t.Fatalf("AcceptTuttiModeTurnSnapshot() accepted=%v err=%v", accepted, err)
+	}
 	if _, created, err := store.PrepareSubmitClaim(ctx, agentactivitybiz.SubmitClaimPrepare{
 		WorkspaceID: "ws-startup", AgentSessionID: "root", CanonicalTurnID: "turn-startup",
 		ClientSubmitID: "submit-startup", MetadataJSON: `{"uiMode":"agent"}`, NowUnixMS: 110,
@@ -41,6 +58,22 @@ func TestSettleStaleTurnsOnStartupDeliversDurableTerminalAnalyticsOnce(t *testin
 	if params["startup_reconciled"] != true || params["client_submit_id"] != "submit-startup" ||
 		params["event_id"] != agentturnanalyticsbiz.StableEventID("ws-startup", "root", "turn-startup") {
 		t.Fatalf("startup params=%#v", params)
+	}
+	if params["agent_config_source"] != agentturnterminal.AgentConfigSourceWorkspaceAgent ||
+		params["model_config_source"] != agentturnterminal.ModelConfigSourceModelPlan ||
+		params["tutti_mode_state"] != agentturnterminal.TuttiModeStateActive {
+		t.Fatalf("startup configuration sources=%#v", params)
+	}
+	if _, exists := params["agent_target_id"]; exists {
+		t.Fatalf("startup params contain agent target identity: %#v", params)
+	}
+	if _, exists := params["model_plan_id"]; exists {
+		t.Fatalf("startup params contain model plan identity: %#v", params)
+	}
+	for _, forbidden := range []string{"activation_id", "revision_id", "effect", "speed"} {
+		if _, exists := params[forbidden]; exists {
+			t.Fatalf("startup params contain Tutti mode %s: %#v", forbidden, params)
+		}
 	}
 	if err := projection.SettleStaleTurnsOnStartup(ctx); err != nil {
 		t.Fatal(err)
@@ -317,6 +350,31 @@ func seedTerminalAnalyticsIntegrationSession(t *testing.T, store *workspacedata.
 		WorkspaceID: workspaceID, AgentSessionID: sessionID, Kind: agentactivitybiz.SessionKindRoot,
 		Origin: "runtime", Provider: "codex", Status: "active", CurrentPhase: "working",
 		OccurredAtUnixMS: 10,
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func seedTerminalAnalyticsIntegrationConfiguredSession(t *testing.T, store *workspacedata.SQLiteStore, workspaceID, sessionID string) {
+	t.Helper()
+	if _, err := store.ReportSessionState(context.Background(), agentactivitybiz.SessionStateReport{
+		WorkspaceID: workspaceID, AgentSessionID: sessionID, Kind: agentactivitybiz.SessionKindRoot,
+		Origin: "runtime", AgentTargetID: "workspace-agent:reviewer", Provider: "codex",
+		RuntimeContext: map[string]any{
+			"sessionRuntimeSnapshot": map[string]any{
+				"version":              1,
+				"agentTargetId":        "workspace-agent:reviewer",
+				"harnessAgentTargetId": "local:codex",
+				"provider":             "codex",
+				"modelConfiguration": map[string]any{
+					"source":            "model-plan",
+					"modelPlanId":       "plan-1",
+					"modelPlanRevision": uint64(1),
+					"fingerprint":       "model-fingerprint",
+				},
+			},
+		},
+		Status: "active", CurrentPhase: "working", OccurredAtUnixMS: 10,
 	}); err != nil {
 		t.Fatal(err)
 	}

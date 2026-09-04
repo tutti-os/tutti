@@ -2,13 +2,28 @@ package turn_terminal
 
 import "strings"
 
-const unknownErrorCode = "agent_unknown_error"
+const (
+	unknownErrorCode = "agent_unknown_error"
+
+	AgentConfigSourceAgentTarget    = "agent_target"
+	AgentConfigSourceUnknown        = "unknown"
+	AgentConfigSourceWorkspaceAgent = "workspace_agent"
+	ModelConfigSourceModelPlan      = "model_plan"
+	ModelConfigSourceProviderNative = "provider_native"
+	ModelConfigSourceUnknown        = "unknown"
+	TuttiModeStateActive            = "active"
+	TuttiModeStateInactive          = "inactive"
+	TuttiModeStateUnknown           = "unknown"
+)
 
 type Input struct {
 	AgentSessionID    string
+	AgentConfigSource string
 	ClientSubmitID    string
 	ErrorCode         string
 	Mode              string
+	ModelConfigSource string
+	TuttiModeState    string
 	Outcome           string
 	Origin            string
 	Provider          string
@@ -34,6 +49,7 @@ func Build(input Input) (string, Params, bool) {
 	}
 	turnID := strings.TrimSpace(input.TurnID)
 	params := Params{
+		"agent_config_source": normalizeAgentConfigSource(input.AgentConfigSource),
 		"agent_kind":          "local-agent",
 		"agent_session_id":    strings.TrimSpace(input.AgentSessionID),
 		"client_submit_id":    strings.TrimSpace(input.ClientSubmitID),
@@ -42,11 +58,13 @@ func Build(input Input) (string, Params, bool) {
 		"invocation_id":       turnID,
 		"is_child_session":    false,
 		"mode":                mode,
+		"model_config_source": normalizeModelConfigSource(input.ModelConfigSource),
 		"operation_id":        turnID,
 		"provider":            provider,
 		"startup_reconciled":  input.StartupReconciled,
 		"status":              status,
 		"surface":             "direct_session",
+		"tutti_mode_state":    normalizeTuttiModeState(input.TuttiModeState),
 		"turn_id":             turnID,
 		"turn_origin":         strings.TrimSpace(input.Origin),
 		"turn_outcome":        outcome,
@@ -72,6 +90,39 @@ func Build(input Input) (string, Params, bool) {
 		}
 	}
 	return eventName, params, true
+}
+
+func normalizeTuttiModeState(value string) string {
+	switch strings.TrimSpace(value) {
+	case TuttiModeStateActive:
+		return TuttiModeStateActive
+	case TuttiModeStateInactive:
+		return TuttiModeStateInactive
+	default:
+		return TuttiModeStateUnknown
+	}
+}
+
+func normalizeAgentConfigSource(value string) string {
+	switch strings.TrimSpace(value) {
+	case AgentConfigSourceAgentTarget:
+		return AgentConfigSourceAgentTarget
+	case AgentConfigSourceWorkspaceAgent:
+		return AgentConfigSourceWorkspaceAgent
+	default:
+		return AgentConfigSourceUnknown
+	}
+}
+
+func normalizeModelConfigSource(value string) string {
+	switch strings.TrimSpace(value) {
+	case ModelConfigSourceModelPlan:
+		return ModelConfigSourceModelPlan
+	case ModelConfigSourceProviderNative:
+		return ModelConfigSourceProviderNative
+	default:
+		return ModelConfigSourceUnknown
+	}
 }
 
 func terminalEvent(outcome string) (string, string) {

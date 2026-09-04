@@ -8,7 +8,18 @@ import (
 
 	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
+
+type recordingAnalyticsReporter struct {
+	events []reporterservice.Event
+}
+
+func (r *recordingAnalyticsReporter) Track(_ context.Context, events ...reporterservice.Event) {
+	r.events = append(r.events, events...)
+}
+
+func (*recordingAnalyticsReporter) Close() error { return nil }
 
 func TestServiceSetPublishesCommittedIndependentActivation(t *testing.T) {
 	t.Parallel()
@@ -39,6 +50,74 @@ func TestServiceSetPublishesCommittedIndependentActivation(t *testing.T) {
 	}
 	if store.lastSetInput.Effect == nil || *store.lastSetInput.Effect != 73 {
 		t.Fatalf("legacy effect mapping = %#v", store.lastSetInput)
+	}
+}
+
+func TestServiceSetReportsOnlyCommittedActivationChanges(t *testing.T) {
+	t.Parallel()
+	store := newMemoryStore()
+	reporter := &recordingAnalyticsReporter{}
+	service := &Service{Store: store, AnalyticsReporter: reporter}
+
+	active, err := service.Set(context.Background(), SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+	})
+	if err != nil || !active.Changed {
+		t.Fatalf("Set(active) = %#v, %v", active, err)
+	}
+	unchanged, err := service.Set(context.Background(), SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+	})
+	if err != nil || unchanged.Changed {
+		t.Fatalf("Set(no-op) = %#v, %v", unchanged, err)
+	}
+	inactive, err := service.Set(context.Background(), SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateInactive, Source: activationbiz.SourceBadgeRemove,
+	})
+	if err != nil || !inactive.Changed {
+		t.Fatalf("Set(inactive) = %#v, %v", inactive, err)
+	}
+	if _, err := service.Set(context.Background(), SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceBadgeRemove,
+	}); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("Set(invalid) error = %v", err)
+	}
+
+	if len(reporter.events) != 2 {
+		t.Fatalf("analytics events = %#v, want activate/deactivate only", reporter.events)
+	}
+	for index, want := range []map[string]any{
+		{"action": "activated", "state": "active", "source": "slash_command"},
+		{"action": "deactivated", "state": "inactive", "source": "badge_remove"},
+	} {
+		event := reporter.events[index]
+		if event.Name != "tutti_mode.activation_changed" {
+			t.Fatalf("event[%d] = %#v", index, event)
+		}
+		for key, value := range want {
+			if event.Params[key] != value {
+				t.Fatalf("event[%d].Params[%s] = %#v, want %#v", index, key, event.Params[key], value)
+			}
+		}
+		for _, forbidden := range []string{"workspace_id", "agent_session_id", "activation_id", "effect", "speed"} {
+			if _, exists := event.Params[forbidden]; exists {
+				t.Fatalf("event[%d] leaked %s: %#v", index, forbidden, event)
+			}
+		}
+	}
+	store.setErr = errors.New("store write failed")
+	if _, err := service.Set(context.Background(), SetInput{
+		WorkspaceID: "workspace-1", AgentSessionID: "session-1",
+		State: activationbiz.StateActive, Source: activationbiz.SourceSlashCommand,
+	}); err == nil {
+		t.Fatal("Set(store failure) error = nil")
+	}
+	if len(reporter.events) != 2 {
+		t.Fatalf("failed store write emitted analytics: %#v", reporter.events)
 	}
 }
 

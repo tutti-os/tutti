@@ -177,6 +177,11 @@ func (s *Service) Detect(ctx context.Context, input DetectInput) (DetectResult, 
 		}
 		s.publishChanged(stored.WorkspaceID)
 	}
+	scope := "draft"
+	if hasStored {
+		scope = "saved"
+	}
+	s.reportDetectionCompleted(ctx, scope, protocol, templateKind, snapshot)
 
 	return DetectResult{Detection: snapshot, DiscoveredModels: discovered}, nil
 }
