@@ -28,10 +28,12 @@ export function WorkbenchDockFrame<TData>({
     () => createWorkbenchDockNodesSelector<TData>(),
     []
   );
-  const hasFullscreenNode = useWorkbenchSelector((state) =>
-    state.nodes.some(
-      (node) => node.displayMode === "fullscreen" && !node.isMinimized
-    )
+  const dockImmersive = useWorkbenchSelector(
+    (state) =>
+      state.lockedLayout !== null ||
+      state.nodes.some(
+        (node) => node.displayMode === "fullscreen" && !node.isMinimized
+      )
   );
   const nodes = useWorkbenchSelector<TData, readonly WorkbenchNode<TData>[]>(
     selectDockNodes
@@ -58,7 +60,7 @@ export function WorkbenchDockFrame<TData>({
 
   return (
     <>
-      {hasFullscreenNode ? (
+      {dockImmersive ? (
         <div
           className="workbench-dock-frame__immersive-hover-zone"
           data-dock-placement={dockPlacement}
@@ -68,7 +70,7 @@ export function WorkbenchDockFrame<TData>({
       <div
         className="workbench-dock-frame"
         data-dock-placement={dockPlacement}
-        data-immersive-state={hasFullscreenNode ? "hidden" : "disabled"}
+        data-immersive-state={dockImmersive ? "hidden" : "disabled"}
       >
         {renderDock
           ? renderDock({
