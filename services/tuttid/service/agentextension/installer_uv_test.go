@@ -125,8 +125,10 @@ func TestUVInstallFailureRestoresPreviousRuntime(t *testing.T) {
 	if !errors.Is(err, ErrRuntimeInstallFailed) {
 		t.Fatalf("second install error = %v, want ErrRuntimeInstallFailed", err)
 	}
-	if runner.calls != 2 {
-		t.Fatalf("install calls = %d, want 2", runner.calls)
+	// 1 successful install + 3 failed attempts: a persistent uv failure is
+	// retried once per package index in the fallback chain.
+	if runner.calls != 1+len(defaultPyPIIndexes()) {
+		t.Fatalf("install calls = %d, want %d", runner.calls, 1+len(defaultPyPIIndexes()))
 	}
 	restoredBytes, err := os.ReadFile(filepath.Join(plan.InstallRoot, "tools", "kimi-cli", "bin", "kimi"))
 	if err != nil {

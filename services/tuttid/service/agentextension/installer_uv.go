@@ -148,9 +148,9 @@ func (s *SetupService) executeUVInstallInPlace(
 		installCtx, cancel := context.WithTimeout(ctx, 15*time.Minute)
 		defer cancel()
 		env := uvInstallEnvironment(scratch, finalRoot, uvDir, uvToolchainCacheDir(manager.RuntimeInstallDir))
-		if err := runner.Run(installCtx, command, scratch, env); err != nil {
+		if err := s.runUVInstallWithIndexFallback(installCtx, runner, command, scratch, env, plan); err != nil {
 			rollback()
-			return fmt.Errorf("%w: %w", ErrRuntimeInstallFailed, err)
+			return err
 		}
 	}
 	if err := rootDir.verify(); err != nil {
