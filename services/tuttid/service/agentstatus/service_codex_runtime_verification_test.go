@@ -65,7 +65,7 @@ func codexBunInstallStatus(t *testing.T, launcherScript string, probe CodexProbe
 }
 
 const codexBunReadyLauncher = "#!/bin/sh\n" +
-	"if [ \"$1\" = \"--version\" ]; then echo 'codex 0.142.0'; exit 0; fi\nexit 1\n"
+	"if [ \"$1\" = \"--version\" ]; then echo 'codex " + MinSupportedCodexVersion + "'; exit 0; fi\nexit 1\n"
 
 func TestCodexAvailabilityUnsupportedAppServerRequiresUpgrade(t *testing.T) {
 	status := codexBunInstallStatus(t, codexBunReadyLauncher, CodexProbeEvidence{
@@ -89,7 +89,7 @@ func TestCodexAvailabilityBunInstallVerifiedByProductionProbe(t *testing.T) {
 	}
 	home := t.TempDir()
 	launcher := "#!/bin/sh\n" +
-		"if [ \"$1\" = \"--version\" ]; then echo 'codex 0.142.0'; exit 0; fi\n" +
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex " + MinSupportedCodexVersion + "'; exit 0; fi\n" +
 		"if [ \"$1\" = \"app-server\" ]; then TUTTI_CODEX_APP_SERVER_TEST_HELPER=1 exec \"$TUTTI_CODEX_TEST_BINARY\" -test.run=^TestCodexAppServerBlackBoxHelper$; fi\n" +
 		"exit 1\n"
 	writeCodexBunInstall(t, home, launcher)
@@ -283,7 +283,7 @@ func TestCodexInstallDoesNotNPMRepairBrokenBunInstall(t *testing.T) {
 // nested binary.
 func TestCodexAvailabilityMissingPlatformPackageReportsIncomplete(t *testing.T) {
 	launcher := "#!/bin/sh\n" +
-		"if [ \"$1\" = \"--version\" ]; then echo 'codex 0.142.0'; exit 0; fi\n" +
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex " + MinSupportedCodexVersion + "'; exit 0; fi\n" +
 		"if [ \"$1\" = \"app-server\" ]; then echo 'Cannot find module @openai/codex-darwin-arm64 (enoent)' >&2; exit 127; fi\n" +
 		"exit 0\n"
 	status := codexBunInstallStatus(t, launcher, codexPlatformENOENTFixture())
@@ -304,7 +304,7 @@ func TestCodexAvailabilityMissingPlatformPackageReportsIncomplete(t *testing.T) 
 // unavailable".
 func TestCodexAvailabilityUnclassifiedLaunchFailureReportsGeneric(t *testing.T) {
 	launcher := "#!/bin/sh\n" +
-		"if [ \"$1\" = \"--version\" ]; then echo 'codex 0.142.0'; exit 0; fi\n" +
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex " + MinSupportedCodexVersion + "'; exit 0; fi\n" +
 		"if [ \"$1\" = \"app-server\" ]; then echo 'app-server failed' >&2; exit 127; fi\n" +
 		"exit 0\n"
 	status := codexBunInstallStatus(t, launcher, CodexProbeEvidence{CommandStarted: true, Category: "process_exited_early", Message: "app-server failed"})
