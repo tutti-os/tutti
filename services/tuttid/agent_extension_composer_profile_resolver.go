@@ -69,5 +69,29 @@ func (r agentExtensionComposerProfileResolver) ResolveExtensionComposerProfile(
 			})
 		}
 	}
-	return result, nil
+	return applyAgentExtensionComposerCompatibilityPolicy(installationID, result), nil
+}
+
+func applyAgentExtensionComposerCompatibilityPolicy(
+	installationID string,
+	profile agentservice.ExtensionComposerProfile,
+) agentservice.ExtensionComposerProfile {
+	agentKey, _, ok := strings.Cut(strings.TrimSpace(installationID), "@")
+	if !ok || agentKey != "codebuddy" || len(profile.SlashCommands) == 0 {
+		return profile
+	}
+
+	// CodeBuddy advertises /goal, but it does not currently implement Tutti's
+	// structured Goal lifecycle. Keep this provider-specific presentation guard
+	// in the daemon product adapter instead of branching in shared AgentGUI code.
+	commands := make([]agentservice.ExtensionComposerSlashCommand, 0, len(profile.SlashCommands))
+	for _, command := range profile.SlashCommands {
+		if strings.EqualFold(strings.TrimSpace(command.Name), "goal") &&
+			strings.TrimSpace(command.Effect) == "activateGoalMode" {
+			continue
+		}
+		commands = append(commands, command)
+	}
+	profile.SlashCommands = commands
+	return profile
 }

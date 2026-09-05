@@ -331,6 +331,14 @@ catalog and attach shared command effects such as submit-immediate, show-status,
 activate-goal-mode, and toggle-plan-mode. `tuttid` applies that declarative
 policy before returning composer options, so extension commands can reuse the
 shared AgentGUI slash-command behavior without a provider-name branch. Signed
+profiles remain the positive authority for controls, while the daemon may
+apply a fail-closed product compatibility policy that only removes an exact
+command/effect pair which Tutti cannot execute end to end. Such exceptions stay
+in the extension-profile resolver, require exact extension identity and focused
+coverage, and must never add or retarget commands in shared AgentGUI code. The
+current CodeBuddy exception removes `goal` with `activateGoalMode` until its
+structured Goal lifecycle is compatible with Tutti; directly typed
+provider-owned `/goal` input and the ACP runtime remain unchanged. Signed
 profiles may also set
 `skills.runtimeCommandProjection: "unlisted-as-skills"` alongside an
 authoritative slash-command catalog. In that mode, runtime-advertised entries
