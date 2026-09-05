@@ -5,7 +5,7 @@ import canonical "github.com/tutti-os/tutti/packages/agent/store-sqlite/canonica
 const (
 	CodexProviderID                = canonical.CodexProviderID
 	CodexTargetID                  = "local:codex"
-	CodexMinVersion                = "0.126.0"
+	CodexMinVersion                = "0.153.4"
 	CodexThroughTurnForkMinVersion = "0.144.0"
 )
 
