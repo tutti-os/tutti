@@ -76,14 +76,19 @@ func (r RuntimeResolver) ResolveAdapter(ctx context.Context, input agentruntime.
 	if binding.Installation.Provider != strings.TrimSpace(input.Provider) {
 		return nil, errors.New("agent extension provider does not match installation")
 	}
-	return newRuntimeAdapter(binding, strings.TrimSpace(input.AgentTargetID), r.Transport, r.Host)
+	runtimeTargetID, _ := input.ProviderTargetRef["targetId"].(string)
+	runtimeTargetID = strings.TrimSpace(runtimeTargetID)
+	if runtimeTargetID == "" {
+		return nil, errors.New("agent extension target id is required")
+	}
+	return newRuntimeAdapter(binding, runtimeTargetID, input.CWD, r.Transport, r.Host)
 }
 
-func newRuntimeAdapter(binding RuntimeBinding, agentTargetID string, transport agentruntime.ProcessTransport, host agentruntime.HostMetadata) (agentruntime.Adapter, error) {
-	return agentruntime.NewStandardACPAdapter(runtimeAdapterConfig(binding, agentTargetID), transport, host)
+func newRuntimeAdapter(binding RuntimeBinding, runtimeTargetID, cwd string, transport agentruntime.ProcessTransport, host agentruntime.HostMetadata) (agentruntime.Adapter, error) {
+	return agentruntime.NewStandardACPAdapter(runtimeAdapterConfig(binding, runtimeTargetID, cwd), transport, host)
 }
 
-func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentruntime.StandardACPAdapterConfig {
+func runtimeAdapterConfig(binding RuntimeBinding, runtimeTargetID, cwd string) agentruntime.StandardACPAdapterConfig {
 	return agentruntime.StandardACPAdapterConfig{
 		Provider:                     binding.Installation.Provider,
 		Name:                         binding.Installation.AgentKey + "-acp",
@@ -104,8 +109,9 @@ func runtimeAdapterConfig(binding RuntimeBinding, agentTargetID string) agentrun
 		LaunchPermission:             binding.LaunchPermission,
 		SetModelReasoningEffortMeta:  binding.SetModelReasoningEffortMeta,
 		Capabilities:                 binding.Capabilities,
-		AgentTargetID:                strings.TrimSpace(agentTargetID),
+		ProviderTargetID:             strings.TrimSpace(runtimeTargetID),
 		InstallationID:               binding.Installation.ID,
+		AdapterResolveCWD:            strings.TrimSpace(cwd),
 		ExecutableIdentity:           binding.ExecutableIdentity,
 		Env:                          append([]string(nil), binding.Env...),
 		StartupTimeout:               agentExtensionStartupTimeout,

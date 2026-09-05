@@ -30,6 +30,7 @@ type sessionRuntimeSnapshot struct {
 	AgentTargetID                  string
 	WorkspaceAgentRevision         int64
 	HarnessAgentTargetID           string
+	ExtensionInstallationID        string
 	Provider                       string
 	LegacyEmptyProviderFingerprint bool
 	Model                          string
@@ -212,6 +213,7 @@ func sessionRuntimeSnapshotFromContext(
 		Version:                     int(version),
 		AgentTargetID:               snapshotString(payload["agentTargetId"]),
 		HarnessAgentTargetID:        snapshotString(payload["harnessAgentTargetId"]),
+		ExtensionInstallationID:     snapshotString(runtimeContext[agentExtensionInstallationRuntimeContextKey]),
 		Provider:                    agentprovider.NormalizeOpen(rawProvider),
 		Model:                       snapshotString(payload["model"]),
 		ModelConfigurationSource:    snapshotString(configuration["source"]),
@@ -419,6 +421,12 @@ func (s *Service) applyHarnessFromSessionRuntimeSnapshot(
 	provider, _ := providerTargetRef["provider"].(string)
 	if agentprovider.NormalizeOpen(provider) != snapshot.Provider {
 		return fmt.Errorf("%w: harness provider does not match", ErrSessionRuntimeSnapshotUnavailable)
+	}
+	if snapshot.ExtensionInstallationID != "" {
+		if providerTargetRefKind(providerTargetRef) != agenttargetbiz.LaunchRefTypeAgentExtension {
+			return fmt.Errorf("%w: harness launch reference no longer matches", ErrSessionRuntimeSnapshotUnavailable)
+		}
+		providerTargetRef["extensionInstallationId"] = snapshot.ExtensionInstallationID
 	}
 	input.HarnessAgentTargetID = snapshot.HarnessAgentTargetID
 	input.ProviderTargetRef = providerTargetRef

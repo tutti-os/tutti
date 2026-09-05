@@ -365,10 +365,12 @@ turns clear their active turn reference without requiring the extension
 provider to be added to the built-in event projection catalog.
 
 The current runtime adapter registry is still keyed by open provider ID for the
-daemon lifetime. A cached generic adapter now fails closed when the requested
-Target or fixed installation differs, while composer-context reuse uses the
-full scope above. Sessions persist `agentTargetId` and resume re-derives the
-extension installation from that Target. A composite session-pinned
+daemon lifetime. A cached generic adapter binds to the trusted Harness Target,
+fixed installation, and resolution CWD; logical `workspace-agent:*` IDs may
+share it only when that tuple matches, and reuse fails closed when any member
+differs. Composer-context reuse uses the full scope above. Sessions persist
+`agentTargetId`, and resume uses the extension installation recorded when the
+session was created. A composite session-pinned
 runtime/profile fingerprint remains required before any future automatic
 in-session migration. The daemon does not activate a newly published remote
 Extension dynamically: source activation is controlled by the Tutti client's

@@ -91,7 +91,7 @@ func runRuntimeSetup(
 		AgentTargetID: agentTargetID, Provider: binding.Installation.Provider, CWD: cwd,
 	}
 	result, err := agentruntime.RunStandardACPSetup(
-		probeCtx, runtimeAdapterConfig(binding, agentTargetID), transport, host, session, methodID,
+		probeCtx, runtimeAdapterConfig(binding, agentTargetID, cwd), transport, host, session, methodID,
 	)
 	if err != nil {
 		return RuntimeProbeResult{}, err

@@ -3,6 +3,7 @@ package agentruntime
 import (
 	"context"
 	"encoding/json"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -130,8 +131,9 @@ type standardACPConfig struct {
 	providerMessageHandler         standardACPProviderMessageHandler
 	localToolBridge                standardACPLocalToolBridge
 	capabilities                   []string
-	agentTargetID                  string
+	providerTargetID               string
 	installationID                 string
+	adapterResolveCWD              string
 	executableIdentity             *ExecutableIdentity
 	startupTimeout                 time.Duration
 }
@@ -146,8 +148,38 @@ func (a *standardACPAdapter) MatchesAdapterResolveInput(input AdapterResolveInpu
 	if a == nil || a.config.installationID == "" {
 		return true
 	}
+	targetID := strings.TrimSpace(asString(input.ProviderTargetRef["targetId"]))
 	installationID := strings.TrimSpace(asString(input.ProviderTargetRef["extensionInstallationId"]))
-	return strings.TrimSpace(input.AgentTargetID) == a.config.agentTargetID && installationID == a.config.installationID
+	return targetID == a.config.providerTargetID &&
+		installationID == a.config.installationID &&
+		normalizeAdapterResolveCWD(input.CWD) == a.config.adapterResolveCWD
+}
+
+func normalizeAdapterResolveCWD(value string) string {
+	return normalizeAdapterResolveCWDForPlatform(value, runtime.GOOS)
+}
+
+func normalizeAdapterResolveCWDForPlatform(value, goos string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	if goos == "windows" && isNativeWindowsAdapterResolveCWD(value) {
+		value = strings.ReplaceAll(value, `\`, "/")
+		hadTrailingSeparator := strings.HasSuffix(value, "/")
+		value = strings.TrimRight(value, "/")
+		if value == "" {
+			value = "/"
+		} else if hadTrailingSeparator && strings.HasSuffix(value, ":") {
+			value += "/"
+		}
+		value = strings.ToLower(value)
+	}
+	return value
+}
+
+func isNativeWindowsAdapterResolveCWD(value string) bool {
+	return !strings.HasPrefix(value, "/") || strings.HasPrefix(value, "//")
 }
 
 type standardACPAdapter struct {

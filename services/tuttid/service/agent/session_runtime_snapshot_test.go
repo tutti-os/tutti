@@ -753,6 +753,64 @@ func TestPrepareRuntimeForResumeUsesExactModelPlanRevision(t *testing.T) {
 	}
 }
 
+func TestPrepareRuntimeForResumeUsesRecordedAgentExtensionInstallation(t *testing.T) {
+	t.Parallel()
+
+	const (
+		provider               = "acp:example"
+		agentTargetID          = "workspace-agent:writer"
+		harnessAgentTargetID   = "extension:example"
+		recordedInstallationID = "example@1.0.0"
+	)
+	targets := defaultTestAgentTargets()
+	targets[harnessAgentTargetID] = agenttargetbiz.Target{
+		ID:            harnessAgentTargetID,
+		Provider:      provider,
+		LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"example@2.0.0"}`,
+		Name:          "Example",
+		Enabled:       true,
+		Source:        agenttargetbiz.SourceUser,
+	}
+	service := &Service{}
+	service.AgentTargetStore = fakeAgentTargetStore{targets: targets}
+	var preparedInput runtimeprep.PrepareInput
+	service.RuntimePreparer = fakeRuntimePreparer{input: &preparedInput}
+
+	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(
+		nil,
+		CreateSessionInput{
+			AgentTargetID:        agentTargetID,
+			HarnessAgentTargetID: harnessAgentTargetID,
+		},
+		provider,
+		modelPlanResolution{ModelConfiguration: newProviderNativeModelConfiguration(provider, agentTargetID)},
+	)
+	runtimeContext = stampAgentExtensionComposerScope(
+		runtimeContext,
+		map[string]any{
+			"kind":                    agenttargetbiz.LaunchRefTypeAgentExtension,
+			"extensionInstallationId": recordedInstallationID,
+		},
+		"/repo",
+		ComposerSettings{},
+	)
+
+	_, err := service.prepareRuntimeForResume(context.Background(), PersistedSession{
+		ID:                     "session-1",
+		WorkspaceID:            "workspace-1",
+		AgentTargetID:          agentTargetID,
+		Provider:               provider,
+		Cwd:                    "/repo",
+		InternalRuntimeContext: runtimeContext,
+	})
+	if err != nil {
+		t.Fatalf("prepareRuntimeForResume() error = %v", err)
+	}
+	if got := stringFromAny(preparedInput.ProviderTargetRef["extensionInstallationId"]); got != recordedInstallationID {
+		t.Fatalf("prepared extension installation = %q, want %q", got, recordedInstallationID)
+	}
+}
+
 func TestPrepareRuntimeForResumeProviderNativeSnapshotIgnoresNewBinding(t *testing.T) {
 	t.Parallel()
 
@@ -835,6 +893,9 @@ func TestPrepareRuntimeForResumeRecoversLegacyEmptyOpenProvider(t *testing.T) {
 			"prepared provider target ref = %#v",
 			preparedInput.ProviderTargetRef,
 		)
+	}
+	if got := stringFromAny(preparedInput.ProviderTargetRef["extensionInstallationId"]); got != "installation-1" {
+		t.Fatalf("prepared extension installation = %q, want current installation", got)
 	}
 }
 

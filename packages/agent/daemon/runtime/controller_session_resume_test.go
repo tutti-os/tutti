@@ -20,7 +20,7 @@ func TestControllerCanResumeAuthorizedAgentExtensionBinding(t *testing.T) {
 	valid := ResumeInput{
 		RoomID:            "workspace-1",
 		AgentSessionID:    "session-1",
-		AgentTargetID:     "extension:codebuddy",
+		AgentTargetID:     "workspace-agent:writer",
 		Provider:          "acp:codebuddy",
 		ProviderSessionID: "provider-session-1",
 		ProviderTargetRef: map[string]any{
@@ -40,7 +40,7 @@ func TestControllerCanResumeAuthorizedAgentExtensionBinding(t *testing.T) {
 		{name: "missing target ref", mutate: func(input *ResumeInput) { input.ProviderTargetRef = nil }},
 		{name: "missing provider session", mutate: func(input *ResumeInput) { input.ProviderSessionID = "" }},
 		{name: "provider mismatch", mutate: func(input *ResumeInput) { input.ProviderTargetRef["provider"] = "acp:other" }},
-		{name: "target mismatch", mutate: func(input *ResumeInput) { input.ProviderTargetRef["targetId"] = "extension:other" }},
+		{name: "missing Harness target", mutate: func(input *ResumeInput) { input.ProviderTargetRef["targetId"] = "" }},
 		{name: "missing installation", mutate: func(input *ResumeInput) { delete(input.ProviderTargetRef, "extensionInstallationId") }},
 	}
 	for _, tt := range tests {
@@ -54,6 +54,47 @@ func TestControllerCanResumeAuthorizedAgentExtensionBinding(t *testing.T) {
 				t.Fatalf("CanResume() = %t, want %t", got, tt.want)
 			}
 		})
+	}
+}
+
+func TestControllerCanResumeChecksCachedAgentExtensionBinding(t *testing.T) {
+	adapter, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:          "acp:codebuddy",
+		Name:              "codebuddy-acp",
+		Command:           []string{"codebuddy", "--acp"},
+		ProviderTargetID:  "extension:codebuddy",
+		InstallationID:    "codebuddy@1.0.0",
+		AdapterResolveCWD: "/workspace",
+	}, nil, LegacyHostMetadata())
+	if err != nil {
+		t.Fatalf("NewStandardACPAdapter: %v", err)
+	}
+	controller := NewControllerWithAdapterResolver(
+		[]Adapter{adapter},
+		nil,
+		unavailableResumeAdapterResolver{},
+	)
+	input := ResumeInput{
+		RoomID:            "workspace-1",
+		AgentSessionID:    "session-1",
+		AgentTargetID:     "workspace-agent:writer",
+		Provider:          "acp:codebuddy",
+		ProviderSessionID: "provider-session-1",
+		CWD:               "/workspace",
+		ProviderTargetRef: map[string]any{
+			"kind":                    "agent_extension",
+			"provider":                "acp:codebuddy",
+			"targetId":                "extension:codebuddy",
+			"extensionInstallationId": "codebuddy@1.0.0",
+		},
+	}
+
+	if !controller.CanResume(input) {
+		t.Fatal("CanResume() = false, want true for exact cached binding")
+	}
+	input.ProviderTargetRef["targetId"] = "extension:other"
+	if controller.CanResume(input) {
+		t.Fatal("CanResume() = true, want false for cached binding mismatch")
 	}
 }
 
