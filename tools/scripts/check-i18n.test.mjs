@@ -164,6 +164,61 @@ test("accepts product-neutral package i18n manifest names", async () => {
   assert.match(result.stdout, /i18n check passed/);
 });
 
+test("checks packages whose manifest name is not one of the built-in names", async () => {
+  const workspaceRoot = await createFixtureWorkspace({
+    packageFiles: {
+      "packages/workspace/terminal/src/i18n/terminalNodeI18n.ts": `
+        import { createScopedLocaleObjectsI18nModuleManifest } from "@tutti-os/ui-i18n-runtime";
+
+        export const terminalNodeI18nNamespace = "terminalNode";
+        export const terminalNodeI18nModule = createScopedLocaleObjectsI18nModuleManifest({
+          localeObjectByLocale: {
+            en: "terminalNodeEn",
+            "zh-CN": "terminalNodeZhCN"
+          },
+          name: "workspace-terminal",
+          namespace: terminalNodeI18nNamespace,
+          sourceRoot: "packages/workspace/terminal/src"
+        });
+
+        const terminalNodeEn = {
+          status: {
+            running: "Running"
+          }
+        } as const;
+
+        const terminalNodeZhCN = {
+          status: {}
+        } as const;
+      `
+    }
+  });
+
+  const result = runI18nCheck(workspaceRoot);
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /locale-key-missing/);
+  assert.match(result.stderr, /terminalNode\.status\.running/);
+});
+
+test("skips runtime-composed keys and placeholder-only copy", async () => {
+  const workspaceRoot = await createFixtureWorkspace({
+    rendererFiles: {
+      "app/Status.tsx": `
+        export function Status({ status, label, t }) {
+          const mention = { label: \\\`@\\\${label}\\\` };
+          return <span aria-label={mention.label}>{t(\\\`status.\\\${status}\\\`)}</span>;
+        }
+      `
+    }
+  });
+
+  const result = runI18nCheck(workspaceRoot);
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.match(result.stdout, /i18n check passed/);
+});
+
 test("accepts package locale-object manifests with source roots", async () => {
   const workspaceRoot = await createFixtureWorkspace({
     packageFiles: {

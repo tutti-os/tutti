@@ -19,11 +19,15 @@ const ignoredDirectories = new Set([
   "node_modules",
   "out"
 ]);
-const i18nModuleManifestExportNames = [
-  "tuttiI18nModule",
-  "agentGuiI18nModule",
-  "browserNodeI18nModule"
-];
+// Manifest exports are discovered by shape, not by a script-side name registry:
+// desktop-owned resources export `tuttiI18nModule`, and a reusable package may
+// pick a package-specific name when that keeps its vocabulary product-neutral
+// (docs/conventions/static-analysis.md, "such as browserNodeI18nModule"). A
+// fixed list silently drops every package that chooses a name not on it, so any
+// `export const <name>I18nModule` counts. Non-manifest matches are discarded by
+// parseExportedObjectLiteral returning null.
+const i18nModuleManifestExportPattern =
+  /^[ \t]*export const ([A-Za-z$_][\w$]*I18nModule)\b/gm;
 const i18nManifestSearchRoots = ["apps/desktop/src/shared/i18n", "packages"];
 const localeResourceModules = discoverI18nModules();
 const sourceRoots = [
@@ -53,7 +57,11 @@ const ignoredFileSuffixes = [
   ".test.tsx",
   ".spec.ts",
   ".spec.tsx",
-  ".d.ts"
+  ".d.ts",
+  // Shared fixture builders live beside the suites they serve rather than under
+  // __tests__/, so the suffix carries the exemption the same way .test.ts does.
+  "TestHarness.ts",
+  "TestHarness.tsx"
 ];
 const textExtensions = [".ts", ".tsx", ".js", ".jsx"];
 const uiAttributeNames = ["aria-label", "title", "alt", "placeholder"];
@@ -192,6 +200,15 @@ function discoverI18nModules() {
   );
 }
 
+function findI18nModuleExportNames(source) {
+  const names = new Set();
+  for (const match of source.matchAll(i18nModuleManifestExportPattern)) {
+    names.add(match[1]);
+  }
+
+  return names;
+}
+
 function collectI18nModuleManifests(root, manifests) {
   const absoluteRoot = join(workspaceRoot, root);
   if (!existsSync(absoluteRoot)) {
@@ -214,11 +231,7 @@ function collectI18nModuleManifests(root, manifests) {
     }
 
     const source = readFileSync(absolutePath, "utf8");
-    for (const exportName of i18nModuleManifestExportNames) {
-      if (!source.includes(`export const ${exportName}`)) {
-        continue;
-      }
-
+    for (const exportName of findI18nModuleExportNames(source)) {
       const manifest = parseExportedObjectLiteral(relativePath, exportName);
       if (!manifest) {
         continue;
@@ -335,7 +348,7 @@ function parseExportedObjectLiteral(
   if (helperMatch) {
     return vm.runInNewContext(
       `${helperMatch[1]}(${helperMatch[2]})`,
-      createI18nManifestVmContext()
+      createI18nManifestVmContext(source)
     );
   }
 
@@ -407,8 +420,32 @@ function toImportSourcePath(relativePath, importSpecifier) {
   return rawPath.endsWith(".ts") ? rawPath : `${rawPath}.ts`;
 }
 
-function createI18nManifestVmContext() {
+// A manifest may name its namespace through a sibling constant
+// (`namespace: richTextI18nNamespace`) instead of repeating the literal. The
+// manifest expression is evaluated in isolation, so those constants have to be
+// carried into the context or the evaluation throws ReferenceError. Only
+// top-level double-quoted string constants are carried: enough for the
+// namespace/name fields a manifest can reference, without evaluating the
+// module.
+function collectManifestStringConstants(source) {
+  const constants = {};
+  const pattern =
+    /^[ \t]*(?:export\s+)?const\s+([A-Za-z$_][\w$]*)\s*=\s*("(?:[^"\\]|\\.)*")\s*;/gm;
+  for (const match of source.matchAll(pattern)) {
+    try {
+      constants[match[1]] = JSON.parse(match[2]);
+    } catch {
+      // Leave it undefined rather than guessing; an unresolved reference is
+      // reported as an unparseable manifest by the caller.
+    }
+  }
+
+  return constants;
+}
+
+function createI18nManifestVmContext(source = "") {
   return {
+    ...collectManifestStringConstants(source),
     createLocaleObjectI18nModuleManifest(input) {
       return {
         exportMode: "locale-object",
@@ -614,6 +651,13 @@ function inspectI18nKeyUsages(relativePath, lines) {
           continue;
         }
 
+        // `t(`status.${status}`)` names a key that only exists at runtime, so
+        // there is nothing static to resolve it against; the locale objects
+        // still cover it through their own key-parity check.
+        if (key.includes("${")) {
+          continue;
+        }
+
         if (legacyKeyPattern.test(key)) {
           keyIssues.push({
             file: relativePath,
@@ -741,9 +785,23 @@ function inspectPatternMatches(relativePath, line, lineNumber, pattern, rule) {
   }
 }
 
+function stripInterpolations(value) {
+  return value.replaceAll(/\$\{[^}]*\}/gu, "");
+}
+
 function isReportableCopy(value) {
   const normalized = normalizeWhitespace(value);
   if (!normalized || allowedHardcodedCopy.has(normalized)) {
+    return false;
+  }
+  // A template literal that is only placeholders plus punctuation composes a
+  // value at runtime (`@${label}`); its translatable text, if any, lives at
+  // whatever feeds the placeholder. Copy that still reads as prose once the
+  // placeholders are removed (`Hello ${name}, welcome`) stays reportable.
+  if (
+    normalized.includes("${") &&
+    !/\p{L}/u.test(stripInterpolations(normalized))
+  ) {
     return false;
   }
   if (isLikelyCodeLikeSnippet(normalized)) {
