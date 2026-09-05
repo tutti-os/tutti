@@ -1103,6 +1103,15 @@ test("desktop release workflow materializes macOS signing certificate before pac
   );
 });
 
+test("desktop release pins macOS builds to the stable runner image", async () => {
+  const workflow = await readFile(workflowPath, "utf8");
+
+  assert.match(
+    workflow,
+    /build-macos:[\s\S]*?runs-on:\s+macos-15[\s\S]*?strategy:/
+  );
+});
+
 test("desktop release macOS builds reserve enough Node heap for the renderer bundle", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
