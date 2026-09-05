@@ -275,7 +275,7 @@ jobs:
   build-macos:
     name: Build macOS (${{ matrix.arch }})
     needs: resolve
-    runs-on: macos-latest
+    runs-on: macos-15
     strategy:
       fail-fast: false
       matrix:
