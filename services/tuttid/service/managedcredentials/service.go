@@ -510,6 +510,8 @@ func defaultProviderBaseURL(provider managedcredentialsbiz.ProviderID) string {
 		return "https://apihub.agnes-ai.com/v1"
 	case managedcredentialsbiz.ProviderAnthropic:
 		return "https://api.anthropic.com/v1"
+	case managedcredentialsbiz.ProviderOrcaRouter:
+		return "https://api.orcarouter.ai/v1"
 	default:
 		return "https://api.openai.com/v1"
 	}
