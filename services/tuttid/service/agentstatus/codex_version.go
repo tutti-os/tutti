@@ -10,12 +10,10 @@ import (
 
 // MinSupportedCodexVersion is the lowest Codex CLI version Tutti supports.
 //
-// Capability-derived: 0.126.0 is the release that introduced the newest
-// app-server method our codex runtime integrates (the thread/goal API); every
-// other app-server capability we call landed earlier, and the enrichment ones
-// (account/models/rateLimits/collaborationMode/goal) degrade gracefully below
-// their version. So 0.126.0 is the floor at which the full app-server feature
-// set we wire up is present.
+// Service-compatibility-derived: older Codex releases can still expose the
+// app-server methods Tutti calls while being rejected by the upstream service
+// before current model requests complete. The floor therefore tracks the
+// current stable Codex release verified by Tutti's app-server contract tests.
 //
 // Single tunable hard gate: a detected codex below this floor is flagged as
 // too old (surfaced as CODEX_VERSION_TOO_OLD) and the server-side 400 is the
