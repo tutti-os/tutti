@@ -1,34 +1,49 @@
 import { useCallback, useRef } from "react";
+import type { AgentRichTextEditorHandle } from "../agentRichText/AgentRichTextEditor";
 import { agentComposerDraftPrompt } from "../model/agentComposerDraft";
+import { getAgentComposerTriggerQueryMatch } from "../model/agentComposerTriggerQueries";
 import type { AgentComposerProps } from "./AgentComposer.types";
 
 interface UseComposerDraftCapabilitiesRequestOptions {
-  agentSessionId: string | null;
+  capabilitiesScopeKey: string;
+  editorHandleRef: { current: AgentRichTextEditorHandle | null };
   onDraftContentChange: AgentComposerProps["onDraftContentChange"];
   onRetryComposerOptions: AgentComposerProps["onRetryComposerOptions"];
-  provider: string;
 }
 
 export function useComposerDraftCapabilitiesRequest({
-  agentSessionId,
+  capabilitiesScopeKey,
+  editorHandleRef,
   onDraftContentChange,
-  onRetryComposerOptions,
-  provider
+  onRetryComposerOptions
 }: UseComposerDraftCapabilitiesRequestOptions): AgentComposerProps["onDraftContentChange"] {
   const requestedKeyRef = useRef<string | null>(null);
 
   return useCallback(
     (nextDraft, sourceScopeKey) => {
-      const nextPrompt = agentComposerDraftPrompt(nextDraft).trimStart();
-      if (onRetryComposerOptions && nextPrompt.startsWith("/")) {
-        const requestKey = `${provider}:${agentSessionId ?? "draft"}`;
-        if (requestedKeyRef.current !== requestKey) {
-          requestedKeyRef.current = requestKey;
+      const promptBeforeSelection =
+        editorHandleRef.current?.getPromptTextBeforeSelection() ?? "";
+      const nextPrompt = (
+        promptBeforeSelection || agentComposerDraftPrompt(nextDraft)
+      ).trimStart();
+      if (
+        onRetryComposerOptions &&
+        getAgentComposerTriggerQueryMatch(nextPrompt)
+      ) {
+        if (requestedKeyRef.current !== capabilitiesScopeKey) {
+          requestedKeyRef.current = capabilitiesScopeKey;
           onRetryComposerOptions({ section: "capabilities" });
         }
+      } else {
+        requestedKeyRef.current = null;
       }
       onDraftContentChange(nextDraft, sourceScopeKey);
     },
-    [agentSessionId, onDraftContentChange, onRetryComposerOptions, provider]
+    [
+      capabilitiesScopeKey,
+      editorHandleRef,
+      onDraftContentChange,
+      onRetryComposerOptions
+    ]
   );
 }
