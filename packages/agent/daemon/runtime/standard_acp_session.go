@@ -566,6 +566,7 @@ func (a *standardACPAdapter) startClient(
 			return nil, nil, false, err
 		}
 	}
+	spec.Env = append(spec.Env, standardACPProviderBehaviorFor(a.config.provider).launchEnv...)
 	processStartedAt := time.Now()
 	a.logStandardACPStartupDiagnostics("process_start.start", map[string]any{
 		"room_id":          session.RoomID,
