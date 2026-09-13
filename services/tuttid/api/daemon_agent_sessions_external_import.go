@@ -76,9 +76,10 @@ func (api DaemonAPI) ImportWorkspaceExternalAgentSessions(ctx context.Context, r
 	if importSessions {
 		var err error
 		result, err = api.AgentSessionService.ImportExternalSessions(ctx, string(request.WorkspaceID), agentservice.ExternalImportInput{
-			ArchivePath: archivePath,
-			ArchiveKind: archiveKind,
-			Projects:    projects,
+			ArchivePath:               archivePath,
+			ArchiveKind:               archiveKind,
+			Projects:                  projects,
+			SkipProjectRailAssignment: !register || api.UserProjectService == nil,
 		})
 		if err != nil {
 			return writeImportWorkspaceExternalAgentSessionsError(err), nil

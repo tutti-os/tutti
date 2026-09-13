@@ -29,6 +29,10 @@ type ExternalImportInput struct {
 	// ArchiveKind selects which export format ArchivePath is parsed as. Empty
 	// defaults to the Claude data-export format.
 	ArchiveKind string
+	// SkipProjectRailAssignment keeps imported sessions in the shared
+	// conversations section when the caller does not register the selected
+	// project as a user project.
+	SkipProjectRailAssignment bool
 }
 
 type ExternalImportProjectSelection struct {

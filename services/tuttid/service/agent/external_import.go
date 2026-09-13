@@ -65,7 +65,11 @@ func (s *Service) ImportExternalSessions(ctx context.Context, workspaceID string
 		if !selected {
 			continue
 		}
-		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session, projectPath)
+		importProjectPath := projectPath
+		if input.SkipProjectRailAssignment {
+			importProjectPath = ""
+		}
+		importedMessages, imported, err := s.importExternalSession(ctx, workspaceID, session, importProjectPath)
 		if err != nil {
 			result.Errors = append(result.Errors, ExternalImportError{
 				Provider:   session.Provider,

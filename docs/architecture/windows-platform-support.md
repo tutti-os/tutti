@@ -110,12 +110,16 @@ stored row before applying the table's ordinary unique-path write guard, so no
 second identity column is needed.
 
 External session import can persist a session before its selected project is
-registered. The import path therefore registers projects and repairs only
-sessions carrying the durable `imported` marker in the same workspace SQLite
-transaction. Startup migration `workspace_agent_activity_rail_v2` replays the
-same repair for historical rows; ordinary conversations are not moved. This
-uses existing APIs and tables—no new wire fields or database columns are
-required.
+registered. When the caller registers the selected project, the import path
+registers projects and repairs only sessions carrying the durable `imported`
+marker in the same workspace SQLite transaction. When the caller does not
+register the project, the importer leaves the project rail assignment empty so
+the session remains in the shared Conversations section. Startup migration
+`workspace_agent_activity_rail_v2` replays the registration repair for
+historical rows, while `workspace_agent_activity_rail_v3` moves imported rows
+whose persisted project no longer matches a registered project; ordinary
+project sessions and conversations are not moved. This uses existing APIs and
+tables—no new wire fields or database columns are required.
 
 ## Workspace App Data Flow
 
