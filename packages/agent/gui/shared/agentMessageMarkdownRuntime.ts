@@ -173,6 +173,20 @@ export function activateMarkdownLinkFromPointer(
   activateMarkdownLink(event, href, onLinkClick);
 }
 
+const MARKDOWN_LINK_ACTIVATION_WINDOW_MS = 80;
+
+export function isDuplicateMarkdownLinkActivation(
+  previous: { href: string; at: number } | null,
+  href: string,
+  now: number
+): boolean {
+  return (
+    previous !== null &&
+    previous.href === href &&
+    now - previous.at < MARKDOWN_LINK_ACTIVATION_WINDOW_MS
+  );
+}
+
 export function hashMarkdownProfilerContent(content: string): string {
   let hash = 0;
   for (let index = 0; index < content.length; index += 1) {

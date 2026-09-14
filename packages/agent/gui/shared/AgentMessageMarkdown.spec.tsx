@@ -17,6 +17,7 @@ import {
   resetCachedMarkdownImagesForTests,
   splitStreamingMarkdownBlocks
 } from "./AgentMessageMarkdown";
+import { isDuplicateMarkdownLinkActivation } from "./agentMessageMarkdownRuntime";
 import {
   MANAGED_AGENT_ICON_ROUNDED_URLS,
   managedAgentRoundedIconUrl
@@ -264,6 +265,48 @@ describe("AgentMessageMarkdown", () => {
       fireEvent.click(screen.getByRole("link", { name: label }));
       expect(onLinkClick).toHaveBeenLastCalledWith(href);
     }
+  });
+
+  it("opens a markdown http link once for a mouse pointerdown plus click", () => {
+    const onLinkClick = vi.fn();
+    const href = "https://github.com/tutti-os/tutti/pull/2648";
+    render(
+      <AgentMessageMarkdown
+        content={`[Open PR](${href})`}
+        onLinkClick={onLinkClick}
+      />
+    );
+
+    const link = screen.getByRole("link", { name: "Open PR" });
+    fireEvent.pointerDown(link, { button: 0, pointerType: "mouse" });
+    fireEvent.click(link);
+
+    expect(onLinkClick).toHaveBeenCalledTimes(1);
+    expect(onLinkClick).toHaveBeenCalledWith(href);
+  });
+
+  it("treats a second activation of the same href inside the gesture window as a duplicate", () => {
+    expect(
+      isDuplicateMarkdownLinkActivation(
+        { href: "https://example.com", at: 100 },
+        "https://example.com",
+        150
+      )
+    ).toBe(true);
+    expect(
+      isDuplicateMarkdownLinkActivation(
+        { href: "https://example.com", at: 100 },
+        "https://example.com",
+        200
+      )
+    ).toBe(false);
+    expect(
+      isDuplicateMarkdownLinkActivation(
+        { href: "https://example.com", at: 100 },
+        "https://other.example",
+        110
+      )
+    ).toBe(false);
   });
 
   it.each([
