@@ -265,9 +265,8 @@ export function AgentMessageMarkdown({
           href,
           now
         )
-      ) {
+      )
         return;
-      }
       lastMarkdownLinkActivationRef.current = { href, at: now };
       if (workspaceLinkSource && onLinkAction) {
         const action =
