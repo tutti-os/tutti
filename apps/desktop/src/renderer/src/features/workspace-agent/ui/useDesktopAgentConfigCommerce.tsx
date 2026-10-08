@@ -13,7 +13,6 @@ import {
   formatWorkspaceAccountCreditsLabel,
   projectWorkspaceAccountCommerce
 } from "../../workspace-workbench/ui/workspaceAccountCommerceAdapter";
-import { useWorkspaceWorkbenchHostService } from "../../workspace-workbench/ui/useWorkspaceWorkbenchHostService";
 import {
   isDesktopLocalTuttiAgentConfigContext,
   shouldRenderDesktopAgentConfigCommerce
@@ -23,7 +22,6 @@ export function useDesktopAgentConfigCommerce(enabled: boolean) {
   const { locale, t } = useTranslation();
   const notifications = useService(INotificationService);
   const { service: accountService, state: accountState } = useAccountService();
-  const workbenchHostService = useWorkspaceWorkbenchHostService();
   const commerceProjection = useMemo(
     () =>
       projectWorkspaceAccountCommerce({
@@ -65,7 +63,7 @@ export function useDesktopAgentConfigCommerce(enabled: boolean) {
       },
       async onOpenExternal(url) {
         if (url.trim()) {
-          await workbenchHostService.openExternal(url);
+          await accountService.openCommerceLink(url);
         }
       },
       onActionError() {
@@ -75,13 +73,13 @@ export function useDesktopAgentConfigCommerce(enabled: boolean) {
       }
     }),
     [
+      accountService,
       commerceProjection.dataUnavailable,
       commerceProjection.loading,
       locale,
       notifications,
       summary,
-      t,
-      workbenchHostService
+      t
     ]
   );
   const refreshCommerce = useCallback(() => {

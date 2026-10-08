@@ -19,6 +19,7 @@ export interface AccountStoreState {
 export interface IAccountService {
   readonly _serviceBrand: undefined;
   readonly store: AccountStoreState;
+  openCommerceLink(url: string): Promise<void>;
   refreshUserInfo(): Promise<void>;
   refreshProductSummary(options?: { force?: boolean }): Promise<void>;
   dismissRegistrationCreditsReward(rewardID: string): Promise<void>;

@@ -67,6 +67,7 @@ export interface WorkspaceWorkbenchServiceRegistrationInput {
 }
 
 export interface WorkspaceAccountServiceRegistrationInput {
+  reporterService?: Pick<IReporterService, "trackEvents">;
   hostFilesApi: DesktopHostFilesApi;
   tuttidClient: TuttidClient & MobileRemoteAccessClient;
 }
@@ -76,6 +77,7 @@ export function registerWorkspaceAccountService(
   input: WorkspaceAccountServiceRegistrationInput
 ): IAccountService {
   const accountService = new AccountService({
+    reporterService: input.reporterService,
     hostFilesApi: input.hostFilesApi,
     tuttidClient: input.tuttidClient
   });
