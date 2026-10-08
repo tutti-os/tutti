@@ -97,7 +97,7 @@ func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership
 	)
 	legacy, err := store.ReportSessionState(ctx, agentactivitybiz.SessionStateReport{
 		WorkspaceID:      "ws-1",
-		AgentSessionID:   externalImportedSessionID("codex", "nested-session"),
+		AgentSessionID:   externalImportedSessionID("codex", "nested-session", filepath.Join(codexHome, "sessions", "nested.jsonl")),
 		Origin:           WorkspaceAgentSessionOriginImported,
 		Provider:         "codex",
 		RuntimeContext:   map[string]any{"imported": true},
@@ -129,7 +129,7 @@ func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership
 	if result.ImportedSessions != 1 {
 		t.Fatalf("import result = %#v, want one imported session", result)
 	}
-	persisted, ok, err := store.GetSession(ctx, "ws-1", externalImportedSessionID("codex", "nested-session"))
+	persisted, ok, err := store.GetSession(ctx, "ws-1", externalImportedSessionID("codex", "nested-session", filepath.Join(codexHome, "sessions", "nested.jsonl")))
 	if err != nil || !ok {
 		t.Fatalf("GetSession() ok=%v error=%v", ok, err)
 	}
@@ -555,7 +555,7 @@ func TestServiceImportedCodexWorktreeSessionGroupsUnderExistingMainCheckoutProje
 			result.ProjectPaths, mainRoot, worktreeRoot,
 		)
 	}
-	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "worktree-session"))
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "worktree-session", filepath.Join(codexHome, "sessions", "worktree-session.jsonl")))
 	if err != nil {
 		t.Fatalf("Get imported worktree session error = %v", err)
 	}
@@ -616,7 +616,7 @@ func TestServiceImportsHomeCwdAsNoProjectWithoutRegisteringUserHome(t *testing.T
 	if len(result.ProjectPaths) != 0 || result.ImportedProjects != 0 {
 		t.Fatalf("import result = %#v, want no registered project paths for home cwd", result)
 	}
-	_, err = service.Get(ctx, "ws-1", externalImportedSessionID("codex", "no-project"))
+	_, err = service.Get(ctx, "ws-1", externalImportedSessionID("codex", "no-project", filepath.Join(codexHome, "sessions", "no-project.jsonl")))
 	if err != nil {
 		t.Fatalf("Get imported no-project session error = %v", err)
 	}
@@ -675,7 +675,7 @@ func TestServiceImportsCodexScratchCwdAsNoProjectWithoutRegisteringIt(t *testing
 	if len(result.ProjectPaths) != 0 || result.ImportedProjects != 0 {
 		t.Fatalf("import result = %#v, want no registered project paths for Codex scratch cwd", result)
 	}
-	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-scratch"))
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-scratch", filepath.Join(codexHome, "sessions", "codex-scratch.jsonl")))
 	if err != nil {
 		t.Fatalf("Get imported Codex scratch session error = %v", err)
 	}
@@ -734,7 +734,7 @@ func TestServiceImportPreservesLocalCodexModelAndReasoningEffort(t *testing.T) {
 	if result.ImportedSessions != 1 {
 		t.Fatalf("import result = %#v, want one imported session", result)
 	}
-	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-model"))
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "codex-model", filepath.Join(codexHome, "sessions", "codex-model.jsonl")))
 	if err != nil {
 		t.Fatalf("Get imported Codex session error = %v", err)
 	}
@@ -811,7 +811,7 @@ func TestServiceScanCountsAndImportsSessionWithDeletedWorkingDirectory(t *testin
 	if result.ImportedSessions != 1 || result.ImportedMessages != 1 {
 		t.Fatalf("import result = %#v, want the deleted-cwd session imported", result)
 	}
-	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "deleted-cwd"))
+	session, err := service.Get(ctx, "ws-1", externalImportedSessionID("codex", "deleted-cwd", filepath.Join(codexHome, "sessions", "deleted-cwd.jsonl")))
 	if err != nil {
 		t.Fatalf("Get imported deleted-cwd session error = %v", err)
 	}
@@ -892,5 +892,27 @@ func TestServiceListsImportedSessionsByExternalActivityTime(t *testing.T) {
 	}
 	if sessions[0].CreatedAt.UnixMilli() != newer.UnixMilli() {
 		t.Fatalf("first imported session createdAt = %d, want %d", sessions[0].CreatedAt.UnixMilli(), newer.UnixMilli())
+	}
+}
+
+// Regression test for #2199: distinct transcript files that share a provider
+// session id (Claude Code subagent transcripts inherit the parent sessionId)
+// must derive distinct imported identities, while re-importing the same file
+// stays idempotent.
+func TestExternalImportedSessionIDDistinguishesSharedProviderSessionIDs(t *testing.T) {
+	parent := externalImportedSessionID("claude-code", "conv-1", "/home/u/.claude/projects/p/conv-1.jsonl")
+	subagent := externalImportedSessionID("claude-code", "conv-1", "/home/u/.claude/projects/p/conv-1-subagent.jsonl")
+	if parent == subagent {
+		t.Fatalf("shared provider session id collapsed distinct transcripts: %q", parent)
+	}
+
+	// Idempotency: the same transcript file maps to the same identity.
+	if again := externalImportedSessionID("claude-code", "conv-1", "/home/u/.claude/projects/p/conv-1.jsonl"); again != parent {
+		t.Fatalf("same source path produced different identities: %q vs %q", parent, again)
+	}
+
+	// Different providers keep distinct identities even with the same inputs.
+	if other := externalImportedSessionID("codex", "conv-1", "/home/u/.claude/projects/p/conv-1.jsonl"); other == parent {
+		t.Fatalf("provider slug not distinguishing identities: %q", other)
 	}
 }

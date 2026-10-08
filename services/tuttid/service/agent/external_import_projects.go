@@ -226,7 +226,7 @@ func resolveGitWorktreeMainRoot(gitFilePath string) (string, bool) {
 
 func externalImportSessionSummary(session externalImportedSession, projectPath string) ExternalImportSession {
 	return ExternalImportSession{
-		ID:                  externalImportedSessionID(session.Provider, session.ProviderSessionID),
+		ID:                  externalImportedSessionID(session.Provider, session.ProviderSessionID, session.SourcePath),
 		ProjectPath:         projectPath,
 		Provider:            session.Provider,
 		SourcePath:          session.SourcePath,
@@ -279,7 +279,7 @@ func matchingExternalImportProject(session externalImportedSession, selections [
 }
 
 func externalSessionSelected(session externalImportedSession, sessionIDs []string) bool {
-	sessionID := externalImportedSessionID(session.Provider, session.ProviderSessionID)
+	sessionID := externalImportedSessionID(session.Provider, session.ProviderSessionID, session.SourcePath)
 	for _, candidate := range sessionIDs {
 		if strings.TrimSpace(candidate) == sessionID {
 			return true
