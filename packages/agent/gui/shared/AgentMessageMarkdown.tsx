@@ -6,6 +6,7 @@ import {
   useCallback,
   memo,
   useMemo,
+  useRef,
   useState
 } from "react";
 import { useTranslation } from "../i18n/index";
@@ -40,6 +41,7 @@ import {
   activateMarkdownLinkFromPointer,
   hasOpenPotentialMermaidFence,
   hashMarkdownProfilerContent,
+  isDuplicateMarkdownLinkActivation,
   isLikelyLongerThanLineLimit,
   resolveMarkdownAnchorHref,
   splitStreamingMarkdownBlocks
@@ -250,8 +252,22 @@ export function AgentMessageMarkdown({
     [documentCacheKey, normalizedContent]
   );
   const isMentionOnly = isMentionOnlyMarkdownContent(normalizedContent);
+  const lastMarkdownLinkActivationRef = useRef<{
+    href: string;
+    at: number;
+  } | null>(null);
   const handleLinkClick = useCallback(
     (href: string): void => {
+      const now = performance.now();
+      if (
+        isDuplicateMarkdownLinkActivation(
+          lastMarkdownLinkActivationRef.current,
+          href,
+          now
+        )
+      )
+        return;
+      lastMarkdownLinkActivationRef.current = { href, at: now };
       if (workspaceLinkSource && onLinkAction) {
         const action =
           resolveWorkspaceMentionLinkAction({
