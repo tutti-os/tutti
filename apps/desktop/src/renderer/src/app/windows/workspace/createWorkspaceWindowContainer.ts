@@ -233,6 +233,7 @@ export async function createWorkspaceWindowContainer(): Promise<WorkspaceWindowC
     workspaceUserProjectService
   });
   const accountService = registerWorkspaceAccountService(registry, {
+    reporterService,
     hostFilesApi: desktopApi.host.files,
     tuttidClient
   });
