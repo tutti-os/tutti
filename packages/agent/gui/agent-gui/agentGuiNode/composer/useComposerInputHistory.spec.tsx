@@ -158,6 +158,104 @@ describe("useComposerInputHistory", () => {
       "session:session-1"
     );
   });
+
+  it("keeps an edited recalled draft and exits history navigation", () => {
+    const onDraftContentChange = vi.fn();
+    const entries = historyEntries("sent prompt");
+    const editedDraft = buildAgentComposerDraft({ prompt: "edited prompt" });
+    const draftByScopeKeyRef = {
+      current: { "session:session-1": emptyAgentComposerDraft() }
+    };
+    const { result, rerender } = renderHook(
+      ({ currentDraft }) => {
+        draftByScopeKeyRef.current["session:session-1"] = currentDraft;
+        return useComposerInputHistory({
+          agentSessionId: "session-1",
+          currentDraft,
+          draftByScopeKeyRef,
+          draftScopeKey: "session:session-1",
+          entries,
+          hasOlderPage: false,
+          isLoadingOlderPage: false,
+          onDraftContentChange,
+          runtime: null,
+          workspaceId: "workspace-1"
+        });
+      },
+      { initialProps: { currentDraft: emptyAgentComposerDraft() } }
+    );
+
+    act(() => {
+      expect(result.current.onHistoryNavigation("older")).toBe(true);
+    });
+    rerender({ currentDraft: editedDraft });
+
+    act(() => {
+      expect(result.current.onHistoryNavigation("older")).toBe(false);
+    });
+    expect(draftByScopeKeyRef.current["session:session-1"]).toBe(editedDraft);
+    expect(onDraftContentChange).toHaveBeenCalledOnce();
+    expect(onDraftContentChange).toHaveBeenCalledWith(
+      entries[0]!.draft,
+      "session:session-1"
+    );
+  });
+
+  it("isolates recalled text and navigation cursor between Session scopes", () => {
+    const onDraftContentChange = vi.fn();
+    const sessionOneEntries = historyEntries("session one old", "session one");
+    const sessionTwoEntries = historyEntries("session two old", "session two");
+    const draftByScopeKeyRef: {
+      current: Record<string, ReturnType<typeof emptyAgentComposerDraft>>;
+    } = {
+      current: {
+        "session:session-1": emptyAgentComposerDraft(),
+        "session:session-2": emptyAgentComposerDraft()
+      }
+    };
+    const { result, rerender } = renderHook(
+      ({ agentSessionId, draftScopeKey, entries }) =>
+        useComposerInputHistory({
+          agentSessionId,
+          currentDraft: draftByScopeKeyRef.current[draftScopeKey]!,
+          draftByScopeKeyRef,
+          draftScopeKey,
+          entries,
+          hasOlderPage: false,
+          isLoadingOlderPage: false,
+          onDraftContentChange,
+          runtime: null,
+          workspaceId: "workspace-1"
+        }),
+      {
+        initialProps: {
+          agentSessionId: "session-1",
+          draftScopeKey: "session:session-1",
+          entries: sessionOneEntries
+        }
+      }
+    );
+
+    act(() => {
+      expect(result.current.onHistoryNavigation("older")).toBe(true);
+    });
+    rerender({
+      agentSessionId: "session-2",
+      draftScopeKey: "session:session-2",
+      entries: sessionTwoEntries
+    });
+
+    expect(draftByScopeKeyRef.current["session:session-2"]).toEqual(
+      emptyAgentComposerDraft()
+    );
+    act(() => {
+      expect(result.current.onHistoryNavigation("older")).toBe(true);
+    });
+    expect(onDraftContentChange).toHaveBeenLastCalledWith(
+      sessionTwoEntries[1]!.draft,
+      "session:session-2"
+    );
+  });
 });
 
 function historyEntries(
