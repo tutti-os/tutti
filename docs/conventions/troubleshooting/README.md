@@ -20,6 +20,8 @@ Use the focused runtime index or open one area directly:
   failures.
   Also covers uv-managed Extension installs that accidentally select an
   incompatible system Python.
+  Also covers Gemini CLI ACP probes that fail after a successful handshake
+  because the relaunch wrapper swallows SIGTERM.
   Also covers Kimi Code ACP sessions that advertise no model or hide provider
   failures behind an empty `end_turn`.
   Also covers Cursor ACP session-service startup races and tool results that

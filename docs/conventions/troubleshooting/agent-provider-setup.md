@@ -359,6 +359,41 @@ provider-status-focus-refresh --all-process-time-profile` on macOS when a
   [runtime_contract.go](../../../services/tuttid/service/agentextension/runtime_contract.go)
   [manager.go](../../../services/tuttid/service/agentextension/manager.go)
 
+### Gemini CLI is installed but Tutti reports it unavailable after ACP probe
+
+- Symptom:
+  `gemini` works in a terminal, including headless prompts, but Tutti marks
+  `extension:gemini` unavailable with `reasonCode=acp_probe_failed`. Daemon
+  logs show `initialize` and `session/new` succeeding, then
+  `transport_close.failed` with `process did not exit after kill`.
+- Quick checks:
+  Confirm the resolved command is the npm `gemini` launcher, not a native
+  binary. Search `tuttid.log` for `provider=acp:gemini` and
+  `stage=transport_close.failed`. Reproduce by starting `gemini --acp` and
+  sending `SIGTERM` to the parent; the default entrypoint stays alive.
+- Root cause:
+  Gemini CLI's default entrypoint relaunches itself to raise
+  `--max-old-space-size` and installs empty `SIGINT`/`SIGTERM`/`SIGHUP`
+  handlers on the parent. The child inherits stdout and stderr. Tutti's ACP
+  setup probe treats a failed close as discovery failure even after a
+  successful handshake. Extension `launch.env` cannot set this variable:
+  it may only reference `TUTTI_*` values.
+- Fix:
+  Standard ACP launches for `acp:gemini` inject `GEMINI_CLI_NO_RELAUNCH=1`
+  after session and provider env overlays. That skips the wrapper so the
+  process Tutti owns can exit on `SIGTERM`. Do not wrap the user's global
+  `gemini` binary; a later CLI auto-update rebuilds that symlink.
+- Validation:
+  Start a Gemini ACP adapter and a setup authenticate probe and assert the
+  spawned environment contains `GEMINI_CLI_NO_RELAUNCH=1` while other ACP
+  providers do not. Confirm interactive authenticate still omits
+  `NO_BROWSER=1`. On a real Gemini CLI, the same environment should let
+  `SIGTERM` exit the process without `SIGKILL`.
+- References:
+  [provider_descriptors.go](../../../packages/agent/daemon/runtime/provider_descriptors.go)
+  [standard_acp_session.go](../../../packages/agent/daemon/runtime/standard_acp_session.go)
+  [standard_acp_setup.go](../../../packages/agent/daemon/runtime/standard_acp_setup.go)
+
 ### Clicking provider login repeatedly opens terminals and browser auth pages
 
 - Symptom:

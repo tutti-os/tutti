@@ -257,7 +257,13 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 
 type standardACPProviderBehavior struct {
 	deferApprovalUntilToolInput bool
+	// launchEnv is appended to the ACP process environment after session,
+	// command-resolver, and provider finalizeEnv overlays. Extension manifests
+	// cannot declare arbitrary launch variables.
+	launchEnv []string
 }
+
+const geminiCLINoRelaunchEnv = "GEMINI_CLI_NO_RELAUNCH=1"
 
 // standardACPProviderBehaviorFor owns trusted protocol differences for
 // externalized Agent Extensions. Extension manifests cannot opt into these
@@ -266,6 +272,11 @@ func standardACPProviderBehaviorFor(provider string) standardACPProviderBehavior
 	switch strings.TrimSpace(provider) {
 	case "acp:kimi-code":
 		return standardACPProviderBehavior{deferApprovalUntilToolInput: true}
+	case "acp:gemini":
+		// Gemini CLI's default entrypoint relaunches itself and swallows
+		// SIGTERM. ACP hosts must disable that wrapper so setup probes and
+		// session close can reap the process.
+		return standardACPProviderBehavior{launchEnv: []string{geminiCLINoRelaunchEnv}}
 	default:
 		return standardACPProviderBehavior{}
 	}
