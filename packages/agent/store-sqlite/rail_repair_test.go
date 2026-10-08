@@ -162,3 +162,81 @@ func TestWorkspaceAgentActivityRailV2RepairsHistoricalImportedRows(t *testing.T)
 		t.Fatalf("historical rail = %#v, want project %q", section, wantPath)
 	}
 }
+
+func TestWorkspaceAgentActivityRailV3MovesOrphanedImportedRowsToConversations(t *testing.T) {
+	t.Parallel()
+
+	projects := &staticProjectPaths{}
+	store := openTestStore(t, testOptions(projects))
+	ctx := context.Background()
+	projectPath := filepath.Join(t.TempDir(), "removed-project")
+	if err := os.MkdirAll(projectPath, 0o755); err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	projectPath = NormalizeProjectPath(projectPath)
+	if _, err := store.ReportSessionState(ctx, SessionStateReport{
+		WorkspaceID:       "ws-orphaned-rail-repair",
+		AgentSessionID:    "orphaned-import",
+		Origin:            "runtime",
+		Provider:          "codex",
+		Cwd:               projectPath,
+		RuntimeContext:    map[string]any{"imported": true},
+		ImportProjectPath: projectPath,
+	}); err != nil {
+		t.Fatalf("ReportSessionState() error = %v", err)
+	}
+	registeredPath := filepath.Join(t.TempDir(), "registered-project")
+	if err := os.MkdirAll(registeredPath, 0o755); err != nil {
+		t.Fatalf("create registered project: %v", err)
+	}
+	registeredPath = NormalizeProjectPath(registeredPath)
+	projects.paths = []string{registeredPath}
+	for _, session := range []struct {
+		id       string
+		path     string
+		imported bool
+	}{
+		{id: "registered-import", path: registeredPath, imported: true},
+		{id: "ordinary-project", path: registeredPath, imported: false},
+	} {
+		if _, err := store.ReportSessionState(ctx, SessionStateReport{
+			WorkspaceID:       "ws-orphaned-rail-repair",
+			AgentSessionID:    session.id,
+			Origin:            "runtime",
+			Provider:          "codex",
+			Cwd:               session.path,
+			RuntimeContext:    map[string]any{"imported": session.imported},
+			ImportProjectPath: session.path,
+		}); err != nil {
+			t.Fatalf("ReportSessionState(%s) error = %v", session.id, err)
+		}
+	}
+	if _, err := store.db.ExecContext(ctx, `DELETE FROM agent_store_schema_migrations WHERE id = ?`, schemaMigrationWorkspaceAgentActivityRailV3); err != nil {
+		t.Fatalf("remove rail v3 marker: %v", err)
+	}
+	if err := store.applyWorkspaceAgentActivityRailV3(ctx); err != nil {
+		t.Fatalf("applyWorkspaceAgentActivityRailV3() error = %v", err)
+	}
+	section, found, err := store.getAgentSessionRailSection(ctx, "ws-orphaned-rail-repair", "orphaned-import")
+	if err != nil || !found {
+		t.Fatalf("orphaned rail = %#v found=%v err=%v", section, found, err)
+	}
+	if section.Kind != RailSectionKindConversations || section.Key != RailSectionKeyConversations {
+		t.Fatalf("orphaned rail = %#v, want conversations", section)
+	}
+	for _, session := range []struct {
+		id          string
+		wantProject string
+	}{
+		{id: "registered-import", wantProject: registeredPath},
+		{id: "ordinary-project", wantProject: registeredPath},
+	} {
+		section, found, err := store.getAgentSessionRailSection(ctx, "ws-orphaned-rail-repair", session.id)
+		if err != nil || !found {
+			t.Fatalf("%s rail = %#v found=%v err=%v", session.id, section, found, err)
+		}
+		if section.Kind != RailSectionKindProject || section.ProjectPath != session.wantProject {
+			t.Fatalf("%s rail = %#v, want project %q", session.id, section, session.wantProject)
+		}
+	}
+}

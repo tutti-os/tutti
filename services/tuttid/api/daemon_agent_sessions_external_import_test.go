@@ -36,8 +36,9 @@ func TestScanExternalImportForwardsArchivePath(t *testing.T) {
 	}
 }
 
-func TestImportExternalSessionsForwardsArchivePath(t *testing.T) {
+func TestImportExternalSessionsForwardsArchivePathAndRegistrationMode(t *testing.T) {
 	archivePath := "/tmp/claude-export.zip"
+	registerUserProjects := false
 	var captured agentservice.ExternalImportInput
 	api := DaemonAPI{AgentSessionService: stubAgentSessionService{
 		importExternalFn: func(_ context.Context, workspaceID string, input agentservice.ExternalImportInput) (agentservice.ExternalImportResult, error) {
@@ -52,7 +53,8 @@ func TestImportExternalSessionsForwardsArchivePath(t *testing.T) {
 	response, err := api.ImportWorkspaceExternalAgentSessions(context.Background(), tuttigenerated.ImportWorkspaceExternalAgentSessionsRequestObject{
 		WorkspaceID: "ws-1",
 		Body: &tuttigenerated.ImportExternalAgentSessionsRequest{
-			ArchivePath: &archivePath,
+			ArchivePath:          &archivePath,
+			RegisterUserProjects: &registerUserProjects,
 			Projects: []tuttigenerated.ExternalAgentImportProjectSelection{{
 				Path:       "/Users/demo",
 				SessionIds: &[]string{"session-1"},
@@ -65,7 +67,7 @@ func TestImportExternalSessionsForwardsArchivePath(t *testing.T) {
 	if _, ok := response.(tuttigenerated.ImportWorkspaceExternalAgentSessions200JSONResponse); !ok {
 		t.Fatalf("response = %T, want 200", response)
 	}
-	if captured.ArchivePath != archivePath || len(captured.Projects) != 1 {
+	if captured.ArchivePath != archivePath || len(captured.Projects) != 1 || !captured.SkipProjectRailAssignment {
 		t.Fatalf("captured input = %#v", captured)
 	}
 }

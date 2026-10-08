@@ -33,6 +33,7 @@ const schemaMigrationWorkspaceAgentActivityV10 = "workspace_agent_activity_v10"
 const schemaMigrationWorkspaceAgentActivityV11 = "workspace_agent_activity_v11"
 const schemaMigrationWorkspaceAgentActivityRailV1 = "workspace_agent_activity_rail_v1"
 const schemaMigrationWorkspaceAgentActivityRailV2 = "workspace_agent_activity_rail_v2"
+const schemaMigrationWorkspaceAgentActivityRailV3 = "workspace_agent_activity_rail_v3"
 const schemaMigrationWorkspaceAgentActivityTurnsV1 = "workspace_agent_activity_turns_v1"
 const schemaMigrationWorkspaceAgentActivityInteractionsV2 = "workspace_agent_activity_interactions_v2"
 const schemaMigrationWorkspaceAgentActivityMessagesV2 = "workspace_agent_activity_messages_v2"
@@ -340,7 +341,10 @@ CREATE TABLE IF NOT EXISTS `+schemaMigrationsTable+` (
 	if err := s.applyWorkspaceAgentToolPayloadBudgetV1(ctx); err != nil {
 		return err
 	}
-	return s.applyWorkspaceAgentActivityRailV2(ctx)
+	if err := s.applyWorkspaceAgentActivityRailV2(ctx); err != nil {
+		return err
+	}
+	return s.applyWorkspaceAgentActivityRailV3(ctx)
 }
 
 // claimLegacyMigrations copies agent-store migration records that were

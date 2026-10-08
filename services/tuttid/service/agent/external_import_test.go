@@ -139,6 +139,65 @@ func TestServiceImportExternalSessionsRepairsSelectedNestedProjectRailMembership
 	}
 }
 
+func TestServiceImportExternalSessionsWithoutProjectRegistrationUsesConversationsRail(t *testing.T) {
+	ctx := context.Background()
+	store := openAgentServiceSQLiteStore(t)
+	if err := store.Create(ctx, workspacebiz.Summary{ID: "ws-1", Name: "Workspace One"}); err != nil {
+		t.Fatalf("Create workspace error = %v", err)
+	}
+	root := t.TempDir()
+	project := filepath.Join(root, "project")
+	if err := os.MkdirAll(project, 0o755); err != nil {
+		t.Fatalf("create project error = %v", err)
+	}
+	if canonical, ok := canonicalExistingDir(project); ok {
+		project = canonical
+	}
+	codexHome := filepath.Join(root, "codex-home")
+	t.Setenv("CODEX_HOME", codexHome)
+	t.Setenv("CLAUDE_CONFIG_DIR", filepath.Join(root, "claude-home"))
+	now := time.Now().UTC().Format(time.RFC3339Nano)
+	writeAgentServiceJSONL(t, filepath.Join(codexHome, "sessions", "import.jsonl"),
+		map[string]any{
+			"timestamp": now,
+			"type":      "session_meta",
+			"payload":   map[string]any{"id": "imported-session", "cwd": project},
+		},
+		map[string]any{
+			"timestamp": now,
+			"type":      "response_item",
+			"payload": map[string]any{
+				"type": "message", "id": "imported-message", "role": "user",
+				"content": []any{map[string]any{"type": "input_text", "text": "Imported prompt"}},
+			},
+		},
+	)
+
+	service := newIsolatedAgentService(newFakeRuntime())
+	projection := NewActivityProjection(store)
+	service.SessionReader = projection
+	service.MessageReader = projection
+	service.ExternalImportStore = store
+
+	result, err := service.ImportExternalSessions(ctx, "ws-1", ExternalImportInput{
+		Projects:                  []ExternalImportProjectSelection{{Path: project}},
+		SkipProjectRailAssignment: true,
+	})
+	if err != nil {
+		t.Fatalf("ImportExternalSessions error = %v", err)
+	}
+	if result.ImportedSessions != 1 {
+		t.Fatalf("import result = %#v, want one imported session", result)
+	}
+	persisted, ok, err := store.GetSession(ctx, "ws-1", externalImportedSessionID("codex", "imported-session"))
+	if err != nil || !ok {
+		t.Fatalf("GetSession() ok=%v error=%v", ok, err)
+	}
+	if persisted.RailSectionKey != agentactivitybiz.RailSectionKeyConversations {
+		t.Fatalf("railSectionKey = %q, want conversations", persisted.RailSectionKey)
+	}
+}
+
 // TestServiceImportExternalSessionsOmitsProjectWhenOnlySessionFailsToImport
 // covers the case where a project's only session is a real, valid import
 // candidate but the store write itself fails (a transient error, a write
