@@ -814,6 +814,7 @@ export function StandaloneAgentWindow({
         }}
       >
         <StandaloneAgentToolSidebar
+          activeAgentSessionId={nodeState.lastActiveAgentSessionId}
           activityService={workspaceAgentActivityService}
           agentSideConversationPresentation={agentSideConversationPresentation}
           appOpenId={openAppId}

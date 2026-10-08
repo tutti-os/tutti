@@ -1,4 +1,5 @@
 import type { AgentToolPanelId } from "@tutti-os/agent-gui/workbench/tool-sidebar";
+import { agentGuiWorkbenchTypeId } from "@tutti-os/agent-gui/workbench/launch";
 import type {
   WorkbenchContribution,
   WorkbenchHostHandle,
@@ -64,6 +65,59 @@ export function createStandaloneAgentToolSnapshotRepository(): WorkbenchHostSnap
 export interface StandaloneAgentToolHostGroup {
   readonly host: WorkbenchHostHandle;
   setHost(instanceId: string, host: WorkbenchHostHandle | null): void;
+}
+
+const standaloneAgentWindowCloseGuardHostId = "standalone-agent-window";
+const standaloneAgentWindowNodeId = "standalone-agent-window-node";
+
+export function attachStandaloneAgentWindowCloseGuard(input: {
+  contributions: readonly WorkbenchContribution[] | undefined;
+  getActiveAgentSessionId(): string | null | undefined;
+  hostGroup: StandaloneAgentToolHostGroup;
+  title: string;
+  workspaceId: string;
+}): () => void {
+  const nodeDefinition = input.contributions
+    ?.flatMap((contribution) => contribution.nodes ?? [])
+    .find((node) => node.typeId === agentGuiWorkbenchTypeId);
+  if (!nodeDefinition?.getWindowCloseEffect) {
+    return () => undefined;
+  }
+
+  const directHost = createStandaloneAgentDirectToolHost();
+  directHost.setNode({
+    instanceId: standaloneAgentWindowNodeId,
+    nodeId: standaloneAgentWindowNodeId,
+    resolveCloseEffect: async () => {
+      const node = directHost.host.getSnapshot().nodes[0];
+      if (!node) {
+        return null;
+      }
+      return (
+        (await nodeDefinition.getWindowCloseEffect?.({
+          externalNodeState: {
+            lastActiveAgentSessionId: input.getActiveAgentSessionId()
+          },
+          externalWorkspaceState: null,
+          instanceId: standaloneAgentWindowNodeId,
+          instanceKey: standaloneAgentWindowNodeId,
+          node,
+          workspaceId: input.workspaceId
+        })) ?? null
+      );
+    },
+    title: input.title,
+    typeId: agentGuiWorkbenchTypeId
+  });
+  input.hostGroup.setHost(
+    standaloneAgentWindowCloseGuardHostId,
+    directHost.host
+  );
+
+  return () => {
+    input.hostGroup.setHost(standaloneAgentWindowCloseGuardHostId, null);
+    directHost.host.dispose();
+  };
 }
 
 export interface StandaloneAgentDirectToolHost {

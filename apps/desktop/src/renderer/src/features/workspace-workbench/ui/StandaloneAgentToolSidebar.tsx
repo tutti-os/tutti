@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -44,7 +45,10 @@ import {
   type StandaloneAgentFileOpenRequest
 } from "./StandaloneAgentToolSidebarPanel.tsx";
 import { StandaloneAgentToolLoadingState } from "./StandaloneAgentToolLoadingState.tsx";
-import { createStandaloneAgentToolHostGroup } from "./standaloneAgentToolWorkbench.ts";
+import {
+  attachStandaloneAgentWindowCloseGuard,
+  createStandaloneAgentToolHostGroup
+} from "./standaloneAgentToolWorkbench.ts";
 import { createStandaloneAgentTerminalLoginPresenter } from "../services/standaloneAgentTerminalLoginPresenter.ts";
 import { registerWorkspaceBrowserLaunchHandler } from "../services/workspaceBrowserLaunchCoordinator.ts";
 import { useExternalStoreValue } from "./useExternalStoreValue.ts";
@@ -60,6 +64,7 @@ export type { StandaloneAgentFileOpenRequest } from "./StandaloneAgentToolSideba
 const browserControllerReadyTimeoutMs = 8_000;
 
 interface StandaloneAgentToolSidebarProps {
+  activeAgentSessionId: string | null;
   activityService: WorkspaceAgentActivityService;
   agentSideConversationPresentation: AgentGUISideConversationPresentation;
   appOpenId?: string | null;
@@ -89,6 +94,7 @@ interface StandaloneAgentToolSidebarProps {
 }
 
 export function StandaloneAgentToolSidebar({
+  activeAgentSessionId,
   activityService,
   agentSideConversationPresentation,
   appOpenId = null,
@@ -152,6 +158,17 @@ export function StandaloneAgentToolSidebar({
   const sessionEngine = useMemo(
     () => activityService.getSessionEngine(workspaceId),
     [activityService, workspaceId]
+  );
+  useLayoutEffect(
+    () =>
+      attachStandaloneAgentWindowCloseGuard({
+        contributions,
+        getActiveAgentSessionId: () => activeAgentSessionId,
+        hostGroup: toolHostGroup,
+        title: i18n.t("workspace.agentGui.fallbackAgentLabel"),
+        workspaceId
+      }),
+    [activeAgentSessionId, contributions, i18n, toolHostGroup, workspaceId]
   );
   const messageCenterWorkingCount = useExternalStoreValue(
     sessionEngine.subscribe,

@@ -121,7 +121,9 @@ export interface WorkspaceWorkbenchShellRuntime {
   ) => void;
   onWorkbenchHostHandleReady: (host: WorkbenchHostHandle | null) => void;
   onWorkbenchCloseGuardHostReady: (host: WorkbenchHostHandle | null) => void;
-  requestWindowClose: () => Promise<"approved" | "blocked">;
+  requestWindowClose: (input?: {
+    reason: "native-window-close" | "quit" | "window-close";
+  }) => Promise<"approved" | "blocked">;
   setDockEntryRetained: (entryId: string, retained: boolean) => Promise<void>;
   selectWallpaper: (wallpaperId: WorkspaceWallpaperId) => void;
   selectWallpaperDisplayMode: (
@@ -555,7 +557,8 @@ export function useWorkspaceWorkbenchShellRuntime({
       shellRuntimeController.missionControl.setAdapter,
     onWorkbenchHostHandleReady: handleWorkbenchHostReady,
     onWorkbenchCloseGuardHostReady: handleWorkbenchCloseGuardHostReady,
-    requestWindowClose: () => shellRuntimeController.requestWindowClose(),
+    requestWindowClose: (input) =>
+      shellRuntimeController.requestWindowClose(input),
     setDockEntryRetained,
     selectWallpaper: shellRuntimeController.wallpaperSelection.selectWallpaper,
     selectWallpaperDisplayMode:

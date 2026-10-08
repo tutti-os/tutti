@@ -2919,6 +2919,13 @@ AgentGUI, Message Center, dock/header, workspace window, and standalone Agent wi
 
 Opening a panel/window creates presentation state only. It does not clone a Session, copy engine entities, or start another event stream. Standalone tools are Desktop chrome, not AgentGUI lifecycle.
 
+Closing a standalone Agent window must participate in the same Workbench close
+effect contract as an embedded Agent node. The standalone Desktop adapter
+projects the selected Agent session into the canonical Agent contribution's
+`getWindowCloseEffect` resolver and aggregates that effect with its tool hosts;
+it must not implement a second status check or bypass the close guard through a
+generic node-close request.
+
 Workbench previews must not mount a second AgentGUI tree. Genie capture prefers
 the host-provided native image and clones the visible node DOM into a texture
 only after native capture fails or exceeds its bounded wait. Electron hosts
