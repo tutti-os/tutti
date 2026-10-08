@@ -511,6 +511,42 @@ func TestStandardACPTransportFallbackTextStaysProviderScoped(t *testing.T) {
 	}
 }
 
+func TestStandardACPCursorMessageChunksPreserveMarkdownNewlines(t *testing.T) {
+	t.Parallel()
+
+	session := standardTestSession(ProviderCursor)
+	normalizer := newACPTurnNormalizer()
+	config := NewCursorAdapter(nil).config
+	chunks := []string{
+		"叠在一起。",
+		"\n\n",
+		"---",
+		"\n\n",
+		"## 1) 最关键的漏洞",
+	}
+	var last []activityshared.Event
+	for _, chunk := range chunks {
+		raw, err := json.Marshal(map[string]any{
+			"update": map[string]any{
+				"sessionUpdate": "agent_message_chunk",
+				"content":       map[string]any{"type": "text", "text": chunk},
+			},
+		})
+		if err != nil {
+			t.Fatalf("marshal chunk %q: %v", chunk, err)
+		}
+		last = standardACPUpdateEvents(config, session, "turn-1", raw, normalizer)
+		if len(last) != 1 {
+			t.Fatalf("Cursor chunk %q events = %#v, want 1 assistant message", chunk, last)
+		}
+	}
+
+	want := "叠在一起。\n\n---\n\n## 1) 最关键的漏洞"
+	if got := last[0].Payload.Content; got != want {
+		t.Fatalf("Cursor assistant content = %q, want markdown newlines preserved", got)
+	}
+}
+
 func firstUserMessageContent(t *testing.T, events []activityshared.Event) string {
 	t.Helper()
 	for _, event := range events {

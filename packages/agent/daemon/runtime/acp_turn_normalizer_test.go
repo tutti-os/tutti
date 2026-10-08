@@ -207,6 +207,48 @@ func TestAppendAssistantChunkReplacesCumulativeSnapshotChunk(t *testing.T) {
 	}
 }
 
+func TestAppendAssistantChunkPreservesMarkdownNewlinesFromWhitespaceDeltas(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	chunks := []string{
+		"叠在一起。",
+		"\n\n",
+		"---",
+		"\n\n",
+		"## 1) 最关键的漏洞",
+		"\n\n",
+		"**P0.** briefs 没有输入契约。",
+	}
+	for _, chunk := range chunks {
+		if events := normalizer.AppendAssistantChunk(session, "turn-1", chunk); len(events) != 1 {
+			t.Fatalf("AppendAssistantChunk(%q) events = %d, want 1", chunk, len(events))
+		}
+	}
+
+	want := "叠在一起。\n\n---\n\n## 1) 最关键的漏洞\n\n**P0.** briefs 没有输入契约。"
+	if got := normalizer.CurrentAssistantText(); got != want {
+		t.Fatalf("content = %q, want markdown newlines preserved for heading recognition", got)
+	}
+}
+
+func TestAppendAssistantChunkKeepsTrailingNewlinesFromCumulativeSnapshot(t *testing.T) {
+	t.Parallel()
+
+	session := testSession()
+	normalizer := newACPTurnNormalizer()
+	_ = normalizer.AppendAssistantChunk(session, "turn-1", "叠在一起。")
+
+	events := normalizer.AppendAssistantChunk(session, "turn-1", "叠在一起。\n\n")
+	if len(events) != 1 {
+		t.Fatalf("trailing newline snapshot events = %d, want 1", len(events))
+	}
+	if got := events[0].Payload.Content; got != "叠在一起。\n\n" {
+		t.Fatalf("content = %q, want trailing markdown newlines kept", got)
+	}
+}
+
 // TestFinishCompletedFailsDanglingToolCall reproduces the sub-agent
 // "permanently queued" bug: codex can send tool_call item/started for a
 // spawnAgent-style delegation and then reject it out-of-band (a schema

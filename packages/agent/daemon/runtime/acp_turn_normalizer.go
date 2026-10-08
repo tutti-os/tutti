@@ -345,19 +345,26 @@ func (n *acpTurnNormalizer) mergeAssistantText(next string) *liveprotocol.Messag
 		_, _ = n.assistantContent.WriteString(next)
 		value, _ := json.Marshal(next)
 		return &liveprotocol.MessageContentOperation{Operation: "set", Value: value}
-	case next == current || trimmedNext == trimmedCurrent:
+	case next == current:
+		return nil
+	case trimmedNext != "" && trimmedNext == trimmedCurrent && len(next) <= len(current):
+		// Duplicate snapshot whose only difference is stripped or unchanged
+		// surrounding whitespace. Do not treat a longer snapshot that only
+		// adds newlines as a no-op — markdown headings depend on them.
 		return nil
 	case strings.HasPrefix(next, current):
 		suffix := strings.TrimPrefix(next, current)
 		n.assistantContent.Reset()
 		_, _ = n.assistantContent.WriteString(next)
 		return &liveprotocol.MessageContentOperation{Operation: "append_text", Text: suffix}
-	case strings.HasPrefix(trimmedNext, trimmedCurrent):
+	case trimmedNext != "" && trimmedCurrent != "" && strings.HasPrefix(trimmedNext, trimmedCurrent):
 		n.assistantContent.Reset()
 		_, _ = n.assistantContent.WriteString(next)
 		value, _ := json.Marshal(next)
 		return &liveprotocol.MessageContentOperation{Operation: "set", Value: value}
-	case strings.HasPrefix(current, next) || strings.HasPrefix(trimmedCurrent, trimmedNext):
+	case strings.HasPrefix(current, next):
+		return nil
+	case trimmedNext != "" && trimmedCurrent != "" && strings.HasPrefix(trimmedCurrent, trimmedNext):
 		return nil
 	default:
 		_, _ = n.assistantContent.WriteString(next)
