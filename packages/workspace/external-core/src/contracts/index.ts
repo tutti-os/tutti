@@ -160,7 +160,8 @@ export interface TuttiExternalFileUploadProgress {
 export const tuttiExternalManagedAiModelProviderIds = [
   "agnes",
   "openai",
-  "anthropic"
+  "anthropic",
+  "orcarouter"
 ] as const;
 
 export type TuttiExternalManagedAiModelProviderId =
