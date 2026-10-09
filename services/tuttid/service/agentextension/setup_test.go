@@ -1058,7 +1058,7 @@ func TestRuntimeAdapterConfigProjectsModelDescriptionMetadataFormat(t *testing.T
 	binding := RuntimeBinding{
 		ModelDescriptionFormat: agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1,
 	}
-	config := runtimeAdapterConfig(binding, "")
+	config := runtimeAdapterConfig(binding, "", "")
 	if config.ModelDescriptionFormat != agentruntime.StandardACPModelDescriptionMetadataFormatCreditConsumptionMultiplierV1 {
 		t.Fatalf("model description metadata format = %q", config.ModelDescriptionFormat)
 	}

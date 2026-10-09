@@ -81,16 +81,11 @@ func (s *Service) persistedSessionCanResume(ctx context.Context, session Persist
 	}
 	input := runtimeResumeInputFromPersistedSession(session)
 	if input.AgentTargetID != "" {
-		launchInput := CreateSessionInput{
-			AgentTargetID: input.AgentTargetID,
-			Provider:      input.Provider,
-		}
-		launch, err := s.resolveCreateSessionLaunch(ctx, session.WorkspaceID, &launchInput)
+		providerTargetRef, err := s.resolveProviderTargetRefForResume(ctx, session)
 		if err != nil {
 			return false
 		}
-		input.Provider = launch.Provider
-		input.ProviderTargetRef = launch.ProviderTargetRef
+		input.ProviderTargetRef = providerTargetRef
 	}
 	return controller.CanResume(input)
 }

@@ -59,6 +59,7 @@ func (c *Controller) CanResume(input ResumeInput) bool {
 	if provider == "" {
 		return false
 	}
+	adapter := c.adapter(provider)
 	extensionTargetRef := providerTargetRefString(input.ProviderTargetRef, "kind") == "agent_extension"
 	if extensionTargetRef {
 		if !authorizedAgentExtensionResumeInput(input, provider) {
@@ -67,11 +68,10 @@ func (c *Controller) CanResume(input ResumeInput) bool {
 		// The fixed Target binding is durable launch authority. A dynamic adapter
 		// can be resolved from it during Resume even when the process cache is
 		// empty after a daemon restart.
-		if c.adapterResolver != nil {
+		if adapter == nil && c.adapterResolver != nil {
 			return true
 		}
 	}
-	adapter := c.adapter(provider)
 	if adapter == nil {
 		return false
 	}
@@ -110,7 +110,7 @@ func authorizedAgentExtensionResumeInput(input ResumeInput, provider string) boo
 	return strings.TrimSpace(input.ProviderSessionID) != "" &&
 		strings.TrimSpace(input.AgentTargetID) != "" &&
 		providerTargetRefString(input.ProviderTargetRef, "provider") == provider &&
-		providerTargetRefString(input.ProviderTargetRef, "targetId") == strings.TrimSpace(input.AgentTargetID) &&
+		providerTargetRefString(input.ProviderTargetRef, "targetId") != "" &&
 		providerTargetRefString(input.ProviderTargetRef, "extensionInstallationId") != ""
 }
 

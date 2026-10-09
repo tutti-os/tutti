@@ -172,10 +172,13 @@ type StandardACPAdapterConfig struct {
 	LaunchPermission             *StandardACPLaunchPermissionSetting
 	SetModelReasoningEffortMeta  bool
 	Capabilities                 []string
-	AgentTargetID                string
-	InstallationID               string
-	ExecutableIdentity           *ExecutableIdentity
-	Env                          []string
+	// ProviderTargetID identifies the trusted provider Harness target, not the
+	// Workspace Agent that selected it.
+	ProviderTargetID   string
+	InstallationID     string
+	AdapterResolveCWD  string
+	ExecutableIdentity *ExecutableIdentity
+	Env                []string
 	// StartupTimeout bounds initialize/session-new calls for callers that own a
 	// provider-specific cold-start policy. Zero keeps the normal ACP timeout.
 	StartupTimeout time.Duration
@@ -230,8 +233,9 @@ func NewStandardACPAdapter(config StandardACPAdapterConfig, transport ProcessTra
 			reasoningConfigOptionID:      strings.TrimSpace(config.ReasoningConfigOptionID),
 			restrictConfigOptions:        config.RestrictConfigOptions,
 			capabilities:                 append([]string(nil), config.Capabilities...),
-			agentTargetID:                strings.TrimSpace(config.AgentTargetID),
+			providerTargetID:             strings.TrimSpace(config.ProviderTargetID),
 			installationID:               strings.TrimSpace(config.InstallationID),
+			adapterResolveCWD:            normalizeAdapterResolveCWD(config.AdapterResolveCWD),
 			executableIdentity:           cloneExecutableIdentity(config.ExecutableIdentity),
 			startupTimeout:               startupTimeout,
 			permissionModeID:             func(input string) string { return permissionModes[strings.ToLower(strings.TrimSpace(input))] },

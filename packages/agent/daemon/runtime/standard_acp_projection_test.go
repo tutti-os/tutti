@@ -2,17 +2,20 @@ package agentruntime
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestOpenStandardACPAdapterCacheFailsClosedAcrossTargetBindings(t *testing.T) {
+	resolveCWD := t.TempDir()
 	adapter, err := NewStandardACPAdapter(StandardACPAdapterConfig{
-		Provider:       "acp:example",
-		Name:           "example-acp",
-		Command:        []string{"example", "--acp"},
-		AgentTargetID:  "extension:example-a",
-		InstallationID: "example@1.0.0",
+		Provider:          "acp:example",
+		Name:              "example-acp",
+		Command:           []string{"example", "--acp"},
+		ProviderTargetID:  "extension:example-a",
+		InstallationID:    "example@1.0.0",
+		AdapterResolveCWD: resolveCWD,
 	}, nil, LegacyHostMetadata())
 	if err != nil {
 		t.Fatalf("NewStandardACPAdapter: %v", err)
@@ -21,8 +24,10 @@ func TestOpenStandardACPAdapterCacheFailsClosedAcrossTargetBindings(t *testing.T
 	exact := AdapterResolveInput{
 		Provider:      "acp:example",
 		AgentTargetID: "extension:example-a",
+		CWD:           resolveCWD,
 		ProviderTargetRef: map[string]any{
 			"kind":                    "agent_extension",
+			"targetId":                "extension:example-a",
 			"extensionInstallationId": "example@1.0.0",
 		},
 	}
@@ -30,18 +35,47 @@ func TestOpenStandardACPAdapterCacheFailsClosedAcrossTargetBindings(t *testing.T
 	if err != nil || resolved != adapter {
 		t.Fatalf("exact binding resolved adapter = %#v, error = %v", resolved, err)
 	}
+	sharedHarness := exact
+	sharedHarness.AgentTargetID = "workspace-agent:reviewer"
+	resolved, err = controller.resolveAdapter(context.Background(), sharedHarness)
+	if err != nil || resolved != adapter {
+		t.Fatalf("shared Harness binding resolved adapter = %#v, error = %v", resolved, err)
+	}
+	if runtime.GOOS == "windows" {
+		windowsPathVariant := sharedHarness
+		windowsPathVariant.CWD = strings.ToUpper(strings.ReplaceAll(resolveCWD, `\`, "/")) + "/"
+		resolved, err = controller.resolveAdapter(context.Background(), windowsPathVariant)
+		if err != nil || resolved != adapter {
+			t.Fatalf("Windows path variant resolved adapter = %#v, error = %v", resolved, err)
+		}
+	}
 
 	tests := []struct {
 		name  string
 		input AdapterResolveInput
 	}{
 		{
+			name: "project root",
+			input: AdapterResolveInput{
+				Provider:      exact.Provider,
+				AgentTargetID: exact.AgentTargetID,
+				CWD:           t.TempDir(),
+				ProviderTargetRef: map[string]any{
+					"kind":                    "agent_extension",
+					"targetId":                "extension:example-a",
+					"extensionInstallationId": "example@1.0.0",
+				},
+			},
+		},
+		{
 			name: "target",
 			input: AdapterResolveInput{
 				Provider:      exact.Provider,
-				AgentTargetID: "extension:example-b",
+				AgentTargetID: exact.AgentTargetID,
+				CWD:           exact.CWD,
 				ProviderTargetRef: map[string]any{
 					"kind":                    "agent_extension",
+					"targetId":                "extension:example-b",
 					"extensionInstallationId": "example@1.0.0",
 				},
 			},
@@ -51,8 +85,10 @@ func TestOpenStandardACPAdapterCacheFailsClosedAcrossTargetBindings(t *testing.T
 			input: AdapterResolveInput{
 				Provider:      exact.Provider,
 				AgentTargetID: exact.AgentTargetID,
+				CWD:           exact.CWD,
 				ProviderTargetRef: map[string]any{
 					"kind":                    "agent_extension",
+					"targetId":                "extension:example-a",
 					"extensionInstallationId": "example@2.0.0",
 				},
 			},
@@ -63,6 +99,35 @@ func TestOpenStandardACPAdapterCacheFailsClosedAcrossTargetBindings(t *testing.T
 			if _, err := controller.resolveAdapter(context.Background(), tt.input); err == nil ||
 				!strings.Contains(err.Error(), "cached adapter binding mismatch") {
 				t.Fatalf("resolveAdapter error = %v, want binding mismatch", err)
+			}
+		})
+	}
+}
+
+func TestNormalizeAdapterResolveCWDUsesPlatformPathIdentity(t *testing.T) {
+	tests := []struct {
+		name  string
+		left  string
+		right string
+		goos  string
+		want  bool
+	}{
+		{name: "Windows drive path accepts separator variants", left: `C:\Workspace\Project\`, right: `c:/workspace/project`, goos: "windows", want: true},
+		{name: "Windows UNC path accepts separator variants", left: `\\Server\Share\Project\`, right: `//server/share/project`, goos: "windows", want: true},
+		{name: "Windows relative path accepts separator variants", left: `Workspace\Project\`, right: `workspace/project`, goos: "windows", want: true},
+		{name: "Windows root-relative path accepts separator variants", left: `\Workspace\Project\`, right: `\workspace/project`, goos: "windows", want: true},
+		{name: "Windows root path differs from empty path", left: `\`, right: "", goos: "windows", want: false},
+		{name: "Windows drive root differs from drive relative path", left: `C:\`, right: `C:`, goos: "windows", want: false},
+		{name: "POSIX path is case sensitive", left: "/Workspace/Project", right: "/workspace/project", goos: "darwin", want: false},
+		{name: "POSIX logical path remains case sensitive on Windows", left: "/Workspace/Project", right: "/workspace/project", goos: "windows", want: false},
+		{name: "parent traversal remains part of command identity", left: `C:\workspace\link\..\project`, right: `C:/workspace/project`, goos: "windows", want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeAdapterResolveCWDForPlatform(tt.left, tt.goos) ==
+				normalizeAdapterResolveCWDForPlatform(tt.right, tt.goos)
+			if got != tt.want {
+				t.Fatalf("path identity = %t, want %t", got, tt.want)
 			}
 		})
 	}

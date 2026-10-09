@@ -6,6 +6,7 @@ import (
 
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agenttargetbiz "github.com/tutti-os/tutti/services/tuttid/biz/agenttarget"
+	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 )
 
 func TestServiceListRebuildsExtensionTargetRefForPersistedSessionResume(t *testing.T) {
@@ -52,5 +53,77 @@ func TestServiceListRebuildsExtensionTargetRefForPersistedSessionResume(t *testi
 		input.ProviderTargetRef["targetId"] != "extension:codebuddy" ||
 		input.ProviderTargetRef["extensionInstallationId"] != "codebuddy@1.0.0" {
 		t.Fatalf("provider target ref = %#v, want fixed CodeBuddy installation binding", input.ProviderTargetRef)
+	}
+}
+
+func TestPersistedSessionCanResumeUsesRecordedHarness(t *testing.T) {
+	const (
+		provider             = "acp:example"
+		agentTargetID        = "workspace-agent:writer"
+		recordedHarnessID    = "extension:example-v1"
+		currentHarnessID     = "extension:example-v2"
+		recordedInstallation = "example@1.0.0"
+		currentInstallation  = "example@2.0.0"
+	)
+	runtime := newFakeRuntime()
+	runtime.canResumeHook = func(input RuntimeResumeInput) bool {
+		return input.ProviderTargetRef["targetId"] == currentHarnessID
+	}
+	service := newIsolatedAgentService(runtime)
+	service.WorkspaceAgentResolver = staticWorkspaceAgentResolver{resolved: workspaceagentbiz.Resolved{
+		Agent: workspaceagentbiz.Agent{
+			ID:                   agentTargetID,
+			WorkspaceID:          "workspace-1",
+			HarnessAgentTargetID: currentHarnessID,
+			Revision:             2,
+		},
+		HarnessTarget: agenttargetbiz.Target{
+			ID:            currentHarnessID,
+			Provider:      provider,
+			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"` + currentInstallation + `"}`,
+			Name:          "Example v2",
+			Enabled:       true,
+			Source:        agenttargetbiz.SourceUser,
+		},
+	}}
+	service.AgentTargetStore = fakeAgentTargetStore{targets: map[string]agenttargetbiz.Target{
+		recordedHarnessID: {
+			ID:            recordedHarnessID,
+			Provider:      provider,
+			LaunchRefJSON: `{"type":"agent_extension","extensionInstallationId":"` + recordedInstallation + `"}`,
+			Name:          "Example v1",
+			Enabled:       false,
+			Source:        agenttargetbiz.SourceUser,
+		},
+	}}
+	runtimeContext := runtimeContextWithSessionRuntimeSnapshot(
+		nil,
+		CreateSessionInput{
+			AgentTargetID:        agentTargetID,
+			HarnessAgentTargetID: recordedHarnessID,
+		},
+		provider,
+		modelPlanResolution{ModelConfiguration: newProviderNativeModelConfiguration(provider, agentTargetID)},
+	)
+	runtimeContext = stampAgentExtensionComposerScope(
+		runtimeContext,
+		map[string]any{
+			"kind":                    agenttargetbiz.LaunchRefTypeAgentExtension,
+			"extensionInstallationId": recordedInstallation,
+		},
+		"/repo",
+		ComposerSettings{},
+	)
+
+	if service.persistedSessionCanResume(context.Background(), PersistedSession{
+		ID:                     "session-1",
+		WorkspaceID:            "workspace-1",
+		AgentTargetID:          agentTargetID,
+		Provider:               provider,
+		ProviderSessionID:      "provider-session-1",
+		Cwd:                    "/repo",
+		InternalRuntimeContext: runtimeContext,
+	}) {
+		t.Fatal("persistedSessionCanResume() = true, want false for disabled recorded Harness")
 	}
 }
