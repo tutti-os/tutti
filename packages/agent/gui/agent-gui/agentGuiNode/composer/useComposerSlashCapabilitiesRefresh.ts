@@ -1,15 +1,17 @@
 import type { AgentComposerProps } from "./AgentComposer.types";
 
 export function refreshComposerSlashCapabilities(input: {
-  agentSessionId: string | null;
+  capabilitiesScopeKey: string;
   isPaletteOpen: boolean;
   onRetryComposerOptions: AgentComposerProps["onRetryComposerOptions"];
   refreshedSessionRef: { current: string | null };
+  skillQuery: string | null;
   slashQuery: string | null;
 }): void {
   const refreshKey =
-    input.isPaletteOpen && input.slashQuery !== null
-      ? input.agentSessionId
+    input.isPaletteOpen &&
+    (input.slashQuery !== null || input.skillQuery !== null)
+      ? input.capabilitiesScopeKey
       : null;
   if (refreshKey === null) {
     input.refreshedSessionRef.current = null;

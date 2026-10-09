@@ -168,12 +168,7 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     hiddenMentionFilterIds = EMPTY_HIDDEN_MENTION_FILTER_IDS
   } = props;
   const slashCapabilitiesRefreshedSessionRef = useRef<string | null>(null);
-  const handleDraftContentChange = useComposerDraftCapabilitiesRequest({
-    agentSessionId,
-    onDraftContentChange,
-    onRetryComposerOptions,
-    provider
-  });
+  const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const {
     canQueueWhileBusy,
     editorDisabled: disabled,
@@ -244,6 +239,21 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
     useState<AgentFileMentionSuggestionState | null>(null);
   const selectedProjectPath =
     composerSettings.selectedProjectPath?.trim() ?? "";
+  const capabilitiesScopeKey = [
+    workspaceId,
+    agentSessionId ?? "",
+    provider,
+    selectedAgentTarget?.agentTargetId?.trim() ||
+      selectedAgentTarget?.targetId.trim() ||
+      "",
+    selectedProjectPath || workspacePath?.trim() || ""
+  ].join("\u0000");
+  const handleDraftContentChange = useComposerDraftCapabilitiesRequest({
+    capabilitiesScopeKey,
+    editorHandleRef,
+    onDraftContentChange,
+    onRetryComposerOptions
+  });
   const [isSelectedProjectMissing, setIsSelectedProjectMissing] =
     useScopedProjectMissingState(selectedProjectPath);
   const [isSlashStatusPanelOpen, setIsSlashStatusPanelOpen] = useState(false);
@@ -324,7 +334,6 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
       referenceProvenanceFilters,
       hiddenMentionFilterIds
     );
-  const editorHandleRef = useRef<AgentRichTextEditorHandle | null>(null);
   const wasActiveRef = useRef(isActive);
   const lastComposerFocusRequestRef = useRef<number | null>(null);
   const autoMentionHighlightedKeyRef = useRef<string | null>(null);
@@ -387,14 +396,15 @@ export function AgentComposer(props: AgentComposerProps): React.JSX.Element {
   useEffect(() => {
     setHighlightedIndex(0);
     refreshComposerSlashCapabilities({
-      agentSessionId,
+      capabilitiesScopeKey,
       isPaletteOpen,
       onRetryComposerOptions,
       refreshedSessionRef: slashCapabilitiesRefreshedSessionRef,
+      skillQuery: skillQueryMatch?.query ?? null,
       slashQuery
     });
   }, [
-    agentSessionId,
+    capabilitiesScopeKey,
     isPaletteOpen,
     onRetryComposerOptions,
     skillQueryMatch?.prefix,

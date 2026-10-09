@@ -2,16 +2,20 @@ import { describe, expect, it, vi } from "vitest";
 import { refreshComposerSlashCapabilities } from "./useComposerSlashCapabilitiesRefresh";
 
 describe("refreshComposerSlashCapabilities", () => {
-  it("refreshes capabilities again when slash search is reopened", () => {
+  it.each([
+    { name: "slash", skillQuery: null, slashQuery: "" },
+    { name: "skill", skillQuery: "", slashQuery: null }
+  ])("refreshes capabilities again when $name search is reopened", (query) => {
     const onRetryComposerOptions = vi.fn();
     const refreshedSessionRef = { current: null as string | null };
     const refresh = (isPaletteOpen: boolean): void =>
       refreshComposerSlashCapabilities({
-        agentSessionId: "session-1",
+        capabilitiesScopeKey: "session-1\u0000target-a\u0000/workspace/a",
         isPaletteOpen,
         onRetryComposerOptions,
         refreshedSessionRef,
-        slashQuery: ""
+        skillQuery: query.skillQuery,
+        slashQuery: query.slashQuery
       });
 
     refresh(true);
@@ -25,6 +29,25 @@ describe("refreshComposerSlashCapabilities", () => {
     });
 
     refresh(true);
+    expect(onRetryComposerOptions).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes an open skill query when its target scope changes", () => {
+    const onRetryComposerOptions = vi.fn();
+    const refreshedSessionRef = { current: null as string | null };
+    const refresh = (capabilitiesScopeKey: string): void =>
+      refreshComposerSlashCapabilities({
+        capabilitiesScopeKey,
+        isPaletteOpen: true,
+        onRetryComposerOptions,
+        refreshedSessionRef,
+        skillQuery: "",
+        slashQuery: null
+      });
+
+    refresh("draft\u0000target-a\u0000/workspace/a");
+    refresh("draft\u0000target-b\u0000/workspace/b");
+
     expect(onRetryComposerOptions).toHaveBeenCalledTimes(2);
   });
 });
