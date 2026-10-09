@@ -411,3 +411,54 @@ func testCommandWithPath(id string, path []string) Command {
 		},
 	}
 }
+
+// Regression test for #2193: an AdvertisedRequired field whose runtime
+// requirement can be satisfied by a hidden compatibility selector must not
+// reject the legacy spelling at invocation. Schema() expresses the selector as
+// an anyOf branch, so validation accepts either --agent-id or --provider.
+func TestRegistryInvokeAcceptsLegacyAlternateForAdvertisedRequired(t *testing.T) {
+	invoked := false
+	command := testCommand("agentcontext.agent.start")
+	command.Capability.InputSchema = map[string]any{
+		"type": "object",
+		"properties": map[string]any{
+			"agent-id": map[string]any{"type": "string"},
+			"prompt":   map[string]any{"type": "string"},
+		},
+		"required": []string{"prompt"},
+		"anyOf": []any{
+			map[string]any{"type": "object", "required": []string{"agent-id"}},
+			map[string]any{"type": "object", "required": []string{"provider"}},
+		},
+	}
+	command.Handler = func(context.Context, InvokeRequest) (CommandOutput, error) {
+		invoked = true
+		return CommandOutput{Kind: OutputModePlain, Text: "started"}, nil
+	}
+	registry := newTestRegistry(t, command)
+
+	// Canonical spelling.
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "agentcontext.agent.start",
+		Input:     map[string]any{"agent-id": "agent-1", "prompt": "hi"},
+	}); err != nil {
+		t.Fatalf("Invoke(agent-id): %v", err)
+	}
+	// Legacy hidden selector, the path broken since #2004.
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "agentcontext.agent.start",
+		Input:     map[string]any{"provider": "claude", "prompt": "hi"},
+	}); err != nil {
+		t.Fatalf("Invoke(provider): %v", err)
+	}
+	// Neither spelling present is still rejected.
+	if _, err := registry.Invoke(context.Background(), InvokeRequest{
+		CommandID: "agentcontext.agent.start",
+		Input:     map[string]any{"prompt": "hi"},
+	}); err == nil {
+		t.Fatal("Invoke(no selector): want error, got nil")
+	}
+	if !invoked {
+		t.Fatal("handler was not invoked for valid inputs")
+	}
+}
