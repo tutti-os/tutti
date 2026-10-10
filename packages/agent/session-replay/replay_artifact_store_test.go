@@ -1,6 +1,7 @@
 package sessionreplay
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
@@ -686,7 +687,11 @@ func TestArtifactStoreProjectsSessionCreatePathsAtRecordingBoundary(t *testing.T
 		!strings.Contains(contents, `"projectPath":"${REPLAY_CWD}/packages/agent"`) {
 		t.Fatalf("session.create paths were not projected: %s", contents)
 	}
-	if !strings.Contains(contents, "keep "+recordedCWD+" in user text") {
+	var stored ActivityEvent
+	if err := json.Unmarshal(bytes.TrimSpace(raw), &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Payload["displayPrompt"] != "keep "+recordedCWD+" in user text" {
 		t.Fatalf("user-authored text was rewritten: %s", contents)
 	}
 }

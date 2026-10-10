@@ -217,7 +217,7 @@ func validatePortableReplayPath(value any, label string) error {
 		strings.HasPrefix(path, PortableReplayCWDToken+"/") {
 		return nil
 	}
-	if filepath.IsAbs(path) || strings.HasPrefix(path, "file://") {
+	if isCrossPlatformAbsolutePath(path) || strings.HasPrefix(path, "file://") {
 		return fmt.Errorf("%s contains an absolute recording path", label)
 	}
 	return nil

@@ -686,6 +686,41 @@ func TestReplayProcessTransportMatchesJSONRPCRequestSemanticsAndMapsResponseID(t
 	}
 }
 
+func TestReplayProcessTransportAcceptsDefaultCWDAddedByNewerProvider(t *testing.T) {
+	expected := []byte(
+		`{"id":18,"method":"turn/start","params":{"input":[{"text":"hello","type":"text"}],"threadId":"thread-1"}}` + "\n",
+	)
+	actual := []byte(
+		`{"id":9,"method":"turn/start","params":{"threadId":"thread-1","cwd":"/workspace","input":[{"text":"hello","type":"text"}]}}` + "\n",
+	)
+
+	descriptor := codexReplayDescriptorForCassetteTest(t)
+	if _, _, matches := processCassetteJSONMatch(
+		descriptor,
+		expected,
+		actual,
+		"",
+		"/workspace",
+		"",
+		nil,
+	); !matches {
+		t.Fatal("turn/start with the explicit replay default cwd did not match an older recording")
+	}
+
+	changedCWD := bytes.Replace(actual, []byte(`/workspace`), []byte(`/other-workspace`), 1)
+	if _, _, matches := processCassetteJSONMatch(
+		descriptor,
+		expected,
+		changedCWD,
+		"",
+		"/workspace",
+		"",
+		nil,
+	); matches {
+		t.Fatal("turn/start with a non-default cwd matched an older recording")
+	}
+}
+
 func TestReplayProcessTransportIgnoresVolatileInitializeClientInfo(t *testing.T) {
 	expected := []byte(
 		`{"id":1,"method":"initialize","params":{"clientInfo":{"name":"codex-cli","title":"Codex","version":"0.146.0"},"capabilities":{"experimentalApi":true}}}` + "\n",

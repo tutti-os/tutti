@@ -3,6 +3,7 @@ package sessionreplay
 import (
 	"errors"
 	"fmt"
+	"path"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -43,20 +44,16 @@ func TestProjectAndResolvePortableAgentSessionBinding(t *testing.T) {
 		t.Fatalf("source binding was mutated: %#v", agent.Sessions[0])
 	}
 
-	replayRoot := filepath.Join(
-		string(filepath.Separator),
-		"runtime",
-		"replay",
-	)
+	replayRoot := "/runtime/replay"
 	resolved, err := ResolvePortableAgentState(portable, replayRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	session = resolved.Sessions[0]
 	if session.Cwd != replayRoot ||
-		session.RailProjectPath != filepath.Join(replayRoot, "packages", "agent") ||
+		session.RailProjectPath != path.Join(replayRoot, "packages", "agent") ||
 		session.RailSectionKey !=
-			"project:"+filepath.Join(replayRoot, "packages", "agent") {
+			"project:"+path.Join(replayRoot, "packages", "agent") {
 		t.Fatalf("resolved binding = %#v", session)
 	}
 }
@@ -144,6 +141,19 @@ func TestResolvePortableAgentStateRejectsPathEscape(t *testing.T) {
 	}
 }
 
+func TestResolvePortableAgentStateRequiresLogicalPOSIXRoot(t *testing.T) {
+	agent := TuttiReplayAgent{
+		RootSessionID: "session-1",
+		Sessions: []agenthost.HistoricalSession{{
+			ID:  "session-1",
+			Cwd: PortableReplayCWDToken,
+		}},
+	}
+	if _, err := ResolvePortableAgentState(agent, `C:\workspace\replay`); err == nil {
+		t.Fatal("Windows host path was accepted as the logical replay cwd")
+	}
+}
+
 func TestProjectPortableAgentStateProjectsTurnFileChangePaths(t *testing.T) {
 	recordedRoot := filepath.Join(
 		string(filepath.Separator),
@@ -189,14 +199,14 @@ func TestProjectPortableAgentStateProjectsTurnFileChangePaths(t *testing.T) {
 		t.Fatalf("source fileChanges was mutated: %#v", agent.Sessions[0].Turns[0].FileChanges)
 	}
 
-	replayRoot := filepath.Join(string(filepath.Separator), "runtime", "replay")
+	replayRoot := "/runtime/replay"
 	resolved, err := ResolvePortableAgentState(portable, replayRoot)
 	if err != nil {
 		t.Fatal(err)
 	}
 	resolvedFiles, _ := resolved.Sessions[0].Turns[0].FileChanges["files"].([]any)
 	resolvedFile, _ := resolvedFiles[0].(map[string]any)
-	want := filepath.Join(
+	want := path.Join(
 		replayRoot,
 		".tmp",
 		"agent-session-replay-r09",

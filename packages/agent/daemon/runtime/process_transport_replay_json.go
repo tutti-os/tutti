@@ -83,6 +83,12 @@ func processCassetteJSONMatch(
 				expectedMessage["id"] = actualID
 			}
 		}
+		alignProcessCassetteDefaultReplayCWD(
+			descriptor,
+			expectedMessage,
+			actualMessage,
+			replayCWD,
+		)
 		if !alignProcessCassetteGeneratedIdentityValues(
 			expectedValues[index],
 			actualValues[index],
@@ -97,6 +103,36 @@ func processCassetteJSONMatch(
 		}
 	}
 	return responseIDs, identityValues, true
+}
+
+func alignProcessCassetteDefaultReplayCWD(
+	descriptor replay.ProviderReplayDescriptor,
+	expected map[string]any,
+	actual map[string]any,
+	replayCWD string,
+) {
+	if replayCWD == "" || expected == nil || actual == nil {
+		return
+	}
+	expectedMethod, expectedMethodOK := expected["method"].(string)
+	actualMethod, actualMethodOK := actual["method"].(string)
+	if !expectedMethodOK || !actualMethodOK || expectedMethod != actualMethod ||
+		!descriptor.UsesDefaultReplayCWD(expectedMethod) {
+		return
+	}
+	expectedParams, expectedParamsOK := expected["params"].(map[string]any)
+	actualParams, actualParamsOK := actual["params"].(map[string]any)
+	if !expectedParamsOK || !actualParamsOK {
+		return
+	}
+	if _, recordedCWDExists := expectedParams["cwd"]; recordedCWDExists {
+		return
+	}
+	actualCWD, actualCWDOK := actualParams["cwd"].(string)
+	if !actualCWDOK || actualCWD != replayCWD {
+		return
+	}
+	expectedParams["cwd"] = actualCWD
 }
 
 func processCassetteMessagesAreRequests(
