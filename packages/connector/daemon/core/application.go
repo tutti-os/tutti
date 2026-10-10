@@ -723,6 +723,14 @@ func (application *Application) BeginAuthorization(
 		if !session.IsResolved() && session.State == AuthorizationStatePending && connector.Authorization.State != AuthorizationStateConnected {
 			connector.Authorization = Authorization{State: AuthorizationStatePending}
 		}
+		// A resolved private receipt is newer than a stale account projection.
+		// Return its terminal state immediately so a continuation caller cannot
+		// remain authorizing while projection convergence repairs durable state.
+		// Preserve an already-matching projection so its provider failure code is
+		// not replaced by the receipt's intentionally minimal terminal metadata.
+		if session.IsResolved() && connector.Authorization.State != session.State {
+			connector.Authorization = Authorization{State: session.State}
+		}
 	}
 	return AuthorizationResult{
 		Connector:                 connector,

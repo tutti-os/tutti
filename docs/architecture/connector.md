@@ -454,6 +454,15 @@ fabricates a permanently pending observation. Disconnect is completed only
 after the disconnected projection and exact disabled Runtime Observed state are
 durable.
 
+A credential-broker failure is terminal for its exact `start_authorization`
+operation. Continuation polling with the same operation identity returns that
+cached failure and never starts another broker; only a new user-owned operation
+may replace it. A resolved private receipt also wins over a stale `pending`
+account projection in the Start response so the renderer can leave its waiting
+state while durable projection repair converges. Connector-provided failure
+codes cross the runtime boundary only when they match the bounded lowercase
+failure-code grammar; malformed codes collapse to `credential_broker_failed`.
+
 Managed credential brokers read process output through the context-aware
 transport when available. Cancellation closes the owned process connection as
 the termination fallback and waits for the broker consumer to finish before the
