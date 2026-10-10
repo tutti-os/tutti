@@ -10,6 +10,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentturnanalyticsbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentturnanalytics"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	agentturnterminal "github.com/tutti-os/tutti/services/tuttid/service/reporter/events/agent/turn_terminal"
 )
 
@@ -26,6 +27,11 @@ type turnTerminalAnalyticsStore interface {
 	CompleteAgentTurnTerminalAnalytics(context.Context, string, string, string, string, int64) (bool, error)
 	IgnoreAgentTurnTerminalAnalytics(context.Context, string, string, string, string, string, int64) (bool, error)
 	RequeueAgentTurnTerminalAnalytics(context.Context, int64) (int64, error)
+}
+
+type tuttiModeTurnSnapshotReader interface {
+	GetTuttiModeTurnSnapshot(context.Context, string, string, string) (tuttimodeactivationbiz.TurnSnapshot, bool, error)
+	IsTuttiModeTurnSnapshotAccepted(context.Context, string, string, string) (bool, error)
 }
 
 func (p *ActivityProjection) reportRootTurnTerminalEvent(ctx context.Context, settled agenthost.RootTurnSettled) {
@@ -222,11 +228,16 @@ func (p *ActivityProjection) trackTurnTerminalAnalytics(
 	if !ok {
 		return false, "submission_mode_invalid"
 	}
+	agentConfigSource, modelConfigSource := p.turnTerminalConfigSources(ctx, delivery)
+	tuttiModeState := p.turnTerminalTuttiModeState(ctx, delivery)
 	eventName, params, ok := agentturnterminal.Build(agentturnterminal.Input{
 		AgentSessionID:    delivery.AgentSessionID,
+		AgentConfigSource: agentConfigSource,
 		ClientSubmitID:    delivery.ClientSubmitID,
 		ErrorCode:         delivery.ErrorCode,
 		Mode:              mode,
+		ModelConfigSource: modelConfigSource,
+		TuttiModeState:    tuttiModeState,
 		Origin:            delivery.Origin,
 		Outcome:           delivery.Outcome,
 		Provider:          delivery.Provider,
@@ -241,6 +252,82 @@ func (p *ActivityProjection) trackTurnTerminalAnalytics(
 	params["event_id"] = delivery.EventID
 	agentturnterminal.Track(ctx, p.analyticsReporter, eventName, params)
 	return true, ""
+}
+
+func (p *ActivityProjection) turnTerminalTuttiModeState(
+	ctx context.Context,
+	delivery agentturnanalyticsbiz.Delivery,
+) string {
+	if p == nil || p.repo == nil {
+		return agentturnterminal.TuttiModeStateUnknown
+	}
+	reader, ok := p.repo.(tuttiModeTurnSnapshotReader)
+	if !ok {
+		return agentturnterminal.TuttiModeStateUnknown
+	}
+	accepted, err := reader.IsTuttiModeTurnSnapshotAccepted(
+		ctx,
+		delivery.WorkspaceID,
+		delivery.AgentSessionID,
+		delivery.TurnID,
+	)
+	if err != nil || !accepted {
+		return agentturnterminal.TuttiModeStateUnknown
+	}
+	snapshot, found, err := reader.GetTuttiModeTurnSnapshot(
+		ctx,
+		delivery.WorkspaceID,
+		delivery.AgentSessionID,
+		delivery.TurnID,
+	)
+	if err != nil || !found {
+		return agentturnterminal.TuttiModeStateUnknown
+	}
+	switch snapshot.State {
+	case tuttimodeactivationbiz.StateActive:
+		return agentturnterminal.TuttiModeStateActive
+	case tuttimodeactivationbiz.StateInactive:
+		return agentturnterminal.TuttiModeStateInactive
+	default:
+		return agentturnterminal.TuttiModeStateUnknown
+	}
+}
+
+func (p *ActivityProjection) turnTerminalConfigSources(
+	ctx context.Context,
+	delivery agentturnanalyticsbiz.Delivery,
+) (string, string) {
+	agentSource := agentturnterminal.AgentConfigSourceUnknown
+	modelSource := agentturnterminal.ModelConfigSourceUnknown
+	if p == nil || p.repo == nil {
+		return agentSource, modelSource
+	}
+	session, found, err := p.repo.GetSession(ctx, delivery.WorkspaceID, delivery.AgentSessionID)
+	if err != nil || !found {
+		return agentSource, modelSource
+	}
+	agentTargetID := strings.TrimSpace(session.AgentTargetID)
+	if agentTargetID != "" {
+		if strings.HasPrefix(agentTargetID, workspaceAgentIDPrefix) {
+			agentSource = agentturnterminal.AgentConfigSourceWorkspaceAgent
+		} else {
+			agentSource = agentturnterminal.AgentConfigSourceAgentTarget
+		}
+	}
+	snapshot, exists, err := sessionRuntimeSnapshotFromContext(
+		session.InternalRuntimeContext,
+		session.Provider,
+	)
+	if err != nil || !exists {
+		return agentSource, modelSource
+	}
+	switch snapshot.ModelConfigurationSource {
+	case modelConfigurationSourceModelPlan:
+		modelSource = agentturnterminal.ModelConfigSourceModelPlan
+	case modelConfigurationSourceProviderNative:
+		modelSource = agentturnterminal.ModelConfigSourceProviderNative
+	}
+	return agentSource, modelSource
 }
 
 func terminalSubmissionMode(metadataJSON string) (string, bool) {

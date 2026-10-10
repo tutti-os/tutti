@@ -7,6 +7,7 @@ import (
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
 	agentactivitybiz "github.com/tutti-os/tutti/packages/agent/store-sqlite"
 	agentturnanalyticsbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentturnanalytics"
+	tuttimodeactivationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 )
 
 func TestActivityProjectionReportsCanonicalUserTurnOutcomes(t *testing.T) {
@@ -73,6 +74,197 @@ func TestActivityProjectionReportsCanonicalUserTurnOutcomes(t *testing.T) {
 				t.Fatalf("params contain workspace identity: %#v", params)
 			}
 		})
+	}
+}
+
+func TestActivityProjectionReportsAgentAndModelConfigSources(t *testing.T) {
+	tests := []struct {
+		name            string
+		session         agentactivitybiz.Session
+		sessionFound    bool
+		wantAgentSource string
+		wantModelSource string
+	}{
+		{
+			name: "workspace agent with model plan",
+			session: terminalAnalyticsSession(
+				"workspace-agent:reviewer",
+				"model-plan",
+			),
+			sessionFound:    true,
+			wantAgentSource: "workspace_agent",
+			wantModelSource: "model_plan",
+		},
+		{
+			name: "workspace agent with provider native model",
+			session: terminalAnalyticsSession(
+				"workspace-agent:reviewer",
+				"provider-native",
+			),
+			sessionFound:    true,
+			wantAgentSource: "workspace_agent",
+			wantModelSource: "provider_native",
+		},
+		{
+			name: "built in agent target",
+			session: terminalAnalyticsSession(
+				"local:codex",
+				"provider-native",
+			),
+			sessionFound:    true,
+			wantAgentSource: "agent_target",
+			wantModelSource: "provider_native",
+		},
+		{
+			name: "legacy session without runtime snapshot",
+			session: agentactivitybiz.Session{
+				AgentTargetID: "local:codex",
+			},
+			sessionFound:    true,
+			wantAgentSource: "agent_target",
+			wantModelSource: "unknown",
+		},
+		{
+			name:            "missing session",
+			wantAgentSource: "unknown",
+			wantModelSource: "unknown",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &activityProjectionRepoStub{
+				session:      tt.session,
+				sessionFound: tt.sessionFound,
+				submission: agentactivitybiz.TurnSubmission{
+					ClientSubmitID: "submit-1",
+					MetadataJSON:   `{"uiMode":"agent"}`,
+				},
+				submissionFound: true,
+			}
+			reporter := &recordingAgentAnalyticsReporter{}
+			projection := NewActivityProjection(repo)
+			projection.SetAnalyticsReporter(reporter)
+
+			err := projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+				RootTurnsSettled: []agenthost.RootTurnSettled{{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", Provider: "codex",
+					Turn: agentactivitybiz.Turn{
+						TurnID: "turn-1", Origin: agentactivitybiz.TurnOriginUserPrompt,
+						Outcome: agentactivitybiz.TurnOutcomeCompleted,
+					},
+				}},
+			})
+			if err != nil {
+				t.Fatalf("ObserveCommitted() error=%v", err)
+			}
+			if len(reporter.events) != 1 {
+				t.Fatalf("events=%#v, want one terminal event", reporter.events)
+			}
+			params := reporter.events[0].Params
+			if got := params["agent_config_source"]; got != tt.wantAgentSource {
+				t.Fatalf("agent_config_source=%#v, want %q in %#v", got, tt.wantAgentSource, params)
+			}
+			if got := params["model_config_source"]; got != tt.wantModelSource {
+				t.Fatalf("model_config_source=%#v, want %q in %#v", got, tt.wantModelSource, params)
+			}
+			if _, exists := params["agent_target_id"]; exists {
+				t.Fatalf("params contain agent target identity: %#v", params)
+			}
+			if _, exists := params["model_plan_id"]; exists {
+				t.Fatalf("params contain model plan identity: %#v", params)
+			}
+		})
+	}
+}
+
+func TestActivityProjectionReportsAcceptedTuttiModeTurnState(t *testing.T) {
+	tests := []struct {
+		name     string
+		snapshot tuttimodeactivationbiz.TurnSnapshot
+		found    bool
+		accepted bool
+		readErr  error
+		want     string
+	}{
+		{
+			name: "accepted active snapshot",
+			snapshot: tuttimodeactivationbiz.TurnSnapshot{
+				ActivationID: "activation-secret", RevisionID: "revision-secret", Revision: 1,
+				State: tuttimodeactivationbiz.StateActive, Source: tuttimodeactivationbiz.SourceSlashCommand,
+				Effect: 80, Speed: 20,
+			},
+			found: true, accepted: true, want: "active",
+		},
+		{
+			name: "accepted inactive unconfigured snapshot",
+			snapshot: tuttimodeactivationbiz.TurnSnapshot{
+				State: tuttimodeactivationbiz.StateInactive,
+			},
+			found: true, accepted: true, want: "inactive",
+		},
+		{name: "prepared but not accepted", found: true, want: "unknown"},
+		{name: "snapshot missing", accepted: true, want: "unknown"},
+		{name: "snapshot read failed", found: true, accepted: true, readErr: context.Canceled, want: "unknown"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &activityProjectionRepoStub{
+				submission: agentactivitybiz.TurnSubmission{
+					ClientSubmitID: "submit-1", MetadataJSON: `{"uiMode":"agent"}`,
+				},
+				submissionFound:               true,
+				tuttiModeTurnSnapshot:         tt.snapshot,
+				tuttiModeTurnSnapshotFound:    tt.found,
+				tuttiModeTurnSnapshotAccepted: tt.accepted,
+				tuttiModeTurnSnapshotErr:      tt.readErr,
+			}
+			reporter := &recordingAgentAnalyticsReporter{}
+			projection := NewActivityProjection(repo)
+			projection.SetAnalyticsReporter(reporter)
+			_ = projection.ObserveCommitted(context.Background(), agenthost.CommittedDelta{
+				RootTurnsSettled: []agenthost.RootTurnSettled{{
+					WorkspaceID: "ws-1", AgentSessionID: "session-1", Provider: "codex",
+					Turn: agentactivitybiz.Turn{
+						TurnID: "turn-1", Origin: agentactivitybiz.TurnOriginUserPrompt,
+						Outcome: agentactivitybiz.TurnOutcomeCompleted,
+					},
+				}},
+			})
+			if len(reporter.events) != 1 || reporter.events[0].Params["tutti_mode_state"] != tt.want {
+				t.Fatalf("events=%#v, want tutti_mode_state=%q", reporter.events, tt.want)
+			}
+			for _, forbidden := range []string{"activation_id", "revision_id", "effect", "speed"} {
+				if _, exists := reporter.events[0].Params[forbidden]; exists {
+					t.Fatalf("terminal event leaked %s: %#v", forbidden, reporter.events[0])
+				}
+			}
+		})
+	}
+}
+
+func terminalAnalyticsSession(agentTargetID string, modelSource string) agentactivitybiz.Session {
+	modelConfiguration := map[string]any{
+		"source":      modelSource,
+		"fingerprint": "model-fingerprint",
+	}
+	if modelSource == "model-plan" {
+		modelConfiguration["modelPlanId"] = "plan-1"
+		modelConfiguration["modelPlanRevision"] = uint64(1)
+	}
+	return agentactivitybiz.Session{
+		AgentTargetID: agentTargetID,
+		Provider:      "codex",
+		InternalRuntimeContext: map[string]any{
+			"sessionRuntimeSnapshot": map[string]any{
+				"version":              1,
+				"agentTargetId":        agentTargetID,
+				"harnessAgentTargetId": "local:codex",
+				"provider":             "codex",
+				"modelConfiguration":   modelConfiguration,
+			},
+		},
 	}
 }
 

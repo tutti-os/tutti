@@ -17,6 +17,7 @@ import (
 
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/httpx"
 )
@@ -55,6 +56,7 @@ type Service struct {
 	NativeSubscriptionProbe NativeSubscriptionProbe
 	Publisher               ChangePublisher
 	ConfigurationPublisher  ConfigurationChangePublisher
+	AnalyticsReporter       reporterservice.Reporter
 	Now                     func() time.Time
 	HTTPClient              *http.Client
 	NewID                   func() string
@@ -120,6 +122,7 @@ func (s *Service) CreatePlan(ctx context.Context, input PutPlanInput) (modelplan
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
+	s.reportConfigurationChanged(ctx, "created", normalized)
 	return modelplanbiz.Public(normalized), nil
 }
 
@@ -155,6 +158,7 @@ func (s *Service) UpdatePlan(ctx context.Context, input PutPlanInput) (modelplan
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
+	s.reportConfigurationChanged(ctx, "updated", normalized)
 	s.publishConfigurationChanged(
 		ctx,
 		normalized.WorkspaceID,
@@ -191,6 +195,7 @@ func (s *Service) DuplicatePlan(ctx context.Context, workspaceID string, planID 
 	if err := s.Store.PutModelPlan(ctx, normalized); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
+	s.reportConfigurationChanged(ctx, "duplicated", normalized)
 	return modelplanbiz.Public(normalized), nil
 }
 
@@ -206,6 +211,13 @@ func (s *Service) SetPlanEnabled(ctx context.Context, workspaceID string, planID
 	if err := s.Store.PutModelPlan(ctx, plan); err != nil {
 		return modelplanbiz.PublicPlan{}, err
 	}
+	if resetComposerModel {
+		action := "disabled"
+		if enabled {
+			action = "enabled"
+		}
+		s.reportConfigurationChanged(ctx, action, plan)
+	}
 	s.publishConfigurationChanged(ctx, plan.WorkspaceID, plan.ID, resetComposerModel)
 	s.publishChanged(plan.WorkspaceID)
 	return modelplanbiz.Public(plan), nil
@@ -216,6 +228,10 @@ func (s *Service) SetPlanEnabled(ctx context.Context, workspaceID string, planID
 func (s *Service) DeletePlan(ctx context.Context, workspaceID string, planID string) error {
 	workspaceID = strings.TrimSpace(workspaceID)
 	planID = strings.TrimSpace(planID)
+	plan, err := s.Store.GetModelPlan(ctx, workspaceID, planID)
+	if err != nil {
+		return err
+	}
 	references, err := s.PlanReferences(ctx, workspaceID, planID)
 	if err != nil {
 		return err
@@ -229,6 +245,7 @@ func (s *Service) DeletePlan(ctx context.Context, workspaceID string, planID str
 		}
 		return err
 	}
+	s.reportConfigurationChanged(ctx, "deleted", plan)
 	return nil
 }
 

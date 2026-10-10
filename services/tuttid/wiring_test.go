@@ -8,10 +8,14 @@ import (
 
 	"github.com/tutti-os/tutti/packages/agent/daemon/providerregistry"
 	agenthost "github.com/tutti-os/tutti/packages/agent/host"
+	tuttiapi "github.com/tutti-os/tutti/services/tuttid/api"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	agentservice "github.com/tutti-os/tutti/services/tuttid/service/agent"
+	modelplanservice "github.com/tutti-os/tutti/services/tuttid/service/modelplan"
 	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
+	tuttimodeactivationservice "github.com/tutti-os/tutti/services/tuttid/service/tuttimodeactivation"
 	workspaceservice "github.com/tutti-os/tutti/services/tuttid/service/workspace"
+	workspaceagentservice "github.com/tutti-os/tutti/services/tuttid/service/workspaceagent"
 	tuttitypes "github.com/tutti-os/tutti/services/tuttid/types"
 )
 
@@ -222,6 +226,31 @@ func TestResolveAnalyticsDebugPublisherSkipsDisabledAnalytics(t *testing.T) {
 
 	if got != nil {
 		t.Fatalf("debug publisher = %T, want nil", got)
+	}
+}
+
+func TestAttachAnalyticsReporterWiresTuttiConfigurationAndModeServices(t *testing.T) {
+	reporter := &reporterservice.NoopReporter{}
+	workspaceAgents := &workspaceagentservice.Service{}
+	modelPlans := &modelplanservice.Service{}
+	tuttiModeActivations := &tuttimodeactivationservice.Service{}
+	api := tuttiapi.DaemonAPI{
+		WorkspaceAgentService:      workspaceAgents,
+		ModelPlanService:           modelPlans,
+		TuttiModeActivationService: tuttiModeActivations,
+	}
+
+	attachAnalyticsReporter(&api, reporter)
+
+	if workspaceAgents.AnalyticsReporter != reporter ||
+		modelPlans.AnalyticsReporter != reporter ||
+		tuttiModeActivations.AnalyticsReporter != reporter {
+		t.Fatalf(
+			"reporter wiring: workspace Agent=%T model Plan=%T Tutti Mode=%T",
+			workspaceAgents.AnalyticsReporter,
+			modelPlans.AnalyticsReporter,
+			tuttiModeActivations.AnalyticsReporter,
+		)
 	}
 }
 

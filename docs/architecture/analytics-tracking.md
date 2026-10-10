@@ -125,6 +125,97 @@ lifecycle writes. Non-AgentGUI prompt-session integrations keep their explicit
 tracker because they call the activity service without entering the shared
 engine.
 
+### Agent configuration usage dimensions
+
+The canonical root user-turn terminal events `agent.turn_completed`,
+`agent.turn_failed`, and `agent.turn_cancelled` carry three low-cardinality
+configuration and feature-use dimensions:
+
+| Param                 | Values                                       | Meaning                                              |
+| --------------------- | -------------------------------------------- | ---------------------------------------------------- |
+| `agent_config_source` | `workspace_agent`, `agent_target`, `unknown` | Whether the turn used a user-defined workspace Agent |
+| `model_config_source` | `model_plan`, `provider_native`, `unknown`   | Whether the turn used a user-defined Model Plan      |
+| `tutti_mode_state`    | `active`, `inactive`, `unknown`              | Whether Tutti Mode was active for that accepted Turn |
+
+The daemon resolves the two configuration-source dimensions at terminal-event delivery from the
+canonical session and its immutable `sessionRuntimeSnapshot`. It must not infer
+Model Plan use from a model name or provider, and it must not report Agent IDs,
+Model Plan IDs, names, endpoints, or credentials. Missing legacy sessions and
+invalid snapshots keep the terminal event but report `unknown`.
+
+The daemon resolves `tutti_mode_state` from the immutable Turn snapshot only
+after that snapshot has been durably accepted by the provider-dispatch path.
+It must not read the session's current activation when the Turn settles: the
+user may have changed the badge while the Turn was running. Missing,
+unaccepted, or unreadable snapshots report `unknown`. Analytics never includes
+activation/revision IDs or the effect and speed preferences.
+
+These events cover root, non-backfilled user-prompt turns with durable submit
+provenance. They exclude child/subagent turns, goal or automation turns, and
+provider-initiated turns. Recommended DataFinder metrics are:
+
+- Custom Agent user adoption: distinct DataFinder user identity with
+  `agent_config_source=workspace_agent`, divided by distinct identities whose
+  source is either `workspace_agent` or `agent_target`
+- Custom model user adoption: distinct DataFinder user identity with
+  `model_config_source=model_plan`, divided by distinct identities whose source
+  is either `model_plan` or `provider_native`
+- Turn share: use the same filters with event count instead of distinct identity
+- Tutti Mode user adoption: distinct identity with `tutti_mode_state=active`,
+  divided by distinct identities whose state is either `active` or `inactive`
+- Tutti Mode Turn share: count terminal events with `tutti_mode_state=active`,
+  divided by terminal events whose state is either `active` or `inactive`
+- Data quality: monitor each dimension's `unknown` share separately and do not
+  include `unknown` in adoption denominators
+
+DataFinder user identity is the authenticated account ID when available and the
+stable device ID for anonymous sessions. Use `uid` plus
+`login_state=authenticated` only when an authenticated-user-only view is
+intended; custom Model Plans are also available to anonymous users.
+
+The renderer's legacy `agent.session_started.has_custom_model` field classifies
+only explicit `custom` model-string aliases. It does not identify Model Plan
+sessions and is not the source for Model Plan adoption reporting.
+
+### Agent and Model Plan configuration funnels
+
+Configuration funnels are reported from the daemon operation that owns the
+durable mutation, not from renderer button clicks. Validation failures, store
+failures, reference-blocked deletion, and semantic no-op enable changes do not
+emit an event.
+
+| Event                                   | Params                                                                 | Meaning                                      |
+| --------------------------------------- | ---------------------------------------------------------------------- | -------------------------------------------- |
+| `workspace_agent.configuration_changed` | `action`, `model_config_source`                                        | Workspace Agent created, updated, or deleted |
+| `model_plan.configuration_changed`      | `action`, `protocol`, `template_kind`                                  | Model Plan durable configuration changed     |
+| `model_plan.detection_completed`        | `scope`, `result`, `protocol`, `template_kind`, optional failure enums | Draft or saved detection attempt completed   |
+
+Workspace Agent `action` is `created`, `updated`, or `deleted`.
+Model Plan configuration `action` is `created`, `updated`, `duplicated`,
+`enabled`, `disabled`, or `deleted`. Detection `scope` is `draft` or `saved`,
+and `result` is `passed` only when every core detection stage passed or was
+explicitly skipped. A failed detection includes only the bounded
+`failure_stage` and `failure_reason` enums; it never includes provider detail.
+
+These events never include workspace, Agent, or Model Plan identity, user-entered
+names, model IDs, endpoints, credentials, or raw error strings. Use the
+daemon-injected DataFinder identity to count users across the configuration
+funnel, then join at aggregate cohort level with the terminal-event dimensions
+above to measure configured-versus-used adoption.
+
+### Tutti Mode activation funnel
+
+`tutti_mode.activation_changed` is emitted only after a durable user-controlled
+activation transition. Its bounded params are `action=activated|deactivated`,
+`state=active|inactive`, and `source=slash_command|badge_remove`. No-op writes,
+conflicts, invalid legacy Agent-command sources, and persistence failures do not
+emit it. This event measures intent and retained activation; terminal
+`tutti_mode_state` measures actual accepted Turn use.
+
+The activation event and terminal dimension are wired only in the Tutti daemon
+composition. Shared Agent Host consumers, including TSH/VN, do not receive
+these product analytics contracts.
+
 ## Event Naming Convention
 
 Event names follow the product analytics spec's dot-separated domain action

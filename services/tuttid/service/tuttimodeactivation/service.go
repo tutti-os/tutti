@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 	activationbiz "github.com/tutti-os/tutti/services/tuttid/biz/tuttimodeactivation"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 var (
@@ -40,10 +41,11 @@ type Publisher interface {
 }
 
 type Service struct {
-	Store     Store
-	Publisher Publisher
-	Now       func() time.Time
-	NewID     func() string
+	Store             Store
+	Publisher         Publisher
+	AnalyticsReporter reporterservice.Reporter
+	Now               func() time.Time
+	NewID             func() string
 }
 
 type SetInput struct {
@@ -146,6 +148,7 @@ func (s *Service) Set(ctx context.Context, input SetInput) (SetResult, error) {
 	}
 	result := SetResult{Activation: cloneActivation(activation), Changed: changed}
 	if changed {
+		s.reportActivationChanged(ctx, activation)
 		s.publish(ctx, activationbiz.Update{
 			WorkspaceID:    activation.WorkspaceID,
 			AgentSessionID: activation.AgentSessionID,

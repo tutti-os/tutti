@@ -19,8 +19,10 @@ func TestBuildMapsTerminalOutcomes(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			eventName, params, ok := Build(Input{
-				AgentSessionID: "session-1", ClientSubmitID: "submit-1", ErrorCode: "runtime_failed",
-				Mode: "agent", Origin: "user_prompt", Outcome: tt.outcome, Provider: "codex",
+				AgentSessionID: "session-1", AgentConfigSource: AgentConfigSourceWorkspaceAgent,
+				ClientSubmitID: "submit-1", ErrorCode: "runtime_failed", Mode: "agent",
+				ModelConfigSource: ModelConfigSourceModelPlan, Origin: "user_prompt", Outcome: tt.outcome, Provider: "codex",
+				TuttiModeState:    TuttiModeStateActive,
 				StartupReconciled: tt.outcome == "interrupted", StartedAtUnixMS: 1_000,
 				SettledAtUnixMS: 11_000, TurnID: "turn-1",
 			})
@@ -28,9 +30,11 @@ func TestBuildMapsTerminalOutcomes(t *testing.T) {
 				t.Fatalf("Build() event=%q ok=%v, want %q true", eventName, ok, tt.eventName)
 			}
 			for key, want := range map[string]any{
-				"agent_session_id": "session-1", "client_submit_id": "submit-1",
+				"agent_config_source": AgentConfigSourceWorkspaceAgent,
+				"agent_session_id":    "session-1", "client_submit_id": "submit-1",
 				"duration_bucket": "10s_to_30s", "duration_ms": int64(10_000),
-				"mode": "agent", "provider": "codex", "status": tt.status,
+				"mode": "agent", "model_config_source": ModelConfigSourceModelPlan, "tutti_mode_state": TuttiModeStateActive,
+				"provider": "codex", "status": tt.status,
 				"turn_id": "turn-1", "turn_origin": "user_prompt", "turn_outcome": tt.outcome,
 				tt.extraKey: tt.extraValue,
 			} {
@@ -39,6 +43,21 @@ func TestBuildMapsTerminalOutcomes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBuildDefaultsUnrecognizedConfigurationSourcesToUnknown(t *testing.T) {
+	_, params, ok := Build(Input{
+		AgentConfigSource: "workspace-agent:secret",
+		Mode:              "agent",
+		ModelConfigSource: "plan-secret",
+		Outcome:           "completed",
+		TuttiModeState:    "active:secret",
+	})
+	if !ok || params["agent_config_source"] != AgentConfigSourceUnknown ||
+		params["model_config_source"] != ModelConfigSourceUnknown ||
+		params["tutti_mode_state"] != TuttiModeStateUnknown {
+		t.Fatalf("params=%#v ok=%v, want content-free unknown sources", params, ok)
 	}
 }
 

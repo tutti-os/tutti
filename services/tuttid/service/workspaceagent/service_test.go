@@ -12,10 +12,12 @@ import (
 	modelplanbiz "github.com/tutti-os/tutti/services/tuttid/biz/modelplan"
 	workspaceagentbiz "github.com/tutti-os/tutti/services/tuttid/biz/workspaceagent"
 	workspacedata "github.com/tutti-os/tutti/services/tuttid/data/workspace"
+	reporterservice "github.com/tutti-os/tutti/services/tuttid/service/reporter"
 )
 
 type memoryAgentStore struct {
 	agents map[string]workspaceagentbiz.Agent
+	putErr error
 }
 
 func (*memoryAgentStore) key(workspaceID string, agentID string) string {
@@ -23,6 +25,9 @@ func (*memoryAgentStore) key(workspaceID string, agentID string) string {
 }
 
 func (s *memoryAgentStore) PutWorkspaceAgent(_ context.Context, agent workspaceagentbiz.Agent) error {
+	if s.putErr != nil {
+		return s.putErr
+	}
 	if s.agents == nil {
 		s.agents = map[string]workspaceagentbiz.Agent{}
 	}
@@ -97,6 +102,16 @@ type recordingConfigurationPublisher struct {
 	defaultModel  string
 	resetModel    bool
 }
+
+type recordingAnalyticsReporter struct {
+	events []reporterservice.Event
+}
+
+func (r *recordingAnalyticsReporter) Track(_ context.Context, events ...reporterservice.Event) {
+	r.events = append(r.events, events...)
+}
+
+func (*recordingAnalyticsReporter) Close() error { return nil }
 
 func (p *recordingConfigurationPublisher) PublishAgentModelConfigurationChanged(_ context.Context, workspaceID string, agentTargetIDs []string, defaultModels map[string]string, resetModel bool) error {
 	p.workspaceID = workspaceID
@@ -236,6 +251,77 @@ func TestServiceLogsWorkspaceAgentLifecycleEvents(t *testing.T) {
 
 	if err := service.Delete(context.Background(), "ws", created.Agent.ID); !errors.Is(err, workspacedata.ErrWorkspaceAgentNotFound) {
 		t.Fatalf("Delete() missing agent error = %v, want not found", err)
+	}
+}
+
+func TestServiceReportsCommittedWorkspaceAgentConfigurationChanges(t *testing.T) {
+	service, store := testWorkspaceAgentService()
+	reporter := &recordingAnalyticsReporter{}
+	service.AnalyticsReporter = reporter
+
+	created, err := service.Create(context.Background(), PutInput{
+		WorkspaceID:          "ws",
+		Name:                 "Builder",
+		HarnessAgentTargetID: "local:codex",
+		ModelPlanID:          "mp-one",
+		DefaultModel:         "gpt-5",
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if _, err := service.Update(context.Background(), PutInput{
+		WorkspaceID:          "ws",
+		AgentID:              created.Agent.ID,
+		Name:                 "Builder v2",
+		HarnessAgentTargetID: "local:codex",
+	}); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	if err := service.Delete(context.Background(), "ws", created.Agent.ID); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+
+	if len(reporter.events) != 3 {
+		t.Fatalf("analytics events = %#v, want create/update/delete", reporter.events)
+	}
+	for index, action := range []string{"created", "updated", "deleted"} {
+		event := reporter.events[index]
+		if event.Name != "workspace_agent.configuration_changed" ||
+			event.Params["action"] != action {
+			t.Fatalf("event[%d] = %#v, want action %q", index, event, action)
+		}
+		if _, exists := event.Params["workspace_agent_id"]; exists {
+			t.Fatalf("event[%d] leaked workspace Agent identity: %#v", index, event)
+		}
+		if _, exists := event.Params["name"]; exists {
+			t.Fatalf("event[%d] leaked workspace Agent name: %#v", index, event)
+		}
+	}
+	if reporter.events[0].Params["model_config_source"] != "model_plan" ||
+		reporter.events[1].Params["model_config_source"] != "provider_native" ||
+		reporter.events[2].Params["model_config_source"] != "provider_native" {
+		t.Fatalf("model configuration sources = %#v", reporter.events)
+	}
+
+	if _, err := service.Create(context.Background(), PutInput{
+		WorkspaceID: "ws",
+		Name:        "Invalid",
+	}); err == nil {
+		t.Fatal("Create(invalid) error = nil")
+	}
+	if len(reporter.events) != 3 {
+		t.Fatalf("invalid create emitted analytics: %#v", reporter.events)
+	}
+	store.putErr = errors.New("store write failed")
+	if _, err := service.Create(context.Background(), PutInput{
+		WorkspaceID:          "ws",
+		Name:                 "Not persisted",
+		HarnessAgentTargetID: "local:codex",
+	}); err == nil {
+		t.Fatal("Create(store failure) error = nil")
+	}
+	if len(reporter.events) != 3 {
+		t.Fatalf("failed store write emitted analytics: %#v", reporter.events)
 	}
 }
 
