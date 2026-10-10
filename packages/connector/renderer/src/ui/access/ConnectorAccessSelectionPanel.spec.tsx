@@ -99,6 +99,17 @@ describe("ConnectorAccessSelectionPanel", () => {
     expect(screen.getByRole("checkbox", { name: "Notion" })).toBeChecked();
   });
 
+  it("renders connector icons without a circular avatar surface", () => {
+    const { container } = render(
+      <ConnectorAccessSelectionPanel {...createProps()} />
+    );
+
+    const githubIcon = container.querySelector('img[src="/github.png"]');
+    expect(githubIcon).toHaveClass("object-contain");
+    expect(githubIcon).not.toHaveClass("rounded-full");
+    expect(container.querySelector('[data-slot="avatar"]')).toBeNull();
+  });
+
   it("emits the complete controlled selection without imposing host ordering", () => {
     const onSelectionChange = vi.fn();
     const props = createProps({ onSelectionChange });
