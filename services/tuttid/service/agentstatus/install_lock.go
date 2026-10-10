@@ -132,6 +132,8 @@ func requiresInstallCommandLock(command string) bool {
 	command = strings.TrimSpace(command)
 	return strings.HasPrefix(command, "npm install -g") ||
 		strings.HasPrefix(command, "npm i -g") ||
+		strings.HasPrefix(command, string(InstallerKindCodexCLILatest)+":") ||
+		strings.HasPrefix(command, string(InstallerKindManagedNPMPackage)+":") ||
 		strings.HasPrefix(command, string(InstallerKindExternalAgentRegistryNPM)+":") ||
 		command == claudeCodeBinaryLockCommand
 }

@@ -416,6 +416,12 @@ func installerLockCommand(spec InstallerSpec) string {
 	if spec.Kind == InstallerKindShellCommand {
 		return spec.ShellCommand
 	}
+	if spec.Kind == InstallerKindCodexCLILatest && spec.CodexCLI != nil {
+		return strings.Join([]string{
+			string(spec.Kind),
+			strings.TrimSpace(spec.CodexCLI.PackageName),
+		}, ":")
+	}
 	if spec.Kind == InstallerKindExternalAgentRegistryNPM && spec.RegistryNPM != nil {
 		return strings.Join([]string{
 			string(spec.Kind),
