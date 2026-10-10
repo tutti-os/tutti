@@ -153,6 +153,46 @@ func TestControllerResumeReattachesExistingProviderSession(t *testing.T) {
 	}
 }
 
+func TestControllerResumeReportsRecoveredRuntimeContext(t *testing.T) {
+	t.Parallel()
+
+	adapter := newReconnectableAdapter()
+	adapter.runtimeContext = map[string]any{
+		"usage": map[string]any{
+			"contextWindow": map[string]any{
+				"usedTokens":  int64(30_433),
+				"totalTokens": int64(262_144),
+			},
+		},
+	}
+	reporter := &recordingReporter{}
+	controller := NewController([]Adapter{adapter}, reporter)
+
+	session, err := controller.Resume(context.Background(), ResumeInput{
+		RoomID:            "room-1",
+		AgentSessionID:    "agent-session-1",
+		Provider:          ProviderClaudeCode,
+		ProviderSessionID: "provider-session-1",
+		Title:             "Restored",
+	})
+	if err != nil {
+		t.Fatalf("Resume: %v", err)
+	}
+	usage := payloadObject(session.RuntimeContext["usage"])
+	contextWindow := payloadObject(usage["contextWindow"])
+	if got, _ := int64Value(contextWindow["usedTokens"]); got != 30_433 {
+		t.Fatalf("resumed usage = %#v, want usedTokens=30433", usage)
+	}
+
+	reports := reporter.waitForCalls(t, 1)
+	patch := reports[0].report.StatePatches[0]
+	usage = payloadObject(patch.RuntimeContext["usage"])
+	contextWindow = payloadObject(usage["contextWindow"])
+	if got, _ := int64Value(contextWindow["usedTokens"]); got != 30_433 {
+		t.Fatalf("reported usage = %#v, want usedTokens=30433", usage)
+	}
+}
+
 func TestControllerResumeRecreatesMissingProviderSessionWhenOptedIn(t *testing.T) {
 	t.Parallel()
 
@@ -243,8 +283,9 @@ func TestControllerResumeRecreatesMissingProviderSessionWhenOptedIn(t *testing.T
 }
 
 type reconnectableAdapter struct {
-	live        map[string]bool
-	resumeCalls int
+	live           map[string]bool
+	resumeCalls    int
+	runtimeContext map[string]any
 }
 
 func newReconnectableAdapter() *reconnectableAdapter {
@@ -286,6 +327,10 @@ func (*reconnectableAdapter) Cancel(context.Context, Session, string) ([]activit
 
 func (a *reconnectableAdapter) HasLiveSession(session Session) bool {
 	return a.live[session.AgentSessionID]
+}
+
+func (a *reconnectableAdapter) SessionState(_ Session) SessionStateSnapshot {
+	return SessionStateSnapshot{RuntimeContext: clonePayload(a.runtimeContext)}
 }
 
 func (a *reconnectableAdapter) dropLiveSession(agentSessionID string) {
