@@ -129,3 +129,76 @@ func TestUnixEntrySkipsForeignFileUserCommand(t *testing.T) {
 		t.Fatalf("foreign regular file was modified: %q err=%v", content, err)
 	}
 }
+
+func TestUnixEntryUnpublishesOnlyManagedUserCommand(t *testing.T) {
+	runtimeRoot := t.TempDir()
+	userBinDir := t.TempDir()
+	finalExecutable := writeTestExecutable(t, runtimeRoot, "runtime-id/bin/claude")
+	entry, err := NewEntry(runtimeRoot, userBinDir, "claude", finalExecutable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Publish(); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := entry.Unpublish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !removed {
+		t.Fatal("Unpublish() did not remove the managed user command")
+	}
+	if _, err := os.Lstat(entry.UserPath); !os.IsNotExist(err) {
+		t.Fatalf("managed user command still exists: %v", err)
+	}
+	if _, err := os.Lstat(entry.StablePath); err != nil {
+		t.Fatalf("private stable command was removed: %v", err)
+	}
+
+	foreignTarget := writeTestExecutable(t, t.TempDir(), "external/bin/claude")
+	if err := os.Symlink(foreignTarget, entry.UserPath); err != nil {
+		t.Fatal(err)
+	}
+	removed, err = entry.Unpublish()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("Unpublish() removed a foreign user command")
+	}
+	if target, err := os.Readlink(entry.UserPath); err != nil || target != foreignTarget {
+		t.Fatalf("foreign user command changed: target=%q err=%v", target, err)
+	}
+}
+
+func TestUnixRemovePlatformEntryRestoresConcurrentForeignReplacement(t *testing.T) {
+	runtimeRoot := t.TempDir()
+	userBinDir := t.TempDir()
+	finalExecutable := writeTestExecutable(t, runtimeRoot, "runtime-id/bin/claude")
+	entry, err := NewEntry(runtimeRoot, userBinDir, "claude", finalExecutable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Publish(); err != nil {
+		t.Fatal(err)
+	}
+	// Simulate an external installer replacing the command after Unpublish has
+	// classified the old entry but before the platform removal step runs.
+	if err := os.Remove(entry.UserPath); err != nil {
+		t.Fatal(err)
+	}
+	foreignTarget := writeTestExecutable(t, t.TempDir(), "external/bin/claude")
+	if err := os.Symlink(foreignTarget, entry.UserPath); err != nil {
+		t.Fatal(err)
+	}
+	removed, err := removePlatformEntry(entry.UserPath, entry.StablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if removed {
+		t.Fatal("concurrent foreign replacement was reported as removed")
+	}
+	if target, err := os.Readlink(entry.UserPath); err != nil || target != foreignTarget {
+		t.Fatalf("concurrent foreign replacement was not restored: target=%q err=%v", target, err)
+	}
+}

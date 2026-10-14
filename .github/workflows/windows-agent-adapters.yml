@@ -51,7 +51,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $contractRoot = Join-Path $env:RUNNER_TEMP 'tutti-codex-contract'
-          npm install --prefix $contractRoot --no-save --no-audit --no-fund --include=optional @openai/codex@0.147.0
+          npm install --prefix $contractRoot --no-save --no-audit --no-fund --include=optional @openai/codex@0.153.4
           $binaries = @(Get-ChildItem -Path $contractRoot -Recurse -Filter codex.exe)
           if ($binaries.Count -ne 1) {
             throw "Expected one native codex.exe, found $($binaries.Count)"

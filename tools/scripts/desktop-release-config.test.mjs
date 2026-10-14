@@ -483,19 +483,11 @@ test("desktop release checks the managed app runtime before reserving a tag or b
   );
 });
 
-test("desktop release workflow schedules a daily Beijing 4:16am rc release", async () => {
+test("desktop release workflow does not schedule daily rc releases", async () => {
   const workflow = await readFile(workflowPath, "utf8");
 
-  assert.match(workflow, /schedule:\s*\n\s*-\s*cron:\s*"16 20 \* \* \*"/);
-  assert.doesNotMatch(workflow, /timezone:\s*"Asia\/Shanghai"/);
-  assert.match(
-    workflow,
-    /RELEASE_EVENT_NAME:\s+\${{\s*github\.event_name\s*}}/
-  );
-  assert.match(
-    workflow,
-    /if \[\[ "\$\{RELEASE_EVENT_NAME\}" == "schedule" \]\]; then\s*\n\s*strategy=patch_rc/
-  );
+  assert.doesNotMatch(workflow, /schedule:\s*\n\s*-\s*cron:/);
+  assert.doesNotMatch(workflow, /RELEASE_EVENT_NAME.*schedule/);
 });
 
 test("desktop release workflow keeps less common rc bumps behind explicit version input", async () => {

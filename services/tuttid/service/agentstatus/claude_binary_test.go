@@ -38,6 +38,8 @@ func TestActivateClaudeCodeBinaryPublishesStableUserCommand(t *testing.T) {
 	}
 	adapter := &recordingUserPathAdapter{}
 	service := Service{
+		Environ:              func() []string { return []string{"PATH="} },
+		HomeDir:              func() (string, error) { return t.TempDir(), nil },
 		ClaudeCodeRuntimeDir: runtimeRoot,
 		UserCommandBinDir:    userBinDir,
 		UserPathAdapter:      adapter,
@@ -55,6 +57,118 @@ func TestActivateClaudeCodeBinaryPublishesStableUserCommand(t *testing.T) {
 	}
 	if err := entry.Verify(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestActivateClaudeCodeBinaryPreservesExternalCommandElsewhereOnPath(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "agent-runtimes", "claude-code")
+	userBinDir := filepath.Join(t.TempDir(), ".local", "bin")
+	externalBinDir := t.TempDir()
+	external := writeTestClaudeCommand(t, externalBinDir, "external claude")
+	executable := filepath.Join(runtimeRoot, "versions", testClaudeVersion, testClaudeBinaryName())
+	if err := os.MkdirAll(filepath.Dir(executable), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(executable, []byte("managed claude"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &recordingUserPathAdapter{}
+	service := Service{
+		Environ:              func() []string { return testClaudePathEnv(externalBinDir) },
+		HomeDir:              func() (string, error) { return t.TempDir(), nil },
+		ClaudeCodeRuntimeDir: runtimeRoot,
+		UserCommandBinDir:    userBinDir,
+		UserPathAdapter:      adapter,
+	}
+	entry, err := usercommand.NewEntry(runtimeRoot, userBinDir, "claude", executable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.activateClaudeCodeBinary(context.Background(), t.TempDir(), claudeSDKRuntimeDescriptor{ClaudeVersion: testClaudeVersion}, executable); err != nil {
+		t.Fatal(err)
+	}
+	if adapter.directory != "" {
+		t.Fatalf("external Claude caused user PATH publication: %q", adapter.directory)
+	}
+	if _, err := os.Lstat(entry.UserPath); !os.IsNotExist(err) {
+		t.Fatalf("managed user command was published over external PATH ownership: %v", err)
+	}
+	if _, err := os.Lstat(entry.StablePath); err != nil {
+		t.Fatalf("private stable command was not activated: %v", err)
+	}
+	if content, err := os.ReadFile(external); err != nil || string(content) != "external claude" {
+		t.Fatalf("external Claude changed: content=%q err=%v", content, err)
+	}
+}
+
+func TestActivateClaudeCodeBinaryRemovesOlderManagedUserCommandWhenExternalExists(t *testing.T) {
+	runtimeRoot := filepath.Join(t.TempDir(), "agent-runtimes", "claude-code")
+	userBinDir := filepath.Join(t.TempDir(), ".local", "bin")
+	externalBinDir := t.TempDir()
+	writeTestClaudeCommand(t, externalBinDir, "external claude")
+	oldExecutable := filepath.Join(runtimeRoot, "versions", "2.1.220", testClaudeBinaryName())
+	newExecutable := filepath.Join(runtimeRoot, "versions", testClaudeVersion, testClaudeBinaryName())
+	for path, content := range map[string]string{oldExecutable: "old managed", newExecutable: "new managed"} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entry, err := usercommand.NewEntry(runtimeRoot, userBinDir, "claude", oldExecutable)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := entry.Publish(); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &recordingUserPathAdapter{}
+	service := Service{
+		Environ:              func() []string { return testClaudePathEnv(userBinDir, externalBinDir) },
+		HomeDir:              func() (string, error) { return t.TempDir(), nil },
+		ClaudeCodeRuntimeDir: runtimeRoot,
+		UserCommandBinDir:    userBinDir,
+		UserPathAdapter:      adapter,
+	}
+	if err := service.activateClaudeCodeBinary(context.Background(), t.TempDir(), claudeSDKRuntimeDescriptor{ClaudeVersion: testClaudeVersion}, newExecutable); err != nil {
+		t.Fatal(err)
+	}
+	if adapter.directory != "" {
+		t.Fatalf("external Claude caused user PATH publication: %q", adapter.directory)
+	}
+	if _, err := os.Lstat(entry.UserPath); !os.IsNotExist(err) {
+		t.Fatalf("older managed user command was not removed: %v", err)
+	}
+	content, err := os.ReadFile(entry.StablePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS == "windows" && !strings.Contains(strings.ToLower(string(content)), strings.ToLower(newExecutable)) {
+		t.Fatalf("stable launcher does not target refreshed managed runtime: %q", content)
+	}
+	if runtime.GOOS != "windows" && string(content) != "new managed" {
+		t.Fatalf("stable command content = %q, want refreshed managed runtime", content)
+	}
+}
+
+func writeTestClaudeCommand(t *testing.T, dir string, content string) string {
+	t.Helper()
+	name := "claude"
+	if runtime.GOOS == "windows" {
+		name = "claude.cmd"
+	}
+	path := filepath.Join(dir, name)
+	if err := os.WriteFile(path, []byte(content), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func testClaudePathEnv(dirs ...string) []string {
+	return []string{
+		"PATH=" + strings.Join(dirs, string(os.PathListSeparator)),
+		"PATHEXT=.COM;.EXE;.BAT;.CMD;.PS1",
 	}
 }
 
@@ -163,6 +277,16 @@ func TestManagedClaudeCodeInstallerUsesProvisionedRuntime(t *testing.T) {
 
 func TestResolveProviderRuntimeUsesManagedClaudeCodePointer(t *testing.T) {
 	fixture := newClaudeBinaryFixture(t)
+	externalPath := filepath.Join(t.TempDir(), testClaudeBinaryName())
+	if err := os.WriteFile(externalPath, []byte("external claude"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	fixture.service.LookPath = func(name string) (string, error) {
+		if name == "claude" || name == "claude.exe" {
+			return externalPath, nil
+		}
+		return "", os.ErrNotExist
+	}
 	installedPath := fixture.installedBinaryPath()
 	if err := os.MkdirAll(filepath.Dir(installedPath), 0o755); err != nil {
 		t.Fatal(err)
@@ -182,7 +306,7 @@ func TestResolveProviderRuntimeUsesManagedClaudeCodePointer(t *testing.T) {
 	}
 	runtimeResolution := fixture.service.resolveProviderRuntime(context.Background(), specs[0])
 	if runtimeResolution.CLIPath != installedPath {
-		t.Fatalf("CLIPath = %q, want managed Claude binary %q", runtimeResolution.CLIPath, installedPath)
+		t.Fatalf("CLIPath = %q, want managed Claude binary %q instead of external %q", runtimeResolution.CLIPath, installedPath, externalPath)
 	}
 }
 

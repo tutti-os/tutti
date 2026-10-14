@@ -1,19 +1,43 @@
 <div align="center">
 
-<img src="docs/assets/banner.jpg" alt="Tutti" width="100%" />
+<a href="https://tutti.sh/zh?tc=25q">
+  <img src="docs/assets/zh/tutti-vm-website.png" alt="Tutti VM 官網——多人、多 Agent 即時協作空間" width="100%" />
+</a>
+
+**[前往官網了解 Tutti · VM →](https://tutti.sh/zh?tc=25q)**
 
 **人與 Agent「同頻」協作的地方。**
 
-[官網](https://tutti.sh/?tc=25q) · [文件](docs/README.md) · [參與貢獻](CONTRIBUTING.zh-TW.md)
+業界首個「實況級」多人、多 Agent 並行協作空間
+
+[文件](docs/README.md) · [參與貢獻](CONTRIBUTING.zh-TW.md)
 
 [English](README.md) | [简体中文](README.zh-CN.md) | [繁體中文](README.zh-TW.md)
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
-[![Website](https://img.shields.io/badge/website-tutti.sh-black.svg)](https://tutti.sh/?tc=25q)
+[![Website](https://img.shields.io/badge/website-tutti.sh-black.svg)](https://tutti.sh/zh?tc=25q)
 
 </div>
 
 ---
+
+## Tutti 的兩個版本
+
+| 功能                | Tutti · 開源版                                             | Tutti · VM                                             |
+| ------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
+| 連接已有的 Agent    | ✓                                                          | ✓                                                      |
+| 使用已有訂閱額度    | ✓                                                          | ✓                                                      |
+| 內建應用            | ✓                                                          | ✓                                                      |
+| 群聊                | —                                                          | ✓                                                      |
+| 與他人協作          | —                                                          | ✓                                                      |
+| 與他人的 Agent 協作 | —                                                          | ✓                                                      |
+| 同時編輯            | —                                                          | ✓                                                      |
+| 借用 Agent          | —                                                          | ✓                                                      |
+| 跨裝置              | —                                                          | ✓                                                      |
+| 免部署分享          | —                                                          | ✓                                                      |
+| Big @               | 跨自己的 Agent                                             | 跨他人的 Agent                                         |
+| 下載                | [下載 Tutti · 開源版](https://tutti.sh/zh?tc=25q#versions) | [下載 Tutti · VM](https://tutti.sh/zh?tc=25q#versions) |
+| 入口                | [直接前往 GitHub →](https://github.com/tutti-os/tutti)     | [建立房間需要邀請碼 →](https://tutti.sh/zh/waitlist)   |
 
 如果你喜歡 Tutti，歡迎給我們一個 Star，或者 Fork 倉庫、提交 Issue、發起 PR。
 
@@ -23,9 +47,9 @@
 
 **Tutti，現已開源。**
 
-**Tutti · VM 正在路上，有興趣的各位，歡迎到官網加入我們的 Waitlist：**
+**Tutti · VM 已開放 Early Access，只有建立 Room 需要邀請碼：**
 
-**[tutti.sh →](https://tutti.sh/?tc=25q)**
+**[前往官網了解並下載 Tutti · VM →](https://tutti.sh/zh?tc=25q#versions)**
 
 ## 快速開始
 
@@ -33,9 +57,9 @@
 
 [下載 Tutti · Local Windows x64 版](https://tutti.sh/desktop/download?platform=windows&arch=x64&format=exe)
 
-<!-- TODO: Tutti · VM 等候名單連結 -->
+[下載 Tutti · VM macOS 或 Windows 版](https://tutti.sh/zh?tc=25q#versions)
 
-加入 [Tutti · VM 等候名單](https://tutti.sh/waitlist) —— 即將開放。
+建立 Room 需要[申請邀請碼](https://tutti.sh/zh/waitlist)，下載 Tutti · VM 或加入他人的 Room 無需邀請碼
 
 完整開發指南見 [CONTRIBUTING.zh-TW.md](CONTRIBUTING.zh-TW.md)。
 
@@ -170,12 +194,12 @@ Tutti 裡有自己的應用中心，也即時共享整個工作空間。這些�
 
 ## Tutti vs Tutti · VM
 
-|              | Tutti（開源）                                                                                     | Tutti · VM（即將上線）                                                                                                                                                                                                           |
-| ------------ | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **適合誰**   | 一個人，多個 Agent                                                                                | 一個人，多個 Agent<br>一個人，多台設備<br>兩人及以上，各自帶著自己的 Agent                                                                                                                                                       |
-| **跑在哪**   | Agent 跑在本機，工作態在本機                                                                      | 採用多層虛擬機技術，把你的本機 Agent 虛擬化進一個即時共享的雲端工作空間。<br><br>Agent 仍然跑在本機，工作態即時進雲端：正在聊的、正在跑的、做好了的……於是你能跨設備、跨人、跨 Agent 協作，彼此不丟任何上下文，一致得像「共腦」。 |
-| **共享什麼** | 多個 Agent 之間共享上下文、應用、產物、任務和運行狀態                                             | 包含本機版的全部內容，另外支援在多人、多設備之間共享                                                                                                                                                                             |
-| **訂閱**     | 你自己的 Claude、Codex 等訂閱<br>（目前支援 Claude Code、Codex、Hermes；OpenClaw 正在開發接入中） | 你自己的 Claude、Codex 等訂閱<br>（目前支援 Claude Code、Codex、Hermes；OpenClaw 正在開發接入中）                                                                                                                                |
+|              | Tutti（開源）                                                                                     | Tutti · VM（Early Access）                                                                                                                                                                          |
+| ------------ | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **適合誰**   | 一個人，多個 Agent                                                                                | 一個人，多個 Agent<br>一個人，多台設備<br>兩人及以上，各自帶著自己的 Agent                                                                                                                          |
+| **跑在哪**   | Agent 跑在本機，工作態在本機                                                                      | 每個 Agent 都在所屬使用者的裝置上運行於託管的本機虛擬機中，Room 則在雲端即時共享工作狀態：正在聊的、正在跑的、做好了的……於是你能跨裝置、跨人、跨 Agent 協作，彼此不丟任何上下文，一致得像「共腦」。 |
+| **共享什麼** | 多個 Agent 之間共享上下文、應用、產物、任務和運行狀態                                             | 包含本機版的全部內容，另外支援在多人、多設備之間共享                                                                                                                                                |
+| **訂閱**     | 你自己的 Claude、Codex 等訂閱<br>（目前支援 Claude Code、Codex、Hermes；OpenClaw 正在開發接入中） | 你自己的 Claude、Codex 等訂閱<br>（目前支援 Claude Code、Codex、Hermes；OpenClaw 正在開發接入中）                                                                                                   |
 
 ### Tutti：你可以用它來做什麼？
 
@@ -213,7 +237,7 @@ Tutti 先解決你和你的 Agents。
 
 Tutti · VM 要解決的是：當工作往外走，不同人、不同設備、彼此的 Agents 怎麼待在同一個即時共享空間裡 —— 即多人的 Agent-Agent 協作。
 
-**通過多層虛擬機技術，把你的本機 Agent 虛擬化進一個即時共享的雲端工作空間。**
+**Tutti · VM 讓每個 Agent 在所屬使用者的裝置上運行於託管的本機虛擬機中，並連接到一個即時共享的雲端工作空間。**
 
 在這裡，Agent 仍然跑在你的本機，繼續使用你自己的訂閱和配置。但工作態會在神奇的雲端：正在聊的、正在做的、已經做好的，都會留在同一個 Room 裡。網站、圖片、文件、PPT 不需要再上傳下載，複製連結就能分享。
 

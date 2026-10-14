@@ -533,3 +533,24 @@ Because the observed `RuntimeOperations`, `EffectiveHistory`, and `GoalStore`
 wrappers are the only source of durable runtime and goal commit deltas, `New`
 installs them when either `CommitObserver` or `TerminalFailureObserver` is
 configured. An adapter that wants failure analytics alone still gets them.
+
+## Commerce subscription entry attribution
+
+The desktop AccountService owns subscription entry decoration for both the workspace
+account menu and the local Agent configuration account menu. Each click generates a
+fresh random UUID and opens the plan URL with `entrySource=desktop`,
+`entryPoint=profile_menu`, and `entryId`. In the same operation it reports
+`commerce.membership_plan_clicked` with `entry_source`, `entry_point`, and `entry_id`.
+Usage and account-settings links keep their existing destinations. The existing host
+external-link capability still owns native browser opening on Windows and POSIX.
+
+The UUID correlates the click with Commerce's `commerce.entry_landed` event; it is not
+an account ID or a UV denominator. Do not send account identifiers or referrer URLs
+in the query. The subscription site carries these fields through login and checkout;
+the Commerce backend stores original attribution on the order for payment and
+fulfillment events. Existing purchase `source` retains its operation-surface meaning.
+
+Roll out the Commerce additive database migration and backend, then the subscription
+site receiver, then this desktop producer and Platform. Historical untagged entries
+remain unknown. Live native-browser/login/DataFinder acceptance remains separate from
+unit and build validation.

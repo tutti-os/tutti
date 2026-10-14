@@ -53,9 +53,12 @@ func (s Service) resolveProviderRuntime(ctx context.Context, spec ProviderSpec) 
 		}
 		return result
 	}
-	cliPath := resolveBinaryWithResolver(resolver, spec.BinaryNames, nil)
-	if isClaudeStatusSpec(spec) && strings.TrimSpace(cliPath) == "" {
+	cliPath := ""
+	if isClaudeStatusSpec(spec) {
 		cliPath = s.managedClaudeCodeExecutable()
+	}
+	if strings.TrimSpace(cliPath) == "" {
+		cliPath = resolveBinaryWithResolver(resolver, spec.BinaryNames, nil)
 	}
 	adapterPath := resolveBinaryWithResolver(resolver, adapterBinaryNames(spec), spec.AdapterEnv)
 	if isStandardACPStatusSpec(spec) && len(spec.AdapterCommand) > 0 && s.executableFile(spec.AdapterCommand[0]) {

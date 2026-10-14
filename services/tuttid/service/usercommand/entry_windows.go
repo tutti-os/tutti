@@ -78,6 +78,24 @@ func replacePlatformEntry(path, target string) error {
 	return writeWindowsLauncherAtomic(path, target)
 }
 
+func removePlatformEntry(path, target string) (bool, error) {
+	quarantinePath, err := newEntryQuarantinePath(path)
+	if err != nil {
+		return false, err
+	}
+	if err := os.Rename(path, quarantinePath); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	currentTarget, exists, err := readWindowsLauncher(quarantinePath)
+	if err != nil || !exists || !samePath(currentTarget, target) {
+		// A malformed or different launcher is user-owned and must be restored.
+		return false, restoreQuarantinedEntry(path, quarantinePath)
+	}
+	return removeQuarantinedManagedEntry(path, quarantinePath)
+}
+
 func resolvePlatformEntry(path string) (string, error) {
 	current := filepath.Clean(path)
 	for range 2 {

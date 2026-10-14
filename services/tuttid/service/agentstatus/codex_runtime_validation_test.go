@@ -11,8 +11,8 @@ func TestValidateCodexRuntimeCandidatesImplicitlyUsesOnlyReadyCandidate(t *testi
 	home := t.TempDir()
 	broken := filepath.Join(home, "broken", "codex")
 	healthy := filepath.Join(home, "healthy", "codex")
-	broken = writeCodexVersionFixture(t, broken, "0.142.0")
-	healthy = writeCodexVersionFixture(t, healthy, "0.142.0")
+	broken = writeCodexVersionFixture(t, broken, MinSupportedCodexVersion)
+	healthy = writeCodexVersionFixture(t, healthy, MinSupportedCodexVersion)
 
 	service := probeTestService(home)
 	service.CodexProtocolProbe = func(_ context.Context, command, _ []string) CodexProbeEvidence {
@@ -43,7 +43,7 @@ func TestValidateCodexRuntimeCandidatesSkipsUnsupportedCandidate(t *testing.T) {
 	old := filepath.Join(home, "old", "codex")
 	current := filepath.Join(home, "current", "codex")
 	old = writeCodexVersionFixture(t, old, "0.125.0")
-	current = writeCodexVersionFixture(t, current, "0.142.0")
+	current = writeCodexVersionFixture(t, current, MinSupportedCodexVersion)
 
 	service := probeTestService(home)
 	service.CodexProtocolProbe = codexProtocolReadyFixture

@@ -201,15 +201,20 @@ existing verified package is reused and updated in place instead of creating a
 second copy. After verification the daemon publishes the directory that owns
 the selected launcher. It does not migrate or delete the legacy package.
 
-Managed Agent Extensions and the provisioned Claude Code runtime publish into
-the same `%USERPROFILE%\.local\bin` contract. Their versioned executables stay
-under `%USERPROFILE%\.local\share\tutti\agent-runtimes`; a stable per-Agent
-`.cmd` launcher and a user-level `.cmd` launcher form two verified hops to the
-active executable. This avoids file-symlink privilege and keeps versioned
-runtime directories out of `PATH`. The daemon refuses to replace an existing
-entry unless it carries the Tutti launcher marker and points inside the
-expected managed runtime root. Successful install actions surface user-PATH
-write failures, while status-time adoption repairs PATH on a best-effort basis.
+Managed Agent Extensions and the provisioned Claude Code runtime use the same
+`%USERPROFILE%\.local\bin` publication contract. Their versioned executables
+stay under `%USERPROFILE%\.local\share\tutti\agent-runtimes`; a stable per-Agent
+`.cmd` launcher and an optional user-level `.cmd` launcher form two verified
+hops to the active executable. This avoids file-symlink privilege and keeps
+versioned runtime directories out of `PATH`. Before publishing Claude, the
+daemon scans the complete effective command search and preserves any
+independently installed launcher. A later reconciliation removes an older
+public launcher only when it still carries the Tutti marker and targets the
+expected stable runtime hop. Removal first atomically quarantines the launcher,
+then inspects the moved file; a concurrently replaced external launcher is
+restored without overwriting a newer entry. The private hop remains active.
+Successful publication surfaces user-PATH write failures, while skipped
+publication never adds the directory to the current-user registry PATH.
 Registry changes affect new processes only, so an already-open terminal must be
 restarted before it can resolve a newly published command.
 

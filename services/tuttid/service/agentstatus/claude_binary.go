@@ -214,6 +214,20 @@ func (s Service) activateClaudeCodeBinary(
 	if err := entry.Validate(); err != nil {
 		return fmt.Errorf("validate claude user command: %w", err)
 	}
+	if external := s.externalClaudeCodeCommand(); external != "" {
+		if err := entry.ActivateRuntime(); err != nil {
+			return fmt.Errorf("activate private claude command: %w", err)
+		}
+		removed, err := entry.Unpublish()
+		if err != nil {
+			return fmt.Errorf("unpublish managed claude user command: %w", err)
+		}
+		slog.Info("claude user command publication skipped; an external command already owns the effective PATH namespace",
+			"externalPath", external,
+			"userPath", entry.UserPath,
+			"removedManagedUserCommand", removed)
+		return nil
+	}
 	if s.UserPathAdapter != nil {
 		if err := s.UserPathAdapter.Ensure(ctx, userBinDir); err != nil {
 			return fmt.Errorf("publish claude user command directory: %w", err)
@@ -224,10 +238,26 @@ func (s Service) activateClaudeCodeBinary(
 		return fmt.Errorf("publish claude user command: %w", err)
 	}
 	if !published {
-		slog.Warn("agent extension user command publication skipped; a user-owned command with the same name is preserved",
+		slog.Warn("claude user command publication skipped; a user-owned command with the same name is preserved",
 			"userPath", entry.UserPath)
 	}
 	return nil
+}
+
+// externalClaudeCodeCommand scans the complete effective command-search plan,
+// not only the intended publication directory. This prevents a Tutti launcher
+// in an earlier fallback directory from shadowing an independently installed
+// Claude command elsewhere on PATH.
+func (s Service) externalClaudeCodeCommand() string {
+	runtimeRoot := strings.TrimSpace(s.ClaudeCodeRuntimeDir)
+	resolver := s.commandResolver()
+	for _, candidate := range resolver.ResolveAll("claude", resolver.Env(nil)) {
+		if runtimeRoot != "" && usercommand.IsManagedExecutable(candidate, runtimeRoot) {
+			continue
+		}
+		return candidate
+	}
+	return ""
 }
 
 // Per-source download budgets: a stalled primary source must not consume the

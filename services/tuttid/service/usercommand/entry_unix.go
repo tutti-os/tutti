@@ -100,6 +100,33 @@ func replacePlatformEntry(path, target string) error {
 	return replaceFile(path, temporaryPath)
 }
 
+func removePlatformEntry(path, target string) (bool, error) {
+	quarantinePath, err := newEntryQuarantinePath(path)
+	if err != nil {
+		return false, err
+	}
+	if err := os.Rename(path, quarantinePath); errors.Is(err, os.ErrNotExist) {
+		return false, nil
+	} else if err != nil {
+		return false, err
+	}
+	info, err := os.Lstat(quarantinePath)
+	if err != nil {
+		return false, errors.Join(err, restoreQuarantinedEntry(path, quarantinePath))
+	}
+	currentTarget, err := resolvedSymlinkTarget(quarantinePath)
+	if err != nil {
+		if info.Mode()&os.ModeSymlink != 0 {
+			return false, errors.Join(err, restoreQuarantinedEntry(path, quarantinePath))
+		}
+		return false, restoreQuarantinedEntry(path, quarantinePath)
+	}
+	if info.Mode()&os.ModeSymlink == 0 || !samePath(currentTarget, target) {
+		return false, restoreQuarantinedEntry(path, quarantinePath)
+	}
+	return removeQuarantinedManagedEntry(path, quarantinePath)
+}
+
 func resolvePlatformEntry(path string) (string, error) {
 	return filepath.EvalSymlinks(path)
 }

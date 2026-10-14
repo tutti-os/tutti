@@ -10,6 +10,10 @@ const workspaceRoot = join(dirname(fileURLToPath(import.meta.url)), "../..");
 const workflow = YAML.parse(
   readFileSync(join(workspaceRoot, ".github/workflows/pr-checks.yml"), "utf8")
 );
+const codexProviderSource = readFileSync(
+  join(workspaceRoot, "packages/agent/daemon/providerregistry/codex.go"),
+  "utf8"
+);
 
 const windowsWorkflows = [
   {
@@ -196,6 +200,28 @@ test("Windows adapter workflows keep setup and tests scoped", () => {
     assert.equal(checkout.with?.["fetch-depth"], undefined, path);
     assert.equal(goTestCommands.length, 1, path);
   }
+});
+
+test("Windows Codex contract test uses the minimum supported version", () => {
+  const codexMinimum = codexProviderSource.match(
+    /CodexMinVersion\s*=\s*"([^"]+)"/u
+  )?.[1];
+  const windowsAgentWorkflow = windowsWorkflows.find(
+    ({ path }) => path === ".github/workflows/windows-agent-adapters.yml"
+  )?.workflow;
+
+  assert.ok(windowsAgentWorkflow);
+  const [job] = Object.values(windowsAgentWorkflow.jobs);
+  const installCodex = job.steps.find(
+    (step) => step.name === "Install pinned Codex app-server contract binary"
+  );
+
+  assert.ok(codexMinimum);
+  assert.ok(installCodex);
+  assert.match(
+    installCodex.run,
+    new RegExp(`@openai/codex@${codexMinimum.replaceAll(".", "\\.")}`, "u")
+  );
 });
 
 function stepScripts(job) {

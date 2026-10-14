@@ -31,7 +31,6 @@ import {
   projectWorkspaceAccountCommerce,
   projectWorkspaceAccountMenuComposition
 } from "./workspaceAccountCommerceAdapter";
-import { useWorkspaceWorkbenchHostService } from "./useWorkspaceWorkbenchHostService";
 import { startWorkspaceAccountLogin } from "./workspaceAccountLogin";
 
 const debugRegistrationCreditsToastStorageKey =
@@ -112,7 +111,6 @@ function useWorkspaceAccountMenuState(
   const notifications = useService(INotificationService);
   const { service: accountService, state: accountState } = useAccountService();
   const { service: workspaceSettingsService } = useWorkspaceSettingsService();
-  const workbenchHostService = useWorkspaceWorkbenchHostService();
   const [
     debugRegistrationCreditsToastEnabled,
     setDebugRegistrationCreditsToastEnabled
@@ -200,7 +198,7 @@ function useWorkspaceAccountMenuState(
         },
         async onOpenExternal(url) {
           if (url.trim()) {
-            await workbenchHostService.openExternal(url);
+            await accountService.openCommerceLink(url);
           }
         },
         onActionError() {
@@ -282,7 +280,6 @@ function useWorkspaceAccountMenuState(
     locale,
     notifications,
     t,
-    workbenchHostService,
     workspaceId,
     workspaceSettingsService
   ]);

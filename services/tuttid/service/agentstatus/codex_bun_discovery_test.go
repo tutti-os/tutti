@@ -32,7 +32,7 @@ func TestCodexDiscoveryUsesBunConfiguredGlobalBinForStatusAndLaunch(t *testing.T
 		"exit 1\n")
 	codexPath := filepath.Join(customGlobalBin, "codex")
 	writeExecutable(t, codexPath, "#!/bin/sh\n"+
-		"if [ \"$1\" = \"--version\" ]; then echo 'codex 0.142.0'; exit 0; fi\n"+
+		"if [ \"$1\" = \"--version\" ]; then echo 'codex "+MinSupportedCodexVersion+"'; exit 0; fi\n"+
 		"exit 1\n")
 
 	service := probeTestService(home)

@@ -104,6 +104,29 @@ func (e Entry) Verify() error {
 	return nil
 }
 
+// ActivateRuntime refreshes the private stable command hop without publishing
+// or changing the user-level command. Callers use this when an independently
+// installed command already owns the effective PATH namespace.
+func (e Entry) ActivateRuntime() error {
+	if err := e.validateStablePath(); err != nil {
+		return err
+	}
+	return replacePlatformEntry(e.StablePath, e.FinalExecutable)
+}
+
+// Unpublish removes the user-level command only when it is still provably
+// owned by this entry. Foreign or already-absent commands are preserved.
+func (e Entry) Unpublish() (bool, error) {
+	kind, err := e.classifyUserEntry()
+	if err != nil {
+		return false, err
+	}
+	if kind != userEntryManaged {
+		return false, nil
+	}
+	return removePlatformEntry(e.UserPath, e.StablePath)
+}
+
 // Publish installs the managed command hops. It returns whether the
 // user-command entry is owned by Tutti. A foreign occupant is preserved
 // untouched: publication is then skipped (the internal stable hop is still
@@ -117,7 +140,7 @@ func (e Entry) Publish() (bool, error) {
 		return false, err
 	}
 	if kind == userEntryForeign {
-		if err := replacePlatformEntry(e.StablePath, e.FinalExecutable); err != nil {
+		if err := e.ActivateRuntime(); err != nil {
 			return false, err
 		}
 		return false, nil
@@ -130,7 +153,7 @@ func (e Entry) Publish() (bool, error) {
 		}
 		createdUserEntry = created
 	}
-	if err := replacePlatformEntry(e.StablePath, e.FinalExecutable); err != nil {
+	if err := e.ActivateRuntime(); err != nil {
 		if createdUserEntry {
 			_ = os.Remove(e.UserPath)
 		}
@@ -155,4 +178,50 @@ func pathWithin(path, root string) bool {
 
 func samePath(left, right string) bool {
 	return platformSamePath(filepath.Clean(left), filepath.Clean(right))
+}
+
+func newEntryQuarantinePath(path string) (string, error) {
+	temporary, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".tutti-unpublish-*")
+	if err != nil {
+		return "", err
+	}
+	temporaryPath := temporary.Name()
+	if err := errors.Join(temporary.Close(), os.Remove(temporaryPath)); err != nil {
+		return "", err
+	}
+	return temporaryPath, nil
+}
+
+func restoreQuarantinedEntry(path, quarantinePath string) error {
+	// Creating the restored name is atomic and no-replace. A concurrent
+	// installer that has already recreated path therefore wins; its entry is
+	// never overwritten, and the quarantined command remains recoverable.
+	info, err := os.Lstat(quarantinePath)
+	if err != nil {
+		return err
+	}
+	var restoreErr error
+	if info.Mode()&os.ModeSymlink != 0 {
+		target, err := os.Readlink(quarantinePath)
+		if err != nil {
+			return err
+		}
+		restoreErr = os.Symlink(target, path)
+	} else {
+		restoreErr = os.Link(quarantinePath, path)
+	}
+	if restoreErr != nil {
+		return fmt.Errorf("restore changed user command; preserved at %s: %w", quarantinePath, restoreErr)
+	}
+	if err := os.Remove(quarantinePath); err != nil {
+		return fmt.Errorf("remove restored command quarantine %s: %w", quarantinePath, err)
+	}
+	return nil
+}
+
+func removeQuarantinedManagedEntry(path, quarantinePath string) (bool, error) {
+	if err := os.Remove(quarantinePath); err != nil {
+		return false, errors.Join(err, restoreQuarantinedEntry(path, quarantinePath))
+	}
+	return true, nil
 }
