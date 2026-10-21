@@ -56,8 +56,12 @@ func composerModelOptionsFromCatalog(ctx context.Context, catalog AgentModelCata
 		)
 		return composerModelCatalogProjection{}, false
 	}
-	catalogProjection := modelcatalog.ProjectComposerCatalog(result.Models, selectedModel)
-	options := composerModelOptionsFromCanonicalCatalog(result.Models)
+	models := result.Models
+	if provider == "opencode" && result.Source == "opencode-cli" {
+		models = composerOpenCodeMiniMaxModels(models, selectedModel)
+	}
+	catalogProjection := modelcatalog.ProjectComposerCatalog(models, selectedModel)
+	options := composerModelOptionsFromCanonicalCatalog(models)
 	selection := catalogProjection.Selection
 	// SelectModel keeps a non-catalog requested id as the effective selection.
 	// That synthesized entry must stay selectable, but it is provenance-marked:
