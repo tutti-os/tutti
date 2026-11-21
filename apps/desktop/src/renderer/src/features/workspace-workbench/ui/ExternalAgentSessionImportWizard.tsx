@@ -33,12 +33,15 @@ import {
   externalImportScanSource,
   externalImportScanStateReducer,
   externalImportSelectionProjects,
+  externalImportSelectionView,
   externalImportUsableScan,
   filterExternalImportGroups,
   isExternalImportArchiveMode,
   isExternalImportWizardBusy,
   shouldAllowExternalImportDialogOpenChange,
-  type ExternalImportProjectGroup
+  type ExternalImportProjectGroup,
+  type ExternalImportStep,
+  type ExternalImportWizardError
 } from "./externalAgentSessionImportWizardModel";
 import { ExternalAgentSessionImportSourceStep } from "./ExternalAgentSessionImportSourceStep";
 import {
@@ -50,8 +53,6 @@ const externalImportProviderOptions: WorkspaceAgentProvider[] = [
   "codex",
   "claude-code"
 ];
-
-type ExternalImportStep = "providers" | "select";
 
 // Day windows surfaced as quick presets. -1 means "all available history".
 const externalImportRangeDays = [7, 30, 90, -1] as const;
@@ -111,7 +112,7 @@ export function ExternalAgentSessionImportWizard({
   const [registerProjects, setRegisterProjects] = useState(true);
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ExternalImportWizardError | null>(null);
   const providerKey = useMemo(
     () => (initialProviders ?? []).join("\n"),
     [initialProviders]
@@ -263,8 +264,9 @@ export function ExternalAgentSessionImportWizard({
         return;
       }
       dispatchScanState({ type: "scan-failed" });
-      setError(
-        t(
+      setError({
+        kind: "source",
+        message: t(
           nextArchivePath
             ? externalImportArchiveCopyKey(
                 nextArchiveKind,
@@ -273,7 +275,7 @@ export function ExternalAgentSessionImportWizard({
               )
             : "workspace.externalImport.scanFailed"
         )
-      );
+      });
       setStep("select");
     } finally {
       if (generation === scanGeneration.current) {
@@ -318,15 +320,16 @@ export function ExternalAgentSessionImportWizard({
       // Stay on the providers step: no scan ran, so the select-step chrome
       // (title, Import/Back footer) would not match the actual wizard state.
       dispatchScanState({ type: "scan-failed" });
-      setError(
-        t(
+      setError({
+        kind: "source",
+        message: t(
           externalImportArchiveCopyKey(
             nextArchiveKind,
             "workspace.externalImport.archivePickFailed",
             "workspace.externalImport.chatgptPickFailed"
           )
         )
-      );
+      });
     }
   };
 
@@ -368,13 +371,22 @@ export function ExternalAgentSessionImportWizard({
         );
       setResult(nextResult);
     } catch {
-      setError(t("workspace.externalImport.importFailed"));
+      setError({
+        kind: "import",
+        message: t("workspace.externalImport.importFailed")
+      });
     } finally {
       setImporting(false);
     }
   };
 
-  const showSelectStep = step === "select" && !result && !error && !loading;
+  const selectionView = externalImportSelectionView({
+    error,
+    hasResult: result !== null,
+    loading,
+    scan,
+    step
+  });
 
   // Scanning is quick, but importing can run for a while against a large
   // history. Dismissing the dialog does not cancel the in-flight request (the
@@ -438,9 +450,10 @@ export function ExternalAgentSessionImportWizard({
               : t("workspace.externalImport.description")}
           </DialogDescription>
         </DialogHeader>
-        {showSelectStep ? (
+        {selectionView ? (
           <ImportSelectStep
             groups={filteredGroups}
+            importError={selectionView.importError}
             days={days}
             search={search}
             onSearchChange={setSearch}
@@ -487,7 +500,7 @@ export function ExternalAgentSessionImportWizard({
                 ariaLive="assertive"
                 icon={<RefreshIcon className="size-5" />}
                 role="alert"
-                text={error}
+                text={error.message}
               />
             ) : (
               <>
@@ -499,7 +512,7 @@ export function ExternalAgentSessionImportWizard({
                     className="mb-3 rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"
                     role="alert"
                   >
-                    {error}
+                    {error.message}
                   </p>
                 ) : null}
                 <ExternalAgentSessionImportSourceStep
@@ -601,6 +614,7 @@ function ImportSelectStep({
   deselectedSessionIds,
   disabled,
   groups,
+  importError,
   onSearchChange,
   onSelectRange,
   onToggleRegisterProjects,
@@ -618,6 +632,7 @@ function ImportSelectStep({
   deselectedSessionIds: Set<string>;
   disabled: boolean;
   groups: ExternalImportProjectGroup[];
+  importError: string | null;
   onSearchChange: (value: string) => void;
   onSelectRange: (days: number) => void;
   onToggleRegisterProjects: (checked: boolean) => void;
@@ -665,6 +680,14 @@ function ImportSelectStep({
         </p>
       ) : null}
       <div className="flex shrink-0 flex-col gap-3 px-5 pb-3 pt-4">
+        {importError ? (
+          <p
+            className="rounded-[8px] border border-[var(--border-1)] bg-[var(--transparency-block)] px-3 py-2 text-[12px] text-[var(--text-secondary)]"
+            role="alert"
+          >
+            {importError}
+          </p>
+        ) : null}
         {showRange ? (
           <div className="flex items-center gap-1">
             <span className="mr-1 text-[12px] text-[var(--text-secondary)]">
