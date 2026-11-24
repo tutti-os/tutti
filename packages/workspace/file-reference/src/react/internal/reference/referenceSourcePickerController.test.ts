@@ -2285,3 +2285,85 @@ test("locatePath 源不支持定位 / 未找到时返回空路径", async () => 
     []
   );
 });
+
+test("an unrelated query discards the previous result page while the new search is in flight", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo.slice(0, 1),
+      children: {},
+      search: {
+        "workspace-file:alpha": {
+          entries: [file("workspace-file", "/alpha.md", "alpha.md")],
+          nextCursor: null
+        },
+        "workspace-file:beta": {
+          entries: [file("workspace-file", "/beta.md", "beta.md")],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("alpha");
+  await flush();
+  let tab = controller.getSnapshot().bySource["workspace-file"];
+  assert.equal(tabSearchEntries(tab)[0]?.displayName, "alpha.md");
+
+  // 新关键词与旧结果无关:进入查询态立即弃用旧页,不能在响应落地前误显。
+  controller.setSearchQuery("beta");
+  tab = controller.getSnapshot().bySource["workspace-file"];
+  assert.equal(tab?.isSearchLoading, true);
+  assert.equal(tab?.searchResultCount, 0);
+  assert.equal(tabSearchEntries(tab).length, 0);
+
+  await flush();
+  tab = controller.getSnapshot().bySource["workspace-file"];
+  assert.equal(tabSearchEntries(tab)[0]?.displayName, "beta.md");
+});
+
+test("a refined query keeps the previous result page until the new page lands", async () => {
+  const controller = createReferenceSourcePickerController({
+    aggregator: fakeAggregator({
+      tabs: tabsTwo.slice(0, 1),
+      children: {},
+      search: {
+        "workspace-file:alp": {
+          entries: [
+            file("workspace-file", "/alpha.md", "alpha.md"),
+            file("workspace-file", "/alpine.md", "alpine.md")
+          ],
+          nextCursor: null
+        },
+        "workspace-file:alpha": {
+          entries: [file("workspace-file", "/alpha.md", "alpha.md")],
+          nextCursor: null
+        }
+      }
+    }),
+    scope,
+    searchDebounceMs: 0
+  });
+  controller.open();
+  await flush();
+
+  controller.setSearchQuery("alp");
+  await flush();
+  let tab = controller.getSnapshot().bySource["workspace-file"];
+  const identity = tab?.searchResultIdentity;
+  assert.equal(tab?.searchResultCount, 2);
+
+  // 细化关键词沿用旧页防闪空,且不换 result identity(虚拟列表不重挂载)。
+  controller.setSearchQuery("alpha");
+  tab = controller.getSnapshot().bySource["workspace-file"];
+  assert.equal(tab?.isSearchLoading, true);
+  assert.equal(tab?.searchResultCount, 2);
+  assert.equal(tab?.searchResultIdentity, identity);
+
+  await flush();
+  tab = controller.getSnapshot().bySource["workspace-file"];
+  assert.equal(tab?.searchResultCount, 1);
+});

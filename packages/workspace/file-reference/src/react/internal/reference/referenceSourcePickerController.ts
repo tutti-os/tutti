@@ -332,6 +332,54 @@ export function createReferenceSourcePickerController(
   // cloneable picker snapshot contract.
   const searchSeenKeysBySource = new Map<string, Set<string>>();
   const searchRequestedCursorsBySource = new Map<string, Set<string>>();
+  // 记录当前展示的首个结果页由哪组查询输入产生(关键词/筛选/分组/来源约束)。
+  // 只有「细化」(新旧关键词互为前缀且其余输入一致)才沿用旧页防闪空;无关查询
+  // 的旧结果在新结果就绪前一律弃用,否则面板会先误显不相关文件。
+  interface SearchResultContext {
+    query: string;
+    filters: readonly string[];
+    scopeNodeId: string | null;
+    provenanceKey: string;
+  }
+  const searchResultContextBySource = new Map<string, SearchResultContext>();
+  const searchResultContextMatches = (
+    sourceId: string,
+    next: SearchResultContext
+  ): boolean => {
+    const prev = searchResultContextBySource.get(sourceId);
+    if (!prev) {
+      return false;
+    }
+    if (
+      prev.scopeNodeId !== next.scopeNodeId ||
+      prev.provenanceKey !== next.provenanceKey ||
+      [...prev.filters].sort().join("\0") !==
+        [...next.filters].sort().join("\0")
+    ) {
+      return false;
+    }
+    const prevQuery = prev.query.toLowerCase();
+    const nextQuery = next.query.toLowerCase();
+    return prevQuery.startsWith(nextQuery) || nextQuery.startsWith(prevQuery);
+  };
+  // 进入搜索态的状态分片:沿用旧页时只置 loading;否则清空结果改走 spinner。
+  const enterSearchState = (
+    sourceId: string,
+    tab: ReferenceSourceTabState,
+    next: SearchResultContext
+  ) =>
+    searchResultContextMatches(sourceId, next)
+      ? ({ isSearchLoading: true, searchError: null } as const)
+      : ({
+          isSearchLoading: true,
+          isSearchLoadingMore: false,
+          searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
+          searchResultIdentity: tab.searchResultIdentity + 1,
+          searchResultCount: 0,
+          searchNextCursor: null,
+          searchHasMore: false,
+          searchError: null
+        } as const);
 
   let snapshot: ReferenceSourcePickerSnapshot = {
     isLoadingTabs: false,
@@ -693,6 +741,12 @@ export function createReferenceSourcePickerController(
           sourceId,
           new Set(entries.map((entry) => nodeRefKey(entry.ref)))
         );
+        searchResultContextBySource.set(sourceId, {
+          query,
+          filters,
+          scopeNodeId,
+          provenanceKey: provenanceFilterKey
+        });
         searchRequestedCursorsBySource.set(sourceId, new Set());
         updateTab(sourceId, (tab) => ({
           ...tab,
@@ -721,6 +775,7 @@ export function createReferenceSourcePickerController(
         sequence === searchSequence &&
         isReferenceSearchCursorExpiredError(error)
       ) {
+        searchResultContextBySource.delete(sourceId);
         updateTab(sourceId, (tab) => ({
           ...tab,
           isSearchLoadingMore: false,
@@ -745,11 +800,14 @@ export function createReferenceSourcePickerController(
       if (isAbortError(error) || !retained || sequence !== searchSequence) {
         return;
       }
+      // 加载更多失败时保留已有结果,仅新查询失败才清空。
+      if (!loadingMore) {
+        searchResultContextBySource.delete(sourceId);
+      }
       updateTab(sourceId, (tab) => ({
         ...tab,
         isSearchLoading: false,
         isSearchLoadingMore: false,
-        // 加载更多失败时保留已有结果,仅新查询失败才清空。
         ...(loadingMore
           ? {}
           : {
@@ -861,6 +919,7 @@ export function createReferenceSourcePickerController(
       cancelSearch();
       searchSeenKeysBySource.clear();
       searchRequestedCursorsBySource.clear();
+      searchResultContextBySource.clear();
       // 清空 ticket 表:在途取数 resolve 时其 key 已无最新 ticket(get→undefined),被丢弃。
       latestBrowseSeqByKey.clear();
       tabsSequence += 1;
@@ -871,6 +930,7 @@ export function createReferenceSourcePickerController(
       cancelSearch();
       searchSeenKeysBySource.clear();
       searchRequestedCursorsBySource.clear();
+      searchResultContextBySource.clear();
       latestBrowseSeqByKey.clear();
       tabsSequence += 1;
       setSnapshot({
@@ -909,6 +969,7 @@ export function createReferenceSourcePickerController(
         // 没有关键词/来源查询时,目标源保持浏览态。文件类型筛选由视图层递归投影
         // 浏览树,不能把它误判为扁平搜索；切源/回源根时也必须继续保留。
         // 权限敏感源可通过 filtersUseSearch 声明 filters-only 也走 search。
+        searchResultContextBySource.delete(sourceId);
         updateTab(sourceId, (tab) =>
           tab.mode === "browse" &&
           tab.searchQuery === "" &&
@@ -942,9 +1003,13 @@ export function createReferenceSourcePickerController(
         searchFilters: carriedFilters,
         searchScopeNodeId: nextScopeNodeId,
         mode: "search",
-        // 沿用旧结果直到新结果就绪,避免切源瞬间闪空。
-        isSearchLoading: true,
-        searchError: null
+        // 沿用旧结果直到新结果就绪,避免切源瞬间闪空;仅当旧页由细化同一查询产生。
+        ...enterSearchState(sourceId, tab, {
+          query: trimmed,
+          filters: carriedFilters,
+          scopeNodeId: nextScopeNodeId,
+          provenanceKey: provenanceFilterKey
+        })
       }));
       scheduleSearch(sourceId, trimmed, carriedFilters, nextScopeNodeId);
     },
@@ -1101,13 +1166,16 @@ export function createReferenceSourcePickerController(
       )
         ? "search"
         : "browse";
+      if (nextMode === "browse") {
+        searchResultContextBySource.delete(sourceId);
+      }
       updateTab(sourceId, (tab) => ({
         ...tab,
         searchQuery: query,
         searchScopeNodeId: scopeNodeId,
         mode: nextMode,
         // 进入搜索:立刻置 loading(搜索是 debounce 的,否则键入到取数之间会先渲染空态,
-        // 造成「空态 → spinner → 结果」闪烁)。保留上次页面,细化关键词时沿用旧结果而非闪空。
+        // 造成「空态 → spinner → 结果」闪烁)。仅细化时沿用旧结果;无关查询先清空。
         ...(nextMode === "browse"
           ? {
               isSearchLoading: false,
@@ -1116,7 +1184,12 @@ export function createReferenceSourcePickerController(
               searchResultCount: 0,
               searchError: null
             }
-          : { isSearchLoading: true, searchError: null })
+          : enterSearchState(sourceId, tab, {
+              query: trimmed,
+              filters,
+              scopeNodeId,
+              provenanceKey: provenanceFilterKey
+            }))
       }));
       if (nextMode === "search") {
         scheduleSearch(sourceId, trimmed, filters, scopeNodeId);
@@ -1141,6 +1214,9 @@ export function createReferenceSourcePickerController(
       )
         ? "search"
         : "browse";
+      if (nextMode === "browse") {
+        searchResultContextBySource.delete(sourceId);
+      }
       updateTab(sourceId, (current) => ({
         ...current,
         searchFilters: filters,
@@ -1154,7 +1230,12 @@ export function createReferenceSourcePickerController(
               searchResultCount: 0,
               searchError: null
             }
-          : { isSearchLoading: true, searchError: null })
+          : enterSearchState(sourceId, current, {
+              query: trimmed,
+              filters,
+              scopeNodeId: scopeId,
+              provenanceKey: provenanceFilterKey
+            }))
       }));
       if (nextMode === "search") {
         scheduleSearch(sourceId, trimmed, filters, scopeId);
@@ -1185,12 +1266,20 @@ export function createReferenceSourcePickerController(
       const query = tab?.searchQuery.trim() ?? "";
       const filters = tab?.searchFilters ?? [];
       const searchActive = hasSearchInput(sourceId, query, filters);
+      if (!searchActive) {
+        searchResultContextBySource.delete(sourceId);
+      }
       updateTab(sourceId, (current) => ({
         ...current,
         searchScopeNodeId: scopeId,
         mode: searchActive ? "search" : "browse",
         ...(searchActive
-          ? { isSearchLoading: true, searchError: null }
+          ? enterSearchState(sourceId, current, {
+              query,
+              filters,
+              scopeNodeId: scopeId,
+              provenanceKey: nextFilterKey
+            })
           : {
               isSearchLoading: false,
               searchResultIndex: valtioRef(createReferenceSearchResultIndex()),
@@ -1217,13 +1306,24 @@ export function createReferenceSourcePickerController(
         return;
       }
       invalidateSearchIdentities(sourceId);
-      updateTab(sourceId, (current) => ({
-        ...current,
-        searchScopeNodeId: scopeNodeId
-      }));
       const trimmed = tab.searchQuery.trim();
       const filters = tab.searchFilters;
-      if (tab.mode === "search" && hasSearchInput(sourceId, trimmed, filters)) {
+      const reSearch =
+        tab.mode === "search" && hasSearchInput(sourceId, trimmed, filters);
+      updateTab(sourceId, (current) => ({
+        ...current,
+        searchScopeNodeId: scopeNodeId,
+        // 分组范围变化使旧结果必然过期:不能沿用(否则误显别组文件),改走 spinner。
+        ...(reSearch
+          ? enterSearchState(sourceId, current, {
+              query: trimmed,
+              filters,
+              scopeNodeId,
+              provenanceKey: provenanceFilterKey
+            })
+          : {})
+      }));
+      if (reSearch) {
         scheduleSearch(sourceId, trimmed, filters, scopeNodeId);
       }
     },

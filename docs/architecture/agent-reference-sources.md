@@ -108,6 +108,12 @@ The picker uses three distinct lifetimes:
 - Directory children are also per-open state. They are read only when the
   active root or group is entered and are cleared on close. There is no
   cross-open directory-content cache.
+- Search result pages are per-open, per-source query state. A displayed page
+  is reused while a new search is in flight only when the new input refines it:
+  the trimmed query is a prefix of (or extends) the query that produced the
+  page and the type filters, sidebar group scope, and provenance constraint
+  are unchanged. An unrelated query discards the page immediately so results
+  from an older query never render as the new query's answer.
 
 `ReferenceReadRequestCoordinator` may be shared by picker instances. It merges
 only identical reads that are currently in flight; its key includes namespace,
