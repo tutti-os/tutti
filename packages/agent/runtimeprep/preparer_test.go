@@ -2895,6 +2895,162 @@ func TestDefaultPreparerCodexRejectsMissingAbsoluteModelInstructionsFile(t *test
 	}
 }
 
+func TestDefaultPreparerCodexExposesFileReferencesAcrossConfigLayers(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// One relative file dependency per layer shape: top level, model catalog,
+	// experimental section, an agent role table, a profile table, and a
+	// previously unknown `*_file` option that is only discoverable via the
+	// suffix rule.
+	depBodies := map[string]string{
+		"instructions.md":         "# instructions\n",
+		"catalog/models.json":     `{"models":[]}` + "\n",
+		"compact-prompt.md":       "compact prompt\n",
+		"roles/reviewer.toml":     "[agent]\n",
+		"profiles/quick-notes.md": "# profile instructions\n",
+		"future/future-file.md":   "future option\n",
+	}
+	for rel, body := range depBodies {
+		abs := filepath.Join(userCodexHome, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	userCodexConfig := strings.Join([]string{
+		`model_instructions_file = "instructions.md"`,
+		`model_catalog_json = "./catalog/models.json"`,
+		`model = "gpt-5.5"`,
+		`experimental_compact_prompt_file = "compact-prompt.md"`,
+		`future_prompt_file = "future/future-file.md"`,
+		``,
+		`[agents.reviewer]`,
+		`config_file = "roles/reviewer.toml"`,
+		``,
+		`[profiles.quick]`,
+		`model_instructions_file = "profiles/quick-notes.md"`,
+		``,
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := t.TempDir()
+	prepared, err := newTestPreparer(stateDir).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-config-deps",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Prepare() error = %v", err)
+	}
+	codexHome := envValue(prepared.Env, "CODEX_HOME")
+	if codexHome == "" {
+		t.Fatalf("prepared env = %#v, want CODEX_HOME", prepared.Env)
+	}
+	for rel, wantBody := range depBodies {
+		sandboxPath := filepath.Join(codexHome, filepath.FromSlash(rel))
+		info, err := os.Lstat(sandboxPath)
+		if err != nil {
+			t.Fatalf("config dependency %q not exposed into sandbox: %v", rel, err)
+		}
+		if runtime.GOOS != "windows" && info.Mode()&os.ModeSymlink == 0 {
+			t.Fatalf("sandbox dependency %q mode = %v, want symlink", rel, info.Mode())
+		}
+		got, err := os.ReadFile(sandboxPath)
+		if err != nil {
+			t.Fatalf("read sandbox dependency %q: %v", rel, err)
+		}
+		if string(got) != wantBody {
+			t.Fatalf("sandbox dependency %q body = %q, want %q", rel, string(got), wantBody)
+		}
+	}
+}
+
+func TestDefaultPreparerCodexRejectsNestedMissingConfigFile(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userCodexConfig := strings.Join([]string{
+		`model = "gpt-5.5"`,
+		``,
+		`[agents.reviewer]`,
+		`config_file = "roles/missing.toml"`,
+		``,
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-missing-nested-config",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureMissing ||
+		dependencyErr.DependencyPath != filepath.Join("roles", "missing.toml") {
+		t.Fatalf("dependency error = %#v", dependencyErr)
+	}
+}
+
+func TestDefaultPreparerCodexRejectsNonStringFileReference(t *testing.T) {
+	home := t.TempDir()
+	setTestHome(t, home)
+	userCodexHome := filepath.Join(home, ".codex")
+	if err := os.MkdirAll(userCodexHome, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(userCodexHome, "auth.json"), []byte(`{"token":"test"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	userCodexConfig := strings.Join([]string{
+		`model = "gpt-5.5"`,
+		`experimental_compact_prompt_file = 42`,
+		``,
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(userCodexHome, "config.toml"), []byte(userCodexConfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := newTestPreparer(t.TempDir()).Prepare(t.Context(), PrepareInput{
+		WorkspaceID:    "workspace-1",
+		AgentSessionID: "session-invalid-config-dep",
+		AgentTargetID:  "local:codex",
+		Provider:       "codex",
+		Cwd:            t.TempDir(),
+	})
+	var dependencyErr *ConfigDependencyUnavailableError
+	if !errors.As(err, &dependencyErr) {
+		t.Fatalf("Prepare() error = %T %v, want ConfigDependencyUnavailableError", err, err)
+	}
+	if dependencyErr.FailureKind != ConfigDependencyFailureInvalid {
+		t.Fatalf("dependency error = %#v, want invalid kind", dependencyErr)
+	}
+}
+
 func writeSidecarTestFile(t *testing.T, path string, content string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

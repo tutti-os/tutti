@@ -34,34 +34,73 @@ func (e *ConfigDependencyUnavailableError) Unwrap() error {
 	return e.cause
 }
 
-func materializeCodexConfigRelativeFile(codexHome, userCodexHome, key string) error {
+// materializeCodexConfigFileReferences scans the copied session config.toml
+// for every string-valued file-reference key (any key ending in `_file`, plus
+// the known `model_catalog_json` option, at any table depth: top level,
+// profiles, agent roles, hook tables, and future sections) and materializes
+// each relative path into the run-scoped CODEX_HOME at the same relative
+// layout. Matching by the `_file` suffix rather than a key-name allowlist
+// keeps newly added Codex file-backed options working without this code
+// going stale.
+func materializeCodexConfigFileReferences(codexHome, userCodexHome string) error {
 	configPath := filepath.Join(codexHome, "config.toml")
 	contentBytes, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil
 		}
-		return fmt.Errorf("read codex config for %s: %w", key, err)
+		return fmt.Errorf("read codex config for file references: %w", err)
 	}
 	lines := strings.Split(strings.ReplaceAll(string(contentBytes), "\r\n", "\n"), "\n")
 	for _, line := range lines {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "[") {
 			continue
 		}
-		if strings.HasPrefix(trimmed, "[") {
-			break
-		}
-		if !codexConfigLineHasKey(trimmed, key) {
+		rawKey, rawValue, ok := strings.Cut(trimmed, "=")
+		if !ok {
 			continue
 		}
-		value, ok := codexConfigStringAssignmentValue(trimmed, key)
+		key := codexConfigDependencyKeyName(rawKey)
+		if !codexConfigKeyReferencesFile(key) {
+			continue
+		}
+		rawValue = strings.TrimSpace(rawValue)
+		if strings.HasPrefix(rawValue, `"""`) || strings.HasPrefix(rawValue, `'''`) {
+			// Multi-line strings cannot name a file; leave the value untouched.
+			continue
+		}
+		value, ok := codexConfigRawStringValue(rawValue)
 		if !ok {
 			return codexConfigDependencyError(key, "", ConfigDependencyFailureInvalid, nil)
 		}
-		return materializeCodexConfigDependency(codexHome, userCodexHome, key, value)
+		if err := materializeCodexConfigDependency(codexHome, userCodexHome, key, value); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+// codexConfigKeyReferencesFile reports whether a Codex config key is a
+// file-backed option whose value is a path. All `*_file` keys count; Codex
+// also has one historically named option, `model_catalog_json`, that points
+// at a catalog file.
+func codexConfigKeyReferencesFile(key string) bool {
+	return strings.HasSuffix(key, "_file") || key == "model_catalog_json"
+}
+
+// codexConfigDependencyKeyName returns the final segment of a possibly dotted
+// TOML key (`agents.reviewer.config_file` -> `config_file`), unquoting a
+// quoted segment.
+func codexConfigDependencyKeyName(rawKey string) string {
+	segments := strings.Split(strings.TrimSpace(rawKey), ".")
+	name := strings.TrimSpace(segments[len(segments)-1])
+	if len(name) >= 2 &&
+		(name[0] == '"' || name[0] == '\'') &&
+		name[len(name)-1] == name[0] {
+		name = name[1 : len(name)-1]
+	}
+	return name
 }
 
 func materializeCodexConfigDependency(codexHome, userCodexHome, key, rawPath string) error {
@@ -187,10 +226,6 @@ func safeCodexConfigDependencyPath(path string) string {
 	return filepath.Clean(path)
 }
 
-func exposeUserCodexModelCatalog(codexHome, userCodexHome string) error {
-	return materializeCodexConfigRelativeFile(codexHome, userCodexHome, "model_catalog_json")
-}
-
-func exposeUserCodexInstructionsFile(codexHome, userCodexHome string) error {
-	return materializeCodexConfigRelativeFile(codexHome, userCodexHome, "model_instructions_file")
+func exposeUserCodexConfigDependencies(codexHome, userCodexHome string) error {
+	return materializeCodexConfigFileReferences(codexHome, userCodexHome)
 }
