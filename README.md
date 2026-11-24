@@ -36,7 +36,7 @@ The first multi-user, multi-agent, real-time collaboration space.
 | Across devices                    | —                                                                   | ✓                                                                      |
 | No-deploy sharing                 | —                                                                   | ✓                                                                      |
 | Big @                             | Across your own agents                                              | Across others' agents                                                  |
-| Download                          | [Download Tutti · Open-source](https://tutti.sh/en?tc=25q#versions) | [Download Tutti · VM](https://tutti.sh/en?tc=25q#versions)             |
+| Download                          | [Download Tutti · Open-source](https://tutti.sh/en?tc=25q#versions) | Retired                                                                |
 | Entry                             | [Straight to GitHub →](https://github.com/tutti-os/tutti)           | [Creating a Room takes an invite code →](https://tutti.sh/en/waitlist) |
 
 If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send a PR.
@@ -45,9 +45,9 @@ Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6
 
 **Tutti is now open-source.**
 
-**Tutti · VM is available during Early Access. Only creating a Room requires an invite code:**
+**Tutti · VM client downloads have been retired and are no longer publicly available.**
 
-**[Explore and download Tutti · VM →](https://tutti.sh/en?tc=25q#versions)**
+**[Learn more about Tutti · VM →](https://tutti.sh/en?tc=25q)**
 
 ## Quick Start
 
@@ -55,9 +55,7 @@ Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6
 
 [Download Tutti · Local for Windows (x64)](https://tutti.sh/desktop/download?platform=windows&arch=x64&format=exe)
 
-[Download Tutti · VM for macOS or Windows](https://tutti.sh/en?tc=25q#versions)
-
-Creating a Room requires an [invite code](https://tutti.sh/en/waitlist); downloading Tutti · VM or joining someone else's Room does not.
+Creating a Room requires an [invite code](https://tutti.sh/en/waitlist).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full development guide.
 
