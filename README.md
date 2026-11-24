@@ -36,7 +36,7 @@ The first multi-user, multi-agent, real-time collaboration space.
 | Across devices                    | —                                                                   | ✓                                                                      |
 | No-deploy sharing                 | —                                                                   | ✓                                                                      |
 | Big @                             | Across your own agents                                              | Across others' agents                                                  |
-| Download                          | [Download Tutti · Open-source](https://tutti.sh/en?tc=25q#versions) | Retired                                                                |
+| Download                          | [Download Tutti · Open-source](https://tutti.sh/en?tc=25q#versions) | —                                                                      |
 | Entry                             | [Straight to GitHub →](https://github.com/tutti-os/tutti)           | [Creating a Room takes an invite code →](https://tutti.sh/en/waitlist) |
 
 If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send a PR.
@@ -44,10 +44,6 @@ If you like Tutti, give our GitHub repo a star, fork it, open an issue, or send 
 Anyone interested is welcome to join our [Discord](https://discord.gg/UUemKEWtw6) to share feedback, ask questions, and help shape the future of human-agent collaboration.
 
 **Tutti is now open-source.**
-
-**Tutti · VM client downloads have been retired and are no longer publicly available.**
-
-**[Learn more about Tutti · VM →](https://tutti.sh/en?tc=25q)**
 
 ## Quick Start
 
