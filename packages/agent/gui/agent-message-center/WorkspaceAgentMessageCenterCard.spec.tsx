@@ -17,6 +17,20 @@ import {
 import type { WorkspaceAgentMessageCenterItem } from "./workspaceAgentMessageCenterModel";
 
 describe("messageCenterStackPreviewText", () => {
+  it("unwraps paired emphasis markers so previews show no stray asterisks", () => {
+    const text = messageCenterStackPreviewText(
+      item({
+        summary:
+          "路线：**3 号线也不是最优**。still 2 * 3 and **福田站坐 11 号线** ok"
+      })
+    );
+
+    expect(text).not.toContain("**");
+    expect(text).toContain("3 号线也不是最优");
+    expect(text).toContain("福田站坐 11 号线");
+    expect(text).toContain("2 * 3");
+  });
+
   it("renders agent-session mention links as plain text instead of raw markdown", () => {
     const text = messageCenterStackPreviewText(
       item({
