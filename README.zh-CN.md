@@ -23,21 +23,21 @@
 
 ## Tutti 的两个版本
 
-| 功能                | Tutti · 开源版                                             | Tutti · VM                                             |
-| ------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
-| 连接已有的 Agent    | ✓                                                          | ✓                                                      |
-| 使用已有订阅额度    | ✓                                                          | ✓                                                      |
-| 内置应用            | ✓                                                          | ✓                                                      |
-| 群聊                | —                                                          | ✓                                                      |
-| 与他人协作          | —                                                          | ✓                                                      |
-| 与他人的 Agent 协作 | —                                                          | ✓                                                      |
-| 同时编辑            | —                                                          | ✓                                                      |
-| 借用 Agent          | —                                                          | ✓                                                      |
-| 跨设备              | —                                                          | ✓                                                      |
-| 免部署分享          | —                                                          | ✓                                                      |
-| Big @               | 跨自己的 Agent                                             | 跨他人的 Agent                                         |
-| 下载                | [下载 Tutti · 开源版](https://tutti.sh/zh?tc=25q#versions) | [下载 Tutti · VM](https://tutti.sh/zh?tc=25q#versions) |
-| 入口                | [直接前往 GitHub →](https://github.com/tutti-os/tutti)     | [创建房间需要邀请码 →](https://tutti.sh/zh/waitlist)   |
+| 功能                | Tutti · 开源版                                             | Tutti · VM                                           |
+| ------------------- | ---------------------------------------------------------- | ---------------------------------------------------- |
+| 连接已有的 Agent    | ✓                                                          | ✓                                                    |
+| 使用已有订阅额度    | ✓                                                          | ✓                                                    |
+| 内置应用            | ✓                                                          | ✓                                                    |
+| 群聊                | —                                                          | ✓                                                    |
+| 与他人协作          | —                                                          | ✓                                                    |
+| 与他人的 Agent 协作 | —                                                          | ✓                                                    |
+| 同时编辑            | —                                                          | ✓                                                    |
+| 借用 Agent          | —                                                          | ✓                                                    |
+| 跨设备              | —                                                          | ✓                                                    |
+| 免部署分享          | —                                                          | ✓                                                    |
+| Big @               | 跨自己的 Agent                                             | 跨他人的 Agent                                       |
+| 下载                | [下载 Tutti · 开源版](https://tutti.sh/zh?tc=25q#versions) | 已下线                                               |
+| 入口                | [直接前往 GitHub →](https://github.com/tutti-os/tutti)     | [创建房间需要邀请码 →](https://tutti.sh/zh/waitlist) |
 
 如果你喜欢 Tutti，欢迎给我们一个 Star，或者 Fork 仓库、提交 Issue、发起 PR。
 
@@ -47,9 +47,9 @@
 
 **Tutti，现已开源。**
 
-**Tutti · VM 已开放 Early Access，只有创建 Room 需要邀请码：**
+**Tutti · VM 客户端已下线，不再公开提供下载。**
 
-**[前往官网了解并下载 Tutti · VM →](https://tutti.sh/zh?tc=25q#versions)**
+**[前往官网了解 Tutti · VM →](https://tutti.sh/zh?tc=25q)**
 
 ## 快速开始
 
@@ -57,9 +57,7 @@
 
 [下载 Tutti · Local Windows x64 版](https://tutti.sh/desktop/download?platform=windows&arch=x64&format=exe)
 
-[下载 Tutti · VM macOS 或 Windows 版](https://tutti.sh/zh?tc=25q#versions)
-
-创建 Room 需要[申请邀请码](https://tutti.sh/zh/waitlist)，下载 Tutti · VM 或加入他人的 Room 无需邀请码
+创建 Room 需要[申请邀请码](https://tutti.sh/zh/waitlist)。
 
 完整开发指南见 [CONTRIBUTING.zh-CN.md](CONTRIBUTING.zh-CN.md)。
 
