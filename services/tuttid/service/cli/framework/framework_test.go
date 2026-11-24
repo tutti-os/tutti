@@ -360,3 +360,55 @@ func (f fakeWorkspaceCatalog) Startup(context.Context) (*workspacebiz.Summary, e
 func (fakeWorkspaceCatalog) Get(_ context.Context, workspaceID string) (workspacebiz.Summary, error) {
 	return workspacebiz.Summary{ID: workspaceID}, nil
 }
+
+// Regression test for #2193: an advertise-required field with a hidden
+// alternate must render as an anyOf branch instead of a hard required entry.
+func TestSchemaRendersAnyOfForAdvertisedRequiredWithAlternate(t *testing.T) {
+	type input struct {
+		AgentID  string `cli:"agent-id" advertise-required:"true" advertise-alt:"provider" hint:"Use agent list --json to discover available agents."`
+		Prompt   string `cli:"prompt" validate:"required"`
+		Provider string `cli:"provider" hidden:"true"`
+	}
+	schema := Schema(FromStruct[input]())
+
+	required, _ := schema["required"].([]string)
+	if len(required) != 1 || required[0] != "prompt" {
+		t.Fatalf("schema required = %#v, want only prompt", required)
+	}
+	branches, ok := schema["anyOf"].([]map[string]any)
+	if !ok || len(branches) != 2 {
+		t.Fatalf("schema anyOf = %#v, want one branch per accepted spelling", schema["anyOf"])
+	}
+	first, _ := branches[0]["required"].([]string)
+	second, _ := branches[1]["required"].([]string)
+	if len(first) != 1 || first[0] != "agent-id" || len(second) != 1 || second[0] != "provider" {
+		t.Fatalf("anyOf branches required = [%#v %#v], want [[agent-id] [provider]]", first, second)
+	}
+	for _, branch := range branches {
+		if branch["type"] != "object" {
+			t.Fatalf("anyOf branch missing object type: %#v", branch)
+		}
+	}
+	properties := schema["properties"].(map[string]any)
+	if _, exists := properties["provider"]; exists {
+		t.Fatal("hidden provider field leaked into advertised properties")
+	}
+}
+
+// Without an alternate, an advertise-required field keeps rendering as a hard
+// required entry (existing advertised contracts unchanged).
+func TestSchemaKeepsHardRequiredForAdvertisedRequiredWithoutAlternate(t *testing.T) {
+	type input struct {
+		AgentID string `cli:"agent-id" advertise-required:"true"`
+		Prompt  string `cli:"prompt"`
+	}
+	schema := Schema(FromStruct[input]())
+
+	required, _ := schema["required"].([]string)
+	if len(required) != 1 || required[0] != "agent-id" {
+		t.Fatalf("schema required = %#v, want [agent-id]", required)
+	}
+	if _, exists := schema["anyOf"]; exists {
+		t.Fatalf("schema anyOf = %#v, want absent", schema["anyOf"])
+	}
+}

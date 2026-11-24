@@ -28,7 +28,7 @@ var sessionActionColumns = []cliservice.TableColumn{
 }
 
 type startInput struct {
-	AgentID         string   `cli:"agent-id" advertise-required:"true" hint:"Use agent list --json to discover available agents."`
+	AgentID         string   `cli:"agent-id" advertise-required:"true" advertise-alt:"provider" hint:"Use agent list --json to discover available agents."`
 	Cwd             string   `cli:"cwd"`
 	DisplayPrompt   string   `cli:"display-prompt"`
 	Hidden          bool     `cli:"hidden"`
