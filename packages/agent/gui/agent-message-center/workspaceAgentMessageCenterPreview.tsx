@@ -9,13 +9,30 @@ import { formatAgentSessionMentionText } from "../shared/utils/agentSessionMenti
 import { workspaceAgentProviderLabel } from "../shared/workspaceAgentProviderLabel";
 import type { WorkspaceAgentMessageCenterItem } from "./workspaceAgentMessageCenterModel";
 
+// Collapsed previews render plain text: paired emphasis markers from the raw
+// markdown summary would surface as stray asterisks, so unwrap `**…**`/`__…__`
+// spans while leaving single markers (e.g. `2 * 3`) untouched.
+const MESSAGE_CENTER_PREVIEW_EMPHASIS_PATTERN =
+  /\*\*(\S[^\n*]*?\S|\S)\*\*|__(\S[^\n_]*?\S|\S)__/g;
+
+export function stripMessageCenterPreviewEmphasis(text: string): string {
+  return text.replace(
+    MESSAGE_CENTER_PREVIEW_EMPHASIS_PATTERN,
+    (
+      _match,
+      starWrapped: string | undefined,
+      underscoreWrapped: string | undefined
+    ) => starWrapped ?? underscoreWrapped ?? _match
+  );
+}
+
 function messageCenterStackRawPreviewText(
   item: WorkspaceAgentMessageCenterItem
 ): string {
-  return (
+  return stripMessageCenterPreviewEmphasis(
     item.digest.primary.summary.trim() ||
-    item.lastAgentMessageSummary.trim() ||
-    item.title
+      item.lastAgentMessageSummary.trim() ||
+      item.title
   );
 }
 

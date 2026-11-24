@@ -36,7 +36,8 @@ export * from "./WorkspaceAgentMessageCenterIdentity";
 import {
   buildWorkspaceAgentInteractivePromptLabels,
   messageCenterStackPreviewNodes,
-  messageCenterStackPreviewText
+  messageCenterStackPreviewText,
+  stripMessageCenterPreviewEmphasis
 } from "./workspaceAgentMessageCenterPreview";
 export * from "./workspaceAgentMessageCenterPreview";
 
@@ -676,7 +677,7 @@ export function MessageCenterSummary({
         />
       ) : summary ? (
         <div className="whitespace-pre-wrap [overflow-wrap:anywhere]">
-          {summary}
+          {stripMessageCenterPreviewEmphasis(summary)}
         </div>
       ) : (
         emptyLabel
