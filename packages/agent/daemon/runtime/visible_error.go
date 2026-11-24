@@ -501,15 +501,28 @@ func codexExitLooksInterrupted(normalized string) bool {
 }
 
 // codexErrorLooksLikeNetwork reports whether the detail describes a DNS or
-// connection-level network failure.
+// connection-level network failure. `fetch failed` is Node/undici's
+// connection-level failure text (Claude Code's stack) — it is only thrown for
+// transport failures (DNS, TCP, TLS, socket), never for HTTP error responses.
 func codexErrorLooksLikeNetwork(lower string) bool {
 	for _, marker := range []string{
 		"enotfound",
 		"econnrefused",
 		"econnreset",
+		"econnaborted",
+		"eai_again",
+		"enetunreach",
+		"ehostunreach",
 		"etimedout",
 		"getaddrinfo",
 		"socket hang up",
+		"socket disconnected",
+		"fetch failed",
+		"connection reset",
+		"connection refused",
+		"no route to host",
+		"network is unreachable",
+		"temporary failure in name resolution",
 		"dns",
 	} {
 		if strings.Contains(lower, marker) {
