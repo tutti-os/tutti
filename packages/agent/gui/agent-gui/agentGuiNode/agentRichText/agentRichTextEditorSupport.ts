@@ -79,6 +79,27 @@ export function insertAgentRichTextClipboardHtml(
   return true;
 }
 
+// Readable-text projection of a rich-text clipboard payload. The composer's
+// mark-less schema unwraps <strong>/<em>/<code> decorations during parsing,
+// so the returned text carries no markdown artifacts even when the
+// text/plain flavor holds a markdown export (e.g. conversation copy).
+export function plainTextFromAgentRichTextClipboardHtml(
+  editor: Editor,
+  html: string
+): string | null {
+  if (!html.trim()) {
+    return null;
+  }
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+  const slice = ProseMirrorDOMParser.fromSchema(editor.schema).parseSlice(
+    wrapper,
+    { preserveWhitespace: true }
+  );
+  const text = slice.content.textBetween(0, slice.content.size, "\n", " ");
+  return text.trim() ? text : null;
+}
+
 export function classifyAgentRichTextTextPaste(
   text: string,
   html: string,

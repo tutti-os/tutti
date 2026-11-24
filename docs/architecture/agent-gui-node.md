@@ -2673,7 +2673,11 @@ Composer copy and cut write both the canonical prompt Markdown as
 `text/plain` and schema-serialized mention markup as `text/html`. Pasting that
 markup reparses it through the AgentGUI editor schema, so built-in and
 currently registered custom mentions retain their canonical href and chip
-identity without a host DOM event interceptor.
+identity without a host DOM event interceptor. When the `text/html` flavor is
+present but carries no mention markup, the composer pastes the readable text
+parsed from that HTML rather than the raw `text/plain` payload, so copied
+rich text (for example a conversation-copy Markdown export) does not surface
+literal decoration markers in the mark-less composer.
 
 External OS file paste and drop enter one host-injected classification boundary before draft attachment creation. The synchronous `resolveExternalPromptEntries` port classifies each source index as a live `WorkspaceFileReference` or a snapshot requiring preparation. AgentGUI owns ordered mention insertion and draft reconciliation: references become ordinary file/folder mentions and never consume prompt-asset slots, while only `prepare` entries create pending attachment state and enter `prepareExternalPromptFiles`. A host without the resolver prepares every external entry. The preparer owns native-path or byte lookup, size enforcement, persistence, and remote transport; each prepared input has one `sourceIndex` result, one failure must not fail siblings, successful results include a provider-readable `path` or `url`, and failures carry typed error codes. Hosts that classify path-backed entries as references must reject any such entry that unexpectedly reaches preparation, so classification failure cannot silently create a duplicate snapshot.
 

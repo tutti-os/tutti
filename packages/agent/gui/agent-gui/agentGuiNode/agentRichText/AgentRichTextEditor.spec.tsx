@@ -1173,6 +1173,31 @@ describe("AgentRichTextEditor mention clipboard", () => {
   });
 });
 
+describe("AgentRichTextEditor rich text paste", () => {
+  it("strips markdown decoration when a text/html flavor is present", async () => {
+    // Conversation copy exports markdown on text/plain and the rendered
+    // document on text/html; the mark-less composer must paste the readable
+    // text, not literal "**" markers (issue #432).
+    const pasted = await pasteEditorPrompt({
+      "text/plain":
+        "如果你只是继续问路线：**3 号线也不是最优**。从福田到南山最方便还是：\n\n**福田站坐 11 号线 → 南山站下 → E2 出口步行过去**。",
+      "text/html":
+        "<p>如果你只是继续问路线：<strong>3 号线也不是最优</strong>。从福田到南山最方便还是：</p><p><strong>福田站坐 11 号线 → 南山站下 → E2 出口步行过去</strong>。</p>"
+    });
+    expect(pasted).toBe(
+      "如果你只是继续问路线：3 号线也不是最优。从福田到南山最方便还是：\n福田站坐 11 号线 → 南山站下 → E2 出口步行过去。"
+    );
+    expect(pasted).not.toContain("**");
+  });
+
+  it("falls back to the text/plain flavor when the clipboard has no html", async () => {
+    const pasted = await pasteEditorPrompt({
+      "text/plain": "keep the **markers** verbatim"
+    });
+    expect(pasted).toBe("keep the **markers** verbatim");
+  });
+});
+
 async function copyEditorPrompt(
   prompt: string
 ): Promise<Record<string, string>> {
