@@ -5,7 +5,8 @@ import type { AgentCapabilityTokenOption } from "./agentCapabilityTokenExtension
 import { plainTextToAgentRichTextInlineContent } from "./agentRichTextDocument";
 import {
   classifyAgentRichTextTextPaste,
-  insertAgentRichTextClipboardHtml
+  insertAgentRichTextClipboardHtml,
+  plainTextFromAgentRichTextClipboardHtml
 } from "./agentRichTextEditorSupport";
 import { handleAgentRichTextAbsolutePathPaste } from "./handleAgentRichTextAbsolutePathPaste";
 
@@ -68,9 +69,16 @@ export function routeAgentRichTextTextPaste(input: {
       currentEditor.state.doc.content.size
     );
   }
-  input.mentionSuggestionSuppression.suppressTextInsertion(input.text);
+  // Prefer the readable text of a rich payload: conversation copy exports
+  // ship markdown on text/plain, whose decoration markers would otherwise
+  // paste literally into the mark-less composer.
+  const pastedText =
+    (input.html
+      ? plainTextFromAgentRichTextClipboardHtml(currentEditor, input.html)
+      : null) ?? input.text;
+  input.mentionSuggestionSuppression.suppressTextInsertion(pastedText);
   currentEditor.commands.insertContent(
-    plainTextToAgentRichTextInlineContent(input.text, {
+    plainTextToAgentRichTextInlineContent(pastedText, {
       capabilities: input.availableCapabilities,
       skills: input.availableSkills
     })
