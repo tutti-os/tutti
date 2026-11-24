@@ -17,6 +17,38 @@ export type ExternalImportProjectGroup = {
   sessions: ExternalAgentImportSession[];
 };
 
+export type ExternalImportStep = "providers" | "select";
+
+export type ExternalImportWizardError = {
+  kind: "source" | "import";
+  message: string;
+};
+
+export function externalImportSelectionView({
+  error,
+  hasResult,
+  loading,
+  scan,
+  step
+}: {
+  error: ExternalImportWizardError | null;
+  hasResult: boolean;
+  loading: boolean;
+  scan: ExternalAgentImportScanResponse | null;
+  step: ExternalImportStep;
+}): { importError: string | null } | null {
+  if (
+    step !== "select" ||
+    !scan ||
+    loading ||
+    hasResult ||
+    error?.kind === "source"
+  ) {
+    return null;
+  }
+  return { importError: error?.kind === "import" ? error.message : null };
+}
+
 export type ExternalImportScanSource =
   | {
       kind: "archive";

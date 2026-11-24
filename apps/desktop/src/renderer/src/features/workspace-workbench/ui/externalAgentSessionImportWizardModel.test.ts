@@ -7,6 +7,7 @@ import {
   externalImportScanSource,
   externalImportScanStateReducer,
   externalImportSelectionProjects,
+  externalImportSelectionView,
   externalImportUsableScan,
   filterExternalImportGroups,
   isExternalImportArchiveMode,
@@ -175,8 +176,8 @@ test("starting, failing, or changing source clears the completed scan", () => {
   );
 });
 
-test("archive groups use their source label and preserve selected session ids", () => {
-  const scan = {
+function archiveScanFixture() {
+  return {
     errors: [],
     projects: [
       {
@@ -217,6 +218,10 @@ test("archive groups use their source label and preserve selected session ids", 
     ],
     skippedSessions: 0
   };
+}
+
+test("archive groups use their source label and preserve selected session ids", () => {
+  const scan = archiveScanFixture();
   const groups = externalImportGroupsFromScan(
     scan,
     () => "fallback",
@@ -317,5 +322,57 @@ test("never blocks opening the dialog, even if somehow called while busy", () =>
       nextOpen: true
     }),
     true
+  );
+});
+
+test("keeps a successful scan editable after an import request fails", () => {
+  const scan = archiveScanFixture();
+  const selectedProjects = externalImportSelectionProjects(
+    scan.sessions,
+    new Set()
+  );
+  assert.deepEqual(selectedProjects[0]?.sessionIds, [
+    "session-new",
+    "session-old"
+  ]);
+  const selection = {
+    hasResult: false,
+    loading: false,
+    scan,
+    step: "select"
+  } as const;
+  const importFailure = { kind: "import", message: "Import failed" } as const;
+
+  assert.deepEqual(
+    externalImportSelectionView({ ...selection, error: importFailure }),
+    { importError: "Import failed" }
+  );
+  const retryProjects = externalImportSelectionProjects(
+    scan.sessions,
+    new Set(["session-old"])
+  );
+  assert.deepEqual(retryProjects[0]?.sessionIds, ["session-new"]);
+  assert.deepEqual(externalImportSelectionView({ ...selection, error: null }), {
+    importError: null
+  });
+  // Source failures still use the source error view, not retry controls.
+  assert.equal(
+    externalImportSelectionView({
+      ...selection,
+      error: { kind: "source", message: "Scan failed" }
+    }),
+    null
+  );
+  assert.equal(
+    externalImportSelectionView({
+      ...selection,
+      error: importFailure,
+      scan: null
+    }),
+    null
+  );
+  assert.equal(
+    externalImportSelectionView({ ...selection, error: null, hasResult: true }),
+    null
   );
 });

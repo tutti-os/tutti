@@ -3647,6 +3647,13 @@ inline data URL instead`. Claude or standard ACP may instead receive no
   [ExternalAgentSessionImportWizard.tsx](../../../apps/desktop/src/renderer/src/features/workspace-workbench/ui/ExternalAgentSessionImportWizard.tsx)
   [service_session.go](../../../services/tuttid/service/agent/service_session.go)
 
+### An external import request fails after selection
+
+If the selected conversations could be scanned but the import request fails,
+the desktop wizard keeps the list, search, and selection available. Review or
+change the selection, then choose **Import** again without scanning the same
+source. If scanning the source failed instead, go **Back** and scan again.
+
 ### Imported long Turns show one disclosure per tool call
 
 - Symptom:
