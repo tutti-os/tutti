@@ -54,6 +54,27 @@ describe("handleAgentRichTextKeyDownCapture input history", () => {
     expect(onHistoryNavigation).not.toHaveBeenCalled();
     expect(event.preventDefault).toHaveBeenCalledOnce();
   });
+
+  it.each(["ArrowUp", "ArrowDown"])(
+    "does not enter input history on %s while IME composition is active",
+    (key) => {
+      const onHistoryNavigation = vi.fn(() => true);
+      const event = keyboardEvent(key);
+      event.nativeEvent.isComposing = true;
+
+      handleAgentRichTextKeyDownCapture(
+        event as unknown as ReactKeyboardEvent<HTMLDivElement>,
+        keyboardInput({
+          editor: editorAt({ from: 1, to: 1, documentSize: 5 }),
+          onHistoryNavigation
+        })
+      );
+
+      expect(onHistoryNavigation).not.toHaveBeenCalled();
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(event.stopPropagation).not.toHaveBeenCalled();
+    }
+  );
 });
 
 function keyboardInput(input: {

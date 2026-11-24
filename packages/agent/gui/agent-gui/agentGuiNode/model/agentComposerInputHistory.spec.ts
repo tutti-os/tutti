@@ -194,6 +194,19 @@ describe("agent composer input history", () => {
     ]);
   });
 
+  it("filters empty user messages out of input history", () => {
+    const history = projectAgentComposerInputHistory(
+      conversationWithUserMessages([
+        { id: "empty", body: "   ", sourceTimelineItems: [] },
+        { id: "text", body: "resendable" }
+      ])
+    );
+
+    expect(history).toHaveLength(1);
+    expect(history[0]!.id).toBe("turn-1:text");
+    expect(agentComposerDraftPrompt(history[0]!.draft)).toBe("resendable");
+  });
+
   it("restores mixed text and file input without dropping the file on resend", () => {
     const fileMention = createAgentComposerFileMentionMarkdown({
       id: "original-file",
