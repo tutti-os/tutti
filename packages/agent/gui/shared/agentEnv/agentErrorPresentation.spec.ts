@@ -24,6 +24,20 @@ describe("classifyFailedAgentMessage", () => {
     expect(
       classifyFailedAgentMessage("getaddrinfo ENOTFOUND api.anthropic.com")
     ).toBe("network_error");
+    // Claude Code (Node/undici) reports connection-level failures on a slow
+    // or dead network as a bare `fetch failed` TypeError — it must recover to
+    // the network card instead of staying a raw failed message (#427).
+    expect(classifyFailedAgentMessage("API Error: fetch failed")).toBe(
+      "network_error"
+    );
+    expect(
+      classifyFailedAgentMessage("getaddrinfo EAI_AGAIN api.anthropic.com")
+    ).toBe("network_error");
+    expect(
+      classifyFailedAgentMessage(
+        "Client network socket disconnected before secure TLS connection was established"
+      )
+    ).toBe("network_error");
     expect(
       classifyFailedAgentMessage(
         'API Error: 522 {"title":"Error 522: Connection timed out"}'

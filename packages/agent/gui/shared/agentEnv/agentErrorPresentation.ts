@@ -296,7 +296,28 @@ const FAILED_MESSAGE_CODE_MARKERS: ReadonlyArray<
   ],
   [
     "network_error",
-    ["enotfound", "econnrefused", "econnreset", "getaddrinfo", "socket hang up"]
+    // `fetch failed` is Node/undici's connection-level failure text (Claude
+    // Code's stack): thrown for DNS/TCP/TLS/socket failures, never for HTTP
+    // error responses — so it is safe to treat as a transport failure.
+    [
+      "enotfound",
+      "econnrefused",
+      "econnreset",
+      "econnaborted",
+      "eai_again",
+      "enetunreach",
+      "ehostunreach",
+      "etimedout",
+      "getaddrinfo",
+      "socket hang up",
+      "socket disconnected",
+      "fetch failed",
+      "connection reset",
+      "connection refused",
+      "no route to host",
+      "network is unreachable",
+      "temporary failure in name resolution"
+    ]
   ]
 ];
 

@@ -402,6 +402,19 @@ func TestVisibleFailureCodeClassifiesNetworkError(t *testing.T) {
 		`request failed: getaddrinfo ENOTFOUND api.anthropic.com`,
 		`connect ECONNREFUSED 127.0.0.1:443`,
 		`Error: socket hang up`,
+		// Claude Code (Node/undici) reports connection-level failures on a
+		// slow or dead network as a bare `fetch failed` TypeError — the text
+		// must still classify as a recoverable network failure, not the raw
+		// "request failed" card (#427).
+		`API Error: fetch failed`,
+		`request failed: TypeError: fetch failed`,
+		`request failed: getaddrinfo EAI_AGAIN api.anthropic.com`,
+		`connect ENETUNREACH 2606:4700::443`,
+		`connect EHOSTUNREACH 10.0.0.1:443`,
+		`read ECONNABORTED`,
+		`Client network socket disconnected before secure TLS connection was established`,
+		`dial tcp: connect: no route to host`,
+		`Temporary failure in name resolution`,
 	} {
 		if got := visibleFailureCode(detail); got != "network_error" {
 			t.Fatalf("visibleFailureCode(%q) = %q, want network_error", detail, got)
