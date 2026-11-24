@@ -1293,8 +1293,10 @@ cannot find the path specified`, while the same repository is searchable
   `model_instructions_file` paths resolve against that sandbox home, so the
   dependency is missing unless Tutti mirrors it.
 - Fix:
-  After copying `config.toml`, resolve top-level `model_catalog_json` and
-  `model_instructions_file`. For relative paths under `~/.codex`, symlink (or
+  After copying `config.toml`, resolve every file-backed setting the config
+  references: any `*_file` key (at any table depth, including agent role
+  `config_file`, `experimental_compact_prompt_file`, and profile tables) and
+  `model_catalog_json`. For relative paths under `~/.codex`, symlink (or
   copy) the file into the run-scoped `CODEX_HOME` at the same relative path.
   Absolute paths need no mirror but must be validated in place. Missing,
   unreadable, non-regular, or illegal dependencies should fail preparation

@@ -296,10 +296,7 @@ func exposeUserCodexFiles(codexHome, userCodexHome string) error {
 	if err := exposeUserCodexAgentsFile(codexHome, userCodexHome); err != nil {
 		return err
 	}
-	if err := exposeUserCodexModelCatalog(codexHome, userCodexHome); err != nil {
-		return err
-	}
-	return exposeUserCodexInstructionsFile(codexHome, userCodexHome)
+	return exposeUserCodexConfigDependencies(codexHome, userCodexHome)
 }
 
 // exposeCodexImportedRolloutFile symlinks the single Codex CLI rollout
@@ -704,6 +701,13 @@ func codexConfigStringAssignmentValue(line string, key string) (string, bool) {
 	if !ok {
 		return "", false
 	}
+	return codexConfigRawStringValue(rawValue)
+}
+
+// codexConfigRawStringValue parses a single-line TOML basic or literal string
+// (quoted with " or ') and returns its content. An empty raw value counts as
+// an empty assignment.
+func codexConfigRawStringValue(rawValue string) (string, bool) {
 	rawValue = strings.TrimSpace(rawValue)
 	if rawValue == "" {
 		return "", true
