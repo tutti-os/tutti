@@ -36,7 +36,7 @@
 | 跨裝置              | —                                                          | ✓                                                    |
 | 免部署分享          | —                                                          | ✓                                                    |
 | Big @               | 跨自己的 Agent                                             | 跨他人的 Agent                                       |
-| 下載                | [下載 Tutti · 開源版](https://tutti.sh/zh?tc=25q#versions) | 已下架                                               |
+| 下載                | [下載 Tutti · 開源版](https://tutti.sh/zh?tc=25q#versions) | —                                                    |
 | 入口                | [直接前往 GitHub →](https://github.com/tutti-os/tutti)     | [建立房間需要邀請碼 →](https://tutti.sh/zh/waitlist) |
 
 如果你喜歡 Tutti，歡迎給我們一個 Star，或者 Fork 倉庫、提交 Issue、發起 PR。
@@ -46,10 +46,6 @@
 <img src="docs/assets/zh/wechat-group.png" alt="掃碼加入 Tutti 微信群" width="240" />
 
 **Tutti，現已開源。**
-
-**Tutti · VM 用戶端已下架，不再公開提供下載。**
-
-**[前往官網了解 Tutti · VM →](https://tutti.sh/zh?tc=25q)**
 
 ## 快速開始
 
