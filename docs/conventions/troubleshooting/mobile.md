@@ -239,7 +239,7 @@
   that option labels follow the phone language and that model, reasoning, and
   permission changes update the chips and persist in the selected Session.
 - **References:** `services/tuttid/service/mobileremote/remote_protocol.go`,
-  `apps/mobile/src/services/workspaceActivityCommandAdapter.ts`,
+  `apps/mobile/src/services/workspaceActivityEngineCommandPort.ts`,
   `apps/mobile/src/components/MobileComposerSettingsSheet.tsx`
 
 ## Mobile composer option sheets do not respond
