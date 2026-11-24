@@ -2599,7 +2599,14 @@ An existing-Session composer derives input history from that Session's
 canonical user-message projection and its turnless Goal-control audit entries;
 it does not persist a second history store. These sources are merged by their
 timeline timestamps so Goal commands participate in the same Up/Down sequence
-as ordinary prompts.
+as ordinary prompts. The retention boundary is the canonical Session
+projection currently loaded by the Engine: older entries are admitted only
+through the existing authoritative older-page read, and AgentGUI does not
+create an independent count-based or time-based history cache. Input history
+therefore survives an application restart only when the canonical Session
+messages survive and are loaded again; the UI-local cursor and unsent Composer
+draft do not survive restart. Home and new-Session composers have no input
+history.
 The host capability remains explicit so unsupported hosts can fail closed, but
 Tutti Desktop always supplies `sessionInputHistoryEnabled: true`; historical
 `lab.agentInputHistory` preference values do not hide or disable the feature.

@@ -21,21 +21,24 @@ describe("handleAgentRichTextKeyDownCapture input history", () => {
     expect(event.stopPropagation).toHaveBeenCalledOnce();
   });
 
-  it("leaves arrows in the middle of multiline input alone", () => {
-    const onHistoryNavigation = vi.fn(() => true);
-    const event = keyboardEvent("ArrowDown");
+  it.each(["ArrowUp", "ArrowDown"])(
+    "leaves %s in the middle of multiline input alone",
+    (key) => {
+      const onHistoryNavigation = vi.fn(() => true);
+      const event = keyboardEvent(key);
 
-    handleAgentRichTextKeyDownCapture(
-      event as unknown as ReactKeyboardEvent<HTMLDivElement>,
-      keyboardInput({
-        editor: editorAt({ from: 2, to: 2, documentSize: 5 }),
-        onHistoryNavigation
-      })
-    );
+      handleAgentRichTextKeyDownCapture(
+        event as unknown as ReactKeyboardEvent<HTMLDivElement>,
+        keyboardInput({
+          editor: editorAt({ from: 2, to: 2, documentSize: 5 }),
+          onHistoryNavigation
+        })
+      );
 
-    expect(onHistoryNavigation).not.toHaveBeenCalled();
-    expect(event.preventDefault).not.toHaveBeenCalled();
-  });
+      expect(onHistoryNavigation).not.toHaveBeenCalled();
+      expect(event.preventDefault).not.toHaveBeenCalled();
+    }
+  );
 
   it("gives an open palette priority over input history", () => {
     const onHistoryNavigation = vi.fn(() => true);
@@ -54,6 +57,27 @@ describe("handleAgentRichTextKeyDownCapture input history", () => {
     expect(onHistoryNavigation).not.toHaveBeenCalled();
     expect(event.preventDefault).toHaveBeenCalledOnce();
   });
+
+  it.each(["ArrowUp", "ArrowDown"])(
+    "does not enter input history on %s while IME composition is active",
+    (key) => {
+      const onHistoryNavigation = vi.fn(() => true);
+      const event = keyboardEvent(key);
+      event.nativeEvent.isComposing = true;
+
+      handleAgentRichTextKeyDownCapture(
+        event as unknown as ReactKeyboardEvent<HTMLDivElement>,
+        keyboardInput({
+          editor: editorAt({ from: 1, to: 1, documentSize: 5 }),
+          onHistoryNavigation
+        })
+      );
+
+      expect(onHistoryNavigation).not.toHaveBeenCalled();
+      expect(event.preventDefault).not.toHaveBeenCalled();
+      expect(event.stopPropagation).not.toHaveBeenCalled();
+    }
+  );
 });
 
 function keyboardInput(input: {
