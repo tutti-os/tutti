@@ -270,6 +270,13 @@ variant at all. The provider auth/config watcher still publishes the
 (`~/.local/share/opencode/auth.json`) or configured OpenCode config files change
 so an open composer refreshes immediately; it invalidates existing in-memory
 OpenCode model-list cache entries so the next request refetches for its cwd.
+The OpenCode CLI composer projection presents advertised Zen MiniMax text models
+with `opencode/minimax-m3.1-flash-free` before `opencode/minimax-m3`. Known older
+Zen MiniMax text IDs remain in the raw catalog for validation but appear in the
+composer only when explicitly selected. The projection never invents unavailable
+models or replaces an explicit model ID. Custom provider namespaces, other
+providers, media models, and replay catalogs retain their existing behavior.
+
 OpenCode composer skill options are discovered with slash triggers
 from native `.opencode/skills/*/SKILL.md`, Claude-compatible `.claude/skills`,
 agent-compatible `.agents/skills`, global `~/.config/opencode/skills`,
