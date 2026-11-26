@@ -22,15 +22,15 @@ func acpToolCallEventWithID(session Session, eventID string, turnID string, upda
 	locations := clonePayloadValue(update["locations"])
 	content := acpSanitizeImagePayload(update["content"])
 	eventType := EventCallStarted
-	inputBody := acpNormalizeToolInput(rawInput, kind, locations)
+	inputBody := acpApplyTerminalToolInput(update, callID, kind, acpNormalizeToolInput(rawInput, kind, locations))
 	callBody := inputBody
 	switch normalizedCallStatus(status) {
 	case messageStreamStateCompleted:
 		eventType = EventCallCompleted
-		callBody = acpNormalizeToolOutput(rawOutput, content)
+		callBody = acpApplyTerminalToolOutput(update, acpNormalizeToolOutput(rawOutput, content))
 	case messageStreamStateFailed:
 		eventType = EventCallFailed
-		callBody = acpNormalizeToolOutput(rawOutput, content)
+		callBody = acpApplyTerminalToolOutput(update, acpNormalizeToolOutput(rawOutput, content))
 	default:
 		status = string(activityshared.ActivityStatusRunning)
 	}
@@ -148,8 +148,10 @@ func acpToolNameWithOutput(callID string, title string, kind string, rawInput an
 	// Cursor ACP uses descriptive titles ("Find `path` `*.go`", `grep "x"`)
 	// and kind=search for Glob/Grep. Prefer title/input/output shape over the
 	// historical kind=search → Bash fallback that blanked the tool card.
-	if toolName := acpToolNameFromSearchHints(normalizedTitle, normalizedKind, input, rawOutput); toolName != "" {
-		return toolName
+	if normalizedKind != "execute" {
+		if toolName := acpToolNameFromSearchHints(normalizedTitle, normalizedKind, input, rawOutput); toolName != "" {
+			return toolName
+		}
 	}
 	switch normalizedKind {
 	case "think":
@@ -512,7 +514,7 @@ func acpMirrorFailedToolOutput(body map[string]any) map[string]any {
 		return nil
 	}
 	mirrored := map[string]any{}
-	for _, key := range []string{"text", "stdout", "stderr", "aggregated_output", "formatted_output", "content", "structuredContent", "result", "error", "err", "errorMessage", "error_message", "message", "detail", "rawErrorMessages", "raw_error_messages", "isError", "is_error", "success", "changes", "status", "call_id", "turn_id", "cwd", "parsed_cmd", "command", "exit_code", "duration", "duration_ms", "completed_at_ms", "source", "process_id"} {
+	for _, key := range []string{"text", "stdout", "stderr", "aggregated_output", "formatted_output", "content", "structuredContent", "result", "error", "err", "errorMessage", "error_message", "message", "detail", "rawErrorMessages", "raw_error_messages", "isError", "is_error", "success", "changes", "status", "call_id", "turn_id", "cwd", "parsed_cmd", "command", "exit_code", "exitCode", "signal", "duration", "duration_ms", "completed_at_ms", "source", "process_id"} {
 		if value, ok := body[key]; ok && value != nil {
 			mirrored[key] = clonePayloadValue(value)
 		}

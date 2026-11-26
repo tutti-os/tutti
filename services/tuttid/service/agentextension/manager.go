@@ -15,8 +15,6 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/mod/semver"
-
 	agentruntime "github.com/tutti-os/tutti/packages/agent/daemon/runtime"
 	"github.com/tutti-os/tutti/packages/agent/daemon/runtimecmd"
 	agentextensionbiz "github.com/tutti-os/tutti/services/tuttid/biz/agentextension"
@@ -46,6 +44,8 @@ type Manager struct {
 	Client                      *http.Client
 	RuntimeResolver             runtimecmd.Resolver
 	UserPathAdapter             UserPathAdapter
+	Transport                   agentruntime.ProcessTransport
+	Host                        agentruntime.HostMetadata
 	reconcileMu                 sync.Mutex
 	versionCacheOnce            sync.Once
 	runtimeVersions             *runtimeVersionCache
@@ -84,7 +84,8 @@ type DiscoveryCandidate struct {
 	BinaryNames []string              `json:"binaryNames"`
 	SearchPaths []DiscoverySearchPath `json:"searchPaths,omitempty"`
 	Version     struct {
-		Args       []string `json:"args"`
+		Source     string   `json:"source,omitempty"`
+		Args       []string `json:"args,omitempty"`
 		Constraint string   `json:"constraint"`
 	} `json:"version"`
 	LaunchArgs []string `json:"launchArgs"`
@@ -235,7 +236,7 @@ func (m *Manager) resolveRuntime(ctx context.Context, installationID, cwd string
 			if m.isManagedRuntimeExecutable(path) {
 				continue
 			}
-			version, err := m.runtimeVersionWithEnv(ctx, path, candidate.Version.Args, candidate.Version.Constraint, env)
+			version, err := m.runtimeVersionForCandidate(ctx, path, candidate, cwd, env, nil)
 			if err != nil {
 				continue
 			}
@@ -707,124 +708,4 @@ func activateExtensionPackage(staging, finalDir, expectedDigest string) error {
 	return nil
 }
 
-func runtimeVersionWithEnv(ctx context.Context, executable string, args []string, constraint string, env []string) (string, error) {
-	if len(args) == 0 {
-		return "", nil
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, runtimeVersionProbeTimeout)
-	defer cancel()
-	command := newAgentExtensionCommand(probeCtx, executable, args...)
-	command.Env = env
-	output, err := command.CombinedOutput()
-	if err != nil {
-		return "", runtimeVersionProbeError(ctx, probeCtx, err)
-	}
-	version := regexp.MustCompile(`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`).FindString(string(output))
-	if !validSemver(version) || !matchesConstraint(version, constraint) {
-		return "", errors.New("runtime version is incompatible")
-	}
-	return version, nil
-}
-
-func (m *Manager) runtimeVersionWithEnv(
-	ctx context.Context,
-	executable string,
-	args []string,
-	constraint string,
-	env []string,
-) (string, error) {
-	return m.runtimeVersionCache().load(executable, args, constraint, func() (string, error) {
-		return runtimeVersionWithEnv(ctx, executable, args, constraint, env)
-	})
-}
-
-func (m *Manager) runtimeVersionWithIdentity(
-	ctx context.Context,
-	executable string,
-	args []string,
-	constraint string,
-	identity *agentruntime.ExecutableIdentity,
-) (string, error) {
-	return m.runtimeVersionCache().load(executable, args, constraint, func() (string, error) {
-		return runtimeVersionWithIdentity(ctx, executable, args, constraint, identity)
-	})
-}
-
-func (m *Manager) runtimeVersionCache() *runtimeVersionCache {
-	m.versionCacheOnce.Do(func() {
-		m.runtimeVersions = newRuntimeVersionCache()
-	})
-	return m.runtimeVersions
-}
-
-func runtimeVersionWithIdentity(
-	ctx context.Context,
-	executable string,
-	args []string,
-	constraint string,
-	identity *agentruntime.ExecutableIdentity,
-) (string, error) {
-	if len(args) == 0 {
-		return "", nil
-	}
-	probeCtx, cancel := context.WithTimeout(ctx, runtimeVersionProbeTimeout)
-	defer cancel()
-	var output []byte
-	var err error
-	if identity != nil {
-		output, err = agentruntime.RunVerifiedExecutable(probeCtx, executable, args, identity)
-	} else {
-		output, err = newAgentExtensionCommand(probeCtx, executable, args...).CombinedOutput()
-	}
-	if err != nil {
-		return "", runtimeVersionProbeError(ctx, probeCtx, err)
-	}
-	version := regexp.MustCompile(`\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?`).FindString(string(output))
-	if !validSemver(version) || !matchesConstraint(version, constraint) {
-		return "", errors.New("runtime version is incompatible")
-	}
-	return version, nil
-}
-
-func runtimeVersionProbeError(ctx, probeCtx context.Context, err error) error {
-	if ctxErr := ctx.Err(); ctxErr != nil {
-		return fmt.Errorf("runtime version probe aborted: %w", ctxErr)
-	}
-	if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
-		return fmt.Errorf(
-			"runtime version probe timed out after %s: %w",
-			runtimeVersionProbeTimeout,
-			context.DeadlineExceeded,
-		)
-	}
-	return err
-}
-
-func matchesConstraint(version, constraint string) bool {
-	for _, part := range strings.Fields(constraint) {
-		switch {
-		case strings.HasPrefix(part, ">="):
-			if semver.Compare("v"+version, "v"+strings.TrimPrefix(part, ">=")) < 0 {
-				return false
-			}
-		case strings.HasPrefix(part, ">"):
-			if semver.Compare("v"+version, "v"+strings.TrimPrefix(part, ">")) <= 0 {
-				return false
-			}
-		case strings.HasPrefix(part, "<="):
-			if semver.Compare("v"+version, "v"+strings.TrimPrefix(part, "<=")) > 0 {
-				return false
-			}
-		case strings.HasPrefix(part, "<"):
-			if semver.Compare("v"+version, "v"+strings.TrimPrefix(part, "<")) >= 0 {
-				return false
-			}
-		default:
-			return false
-		}
-	}
-	return true
-}
-
-func validSemver(value string) bool { return semver.IsValid("v" + value) }
-func targetID(key string) string    { return "extension:" + key }
+func targetID(key string) string { return "extension:" + key }

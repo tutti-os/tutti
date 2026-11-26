@@ -168,7 +168,7 @@ func (m *Manager) resolveInstalledManagedRuntime(
 		if artifact != nil {
 			identity = executableIdentity(fingerprint)
 		}
-		version, err := m.runtimeVersionWithIdentity(ctx, executable, candidate.Version.Args, candidate.Version.Constraint, identity)
+		version, err := m.runtimeVersionForCandidate(ctx, executable, candidate, cwd, nil, identity)
 		if err != nil {
 			if artifact != nil {
 				return RuntimeBinding{}, fmt.Errorf("%w: verified version probe failed: %v", ErrManagedRuntimeIntegrity, err)
@@ -230,7 +230,7 @@ func (m *Manager) adoptCompatibleManagedRuntime(
 			continue
 		}
 		originalActivation, relativeExecutable, fingerprint, ok := compatibleManagedRuntimeCandidate(
-			ctx, candidate, profile, packageName, packageVersion, artifact,
+			ctx, candidate, profile, packageName, packageVersion, artifact, candidate.path, m.Transport, m.Host,
 		)
 		if !ok {
 			candidate.Close()
@@ -327,6 +327,9 @@ func compatibleManagedRuntimeCandidate(
 	packageName string,
 	packageVersion string,
 	artifact *RuntimeBinaryArtifact,
+	cwd string,
+	transport agentruntime.ProcessTransport,
+	host agentruntime.HostMetadata,
 ) (managedRuntimeActivation, string, runtimeExecutableFingerprint, bool) {
 	var activation managedRuntimeActivation
 	if candidate == nil || candidate.readJSON("activation.json", &activation) != nil {
@@ -362,7 +365,7 @@ func compatibleManagedRuntimeCandidate(
 	if artifact != nil {
 		identity = executableIdentity(fingerprint)
 	}
-	version, err := compatibleInstalledVersion(ctx, executable, profile, identity)
+	version, err := compatibleInstalledVersion(ctx, executable, profile, cwd, identity, transport, host)
 	if err != nil || (artifact != nil && version != packageVersion) {
 		return managedRuntimeActivation{}, "", runtimeExecutableFingerprint{}, false
 	}

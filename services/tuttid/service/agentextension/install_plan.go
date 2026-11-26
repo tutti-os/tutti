@@ -426,7 +426,7 @@ func exactRuntimePackage(runner string, arguments []string) (string, string, err
 func exactRuntimePackageArgument(runner, argument string) (string, string, bool) {
 	switch runner {
 	case "npm", "pnpm":
-		if !strings.HasPrefix(argument, "@") {
+		if !runtimeNPMPackagePattern.MatchString(argument) {
 			return "", "", false
 		}
 		separator := strings.LastIndex(argument, "@")

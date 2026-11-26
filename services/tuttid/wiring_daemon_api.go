@@ -256,6 +256,8 @@ func buildDaemonAPI(
 		ClientInfo:       agentdaemon.ClientInfo{Name: "tutti-desktop", Title: "Tutti", Version: "0.1.0"},
 		WorkspaceEnvName: "TUTTI_WORKSPACE_ID", OpenClawSessionKeyPrefix: "agent:main:tsh-",
 	}
+	agentExtensionManager.Transport = agentProcessComposition.transport
+	agentExtensionManager.Host = agentHostMetadata
 	agentTargetSetup := agentextensionservice.NewSetupService(context.Background())
 	agentTargetSetup.Plans = agentTargetInstallPlans
 	agentTargetSetup.Transport = agentProcessComposition.transport

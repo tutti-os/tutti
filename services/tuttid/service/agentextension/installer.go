@@ -218,7 +218,7 @@ func (s *SetupService) executeInstall(
 	if plan.Runner == "binary" {
 		versionIdentity = executableIdentity(verifiedFingerprint)
 	}
-	version, err := compatibleInstalledVersion(ctx, realExecutable, profile, versionIdentity)
+	version, err := compatibleInstalledVersion(ctx, realExecutable, profile, discoveryRoot, versionIdentity, s.Transport, s.Host)
 	if err != nil {
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
 	}
@@ -312,11 +312,14 @@ func compatibleInstalledVersion(
 	ctx context.Context,
 	executable string,
 	profile DiscoveryProfile,
+	cwd string,
 	identity *agentruntime.ExecutableIdentity,
+	transport agentruntime.ProcessTransport,
+	host agentruntime.HostMetadata,
 ) (string, error) {
 	var lastErr error
 	for _, candidate := range profile.Candidates {
-		version, err := runtimeVersionWithIdentity(ctx, executable, candidate.Version.Args, candidate.Version.Constraint, identity)
+		version, err := runtimeVersionForCandidate(ctx, executable, candidate, cwd, nil, identity, transport, host)
 		if err == nil {
 			return version, nil
 		}

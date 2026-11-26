@@ -12,6 +12,12 @@ func acpResolvedToolCallStatus(update map[string]any, fallback string) string {
 	if status != messageStreamStateStreaming {
 		return status
 	}
+	if exitCode, _, hasExit := acpTerminalExitMetadata(update); hasExit {
+		if exitCode != 0 {
+			return messageStreamStateFailed
+		}
+		return messageStreamStateCompleted
+	}
 	rawOutput := acpToolCallRawOutput(update)
 	if inferred := acpInferTerminalToolStatus(rawOutput); inferred != "" {
 		return inferred
