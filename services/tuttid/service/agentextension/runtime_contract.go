@@ -18,6 +18,7 @@ var runtimeEnvironmentKeyPattern = regexp.MustCompile(`^[A-Z][A-Z0-9_]{0,127}$`)
 var runtimeEnvironmentReferencePattern = regexp.MustCompile(`^\$\{env:(TUTTI_[A-Z0-9_]{1,120})\}$`)
 var runtimeArtifactPlatformPattern = regexp.MustCompile(`^[a-z0-9]+-[a-z0-9_]+$`)
 var runtimeArtifactSHA256Pattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
+var runtimeNPMPackagePattern = regexp.MustCompile(`^(?:@[a-z0-9._-]+/)?[a-z0-9][a-z0-9._-]*@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 
 const maxRuntimeBinaryArtifactBytes = int64(1 << 30)
 
@@ -26,8 +27,26 @@ func validateDiscoveryProfile(profile DiscoveryProfile) error {
 		return errors.New("extension discovery profile requires candidates")
 	}
 	for _, candidate := range profile.Candidates {
-		if len(candidate.BinaryNames) == 0 || len(candidate.Version.Args) == 0 || len(candidate.LaunchArgs) == 0 {
+		if len(candidate.BinaryNames) == 0 {
 			return errors.New("extension discovery candidate is incomplete")
+		}
+		versionSource := discoveryVersionSource(candidate)
+		switch versionSource {
+		case discoveryVersionSourceCommand:
+			if len(candidate.Version.Args) == 0 {
+				return errors.New("extension discovery candidate is incomplete")
+			}
+		case discoveryVersionSourceACPInitialize:
+			if len(candidate.Version.Args) != 0 {
+				return errors.New("extension discovery acp-initialize version source cannot declare args")
+			}
+			for _, argument := range candidate.LaunchArgs {
+				if runtimeArgumentPlaceholderPattern.MatchString(argument) {
+					return errors.New("extension discovery acp-initialize version source cannot use launch placeholders")
+				}
+			}
+		default:
+			return errors.New("extension discovery version source is unsupported")
 		}
 		for _, name := range candidate.BinaryNames {
 			if !runtimeBinaryNamePattern.MatchString(name) {
@@ -175,18 +194,17 @@ func validateRuntimeContract(manifest Manifest) error {
 		return errors.New("extension package-manager runtime cannot declare binary artifacts")
 	}
 	if runner == "npm" || runner == "pnpm" {
-		packagePattern := regexp.MustCompile(`^@[a-z0-9._-]+/[a-z0-9._-]+@[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$`)
 		count := 0
 		for _, argument := range manifest.Runtime.Install.Args {
-			if strings.HasPrefix(argument, "@") {
-				if !packagePattern.MatchString(argument) {
-					return errors.New("extension runtime package must use an exact scoped version")
+			if strings.HasPrefix(argument, "@") || (!strings.HasPrefix(argument, "-") && strings.Contains(argument, "@")) {
+				if !runtimeNPMPackagePattern.MatchString(argument) {
+					return errors.New("extension runtime package must use an exact npm version")
 				}
 				count++
 			}
 		}
 		if count != 1 {
-			return errors.New("extension runtime install must name exactly one scoped package")
+			return errors.New("extension runtime install must name exactly one exact package")
 		}
 	}
 	if runner == "uv" {

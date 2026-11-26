@@ -186,6 +186,61 @@ func RunStandardACPSetup(
 	return StandardACPSetupResult{Status: StandardACPSetupReady, AuthMethods: methods, Account: account}, nil
 }
 
+// ProbeStandardACPInitializeVersion starts a short-lived ACP process, performs
+// the protocol initialize handshake without opening a session, and returns the
+// version reported in agentInfo.version. Standalone ACP bridges that do not
+// implement a separate --version CLI flag use this seam during runtime
+// discovery and managed-runtime verification.
+func ProbeStandardACPInitializeVersion(
+	ctx context.Context,
+	command []string,
+	env []string,
+	cwd string,
+	identity *ExecutableIdentity,
+	timeout time.Duration,
+	transport ProcessTransport,
+	host HostMetadata,
+) (string, error) {
+	if transport == nil {
+		transport = NewLocalProcessTransport()
+	}
+	if timeout <= 0 {
+		timeout = 5 * time.Second
+	}
+	adapterValue, err := NewStandardACPAdapter(StandardACPAdapterConfig{
+		Provider:           "acp:version-probe",
+		Name:               "acp-version-probe",
+		DisplayName:        "ACP Version Probe",
+		Command:            command,
+		Env:                env,
+		ExecutableIdentity: identity,
+		StartupTimeout:     timeout,
+	}, transport, host)
+	if err != nil {
+		return "", err
+	}
+	adapter := adapterValue.(*standardACPAdapter)
+	probeCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	session := Session{
+		RoomID:         "agent-target-setup",
+		AgentSessionID: "version-probe-" + fmt.Sprint(time.Now().UnixNano()),
+		Provider:       "acp:version-probe",
+		CWD:            cwd,
+	}
+	client, initializeResult, err := adapter.startInitializedClient(probeCtx, session)
+	if err != nil {
+		return "", err
+	}
+	_ = client.Close()
+	adapter.waitForACPClientDone(client, acpCloseGraceTimeout)
+	version := strings.TrimSpace(asString(acpAgentInfo(initializeResult)["version"]))
+	if version == "" {
+		return "", errors.New("ACP initialize response did not report agentInfo.version")
+	}
+	return version, nil
+}
+
 func standardACPSetupSessionNewAuthRejected(err error) bool {
 	var callErr *acpCallError
 	return errors.As(err, &callErr) &&

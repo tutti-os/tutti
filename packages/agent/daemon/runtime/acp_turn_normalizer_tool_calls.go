@@ -53,7 +53,9 @@ func (n *acpTurnNormalizer) StandardToolCallEvent(session Session, turnID string
 	if callID != "" {
 		n.toolCallsSeen[callID] = true
 	}
+	priorStreamed := n.toolOutputText[eventID]
 	n.mergePendingToolCallSnapshot(&event)
+	applyStreamedTerminalOutputToTerminalEvent(&event, priorStreamed, acpTerminalOutputDelta(update))
 	n.trackToolCallEvent(event)
 	return event, true
 }
@@ -84,6 +86,12 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 		return appendTurnFileChangesEvent(nil, []activityshared.Event{event}, event), true
 	}
 	rawToolCallID := firstNonEmpty(asString(update["toolCallId"]), asString(update["callId"]), asString(update["id"]))
+	terminalDelta := acpTerminalOutputDelta(update)
+	resolvedStatus := normalizedCallStatus(acpResolvedToolCallStatus(update, string(activityshared.ActivityStatusRunning)))
+	runningUpdate := resolvedStatus != messageStreamStateCompleted && resolvedStatus != messageStreamStateFailed
+	if runningUpdate && terminalDelta != "" && n.knownToolItemID(rawToolCallID) != "" && acpIsStreamingTerminalOutputOnlyUpdate(update) {
+		return n.AppendToolOutputDelta(session, turnID, rawToolCallID, terminalDelta), true
+	}
 	event, ok := n.StandardToolCallEvent(session, turnID, updateType, update)
 	if !ok {
 		return nil, false
@@ -91,6 +99,9 @@ func (n *acpTurnNormalizer) StandardToolCallEvents(session Session, turnID strin
 	events := n.Finish(session, turnID, messageStreamStateCompleted)
 	events = append(events, event)
 	events = append(events, n.consumeEarlyToolOutput(session, turnID, rawToolCallID)...)
+	if runningUpdate && terminalDelta != "" {
+		events = append(events, n.AppendToolOutputDelta(session, turnID, rawToolCallID, terminalDelta)...)
+	}
 	events = appendTurnFileChangesEvent(n, events, event)
 	return events, true
 }
@@ -283,7 +294,7 @@ func (n *acpTurnNormalizer) trackToolCallEvent(event activityshared.Event) {
 }
 
 func (n *acpTurnNormalizer) mergePendingToolCallSnapshot(event *activityshared.Event) {
-	if n == nil || event == nil || event.Type != activityshared.EventCallCompleted {
+	if n == nil || event == nil || (event.Type != activityshared.EventCallCompleted && event.Type != activityshared.EventCallFailed) {
 		return
 	}
 	snapshot, ok := n.pendingToolCalls[event.EventID]
@@ -298,6 +309,9 @@ func (n *acpTurnNormalizer) mergePendingToolCallSnapshot(event *activityshared.E
 	event.Payload.Metadata = merged
 	event.Payload.Input = payloadMap(merged, "input")
 	event.Payload.Output = payloadMap(merged, "output")
+	if event.Type == activityshared.EventCallFailed {
+		event.Payload.Error = payloadMap(merged, "error")
+	}
 	if name := strings.TrimSpace(asString(merged["name"])); name != "" {
 		event.Payload.Name = name
 	}

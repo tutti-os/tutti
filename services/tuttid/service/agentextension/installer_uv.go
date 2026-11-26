@@ -199,7 +199,7 @@ func (s *SetupService) executeUVInstallInPlace(
 		rollback()
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)
 	}
-	version, err := compatibleInstalledVersion(ctx, realExecutable, profile, nil)
+	version, err := compatibleInstalledVersion(ctx, realExecutable, profile, discoveryRoot, nil, s.Transport, s.Host)
 	if err != nil {
 		rollback()
 		return fmt.Errorf("%w: %w", ErrRuntimeVerifyFailed, err)

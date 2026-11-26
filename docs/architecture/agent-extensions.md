@@ -136,8 +136,22 @@ directories are never replaced.
 The generic adapter applies declarative tool aliases before canonical activity
 normalization and maps composer permission semantics onto runtime permission
 IDs. Standard ACP content diffs continue through the shared ACP diff
-normalizer, so Gemini and future extensions do not add provider branches to
-AgentGUI. Both standard ACP `models` state and legacy `configOptions` are
+normalizer, and standard ACP execute tools that stream terminal metadata
+(`_meta.terminal_info`, `_meta.terminal_output`, and `_meta.terminal_exit`) are
+normalized onto the shared `Bash` tool contract with live output deltas and exit
+codes, so Gemini, Pi (`pi-acp`), and future extensions do not add provider
+branches to AgentGUI.
+
+Discovery candidates in `tutti.agent.discovery.v1` may declare empty
+`launchArgs` (`[]`) for standalone ACP bridge executables that speak ACP over
+stdio without a subcommand. Candidates whose runtime does not implement a
+separate CLI version flag may declare `version.source: "acp-initialize"` (with
+no `version.args` and no launch-argument placeholders); Tutti probes
+`agentInfo.version` through an initialize-only ACP handshake without opening a
+session and caches the result under the same executable fingerprint rules as
+command-based version probes. Manifest v2 `npm` and `pnpm` runtime installers
+accept both scoped (`@scope/pkg@x.y.z`) and unscoped (`pkg@x.y.z`) exact
+semantic versions. Both standard ACP `models` state and legacy `configOptions` are
 normalized into the shared composer model descriptor; the catalog remains
 runtime-reported instead of being hardcoded for an extension provider. A
 prompt-free composer discovery session runs in the normalized selected project
@@ -790,3 +804,15 @@ persistence, private authentication protocol, headless/TSH integration,
 automatic CLI updates, or private `x.ai/*` operations. End-to-end AgentGUI
 visibility still requires separately reviewed and signed external extension
 bytes; the default-off source alone does not make a release available.
+
+## Opt-in Real Pi ACP Smoke
+
+For standalone ACP bridges such as `pi-acp`, an opt-in local smoke verifies
+initialize-only version discovery and standard ACP capability negotiation
+without opening a session or sending a prompt:
+
+```sh
+TUTTI_REAL_PI_ACP_SMOKE=1 \
+TUTTI_PI_ACP_BIN=/absolute/path/to/pi-acp \
+go test ./packages/agent/daemon/runtime -run TestRealPiACPInitializeSmoke -count=1
+```
